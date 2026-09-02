@@ -206,9 +206,15 @@ class CorpusStore:
         """The current day's log section, markers stripped, for the model context.
 
         If over max_chars, the earliest exchanges are dropped (recency matters most
-        within a day); a truncation notice is prepended.
+        within a day); a truncation notice is prepended. Read failures (e.g. WebDAV
+        misconfigured or Nextcloud briefly down) degrade to empty context — the chat
+        keeps working; WRITES never degrade and will surface errors loudly.
         """
-        month_text, _ = self.read_month(day)
+        try:
+            month_text, _ = self.read_month(day)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("day-text read failed (degrading to empty): %s", exc)
+            return ""
         if not month_text:
             return ""
         header = fmt.canonical_day_header(day)
@@ -232,7 +238,11 @@ class CorpusStore:
         return ""
 
     def get_standing_sections_text(self, max_chars: Optional[int] = None) -> str:
-        index_text, _ = self.read_index()
+        try:
+            index_text, _ = self.read_index()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("index read failed (degrading to empty): %s", exc)
+            index_text = None
         idx = fmt.parse_index(index_text)
         out = fmt.IndexFile(
             preamble=idx.preamble, month_links=idx.month_links, sections=idx.sections

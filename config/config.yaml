@@ -5,8 +5,8 @@ llm:
   # Lemonade OpenAI-compatible endpoint (per DaServer.md canonical stack)
   base_url: http://10.69.0.130:13305/v1
   api_key: ""            # Lemonade ignores keys; set via LLM_API_KEY env if needed
-  chat_model: gpt-oss-20b-GGUF-MXFP4   # provisional until Phase 1b benchmark picks the winner
-  embed_model: nomic-embed-text-v1.5.Q4_K_M   # LOCKED per DaServer.md — do not change without re-index
+  chat_model: Gemma-4-E4B-it-GGUF   # provisional until Phase 1b benchmark picks the winner
+  embed_model: nomic-embed-text-v1-GGUF   # embeddings — do not change once the index has content (re-index required)
   # Auxiliary model (skip-classifier, summarizer, index-maintenance).
   # Same server by default; point host/port at the A380 SYCL instance if Phase 1a-2 adopts aux offload.
   aux:

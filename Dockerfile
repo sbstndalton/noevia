@@ -12,8 +12,8 @@ COPY agent/ ./agent/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
 
-RUN useradd -m appuser && mkdir -p /app/data && chown -R appuser:appuser /app
-USER appuser
+# Runs as root (Unraid community-container convention) so the ./data bind mount is
+# writable regardless of host-side ownership. Isolated bridge network, LAN-only.
 
 EXPOSE 8010
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
