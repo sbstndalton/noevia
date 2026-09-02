@@ -1,0 +1,25 @@
+# Diary Companion — deployment on DaServer
+# Deploy location: /mnt/docker/appdata/diary-companion/
+#   docker compose up -d
+#
+# Requires: Lemonade running (per DaServer.md AI stack) and Nextcloud AIO Apache reachable.
+
+services:
+  diary-companion:
+    build: .
+    image: diary-companion:0.1.0
+    container_name: diary-companion
+    restart: unless-stopped
+    ports:
+      - "8010:8010"          # LAN-only; expose via Cloudflare Tunnel + Access auth later
+    env_file:
+      - .env
+    volumes:
+      # SQLite (vector index + write-ahead journal). Back this up alongside appdata.
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
