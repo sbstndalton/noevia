@@ -1,21 +1,36 @@
 """Diary Companion Agent — FastAPI application.
 
-Single-user, LAN-only web UI (port 8010) for chatting with the companion and observing
-the automatic diary-logging pipeline (✓ logged / ⊘ skipped, with manual re-log).
+Single-user web UI (port 8010) for chatting with the companion and observing the
+automatic diary-logging pipeline (logged / skipped, with manual re-log).
+
+Auth model:
+  - `ui.auth_token` (env DIARY_AUTH_TOKEN) empty  -> open (LAN-only mode).
+  - token set -> all /api/* and /v1/* endpoints require `Authorization: Bearer <token>`
+    (or `X-Diary-Token`). The `/` page shell and /static are open; the browser stores
+    the token in localStorage and sends it on every call.
+
+OpenAI-compatible surface (for Solair AI / any OpenAI-format client):
+  GET  /v1/models
+  POST /v1/chat/completions   -> the companion answers THROUGH the diary pipeline:
+       every exchange is skip-classified and auto-logged server-side, regardless of
+       which client sent it (browser UI or phone app).
 
 Run:  uvicorn agent.app:app --host 0.0.0.0 --port 8010
 """
 from __future__ import annotations
 
 import logging
+import secrets
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -37,6 +52,7 @@ log = logging.getLogger("diary")
 class AppState:
     def __init__(self, cfg):
         self.cfg = cfg
+        self.auth_token = (cfg.get("ui.auth_token") or "").strip()
         self.journal = Journal(Path(cfg.get("retrieval.db_path")))
         self.dav = WebDAVClient(
             base_url=cfg.get("corpus.webdav.base_url"),
@@ -99,6 +115,25 @@ app = FastAPI(title="Diary Companion", lifespan=lifespan, docs_url=None, redoc_u
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 
+# ---------------- auth ----------------
+
+
+def _client_token(request: Request) -> Optional[str]:
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return request.headers.get("X-Diary-Token") or None
+
+
+def check_auth(request: Request) -> bool:
+    """True when the request may proceed. Open mode when no token is configured."""
+    st = get_state()
+    if not st.auth_token:
+        return True
+    supplied = _client_token(request)
+    return bool(supplied) and secrets.compare_digest(supplied, st.auth_token)
+
+
 # ---------------- in-memory session (single user) ----------------
 
 SESSIONS: Dict[str, dict] = {}
@@ -132,29 +167,20 @@ def index() -> str:
     return template_path.read_text(encoding="utf-8")
 
 
-# ---------------- API ----------------
+# ---------------- shared conversation core (UI + /v1 both use this) ----------------
 
 
-@app.post("/api/chat")
-def api_chat(req: ChatRequest) -> JSONResponse:
+def _run_exchange(message: str, session_id: str) -> dict:
+    """One full exchange: context build -> main model -> strip marker -> log -> return payload."""
     st = get_state()
-    sess = _session(req.session_id)
-    message = req.message.strip()
-    if not message:
-        return JSONResponse({"error": "empty message"}, status_code=400)
-
+    sess = _session(session_id)
     day = datetime.now().date()
     messages = st.assembler.build(day, message, session_turns=sess["turns"])
-    try:
-        reply = st.llm_main.chat(messages, temperature=0.7)
-    except Exception as exc:  # noqa: BLE001
-        log.exception("chat failed")
-        return JSONResponse({"error": f"model error: {exc}"}, status_code=502)
+    reply = st.llm_main.chat(messages, temperature=0.7)
 
-    visible, decision = LLMClient.strip_log_marker(reply)
-    if decision is None:
-        # Model omitted the marker — default to logging (never silently lose content).
-        decision = "ok"
+    visible, marker = LLMClient.strip_log_marker(reply)
+    if marker is None:
+        marker = "ok"  # model omitted the marker — default to logging (never lose content)
 
     outcome = st.pipeline.log_exchange(user_message=message, assistant_message=visible, now=datetime.now())
 
@@ -170,16 +196,8 @@ def api_chat(req: ChatRequest) -> JSONResponse:
         "assistant": visible,
     })
 
-    # Opportunistic background reindex of today's month file (new content becomes searchable).
     threading.Thread(target=_reindex_today, args=(st, day), daemon=True).start()
-
-    return JSONResponse({
-        "reply": visible,
-        "decision": outcome.decision,
-        "xid": outcome.xid,
-        "reason": outcome.reason,
-        "marker_decision": decision,
-    })
+    return {"reply": visible, "decision": outcome.decision, "xid": outcome.xid, "reason": outcome.reason}
 
 
 def _reindex_today(st: AppState, day) -> None:
@@ -190,8 +208,28 @@ def _reindex_today(st: AppState, day) -> None:
         log.warning("background reindex failed: %s", exc)
 
 
+# ---------------- API (browser UI) ----------------
+
+
+@app.post("/api/chat")
+def api_chat(req: ChatRequest, request: Request) -> JSONResponse:
+    if not check_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    message = req.message.strip()
+    if not message:
+        return JSONResponse({"error": "empty message"}, status_code=400)
+    try:
+        result = _run_exchange(message, req.session_id)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("chat failed")
+        return JSONResponse({"error": f"model error: {exc}"}, status_code=502)
+    return JSONResponse(result)
+
+
 @app.post("/api/relog")
-def api_relog(req: RelogRequest) -> JSONResponse:
+def api_relog(req: RelogRequest, request: Request) -> JSONResponse:
+    if not check_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     st = get_state()
     sess = _session(req.session_id)
     try:
@@ -209,7 +247,9 @@ def api_relog(req: RelogRequest) -> JSONResponse:
 
 
 @app.get("/api/day")
-def api_day() -> JSONResponse:
+def api_day(request: Request) -> JSONResponse:
+    if not check_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     st = get_state()
     day = datetime.now().date()
     return JSONResponse({
@@ -220,11 +260,99 @@ def api_day() -> JSONResponse:
 
 
 @app.get("/api/health")
-def api_health() -> JSONResponse:
+def api_health(request: Request) -> JSONResponse:
+    if not check_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     st = get_state()
     return JSONResponse({
         "ok": True,
         "journal_pending": st.journal.pending_count(),
         "retrieval": st.retrieval.stats(),
         "model": st.cfg.get("llm.chat_model"),
+        "auth_required": bool(st.auth_token),
     })
+
+
+# ---------------- OpenAI-compatible surface (Solair AI & friends) ----------------
+
+
+@app.get("/v1/models")
+def v1_models(request: Request) -> JSONResponse:
+    if not check_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    st = get_state()
+    model_id = "diary-companion"
+    return JSONResponse({
+        "object": "list",
+        "data": [
+            {"id": model_id, "object": "model", "created": 0, "owned_by": "diary-companion"},
+            {"id": st.cfg.get("llm.chat_model") or model_id, "object": "model", "created": 0, "owned_by": "lemonade"},
+        ],
+    })
+
+
+@app.post("/v1/chat/completions")
+async def v1_chat_completions(request: Request) -> JSONResponse:
+    """OpenAI-format endpoint backed by the diary companion.
+
+    The LAST user message becomes the diary exchange; earlier messages in the client's
+    thread are passed as session context so short back-and-forth stays coherent. The
+    exchange is skip-classified and auto-logged exactly like a UI chat — the client
+    cannot bypass the diary pipeline.
+    """
+    if not check_auth(request):
+        return JSONResponse({"error": {"message": "unauthorized", "type": "auth_error"}}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": {"message": "invalid JSON body", "type": "invalid_request_error"}}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": {"message": "invalid request body", "type": "invalid_request_error"}}, status_code=400)
+    messages_in = body.get("messages") or []
+    user_msgs = [m.get("content", "") for m in messages_in if isinstance(m, dict) and m.get("role") == "user"]
+    if not user_msgs or not str(user_msgs[-1]).strip():
+        return JSONResponse({"error": {"message": "no user message", "type": "invalid_request_error"}}, status_code=400)
+    last = str(user_msgs[-1]).strip()
+    prior = [{"role": "user", "content": str(m)} for m in user_msgs[:-1] if str(m).strip()][-6:]
+
+    session_id = "openai-client"
+    sess = _session(session_id)
+    if prior and not sess["turns"]:
+        sess["turns"].extend(prior)  # seed short client-thread context
+
+    try:
+        # _run_exchange does blocking network I/O (Lemonade) — keep the event loop free.
+        result = await run_in_threadpool(_run_exchange, last, session_id)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("v1 exchange failed")
+        return JSONResponse(
+            {"error": {"message": f"model error: {exc}", "type": "api_error"}}, status_code=502
+        )
+
+    now = int(time.time())
+    return JSONResponse({
+        "id": f"chatcmpl-{result['xid'] or 'local'}",
+        "object": "chat.completion",
+        "created": now,
+        "model": "diary-companion",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": result["reply"]},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "diary": {"decision": result["decision"], "xid": result["xid"]},
+    })
+
+
+# ---------------- entrypoint ----------------
+
+
+if __name__ == "__main__":
+    import os
+
+    import uvicorn
+
+    uvicorn.run(app, host=os.environ.get("DIARY_HOST", "0.0.0.0"), port=int(os.environ.get("DIARY_PORT", "8010")))

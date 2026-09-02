@@ -48,6 +48,10 @@ ui:
   host: 0.0.0.0
   port: 8010                  # unused port per DaServer.md port reference
   title: "Diary Companion"
+  # Access token for the UI + /v1 API. Empty = open (LAN-only mode).
+  # REQUIRED before exposing via Cloudflare Tunnel. Set via env: DIARY_AUTH_TOKEN.
+  # Generate one with:  openssl rand -base64 24
+  auth_token: ""
 
 logging:
   level: INFO

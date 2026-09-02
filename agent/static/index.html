@@ -7,7 +7,17 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div id="layout">
+  <div id="lock" class="hidden">
+    <form id="lockform">
+      <h1>Diary Companion</h1>
+      <p class="muted">Enter your access passphrase.</p>
+      <input type="password" id="tokeninput" placeholder="access token" autocomplete="current-password">
+      <button type="submit" id="unlockbtn">Unlock</button>
+      <p id="lockerror" class="error-text hidden">Wrong token — try again.</p>
+    </form>
+  </div>
+
+  <div id="layout" class="hidden">
     <aside id="sidebar">
       <h1>Diary Companion</h1>
       <section>
@@ -21,6 +31,9 @@
       <section>
         <h2>System</h2>
         <pre id="health" class="panel">loading…</pre>
+      </section>
+      <section>
+        <button id="lockbtn" class="ghost">Lock</button>
       </section>
     </aside>
     <main id="main">

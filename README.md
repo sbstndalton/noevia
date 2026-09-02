@@ -107,10 +107,15 @@ diary-companion/
   anything stuck (a persistent count > 0 means WebDAV is unreachable — check Nextcloud).
 - **Crash drill (do once before trusting it):** fill `.env`, start a chat turn, and
   `docker restart diary-companion` mid-generation. Confirm: no lost entry after restart,
-  no duplicated blocks in the month file.
-- **Security:** LAN-only by default. The diary is your most sensitive dataset — if you
-  ever expose it, do it via Cloudflare Tunnel **behind Access auth**, never a plain
-  public hostname.
+  no duplicated blocks in the month file.- **Security:** token auth is built in. Set `DIARY_AUTH_TOKEN` (generate with `openssl rand -base64 24`); the UI shows a lock screen and stores the token in the browser's localStorage. Leave it empty only for trusted LAN-only use. **Always set the token before exposing via Cloudflare Tunnel.** Optional second layer: a Cloudflare Access policy on the hostname.
+
+## Writing from anywhere (Mac, phone, Solair AI)
+
+The agent exposes an **OpenAI-compatible API** at `/v1`, so any OpenAI-format client can write the diary directly — every exchange goes through the same skip-classifier + summarizer + atomic-logging pipeline server-side; clients cannot bypass it.
+
+- **Solair AI (iPhone):** set the base URL to `https://<your-tunnel-hostname>/v1` (or `http://10.69.0.130:8010/v1` on LAN), API key = `DIARY_AUTH_TOKEN`, model = `diary-companion` (listed by `GET /v1/models`).
+- **Any other OpenAI client** (curl, scripts, desktop apps): same pattern — last user message becomes the diary exchange; earlier thread messages are carried as context.
+- **Cloudflare Tunnel:** in the Zero Trust dashboard, add a public hostname (e.g. `diary.example.com`) → service `http://diary-companion:8010` (same host network as the tunnel container) or `http://10.69.0.130:8010`. No open ports; set the token first.
 
 ## Phase 1 — model + GPU selection (before going daily-driver)
 

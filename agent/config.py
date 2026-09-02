@@ -65,6 +65,7 @@ def _apply_env(cfg: Config) -> None:
         "CORPUS_REMOTE_ROOT": "corpus.webdav.remote_root",
         "DB_PATH": "retrieval.db_path",
         "DIARY_PORT": "ui.port",
+        "DIARY_AUTH_TOKEN": "ui.auth_token",
     }
     for env_key, dotted in mapping.items():
         value = env.get(env_key)
