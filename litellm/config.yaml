@@ -1,0 +1,75 @@
+# LiteLLM gateway — cowork stack
+#
+# Why this container exists (researched, not assumed): AnythingLLM's Generic OpenAI
+# base URL is instance-wide (upstream issues #4243 / #4493-open / #5084) — the
+# per-workspace override switches provider+model but NOT the endpoint. One gateway
+# endpoint + per-workspace model aliases restores the spec's intended wiring,
+# config-only, no fork.
+#
+# Invariant: this gateway sits in front of THIS APP's calls only. Lemonade's
+# :13305/v1 stays directly reachable for openwork, Solair AI, Hermes Agent, etc.
+
+model_list:
+
+  # ── Diary workspace ────────────────────────────────────────────────────────
+  # Routed to the diary-companion sidecar (OpenAI-compatible /v1). Every exchange
+  # through this alias goes through the real pipeline: skip-classifier →
+  # summarize → journal → ETag-guarded WebDAV append. Clients cannot bypass it.
+  - model_name: diary
+    litellm_params:
+      model: openai/diary-companion
+      api_base: http://cowork-diary-companion:8010/v1
+      api_key: os.environ/DIARY_AUTH_TOKEN
+      timeout: 300
+
+  # ── Local Lemonade models (aliases AnythingLLM workspaces pick) ───────────
+  - model_name: e4b
+    litellm_params:
+      model: openai/Gemma-4-E4B-it-GGUF
+      api_base: http://lemonade:13305/v1
+      api_key: local
+      timeout: 300
+
+  - model_name: e2b
+    litellm_params:
+      model: openai/gemma-4-E2B-it-GGUF-Q8_0
+      api_base: http://lemonade:13305/v1
+      api_key: local
+      timeout: 300
+
+  # ── gpt-oss-20b: STAGED, commented out. Verified 2026-09-02: the model is NOT
+  #    currently in Lemonade's catalog (only E4B/E2B/nomic-embed are installed), so
+  #    this alias would 404. Uncomment after `POST /v1/pull` of the model (Phase 1b
+  #    business, gated server mutation) — then it becomes the heavy-reasoning alias.
+  # - model_name: gpt-oss-20b
+  #   litellm_params:
+  #     model: openai/gpt-oss-20b-GGUF-MXFP4
+  #     api_base: http://lemonade:13305/v1
+  #     api_key: local
+  #     timeout: 600
+
+  # ── Phase 2 — cloud escape hatch (spec §5): paste a key into litellm/.env,
+  #    then uncomment the block. Adding a cloud model stays a zero-code change.
+  #
+  # - model_name: claude
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-5
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+  #
+  # - model_name: openai
+  #   litellm_params:
+  #     model: openai/gpt-5
+  #     api_key: os.environ/OPENAI_API_KEY
+  #
+  # - model_name: openrouter
+  #   litellm_params:
+  #     model: openrouter/<vendor>/<model>
+  #     api_key: os.environ/OPENROUTER_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY   # the key AnythingLLM uses against this gateway
+
+litellm_settings:
+  drop_params: true        # OpenAI-format extras (temperature, max_tokens...) pass harmlessly
+
+telemetry: false

@@ -1,0 +1,13 @@
+.DS_Store
+*.env
+!*.env.example
+backup/
+
+# One-off scripts that contain real diary exchange text — never commit diary content
+# (DaServer.md 2026-09-01 rule). The verification probes without content stay tracked.
+exchange_from_gateway.py
+first_real_append.py
+spike_diary_test2.py
+
+# Python
+__pycache__/
