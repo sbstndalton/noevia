@@ -81,6 +81,8 @@ class LoggingPipeline:
 
     def maintain_index(self, user_message: str, assistant_summary: str, today: str) -> bool:
         """Gate then edit INDEX.md standing sections. Returns True if INDEX.md changed."""
+        if not getattr(self.store, "index_enabled", True):
+            return False  # corpus runs without an INDEX.md — skip the gate call entirely
         try:
             import json as _json
 

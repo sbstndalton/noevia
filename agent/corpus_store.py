@@ -32,11 +32,22 @@ class CorpusStore:
         self.remote_root = (cfg.get("corpus.webdav.remote_root") or "").strip("/")
         self.monthly_prefix = cfg.get("corpus.monthly_prefix") or ""
         self.index_file = cfg.get("corpus.index_file") or "INDEX.md"
+        # Month-file naming template (default preserves the original 2026-09 style).
+        # Example for human-named corpora: "Diary - {month_name} {year}.md"
+        self.month_file_template = cfg.get("corpus.month_file_template") or "{year}-{month:02d}.md"
+        # INDEX.md standing sections can be disabled entirely (corpora that manage
+        # their own index / don't use one). Default: enabled (original behavior).
+        self.index_enabled = bool(cfg.get("corpus.index_enabled", True))
 
     # ---------------- paths ----------------
 
     def month_filename(self, day: date) -> str:
-        return f"{day.year}-{day.month:02d}.md"
+        return self.month_file_template.format(
+            year=day.year,
+            month=day.month,
+            month02=f"{day.month:02d}",
+            month_name=day.strftime("%B"),
+        )
 
     def _join(self, *parts: str) -> str:
         return "/".join(p.strip("/") for p in [self.remote_root, *parts] if p)
@@ -115,15 +126,19 @@ class CorpusStore:
             },
         )
         # Register the month link too (applier dedupes; harmless if the link exists).
-        self.journal.enqueue(
-            "index_month",
-            {"month": self.month_filename(day), "label": self.month_label(day)},
-        )
+        # Skipped entirely when the corpus runs without an INDEX.md.
+        if self.index_enabled:
+            self.journal.enqueue(
+                "index_month",
+                {"month": self.month_filename(day), "label": self.month_label(day)},
+            )
         self.apply_pending()
         return xid
 
     def update_standing_sections(self, open_question_ops: list, timeline_ops: list, today: str) -> Optional[str]:
         """Enqueue + apply INDEX.md standing-section edits. Returns journal id."""
+        if not self.index_enabled:
+            return None
         if not open_question_ops and not timeline_ops:
             return None
         jid = self.journal.enqueue(
@@ -238,6 +253,8 @@ class CorpusStore:
         return ""
 
     def get_standing_sections_text(self, max_chars: Optional[int] = None) -> str:
+        if not self.index_enabled:
+            return ""
         try:
             index_text, _ = self.read_index()
         except Exception as exc:  # noqa: BLE001

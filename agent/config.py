@@ -4,6 +4,7 @@ Env overrides:
   LLM_BASE_URL, LLM_API_KEY, LLM_CHAT_MODEL, LLM_EMBED_MODEL,
   LLM_AUX_BASE_URL, LLM_AUX_MODEL,
   WEBDAV_BASE_URL, WEBDAV_USERNAME, WEBDAV_PASSWORD, CORPUS_REMOTE_ROOT,
+  DIARY_MONTH_FILE_TEMPLATE, DIARY_INDEX_ENABLED,
   DB_PATH, DIARY_PORT
 """
 from __future__ import annotations
@@ -63,6 +64,8 @@ def _apply_env(cfg: Config) -> None:
         "WEBDAV_USERNAME": "corpus.webdav.username",
         "WEBDAV_PASSWORD": "corpus.webdav.password",
         "CORPUS_REMOTE_ROOT": "corpus.webdav.remote_root",
+        "DIARY_MONTH_FILE_TEMPLATE": "corpus.month_file_template",
+        "DIARY_INDEX_ENABLED": "corpus.index_enabled",
         "DB_PATH": "retrieval.db_path",
         "DIARY_PORT": "ui.port",
         "DIARY_AUTH_TOKEN": "ui.auth_token",
@@ -72,6 +75,8 @@ def _apply_env(cfg: Config) -> None:
         if value is not None:
             if env_key == "DIARY_PORT":
                 value = int(value)
+            if env_key == "DIARY_INDEX_ENABLED":
+                value = value.strip().lower() not in ("0", "false", "no", "off", "")
             setpath(dotted, value)
 
 

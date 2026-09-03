@@ -146,7 +146,7 @@ budgets, and API endpoints with stubbed LLMs.
 |---|---|
 | `llm.chat_model` / `LLM_CHAT_MODEL` | main companion model (Lemonade ID) |
 | `llm.aux.model` | classifier/summarizer model (small + fast; or A380 server after 1a-2) |
-| `llm.embed_model` | **locked** to `nomic-embed-text-v1.5` — do not change without re-index |
+| `llm.embed_model` | **locked** to `nomic-embed-text-v1` (`nomic-embed-text-v1-GGUF`) — do not change without re-index. (v1.5 renamed to v1 on 2026-09-02: v1.5 is not in Lemonade's catalog; index was still empty so no re-index cost. Config.yaml + .env now agree.) |
 | `corpus.webdav.*` | Nextcloud endpoint + app credentials (`WEBDAV_PASSWORD` env) |
 | `corpus.webdav.remote_root` | server-side corpus path (set if the Mac syncs a subfolder) |
 | `retrieval.top_k`, `min_score`, `max_context_tokens` | retrieval knobs |

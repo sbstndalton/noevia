@@ -28,6 +28,13 @@ corpus:
     # password: set via WEBDAV_PASSWORD env var (do not store in this file)
     timeout_s: 60
   monthly_prefix: ""          # e.g. "Diary/" if files live in a subfolder; blank = remote_root
+  # Month-file naming template. Placeholders: {year}, {month}, {month02}, {month_name}.
+  # Default "2026-09.md" style; the live deployment uses the human-named style:
+  # month_file_template: "Diary - {month_name} {year}.md"   # (set via DIARY_MONTH_FILE_TEMPLATE env)
+  month_file_template: "{year}-{month02}.md"
+  # INDEX.md month-links + standing sections. Disable for corpora that manage their own
+  # index / have none (the app then never creates or edits an index file).
+  index_enabled: true         # (live deployment: DIARY_INDEX_ENABLED=false)
   index_file: INDEX.md
   # Current-day log: strip "### 14:32 — topic" and hidden markers when sending the day's log back to the model
   redact_markers: true
