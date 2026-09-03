@@ -1,9 +1,12 @@
 # Cowork Workspace — DaServer deployment stack
 # Deploy target: /mnt/docker/appdata/cowork/   (docker compose up -d)
 #
-# Shape (build-spec v0.5):
-#   anythingllm      — the one thing you open (host port 8020). Single Generic OpenAI
-#                      provider pointing at LiteLLM; each workspace picks a model alias.
+# Shape (build-spec v0.5 as built, UI superseded 2026-09-03 by user decision):
+#   ui               — the one thing you open (host port 8021): the mockup-faithful
+#                      Cowork frontend + same-origin /api proxy (SSE chat via LiteLLM
+#                      aliases, diary sidecar reads, per-space history).
+#   anythingllm      — superseded frontend, kept running during burn-in only
+#                      (host port 8020). Retire after the UI proves out (gated).
 #   litellm          — internal gateway/router. Alias → endpoint mapping:
 #                        diary | e4b | e2b | gpt-oss-20b
 #                      (diary → diary-companion sidecar; the rest → Lemonade)
@@ -88,6 +91,30 @@ services:
     networks:
       - internal
       - lemonade
+
+  ui:
+    # The one thing you open — the mockup-faithful Cowork frontend (ui-mockups/
+    # Main + Diary + Settings artboards, light+dark). Serves the built SPA plus a
+    # same-origin /api proxy: SSE chat via LiteLLM aliases, diary sidecar reads,
+    # per-space history. Secrets enter only via ui.env (copied server-side).
+    build: ./ui
+    container_name: cowork-ui
+    restart: unless-stopped
+    ports:
+      - "8021:8021"            # 8021 unused per DaServer.md port table (verify before up)
+    environment:
+      - UI_PORT=8021
+      - LEMONADE_BASE_URL=http://lemonade:13305
+      - DIARY_BASE_URL=http://cowork-diary-companion:8010
+    env_file:
+      - ui.env                 # DIARY_AUTH_TOKEN (LITELLM_MASTER_KEY now unused; file kept as-is)
+    volumes:
+      - ./ui-data:/app/server/ui-data   # persisted per-space histories (JSON)
+    depends_on:
+      - diary-companion
+    networks:
+      - internal
+      - lemonade               # the UI talks to Lemonade directly (LiteLLM retired from the chat path)
 
 networks:
   internal: {}

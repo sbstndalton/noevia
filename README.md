@@ -1,29 +1,68 @@
 # Cowork Workspace — DaServer
 
-One `docker compose up` on DaServer: **AnythingLLM** (the surface you open) + **LiteLLM**
-(the routing gateway) + **diary-companion sidecar** (the diary pipeline, untouched code).
+One `docker compose up` on DaServer: **Cowork UI** (the surface you open — the
+mockup-faithful frontend, `ui/`) + **LiteLLM** (the routing gateway) +
+**diary-companion sidecar** (the diary pipeline, untouched code).
+AnythingLLM remains in the stack only during burn-in; it is superseded by the UI
+(user decision 2026-09-03 — the mockups are not reachable inside AnythingLLM, whose
+per-workspace endpoint feature the gateway already replaced).
+
+## The UI (`ui/`)
+
+React + Vite implementation of the four artboards in `../ui mockups/` (Main, Diary,
+Settings, DirectionB): pinned Diary above a Spaces list, month/day/time transcript
+structure rendered from the real corpus, right rail (This month / Open questions /
+Timeline), model-pill headers, and a Settings roster driven by the gateway's live
+alias table. Light and dark themes via a sidebar toggle — one design language (the light
+artboard's: Manrope, rounded, warm), palette-only swap for dark (user feedback
+2026-09-03; a full color-theming rethink is deferred).
+
+- `ui/src/` — frontend. `ui/server/index.cjs` — zero-dependency proxy: SSE chat,
+  project-context injection, stats passthrough, diary corpus reads through the
+  **corpus-source adapter**, per-project history (JSON files, atomic writes,
+  40-turn cap), SPA serving. Secrets stay in `ui.env`.
+- **Projects (v4)**: the sidebar is Claude-style — a Projects row of tabs, an
+  overview grid, and a create modal (name / goal / instructions / text-file
+  attachments). Each project has an editable Instructions/Files/Memory rail and
+  its own chats; project context is injected server-side into every chat in it.
+  A **live stats bar** docks at the bottom of every view, polling Lemonade's
+  `/v1/stats` + `/v1/system-stats` (tok/s, TTFT, tokens, requests, CPU/GPU/VRAM)
+  through the proxy every 2.5s.
+- **Diary is a dedicated tab**, not a workspace: its composer routes through the
+  `diary` alias (full sidecar pipeline; the tab shows logged/skipped per
+  exchange), and all corpus reads go through the adapter (`listMonths` /
+  `readMonth`). v1 source: `sidecar` (Nextcloud). A `local` folder source is
+  designed behind `DIARY_SOURCE=local` + `DIARY_LOCAL_DIR=…` and implemented
+  when/if the corpus moves; if that happens, diary-companion gains the same
+  source switch server-side so the WRITE path keeps the journal/ETag
+  guarantees (sidecar extension planned, not scheduled — MIGRATION §2b).
+- Diary data flow is read-only from the UI's perspective: the right rail and
+  transcript read `/api/day`; writes happen only through the sidecar's pipeline
+  when the Diary space is chatted with (via the `diary` alias, same as Solair AI).
+- Local dev: `cd ui && npm install && npm run dev` (proxies to a deployed stack via
+  `UI_PROXY_TARGET`), or `npm start` with `LITELLM_MASTER_KEY`/`DIARY_AUTH_TOKEN` set.
+- Deploy: gated Step F in `MIGRATION.md` (build image on host, `docker compose up -d ui`).
 
 Companion repos/deployments:
 - `sbstndalton/diary-companion` — the diary pipeline this stack sidecars.
 - `DaServer.md` (Nextcloud) — canonical ops doc + changelog.
 
-## Why a gateway container
+## Routing (v2 — proxy-native, LiteLLM retired from the chat path)
 
-AnythingLLM's Generic OpenAI base URL is **instance-wide** (upstream issues #4243,
-#4493, #5084): the per-workspace override switches provider/model, not endpoint.
-LiteLLM fills that gap config-only: AnythingLLM points once at `http://litellm:4000/v1`,
-and each workspace picks a **model alias**:
+The UI proxy (`ui/server/index.cjs`) routes each chat directly: ordinary chats hit
+Lemonade's `/v1/chat/completions` with the project's pinned model + goal/instructions +
+persistent memories (projects.json, editable in the UI); the Diary tab routes through the
+sidecar pipeline. The model button (top-right of any view) opens the in-tab model
+manager: switch per space, search Hugging Face, pick a quantized variant, download with
+progress, load/unload/delete — all against Lemonade's management API.
 
-| Alias | Routes to | Notes |
-|---|---|---|
-| `diary` | diary-companion sidecar `/v1` | every exchange goes through the real pipeline (skip-classifier → summarize → journal → ETag-guarded WebDAV) |
-| `e4b` | Lemonade `Gemma-4-E4B-it-GGUF` | default workhorse |
-| `e2b` | Lemonade `gemma-4-E2B-it-GGUF-Q8_0` | fast aux |
-| `gpt-oss-20b` | (staged, commented) | model absent from Lemonade's catalog — enable after a `/v1/pull` |
-| cloud blocks | (staged, commented) | Phase 2 escape hatch: paste a key, uncomment, zero code |
+LiteLLM remains in the compose stack only until the UI's direct routing proves out in
+daily use, then it is removed (gated step — MIGRATION §5). Lemonade's own native
+routing engine (collection.router policies) is the longer-term replacement for
+per-space pinning if auto-routing by task is wanted.
 
 Lemonade's `:13305/v1` stays directly reachable for everything else (OpenWork, Solair AI,
-Hermes Agent) — the gateway fronts only this app's calls.
+Hermes Agent).
 
 ## Diary sidecar config (live)
 
@@ -52,6 +91,7 @@ see `UPGRADES.md`.
 ```bash
 # stage (files only; secrets are created server-side)
 rsync -a --exclude='.DS_Store' --exclude='*.env' --exclude='backup/' \
+  --exclude='ui/node_modules' --exclude='ui/dist' --exclude='ui/server/ui-data' \
   cowork/ root@10.69.0.130:/mnt/docker/appdata/cowork/
 
 ssh root@10.69.0.130
@@ -62,8 +102,10 @@ cd /mnt/docker/appdata/cowork
 docker compose up -d
 ```
 
-- AnythingLLM: `http://10.69.0.130:8020` (set the admin password on first open;
-  Settings → AI Providers → LLM = Generic OpenAI → `http://litellm:4000/v1` + master key).
+- Cowork UI (after gated Step F): `http://10.69.0.130:8021` — the intended surface.
+- AnythingLLM (burn-in only): `http://10.69.0.130:8020` (set the admin password on
+  first open; Settings → AI Providers → LLM = Generic OpenAI → `http://litellm:4000/v1`
+  + master key). Retire once the UI proves out in daily use — gated decision.
 - Ops runbook, spike evidence, and changelog rows: `MIGRATION.md`, `CHANGELOG-drafts.md`,
   and `DaServer.md` in the Nextcloud docs folder.
 - One-off scripts (`spike_*`, `verify_*`, `first_real_append.py`,

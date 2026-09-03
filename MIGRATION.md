@@ -115,14 +115,85 @@ Success criteria, checked in order:
    (recommended once verified) or stop it until cutover session.
 2. Changelog row → CHANGELOG-drafts.md Row 4.
 
-## 3. Explicitly NOT in this session (deferred, not forgotten)
+## 2b. Frontend supersession (user decision 2026-09-03) — custom UI replaces the reskin plan
+
+The user reviewed the AnythingLLM build against the ui-mockups and rejected it as the
+final surface; per-workspace endpoint override (AnythingLLM's original raison d'être
+here) was already replaced by the LiteLLM gateway. Decision: **build the mockups as a
+real frontend** (`ui/`), light theme first with dark as a toggle. Implemented Mac-side
+against the live stack via SSH tunnels (read-only diary + generation only); AnythingLLM
+stays running untouched during burn-in.
+
+Verified locally (2026-09-03): diary transcript + right rail render the real corpus
+(`Documents/Important Documents/Diary`, human-named month files, `## <Weekday>, <Month>
+<Day>, <Year>` day headers); Coding space chat streams E4B via the gateway; per-space
+history persists; both themes render.
+
+Design-language note (user feedback 2026-09-03): the two artboard directions are
+declared one design language — the LIGHT artboard's (Manrope, rounded, warm) is
+canonical for both themes; dark is a palette-only swap (DirectionB hues). The
+dark artboard's terminal/IBM-Plex language is not carried forward. A full
+color-theming rethink is explicitly deferred — revisit when the user asks.
+
+Diary-tab decisions (Q&A round, 2026-09-03):
+- **Deploy sequencing:** verified v1 deployed first (Step F, done), rework second
+  (deployed same day). Daily-drive `:8021` now.
+- **AnythingLLM:** burn-in fallback only; retire in a gated step once the UI
+  proves out. Its backend is NOT reused (workspace CRUD/vectors/collector are
+  unused by the UI; coupling to its internals would reintroduce upstream-drift
+  risk for zero gained capability).
+- **Diary tab:** dedicated tab, not a pinned workspace; chat inside the tab still
+  logs through the sidecar pipeline (logged/skipped surfaced per exchange).
+- **Corpus harness:** adapter layer lives in the UI proxy (`listMonths`/
+  `readMonth`; `DIARY_SOURCE=sidecar|local`). A `local` folder source is designed
+  (env: `DIARY_LOCAL_DIR`), not implemented — build it only when the corpus
+  actually moves. If it does, diary-companion gains the same source switch
+  server-side so writes keep the journal/ETag guarantees (planned, not scheduled).
+
+### Step F — deploy the UI (each gated on explicit user "go" before it runs)
+1. Stage: `rsync` per README (now excludes `ui/node_modules`, `ui/dist`,
+   `ui/server/ui-data`). Create `ui.env` server-side by COPYING the two existing
+   secrets (LITELLM_MASTER_KEY from `litellm/.env`, DIARY_AUTH_TOKEN from
+   `diary-companion.env`) — nothing regenerated. `chmod 600 ui.env`.
+2. **GO-gate.** Build + start on the host:
+   ```bash
+   cd /mnt/docker/appdata/cowork
+   docker compose build ui && docker compose up -d ui
+   docker compose ps
+   ```
+   (Port 8021 — re-verify unused against the DaServer.md port table first.)
+3. Verify: open `http://10.69.0.130:8021` — Diary renders the real corpus; Coding
+   chat round-trips via E4B; Settings shows the live alias roster; footer shows
+   Lemonade online. Then burn-in: daily-drive the UI; AnythingLLM (:8020) stays up
+   untouched until you sign off on retiring it.
+4. Changelog row → Row 6 below.
+
+## 5. De-duplication (Q&A round 2026-09-03; PENDING GO — plan only)
+
+Docker inventory (2026-09-03, 29 containers): the app stack is fine (ui 17 MB, sidecar
+83 MB); the redundancy is elsewhere. Proposed sequence, every step requires explicit GO,
+nothing deleted (stop only; images retained for rollback):
+
+| Order | Target | Why safe | Recovers |
+|---|---|---|---|
+| 1 | `open-webui` (:3000) | AnythingLLM replaced its job; UI supersedes that | 657 MB |
+| 2 | standalone `diary-companion` (:8010) | after Solair AI re-point; NOTE currently UNHEALTHY — diagnose before/instead | 54 MB |
+| 3 | `cowork-litellm` | proxy routes directly now; keep one burn-in week first | 793 MB |
+| 4 | `cowork-anythingllm` | after UI burn-in (existing §2b gate) | 348 MB |
+
+Also flagged: Gluetun publishes :8000 and :8080 (qBittorrent/other web UIs) — fine, but
+worth a DaServer.md port-table cross-check someday.
+
+## 6. Explicitly NOT in this session (deferred, not forgotten)
 
 - Retiring the standalone container's port / Open WebUI decommission — gated on later
-  sign-off after a real-use burn-in of the new UI (spec §10.6).
+  sign-off after a real-use burn-in of the new UI (spec §10.6). **AnythingLLM
+  retirement** now joins this list (after UI burn-in, per §2b).
 - Crash drill against the sidecar (once sidecar is daily-driven), Phase 1a GPU
   experiments, Phase 1b benchmark (needs 10–20 real excerpts from the user),
   Cloudflare Tunnel hostname for the new app.
-- Rebrand/reskin, Diary nav pinning, other-workspace provisioning (Coding/Learning/…).
+- Other-space provisioning beyond the default five, per-space model overrides in the
+  UI, New-space flow (currently a stub alert in the UI).
 - Model-router refinement beyond alias-per-task-class — waits on Phase 1b data.
 - Solair AI re-pointing decision (open question §11): during migration it keeps talking
   to the standalone container at `:8010` — zero client changes required.
