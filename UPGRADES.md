@@ -54,3 +54,38 @@ The old digest still exists upstream — nothing else to do.
 The standalone container (`:8010`) and the cowork sidecar may briefly run different
 versions during a migration window — only one of them owns the corpus at a time
 (MIGRATION.md §4), so no double-write risk.
+
+## Cowork UI image (our code) — base image & native deps
+
+`ui/Dockerfile` builds the SPA and serves it with `server/index.cjs`. Three
+things about it are load-bearing:
+
+- **Runtime base must be glibc (currently `node:22-bookworm`), never Alpine/musl.**
+  Project RAG (feature doc Item 8) uses `sqlite-vec`, whose prebuilt `vec0.so` is
+  glibc-linked; on musl the extension fails to load and SQLite's retry surfaces
+  the misleading `vec0.so.so: No such file or directory` error while every upload
+  silently degrades to direct injection. On Debian both native deps
+  (`sqlite-vec` + `better-sqlite3`) use prebuilt binaries — no compile step, and
+  build tools remain available as a fallback.
+- **Server deps are installed inside the image** (`cd server && npm ci ||
+  npm install`), never copied from the host: `ui/.dockerignore` and
+  `ui/server/.dockerignore` keep macOS `node_modules` out of the Linux build.
+- **Port map: the UI is on 8021.** Port 8020 belongs to the retired AnythingLLM
+  container (down by the de-dup decision; compose still defines it for
+  reference). Probing 8020 and concluding the UI is dead is a classic mistake.
+
+Upgrading either native dep is a deliberate tracked commit: edit
+`ui/server/package.json` (exact versions), rebuild, then verify the vec0
+extension actually loads inside the container:
+
+```bash
+docker exec -w /app/server cowork-ui node -e \
+  "require('sqlite-vec').load(new (require('better-sqlite3'))(':memory:')); console.log('vec0 OK')"
+```
+
+Deploying cowork-ui changes: rsync `ui/dist/` + `ui/server/` to
+`/mnt/docker/appdata/cowork/ui/`, then on the server
+`docker compose build ui && docker compose up -d ui`; verify
+`curl http://10.69.0.130:8021/api/health` plus one chat round-trip.
+
+Rollback: `git revert` the commit, re-rsync, rebuild, `up -d ui`.

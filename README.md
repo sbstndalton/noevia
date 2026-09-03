@@ -103,9 +103,10 @@ docker compose up -d
 ```
 
 - Cowork UI (after gated Step F): `http://10.69.0.130:8021` — the intended surface.
-- AnythingLLM (burn-in only): `http://10.69.0.130:8020` (set the admin password on
-  first open; Settings → AI Providers → LLM = Generic OpenAI → `http://litellm:4000/v1`
-  + master key). Retire once the UI proves out in daily use — gated decision.
+- AnythingLLM (retired by the de-dup decision, container stopped): `http://10.69.0.130:8020`.
+  Port 8020 answers nothing — the UI is on **8021**. The compose file keeps the
+  service definition for reference; the base image is Debian (glibc) because the
+  project-RAG `sqlite-vec` extension has no musl build (see UPGRADES.md).
 - Ops runbook, spike evidence, and changelog rows: `MIGRATION.md`, `CHANGELOG-drafts.md`,
   and `DaServer.md` in the Nextcloud docs folder.
 - One-off scripts (`spike_*`, `verify_*`, `first_real_append.py`,
