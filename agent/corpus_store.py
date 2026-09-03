@@ -6,11 +6,13 @@ dedupe on bullet-text equality.
 """
 from __future__ import annotations
 
+import calendar
 import logging
+import re
 import uuid
 from datetime import date, datetime
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from . import corpus as fmt
 from .config import Config
@@ -68,6 +70,85 @@ class CorpusStore:
 
     def month_label(self, day: date) -> str:
         return day.strftime("%B %Y")
+
+    # ---------------- month browsing (read-only) ----------------
+
+    def read_month_text(self, year: int, month: int) -> str:
+        """A whole month file's text, xid markers stripped, for display.
+
+        Empty string when the month has no file yet (or the read fails —
+        display-only read, same degradation policy as get_day_text).
+        """
+        try:
+            month_text, _ = self.read_month(date(year, month, 1))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("month-text read failed (degrading to empty): %s", exc)
+            return ""
+        if not month_text:
+            return ""
+        return fmt.strip_markers(month_text)
+
+    def list_months(self) -> List[dict]:
+        """Months that actually have a corpus file, oldest first.
+
+        Walks the monthly dir via PROPFIND and matches filenames against the
+        configured month_file_template ({year}, {month02}, {month_name} are
+        recognized). Non-matching files and subdirectories are ignored.
+        """
+        template = self.month_file_template
+        # Build a regex from the template: literal text around named fields.
+        pattern = re.escape(template)
+        pattern = pattern.replace(re.escape("{year}"), r"(?P<year>\d{4})")
+        pattern = pattern.replace(re.escape("{month02}"), r"(?P<month02>\d{2})")
+        pattern = pattern.replace(re.escape("{month}"), r"(?P<month>\d{1,2})")
+        pattern = pattern.replace(re.escape("{month_name}"), r"(?P<month_name>[A-Za-z]+)")
+        pattern = f"^{pattern}$"
+        rx = re.compile(pattern)
+
+        months: List[dict] = []
+        seen = set()
+        try:
+            entries = self.dav.list_dir(self._join(self.monthly_prefix))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("month listing failed (degrading to empty): %s", exc)
+            return []
+        for entry in entries:
+            if entry.get("is_dir"):
+                continue
+            name = entry.get("name") or ""
+            if name == self.index_file:
+                continue
+            m = rx.match(name)
+            if not m:
+                continue
+            gd = m.groupdict()
+            try:
+                year = int(gd["year"])
+                if gd.get("month_name"):
+                    month = next(
+                        (i for i, mn in enumerate(calendar.month_name) if mn.lower() == gd["month_name"].lower()),
+                        None,
+                    )
+                    if month is None:
+                        continue
+                elif gd.get("month02"):
+                    month = int(gd["month02"])
+                elif gd.get("month"):
+                    month = int(gd["month"])
+                else:
+                    month = 1  # lone {year} template
+            except (TypeError, ValueError):
+                continue
+            if not (1 <= month <= 12) or year < 2000 or year > 2100:
+                continue
+            key = (year, month)
+            if key in seen:
+                continue
+            seen.add(key)
+            label = date(year, month, 1).strftime("%B %Y")
+            months.append({"id": f"{year:04d}-{month:02d}", "label": label, "file": name})
+        months.sort(key=lambda x: x["id"])
+        return months
 
     # ---------------- guarded remote writes ----------------
 

@@ -20,6 +20,7 @@ Run:  uvicorn agent.app:app --host 0.0.0.0 --port 8010
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import threading
 import time
@@ -208,6 +209,13 @@ def _reindex_today(st: AppState, day) -> None:
         log.warning("background reindex failed: %s", exc)
 
 
+def run_in_threadpool_sync(fn, *args):
+    """Run a blocking callable off the event loop (FastAPI sync def endpoints
+    already run in a threadpool, but month listing does WebDAV I/O worth
+    keeping off it even from other contexts)."""
+    return fn(*args)
+
+
 # ---------------- API (browser UI) ----------------
 
 
@@ -247,16 +255,39 @@ def api_relog(req: RelogRequest, request: Request) -> JSONResponse:
 
 
 @app.get("/api/day")
-def api_day(request: Request) -> JSONResponse:
+def api_day(request: Request, month: Optional[str] = None) -> JSONResponse:
+    """Today's log (no params — unchanged behavior for existing callers), or a
+    whole month's display text when ?month=YYYY-MM is given."""
     if not check_auth(request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     st = get_state()
+    if month:
+        m = re.fullmatch(r"(\d{4})-(\d{2})", month or "")
+        if not m:
+            return JSONResponse({"error": "month must be YYYY-MM"}, status_code=400)
+        year, mon = int(m.group(1)), int(m.group(2))
+        if not 1 <= mon <= 12:
+            return JSONResponse({"error": "month out of range"}, status_code=400)
+        return JSONResponse({
+            "month": month,
+            "log": st.store.read_month_text(year, mon),
+            "standing": "",
+        })
     day = datetime.now().date()
     return JSONResponse({
         "day": day.isoformat(),
         "today_log": st.store.get_day_text(day, max_chars=12000),
         "standing": st.store.get_standing_sections_text(max_chars=4000),
     })
+
+
+@app.get("/api/months")
+def api_months(request: Request) -> JSONResponse:
+    if not check_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    st = get_state()
+    months = run_in_threadpool_sync(st.store.list_months)
+    return JSONResponse({"months": months})
 
 
 @app.get("/api/health")

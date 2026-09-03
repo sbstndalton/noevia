@@ -39,6 +39,18 @@ class FakeWebDAV:
         self.files[path] = (data.decode("utf-8"), etag)
         return True, etag, 204
 
+    def list_dir(self, remote_dir: str) -> list:
+        """Direct children of remote_dir, mirroring WebDAVClient.list_dir's shape."""
+        base = remote_dir.strip("/")
+        out = []
+        for path in self.files:
+            p = path.strip("/")
+            parent = p.rsplit("/", 1)[0] if "/" in p else ""
+            if parent != base:
+                continue
+            out.append({"name": p.rsplit("/", 1)[-1], "path": p, "etag": None, "lastmod": None, "is_dir": False})
+        return out
+
 
 def _store(tmp_path, corpus_cfg):
     base = {
@@ -130,6 +142,45 @@ def test_env_template_month02_placeholder(tmp_path, monkeypatch):
     cfg = load_config(path="/nonexistent/diary-config.yaml")
     store = CorpusStore(cfg, FakeWebDAV(), Journal(tmp_path / "j2.db"))
     assert store.month_filename(date(2026, 11, 2)) == "2026-11-notes.md"
+
+
+def test_read_month_text_strips_markers_and_handles_missing(tmp_path):
+    store = _store(tmp_path, {"month_file_template": "Diary - {month_name} {year}.md", "index_enabled": False})
+    # No file yet -> empty, not an error.
+    assert store.read_month_text(2026, 9) == ""
+    # Log an exchange, then the whole month text comes back with xids stripped.
+    store.log_exchange(day=date(2026, 9, 3), sub_header="first", me_text="Hello month read.", claude_text="Logged.")
+    text = store.read_month_text(2026, 9)
+    assert "## Thursday, September 3, 2026" in text
+    assert "**Me:** Hello month read." in text
+    assert "xid" not in text
+
+
+def test_list_months_matches_human_template(tmp_path):
+    store = _store(tmp_path, {"month_file_template": "Diary - {month_name} {year}.md", "index_enabled": False})
+    store.log_exchange(day=date(2026, 8, 2), sub_header="a", me_text="august", claude_text="c")
+    store.log_exchange(day=date(2026, 9, 3), sub_header="b", me_text="september", claude_text="c")
+    months = store.list_months()
+    assert [m["id"] for m in months] == ["2026-08", "2026-09"]
+    assert months[1]["label"] == "September 2026"
+    assert months[1]["file"] == "Diary - September 2026.md"
+
+
+def test_list_months_ignores_strays_and_index(tmp_path):
+    store = _store(tmp_path, {"month_file_template": "Diary - {month_name} {year}.md", "index_enabled": True})
+    store.log_exchange(day=date(2026, 9, 3), sub_header="b", me_text="september", claude_text="c")
+    # Strays that must not match the template.
+    store.dav.files[store._join("", "Notes - September 2026.md")] = ("x", '"1"')
+    store.dav.files[store._join("", "Diary - September 2026 copy.md")] = ("x", '"2"')
+    months = store.list_months()
+    assert [m["id"] for m in months] == ["2026-09"]
+
+
+def test_list_months_numeric_template(tmp_path):
+    store = _store(tmp_path, {"month_file_template": "{year}-{month02}.md"})
+    store.log_exchange(day=date(2026, 9, 3), sub_header="b", me_text="september", claude_text="c")
+    months = store.list_months()
+    assert [m["id"] for m in months] == ["2026-09"]
 
 
 def test_clean_etag_strips_compression_suffix():
