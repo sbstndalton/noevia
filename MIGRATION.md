@@ -200,9 +200,14 @@ Still open (unchanged from §5/§6 unless noted):
 - `open-webui` shutdown — user's manual op (feature doc Item 7; never folded
   into an agent step).
 - `cowork-litellm` removal from compose — gated (chat path no longer uses it).
-- Standalone `diary-companion` retirement — gated on Solair AI re-point; note
-  it showed UNHEALTHY in the 2026-09-03 inventory and needs investigation
-  before anything else touches it.
+- Standalone `diary-companion` retirement — gated on Solair AI re-point.
+  **Diagnosed 2026-09-03:** the earlier UNHEALTHY status was the unauthed
+  healthcheck 401-ing once `DIARY_AUTH_TOKEN` was set — the compose file now
+  has the authed probe (same fix as the cowork sidecar) and the container is
+  `healthy` (all recent probes 200). Caveat found during diagnosis: it runs
+  image `0.1.3`, two releases behind the sidecar's `0.1.5` (missing the
+  month-browsing reads). Rebuild it to 0.1.5 from the repo checkout before
+  re-pointing any client at it — or skip that work and retire it early.
 - AnythingLLM container: STOPPED (de-dup decision, kept in compose for
   reference); deletion after burn-in.
 - Known cosmetic quirk: streamed tool-call deltas render one chip per
