@@ -7,7 +7,7 @@
 services:
   diary-companion:
     build: .
-    image: diary-companion:0.1.0
+    image: diary-companion:0.1.2
     container_name: diary-companion
     restart: unless-stopped
     ports:
