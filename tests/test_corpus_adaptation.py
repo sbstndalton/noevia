@@ -12,6 +12,8 @@ from agent import corpus as fmt
 from agent.config import Config, load_config
 from agent.corpus_store import CorpusStore
 from agent.journal import Journal
+from agent.util import make_client
+from agent.webdav import clean_etag
 
 
 class FakeWebDAV:
@@ -128,3 +130,18 @@ def test_env_template_month02_placeholder(tmp_path, monkeypatch):
     cfg = load_config(path="/nonexistent/diary-config.yaml")
     store = CorpusStore(cfg, FakeWebDAV(), Journal(tmp_path / "j2.db"))
     assert store.month_filename(date(2026, 11, 2)) == "2026-11-notes.md"
+
+
+def test_clean_etag_strips_compression_suffix():
+    assert clean_etag('"abc123-gzip"') == '"abc123"'
+    assert clean_etag('"abc123-br"') == '"abc123"'
+    assert clean_etag('"abc123"') == '"abc123"'
+    assert clean_etag('"abc123"') == '"abc123"'
+    assert clean_etag(None) is None
+    assert clean_etag("") == ""
+
+
+def test_shared_client_requests_uncompressed():
+    client = make_client(base_url="http://example.invalid")
+    assert client.headers.get("Accept-Encoding") == "identity"
+    client.close()

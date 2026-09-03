@@ -20,6 +20,23 @@ from .util import make_client
 log = logging.getLogger(__name__)
 
 
+def clean_etag(etag: Optional[str]) -> Optional[str]:
+    """Normalize an ETag for If-Match comparisons.
+
+    Apache mod_deflate appends a compression-variant suffix ("...-gzip" / "...-br")
+    to ETags on compressed responses. Nextcloud compares If-Match against the plain
+    ETag, so such a value never matches — every conditional PUT would 412 forever.
+    The client now also requests uncompressed responses (see util.make_client);
+    this normalization is defense in depth for any cached/older value.
+    """
+    if not etag:
+        return etag
+    core = etag.strip().strip('"')
+    if core.endswith("-gzip") or core.endswith("-br"):
+        core = core.rsplit("-", 1)[0]
+    return f'"{core}"'
+
+
 class WebDAVClient:
     def __init__(self, base_url: str, username: str, password: str, timeout_s: float = 60.0):
         self.base_url = base_url.rstrip("/") + "/"
@@ -48,7 +65,7 @@ class WebDAVClient:
         if resp.status_code == 404:
             return None, None
         resp.raise_for_status()
-        etag = resp.headers.get("ETag")
+        etag = clean_etag(resp.headers.get("ETag"))
         self._etag_cache[remote_path] = etag
         self._lm_cache[remote_path] = resp.headers.get("Last-Modified")
         return resp.content, etag
@@ -83,7 +100,7 @@ class WebDAVClient:
         for attempt in range(max_retries):
             resp = self._client.put(url, content=data, headers=headers)
             if resp.status_code in (200, 201, 204):
-                etag = resp.headers.get("ETag")
+                etag = clean_etag(resp.headers.get("ETag"))
                 self._etag_cache[remote_path] = etag
                 return True, etag, resp.status_code
             if resp.status_code in (412, 409) or (if_match is None and resp.status_code == 405):

@@ -18,12 +18,18 @@ def make_client(
     """Shared httpx.Client factory — connection pooling, explicit timeouts.
 
     trust_env=False so proxy env vars can't silently divert LAN traffic.
+    Requests uncompressed responses (Accept-Encoding: identity): Apache-side gzip
+    makes Nextcloud return compression-variant ETags ("...-gzip") whose If-Match
+    comparisons then fail with spurious 412s on every conditional write.
     """
+    merged = {"Accept-Encoding": "identity"}
+    if headers:
+        merged.update(headers)
     return httpx.Client(
         base_url=base_url,
         timeout=httpx.Timeout(timeout_s),
         auth=auth,
-        headers=headers,
+        headers=merged,
         trust_env=False,
         follow_redirects=True,
     )
