@@ -184,6 +184,32 @@ nothing deleted (stop only; images retained for rollback):
 Also flagged: Gluetun publishes :8000 and :8080 (qBittorrent/other web UIs) — fine, but
 worth a DaServer.md port-table cross-check someday.
 
+## 7. Master sequence status (2026-09-03, end of session)
+
+All 12 steps of `MASTER-PROMPT-freebuff-2026-09-03.md` are complete and
+verified live on prod, plus the step-13 extras the Step 11 research spike
+motivated (tools layer + SKILL.md skills). Steps 1–8: reviewed/committed in
+earlier rounds; steps 9–13 commits `2a5da3f` (provider layer), `a937f22`
+(project RAG), `d73e653` (glibc base fix), `b83f401` (Auto routing), `75d6497`
+(tools + skills), `fc3605a` (docs). Changelog rows 12–13 in
+`CHANGELOG-drafts.md`; research report in `suggested changes/
+pi-hermes-research-2026-09-03.md`.
+
+Still open (unchanged from §5/§6 unless noted):
+
+- `open-webui` shutdown — user's manual op (feature doc Item 7; never folded
+  into an agent step).
+- `cowork-litellm` removal from compose — gated (chat path no longer uses it).
+- Standalone `diary-companion` retirement — gated on Solair AI re-point; note
+  it showed UNHEALTHY in the 2026-09-03 inventory and needs investigation
+  before anything else touches it.
+- AnythingLLM container: STOPPED (de-dup decision, kept in compose for
+  reference); deletion after burn-in.
+- Known cosmetic quirk: streamed tool-call deltas render one chip per
+  fragment instead of one per call; the executor itself assembles fragments
+  correctly. Worth a UI pass someday.
+- Crash drill, Phase 1a/1b GPU work, Cloudflare Tunnel hostname — unchanged.
+
 ## 6. Explicitly NOT in this session (deferred, not forgotten)
 
 - Retiring the standalone container's port / Open WebUI decommission — gated on later

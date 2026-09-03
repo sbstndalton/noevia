@@ -28,6 +28,27 @@ artboard's: Manrope, rounded, warm), palette-only swap for dark (user feedback
   A **live stats bar** docks at the bottom of every view, polling Lemonade's
   `/v1/stats` + `/v1/system-stats` (tok/s, TTFT, tokens, requests, CPU/GPU/VRAM)
   through the proxy every 2.5s.
+- **Auto routing (v5)**: a project can opt into per-message Auto routing — a
+  deterministic complexity heuristic plus one cheap classifier call pick the
+  Fast or Smart role model per message (role→model mapping in
+  `ui/server/auto-roles.json`, editable in the model popup; fails open to
+  Fast; manual projects are completely untouched). Note: the current Lemonade
+  build keeps one chat model resident and auto-loads on demand, so a role
+  switch can pay one load swap.
+- **Built-in tools (v5)**: the chat stream runs a bounded tool-round loop
+  (max 3 rounds) over an OpenAI-compatible JSON-Schema tool set. Built-ins:
+  `get_current_time` (IANA-timezone clock) and `read_project_file` (reads an
+  attached knowledge file by exact name). Tool calls and results render as
+  chips in the transcript.
+- **SKILL.md skills (v5)**: a project file that starts with SKILL.md
+  frontmatter (Hermes/agentskills.io convention) is advertised to the model
+  as an always-on name+description index; the model loads the full body on
+  demand via `read_project_file` — progressive disclosure with zero extra
+  dependencies.
+- **Project RAG (v5)**: knowledge files are embedded (nomic-embed via
+  Lemonade) into a per-project sqlite-vec index under `server/ui-data/rag/`;
+  retrieval replaces whole-file pasting once a file exceeds the
+  direct-inject threshold, with verbatim fallback on any RAG failure.
 - **Diary is a dedicated tab**, not a workspace: its composer routes through the
   `diary` alias (full sidecar pipeline; the tab shows logged/skipped per
   exchange), and all corpus reads go through the adapter (`listMonths` /
