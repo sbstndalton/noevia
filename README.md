@@ -58,7 +58,7 @@ diary-companion/
 ├── scripts/
 │   ├── benchmark_models.py # Phase 1b — model selection harness
 │   └── gpu_experiments.md  # Phase 1a — 890M+A380 runbook
-├── tests/                  # 33 tests (pytest)
+├── tests/                  # 51 tests (pytest)
 ├── Dockerfile, docker-compose.yml, .env.example
 ```
 
@@ -135,7 +135,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest tests/ -q
 ```
 
-33 tests: format engine round-trips, journal replay/idempotency (simulated crashes,
+51 tests: format engine round-trips, journal replay/idempotency (simulated crashes,
 conflict merges), WebDAV ETag semantics against a local server, marker parsing
 (including mid-text injection), pipeline fail-open behavior, context separation and
 budgets, and API endpoints with stubbed LLMs.

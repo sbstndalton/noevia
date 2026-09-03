@@ -111,3 +111,21 @@ def test_resolve_open_question():
     idx.sections["Open Questions"] = ["- [ ] Should I switch jobs?"]
     fmt.apply_index_edits(idx, open_question_ops=[{"action": "resolve", "text": "switch jobs"}], today="2026-09-01")
     assert idx.sections["Open Questions"] == ["- [x] Should I switch jobs?"]
+
+
+def test_resolve_prefers_exact_bullet_match():
+    # One bullet's text is a substring of another's: an exact echo must resolve
+    # only its own bullet (loose substring matching alone would hit both).
+    idx = fmt.parse_index("")
+    idx.sections["Open Questions"] = [
+        "- [ ] Should I switch jobs?",
+        "- [ ] Should I switch jobs? (asking for a friend)",
+    ]
+    fmt.apply_index_edits(
+        idx,
+        open_question_ops=[{"action": "resolve", "text": "Should I switch jobs?"}],
+        today="2026-09-03",
+    )
+    oq = idx.sections["Open Questions"]
+    assert oq[0].startswith("- [x] ")
+    assert oq[1].startswith("- [ ] ")

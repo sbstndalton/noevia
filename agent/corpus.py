@@ -319,6 +319,24 @@ def register_month(idx: IndexFile, label: str, filename: str) -> bool:
     return True
 
 
+def _bullet_match_indices(bullets: List[str], text: str) -> set:
+    """Indices of bullets an index-edit op targets. Exact normalized match wins
+    (the aux model is shown current_sections, so it can echo exact bullet text);
+    loose substring matching is only the fallback when no exact match exists —
+    that fallback keeps short human-ish fragments working but can never fire
+    when a distinct bullet matches exactly."""
+    norm = text.lower().strip().rstrip(".")
+    exact = {i for i, b in enumerate(bullets) if _bullet_text(b).lower().strip().rstrip(".") == norm}
+    if exact:
+        return exact
+    return {i for i, b in enumerate(bullets) if norm in b.lower()}
+
+
+def _bullet_text(bullet: str) -> str:
+    """Strip list/checkbox prefixes: '- [ ] question' -> 'question'."""
+    return re.sub(r"^\s*-\s*(\[\s*\]\s*)?", "", bullet)
+
+
 def apply_index_edits(
     idx: IndexFile,
     open_question_ops: Optional[List[dict]] = None,
@@ -340,22 +358,22 @@ def apply_index_edits(
             bullets.append(f"- [ ] {text}")
             changed = True
         elif action == "resolve":
-            new_bullets = []
-            for b in bullets:
-                if text.lower().rstrip(".") in b.lower():
-                    new_bullets.append(re.sub(r"^\s*-\s*\[\s\]\s*", "- [x] ", b))
-                    changed = True
-                else:
-                    new_bullets.append(b)
+            hits = _bullet_match_indices(bullets, text)
+            new_bullets = [
+                re.sub(r"^\s*-\s*\[\s\]\s*", "- [x] ", b) if i in hits else b
+                for i, b in enumerate(bullets)
+            ]
+            if hits:
+                changed = True
             idx.sections["Open Questions"] = new_bullets
         elif action == "edit":
-            new_bullets = []
-            for b in bullets:
-                if text.lower().rstrip(".") in b.lower():
-                    new_bullets.append(f"- [ ] {op.get('replacement', text)}")
-                    changed = True
-                else:
-                    new_bullets.append(b)
+            hits = _bullet_match_indices(bullets, text)
+            new_bullets = [
+                f"- [ ] {op.get('replacement', text)}" if i in hits else b
+                for i, b in enumerate(bullets)
+            ]
+            if hits:
+                changed = True
             idx.sections["Open Questions"] = new_bullets
     for op in timeline_ops or []:
         action = op.get("action")
@@ -371,12 +389,14 @@ def apply_index_edits(
             bullets.append(f"- **{stamp}** — {text}")
             changed = True
         elif action == "edit":
-            new_bullets = []
-            for b in bullets:
-                if text.lower().rstrip(".") in b.lower() and op.get("replacement"):
-                    new_bullets.append(f"- **{op.get('date') or today or date.today().isoformat()}** — {op['replacement']}")
-                    changed = True
-                else:
-                    new_bullets.append(b)
+            repl = op.get("replacement")
+            hits = _bullet_match_indices(bullets, text) if repl else []
+            stamp = op.get("date") or today or date.today().isoformat()
+            new_bullets = [
+                f"- **{stamp}** — {repl}" if i in hits else b
+                for i, b in enumerate(bullets)
+            ]
+            if hits:
+                changed = True
             idx.sections["Timeline of Key Events"] = new_bullets
     return changed

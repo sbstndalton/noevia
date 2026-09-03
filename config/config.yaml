@@ -45,7 +45,6 @@ retrieval:
   top_k: 8
   max_context_tokens: 5200    # token cap for retrieved excerpts block
   min_score: 0.30             # cosine-similarity floor (nomic-embed cosine space)
-  day_header_weight: 0.15     # boost chunks whose day header matches query-mentioned dates
 
 context:
   max_today_tokens: 4500      # cap for the current day's existing log
