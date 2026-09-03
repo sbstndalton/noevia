@@ -79,7 +79,7 @@ The app adapts to the human-named corpus (no INDEX.md is created; month files ar
 exists on the host — never the other way around. Requires **diary-companion ≥ 0.1.1**
 (human-named month files, INDEX disable) and **≥ 0.1.2** for the Apache `-gzip` ETag
 suffix fix that broke `If-Match` conditional writes against large files. The deployed
-pin is `diary-companion:0.1.2` (both fixes included). Releases flow per `UPGRADES.md`:
+pin is `diary-companion:0.1.5` (all fixes included). Releases flow per `UPGRADES.md`:
 bump → tag → rebuild on the host → re-pin here in a tracked commit.
 
 Upstream images (`anything-llm`, `litellm`) are pinned by digest so upstream pushes

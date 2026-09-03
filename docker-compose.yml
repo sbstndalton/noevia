@@ -61,13 +61,13 @@ services:
       - lemonade
 
   diary-companion:
-    # Builds from the diary-companion repo checkout (tag v0.1.4, master step 7:
+    # Builds from the diary-companion repo checkout (tag v0.1.5, master step 8:
     # month-browsing reads — /api/months + /api/day?month=YYYY-MM).
     # If the tag is ever missing on a fresh host, rebuild from the repo checkout first:
-    #   docker build -t diary-companion:0.1.4 /mnt/docker/appdata/diary-companion
+    #   docker build -t diary-companion:0.1.5 /mnt/docker/appdata/diary-companion
     # Version contract: the pin must reference a tag that already exists on the host.
     # Release flow (bump → tag → rebuild → re-pin) lives in UPGRADES.md.
-    image: diary-companion:0.1.4
+    image: diary-companion:0.1.5
     container_name: cowork-diary-companion
     restart: unless-stopped
     env_file:

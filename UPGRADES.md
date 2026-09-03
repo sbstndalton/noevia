@@ -11,7 +11,7 @@ commits — matching the ground rules in MIGRATION.md.
 |---|---|---|
 | `ghcr.io/mintplex-labs/anything-llm` | `:latest@sha256:eb812f3d…` (index digest, captured 2026-09-03) | multi-arch index digest — same reference resolves on any host arch |
 | `ghcr.io/berriai/litellm` | `:main-stable@sha256:a53a7d3f…` (index digest, captured 2026-09-03) | same |
-| `diary-companion` | `:0.1.2` (locally built tag) | our code; the tag moves only via tracked commits + the release procedure below |
+| `diary-companion` | `:0.1.5` (locally built tag) | our code; the tag moves only via tracked commits + the release procedure below |
 
 Digest pins never auto-update. That is the point: an upstream push cannot move a
 running stack. Upgrades happen only through the procedures below.
