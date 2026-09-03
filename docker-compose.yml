@@ -10,6 +10,10 @@
 #   diary-companion  — internal sidecar, same untouched code/image as the standalone
 #                      container. Own data dir (separate SQLite). No exposed port.
 #
+# Upstream images are PINNED by index digest (tag kept for readability) so upstream
+# pushes/retags can never move a running stack. Upgrade procedure + release flow for
+# diary-companion: see UPGRADES.md. Dependency updates arrive only as tracked commits.
+#
 # Ground rules honored:
 #   - Nothing here re-exposes Lemonade; LiteLLM and the sidecar are internal-only.
 #   - The standalone diary-companion container (port 8010) keeps running untouched
@@ -18,7 +22,9 @@
 
 services:
   anythingllm:
-    image: ghcr.io/mintplex-labs/anything-llm:latest
+    # Pin: index digest captured 2026-09-03 via `docker buildx imagetools inspect`
+    # (UPGRADES.md "Upgrading an upstream image"). Bump only via a tracked commit.
+    image: ghcr.io/mintplex-labs/anything-llm:latest@sha256:eb812f3da085289d1dc3dd11437c0946e8139d92d5c68bcf6031b2151e99a93c
     container_name: cowork-anythingllm
     restart: unless-stopped
     ports:
@@ -36,7 +42,8 @@ services:
       - internal
 
   litellm:
-    image: ghcr.io/berriai/litellm:main-stable
+    # Pin: index digest captured 2026-09-03 (UPGRADES.md). Bump only via a tracked commit.
+    image: ghcr.io/berriai/litellm:main-stable@sha256:a53a7d3ffebede1925bd3ee8a21e4a7b9b63e2e68ec883af136edcccb6eeb82c
     container_name: cowork-litellm
     restart: unless-stopped
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -51,10 +58,12 @@ services:
       - lemonade
 
   diary-companion:
-    # Same image the standalone container built (diary-companion:0.1.0) — code untouched.
-    # If the tag is ever missing on a fresh host, rebuild from the repo first:
-    #   docker build -t diary-companion:0.1.0 /mnt/docker/appdata/diary-companion
-    image: diary-companion:0.1.1
+    # Same untouched code the standalone container builds from the diary-companion repo.
+    # If the tag is ever missing on a fresh host, rebuild from the repo checkout first:
+    #   docker build -t diary-companion:0.1.2 /mnt/docker/appdata/diary-companion
+    # Version contract: the pin must reference a tag that already exists on the host.
+    # Release flow (bump → tag → rebuild → re-pin) lives in UPGRADES.md.
+    image: diary-companion:0.1.2
     container_name: cowork-diary-companion
     restart: unless-stopped
     env_file:

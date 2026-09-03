@@ -34,9 +34,18 @@ DIARY_INDEX_ENABLED=false
 ```
 
 The app adapts to the human-named corpus (no INDEX.md is created; month files are
-`Diary - September 2026.md` style). Requires diary-companion ≥ 0.1.1, which also fixed
-the Apache `-gzip` ETag suffix that broke `If-Match` conditional writes against large
-files (≥ 0.1.2).
+`Diary - September 2026.md` style).
+
+**Sidecar version contract:** the compose pin must reference a tag that already
+exists on the host — never the other way around. Requires **diary-companion ≥ 0.1.1**
+(human-named month files, INDEX disable) and **≥ 0.1.2** for the Apache `-gzip` ETag
+suffix fix that broke `If-Match` conditional writes against large files. The deployed
+pin is `diary-companion:0.1.2` (both fixes included). Releases flow per `UPGRADES.md`:
+bump → tag → rebuild on the host → re-pin here in a tracked commit.
+
+Upstream images (`anything-llm`, `litellm`) are pinned by digest so upstream pushes
+cannot move a running stack; upgrades are deliberate, gated, one-commit changes —
+see `UPGRADES.md`.
 
 ## Deploy on DaServer
 
