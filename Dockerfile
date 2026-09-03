@@ -16,7 +16,11 @@ COPY scripts/ ./scripts/
 # writable regardless of host-side ownership. Isolated bridge network, LAN-only.
 
 EXPOSE 8010
+# Authed probe: /api/health returns 401 once DIARY_AUTH_TOKEN is set (same fix as
+# the compose healthcheck and the cowork sidecar's override). Exec form — Docker
+# runs the JSON array directly, no shell, so the python -c string needs only one
+# quoting level; an uncaught 401 HTTPError exits non-zero (no `|| exit 1` needed).
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health', timeout=5)" || exit 1
+  CMD ["python", "-c", "import os,urllib.request; h={'Authorization':'Bearer '+os.environ.get('DIARY_AUTH_TOKEN','')} if os.environ.get('DIARY_AUTH_TOKEN') else {}; print(urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8010/api/health', headers=h), timeout=5).status)"]
 
 CMD ["uvicorn", "agent.app:app", "--host", "0.0.0.0", "--port", "8010"]
