@@ -1,0 +1,9 @@
+# Optional example overlay for Lemonade model management and WebDAV corpus storage.
+# Put real endpoints, network names, and credentials in an untracked .env or private override.
+services:
+  diary:
+    environment:
+      CORPUS_BACKEND: webdav
+  web:
+    environment:
+      MODEL_MANAGER_KIND: lemonade

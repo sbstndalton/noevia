@@ -1,138 +1,54 @@
-# Cowork Workspace — DaServer
+# Cowork
 
-One `docker compose up` on DaServer: **Cowork UI** (the surface you open — the
-mockup-faithful frontend, `ui/`) + **LiteLLM** (the routing gateway) +
-**diary-companion sidecar** (the diary pipeline, untouched code).
-AnythingLLM is superseded and stopped; its compose definition remains temporarily
-for rollback until its server state is explicitly decommissioned. LiteLLM is also
-outside the live chat path but remains deployed pending the same gated cleanup.
+Cowork is a self-hosted workspace for project-aware chat and durable diary capture. It is a monorepo with two independently testable applications:
 
-## The UI (`ui/`)
+- `apps/web` — React interface and Node API proxy
+- `services/diary` — FastAPI diary pipeline with retrieval and crash-safe logging
 
-React + Vite implementation of the four artboards in `../ui mockups/` (Main, Diary,
-Settings, DirectionB): pinned Diary above a Spaces list, month/day/time transcript
-structure rendered from the real corpus, right rail (This month / Open questions /
-Timeline), model-pill headers, and a Settings roster driven by the gateway's live
-alias table. Light and dark themes via a sidebar toggle — one design language (the light
-artboard's: Manrope, rounded, warm), palette-only swap for dark (user feedback
-2026-09-03; a full color-theming rethink is deferred).
+The core requires only an OpenAI-compatible inference API. Local-folder corpus storage is the default; WebDAV and Lemonade model management are optional adapters.
 
-- `ui/src/` — frontend. `ui/server/index.cjs` — zero-dependency proxy: SSE chat,
-  project-context injection, stats passthrough, diary corpus reads through the
-  **corpus-source adapter**, per-project history (JSON files, atomic writes,
-  40-turn cap), SPA serving. Secrets stay in `ui.env`.
-- **Proxy authentication:** when `DIARY_AUTH_TOKEN` (or the optional
-  `UI_AUTH_TOKEN` override) is set, every `/api/*` route requires that bearer
-  token. The static app shell remains reachable and presents an unlock screen;
-  the token is stored in that browser's localStorage. Never expose the UI through
-  a tunnel with both tokens empty.
-- **Projects (v4)**: the sidebar is Claude-style — a Projects row of tabs, an
-  overview grid, and a create modal (name / goal / instructions / text-file
-  attachments). Each project has an editable Instructions/Files/Memory rail and
-  its own chats; project context is injected server-side into every chat in it.
-  A **live stats bar** docks at the bottom of every view, polling Lemonade's
-  `/v1/stats` + `/v1/system-stats` (tok/s, TTFT, tokens, requests, CPU/GPU/VRAM)
-  through the proxy every 2.5s.
-- **Auto routing (v5)**: a project can opt into per-message Auto routing — a
-  deterministic complexity heuristic plus one cheap classifier call pick the
-  Fast or Smart role model per message (role→model mapping in
-  `ui/server/auto-roles.json`, editable in the model popup; fails open to
-  Fast; manual projects are completely untouched). Note: the current Lemonade
-  build keeps one chat model resident and auto-loads on demand, so a role
-  switch can pay one load swap.
-- **Built-in tools (v5)**: the chat stream runs a bounded tool-round loop
-  (max 3 rounds) over an OpenAI-compatible JSON-Schema tool set. Built-ins:
-  `get_current_time` (IANA-timezone clock) and `read_project_file` (reads an
-  attached knowledge file by exact name). Tool calls and results render as
-  chips in the transcript.
-- **SKILL.md skills (v5)**: a project file that starts with SKILL.md
-  frontmatter (Hermes/agentskills.io convention) is advertised to the model
-  as an always-on name+description index; the model loads the full body on
-  demand via `read_project_file` — progressive disclosure with zero extra
-  dependencies.
-- **Project RAG (v5)**: knowledge files are embedded (nomic-embed via
-  Lemonade) into a per-project sqlite-vec index under `server/ui-data/rag/`;
-  retrieval replaces whole-file pasting once a file exceeds the
-  direct-inject threshold, with verbatim fallback on any RAG failure.
-- **Diary is a dedicated tab**, not a workspace: its composer routes through the
-  `diary` alias (full sidecar pipeline; the tab shows logged/skipped per
-  exchange), and all corpus reads go through the adapter (`listMonths` /
-  `readMonth`). v1 source: `sidecar` (Nextcloud). A `local` folder source is
-  designed behind `DIARY_SOURCE=local` + `DIARY_LOCAL_DIR=…` and implemented
-  when/if the corpus moves; if that happens, diary-companion gains the same
-  source switch server-side so the WRITE path keeps the journal/ETag
-  guarantees (sidecar extension planned, not scheduled — MIGRATION §2b).
-- Diary data flow is read-only from the UI's perspective: the right rail and
-  transcript read `/api/day`; writes happen only through the sidecar's pipeline
-  when the Diary space is chatted with (via the `diary` alias, same as Solair AI).
-- Local dev: `cd ui && npm install && npm run dev` (proxies to a deployed stack via
-  `UI_PROXY_TARGET`), or `npm start` with `DIARY_AUTH_TOKEN` set.
-- Deploy: gated Step F in `MIGRATION.md` (build image on host, `docker compose up -d ui`).
+## Quick start
 
-Companion repos/deployments:
-- `sbstndalton/diary-companion` — the diary pipeline this stack sidecars.
-- `DaServer.md` (Nextcloud) — canonical ops doc + changelog.
-
-## Routing (v2 — proxy-native, LiteLLM retired from the chat path)
-
-The UI proxy (`ui/server/index.cjs`) routes each chat directly: ordinary chats hit
-Lemonade's `/v1/chat/completions` with the project's pinned model + goal/instructions +
-persistent memories (projects.json, editable in the UI); the Diary tab routes through the
-sidecar pipeline. The model button (top-right of any view) opens the in-tab model
-manager: switch per space, search Hugging Face, pick a quantized variant, download with
-progress, load/unload/delete — all against Lemonade's management API.
-
-LiteLLM remains in the compose stack only until the UI's direct routing proves out in
-daily use, then it is removed (gated step — MIGRATION §5). Lemonade's own native
-routing engine (collection.router policies) is the longer-term replacement for
-per-space pinning if auto-routing by task is wanted.
-
-Lemonade's `:13305/v1` stays directly reachable for everything else (OpenWork, Solair AI,
-Hermes Agent).
-
-## Diary sidecar config (live)
-
-```
-CORPUS_REMOTE_ROOT=Documents/Important Documents/Diary
-DIARY_MONTH_FILE_TEMPLATE=Diary - {month_name} {year}.md
-DIARY_INDEX_ENABLED=false
+```sh
+cp .env.example .env
+# Set your inference endpoint and model IDs in .env.
+docker compose up --build -d
 ```
 
-The app adapts to the human-named corpus (no INDEX.md is created; month files are
-`Diary - September 2026.md` style).
+Open `http://localhost:8021`. Diary Companion is also available directly at `http://localhost:8010`.
 
-**Sidecar version contract:** the compose pin must reference a tag that already
-exists on the host — never the other way around. Requires **diary-companion ≥ 0.1.1**
-(human-named month files, INDEX disable) and **≥ 0.1.2** for the Apache `-gzip` ETag
-suffix fix that broke `If-Match` conditional writes against large files. The deployed
-pin is `diary-companion:0.1.5` (all fixes included). Releases flow per `UPGRADES.md`:
-bump → tag → rebuild on the host → re-pin here in a tracked commit.
+Persistent files live under `./state` by default. Set `COWORK_STATE_DIR` to an absolute durable path in production; do not place persistent state inside a disposable source checkout.
 
-Upstream images (`anything-llm`, `litellm`) are pinned by digest so upstream pushes
-cannot move a running stack; upgrades are deliberate, gated, one-commit changes —
-see `UPGRADES.md`.
+## Configuration
 
-## Deploy on DaServer
+Cowork accepts any OpenAI-compatible chat and embeddings endpoint through `INFERENCE_BASE_URL` and `INFERENCE_API_KEY`. Each project can also select another provider in Settings.
 
-```bash
-# stage (files only; secrets are created server-side)
-rsync -a --exclude='.DS_Store' --exclude='*.env' --exclude='backup/' \
-  --exclude='ui/node_modules' --exclude='ui/server/node_modules' \
-  --exclude='ui/dist' --exclude='ui/server/ui-data' \
-  cowork/ root@10.69.0.130:/mnt/docker/appdata/cowork/
+Fresh installations use `CORPUS_BACKEND=local` and store Markdown files beneath the diary state directory. For WebDAV, set:
 
-ssh root@10.69.0.130
-cd /mnt/docker/appdata/cowork
-# create anythingllm.env + litellm/.env (see *.env.example; DIARY_AUTH_TOKEN is COPIED
-# from /mnt/docker/appdata/diary-companion/.env, never regenerated)
-# then:
-docker compose up -d
+```dotenv
+CORPUS_BACKEND=webdav
+CORPUS_ROOT=Notes/Diary
+WEBDAV_BASE_URL=https://cloud.example.com/remote.php/dav/files/username/
+WEBDAV_USERNAME=username
+WEBDAV_PASSWORD=app-password
 ```
 
-- Cowork UI (after gated Step F): `http://10.69.0.130:8021` — the intended surface.
-- AnythingLLM (retired by the de-dup decision, container stopped): `http://10.69.0.130:8020`.
-  Port 8020 answers nothing — the UI is on **8021**. The compose file keeps the
-  service definition for reference; the base image is Debian (glibc) because the
-  project-RAG `sqlite-vec` extension has no musl build (see UPGRADES.md).
-- Ops runbook, spike evidence, and changelog rows: `MIGRATION.md`, `CHANGELOG-drafts.md`,
-  and `DaServer.md` in the Nextcloud docs folder.
+Provider-specific model discovery, loading, downloads, and statistics are disabled by default. Enable the Lemonade adapter with `MODEL_MANAGER_KIND=lemonade` and `MODEL_MANAGER_BASE_URL`; see `deploy/examples/lemonade-webdav.compose.yaml`.
+
+The deprecated `LEMONADE_BASE_URL`, `LEMONADE_API_KEY`, and `CORPUS_REMOTE_ROOT` variables remain readable for one compatibility release. New configuration should use the neutral names.
+
+## Development
+
+```sh
+make test
+make build
+make compose-check
+```
+
+The web app can also be run from `apps/web` with `npm run dev`; Diary Companion can be run from `services/diary` with `uvicorn agent.app:app --reload`.
+
+## Data safety
+
+Diary writes enter a SQLite write-ahead journal before the corpus is changed. Both local and WebDAV backends use conditional writes so concurrent changes are retried rather than overwritten. Back up the configured state directory and, for remote storage, the corpus itself.
+
+Set `UI_AUTH_TOKEN` and `DIARY_AUTH_TOKEN` before exposing either HTTP service outside a trusted machine. Secrets belong in `.env` or a secret manager and must never be committed.

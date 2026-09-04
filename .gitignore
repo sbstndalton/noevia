@@ -4,6 +4,10 @@
 backup/
 *.bak
 *.tmp
+state/
+releases/
+compose.override.yaml
+deploy/private/
 
 # Python
 __pycache__/
