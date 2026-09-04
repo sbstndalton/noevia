@@ -117,7 +117,8 @@ see `UPGRADES.md`.
 ```bash
 # stage (files only; secrets are created server-side)
 rsync -a --exclude='.DS_Store' --exclude='*.env' --exclude='backup/' \
-  --exclude='ui/node_modules' --exclude='ui/dist' --exclude='ui/server/ui-data' \
+  --exclude='ui/node_modules' --exclude='ui/server/node_modules' \
+  --exclude='ui/dist' --exclude='ui/server/ui-data' \
   cowork/ root@10.69.0.130:/mnt/docker/appdata/cowork/
 
 ssh root@10.69.0.130
