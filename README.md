@@ -47,6 +47,19 @@ make compose-check
 
 The web app can also be run from `apps/web` with `npm run dev`; Diary Companion can be run from `services/diary` with `uvicorn agent.app:app --reload`.
 
+## Unraid Compose Manager
+
+Use `deploy/examples/unraid-compose-manager.yml` as the stack file. Configure
+Compose Manager's Environment Path to an untracked `.env` containing at least
+`COWORK_SOURCE_DIR` and `COWORK_STATE_DIR`. The stack includes Unraid management
+and Web UI labels, and its Update action rebuilds both images from the selected
+source release.
+
+Keep the Compose Manager project metadata on the Unraid boot device, application
+state under appdata, and source releases separate from both. This lets the UI
+start, stop, rebuild, and autostart the stack without coupling durable state to a
+source checkout.
+
 ## Data safety
 
 Diary writes enter a SQLite write-ahead journal before the corpus is changed. Both local and WebDAV backends use conditional writes so concurrent changes are retried rather than overwritten. Back up the configured state directory and, for remote storage, the corpus itself.
