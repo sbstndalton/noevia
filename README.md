@@ -3,9 +3,9 @@
 One `docker compose up` on DaServer: **Cowork UI** (the surface you open — the
 mockup-faithful frontend, `ui/`) + **LiteLLM** (the routing gateway) +
 **diary-companion sidecar** (the diary pipeline, untouched code).
-AnythingLLM remains in the stack only during burn-in; it is superseded by the UI
-(user decision 2026-09-03 — the mockups are not reachable inside AnythingLLM, whose
-per-workspace endpoint feature the gateway already replaced).
+AnythingLLM is superseded and stopped; its compose definition remains temporarily
+for rollback until its server state is explicitly decommissioned. LiteLLM is also
+outside the live chat path but remains deployed pending the same gated cleanup.
 
 ## The UI (`ui/`)
 
@@ -66,7 +66,7 @@ artboard's: Manrope, rounded, warm), palette-only swap for dark (user feedback
   transcript read `/api/day`; writes happen only through the sidecar's pipeline
   when the Diary space is chatted with (via the `diary` alias, same as Solair AI).
 - Local dev: `cd ui && npm install && npm run dev` (proxies to a deployed stack via
-  `UI_PROXY_TARGET`), or `npm start` with `LITELLM_MASTER_KEY`/`DIARY_AUTH_TOKEN` set.
+  `UI_PROXY_TARGET`), or `npm start` with `DIARY_AUTH_TOKEN` set.
 - Deploy: gated Step F in `MIGRATION.md` (build image on host, `docker compose up -d ui`).
 
 Companion repos/deployments:
@@ -136,6 +136,3 @@ docker compose up -d
   project-RAG `sqlite-vec` extension has no musl build (see UPGRADES.md).
 - Ops runbook, spike evidence, and changelog rows: `MIGRATION.md`, `CHANGELOG-drafts.md`,
   and `DaServer.md` in the Nextcloud docs folder.
-- One-off scripts (`spike_*`, `verify_*`, `first_real_append.py`,
-  `exchange_from_gateway.py`) were session tooling; the two that contain real diary
-  text are gitignored by design.

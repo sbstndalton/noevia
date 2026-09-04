@@ -186,9 +186,10 @@ worth a DaServer.md port-table cross-check someday.
 
 ## 7. Master sequence status (2026-09-03, end of session)
 
-All 12 steps of `MASTER-PROMPT-freebuff-2026-09-03.md` are complete and
-verified live on prod, plus the step-13 extras the Step 11 research spike
-motivated (tools layer + SKILL.md skills). Steps 1–8: reviewed/committed in
+All 12 steps of the 2026-09-03 master backlog are complete and verified live
+on prod, plus the step-13 extras the Step 11 research spike motivated (tools
+layer + SKILL.md skills). The completed one-time prompt was removed during the
+project cleanup; this section preserves its outcome. Steps 1–8: reviewed/committed in
 earlier rounds; steps 9–13 commits `2a5da3f` (provider layer), `a937f22`
 (project RAG), `d73e653` (glibc base fix), `b83f401` (Auto routing), `75d6497`
 (tools + skills), `fc3605a` (docs). Changelog rows 12–13 in
