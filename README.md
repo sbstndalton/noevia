@@ -15,7 +15,14 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Open `http://localhost:8021`. Diary Companion is also available directly at `http://localhost:8010`.
+Open `http://localhost:8021`. The Diary service stays on the internal Compose
+network unless an operator deliberately publishes its port for legacy clients.
+
+On first launch, Cowork prints a one-time setup code and its protected file
+location to the web container log. Enter that code in the onboarding screen to
+create the first administrator. The code file is deleted after setup. For
+passkeys, serve Cowork from a stable HTTPS origin and set `PUBLIC_ORIGIN` and
+`WEBAUTHN_RP_ID`; plain HTTP is supported only for `localhost` development.
 
 Persistent files live under `./state` by default. Set `COWORK_STATE_DIR` to an absolute durable path in production; do not place persistent state inside a disposable source checkout.
 
@@ -64,4 +71,19 @@ source checkout.
 
 Diary writes enter a SQLite write-ahead journal before the corpus is changed. Both local and WebDAV backends use conditional writes so concurrent changes are retried rather than overwritten. Back up the configured state directory and, for remote storage, the corpus itself.
 
-Set `UI_AUTH_TOKEN` and `DIARY_AUTH_TOKEN` before exposing either HTTP service outside a trusted machine. Secrets belong in `.env` or a secret manager and must never be committed.
+Cowork supports isolated administrator and member accounts, password login,
+passkeys, single-use invitations, and administrator-issued recovery links.
+Projects, chats, histories, and RAG indexes live under per-user directories.
+Provider and storage credentials are encrypted with `state/web/secrets.key`;
+backups are unusable without that mode-`600` key file.
+
+The Diary service is internal-only by default. `DIARY_AUTH_TOKEN` protects the
+Web-to-Diary connection. `UI_AUTH_TOKEN` is accepted only when
+`LEGACY_AUTH_COMPAT=true`, allowing a one-release migration to the first
+administrator. Direct Diary clients can be temporarily mapped to a user with
+`DIARY_LEGACY_USER_ID`. Disable both compatibility settings after migration.
+
+Application administrators cannot browse another user's private content, but a
+host administrator with filesystem access can read unencrypted workspace and
+corpus files. Secrets belong in `.env` or a secret manager and must never be
+committed.

@@ -11,8 +11,8 @@ services:
       context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/services/diary
     image: cowork-diary:${COWORK_VERSION:-local}
     restart: unless-stopped
-    ports:
-      - "${DIARY_PORT:-8010}:8010"
+    expose:
+      - "8010"
     environment:
       CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
       CORPUS_ROOT: ${CORPUS_ROOT:-}
@@ -23,6 +23,7 @@ services:
       DIARY_MONTH_FILE_TEMPLATE: ${DIARY_MONTH_FILE_TEMPLATE:-}
       DIARY_INDEX_ENABLED: ${DIARY_INDEX_ENABLED:-true}
       DIARY_AUTH_TOKEN: ${DIARY_AUTH_TOKEN:-}
+      DIARY_LEGACY_USER_ID: ${DIARY_LEGACY_USER_ID:-}
       DB_PATH: /app/data/index.db
       LLM_BASE_URL: ${INFERENCE_BASE_URL:-http://host.docker.internal:11434/v1}
       LLM_API_KEY: ${INFERENCE_API_KEY:-}
@@ -41,7 +42,6 @@ services:
       retries: 3
     labels:
       net.unraid.docker.managed: composeman
-      net.unraid.docker.webui: http://[IP]:[PORT:8010]
       net.unraid.docker.shell: sh
 
   web:
@@ -54,6 +54,14 @@ services:
     environment:
       UI_PORT: 8021
       UI_AUTH_TOKEN: ${UI_AUTH_TOKEN:-}
+      LEGACY_AUTH_COMPAT: ${LEGACY_AUTH_COMPAT:-false}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
+      CORPUS_ROOT: ${CORPUS_ROOT:-}
+      WEBDAV_BASE_URL: ${WEBDAV_BASE_URL:-}
+      WEBDAV_USERNAME: ${WEBDAV_USERNAME:-}
+      WEBDAV_PASSWORD: ${WEBDAV_PASSWORD:-}
       DIARY_BASE_URL: http://diary:8010
       DIARY_AUTH_TOKEN: ${DIARY_AUTH_TOKEN:-}
       INFERENCE_BASE_URL: ${INFERENCE_BASE_URL:-http://host.docker.internal:11434}
@@ -76,4 +84,3 @@ services:
       net.unraid.docker.managed: composeman
       net.unraid.docker.webui: http://[IP]:[PORT:8021]
       net.unraid.docker.shell: sh
-
