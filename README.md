@@ -21,6 +21,11 @@ artboard's: Manrope, rounded, warm), palette-only swap for dark (user feedback
   project-context injection, stats passthrough, diary corpus reads through the
   **corpus-source adapter**, per-project history (JSON files, atomic writes,
   40-turn cap), SPA serving. Secrets stay in `ui.env`.
+- **Proxy authentication:** when `DIARY_AUTH_TOKEN` (or the optional
+  `UI_AUTH_TOKEN` override) is set, every `/api/*` route requires that bearer
+  token. The static app shell remains reachable and presents an unlock screen;
+  the token is stored in that browser's localStorage. Never expose the UI through
+  a tunnel with both tokens empty.
 - **Projects (v4)**: the sidebar is Claude-style — a Projects row of tabs, an
   overview grid, and a create modal (name / goal / instructions / text-file
   attachments). Each project has an editable Instructions/Files/Memory rail and
