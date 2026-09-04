@@ -23,6 +23,8 @@ location to the web container log. Enter that code in the onboarding screen to
 create the first administrator. The code file is deleted after setup. For
 passkeys, serve Cowork from a stable HTTPS origin and set `PUBLIC_ORIGIN` and
 `WEBAUTHN_RP_ID`; plain HTTP is supported only for `localhost` development.
+Diary is an optional per-user app selected during onboarding or later in
+Settings; Cowork's project and chat workspace works without it.
 
 Persistent files live under `./state` by default. Set `COWORK_STATE_DIR` to an absolute durable path in production; do not place persistent state inside a disposable source checkout.
 
@@ -38,7 +40,14 @@ CORPUS_ROOT=Notes/Diary
 WEBDAV_BASE_URL=https://cloud.example.com/remote.php/dav/files/username/
 WEBDAV_USERNAME=username
 WEBDAV_PASSWORD=app-password
+DIARY_ENTRY_LAYOUT=daily
+DIARY_ENTRIES_PREFIX=Entries
 ```
+
+The daily layout stores entries as
+`Entries/YYYY/Month/Month D, YYYY.md`. Set `DIARY_ENTRY_LAYOUT=monthly` and
+`DIARY_MONTH_FILE_TEMPLATE` when connecting an older single-file-per-month
+corpus.
 
 Provider-specific model discovery, loading, downloads, and statistics are disabled by default. Enable the Lemonade adapter with `MODEL_MANAGER_KIND=lemonade` and `MODEL_MANAGER_BASE_URL`; see `deploy/examples/lemonade-webdav.compose.yaml`.
 
