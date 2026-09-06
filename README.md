@@ -5,7 +5,7 @@ Cowork is a self-hosted workspace for project-aware chat and durable diary captu
 - `apps/web` — React interface and Node API proxy
 - `services/diary` — FastAPI diary pipeline with retrieval and crash-safe logging
 
-The core requires only an OpenAI-compatible inference API. Local-folder corpus storage is the default; WebDAV and Lemonade model management are optional adapters.
+The core requires only an OpenAI-compatible inference API. Local-folder corpus storage is the default; WebDAV and S3-compatible object storage (MinIO, B2, and other self-hosted buckets) are optional adapters, and Lemonade model management is likewise optional.
 
 ## Quick start
 
@@ -52,6 +52,8 @@ The daily layout stores entries as
 corpus.
 
 Provider-specific model discovery, loading, downloads, and statistics are disabled by default. Enable the Lemonade adapter with `MODEL_MANAGER_KIND=lemonade` and `MODEL_MANAGER_BASE_URL`; see `deploy/examples/lemonade-webdav.compose.yaml`.
+
+Members can also connect their own storage — WebDAV or an S3-compatible bucket — from Settings (per-user, credentials encrypted server-side) and pull files from it into project knowledge, where they join the RAG index like locally uploaded files.
 
 The deprecated `LEMONADE_BASE_URL`, `LEMONADE_API_KEY`, and `CORPUS_REMOTE_ROOT` variables remain readable for one compatibility release. New configuration should use the neutral names.
 
