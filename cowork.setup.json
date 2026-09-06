@@ -1,0 +1,61 @@
+{
+  "$comment": "Declarative companion to DEPLOY.md. DEPLOY.md is authoritative; this file exists so a deploy agent can parse facts directly instead of scraping prose. Update both together or not at all.",
+  "name": "cowork",
+  "deploy": {
+    "method": "docker-compose",
+    "compose_file": "compose.yaml",
+    "env_file": ".env",
+    "env_example": ".env.example"
+  },
+  "preconditions": [
+    { "check": "docker --version", "expect": "Docker version 20.10 or newer" },
+    { "check": "docker compose version", "expect": "Docker Compose version v2.x" },
+    { "check": "test -f compose.yaml && test -f .env.example", "expect": "exit 0 (run from a repo checkout)" }
+  ],
+  "required_env": [
+    { "name": "DIARY_AUTH_TOKEN", "purpose": "Shared bearer token for web->diary calls and the base for the web UI's own API auth", "secret": true, "human_required": true, "default": null, "note": "Generate with: openssl rand -hex 32. Empty disables UI API auth entirely; set before any network exposure." },
+    { "name": "INFERENCE_BASE_URL", "purpose": "OpenAI-compatible chat endpoint (should end in /v1) used by both containers", "secret": false, "human_required": true, "default": "http://host.docker.internal:11434/v1", "note": "Ask the human for their endpoint; host.docker.internal works for loopback services on the Docker host." },
+    { "name": "INFERENCE_API_KEY", "purpose": "Bearer key for the inference endpoint, if it authenticates", "secret": true, "human_required": "conditional", "condition": "only if the inference endpoint requires a key", "default": "" },
+    { "name": "PUBLIC_ORIGIN", "purpose": "Public URL humans browse to; locks the auth origin allow-list and derives the passkey ID", "secret": false, "human_required": true, "default": null },
+    { "name": "COWORK_PORT", "purpose": "Host port for the web UI", "secret": false, "human_required": false, "default": "8021" },
+    { "name": "COWORK_STATE_DIR", "purpose": "Host directory for all durable state (diary corpus + SQLite journal, web accounts/secrets)", "secret": false, "human_required": false, "default": "./state" },
+    { "name": "DIARY_CHAT_MODEL", "purpose": "Chat model name the inference endpoint serves", "secret": false, "human_required": false, "default": "default" },
+    { "name": "DIARY_AUX_MODEL", "purpose": "Auxiliary classification model name", "secret": false, "human_required": false, "default": "default" },
+    { "name": "EMBEDDING_MODEL", "purpose": "Embedding model name for retrieval", "secret": false, "human_required": false, "default": "default" },
+    { "name": "UI_AUTH_TOKEN", "purpose": "Optional distinct UI API token", "secret": true, "human_required": false, "default": "", "note": "Empty falls back to DIARY_AUTH_TOKEN." },
+    { "name": "WEBAUTHN_RP_ID", "purpose": "Passkey identifier; must match the browser hostname", "secret": false, "human_required": false, "default": "", "note": "Derived from PUBLIC_ORIGIN when empty." },
+    { "name": "TRUST_PROXY", "purpose": "true only behind a reverse proxy, so rate limiting/audit logs see real client IPs", "secret": false, "human_required": false, "default": "false" },
+    { "name": "LEGACY_AUTH_COMPAT", "purpose": "Allows machine clients to authenticate with the shared token", "secret": false, "human_required": false, "default": "true in .env.example, false in compose.yaml" },
+    { "name": "AUX_INFERENCE_BASE_URL", "purpose": "Optional separate endpoint for the diary's auxiliary classification model", "secret": false, "human_required": false, "default": "falls back to INFERENCE_BASE_URL" },
+    { "name": "DEFAULT_PROVIDER_ID", "purpose": "ID of the pre-seeded default inference provider entry", "secret": false, "human_required": false, "default": "default" },
+    { "name": "DEFAULT_PROVIDER_LABEL", "purpose": "Display label of the pre-seeded default inference provider", "secret": false, "human_required": false, "default": "Local inference" },
+    { "name": "DIARY_MONTH_FILE_TEMPLATE", "purpose": "Filename template for diary month files", "secret": false, "human_required": false, "default": "{year}-{month02}.md in .env.example" },
+    { "name": "DIARY_ENTRY_LAYOUT", "purpose": "Diary entry layout (daily or monthly)", "secret": false, "human_required": false, "default": "daily" },
+    { "name": "DIARY_ENTRIES_PREFIX", "purpose": "Heading prefix for diary entries in month files", "secret": false, "human_required": false, "default": "Entries" },
+    { "name": "DIARY_INDEX_ENABLED", "purpose": "Enable the sidecar retrieval index", "secret": false, "human_required": false, "default": "false" },
+    { "name": "DIARY_LEGACY_USER_ID", "purpose": "Optional one-release direct Diary API mapping for legacy clients", "secret": false, "human_required": false, "default": "" },
+    { "name": "COWORK_VERSION", "purpose": "Image tag for built images", "secret": false, "human_required": false, "default": "dev" },
+    { "name": "CORPUS_BACKEND", "purpose": "Diary storage backend (local or webdav)", "secret": false, "human_required": false, "default": "local" },
+    { "name": "CORPUS_ROOT", "purpose": "Corpus root for the chosen backend", "secret": false, "human_required": false, "default": "" },
+    { "name": "WEBDAV_BASE_URL", "purpose": "WebDAV server URL when CORPUS_BACKEND=webdav", "secret": false, "human_required": false, "default": "" },
+    { "name": "WEBDAV_USERNAME", "purpose": "WebDAV username", "secret": false, "human_required": false, "default": "" },
+    { "name": "WEBDAV_PASSWORD", "purpose": "WebDAV password", "secret": true, "human_required": false, "default": "" },
+    { "name": "DIARY_EXTERNAL_SOURCES", "purpose": "Comma-separated mounted folders of pre-existing .txt/.md journal files offered (read-only) for import in the diary empty state", "secret": false, "human_required": false, "default": "" },
+    { "name": "MODEL_MANAGER_KIND", "purpose": "Optional local model-manager integration", "secret": false, "human_required": false, "default": "none" },
+    { "name": "MODEL_MANAGER_BASE_URL", "purpose": "Model-manager base URL", "secret": false, "human_required": false, "default": "" },
+    { "name": "MODEL_MANAGER_API_KEY", "purpose": "Model-manager API key", "secret": true, "human_required": false, "default": "" }
+  ],
+  "health_checks": [
+    { "name": "compose services up", "command": "docker compose ps", "expect": "diary healthy; web running" },
+    { "name": "setup status before onboarding", "command": "curl -s http://localhost:8021/api/setup/status", "expect": "{\"configured\":false" },
+    { "name": "setup status after onboarding", "command": "curl -s http://localhost:8021/api/setup/status", "expect": "{\"configured\":true" },
+    { "name": "setup code consumed", "command": "docker compose exec -T web test ! -f /app/server/ui-data/first-run-setup-code", "expect": "exit 0 after onboarding" },
+    { "name": "diary sidecar reachable from web", "command": "docker compose exec -T web node -e \"fetch('http://diary:8010/api/health',{headers:{Authorization:'Bearer '+process.env.DIARY_AUTH_TOKEN}}).then(r=>r.text()).then(console.log)\"", "expect": "ok:true" },
+    { "name": "inference reachable from web", "command": "docker compose exec -T web node -e \"fetch(process.env.INFERENCE_BASE_URL.replace(/\\/+$/,'').replace(/\\/v1$/,'')+'/v1/models').then(r=>console.log('models',r.status))\"", "expect": "models 200" }
+  ],
+  "post_deploy_human_steps": [
+    "Retrieve the one-time first-run setup code: docker compose logs web | grep 'FIRST-RUN SETUP CODE' (or cat /app/server/ui-data/first-run-setup-code inside the web container).",
+    "Open PUBLIC_ORIGIN in a browser and complete the setup wizard: enter the setup code, create the admin account, check the inference provider, choose diary and display preferences, optionally add a passkey.",
+    "Log one diary entry from the UI and confirm it appears (proves diary write path end to end)."
+  ]
+}

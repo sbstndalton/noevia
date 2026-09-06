@@ -28,6 +28,8 @@ Settings; Cowork's project and chat workspace works without it.
 
 Persistent files live under `./state` by default. Set `COWORK_STATE_DIR` to an absolute durable path in production; do not place persistent state inside a disposable source checkout.
 
+For a first deployment — including one performed by a coding agent — follow [`DEPLOY.md`](DEPLOY.md) step by step; [`cowork.setup.json`](cowork.setup.json) mirrors its inputs and health checks in machine-readable form.
+
 ## Configuration
 
 Cowork accepts any OpenAI-compatible chat and embeddings endpoint through `INFERENCE_BASE_URL` and `INFERENCE_API_KEY`. Each project can also select another provider in Settings.
