@@ -1,6 +1,6 @@
-# Cowork
+# noevia
 
-Cowork is a self-hosted workspace for project-aware chat and durable diary capture. It is a monorepo with two independently testable applications:
+noevia is a self-hosted workspace for project-aware chat and durable diary capture. It is a monorepo with two independently testable applications:
 
 - `apps/web` — React interface and Node API proxy
 - `services/diary` — FastAPI diary pipeline with retrieval and crash-safe logging
@@ -18,16 +18,16 @@ docker compose up --build -d
 Open `http://localhost:8021`. The Diary service stays on the internal Compose
 network unless an operator deliberately publishes its port for legacy clients.
 
-On first launch, Cowork prints a one-time setup code and its protected file
+On first launch, noevia prints a one-time setup code and its protected file
 location to the web container log. Enter that code in the onboarding screen to
 create the first administrator. The code file is deleted after setup. For
-passkeys, serve Cowork from a stable HTTPS origin and set `PUBLIC_ORIGIN` and
+passkeys, serve noevia from a stable HTTPS origin and set `PUBLIC_ORIGIN` and
 `WEBAUTHN_RP_ID`; plain HTTP is supported only for `localhost` development.
 Diary is an optional per-user app selected during onboarding or later in
-Settings; Cowork's project and chat workspace works without it.
+Settings; noevia's project and chat workspace works without it.
 
 Password/session login is pinned to `PUBLIC_ORIGIN` and rejects requests from
-any other `Origin` (CSRF hardening) — so if you also reach Cowork over a bare
+any other `Origin` (CSRF hardening) — so if you also reach noevia over a bare
 LAN IP or a second hostname (e.g. behind a Cloudflare Tunnel *and* directly on
 your LAN), sign-in from that second origin 403s with "origin not allowed"
 until you add it to `ADDITIONAL_TRUSTED_ORIGINS` (comma-separated, exact
@@ -43,7 +43,7 @@ For a first deployment — including one performed by a coding agent — follow 
 
 ## Configuration
 
-Cowork accepts any OpenAI-compatible chat and embeddings endpoint through `INFERENCE_BASE_URL` and `INFERENCE_API_KEY`. Each project can also select another provider in Settings.
+noevia accepts any OpenAI-compatible chat and embeddings endpoint through `INFERENCE_BASE_URL` and `INFERENCE_API_KEY`. Each project can also select another provider in Settings.
 
 Fresh installations use `CORPUS_BACKEND=local` and store Markdown files beneath the diary state directory. For WebDAV, set:
 
@@ -95,7 +95,7 @@ source checkout.
 
 Diary writes enter a SQLite write-ahead journal before the corpus is changed. Both local and WebDAV backends use conditional writes so concurrent changes are retried rather than overwritten. Back up the configured state directory and, for remote storage, the corpus itself.
 
-Cowork supports isolated administrator and member accounts, password login,
+noevia supports isolated administrator and member accounts, password login,
 passkeys, single-use invitations, and administrator-issued recovery links.
 Projects, chats, histories, and RAG indexes live under per-user directories.
 Provider and storage credentials are encrypted with `state/web/secrets.key`;
