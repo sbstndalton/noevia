@@ -8,6 +8,7 @@ state/
 releases/
 compose.override.yaml
 deploy/private/
+.freebuff/
 
 # Python
 __pycache__/
