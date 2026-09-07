@@ -53,7 +53,7 @@ corpus.
 
 Provider-specific model discovery, loading, downloads, and statistics are disabled by default. Enable the Lemonade adapter with `MODEL_MANAGER_KIND=lemonade` and `MODEL_MANAGER_BASE_URL`; see `deploy/examples/lemonade-webdav.compose.yaml`.
 
-Members can also connect their own storage — WebDAV or an S3-compatible bucket — from Settings (per-user, credentials encrypted server-side) and pull files from it into project knowledge, where they join the RAG index like locally uploaded files.
+Administrators can connect WebDAV or S3-compatible storage from Settings; members can connect origins approved in `MEMBER_OUTBOUND_ORIGINS`. Credentials are encrypted per account. Connected files can be imported into project knowledge. Diary questions receive thoughtful replies in the diary conversation, without a separate Insights feature.
 
 The deprecated `LEMONADE_BASE_URL`, `LEMONADE_API_KEY`, and `CORPUS_REMOTE_ROOT` variables remain readable for one compatibility release. New configuration should use the neutral names.
 

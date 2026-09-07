@@ -18,7 +18,7 @@ COPY --from=build /app/dist ./dist
 COPY server/package.json server/package-lock.json* ./server/
 # Project-RAG deps (both native modules — installed fresh so the platform-matching
 # prebuilt binaries land here; server/.dockerignore keeps the macOS copy out).
-RUN cd server && npm ci --no-fund --no-audit 2>/dev/null || npm install --no-fund --no-audit
+RUN cd server && npm ci --no-fund --no-audit
 COPY server ./server
 ENV UI_PORT=8021
 EXPOSE 8021

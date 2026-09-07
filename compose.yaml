@@ -33,7 +33,8 @@ services:
       LLM_API_KEY: ${INFERENCE_API_KEY:-}
       LLM_CHAT_MODEL: ${DIARY_CHAT_MODEL:-default}
       LLM_EMBED_MODEL: ${EMBEDDING_MODEL:-default}
-      LLM_AUX_BASE_URL: ${AUX_INFERENCE_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_AUX_BASE_URL: ${AUX_INFERENCE_BASE_URL:-${INFERENCE_BASE_URL:-http://host.docker.internal:11434/v1}}
+      LLM_AUX_API_KEY: ${AUX_INFERENCE_API_KEY-${INFERENCE_API_KEY:-}}
       LLM_AUX_MODEL: ${DIARY_AUX_MODEL:-default}
     volumes:
       - ${COWORK_STATE_DIR:-./state}/diary:/app/data
@@ -53,6 +54,7 @@ services:
       - "${COWORK_PORT:-8021}:8021"
     environment:
       UI_PORT: 8021
+      MEMBER_OUTBOUND_ORIGINS: ${MEMBER_OUTBOUND_ORIGINS:-}
       UI_AUTH_TOKEN: ${UI_AUTH_TOKEN:-}
       LEGACY_AUTH_COMPAT: ${LEGACY_AUTH_COMPAT:-false}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}

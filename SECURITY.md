@@ -50,25 +50,23 @@ sidecar runs in open mode; that mode is for local development only.
 
 ## Outbound-request policy (SSRF)
 
-Authenticated members can register outbound targets: OpenAI-compatible
-inference providers, and personal storage connections (WebDAV/Nextcloud/S3)
-used for browsing, knowledge intake, and diary corpus sync. Both are
-restricted to **public endpoints** for members:
+Custom inference and remote storage endpoints are administrator-controlled by
+ default. Members can use shared providers, local diary storage, and remote
+ origins explicitly listed by the operator in `MEMBER_OUTBOUND_ORIGINS` (a
+ comma-separated list of scheme + hostname + optional port, without paths).
 
-- A private-network denylist (`apps/web/server/ssrf.cjs`) rejects RFC1918,
-  loopback, link-local (including cloud metadata), CGNAT, ULA, and
-  unresolvable targets, plus DNS resolution is checked for every address a
-  hostname resolves to.
-- **Administrators are exempt**: a self-hosted administrator legitimately
-  connects LAN storage (a home NAS, an in-network Nextcloud) and local
-  inference. Only an admin can configure private targets.
-- The storage connection **save** route is the choke point; the browse/read
-  proxies and the sidecar's corpus sync re-check the saved URL as defense in
-  depth (a connection saved by an admin that was later demoted, or saved
-  before a guard existed, cannot be used by a member).
-- The Nextcloud login-flow **poll** endpoint comes from the remote server's
-  own response, so it is guarded too: a malicious server cannot redirect the
-  flow inward.
+- Exact origin matching rejects lookalike hostnames and alternate ports.
+- Administrators can connect private/local servers for self-hosted inference and storage.
+- A DNS pre-check alone is not a security boundary: a hostile hostname could
+  change its DNS answer between validation and connection. Members cannot
+  supply arbitrary hostnames, including apparently public ones. Only approve
+  origins whose DNS and service are trusted by the operator.
+- Saved provider chat, storage tests/browsing, Nextcloud poll and returned
+  credential URLs, and headers sent to the diary sidecar enforce the same policy.
+- Operator-configured external import folders are visible only to administrators.
+  Do not mount a shared import library containing another person's private files.
+- JSON requests are capped at 1 MiB. Import reads are capped at 2 MiB. Browser
+  responses include a Content Security Policy, anti-framing, and MIME-sniffing protection.
 
 ## Redirect refusal
 
@@ -82,8 +80,8 @@ endpoint comes from the operator's `config.yaml`, not from user input.
 
 ## Shared-endpoint throttling
 
-Chat and the diary Insights reflections are the routes that trigger a full
-model call, and they share one inference endpoint. Requests to them are
+Ordinary chat and diary conversation requests trigger model calls through the
+chat endpoint. Requests to them are
 throttled per user (60 requests/minute by default, adjustable via
 `LLM_RATE_LIMIT`) with a shared bucket, so one account cannot starve the
 endpoint for everyone. Sign-in and setup have their own stricter per-IP

@@ -42,7 +42,7 @@ Collect these before generating `.env`. `HUMAN-REQUIRED` rows need the operator;
 
 | Variable | Purpose | How to obtain | Secret | Status |
 | --- | --- | --- | --- | --- |
-| `DIARY_AUTH_TOKEN` | Shared bearer token: web→diary API calls, and the base for the web UI's own API auth | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HUMAN-REQUIRED` (empty disables UI API auth entirely — set it before any network exposure) |
+| `DIARY_AUTH_TOKEN` | Shared bearer token: web→diary API calls, used by the web server to authenticate to the sidecar | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HUMAN-REQUIRED` (set it before any network exposure; browser accounts remain authenticated) |
 | `INFERENCE_BASE_URL` | OpenAI-compatible chat endpoint used by both containers (chat completions + embeddings). Should end in `/v1` | Ask the human for their endpoint, e.g. `http://host.docker.internal:11434/v1` (Ollama), a LAN llama.cpp server, or a hosted OpenAI-compatible API | no | `HUMAN-REQUIRED` |
 | `INFERENCE_API_KEY` | Bearer key for that endpoint, if it requires one | Ask the human | **yes** | `HUMAN-REQUIRED` if the endpoint authenticates; otherwise leave empty |
 | `PUBLIC_ORIGIN` | The URL humans type into the browser (scheme + host + port). Locks the auth origin allow-list and derives the passkey ID | Ask the human, e.g. `http://192.168.1.20:8021` or `https://cowork.example.com` | no | `HUMAN-REQUIRED` for anything beyond localhost use |
@@ -52,11 +52,11 @@ Collect these before generating `.env`. `HUMAN-REQUIRED` rows need the operator;
 | `UI_AUTH_TOKEN` | Optional UI API token; falls back to `DIARY_AUTH_TOKEN` when empty | Leave empty unless the human wants it distinct | **yes** | `HAS-SAFE-DEFAULT` (empty = reuse `DIARY_AUTH_TOKEN`) |
 | `WEBAUTHN_RP_ID` | Passkey identifier; must match the browser's hostname | Derived from `PUBLIC_ORIGIN` when empty; override only for unusual proxy setups | no | `HAS-SAFE-DEFAULT` (derived) |
 | `TRUST_PROXY` | Set `true` only behind a reverse proxy so rate limiting/audit logs see real client IPs | Depends on deployment shape — ask if unclear | no | `HAS-SAFE-DEFAULT` (`false`) |
-| `LLM_RATE_LIMIT` | Per-user requests/minute cap on model-backed routes (chat, diary Insights reflections) — all users share one inference endpoint | Raise it only if the inference host has headroom | no | `HAS-SAFE-DEFAULT` (`60`) |
-| `LEGACY_AUTH_COMPAT` | Allows machine clients to authenticate with the shared token | Leave `true` (the `.env.example` default) if scripts/agents will call the API; humans log in with password/passkey either way | no | `HAS-SAFE-DEFAULT` (`false` in compose, `true` in `.env.example`) |
+| `LLM_RATE_LIMIT` | Per-user requests/minute cap on model-backed routes (chat and diary conversations) — all users share one inference endpoint | Raise it only if the inference host has headroom | no | `HAS-SAFE-DEFAULT` (`60`) |
+| `LEGACY_AUTH_COMPAT` | Allows machine clients to authenticate with the shared token | Leave `false` unless explicitly migrating trusted machine clients; humans use password/passkey | no | `HAS-SAFE-DEFAULT` (`false`) |
 | `AUX_INFERENCE_BASE_URL` | Optional separate endpoint for the diary's auxiliary classification model | Only if the human runs a dedicated aux endpoint | no | `HAS-SAFE-DEFAULT` (falls back to `INFERENCE_BASE_URL`) |
 | `DEFAULT_PROVIDER_ID`, `DEFAULT_PROVIDER_LABEL` | Identity/label of the pre-seeded default inference provider shown in Settings | Only if the human wants a different label than "Local inference" | no | `HAS-SAFE-DEFAULT` (`default` / `Local inference`) |
-| `DIARY_MONTH_FILE_TEMPLATE`, `DIARY_ENTRY_LAYOUT`, `DIARY_ENTRIES_PREFIX`, `DIARY_INDEX_ENABLED` | Diary file layout knobs (month filename template, daily vs monthly layout, heading prefix, retrieval index on/off) | Leave defaults unless the human wants specific file shapes in storage | no | `HAS-SAFE-DEFAULT` (see `.env.example`) |
+| `DIARY_MONTH_FILE_TEMPLATE`, `DIARY_ENTRY_LAYOUT`, `DIARY_ENTRIES_PREFIX`, `DIARY_INDEX_ENABLED` | Diary file layout knobs (month filename template, daily vs monthly layout, heading prefix, standing sections on/off) | Leave defaults unless the human wants specific file shapes in storage | no | `HAS-SAFE-DEFAULT` (see `.env.example`) |
 | `DIARY_LEGACY_USER_ID` | Optional one-release direct Diary API user mapping for legacy clients | Only if the human runs a legacy Diary client | no | `HAS-SAFE-DEFAULT` (empty) |
 | `CORPUS_BACKEND`, `CORPUS_ROOT`, `WEBDAV_BASE_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD` | Optional external diary storage backend | Only if the human wants storage outside the local state volume; see `services/diary/README.md` | `WEBDAV_PASSWORD` **yes** | `HAS-SAFE-DEFAULT` (`local`) |
 | `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_SESSION_TOKEN`, `S3_REGION`, `S3_PREFIX` | S3-compatible diary storage (MinIO, Backblaze B2, AWS S3, Garage, ...) when `CORPUS_BACKEND=s3`; per-account S3 connections from the app's Settings ignore these | Only if the human wants object storage; obtain endpoint/bucket/keys from them | `S3_SECRET_ACCESS_KEY`, `S3_SESSION_TOKEN` **yes** | `HAS-SAFE-DEFAULT` (`local`) |
@@ -122,7 +122,7 @@ startup, prints it to its log, and writes it to the state volume:
 
 ```sh
 docker compose logs web | grep "FIRST-RUN SETUP CODE"
-# expect exactly one line:  FIRST-RUN SETUP CODE: <32 hex chars>
+# expect exactly one line:  FIRST-RUN SETUP CODE: <one-time code>
 ```
 
 If the logs have rotated, read the file instead (same value):
@@ -185,8 +185,11 @@ ls "${COWORK_STATE_DIR:-./state}/diary" "${COWORK_STATE_DIR:-./state}/web"
 # expect: both directories non-empty (SQLite DB, corpus/, accounts data)
 
 # 4.7 End-to-end: the human logs one diary entry from the UI, then:
-test -n "$(find "${COWORK_STATE_DIR:-./state}/diary/corpus" -name '*.md' -mmin -5)" && echo "diary write durable"
-# expect: "diary write durable"
+find "${COWORK_STATE_DIR:-./state}/diary/users" -path '*/corpus/*' -name '*.md' -mmin -5 -print
+# For the account that wrote the entry, expect a path under users/<user-id>/corpus.
+# Remote storage: inspect the configured bucket/WebDAV path instead; no local
+# Markdown file is expected. Do not read or print another user's diary content.
+# expect: the new entry file for that account (local storage only)
 ```
 
 ## 5. Common failure modes
@@ -210,8 +213,7 @@ test -n "$(find "${COWORK_STATE_DIR:-./state}/diary/corpus" -name '*.md' -mmin -
   `CORPUS_BACKEND`/WebDAV configuration. The SQLite index and write journal
   live under `${COWORK_STATE_DIR}/diary` — never point two deployments at the
   same directory.
-- **Setup code rejected by the wizard.** Copy it again from §3.4 — it is 32 hex
-  characters, whitespace-trimmed. If the file is gone but no admin account
+- **Setup code rejected by the wizard.** Copy it again from §3.4 — preserve its exact characters and trim surrounding whitespace. If the file is gone but no admin account
   exists, the state directory was partially reset; see the next bullet for a
   clean start.
 - **Botched onboarding, start over.** Stop the stack
@@ -224,8 +226,8 @@ test -n "$(find "${COWORK_STATE_DIR:-./state}/diary/corpus" -name '*.md' -mmin -
   `PUBLIC_ORIGIN` over HTTPS (reverse proxy with TLS) or have humans use
   password login; `WEBAUTHN_RP_ID` must also match the browser's hostname.
 - **Auth disabled warning in logs** (`API authentication is disabled`):
-  `DIARY_AUTH_TOKEN`/`UI_AUTH_TOKEN` are both empty. Acceptable only on a
-  single trusted machine; set a token before any network exposure.
+  `DIARY_AUTH_TOKEN` is empty. Browser login is still required, but the internal
+  diary connection is unprotected. Set the service token before network exposure.
 
 ## 6. Non-goals — things an agent must never do
 
@@ -242,3 +244,15 @@ test -n "$(find "${COWORK_STATE_DIR:-./state}/diary/corpus" -name '*.md' -mmin -
   screenshots. It grants full API access.
 - **Never wipe the state directory** (or any data inside it) without the
   human's explicit confirmation.
+
+## Endpoint approval and auxiliary inference
+
+`MEMBER_OUTBOUND_ORIGINS` defaults to empty, reserving custom inference/storage
+hosts for administrators. Set a comma-separated list of trusted origins to let
+members connect those services. Include the exact scheme and port, omit paths,
+and approve only operator-trusted DNS names. Restart the web container after changes.
+
+`AUX_INFERENCE_BASE_URL` defaults to `INFERENCE_BASE_URL`.
+`AUX_INFERENCE_API_KEY` defaults to `INFERENCE_API_KEY` when unset; set it to an
+explicit empty value for an unauthenticated auxiliary server. Configure actual
+model IDs for both clients; `default` works only if the server supports that alias.
