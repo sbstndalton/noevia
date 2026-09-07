@@ -100,3 +100,7 @@ Application administrators cannot browse another user's private content, but a
 host administrator with filesystem access can read unencrypted workspace and
 corpus files. Secrets belong in `.env` or a secret manager and must never be
 committed.
+
+A full description of the security model — the diary sidecar's trust
+boundary, the outbound-request (SSRF) policy, redirect refusal, credential
+storage, and an operator hardening checklist — lives in `SECURITY.md`.
