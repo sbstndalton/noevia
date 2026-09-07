@@ -21,8 +21,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/web/server/package-lock.json
+      # The tests exercise the real server (auth.cjs needs better-sqlite3 and
+      # friends from the nested server package), so install both trees.
       - run: npm ci --no-fund --no-audit
+      - run: npm ci --no-fund --no-audit
+        working-directory: apps/web/server
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
