@@ -37,15 +37,21 @@ internet except to whatever inference endpoint the operator configures.
 
 ## 2. Required inputs
 
-Collect these before generating `.env`. `HUMAN-REQUIRED` rows need the operator;
+None of these are needed to *start* the stack: every service env var in
+`compose.yaml` is `${VAR:-default}`, so `docker compose up` with no `.env` at
+all reaches a healthy running state. Start it, open the app at whatever address
+you reach it on (a bare LAN IP is fine), and the first-run wizard collects the
+public origin and the inference endpoint itself. `HUMAN-REQUIRED` rows below
+still need the operator *for a non-default choice* — mostly external storage
+credentials and model management, which the wizard does not cover.
 `HAS-SAFE-DEFAULT` rows can ship as-is and be revisited later.
 
 | Variable | Purpose | How to obtain | Secret | Status |
 | --- | --- | --- | --- | --- |
-| `DIARY_AUTH_TOKEN` | Shared bearer token: web→diary API calls, used by the web server to authenticate to the sidecar | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HUMAN-REQUIRED` (set it before any network exposure; browser accounts remain authenticated) |
-| `INFERENCE_BASE_URL` | OpenAI-compatible chat endpoint used by both containers (chat completions + embeddings). Should end in `/v1` | Ask the human for their endpoint, e.g. `http://host.docker.internal:11434/v1` (Ollama), a LAN llama.cpp server, or a hosted OpenAI-compatible API | no | `HUMAN-REQUIRED` |
+| `DIARY_AUTH_TOKEN` | Shared bearer token: web→diary API calls, used by the web server to authenticate to the sidecar | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HAS-SAFE-DEFAULT` (empty runs the internal web→diary link unauthenticated in LAN-only mode with a log warning; set it before any network exposure) |
+| `INFERENCE_BASE_URL` | OpenAI-compatible chat endpoint used by both containers (chat completions + embeddings). Should end in `/v1` | Ask the human for their endpoint, e.g. `http://host.docker.internal:11434/v1` (Ollama), a LAN llama.cpp server, or a hosted OpenAI-compatible API | no | `HAS-SAFE-DEFAULT` (the wizard's provider step collects this in-app; setting it here only pre-seeds the default) |
 | `INFERENCE_API_KEY` | Bearer key for that endpoint, if it requires one | Ask the human | **yes** | `HUMAN-REQUIRED` if the endpoint authenticates; otherwise leave empty |
-| `PUBLIC_ORIGIN` | The URL humans type into the browser (scheme + host + port). Locks the auth origin allow-list and derives the passkey ID | Ask the human, e.g. `http://192.168.1.20:8021` or `https://cowork.example.com` | no | `HUMAN-REQUIRED` for anything beyond localhost use |
+| `PUBLIC_ORIGIN` | The URL humans type into the browser (scheme + host + port). Locks the auth origin allow-list and derives the passkey ID | The wizard prefills it from the address the operator loaded the app at and writes what they confirm; set it here only to pre-seed. `https://` is recommended; a private-network `http://` address (LAN IP, bare LAN hostname, localhost) is accepted with a warning, a public `http://` domain is not | no | `HAS-SAFE-DEFAULT` (`http://localhost:8021`) |
 | `COWORK_PORT` | Host port for the web UI | Pick a free port | no | `HAS-SAFE-DEFAULT` (`8021`) |
 | `COWORK_STATE_DIR` | Host directory for all durable state (diary corpus + SQLite journal, web accounts/secrets/first-run code) | Pick a host path on a volume that survives restarts | no | `HAS-SAFE-DEFAULT` (`./state`) |
 | `DIARY_CHAT_MODEL`, `DIARY_AUX_MODEL`, `EMBEDDING_MODEL` | Model names the inference endpoint serves | Ask the human which models their endpoint exposes | no | `HAS-SAFE-DEFAULT` (`default`) |
@@ -65,9 +71,9 @@ Collect these before generating `.env`. `HUMAN-REQUIRED` rows need the operator;
 | `COWORK_VERSION` | Image tag for built images | Leave as `dev` unless the human asks for a pinned tag | no | `HAS-SAFE-DEFAULT` (`dev`) |
 
 `STOP AND ASK THE HUMAN:` for every `HUMAN-REQUIRED` row above you lack a value
-for — at minimum the inference endpoint (and its key if any), the public origin,
-and confirmation that a generated token is acceptable. Do not proceed to `.env`
-creation with guesses in these fields.
+for. Do not guess in those fields. The public origin, the inference endpoint and
+its key, and the diary token are no longer among them — start the stack without
+them and let the operator finish setup in the browser.
 
 ## 3. Deploy steps
 
@@ -76,20 +82,26 @@ block after fixing the cause is safe.
 
 ### 3.1 Create `.env`
 
+This step is **optional**. With no `.env` at all the stack starts on the
+defaults in `compose.yaml`, and the wizard collects the public origin and the
+inference endpoint in the browser (§3.5). Create one only to pre-configure
+values the wizard does not cover — external diary storage (S3/WebDAV), local
+model management, `TRUST_PROXY` behind a reverse proxy — or because the operator
+prefers pre-seeding:
+
 ```sh
 cp .env.example .env
 ```
 
-Then fill it in — either with an editor, or non-interactively (values shown
-with the placeholders the human gave you; adjust all of them):
+Then fill in only the rows the operator actually chose, e.g.:
 
 ```sh
 TOKEN="$(openssl rand -hex 32)"   # confirm with the human that generating is OK
 cat >> .env <<EOF
 DIARY_AUTH_TOKEN=${TOKEN}
-INFERENCE_BASE_URL=<ask-the-human>
+INFERENCE_BASE_URL=<optional-pre-seed>
 INFERENCE_API_KEY=<ask-the-human-if-needed>
-PUBLIC_ORIGIN=<ask-the-human>
+PUBLIC_ORIGIN=<optional-pre-seed; the wizard sets this otherwise>
 EOF
 chmod 600 .env
 ```
@@ -139,7 +151,12 @@ the proof that whoever creates the first account controls the server.
 
 `STOP AND ASK THE HUMAN:` this step is theirs, in a browser:
 
-1. Open `PUBLIC_ORIGIN` (e.g. `http://<host>:8021`).
+1. Open the app at whatever address they reach the host on — `PUBLIC_ORIGIN`
+   if it was pre-seeded, otherwise just the host's LAN IP and port
+   (e.g. `http://192.168.1.20:8021`).
+   The wizard's first step confirms this address as the canonical origin: it is
+   prefilled from what they loaded, warns when it is a plain-http LAN address
+   (passkeys need HTTPS), and rejects a public `http://` domain.
 2. The setup wizard walks them through: setup code + admin username/password,
    inference provider check, diary opt-in, model-manager guidance, display
    preferences, optional passkey.

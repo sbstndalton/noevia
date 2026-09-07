@@ -26,17 +26,17 @@
       "name": "DIARY_AUTH_TOKEN",
       "purpose": "Shared bearer token for web->diary calls and the base for the web UI's own API auth",
       "secret": true,
-      "human_required": true,
-      "default": null,
-      "note": "Generate with: openssl rand -hex 32. Empty disables UI API auth entirely; set before any network exposure."
+      "human_required": false,
+      "default": "",
+      "note": "Optional. Empty runs the internal web->diary connection unauthenticated (LAN-only mode) and just logs a warning; it does not block boot. Generate with: openssl rand -hex 32 before any network exposure."
     },
     {
       "name": "INFERENCE_BASE_URL",
       "purpose": "OpenAI-compatible chat endpoint (should end in /v1) used by both containers",
       "secret": false,
-      "human_required": true,
+      "human_required": false,
       "default": "http://host.docker.internal:11434/v1",
-      "note": "Ask the human for their endpoint; host.docker.internal works for loopback services on the Docker host."
+      "note": "Configurable post-boot: the first-run wizard's provider step collects the endpoint (any OpenAI-compatible one) and stores it in app state. Setting it here only pre-seeds the default; host.docker.internal works for loopback services on the Docker host."
     },
     {
       "name": "INFERENCE_API_KEY",
@@ -50,8 +50,9 @@
       "name": "PUBLIC_ORIGIN",
       "purpose": "Public URL humans browse to; locks the auth origin allow-list and derives the passkey ID",
       "secret": false,
-      "human_required": true,
-      "default": null
+      "human_required": false,
+      "default": "http://localhost:8021",
+      "note": "Configurable post-boot: the first-run wizard prefills this from the address you loaded the app at and writes the value you confirm. https:// is recommended; a private-network http:// address (LAN IP, bare LAN hostname, localhost) is accepted with a warning, a public http:// domain is not."
     },
     {
       "name": "COWORK_PORT",

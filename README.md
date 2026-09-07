@@ -10,19 +10,36 @@ The core requires only an OpenAI-compatible inference API. Local-folder corpus s
 ## Quick start
 
 ```sh
-cp .env.example .env
-# Set your inference endpoint and model IDs in .env.
 docker compose up --build -d
 ```
 
-Open `http://localhost:8021`. The Diary service stays on the internal Compose
-network unless an operator deliberately publishes its port for legacy clients.
+No `.env` is required: every service variable in `compose.yaml` has a working
+default. Open the app at `http://localhost:8021`, or at the host's LAN address
+from another device (e.g. `http://192.168.1.20:8021`) — the first-run wizard
+confirms that address as the canonical origin and collects the inference
+endpoint, models, and everything else in the browser.
+
+Pre-configuring is still supported if you prefer it, and is still the only way
+to set things the wizard does not cover (S3/WebDAV diary storage, Lemonade
+model management, `TRUST_PROXY`):
+
+```sh
+cp .env.example .env
+# Set your inference endpoint, model IDs, and any storage settings in .env.
+docker compose up --build -d
+```
+
+The Diary service stays on the internal Compose network unless an operator
+deliberately publishes its port for legacy clients.
 
 On first launch, noevia prints a one-time setup code and its protected file
 location to the web container log. Enter that code in the onboarding screen to
 create the first administrator. The code file is deleted after setup. For
 passkeys, serve noevia from a stable HTTPS origin and set `PUBLIC_ORIGIN` and
-`WEBAUTHN_RP_ID`; plain HTTP is supported only for `localhost` development.
+`WEBAUTHN_RP_ID`. Plain HTTP works for `localhost` and for private-network
+addresses (a LAN IP or a bare LAN hostname) — the wizard warns that passkeys and
+other secure-context browser APIs will not work there, and you sign in with a
+password instead. A public `http://` domain is rejected; use `https://`.
 Diary is an optional per-user app selected during onboarding or later in
 Settings; noevia's project and chat workspace works without it.
 
