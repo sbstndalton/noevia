@@ -121,3 +121,13 @@ Before exposing the deployment beyond a trusted machine:
 If you find a security problem, please open an issue with the minimum detail
 needed to reproduce it, or a fix — this is a self-hosted project, and
 reports from real deployments are the most useful kind.
+
+### Diary workspace files and browser folders
+
+Markdown editing is scoped to the current user's configured corpus, rejects unsafe
+relative paths, requires the read version, and performs conditional writes. The
+editor limit is 512 KiB per file. Browser-folder conversations have a separate bounded
+16 MiB request allowance and process snapshots in memory; normal requests retain the
+1 MiB limit. Local folder handles are never persisted. Optional sync only writes to
+the existing approved storage connection and refuses conflicting remote contents.
+See [Diary workspace](docs/diary-workspace.md) for limits and browser behavior.

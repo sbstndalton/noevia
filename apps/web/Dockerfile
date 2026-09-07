@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-fund --no-audit
 COPY . .
-RUN npm run build
+RUN node --test tests/*.test.cjs && npm run build
 
 # Runtime must be glibc (Debian), not Alpine/musl: sqlite-vec's prebuilt vec0.so
 # is glibc-linked and cannot load on musl (SQLite retries with a .so suffix -> the
