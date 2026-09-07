@@ -12,6 +12,10 @@ Two ground rules before you start:
   value only the operator can supply. Ask, wait for the answer, then proceed.
 - **Never commit `.env`.** It holds real credentials by design.
 
+`SECURITY.md` describes the trust model you are deploying into — read its
+operator hardening checklist (sidecar stays internal, real `PUBLIC_ORIGIN`,
+HTTPS via reverse proxy) before exposing this stack beyond one machine.
+
 ---
 
 ## 1. Preconditions
@@ -48,6 +52,7 @@ Collect these before generating `.env`. `HUMAN-REQUIRED` rows need the operator;
 | `UI_AUTH_TOKEN` | Optional UI API token; falls back to `DIARY_AUTH_TOKEN` when empty | Leave empty unless the human wants it distinct | **yes** | `HAS-SAFE-DEFAULT` (empty = reuse `DIARY_AUTH_TOKEN`) |
 | `WEBAUTHN_RP_ID` | Passkey identifier; must match the browser's hostname | Derived from `PUBLIC_ORIGIN` when empty; override only for unusual proxy setups | no | `HAS-SAFE-DEFAULT` (derived) |
 | `TRUST_PROXY` | Set `true` only behind a reverse proxy so rate limiting/audit logs see real client IPs | Depends on deployment shape — ask if unclear | no | `HAS-SAFE-DEFAULT` (`false`) |
+| `LLM_RATE_LIMIT` | Per-user requests/minute cap on model-backed routes (chat, diary Insights reflections) — all users share one inference endpoint | Raise it only if the inference host has headroom | no | `HAS-SAFE-DEFAULT` (`60`) |
 | `LEGACY_AUTH_COMPAT` | Allows machine clients to authenticate with the shared token | Leave `true` (the `.env.example` default) if scripts/agents will call the API; humans log in with password/passkey either way | no | `HAS-SAFE-DEFAULT` (`false` in compose, `true` in `.env.example`) |
 | `AUX_INFERENCE_BASE_URL` | Optional separate endpoint for the diary's auxiliary classification model | Only if the human runs a dedicated aux endpoint | no | `HAS-SAFE-DEFAULT` (falls back to `INFERENCE_BASE_URL`) |
 | `DEFAULT_PROVIDER_ID`, `DEFAULT_PROVIDER_LABEL` | Identity/label of the pre-seeded default inference provider shown in Settings | Only if the human wants a different label than "Local inference" | no | `HAS-SAFE-DEFAULT` (`default` / `Local inference`) |

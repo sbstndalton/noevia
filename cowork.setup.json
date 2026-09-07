@@ -25,6 +25,7 @@
     { "name": "UI_AUTH_TOKEN", "purpose": "Optional distinct UI API token", "secret": true, "human_required": false, "default": "", "note": "Empty falls back to DIARY_AUTH_TOKEN." },
     { "name": "WEBAUTHN_RP_ID", "purpose": "Passkey identifier; must match the browser hostname", "secret": false, "human_required": false, "default": "", "note": "Derived from PUBLIC_ORIGIN when empty." },
     { "name": "TRUST_PROXY", "purpose": "true only behind a reverse proxy, so rate limiting/audit logs see real client IPs", "secret": false, "human_required": false, "default": "false" },
+    { "name": "LLM_RATE_LIMIT", "purpose": "Per-user requests/minute cap on model-backed routes (chat, diary Insights reflections); all users share one inference endpoint", "secret": false, "human_required": false, "default": "60" },
     { "name": "LEGACY_AUTH_COMPAT", "purpose": "Allows machine clients to authenticate with the shared token", "secret": false, "human_required": false, "default": "true in .env.example, false in compose.yaml" },
     { "name": "AUX_INFERENCE_BASE_URL", "purpose": "Optional separate endpoint for the diary's auxiliary classification model", "secret": false, "human_required": false, "default": "falls back to INFERENCE_BASE_URL" },
     { "name": "DEFAULT_PROVIDER_ID", "purpose": "ID of the pre-seeded default inference provider entry", "secret": false, "human_required": false, "default": "default" },
