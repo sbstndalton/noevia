@@ -61,6 +61,11 @@ services:
       LEGACY_AUTH_COMPAT: ${LEGACY_AUTH_COMPAT:-false}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      # Set this if you also reach Cowork over a bare LAN IP (e.g. Unraid's
+      # own address) alongside PUBLIC_ORIGIN (a Cloudflare Tunnel hostname,
+      # say) — otherwise password login from the LAN IP 403s. Passkeys still
+      # only work from PUBLIC_ORIGIN's hostname; see README.
+      ADDITIONAL_TRUSTED_ORIGINS: ${ADDITIONAL_TRUSTED_ORIGINS:-}
       CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
       CORPUS_ROOT: ${CORPUS_ROOT:-}
       WEBDAV_BASE_URL: ${WEBDAV_BASE_URL:-}

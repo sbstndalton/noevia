@@ -26,6 +26,17 @@ passkeys, serve Cowork from a stable HTTPS origin and set `PUBLIC_ORIGIN` and
 Diary is an optional per-user app selected during onboarding or later in
 Settings; Cowork's project and chat workspace works without it.
 
+Password/session login is pinned to `PUBLIC_ORIGIN` and rejects requests from
+any other `Origin` (CSRF hardening) — so if you also reach Cowork over a bare
+LAN IP or a second hostname (e.g. behind a Cloudflare Tunnel *and* directly on
+your LAN), sign-in from that second origin 403s with "origin not allowed"
+until you add it to `ADDITIONAL_TRUSTED_ORIGINS` (comma-separated, exact
+scheme+host+port, e.g. `http://10.0.0.5:8021`). This only extends
+password/session login. Passkeys are exempt and will never work from a second
+origin: the passkey's RP ID is fixed to `PUBLIC_ORIGIN`'s hostname, and
+WebAuthn refuses IP-address origins outright — sign in with a password from a
+secondary origin, or use `PUBLIC_ORIGIN`'s hostname for passkeys.
+
 Persistent files live under `./state` by default. Set `COWORK_STATE_DIR` to an absolute durable path in production; do not place persistent state inside a disposable source checkout.
 
 For a first deployment — including one performed by a coding agent — follow [`DEPLOY.md`](DEPLOY.md) step by step; [`cowork.setup.json`](cowork.setup.json) mirrors its inputs and health checks in machine-readable form.
