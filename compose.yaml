@@ -77,6 +77,12 @@ services:
       MODEL_MANAGER_KIND: ${MODEL_MANAGER_KIND:-none}
       MODEL_MANAGER_BASE_URL: ${MODEL_MANAGER_BASE_URL:-http://host.docker.internal:11434}
       MODEL_MANAGER_API_KEY: ${MODEL_MANAGER_API_KEY:-}
+      # Optional MCP server (step 15). Empty = no MCP toolboxes, which is a
+      # healthy state, not a degraded one.
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-}
+      # Origins that are the SAME Nextcloud the MCP server talks to. Only a
+      # credential stored for one of these is ever forwarded. Empty = never.
+      MCP_NEXTCLOUD_ORIGINS: ${MCP_NEXTCLOUD_ORIGINS:-}
       UI_DATA_DIR: /app/server/ui-data
     volumes:
       - ${COWORK_STATE_DIR:-./state}/web:/app/server/ui-data
