@@ -13,3 +13,6 @@ deploy/private/
 # Python
 __pycache__/
 *.pyc
+
+# Local QA may link generated assets outside a sync-managed checkout.
+/apps/web/dist
