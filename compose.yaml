@@ -86,6 +86,10 @@ services:
       # Omitting auth means none — a server never inherits the credential by
       # accident. Takes precedence over MCP_SERVER_URL when set.
       MCP_SERVERS: ${MCP_SERVERS:-}
+      # Which curated toolboxes are offered in the picker. Unset offers all of
+      # them; `core` is always offered. Curation decides what a box contains,
+      # this decides whether anyone wants to see it.
+      ENABLED_TOOLBOXES: ${ENABLED_TOOLBOXES:-}
       # Origins that are the SAME Nextcloud the MCP server talks to. Only a
       # credential stored for one of these is ever forwarded. Empty = never.
       MCP_NEXTCLOUD_ORIGINS: ${MCP_NEXTCLOUD_ORIGINS:-}
