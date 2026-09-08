@@ -79,7 +79,13 @@ services:
       MODEL_MANAGER_API_KEY: ${MODEL_MANAGER_API_KEY:-}
       # Optional MCP server (step 15). Empty = no MCP toolboxes, which is a
       # healthy state, not a degraded one.
+      # One Nextcloud MCP server, the historical form.
       MCP_SERVER_URL: ${MCP_SERVER_URL:-}
+      # Several servers: `id|url|auth` entries, comma separated. auth is
+      # `nextcloud` (forward the user's Nextcloud app password) or `none`.
+      # Omitting auth means none — a server never inherits the credential by
+      # accident. Takes precedence over MCP_SERVER_URL when set.
+      MCP_SERVERS: ${MCP_SERVERS:-}
       # Origins that are the SAME Nextcloud the MCP server talks to. Only a
       # credential stored for one of these is ever forwarded. Empty = never.
       MCP_NEXTCLOUD_ORIGINS: ${MCP_NEXTCLOUD_ORIGINS:-}
