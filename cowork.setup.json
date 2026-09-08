@@ -300,6 +300,20 @@
       "secret": true,
       "human_required": false,
       "default": ""
+    },
+    {
+      "name": "MCP_SERVER_URL",
+      "purpose": "Optional MCP server (streamable-http) whose curated toolboxes the model may call",
+      "secret": false,
+      "human_required": false,
+      "default": ""
+    },
+    {
+      "name": "MCP_NEXTCLOUD_ORIGINS",
+      "purpose": "Comma-separated origins that are the same Nextcloud the MCP server uses; a user's stored app password is forwarded only to these",
+      "secret": false,
+      "human_required": false,
+      "default": ""
     }
   ],
   "health_checks": [
