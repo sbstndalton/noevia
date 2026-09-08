@@ -90,6 +90,9 @@ services:
       # them; `core` is always offered. Curation decides what a box contains,
       # this decides whether anyone wants to see it.
       ENABLED_TOOLBOXES: ${ENABLED_TOOLBOXES:-}
+      # Service tokens for MCP servers configured with `bearer:NAME`. The name
+      # is referenced from MCP_SERVERS; the value lives here and never in a URL.
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       # Origins that are the SAME Nextcloud the MCP server talks to. Only a
       # credential stored for one of these is ever forwarded. Empty = never.
       MCP_NEXTCLOUD_ORIGINS: ${MCP_NEXTCLOUD_ORIGINS:-}
