@@ -10,8 +10,8 @@ See [the code-based roadmap audit](roadmap-audit.md) for current status,
 evidence, corrected assumptions, and [the next-task prompt](codex-roadmap-handoff.md).
 Reliability, document/image support, onboarding correctness, Diary navigation and
 landing, thinking effort v1, reasoning-only handling and rate sample guards have
-shipped. Current rollout: `3b1e256`; DOCX body/table extraction is verified locally
-and awaiting image checks. See the audit for verification and precise limits.
+shipped. Current rollout: `e18f1de`, including DOCX body/table extraction. App-password
+lifecycle is verified locally; DAV is still unavailable. See the audit for verification and precise limits.
 Next: storage architecture/app passwords, then appliance onboarding. Wider
 thinking budgets, model quality/latency and skills/tool research remain separate
 work. Historical specifications below are not evidence of shipped behavior.
@@ -23,7 +23,7 @@ work. Historical specifications below are not evidence of shipped behavior.
 - **Diary extras are opt-in and OFF on reload.** The required companion pipeline
   remains active; its model is not replaced by the extras model selector.
 - **PDF/OCR/image support has shipped.** Original files, OCR status and categorized
-  uploads work; bounded DOCX body/table extraction is awaiting rollout. Model accuracy and latency remain limitations.
+  uploads work; bounded DOCX body/table extraction is deployed. Model accuracy and latency remain limitations.
 - **Skills remain planning work.** No skills framework has been selected.
 
 ## Context

@@ -8,14 +8,21 @@ updated.
 
 ---
 
+## 2026-09-10 — revocable device app passwords
+
+Per-user name/scope/date metadata, shown-once random secrets, Argon2id hashes and
+individual revocation are available in Profile & security. Credentials do not
+permit account login or chat. Sharing remains unavailable; no new listener opens.
+304 web / 171 diary tests (3 skipped), typecheck/build and synthetic real-app
+browser checks pass. Candidate image verification and rollout pending.
+
 ## 2026-09-10 — DOCX main-body text and tables
 
 Unified uploads and connected-folder refresh retain originals and extract bounded
 DOCX body/table text in the private worker, with explicit partial-coverage labels.
 Malformed replacements clear stale text and remain downloadable; no dependencies
 or corpus changes. 301 web / 171 diary tests (3 skipped), typecheck/build, six
-local worker tests and synthetic real-worker browser QA pass. Candidate Linux
-web/PDF/OCR checks and rollout pending. See the roadmap audit for parser limits.
+local worker tests and synthetic real-worker browser QA pass. 254 candidate Linux server and eight worker tests passed; deployed `e18f1de`. See the roadmap audit for parser limits.
 
 ## 2026-09-10 — engine throughput omits unstable short samples
 

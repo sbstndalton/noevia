@@ -3,11 +3,11 @@
 ## Current handoff status — reconciled 2026-09-10
 
 The status table below is current; dated follow-ups preserve earlier evidence.
-Application **`3b1e256`** is deployed across all three services. Onboarding,
+Application **`e18f1de`** is deployed across all three services. Onboarding,
 Diary navigation/scaffolding/landing, thinking effort v1, reasoning-only answer
-handling and reported-rate sample guards have shipped. DOCX body extraction is
-verified locally and awaiting its candidate image checks and rollout. Current
-verification: **301 web tests**, typecheck/build and **171 diary tests passed,
+handling and reported-rate sample guards have shipped. DOCX body extraction is deployed. App-password lifecycle is verified locally;
+DAV remains unavailable. Current
+verification: **304 web tests**, typecheck/build and **171 diary tests passed,
 3 skipped** (two existing warnings). Model accuracy, latency, uncapped local
 thinking and storage architecture remain open. Diary extras stay OFF on reload;
 the companion pipeline and all write approvals remain unchanged.
@@ -86,9 +86,9 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 6c / 6d: memory ownership/privacy | Architectural constraints | Disk-backed diary memory already feeds context. Keep the single-store and no-cross-profile diary-content boundaries; these are not standalone missing UI features. |
 | 7a: Unraid state default | Original example hazard addressed | `deploy/examples/unraid-compose-manager.yml` requires COWORK_STATE_DIR explicitly. Generic `compose.yaml` and the manifest still use ./state. No named-volume default or explicit /boot-path rejection exists; those are separate remaining decisions. |
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
-| 7d / 7e / 7h / 7i: served storage | Not implemented | No noevia WebDAV server or noevia-issued app-password lifecycle found. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
+| 7d / 7e / 7h / 7i: served storage | Not implemented | App-password lifecycle verified locally; no noevia WebDAV server yet. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
-| 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX body/table reader verified locally, rollout pending; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
+| 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX body/table reader deployed; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
 | 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
 
 ## Corrected priority order
@@ -97,7 +97,7 @@ Completed: reliability, PDF/OCR/images, composers/model controls, onboarding
 correctness, Diary navigation/scaffolding/landing/refactor, thinking v1 and the
 reasoning-only and short-sample telemetry fixes.
 
-1. **DOCX:** finish candidate worker/web checks and rollout of bounded body/table extraction.
+1. **App passwords:** finish lifecycle image checks/rollout; no DAV exposure yet.
 2. **Storage architecture:** reconcile Workstream 7 into a scoped spec and implement
    app passwords before exposing DAV, then the appliance/storage onboarding flow.
 3. **Thinking/model follow-ups:** verify wider provider budgets and investigate
@@ -562,3 +562,24 @@ worker tests pass; two real PDF/OCR tests await candidate-image fixture executio
 Real worker + real app browser checks cover unified upload, byte-exact original
 download, labelled extracted model context, malformed replacement and responsive
 light/dark source rows. Only synthetic fixtures used. Rollout pending.
+
+
+DOCX rollout: **`e18f1de`** replaces `3b1e256` on all services after 254 isolated
+Linux server tests and all eight worker tests, including real synthetic PDF OCR.
+Health passes, zero restarts/OOM; previous release/configuration backups retained.
+
+### Workstream 7i — app-password lifecycle (2026-09-10)
+
+Profile & security now creates/list/revokes tenant-owned device credentials with
+immutable LAN/public scope, name and creation/last-used dates. Only the creation
+response returns the generated secret. Argon2id hashes, transactional account/cap
+checks, mint throttling, revoke/disable verification races and audit redaction are
+covered. No DAV listener is opened and no normal auth route accepts these tokens.
+The UI states sharing is not available yet. See spec-storage-appliance.md for the
+reconciled storage batches and endpoint policy prerequisites.
+
+304 web tests, typecheck/build and 171 diary tests (3 skipped) pass. Disposable
+real-app browser verifies member creation, cross-tenant list/revoke isolation,
+CSRF refusal, no Basic/Bearer/chat/password-login acceptance, shown-once state,
+revocation and both themes at 375/768/1440. No production credentials or corpus
+used. Candidate image checks and rollout pending.

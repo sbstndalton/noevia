@@ -131,3 +131,18 @@ editor limit is 512 KiB per file. Browser-folder conversations have a separate b
 1 MiB limit. Local folder handles are never persisted. Optional sync only writes to
 the existing approved storage connection and refuses conflicting remote contents.
 See [the diary doc](docs/diary.md) for limits and browser behavior.
+
+
+## Device app passwords (lifecycle prerequisite)
+
+Profile & security can mint and revoke per-user device credentials for future
+Diary file sharing. Sharing is currently unavailable and no new listener is
+opened. Credentials cannot authenticate account login, chat, or general API calls.
+Secrets are generated with 256 random bits and stored only as Argon2id hashes,
+shown in the creation response once (`Cache-Control: no-store`). Metadata is
+separate and never returns a hash or secret. Revoking a device leaves other devices
+and account passwords unchanged; deleting the user removes its credentials.
+Creation is bounded to five attempts/minute and 20 active credentials. Scope is
+immutable LAN/public, not proof of physical network reach. The future DAV listener
+must enforce endpoint/transport policy and throttle authentication before hashing.
+See [the storage contract](docs/spec-storage-appliance.md).

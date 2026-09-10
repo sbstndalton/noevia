@@ -260,3 +260,9 @@ Latest application rollout: **`3b1e256`**, replacing `34df7c2`, guards unstable
 reported engine-rate samples. Candidates and 250 serial isolated Linux server
 tests passed before cutover. Prior release and `.bak.before-3b1e256` backups
 retained. Diary/internal OCR health pass; zero restarts/OOM. No corpus access.
+
+
+Latest rollout: **`e18f1de`**, replacing `3b1e256`, adds DOCX body/table extraction.
+254 serial isolated Linux server tests and all eight worker tests (including PDF
+OCR) passed before cutover. Retain previous release and `.bak.before-e18f1de`
+backups. Diary/internal OCR health pass; zero restarts/OOM. Synthetic fixtures only.
