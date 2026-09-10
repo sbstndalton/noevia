@@ -212,7 +212,7 @@ everyone. Split it:
 sources panels, with up to seven dates from the latest two months and existing
 month navigation below. Operator-wide external source folders remain admin-only;
 exposing them requires tenant ownership, as recorded in the audit. Tests and
-synthetic responsive/manual checks pass. Rollout pending.
+synthetic responsive/manual checks pass. Deployed as `8edacf7`.
 
 **4c. Sending from the landing navigates to the day.** In `submit()`, when
 `scope === 'home'`, compute `entryDay` as it already does, then `setMonth(...)` /
@@ -233,6 +233,10 @@ doesn't swallow the rest: the diary landing, the composer, and the three panels 
 several 400+ character single-line JSX expressions — break the landing, calendar, and
 sidebar into components while touching them anyway, or the next change here is
 unreviewable. The `ui mockups/Diary-html` mockups are the reference.
+
+4d implemented 2026-09-10: landing, calendar and context panel are separate
+components; existing behavior, responsive styles and composer controls preserved.
+281 web / 171 diary tests and both synthetic browser suites pass. Rollout pending.
 
 Files: `apps/web/src/components/DiaryView.tsx` (split into `DiaryLanding.tsx`,
 `DiaryCalendar.tsx`, `DiaryContextPanel.tsx`), `apps/web/src/diary-workspace.ts`,

@@ -225,3 +225,10 @@ first-entry scaffolding. All three candidates built; 234 isolated Linux server
 tests passed before cutover. Prior release and `.bak.before-b34c33f` configuration
 backups retained. Diary/internal OCR health pass, zero restarts/OOM. No production
 corpus touched; frontend bundle remains unchanged.
+
+
+Latest application rollout: **`8edacf7`**, replacing `b34c33f`, adds empty/populated
+Diary landing views. All three candidate images built and 234 isolated Linux
+server tests passed before cutover. Retained prior release and configuration
+backups `.bak.before-8edacf7`. Diary/internal OCR health pass, zero restarts/OOM.
+Synthetic browser checks cover the UI; no production diary access used.

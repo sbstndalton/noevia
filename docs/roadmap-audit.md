@@ -80,9 +80,9 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Complete and deployed | First exchange in a new corpus journals create-only seed READMEs for Entries, AI Memory and Raw Sources. Existing journals/imported entry corpora are not migrated. |
-| 4b: diary landing | Implemented; rollout pending | Empty composer; populated Memory, recent Entries and Other sources panels. Operator-wide external import folders remain admin-only pending tenant ownership. |
+| 4b: diary landing | Complete and deployed | Empty composer; populated Memory, recent Entries and Other sources panels. Operator-wide external import folders remain admin-only pending tenant ownership. |
 | 4c: landing-to-day navigation | Complete and deployed | Send pins the browser-local date and routes history, streamed/local replies, errors and optional-tool scope to that day before preparation begins. Synthetic browser-local/server-backed regressions pass. |
-| 4d: diary visual/refactor work | Partial / defer cosmetics | Broad visual updates shipped, but the specified component split and new panel behavior have not. UI is now accepted; implement necessary behavior without restarting cosmetic work. |
+| 4d: diary visual/refactor work | Implemented; rollout pending | Landing, calendar and context sidebar are separate components. Existing tokens, responsive layout and shared composer behavior retained. |
 | 5a: duplicate tool-call guard | Complete and deployed | `tool-exchange.cjs` is instantiated inside `handleChat`; canonical arguments, exchange-only result reuse, read invalidation on attempted writes, and handler-level mocked streaming/fallback regression coverage. See Workstream 5a for denial/failure/validation semantics. |
 | 5: deferred tool disclosure; 5c: planner/executor | Research only | Static toolbox cap/budget resolution and message-level Fast/Smart routing remain. No dynamic find_tools or phase-based planner/executor implementation found. |
 | 5d: offline Wikipedia | Not implemented; optional | No Wikipedia toolbox found. Requires a selected available service; it is not a prerequisite for OCR, skills, or correctness fixes. |
@@ -423,3 +423,23 @@ passes; new diary-landing.cjs covers empty/populated/error states, file/day link
 no member external-source request, focus and 375/768/1440 in both themes. Manual
 synthetic browser and screenshot review confirmed layouts. No real diary access.
 Rollout pending. Calendar/context component extraction remains Workstream 4d.
+
+
+4b rollout: **`8edacf7`** replaces `b34c33f` on all services after candidate builds
+and 234 isolated Linux server tests. Retained prior release/configuration backups
+`.bak.before-8edacf7`. Diary/internal OCR health pass; zero restarts/OOM. No real
+diary access. Bundle `index-BQXZ5gIA.js` contains the verified landing changes.
+
+### Workstream 4d — readable Diary components (2026-09-10)
+
+DiaryLanding, DiaryCalendar and DiaryContextPanel now own their respective views.
+Calendar navigation/date labels/future-date guards and context file/storage actions
+retain the existing state owner and callbacks. The file browser's Up button now
+honors busy consistently with other navigation controls. No new state or layout
+system, persistence change or write-approval change.
+
+281 web tests, typecheck/build; 171 diary tests (3 skipped, two existing warnings)
+pass. Both synthetic Diary browser suites pass, including local-folder selection,
+history/extras/cancellation, file/day links, both themes and responsive widths.
+Manual synthetic send/calendar review confirmed reply routing, month controls and
+future-date restrictions. No real diary access. Rollout pending.
