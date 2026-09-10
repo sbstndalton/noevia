@@ -3,10 +3,10 @@
 ## Current handoff status — reconciled 2026-09-10
 
 The status table below is current; dated follow-ups preserve earlier evidence.
-Application **`2525de5`** is deployed across all three services. Onboarding,
+Application **`9e2bfbb`** is deployed across all three services. Onboarding,
 Diary navigation/scaffolding/landing, thinking effort v1, reasoning-only answer
 handling and reported-rate sample guards have shipped. DOCX body extraction is deployed. App-password lifecycle is deployed; a limited, default-off DAV endpoint is
-verified locally and awaiting rollout. Current
+deployed with sharing disabled. Current
 verification: **310 web tests**, typecheck/build and **171 diary tests passed,
 3 skipped** (two existing warnings). Model accuracy, latency, uncapped local
 thinking and storage architecture remain open. Diary extras stay OFF on reload;
@@ -70,7 +70,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | UI/sidebar | Accepted, complete for now | Deployed `cd717b0`; see `ui-reference-review.md`. Do not reopen the visual redesign. |
 | 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
 | 2 / 5b: thinking modes | V1 deployed; uncapped budgets remain open | Admin default + project/free-chat/extras override; documented parameter support, labelled hints, rejection fallback and explicit high output budget. Uncapped local generation is not promised. |
-| 3: wizard restructure | Verified, rollout pending | Fresh setup starts Welcome → Diary/chat choice → account, then provider/storage/preferences/passkey. Explicit hosted/external storage choices preserve saved configuration on skip/failure. Admin thinking preference is available; members retain their restricted flow. Insights was removed from the product and is not resurrected. |
+| 3: wizard restructure | Deployed | Fresh setup starts Welcome → Diary/chat choice → account, then provider/storage/preferences/passkey. Explicit hosted/external storage choices preserve saved configuration on skip/failure. Admin thinking preference is available; members retain their restricted flow. Insights was removed from the product and is not resurrected. |
 | 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Complete and deployed | First exchange in a new corpus journals create-only seed READMEs for Entries, AI Memory and Raw Sources. Existing journals/imported entry corpora are not migrated. |
@@ -628,3 +628,20 @@ waits for saved settings before enabling controls. No connection or corpus is
 contacted by these tests. Existing onboarding role/reload/focus checks pass in
 both themes at 375/768/1440; screenshot review passes. 310 web tests, typecheck,
 build and 171 Diary tests (3 skipped, two existing warnings) pass. Rollout pending.
+
+
+Wizard/DAV rollout: **`9e2bfbb`** replaces `2525de5` across all three services.
+263 isolated Linux server and eight worker tests passed before cutover. Direct
+home-LAN SSH verified health, zero restarts/OOM, and DAV port 0 (disabled). Prior
+release and `.bak.before-9e2bfbb` backups retained. No production corpus accessed.
+
+### Skills index correctness — 2026-09-10
+
+Existing skill metadata now includes the exact project filename independently of
+display name, so read_project_file has a usable argument. Metadata is JSON-escaped
+and bounded to 32 entries/6,144 characters with an omission notice; names,
+descriptions and versions have individual caps. Included filenames are never
+truncated. Source/RAG behavior and tool permissions are unchanged. This does not
+implement the proposed explicit skill selection UI or exclusive progressive
+loading. 314 web tests (including the actual chat handler request), typecheck/build
+and 171 Diary tests (3 skipped) pass. No new UI or production prompts. Rollout pending.

@@ -273,3 +273,10 @@ Latest rollout: **`2525de5`**, replacing `e18f1de`, adds app-password lifecycle.
 257 serial isolated Linux server and eight worker tests passed before cutover.
 Retain prior release and `.bak.before-2525de5` backups. Compose health passes;
 no production device credentials created and no sharing port exposed.
+
+
+Latest rollout: **`9e2bfbb`**, replacing `2525de5`, includes the limited DAV endpoint
+and verified wizard/storage choices. 263 serial isolated Linux server and eight
+worker tests passed. LAN SSH 10.69.0.130 verified web/OCR 200, healthy Diary,
+zero restarts/OOM, and DAV port 0. Prior release/config backups retained. The live
+Compose file has no new DAV publication. No real diary testing used.

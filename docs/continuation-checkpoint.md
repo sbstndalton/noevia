@@ -105,3 +105,10 @@ and hosted-save browser checks now pass. StoragePicker initial-load race fixed.
 310 web tests, typecheck/build and 171 Diary tests (3 skipped) pass. This supersedes
 the earlier focused-QA gap. Next candidate includes wizard and b45390a together,
 with production baseline still 2525de5. See latest audit for rollout status.
+
+
+Latest resume state: production is now 9e2bfbb across all services, healthy on LAN
+SSH 10.69.0.130, sharing disabled. Skills proposal and tool research plan are pushed.
+Current next batch fixes exact filenames/bounds in existing skill metadata; see
+latest audit for its test/rollout record. Earlier production baseline notes above
+are historical. Temporary fixture servers from the previous session were stopped.

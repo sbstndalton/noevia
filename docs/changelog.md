@@ -8,6 +8,14 @@ updated.
 
 ---
 
+## 2026-09-10 — skill metadata names the file to load
+
+The existing skill index now supplies exact filenames, escapes metadata as JSON,
+and bounds catalogue size. Tool permissions and source loading remain unchanged.
+314 web tests, typecheck/build and 171 Diary tests (3 skipped) pass, including a
+real-handler prompt assertion. Full instruction-skill lifecycle remains planned.
+Rollout pending. Wizard and limited default-off DAV are deployed as `9e2bfbb`.
+
 ## 2026-09-10 — explicit Diary and storage choices during setup
 
 Fresh setup asks Diary/chat before account creation. Storage offers server-held

@@ -89,3 +89,8 @@ loading, metadata/body limits, RAG failure paths, missing toolbox, malformed fil
 reload persistence, and all three approval decisions. Verify a disabled skill is
 absent from both index and fallback context. Test provider failure and interrupted
 loads without extra writes. Synthetic data only; Diary companion remains unchanged.
+
+
+Implementation follow-up: the existing index now includes exact filenames and
+bounded, escaped metadata. This closes the filename/index-size gap only; explicit
+selection, migration and source/RAG exclusion remain the proposed next steps.
