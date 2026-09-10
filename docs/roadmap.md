@@ -1,5 +1,43 @@
 # noevia roadmap
 
+## MTP controls and persistent inference footer — 2026-09-10
+
+User-authorized follow-up: fresh launch/reload opens an unsaved New chat (separately
+tested/pushed as `df8a486`). Model selection/Manage now offer native MTP Yes/No,
+with an explicit Apply and load action for administrators because Lemonade model
+loading is shared. Native support comes from Lemonade's GGUF-derived `mtp` label
+and llamacpp recipe, never a model-name guess. Saved options are preserved,
+including context/cache/GPU split arguments. A successful load precedes saving the
+preference; a failed load leaves saved options unchanged. No automatic reload or
+model download happens on opening the selector. Native MTP models keep Lemonade's
+automatic default until explicitly overridden. Unsupported models show why Yes is
+unavailable; arbitrary tiny draft models are not automatically paired/downloaded.
+
+Inference details now stay open at the bottom, including Diary. Loaded MTP models
+show an acceptance bar using their backend's accepted/proposed draft-token totals.
+The percentage is cumulative for that loaded backend, not a per-chat quality score.
+Missing/invalid counters stay unavailable, not zero or a made-up rate. Polls do not
+overlap, and failed stats requests clear the acceptance display.
+
+Runtime inspected: Lemonade 10.8.0 / llama.cpp Vulkan; installed Qwen 3.5 4B has an
+MTP label, while the installed 9B/Gemma variants do not. No live model load/settings
+were changed for testing. Multi-GPU on/off throughput/latency/acceptance benchmarks
+and compatible external draft-model configuration remain explicit experiments;
+MTP is not assumed to be a free speedup. Broader roadmap pause remains in effect.
+
+Sources: [versioned load API](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/docs/api/lemonade.md#post-v1load),
+[native defaults](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/server/backends/llamacpp_server.cpp),
+[GGUF capabilities](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/include/lemon/gguf_capabilities.h),
+and [backend metrics normalization](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/server/prometheus_metrics.cpp).
+
+Validation: 324 web tests, typecheck/build; isolated real-app/fake-Lemonade browser
+checks cover Yes/No before load, option preservation, persistence after success,
+failed-load safety, unsupported/member rejection, and acceptance footer visibility
+at 375/768/1440 widths in Chat and Diary. New-chat landing and Diary scrolling
+regressions pass. No real Diary prompts or corpus changes. Deployment recorded
+separately.
+
+
 ## Live Diary activity and timeout feedback — 2026-09-10
 
 The user's follow-up explicitly requests live visibility and reports a 524 after
