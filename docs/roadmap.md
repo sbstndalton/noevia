@@ -122,9 +122,12 @@ Concrete changes to `SetupWizard.tsx`:
    peer choices, not a flat list of four backends:
    - **"Let noevia hold my diary"** — the appliance path. Corpus in a
      noevia-managed volume. Follow-up question: *should other devices be able to
-     reach these files?* If yes, enable the WebDAV endpoint (7d) and end setup by
-     showing the mount URL and a generated app password **once**, the way the
-     passkey step already handles a one-time secret.
+     reach these files?* — **Off / This network only / Reachable from anywhere**
+     (7h), defaulting to Off. Anything but Off enables the WebDAV endpoint (7d) and
+     ends setup by showing the mount URL and a generated app password **once**, the
+     way the passkey step already handles a one-time secret. The LAN choice states,
+     in one sentence, that plain http sends that password in cleartext across the
+     local network, and takes an explicit acknowledgement rather than refusing.
    - **"Connect storage I already run"** — the existing `StoragePicker`:
      Nextcloud, WebDAV, S3.
 
@@ -499,11 +502,51 @@ deployments (a separate hostname for DAV, or DAV kept LAN-only while the app is
 public), pre-filled from `PUBLIC_ORIGIN` and empty-means-inherit — never a second
 mandatory question.
 
-**HTTPS is a hard requirement here, not a recommendation.** App passwords go over
-this connection on every request, in a header, with no session to protect them.
-`classifyOrigin` already warns that `private-lan-http` breaks passkeys; for DAV it
-must *block*, not warn. `loopback` is fine (nothing leaves the machine);
-`public-https` is the intended case.
+**HTTPS is required on the public path** — app passwords ride in a header on every
+request with no session protecting them. But "block plain http outright" would kill
+the ordinary homelab case, so the requirement is scoped to *reach*, not to DAV as a
+whole. See 7h.
+
+### 7h. Three access scopes, chosen in the wizard
+
+Exposure is a separate question from "do you want DAV at all", and the answer is not
+binary. The storage step asks it as three choices:
+
+| Scope | What it means | Transport |
+| --- | --- | --- |
+| **Off** (default) | Files reachable only through the app's own Markdown editor | n/a |
+| **This network only** | Mountable from devices on the LAN; never leaves it | plain http allowed with an explicit acknowledgement; HTTPS if the operator fronts it |
+| **Reachable from anywhere** | Mountable over the public origin | HTTPS enforced, no exception |
+
+**LAN-only must be private by construction, not by a check.** Serve DAV on its own
+container port rather than a path on the public one. The live deployment makes this
+clean: its tunnel is token-managed, so routing lives in the Cloudflare dashboard and
+**a port that has no public hostname mapped to it is simply not reachable from
+outside** — nothing to misconfigure. Compose publishes exactly one port today
+(`${COWORK_PORT:-8021}:8021`); DAV gets a second, and the operator has to take a
+deliberate action in Cloudflare to expose it.
+
+Deliberately *not* an IP allowlist. With `TRUST_PROXY=true` the client address comes
+from `x-forwarded-for`, which is caller-supplied; an allowlist would be exactly as
+trustworthy as that header. An unrouted port needs no trust.
+
+**Plain http is permitted on the LAN scope, with the trade-off stated.** It is not
+safe — an app password crosses the LAN in cleartext, readable by anything else on
+that network — but it is the difference between a usable feature and one nobody can
+turn on. Say that in one sentence and require an explicit acknowledgement, the way
+the account step already handles a `private-lan-http` origin instead of refusing it.
+
+**HTTPS on the LAN scope is the operator's to provide, not noevia's.** A reverse
+proxy with an internal CA, Caddy, Traefik, or Tailscale all work. noevia should
+accept an override URL for that case and otherwise stay out of certificate
+issuance — `ADDITIONAL_TRUSTED_ORIGINS` (already in `index.cjs:66` and
+`compose.yaml:62`) is the existing seam for keeping a LAN name valid alongside the
+public one.
+
+**App passwords carry their scope.** A credential minted for LAN-only use records
+that and is refused on the public origin. Defence in depth: if the port is later
+routed publicly by mistake, existing LAN credentials do not silently become
+internet-facing ones.
 
 ### 7g. Verified: Cloudflare Tunnel passes WebDAV verbs
 
