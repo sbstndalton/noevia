@@ -1,5 +1,41 @@
 # noevia roadmap
 
+## PDF reduction, local thinking and shared Diary assessment — 2026-09-10
+
+User-authorized follow-up: `2408c32` makes configured local Qwen3/3.5 Low/High
+use actual `chat_template_kwargs.enable_thinking` false/true. Default remains
+provider default; other providers retain their documented parameter/hint behavior.
+[Qwen’s model card](https://huggingface.co/Qwen/Qwen3.5-9B) documents the template switch; the installed template was also verified.
+This controls ordinary/project chat (including optional Diary extras), not the
+separately configured Diary companion's effort. Its provider reasoning still streams.
+The exact installed Qwen3.5-9B UD-Q4_K_XL GGUF was inspected read-only: it uses
+`enable_thinking` in its template but contains no MTP metadata/tensors. Its disabled
+MTP control is correct; the upstream model's training capability is insufficient.
+[Unsloth's separate MTP GGUF](https://huggingface.co/unsloth/Qwen3.5-9B-MTP-GGUF)
+is a potential replacement to validate, not an automatically installed model.
+
+`ddbe852` allows PDFs up to 60 MB into bounded asynchronous reduction. Native text
+is extracted, images recompressed, and a PDF under 25 MB is saved with a distinct
+`.compressed.pdf` name only after validation and matching page counts. If that
+fails, a complete native-text extract within the text limit may be saved as
+`.extracted.txt`, explicitly warning that images/scanned text/layout are omitted.
+Encrypted, malformed, over-300-page and unreducible files fail clearly. Originals
+remain on the user's computer; ordinary files retain the 25 MB limit. The private
+worker adds Ghostscript; no cloud document processor is used. Verification:
+329 web tests, typecheck/build, 13 real Linux worker tests and synthetic browser
+checks covering notices, failures preserving sources, and responsive UI.
+
+Shared Diary integration is designed around direct server edits with version checks,
+not desktop-sync timing. See [shared-editing design](spec-diary-shared-editing.md).
+Nextcloud notify-push diagnostics found proxy trust failure; Mac client queue health
+could not be inspected due to protected state. No sync/trust/Claude configuration
+or real Diary data changed. The scoped Claude adapter and independent push repair
+remain follow-up work; the broader roadmap stays paused for user testing.
+
+
+Rollout complete: `ddbe852` on all three services; 281 Linux server and 13 worker
+tests passed before cutover. Health and public assets match; rollback retained.
+
 ## MTP controls and persistent inference footer — 2026-09-10
 
 User-authorized follow-up: fresh launch/reload opens an unsaved New chat (separately

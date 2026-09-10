@@ -320,3 +320,14 @@ or OOM. Public HTML/assets return 200 and match `index-D3bApFIM.js` and
 `index-DObGn_iJ.css`. Prior `3ef0501` release and `.bak.before-cac1778` backups
 retained; no environment schema/Compose changes, inference model loads or corpus
 tests. This rollout record changes documentation only; runtime remains `cac1778`.
+
+
+Latest rollout: **`ddbe852`**, replacing `cac1778`, includes `2408c32` local-Qwen
+thinking switches and PDF reduction in the isolated document worker. All three
+images run this release. 281 isolated Linux server and 13 worker tests passed
+before cutover. Diary healthy, web/internal OCR health 200, zero restarts/OOM;
+public assets match `index-CVEhmnpx.js` and `index-DObGn_iJ.css`. Prior release
+and `.bak.before-ddbe852` backups retained. No environment schema/Compose changes;
+Ghostscript is added inside the existing restricted OCR image. No real Diary tests,
+model loads, proxy trust changes or Claude migration. Subsequent documentation
+commit records this rollout; application runtime stays `ddbe852`.

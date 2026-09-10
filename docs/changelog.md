@@ -8,6 +8,24 @@ updated.
 
 ---
 
+## 2026-09-10 — oversized PDFs and native local-Qwen thinking
+
+Deployed `ddbe852` (including `2408c32`). PDFs up to 60 MB receive asynchronous
+native-text extraction and image compression before the 25 MB storage limit is
+applied. Validated compressed PDFs and labelled text-only fallbacks use distinct
+filenames; originals remain on the user's computer. Invalid, encrypted and
+unrecoverable inputs fail without replacing existing sources. Local Qwen Low/High
+now uses the actual thinking-template switch rather than a hint. Default remains
+provider default. The exact installed 9B GGUF lacks MTP weights; support in the
+original architecture does not make this file MTP-capable.
+
+329 web tests, typecheck/build, synthetic browser checks, 281 Linux server and
+13 real worker tests passed. Health/public assets verified. Shared Diary editing
+is designed around version-checked server access; the Claude adapter is not yet
+configured. Nextcloud's push self-test found a reverse-proxy trust failure, while
+Mac upload-queue health remains unverified. See `spec-diary-shared-editing.md`.
+No real Diary writes, corpus reconciliation or model changes were performed.
+
 ## 2026-09-10 — MTP controls, acceptance and fixed inference footer
 
 Deployed `cac1778`, including `df8a486` (New chat launch) and `8eb7b99` (native
