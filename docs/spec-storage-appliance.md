@@ -6,8 +6,7 @@ paths remain unchanged; no production mount or migration is implied.
 ## Delivery boundaries
 
 1. App passwords: tenant-owned create/list/revoke in Profile & security, hash-only
-   storage, generated secret shown once, immutable LAN/public scope. Implemented
-   locally; no listener or credential-based app login is added in this batch.
+   storage, generated secret shown once, immutable LAN/public scope. Deployed as `2525de5`; normal account login remains separate.
 2. Dedicated DAV listener in the web service: disabled by default and separately
    exposed by an operator. It calls the existing tenant diary file API, never the
    corpus volume. Begin with bounded Markdown listing/read/conditional-write
@@ -58,3 +57,8 @@ conditional creation/overwrite conflict, interrupted request and worker failure,
 OFF on fresh install, existing settings unchanged, and real client mount checks.
 Verify HEAD/OPTIONS/PROPFIND response semantics and document unsupported methods.
 Do not use the real diary corpus as a test dataset.
+
+
+Initial endpoint implementation now covers step 2's bounded operations and step
+3's settings control. See [dav.md](dav.md). Broad file-manager compatibility and
+the appliance onboarding flow remain follow-ups; production sharing stays off.

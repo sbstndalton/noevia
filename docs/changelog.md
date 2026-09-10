@@ -8,13 +8,22 @@ updated.
 
 ---
 
+## 2026-09-10 — optional bounded Diary file sharing
+
+Added a separate, default-off listener and per-user sharing controls. Supported
+Markdown reads/property lists/conditional writes use the existing tenant file API.
+App-password scope and configured transport are enforced. No port is published by
+default. Full DAV/file-manager compatibility remains open. 310 web / 171 diary
+(3 skipped), typecheck/build and synthetic real-app browser checks pass. Rollout
+pending; production sharing will remain off.
+
 ## 2026-09-10 — revocable device app passwords
 
 Per-user name/scope/date metadata, shown-once random secrets, Argon2id hashes and
 individual revocation are available in Profile & security. Credentials do not
 permit account login or chat. Sharing remains unavailable; no new listener opens.
 304 web / 171 diary tests (3 skipped), typecheck/build and synthetic real-app
-browser checks pass. Candidate image verification and rollout pending.
+browser checks pass. 257 Linux server and eight worker tests passed; deployed `2525de5`.
 
 ## 2026-09-10 — DOCX main-body text and tables
 

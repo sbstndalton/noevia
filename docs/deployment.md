@@ -266,3 +266,9 @@ Latest rollout: **`e18f1de`**, replacing `3b1e256`, adds DOCX body/table extract
 254 serial isolated Linux server tests and all eight worker tests (including PDF
 OCR) passed before cutover. Retain previous release and `.bak.before-e18f1de`
 backups. Diary/internal OCR health pass; zero restarts/OOM. Synthetic fixtures only.
+
+
+Latest rollout: **`2525de5`**, replacing `e18f1de`, adds app-password lifecycle.
+257 serial isolated Linux server and eight worker tests passed before cutover.
+Retain prior release and `.bak.before-2525de5` backups. Compose health passes;
+no production device credentials created and no sharing port exposed.

@@ -133,16 +133,32 @@ the existing approved storage connection and refuses conflicting remote contents
 See [the diary doc](docs/diary.md) for limits and browser behavior.
 
 
-## Device app passwords (lifecycle prerequisite)
+## Device app passwords and optional Diary sharing
 
-Profile & security can mint and revoke per-user device credentials for future
-Diary file sharing. Sharing is currently unavailable and no new listener is
-opened. Credentials cannot authenticate account login, chat, or general API calls.
-Secrets are generated with 256 random bits and stored only as Argon2id hashes,
-shown in the creation response once (`Cache-Control: no-store`). Metadata is
-separate and never returns a hash or secret. Revoking a device leaves other devices
-and account passwords unchanged; deleting the user removes its credentials.
-Creation is bounded to five attempts/minute and 20 active credentials. Scope is
-immutable LAN/public, not proof of physical network reach. The future DAV listener
-must enforce endpoint/transport policy and throttle authentication before hashing.
-See [the storage contract](docs/spec-storage-appliance.md).
+Device credentials have immutable LAN/public scope, independent revocation and
+256-bit random secrets stored only as Argon2id hashes. Only creation returns the
+secret (`Cache-Control: no-store`); list metadata never returns a hash. Creation is
+limited to five attempts/minute and 20 active credentials per user. These tokens
+cannot authenticate account login, chat or general APIs. User deletion cascades
+credentials, and disabling an account prevents verification.
+
+The optional separate listener is disabled by default (COWORK_DAV_PORT=0), and
+reference Compose files publish no DAV port. Users must also opt in and have Diary
+enabled with server-held local storage. The authenticated credential selects the
+tenant; paths/headers cannot override it. Writes use the companion file API with
+conditional versions, never a direct corpus mount. Read/write limits and supported
+operations are documented in [docs/dav.md](docs/dav.md).
+
+LAN scope does not verify physical network reach. Public HTTPS and LAN HTTPS both
+require a separate high-entropy secret injected by a trusted TLS-terminating proxy,
+plus the configured Host and HTTPS protocol. The proxy must strip incoming copies
+of the secret header and keep the backend port private. General TRUST_PROXY and
+forwarded IP headers are not treated as encryption or private-network proof.
+Direct LAN HTTP requires explicit acknowledgement before opt-in. Scope matching
+prevents LAN credentials from authenticating a public-scope listener.
+
+DAV bounds concurrent requests and rate-limits by direct socket address before
+Argon2; proxy traffic shares that budget. Response caching is disabled. Credential
+creation/revocation and file writes are audited without secrets or file bodies.
+Unsupported methods fail explicitly; this initial endpoint does not advertise
+full DAV class compliance or general file-manager mounting.

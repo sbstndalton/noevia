@@ -59,6 +59,11 @@ services:
     environment:
       OCR_BASE_URL: http://ocr:8030
       UI_PORT: 8021
+      # Separate optional listener; no port is published by default.
+      COWORK_DAV_PORT: ${COWORK_DAV_PORT:-0}
+      COWORK_DAV_SCOPE: ${COWORK_DAV_SCOPE:-}
+      COWORK_DAV_ORIGIN: ${COWORK_DAV_ORIGIN:-}
+      COWORK_DAV_PROXY_TOKEN: ${COWORK_DAV_PROXY_TOKEN:-}
       MEMBER_OUTBOUND_ORIGINS: ${MEMBER_OUTBOUND_ORIGINS:-}
       UI_AUTH_TOKEN: ${UI_AUTH_TOKEN:-}
       LEGACY_AUTH_COMPAT: ${LEGACY_AUTH_COMPAT:-false}

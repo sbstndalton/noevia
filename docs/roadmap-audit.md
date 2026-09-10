@@ -3,11 +3,11 @@
 ## Current handoff status — reconciled 2026-09-10
 
 The status table below is current; dated follow-ups preserve earlier evidence.
-Application **`e18f1de`** is deployed across all three services. Onboarding,
+Application **`2525de5`** is deployed across all three services. Onboarding,
 Diary navigation/scaffolding/landing, thinking effort v1, reasoning-only answer
-handling and reported-rate sample guards have shipped. DOCX body extraction is deployed. App-password lifecycle is verified locally;
-DAV remains unavailable. Current
-verification: **304 web tests**, typecheck/build and **171 diary tests passed,
+handling and reported-rate sample guards have shipped. DOCX body extraction is deployed. App-password lifecycle is deployed; a limited, default-off DAV endpoint is
+verified locally and awaiting rollout. Current
+verification: **310 web tests**, typecheck/build and **171 diary tests passed,
 3 skipped** (two existing warnings). Model accuracy, latency, uncapped local
 thinking and storage architecture remain open. Diary extras stay OFF on reload;
 the companion pipeline and all write approvals remain unchanged.
@@ -86,7 +86,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 6c / 6d: memory ownership/privacy | Architectural constraints | Disk-backed diary memory already feeds context. Keep the single-store and no-cross-profile diary-content boundaries; these are not standalone missing UI features. |
 | 7a: Unraid state default | Original example hazard addressed | `deploy/examples/unraid-compose-manager.yml` requires COWORK_STATE_DIR explicitly. Generic `compose.yaml` and the manifest still use ./state. No named-volume default or explicit /boot-path rejection exists; those are separate remaining decisions. |
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
-| 7d / 7e / 7h / 7i: served storage | Not implemented | App-password lifecycle verified locally; no noevia WebDAV server yet. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
+| 7d / 7e / 7h / 7i: served storage | Not implemented | App-password lifecycle deployed; limited conditional Markdown DAV operations verified locally. Broad file-manager compatibility remains open. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
 | 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX body/table reader deployed; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
 | 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
@@ -97,7 +97,7 @@ Completed: reliability, PDF/OCR/images, composers/model controls, onboarding
 correctness, Diary navigation/scaffolding/landing/refactor, thinking v1 and the
 reasoning-only and short-sample telemetry fixes.
 
-1. **App passwords:** finish lifecycle image checks/rollout; no DAV exposure yet.
+1. **DAV:** finish limited endpoint image checks/rollout; leave production sharing off.
 2. **Storage architecture:** reconcile Workstream 7 into a scoped spec and implement
    app passwords before exposing DAV, then the appliance/storage onboarding flow.
 3. **Thinking/model follow-ups:** verify wider provider budgets and investigate
@@ -583,3 +583,31 @@ real-app browser verifies member creation, cross-tenant list/revoke isolation,
 CSRF refusal, no Basic/Bearer/chat/password-login acceptance, shown-once state,
 revocation and both themes at 375/768/1440. No production credentials or corpus
 used. Candidate image checks and rollout pending.
+
+
+App-password rollout: **`2525de5`** replaces `e18f1de` on all services after 257
+isolated Linux server and eight worker tests. Compose health passes; previous
+release/configuration backups retained. No production credentials minted.
+
+### Workstream 7d/7h — bounded sharing endpoint (2026-09-10)
+
+A separate optional listener and per-user sharing settings now support scoped
+Basic app-password authentication, OPTIONS/HEAD/GET/PROPFIND and conditional PUT
+through the existing companion file API. No direct volume access or new corpus
+write path. Scope, opt-in, enabled Diary and local storage are required on every
+request. Public/HTTPS proxy authentication uses a dedicated shared secret plus
+exact authority/protocol, never caller-controlled forwarded headers alone. LAN
+HTTP requires explicit acknowledgement. Default listener port is zero; Compose
+publishes nothing new. No production exposure is enabled by rollout.
+
+This v1 does not claim full DAV compliance or file-manager mounts: folder creation,
+rename, delete, locks and other verbs remain unsupported. No DAV class header is
+advertised. See docs/dav.md for supported requests, parser/resource limits and
+operator setup. This is progress on 7d, not completion of the appliance roadmap.
+
+310 web tests, typecheck/build and 171 diary tests (3 skipped) pass. Real HTTP tests
+cover XML/property handling, path/scope/transport refusal, conditional writes,
+limits and failures. Real web app/listener plus synthetic companion browser QA
+covers actual credentials, opt-in/acknowledgement, tenant forwarding, revocation,
+stale writes and responsive light/dark settings. No real corpus access. Candidate
+image checks and rollout pending.
