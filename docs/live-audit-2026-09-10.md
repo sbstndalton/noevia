@@ -100,3 +100,23 @@ their sessions/workspaces/diary tenant directories, and the exact Nextcloud QA
 folder were removed. Deletion revoked the test administrator's issued tokens;
 audit records remain by design. Test tabs were closed, the original dark theme
 and viewport restored, and the client's initially stopped Tailscale state restored.
+
+
+## Scoped onboarding follow-up — 2026-09-10
+
+`baf38aa` is deployed after `66af1ad`. This is Workstreams 3.5/3.6 only: resumable
+role-safe invitation setup, explicit Diary choice preservation, and the repeated
+legacy-feature-backfill fix. It does not resolve the model/output limits above.
+42 live assertions used five synthetic accounts, covering invitation roles and
+Diary yes/no, login/resume, changes/completion, existing-completion preservation,
+tenant/role boundaries, health and cleanup. All accounts/sessions/workspaces and
+the exact bootstrap invitation were removed. No real diary test prompt/corpus
+write; no new inference or MCP tool exercise was needed for onboarding.
+
+Fresh local checks: 278 web tests, typecheck/build; 157 diary passed, 3 skipped,
+two existing warnings. The final image passed 234 server tests with networking
+disabled and read-only repository fixtures. Synthetic local browser flows and
+manual UI review covered responsive widths, both themes, focus, failures and
+navigation. The public browser check reused the existing account read-only and
+confirmed no onboarding reset and the final frontend bundle. Hardware passkey
+registration and exhaustive concurrent multi-tab setup were not exercised.

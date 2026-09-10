@@ -29,8 +29,8 @@ kept its old name after the rebrand, deliberately).
 
 ## Layout on the box
 
-Unraid Compose Manager plugin, project name **"Cowork"**. Two containers:
-`cowork-web-1`, `cowork-diary-1`.
+Unraid Compose Manager plugin, project name **"Cowork"**. Three containers:
+`cowork-web-1`, `cowork-diary-1`, `cowork-ocr-1`.
 
 - **Releases**: `/mnt/docker/appdata/cowork/releases/<git-sha>/` holds a full
   source checkout. `/mnt/docker/appdata/cowork/current` is a symlink to the active
@@ -65,16 +65,17 @@ scp "/tmp/$SHA.tar.gz" root@100.70.173.74:/mnt/docker/appdata/cowork/releases/
 ssh root@100.70.173.74 "set -e
 cd /mnt/docker/appdata/cowork/releases && mkdir -p $SHA && tar -xzf $SHA.tar.gz -C $SHA && rm -f $SHA.tar.gz
 cd /mnt/docker/appdata/cowork && cp config/.env config/.env.bak.\$(date +%Y%m%d%H%M%S)
-ln -sfn /mnt/docker/appdata/cowork/releases/$SHA current
-sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=$SHA/' config/.env
 cd /boot/config/plugins/compose.manager/projects/Cowork
-docker compose --env-file /mnt/docker/appdata/cowork/config/.env build
-docker compose --env-file /mnt/docker/appdata/cowork/config/.env up -d"
+COWORK_SOURCE_DIR=/mnt/docker/appdata/cowork/releases/$SHA COWORK_VERSION=$SHA docker compose --env-file /mnt/docker/appdata/cowork/config/.env build
+# Stop here if candidate verification fails (see the image-test mounts below).
+ln -sfn /mnt/docker/appdata/cowork/releases/$SHA /mnt/docker/appdata/cowork/current
+sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=$SHA/' /mnt/docker/appdata/cowork/config/.env
+docker compose --env-file /mnt/docker/appdata/cowork/config/.env up -d --no-build --wait --wait-timeout 120"
 ```
 
 A build takes ~10 min over the Tailscale relay. Run it in the background and poll
 for `docker ps | grep cowork-web`. Rolling back is repointing `current` and
-`COWORK_VERSION` at the previous SHA and re-running the last two commands.
+`COWORK_VERSION` at the previous SHA and re-running Compose up with `--no-build --wait`.
 
 ## After deploying
 
@@ -171,3 +172,34 @@ All three images use the tag; `.bak.before-66af1ad` backups and the prior releas
 are retained. 266 web tests, typecheck/build, and 157 diary tests (3 skipped) pass.
 Synthetic project/Diary picker and layout checks plus live project/default Diary
 checks passed. Diary/OCR health passed; no test prompt touched the real diary.
+
+
+Latest application rollout: **`baf38aa`** (onboarding correctness), replacing
+`66af1ad`. All three images use this tag. Build candidates against the new release
+path and version **before** switching `current` or editing the live environment.
+The example above now reflects that ordering. This rollout used shell overrides
+`COWORK_SOURCE_DIR=<candidate release>` and `COWORK_VERSION=<candidate tag>` for
+`docker compose --env-file ... build`, followed by a disposable, network-disabled
+web-image server test run. Mount repository `.env.example` at `/.env.example`,
+`compose.yaml` at `/compose.yaml`, `deploy` at `/deploy`, and server fixtures at
+`/app/server/fixtures`, all read-only: deployment fixtures are absent from the
+runtime image by design. The initial missing-fixture check was corrected before
+cutover; all **234 server tests** passed on the final candidate.
+
+Only then back up `.env`, `docker-compose.yml` and `docker-compose.override.yml`
+with `.bak.before-baf38aa`, switch `current`/version and run Compose `up -d
+--no-build --wait --wait-timeout 120`. Preserve `66af1ad` and those backups. This
+batch adds no environment/Compose/schema fields. Rollback restores the backed-up
+environment and points `current` at `66af1ad`, then runs the same no-build up/wait.
+
+278 web tests, typecheck/build and 157 diary tests (3 skipped, two existing
+warnings) passed. Synthetic local browser regression plus manual UI review passed;
+42 scoped live assertions verified existing completion preservation, new invite
+roles/Diary yes/no, login/resume, updates/completion, role/tenant isolation,
+application/OCR health and cleanup. Diary health passes; zero restarts/OOM on all
+services. The public browser loaded `index-DE1yxV8o.js` and the existing account
+remained in Projects. All five synthetic accounts/sessions/workspaces and the
+exact bootstrap invite were removed; no diary test prompts/corpus writes. Tabs
+and the temporary local server were closed; viewport and stopped Tailscale state
+restored. The following record commit is documentation only; application source
+remains `baf38aa`. Diary 4c is next; known live-audit model limits remain unresolved.

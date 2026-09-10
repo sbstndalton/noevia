@@ -263,3 +263,25 @@ Synthetic browser checks covered project-front-page and free-chat uploads, free-
 tool execution, Diary baseline/on/off/reload, all three write decisions, approval
 scope separation, cancellation, and mobile popup placement. No real diary prompts
 or corpus changes were used.
+
+
+### Onboarding correctness follow-up — 2026-09-10
+
+Application `baf38aa` is deployed. New invitees explicitly start onboarded=0;
+existing completed/legacy users remain completed. AuthGate supplies the saved
+account choice synchronously. Members get Diary → prefs → passkey, without
+bootstrap/provider/global-model controls; admins retain optional provider setup.
+Diary changes persist immediately, including explicit off, and retain keyboard
+focus. Reload/sign-out repeats optional steps with saved choices; completion
+keeps the wizard closed. The dead-end models step is gone. Auto routing saves
+only on explicit preference acceptance; theme/palette changes apply immediately.
+
+markOnboarded already preserves existing Diary consent; its missing-row insert
+stays off because completion is not consent. The actual reproduced restart bug
+was repeated legacy backfill enabling missing rows; its migration marker now
+gates it. No schema/reset migration, dependency or diary write-path changes.
+278 web tests, typecheck/build; 157 diary passed, 3 skipped (two existing warnings).
+Reproducible browser regression: `apps/web/qa/onboarding.cjs`, after building,
+using an existing Playwright module via PLAYWRIGHT_MODULE (no new app dependency).
+Manual UI review and scoped live synthetic checks passed; see deployment/audit.
+Next bounded batch is Diary navigation, Workstream 4c.

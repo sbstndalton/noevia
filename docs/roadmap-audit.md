@@ -3,15 +3,15 @@
 ## Current handoff status — reconciled 2026-09-10
 
 The status table and priority order below are current; dated follow-ups retain
-the evidence from each earlier stage. Application release `66af1ad` is the latest
-recorded deployment (all three service images); `efd1c3c` records its verification.
-Last verified baseline: **266 web tests**, typecheck/build passing; **157 diary
-tests passing, 3 skipped**, with two existing dependency warnings. This handoff
-review checked source and deployment records; it did not rerun suites or probe
-production. See [the next-task prompt](codex-roadmap-handoff.md).
+evidence from earlier stages. Application **`baf38aa`** is deployed to all three
+services, replacing `66af1ad`. Fresh verification: **278 web tests**, typecheck/build;
+**157 diary tests passed, 3 skipped** (two existing dependency warnings). All
+**234 server tests** passed in a disposable production-host container with networking
+disabled and read-only repository fixtures. Synthetic browser regression, manual
+UI review and scoped production checks passed; see the onboarding rollout below.
 
 Reliability, PDF/OCR/image support, unified uploads, shared composer actions,
-and composer model controls have shipped. Diary extras remain OFF by default;
+and composer model controls, and onboarding correctness have shipped. Diary extras remain OFF by default;
 the companion pipeline remains active. Thinking controls are still planned.
 Known limits include stored-only DOCX, model color errors, slow inference/tool
 round trips, implausible throughput telemetry, and reasoning-only fallback text
@@ -77,8 +77,8 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
 | 2 / 5b: thinking modes | Not implemented | No reasoning-effort schema, override, badge, or verified-provider fallback in web code. `index.cjs` has `enable_thinking` suppression for a helper call, not the planned user-facing feature. Main streaming and non-streaming fallback bodies must both be considered. |
 | 3: wizard restructure | Partial | Administrator flow is account → provider → diary → prefs → passkey; members start at diary. The dead-end models step is removed. Full diary-first/storage redesign remains deferred. |
-| 3.5: invite onboarding | Implemented; rollout pending | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
-| 3.6: markOnboarded | Verified; rollout pending | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
+| 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
+| 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Not implemented as specified | No first-entry scaffold for Entries, AI Memory, and Raw Sources in diary agent code. Existing storage lazily creates paths. |
 | 4b: diary zero state | Not implemented as specified | `DiaryView.tsx` still has the shared landing; month discovery adds the current month even when there are no entries. No dedicated first-entry composer / three-panel populated split. |
 | 4c: landing-to-day navigation | Confirmed gap | `DiaryView.tsx:submit` computes entryDay but stores the conversation under existing scope and does not set month/day before streaming. Browser-local and server-backed paths both need tests. |
@@ -99,25 +99,20 @@ at responsive widths. No deployment or real diary/financial-source access.
 
 ## Corrected priority order
 
-Completed prerequisites: Workstreams 1 and 5a, plus the subsequently requested
-PDF/OCR/image and shared-composer batches, are implemented and deployed.
+Completed prerequisites: Workstreams 1 and 5a, PDF/OCR/image support, shared
+composers/model controls, and onboarding correctness (3.5/3.6) are deployed.
 
-1. **Onboarding correctness:** Workstream 3.5 and regression coverage for 3.6.
-   Invited users need a member-safe setup path; preserve explicit diary choice.
-   Establish missing-feature-row semantics before claiming data loss. Remove or
-   clarify dead-end model guidance only as needed for this bounded flow.
-2. **Diary navigation:** Workstream 4c, using synthetic exchanges. Preserve the
+1. **Diary navigation:** Workstream 4c, using synthetic exchanges. Preserve the
    write path, timestamps, history, cancellation, and optional-tool approval scope.
    Scaffolding/zero state (4a/4b) is a separate follow-up requiring data-model review.
-3. **Thinking modes:** Workstreams 2 / 5b. Place eventual controls beside the
-   shared composer model selector. Define budgets, actual model capability checks,
-   streaming/fallback behavior, and Diary companion versus extras scope first.
-4. **Document/model follow-ups:** Scope DOCX readers, OCR/vision accuracy,
-   processing latency, telemetry, and reasoning-only fallback separately using the
-   live audit evidence. Do not rebuild the already deployed Workstream 8 batch.
-5. **Storage architecture:** Workstream 7 needs a scoped spec; app passwords must
+2. **Thinking modes:** Workstreams 2 / 5b. Put eventual controls beside the shared
+   composer model selector; verify budgets, model capabilities, streaming/fallback
+   behavior, and Diary companion versus extras scope first.
+3. **Document/model follow-ups:** Scope DOCX readers, OCR/vision accuracy,
+   latency, telemetry and reasoning-only fallback separately using the live audit.
+4. **Storage architecture:** Workstream 7 needs a scoped spec; app passwords must
    precede exposing DAV. Existing outbound Nextcloud support is not a DAV server.
-6. **Skills and tool research:** Workstream 9 and relevant parts of 5. Defer
+5. **Skills and tool research:** Workstream 9 and relevant parts of 5. Defer
    optional Wikipedia and planner/executor experiments until concretely needed.
 
 Implement one bounded batch at a time. Later user requests authorized testing,
@@ -308,3 +303,24 @@ member boundary, saved opt-out, reload and completion; it caught and fixed toggl
 focus loss during save. No real diary prompts/corpus changes, dependencies,
 composer changes or write-path changes. Rollout pending. Next batch: Diary 4c.
 Known model-quality, latency, telemetry and stored-only DOCX limits remain.
+
+
+Onboarding rollout: **`baf38aa`** replaces `66af1ad` on all three services. Candidates
+were built and 234 Linux server tests passed before cutover. The first candidate
+image check lacked the deployment-config fixtures; mounting the repository's
+`.env.example`, Compose and deploy examples read-only resolved that harness issue.
+The final revision also corrects member guidance to Settings → Your connections.
+Retain `.bak.before-baf38aa` environment/Compose/override backups and `66af1ad`.
+
+42 scoped production assertions passed across preparation, verification and
+cleanup: previous completion survives rollout, new member/admin invitation with
+Diary yes/no, login/resume, choice changes, completion, cross-account isolation,
+member administrator/shared-provider/model denials, empty new workspaces without
+legacy migration, application/OCR health and synthetic cleanup. Five synthetic
+accounts and their sessions/workspaces plus the exact bootstrap invitation were
+removed; audit history remains. No diary prompts or corpus writes were performed.
+The existing authenticated public browser opened Projects normally after reload,
+with final bundle `index-DE1yxV8o.js`. All services run with zero restarts/OOM;
+Diary health passes. Test tabs/local server were closed, viewport reset, and the
+initially stopped client Tailscale state restored. This scoped follow-up does not
+repeat the broad inference/MCP audit or resolve its documented model limits.

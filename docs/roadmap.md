@@ -167,7 +167,7 @@ Concrete changes to `SetupWizard.tsx`:
    adopting it.
 
 **2026-09-10 bounded correctness follow-up:** items 5/6 are implemented and
-locally verified (rollout pending). New invitees resume onboarding; members skip
+deployed as `baf38aa`, replacing `66af1ad`. New invitees resume onboarding; members skip
 bootstrap and provider/global-model setup. Explicit Diary yes/no is read from
 the authenticated account, saved on change, and retained across reload/completion.
 The dead-end models step is removed without a manager probe or full storage/wizard

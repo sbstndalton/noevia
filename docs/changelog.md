@@ -20,7 +20,13 @@ legacy feature backfill no longer re-enables missing rows on each restart.
 
 Verification: 278 web tests, typecheck/build, 157 diary tests (3 skipped, two
 existing warnings), synthetic real-server browser regression and manual review.
-Production rollout pending; see the later deployment record.
+Application **`baf38aa`** is deployed to all three services, replacing `66af1ad`.
+All 234 server tests passed in an isolated production-host image; 42 scoped live
+assertions passed, including synthetic invitation/resume/completion/role boundaries
+and cleanup. Public UI served the final bundle without resetting the existing user
+into onboarding. Five synthetic accounts were removed; no real diary prompts or
+corpus changes. `.bak.before-baf38aa` config/Compose/override and the previous
+release remain for rollback. Tailscale was restored to stopped.
 
 
 ## 2026-09-10 — shared composers and opt-in Diary context
