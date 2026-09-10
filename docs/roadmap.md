@@ -7,8 +7,8 @@ unimplemented. Older sections retain their original context unless marked otherw
 ## Audited priorities — 2026-09-10
 
 See [the code-based roadmap audit](roadmap-audit.md) for completion status,
-evidence, corrected assumptions, and the next-task scope. Start with the small
-deploy-documentation and duplicate-tool-call reliability batch, then onboarding
+evidence, corrected assumptions, and the next-task scope. The small deploy-docs
+and duplicate-tool-call reliability batch is complete locally. Next: onboarding
 correctness and diary navigation. PDFs/OCR/images remain the next feature focus;
 they do not supersede these existing correctness gaps. Storage and skills remain
 separately scoped design work.
@@ -57,26 +57,13 @@ Decisions taken (from the clarifying round):
 
 ## Workstream 1 — Agent-readable deploy contract (small)
 
-The manifest exists; nothing points an agent at it. `cowork.setup.json` and
-`DEPLOY.md` are only discoverable if you already know they're there, and there is
-**no `CLAUDE.md` or `AGENTS.md` anywhere in the repo**.
-
-- Add a root `CLAUDE.md` (symlink or short mirror at `AGENTS.md`) that does three
-  things and nothing else: names `DEPLOY.md` as authoritative for deployment,
-  `cowork.setup.json` as its declarative companion, and records the
-  **`cowork`-identifiers-are-intentional** rule so no agent "helpfully" renames env
-  vars, images, or the `cowork_session` cookie.
-- Add the live-deploy reality that no repo doc currently states: the Unraid Compose
-  Manager copy at
-  `/boot/config/plugins/compose.manager/projects/Cowork/docker-compose.yml` is a
-  *separate file* from the repo's `compose.yaml`, and the tarball-ship + `current`
-  symlink release flow is how new commits reach the server (there are no GitHub
-  credentials on daserver). `DEPLOY.md` currently describes a fresh single-host
-  `docker compose up` that does not match production.
-- Extend `cowork.setup.json` `post_deploy_human_steps[]` with the wizard's new first
-  question (diary on/off) so the manifest and the wizard stay in step.
-
-Files: new `CLAUDE.md`, `AGENTS.md`; edit `DEPLOY.md`, `cowork.setup.json`.
+**Completed locally, 2026-09-10; not deployed.** Root `AGENTS.md` and `CLAUDE.md`
+point to the agent brief, preserve cowork-prefixed identifiers, and distinguish
+`DEPLOY.md` / `cowork.setup.json` (generic fresh installs) from the existing
+[Unraid runbook](deployment.md) (tarball releases and separate Compose Manager copy).
+The runbook was linked, not recreated. The generic docs and manifest describe the
+actual account-step diary checkbox, optional diary storage step, and existing
+models guidance; the proposed diary-first wizard is still unimplemented.
 
 ---
 
@@ -294,18 +281,28 @@ Four items survive review. The model-recommendation threads are hardware shoppin
 not architecture, and are noted only where they touch code.
 
 **5a. Tool-call looping on Qwen3.8-27B — a real defect class, cheaply mitigated.**
-One thread reports Qwen3.8-27B repeating an identical tool call until manually
-stopped, ~1-2×/day, fixed by swapping the chat template
-(`huggingface.co/froggeric/Qwen-Fixed-Chat-Templates`, reported over 500M tokens).
-noevia bounds this already — `index.cjs:2224` caps the loop at 3 rounds — but a cap
-only limits the damage; it still burns two rounds and a chunk of the context on the
-same call, which at ~14 tok/s the user *feels*. Add a duplicate-call guard in the
-round loop: hash `(name, normalised args)` per chat turn, and on a repeat return a
-synthetic tool result (`ERROR: <name> was already called with these exact arguments
-this turn; the previous result stands. Do not call it again.`) instead of
-re-executing. Cheap, provider-agnostic, and it makes the failure legible rather than
-silent. Separately, worth checking which chat template Lemonade serves for the
-target model — this is a deployment note for the live `.env`, not app code.
+**Completed locally, 2026-09-10; not deployed.** The three-round limit remains.
+The streaming loop now owns an exchange-local result cache keyed by tool name and
+recursive canonical JSON: object keys sorted, array order retained. Equivalent
+calls reuse their full result while retaining each call ID and SSE chip/result
+pair, including the non-streaming fallback and final round.
+
+- Writes, denials, approval timeouts, and failed writes are reused for the whole
+  exchange: no automatic retry or second approval, even after a different write.
+- Reads (including errors) reuse results until an approved write is attempted.
+  That attempt invalidates reads even if it fails, because partial mutation is
+  possible. Denied/invalid/duplicate writes do not invalidate reads.
+- Malformed JSON and non-object arguments return validation errors without
+  approval or execution; corrected arguments can run. Empty arguments mean `{}`.
+- The allowed-tool set is checked before cache lookup; the existing execution
+  check and all three approval actions remain. Cancellation stops subsequent calls.
+- Cache lifetime is one handler invocation, never a chat, user, or project store.
+  Later exchanges can execute the same call again. This is loop protection, not
+  durable idempotency or protection against concurrent separate exchanges.
+
+Regression tests use the actual chat handler with mocked providers, approvals,
+and tools; no real diary or production services are involved. Provider chat-template
+investigation remains a separate deployment concern.
 
 **5b. Uncapped local thinking is the actual argument for Workstream 2.** The most
 substantive claim in the batch: local models beat commercial ones at *planning*

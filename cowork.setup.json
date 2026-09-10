@@ -1,5 +1,5 @@
 {
-  "$comment": "Declarative companion to DEPLOY.md. DEPLOY.md is authoritative; this file exists so a deploy agent can parse facts directly instead of scraping prose. Update both together or not at all.",
+  "$comment": "Generic fresh-install companion to DEPLOY.md. Live Unraid deployments follow docs/deployment.md instead; this file exists so a deploy agent can parse facts directly instead of scraping prose. Update both together or not at all.",
   "name": "cowork",
   "deploy": {
     "method": "docker-compose",
@@ -191,7 +191,7 @@
     },
     {
       "name": "CORPUS_BACKEND",
-      "purpose": "Diary storage backend (local or webdav)",
+      "purpose": "Diary storage backend (local, webdav, or s3)",
       "secret": false,
       "human_required": false,
       "default": "local"
@@ -350,7 +350,7 @@
   ],
   "post_deploy_human_steps": [
     "Retrieve the one-time first-run setup code: docker compose logs web | grep 'FIRST-RUN SETUP CODE' (or cat /app/server/ui-data/first-run-setup-code inside the web container).",
-    "Open PUBLIC_ORIGIN in a browser and complete the setup wizard: enter the setup code, create the admin account, check the inference provider, choose diary and display preferences, optionally add a passkey.",
-    "Log one diary entry from the UI and confirm it appears (proves diary write path end to end)."
+    "Open PUBLIC_ORIGIN in a browser and complete the setup wizard: enter the setup code, create the admin account (including display name, origin, and diary opt-in checkbox), check the inference provider, configure diary storage if enabled, review model-manager guidance, choose display/timezone preferences, optionally add a passkey.",
+    "If diary was enabled, the human may verify an entry themselves. Agents must use synthetic fixtures and mocked tools, never prompt the real diary or modify its corpus for testing."
   ]
 }

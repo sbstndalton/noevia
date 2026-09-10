@@ -1,10 +1,14 @@
 # DEPLOY.md — agent-executable deployment playbook
 
-Deploy this app (web UI + diary sidecar) on any Docker host with Compose v2,
-following the steps in order. Every command is copy-runnable. This file is the
-authoritative narrative; `cowork.setup.json` mirrors the same facts in a form a
-program can `jq` over. If the two ever disagree, trust this file — and file an
-issue, because that's a bug.
+This playbook covers **generic fresh installs** on a Docker host with Compose v2.
+Its declarative companion is [cowork.setup.json](cowork.setup.json); keep both
+consistent with implemented behavior. Read [docs/agent-brief.md](docs/agent-brief.md)
+first. Cowork-prefixed identifiers are intentional and must not be renamed.
+
+**For the live Unraid instance, use [docs/deployment.md](docs/deployment.md).**
+That existing runbook documents tarball releases, the `current` symlink, and
+the separate Compose Manager configuration. The commands below do not update
+that deployment.
 
 Two ground rules before you start:
 
@@ -159,9 +163,11 @@ the proof that whoever creates the first account controls the server.
    The wizard's first step confirms this address as the canonical origin: it is
    prefilled from what they loaded, warns when it is a plain-http LAN address
    (passkeys need HTTPS), and rejects a public `http://` domain.
-2. The setup wizard walks them through: setup code + admin username/password,
-   inference provider check, diary opt-in, model-manager guidance, display
-   preferences, optional passkey.
+2. The account step collects setup code, admin username/password, display name,
+   origin, and the diary opt-in checkbox. Next come the provider check, diary
+   storage setup (if enabled), model-manager guidance, display/timezone
+   preferences, and optional passkey. A standalone diary-first question and
+   removal of the models guidance step remain proposed changes.
 3. They land in the app when done. If they skip the inference check because the
    endpoint isn't reachable yet, the app shows an "inference unreachable"
    banner until it is — that is expected and self-heals.
@@ -171,7 +177,8 @@ touching the database or flags (see §6).
 
 ## 4. Verification
 
-Run all of these and compare against the expected results. The deployment is
+Run the applicable checks and compare against the expected results.
+Agents must never prompt the real diary or modify its corpus for testing. The deployment is
 not done until every check passes.
 
 ```sh
@@ -203,7 +210,8 @@ docker compose exec -T web node -e "fetch(process.env.INFERENCE_BASE_URL.replace
 ls "${COWORK_STATE_DIR:-./state}/diary" "${COWORK_STATE_DIR:-./state}/web"
 # expect: both directories non-empty (SQLite DB, corpus/, accounts data)
 
-# 4.7 End-to-end: the human logs one diary entry from the UI, then:
+# 4.7 Optional, only if diary is enabled and the human chooses to verify:
+# the human logs an entry from the UI, then:
 find "${COWORK_STATE_DIR:-./state}/diary/users" -path '*/corpus/*' -name '*.md' -mmin -5 -print
 # For the account that wrote the entry, expect a path under users/<user-id>/corpus.
 # Remote storage: inspect the configured bucket/WebDAV path instead; no local
