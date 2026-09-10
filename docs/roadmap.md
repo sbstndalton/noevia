@@ -483,6 +483,56 @@ auth surface, and zip export is an escape hatch, not a storage mode.
   surface reachable from outside needs its own section in `SECURITY.md`, its own
   rate limiting, and to stay disabled unless the user turned it on in setup.
 
+### 7f. The endpoint URL — derive it, do not ask twice
+
+**Nextcloud does not ask you for a WebDAV URL; it shows you one**
+(`https://host/remote.php/dav/files/<user>/`), derived from its configured trusted
+domain. noevia should do the same, because the wizard **already collects and
+validates exactly that value**: the account step's canonical-URL field, checked by
+`classifyOrigin()` into `public-https` / `loopback` / `private-lan-http` /
+`invalid`. Asking a second time invites the two answers to disagree, and a DAV URL
+that disagrees with `PUBLIC_ORIGIN` is a mount that silently fails.
+
+So: the mount URL is `<PUBLIC_ORIGIN>/dav/<user>/`, displayed at the end of setup
+with the generated app password. Offer an override field for split-horizon
+deployments (a separate hostname for DAV, or DAV kept LAN-only while the app is
+public), pre-filled from `PUBLIC_ORIGIN` and empty-means-inherit — never a second
+mandatory question.
+
+**HTTPS is a hard requirement here, not a recommendation.** App passwords go over
+this connection on every request, in a header, with no session to protect them.
+`classifyOrigin` already warns that `private-lan-http` breaks passkeys; for DAV it
+must *block*, not warn. `loopback` is fine (nothing leaves the machine);
+`public-https` is the intended case.
+
+### 7g. Verified: Cloudflare Tunnel passes WebDAV verbs
+
+The obvious risk with the current deployment — app on a Cloudflare tunnel — was
+that Cloudflare would drop WebDAV's non-standard methods and make the whole
+appliance path unworkable from outside. **It does not.** Measured 2026-09-09
+against the live tunnel and, as a control, straight at the origin:
+
+| Method | via Cloudflare | direct to origin |
+| --- | --- | --- |
+| `GET` | 200 | 200 |
+| `HEAD`, `OPTIONS`, `PROPFIND`, `MKCOL`, `LOCK`, `REPORT` | 404 | 404 |
+
+Identical either way. The 404s are **noevia's own router**, which matches on
+`req.method === 'GET'` / `'POST'` and nothing else — Cloudflare is forwarding the
+verbs untouched. So the tunnel is not a blocker, and no Cloudflare configuration
+change is needed. (No Cloudflare Access sits in front either; if one is ever added,
+DAV clients cannot complete its browser SSO flow and would need service tokens.)
+
+Two consequences for the build:
+
+- **`OPTIONS` and `HEAD` need real handling before anything else works.** Every DAV
+  client starts with `OPTIONS` to read the `DAV:` capability header, and `HEAD` for
+  cheap existence checks. Both currently 404 on *all* routes, which is also a small
+  standalone wart worth fixing regardless of this workstream.
+- **Cloudflare's free tier caps request bodies at 100 MB.** Diary Markdown is
+  nowhere near it, but it caps what the corpus can accept from outside, so it
+  belongs in the docs rather than being discovered by a failed upload.
+
 ### 7e. Where the corpus actually lives
 
 With the appliance answer, the default should be a **named Docker volume** rather
