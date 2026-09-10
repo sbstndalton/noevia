@@ -80,3 +80,23 @@ fields show a retryable load error, while valid empty arrays render empty states
 A panel-level error boundary keeps category navigation and Close available if a
 render fails. Local preview fixtures must implement both `/api/usage` and
 `/api/admin/users`; a blanket HTTP 200 with `{}` is not a valid empty response.
+
+## Project identity and navigation
+
+Projects use a curated outline SVG from `server/project-icons.json` and an optional
+hex color. This shared allowlist feeds the picker and server validation. Existing
+projects default to the folder icon and theme text color. New/edit dialogs expose
+an anchored picker with 18 icons, eight swatches and a custom color control; draft
+changes only persist when the project is saved. The sidebar, library and project
+heading share the same renderer.
+
+Pinned projects have their own collapsible group. A project row expands its chats;
+the adjacent folder action and an explicit Open project row open its home. Desktop
+navigation can collapse to a rail; search and pinned shortcuts expand navigation
+on both desktop and mobile. Library cards put edit, pin, archive and delete behind
+an options menu. Delete retains an explicit confirmation with Cancel focused.
+
+Menus support arrows, Home/End and Escape, stay inside the viewport, and use a
+short opacity/position transition. Reduced-motion preferences disable it. Project
+save failures leave the editor open and show the error immediately above its
+footer. Settings retain their category structure with quieter row dividers.
