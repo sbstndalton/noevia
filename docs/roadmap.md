@@ -809,19 +809,16 @@ is what the live deployment already does with
 
 ## Workstream 8 — PDFs, OCR, and image understanding
 
-**Status: fixture audit/spec and bounded source-completeness/binary-read batch
-complete locally, 2026-09-10; OCR and production projector repair remain pending.** See
-[document understanding findings and proposal](spec-document-understanding.md).
-The user selected this investigation after reporting photo/PDF failures; onboarding
-and diary navigation remain open. Original preservation, page metadata/reads,
-stale/failed source states and binary-read correctness are implemented. The next
-document step is the separately scoped OCR worker benchmark.
+**Implemented, 2026-09-10:** native page extraction and originals, source status,
+binary reads, bounded local OCR for scans/mixed pages, asynchronous source polling,
+and image missing-file/truncation/cache fixes. The matching Qwen 9B projector is
+configured and real synthetic transcription passed. See the latest
+[roadmap audit](roadmap-audit.md) and [document understanding spec](spec-document-understanding.md)
+for exact bounds and verification. Existing sources need refresh/re-upload to gain
+OCR; native-only cached versions are invalidated. Handwriting and general table
+reconstruction are not promised. Onboarding and diary navigation remain open.
 
-The current path is a starting point, not missing functionality across the board:
-`server/documents.cjs` extracts PDF text layers for project sources; it does not
-perform OCR and explicitly rejects a PDF with no extractable text. Project images
-are separate assets, with model capability checks and optional vision-model
-routing. Uploaded documents and linked-folder documents should behave consistently.
+The original investigation checklist follows for context:
 
 1. **Audit the end-to-end experience.** Use synthetic or explicitly approved
    fixtures: text PDFs, scanned PDFs, mixed text/image pages, tables, screenshots,

@@ -95,3 +95,23 @@ Record the change in the canonical DaServer changelog.
 - The route from a sandboxed dev environment to `10.69.0.130` has been transiently
   flaky ("No route to host" that resolved on retry). One SSH failure does not mean
   the host is down.
+
+
+## PDF OCR service and image inference (2026-09-10)
+
+`compose.yaml` and the Compose Manager example now include `cowork-ocr` and a
+private internal `ocr` network. Add the same service/network to the live Manager
+file, attach web to both its existing networks and `ocr`, and set web's
+`OCR_BASE_URL=http://ocr:8030`. The worker has no host port or durable volume.
+Build all three images; confirm `/health` from web before synthetic PDF upload.
+Do not refresh existing personal sources as part of agent verification.
+
+The LAN SSH route `root@10.69.0.130` worked while Tailscale timed out during this
+change. Lemonade is version 10.8.0. Back up
+`/mnt/docker/appdata/lemonade/user_models.json` before model registration edits.
+The existing `Qwen3.5-9B-GGUF-UD-Q4_K_XL` entry now needs `checkpoints.main` equal
+to its existing checkpoint and `checkpoints.mmproj` equal to
+`unsloth/Qwen3.5-9B-GGUF:mmproj-F16.gguf`. Absolute paths in this registered
+checkpoint field are rejected by this version. The matching projector was
+obtained from revision `3885219b6810b007914f3a7950a8d1b469d598a5`; restart Lemonade
+and verify a real synthetic image, not just its advertised vision label.

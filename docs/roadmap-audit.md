@@ -1,5 +1,31 @@
 # Roadmap audit — 2026-09-10
 
+
+## OCR/image completion follow-up — 2026-09-10
+
+The later request authorized implementation, Git push, and production deployment.
+Local PDF OCR is implemented in a private, stateless Poppler/Tesseract container
+(English/German). Native text and original bytes are preserved; OCR transcription
+is separately labelled, including on mixed text/image pages. Failed/busy workers
+remain incomplete and are retried on refresh. Upload/refresh polling avoids long
+reverse-proxy requests; active operations/results are scoped to the authenticated
+workspace and project. A server restart requires a refresh/re-upload retry.
+
+Missing image files now produce a visible warning; truncated vision descriptions
+fall back to direct vision; description caches include content and credentials,
+expire after five minutes, and remain user/project scoped. The live Qwen 9B
+registration lacked mmproj. Its matching projector is now configured and a real
+synthetic image transcription passed (invoice ID, two dated rows, negative refund,
+and total). No private financial or diary sources were used for testing.
+
+The OCR container passed synthetic scanned, mixed-page, mixed-document, encrypted,
+and malformed PDF checks. Limits: 25 MB input, 50 OCR pages, 3500-pixel longest
+edge, one active worker job, 60 seconds per subprocess, ten minutes per document,
+1 GiB memory and 512 MiB temporary storage. OCR does not guarantee financial table
+semantics or handwriting accuracy; verify critical values against the original.
+Native PDF parsing remains in the web process. Other onboarding/navigation and
+roadmap work is not included in this follow-up.
+
 Original audit (committed as `f0dd19e`) inspected `d726a63` on main, plus a
 read-only production timezone check. That documentation-only audit made no
 implementation changes or deployments; its baseline was 194 web tests and
@@ -93,3 +119,11 @@ implement all workstreams or change production from that investigation.
   order, avoid re-executing writes or re-requesting approval for the same call,
   and preserve tool-result/SSE pairing. Decide/document how denied or failed calls
   behave. Cache scope must be one exchange, never another turn or tenant.
+
+Final pre-rollout verification for the OCR/image follow-up: **247 web tests
+passing**, typecheck/build passing; **155 diary tests passing, 3 skipped** (two
+existing dependency warnings); **3 OCR container tests passing**, including real
+synthetic scans/mixed pages and malformed/encrypted failures. Qwen's loaded
+llama-server command includes `--mmproj` and the synthetic image transcription
+returned the exact invoice, dates, signed amounts, and total. Production rollout
+and browser checks are recorded separately after completion.

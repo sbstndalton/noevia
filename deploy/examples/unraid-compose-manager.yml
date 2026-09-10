@@ -49,6 +49,7 @@ services:
       net.unraid.docker.shell: sh
 
   web:
+    networks: [default, ocr]
     build:
       context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/apps/web
     image: cowork-web:${COWORK_VERSION:-local}
@@ -56,6 +57,7 @@ services:
     ports:
       - "${COWORK_PORT:-8021}:8021"
     environment:
+      OCR_BASE_URL: http://ocr:8030
       UI_PORT: 8021
       MEMBER_OUTBOUND_ORIGINS: ${MEMBER_OUTBOUND_ORIGINS:-}
       UI_AUTH_TOKEN: ${UI_AUTH_TOKEN:-}
@@ -95,3 +97,22 @@ services:
       net.unraid.docker.managed: composeman
       net.unraid.docker.webui: http://[IP]:[PORT:8021]
       net.unraid.docker.shell: sh
+
+  ocr:
+    build:
+      context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/services/ocr
+    image: cowork-ocr:${COWORK_VERSION:-dev}
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:size=536870912,mode=1777
+    networks: [ocr]
+
+networks:
+  ocr:
+    internal: true

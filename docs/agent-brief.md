@@ -200,3 +200,15 @@ Safe to delete, listed so they are not mistaken for real data:
 - Project **Random Questions** has `Documents/Important Documents/Diary/Raw
   Sources` attached and its toolboxes set to `core` + `web-search` from testing.
   Its four diary files were pulled in as sources. Detach if unwanted.
+
+
+### 2026-09-10 OCR/image follow-up
+
+The later user request authorized finishing PDF/photo support, pushing, and
+production rollout. `services/ocr` now supplies bounded local Poppler/Tesseract
+OCR, preserving original/native text and labelling transcriptions. Source polling
+keeps long jobs out of a single proxy request; restart recovery is manual retry.
+Missing/truncated image handling and description cache scope are fixed. Qwen 9B's
+matching mmproj was configured and verified on synthetic image content. See the
+latest audit/deployment sections for limits and final rollout evidence; historical
+native-only observations above describe the earlier state.

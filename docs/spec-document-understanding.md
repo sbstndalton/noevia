@@ -279,3 +279,32 @@ source completeness/binary-read batch before choosing or installing OCR. Photo p
 repair remains a separate operator task. Onboarding and diary navigation remain
 open; the user's explicit request selected this investigation first, not the whole
 roadmap.
+
+
+## Implemented OCR and image follow-up (2026-09-10)
+
+The implementation uses direct Poppler rendering plus Tesseract 5, rather than
+OCRmyPDF: each image-bearing page is rendered in full so a digital header cannot
+hide a scanned body. Native text remains alongside a labelled OCR transcription;
+this can repeat header text but does not replace native values with OCR guesses.
+Original PDFs are immutable. No derived PDF or global text cache is produced.
+The private worker has no storage credentials, persistent volume, host port, or
+external network. Debian packages supply Poppler, Tesseract, English and German
+language data; no application framework was added.
+
+The tested worker bounds are 25 MB, 50 selected pages, longest image edge 3500 px
+(at most 12.25 MP), 60 seconds per render/OCR subprocess, ten minutes per document,
+one concurrent job, 1 GiB RAM, 512 MiB tmpfs. Busy/failed work stays incomplete and
+refresh retries it; successful results are reused only inside the same workspace
+and project. In-memory browser polling jobs are capped at two active and sixteen
+retained per workspace; completed polling results expire after fifteen minutes.
+A restart loses polling status, not saved originals/results; refresh/re-upload
+retries. There is no durable automatic resume queue. Native parsing is still in
+the web process. These are explicit limits, not claims of arbitrary PDF support.
+
+The real worker recovered invoice INV-2042, date/amount associations, refund -7.20,
+and total 34.95 from all three scanned/mixed fixtures. The image inference test
+recovered the same values after registering Qwen's matching mmproj. Missing image
+bytes are now visible, length-limited descriptions fall back, and the description
+cache is credential/content scoped and expires. A 2xx capability probe alone is
+still not proof of perception; deployment verification uses actual image content.

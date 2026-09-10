@@ -320,7 +320,7 @@
     {
       "name": "compose services up",
       "command": "docker compose ps",
-      "expect": "diary healthy; web running"
+      "expect": "diary healthy; web and ocr running"
     },
     {
       "name": "setup status before onboarding",

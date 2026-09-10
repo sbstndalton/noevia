@@ -283,3 +283,17 @@ and approve only operator-trusted DNS names. Restart the web container after cha
 `AUX_INFERENCE_API_KEY` defaults to `INFERENCE_API_KEY` when unset; set it to an
 explicit empty value for an unauthenticated auxiliary server. Configure actual
 model IDs for both clients; `default` works only if the server supports that alias.
+
+
+### Local PDF OCR
+
+Compose also builds a private `ocr` service (Poppler/Tesseract, English/German)
+and connects web through `OCR_BASE_URL=http://ocr:8030`. No OCR host port or
+external credentials are needed. Check it with:
+
+```sh
+docker compose exec -T web node -e "fetch(process.env.OCR_BASE_URL+'/health').then(r=>console.log(r.status))"
+```
+
+Direct Node development without `OCR_BASE_URL` remains native-text-only. See
+`docs/spec-document-understanding.md` for processing limits and retry behavior.
