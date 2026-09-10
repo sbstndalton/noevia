@@ -108,3 +108,24 @@ Validation: 190 Node tests; web typecheck/build; 155 Python passing, 3 skipped.
 Local synthetic browser: project identity save/cancel/retry, hover actions,
 project-scoped empty chat, pin/archive, link/unlink and focused folder dialog;
 phone/tablet/desktop checks in both themes, including all nine settings panels.
+
+## Sidebar organization and hover behavior
+
+Pinned chats and projects share Pinned; pinned chats are excluded from Recents
+and expanded project chat lists. Chats sort newest activity first. The Projects
+heading menu switches between Last used (project/chat activity) and Manual order;
+manual mode exposes Move up/Move down in each project menu. The account-scoped
+browser preference preserves manual order while switching modes and reloading.
+
+Project names open the project and reveal its chats; the identity icon toggles
+the chat list. Disclosure arrows and the Open project menu item are removed.
+Expanded project chats and Recents use a guide line. Hover controls have no
+separate background: the entire row owns its highlight. Keyboard focus, via
+:focus-visible, also reveals controls; mouse focus alone does not keep them
+visible after leaving. Long labels fade and scroll within their available width.
+Reduced-motion preferences disable scrolling and allow hovered/focused text to wrap.
+
+Validation: 194 web tests, typecheck/build; 155 diary passing, 3 skipped. Browser
+checks cover mixed pins, manual-order persistence, direct project navigation,
+collapse, transparent actions, keyboard access, long-title animation, and
+phone/tablet/desktop layouts in light/dark mode.
