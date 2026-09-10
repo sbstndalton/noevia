@@ -544,6 +544,42 @@ request with no session protecting them. But "block plain http outright" would k
 the ordinary homelab case, so the requirement is scoped to *reach*, not to DAV as a
 whole. See 7h.
 
+### 7i. App passwords — the piece noevia does not have yet
+
+Of Nextcloud's four pieces (7f-pre), this is the only one with no existing analogue.
+It is a prerequisite for DAV at any scope, so it is the first thing built in this
+workstream, not the last.
+
+**Why a token and not the account password.** WebDAV authenticates with HTTP Basic:
+the credential is sent on *every request*, sitting in a file client's config on
+every device. So the account password must never be the thing that is stored there.
+
+**Shape** — deliberately the same as the passkey list already in Settings →
+Profile and security, which is the closest existing thing:
+
+- Generated server-side, high entropy, **displayed once** at creation and never
+  retrievable again. Stored as a hash, like the account password
+  (`auth.cjs` already uses Argon2id — reuse it, do not invent a second scheme).
+- Carries a **name** ("laptop", "phone"), a **created** date, and a **last used**
+  timestamp so a stale one is visible.
+- **Revocable individually**, without touching the account password or any other
+  device.
+- **Scoped** to the access level it was minted under (7h). A LAN-scoped credential
+  is refused on the public origin — defence in depth if the port is later exposed.
+- **Never grants app login.** A DAV token authenticates DAV and nothing else; it
+  must not be accepted at `/api/auth/*` or on any chat route. This is the difference
+  between "a device can read my diary files" and "a device can act as me."
+
+**Cross-checks against what already exists:**
+
+- `LEGACY_AUTH_COMPAT=false` removed the general bearer-token path on purpose.
+  This does not reinstate it: tokens are accepted only on the DAV port, only via
+  Basic, only for corpus paths.
+- Rate-limit failed DAV auth the way `llm-rate-limit` and the login limiter
+  already do, and audit token creation and revocation through
+  `authService.audit()` alongside logins and tool writes.
+- Invited users get their own tokens; a token is per-user, never per-deployment.
+
 ### 7h. Three access scopes, chosen in the wizard
 
 Exposure is a separate question from "do you want DAV at all", and the answer is not
@@ -731,11 +767,13 @@ is what the live deployment already does with
    Unraid boot flash for anyone following the deploy examples.
 10. Workstream 7e (named volume as the default corpus location) — with 7a, since
     both are about where state lands.
-11. Workstream 7d (noevia's own WebDAV endpoint) + the Workstream 3 storage step —
+11. Workstream 7i (app passwords) — a prerequisite for DAV at any scope, and
+    independently useful. Build it first within Workstream 7.
+12. Workstream 7d (noevia's own WebDAV endpoint) + the Workstream 3 storage step —
     the appliance path. Biggest single item here: a new authenticated, externally
     reachable write surface, app-password auth, and a `SECURITY.md` section. Spec
     it first, the way `spec-reasoning-effort.md` was specced.
-12. Workstream 5 proper + 5c + 6b — research spikes; a `docs/spec-*.md`, not code.
+13. Workstream 5 proper + 5c + 6b — research spikes; a `docs/spec-*.md`, not code.
 
 ## Verification
 
