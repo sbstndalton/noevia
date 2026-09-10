@@ -3,11 +3,11 @@
 ## Current handoff status — reconciled 2026-09-10
 
 The status table below is current; dated follow-ups preserve earlier evidence.
-Application **`9e2bfbb`** is deployed across all three services. Onboarding,
+Application **`79cd24f`** is deployed across all three services. Onboarding,
 Diary navigation/scaffolding/landing, thinking effort v1, reasoning-only answer
 handling and reported-rate sample guards have shipped. DOCX body extraction is deployed. App-password lifecycle is deployed; a limited, default-off DAV endpoint is
 deployed with sharing disabled. Current
-verification: **310 web tests**, typecheck/build and **171 diary tests passed,
+verification: **314 web tests**, typecheck/build and **171 diary tests passed,
 3 skipped** (two existing warnings). Model accuracy, latency, uncapped local
 thinking and storage architecture remain open. Diary extras stay OFF on reload;
 the companion pipeline and all write approvals remain unchanged.
@@ -86,7 +86,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 6c / 6d: memory ownership/privacy | Architectural constraints | Disk-backed diary memory already feeds context. Keep the single-store and no-cross-profile diary-content boundaries; these are not standalone missing UI features. |
 | 7a: Unraid state default | Original example hazard addressed | `deploy/examples/unraid-compose-manager.yml` requires COWORK_STATE_DIR explicitly. Generic `compose.yaml` and the manifest still use ./state. No named-volume default or explicit /boot-path rejection exists; those are separate remaining decisions. |
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice setup flow is verified; broad device mounting remains open. |
-| 7d / 7e / 7h / 7i: served storage | Partial | App-password lifecycle deployed; limited conditional Markdown DAV operations verified locally. Broad file-manager compatibility remains open. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
+| 7d / 7e / 7h / 7i: served storage | Partial | App-password lifecycle deployed; limited conditional Markdown DAV operations deployed. Broad file-manager compatibility remains open. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. Sharing settings and hosted-storage wizard are deployed; managed-volume defaults remain open. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
 | 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX body/table reader deployed; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
 | 9: skills | Proposal complete; implementation planned | User selected reusable instructions using existing approved tools. See spec-instruction-skills.md for current code inventory, project-file lifecycle, context boundaries, representative weekly review and acceptance plan. No executable package framework. |
@@ -97,13 +97,14 @@ Completed: reliability, PDF/OCR/images, composers/model controls, onboarding
 correctness, Diary navigation/scaffolding/landing/refactor, thinking v1 and the
 reasoning-only and short-sample telemetry fixes.
 
-1. **DAV:** finish limited endpoint image checks/rollout; leave production sharing off.
-2. **Storage architecture:** reconcile Workstream 7 into a scoped spec and implement
-   app passwords before exposing DAV, then the appliance/storage onboarding flow.
-3. **Thinking/model follow-ups:** verify wider provider budgets and investigate
-   latency/accuracy with synthetic evidence; do not promise uncapped generation.
-4. **Skills and tool research:** produce concrete designs for Workstream 9 and
-   relevant parts of 5; optional Wikipedia requires a selected available service.
+1. **Instruction skills:** implement the scoped project-file lifecycle, including
+   explicit review and exclusion from every source/RAG path when disabled.
+2. **Storage:** companion-backed namespace operations and real client compatibility;
+   fresh-install volume defaults/Unraid path protection without existing-data migration.
+3. **Thinking/model follow-ups:** verified provider budgets and synthetic performance
+   evidence; current high hints are bounded, not uncapped.
+4. **Tool research:** run the scoped experiments before adopting architectural changes;
+   optional Wikipedia requires an operator-selected service.
 
 The 2026-09-10 continuation request now authorizes continuing the full roadmap,
 with testing and a Git push after each implemented item. Keep each change bounded
@@ -645,3 +646,9 @@ truncated. Source/RAG behavior and tool permissions are unchanged. This does not
 implement the proposed explicit skill selection UI or exclusive progressive
 loading. 314 web tests (including the actual chat handler request), typecheck/build
 and 171 Diary tests (3 skipped) pass. No new UI or production prompts. Rollout pending.
+
+
+Skills-index rollout: **`79cd24f`** replaces `9e2bfbb` on all services after 267
+serial isolated Linux server tests and eight worker tests. Compose health passes;
+prior release and `.bak.before-79cd24f` backups retained. No corpus testing or
+sharing exposure enabled. Frontend bundle is unchanged from the wizard release.

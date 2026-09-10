@@ -280,3 +280,9 @@ and verified wizard/storage choices. 263 serial isolated Linux server and eight
 worker tests passed. LAN SSH 10.69.0.130 verified web/OCR 200, healthy Diary,
 zero restarts/OOM, and DAV port 0. Prior release/config backups retained. The live
 Compose file has no new DAV publication. No real diary testing used.
+
+
+Latest rollout: **`79cd24f`**, replacing `9e2bfbb`, fixes bounded skill metadata
+filenames. 267 serial isolated Linux server and eight worker tests passed before
+cutover. All three services healthy; prior release and `.bak.before-79cd24f`
+backups retained. Frontend unchanged, no production corpus tests, DAV remains off.
