@@ -124,3 +124,14 @@ diary passed its authenticated health check, and the authenticated browser passe
 synthetic mixed-PDF upload/OCR and image/PDF question checks. No real corpus was
 used for test prompts. The commit recording these results is documentation only;
 the deployed application source remains `e3b29bb`.
+
+
+Latest application rollout: `48027ef` (unified uploads), replacing `e3b29bb`.
+No Compose schema or environment additions were needed for this follow-up.
+All three images use the new tag. `.bak.before-48027ef` config/Compose backups
+and the previous release are retained. Tailscale was stopped on the client;
+reconnecting its existing configuration restored SSH access. Browser verification
+used a separate synthetic project, never a real diary or financial source.
+Tailscale was restored to its previous stopped state after verification. The
+synthetic chat and project are archived. The rollout record is documentation only;
+the deployed application source remains `48027ef`.

@@ -160,3 +160,12 @@ The background wrapper's accidental 1 MB cap was corrected to the 25 MB file lim
 plus base64 overhead. Verification: 256 web tests, typecheck/build pass; 155 diary
 tests pass, 3 skipped. Synthetic local browser checks covered mixed uploads and
 mobile source rows. The sidebar was not redesigned.
+
+
+Unified-upload production follow-up: `48027ef` is deployed. Synthetic browser
+uploads confirmed Nextcloud Documents/Images paths, original availability,
+PDF OCR status, stored-only DOCX state, and preservation after refresh. Chat now
+shows image preparation immediately, before waiting for model inference. The
+synthetic image response correctly identified both shapes, colors, and heading;
+QA chat/project were archived. See
+`changelog.md` for the verification record and deployment rollback details.

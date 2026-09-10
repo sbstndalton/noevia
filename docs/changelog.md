@@ -8,6 +8,37 @@ updated.
 
 ---
 
+## 2026-09-10 — unified uploads and visible processing
+
+Application release `48027ef` replaces `e3b29bb` in production. One Sources upload
+control now accepts non-archive originals up to 25 MB, including DOCX. Connected
+storage receives Documents/Images/Text/Other subfolders; the UI uses the same
+groups. Opaque formats remain stored-only, with authenticated original downloads
+and explicit model-context disclosure. Images retain a bounded local cache for
+inference; the 8 MB image-input budget is separate from the storage limit.
+
+Earlier local image uploads are copied to connected storage on refresh. Transfer
+percentage and per-file elapsed time are distinct from saving/extraction stages;
+image chat exposes preparation status before model processing. The obsolete 1 MB
+background request cap and 40-file refresh cap were corrected. The project quota
+remains 60 total sources, with regression coverage for a 41-file refresh.
+
+Verification: 256 web tests, typecheck/build, and 155 diary tests passed (3 skipped,
+two existing dependency warnings). Local browser checks covered mixed uploads and
+mobile source rows. Authenticated production checks uploaded synthetic PNG, PDF,
+and DOCX files through one chooser, confirmed Documents/Images storage paths,
+OCR-ready PDF metadata, original links, timing details, and successful refresh.
+Image preparation feedback appeared at 0.2 seconds in the synthetic chat check;
+the model correctly identified the shapes, colors, and ZEBRA-73 heading in 21.9
+seconds. The synthetic chat and project were archived after verification.
+The diary corpus and private financial files were not used for testing.
+
+Deployment used the existing Tailscale configuration because the LAN route was
+unavailable. All three service images use `48027ef`; prior release and
+`.env.bak.before-48027ef` / Compose backups are retained for rollback. Tailscale
+was restored to its previous stopped state after deployment and verification.
+
+
 ## 2026-09-10 — bounded reliability, OCR and image rollout
 
 Production now runs `e3b29bb` (previous `cd717b0` retained). This includes the
