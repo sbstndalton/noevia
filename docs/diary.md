@@ -68,6 +68,18 @@ day opens only that day's content. Sending from home uses the browser's local
 date/time at submission; sending from a selected day appends to that date. Browsing
 writes nothing.
 
+The diary container's `TZ` controls every server-side date/time fallback when a
+client omits its entry stamp. Set an IANA timezone in the deployment `.env` (the
+compose examples default to `America/New_York`), then recreate the diary container
+to load the changed environment; restarting alone retains the old value. Named
+zones account for daylight saving automatically. This fallback is shared across
+tenants; browser-supplied dates/times still take precedence. Journal event
+timestamps remain UTC.
+
+Setup's preferences step detects the browser timezone and lets the user confirm
+or edit it, producing the `TZ=...` setting for the administrator to apply. The
+wizard does not modify Compose or claim to apply a container environment change.
+
 ### Entry format
 
 Structure is generated **mechanically by code, never by the LLM** — this is the

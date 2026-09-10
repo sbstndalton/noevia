@@ -366,6 +366,13 @@ sandbox VM reports UTC and the model was manually subtracting 4 hours for EDT.
 That arithmetic caused a real misfiled entry. Its own fix: run
 `TZ=America/New_York date` so the conversion happens in the command.
 
+Implemented in the repository: both compose definitions pass `TZ` to the diary
+service, `.env.example` documents it, and setup's prefs step detects/confirms an
+IANA zone and shows the setting for the operator to apply. Subprocess tests pin
+the day and entry-header fallbacks across UTC midnight, including summer/winter
+offsets. The third compose copy on the live server remains out of scope and has
+not been changed; applying `TZ` there requires a separate deployment.
+
 **noevia has the identical exposure.** The diary container has `TZ` unset, so it
 runs on UTC while the user does not.
 

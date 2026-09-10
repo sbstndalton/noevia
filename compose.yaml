@@ -8,6 +8,7 @@ services:
     expose:
       - "8010"
     environment:
+      TZ: ${TZ:-America/New_York}
       CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
       CORPUS_ROOT: ${CORPUS_ROOT:-}
       CORPUS_LOCAL_ROOT: /app/data/corpus
