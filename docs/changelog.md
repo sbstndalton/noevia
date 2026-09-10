@@ -175,3 +175,38 @@ eviction that previously ate `dist/assets` and `node_modules`. Nothing was lost
 (`git checkout -- docs/` restored it, and `origin/main` was never affected), but
 it is a reminder that this checkout lives on a sync client that removes files
 underneath you. Commit early; do not treat the working tree as durable storage.
+
+## 2026-09-09 — aux model 404, found while verifying the deploy
+
+`LLM_AUX_MODEL` was the literal string `default` on the live deployment, because
+`DIARY_AUX_MODEL` was never set and every compose file fell back to that
+placeholder. No backend serves a model by that name, so **every** summariser,
+skip-classifier and index-maintenance call had been 404ing — for at least five
+days before it was noticed.
+
+It hid because the pipeline degrades gracefully: `summarizer failed (...);
+logging verbatim assistant reply`. Entries kept being written correctly and only
+lost their `— Topic` headers. September 5–9 have 0 topics across 75 time headers.
+
+Fixed in three places, because a fix in only one of them leaves the trap armed
+for the next deployment:
+
+- **Live `.env`**: `DIARY_AUX_MODEL=gemma-4-E2B-it-GGUF-UD-Q4_K_XL`. Verified the
+  aux model now returns 200 on the exact call that was failing.
+- **compose.yaml, deploy/examples/unraid-compose-manager.yml, and the live
+  compose-manager copy**: `${DIARY_AUX_MODEL:-${DIARY_CHAT_MODEL:-default}}`.
+  This mirrors what line 36/37 already did for `llm.aux.base_url` and
+  `api_key` — the aux *model* was simply never given the same fallback.
+  All three interpolation cases verified against real `docker compose config`.
+- **services/diary/agent/config.py**: `_resolve_aux_model()` treats an empty or
+  placeholder aux model as "reuse the chat model" and logs a warning naming
+  `DIARY_AUX_MODEL`. This catches every deployment path, not just compose. Four
+  tests, including that an explicit aux model is never overridden and that a
+  wholly unconfigured pair is left alone rather than guessed at.
+
+Historic entries were **not** backfilled. `/api/relog` looks like the tool for it
+and is not: it re-logs an exchange from the *current in-memory session* at
+`now=datetime.now()`, with an empty `sub_header`. Pointed at old entries it would
+append duplicates stamped today rather than repair anything.
+
+Tests: 151 python (+4), 162 node.
