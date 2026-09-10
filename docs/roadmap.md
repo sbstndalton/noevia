@@ -1,8 +1,22 @@
-# noevia: setup, thinking modes, and diary zero-state
+# noevia roadmap
 
-Status: **plan only — nothing here is implemented.** Written 2026-09-09, against
-`8a78172`. Companion to the reasoning-effort spec (now the appendix below), which Workstream 2
-implements (with one of its open questions answered the other way — see 5b).
+Originally written 2026-09-09 against `8a78172`; priorities updated 2026-09-10.
+This is a mix of plans and completed work, not a claim that every item remains
+unimplemented. Older sections retain their original context unless marked otherwise.
+
+## Current priorities — 2026-09-10
+
+- **UI and sidebar: accepted for now.** The user is satisfied with the current
+  direction; pause further cosmetic iteration unless a bug or new request warrants
+  it. Deployed through `cd717b0`: palettes, project identity, compact editor,
+  clearer source management, separate pinned items, chat recency, manual/recent
+  project ordering, and transparent hover controls with readable long titles.
+  See [the UI review](ui-reference-review.md) for decisions and verification.
+- **Next: PDFs, OCR, and images.** Establish what works, what fails, and what the
+  source experience should be before choosing an implementation (Workstream 8).
+- **Also plan skills.** Define their role, scope, and relationship to existing
+  tools and project instructions (Workstream 9). No skill framework or OCR engine
+  has been selected by this update.
 
 ## Context
 
@@ -786,7 +800,75 @@ is what the live deployment already does with
 
 ---
 
+## Workstream 8 — PDFs, OCR, and image understanding
+
+**Status: next planning priority; implementation not started by this update.**
+
+The current path is a starting point, not missing functionality across the board:
+`server/documents.cjs` extracts PDF text layers for project sources; it does not
+perform OCR and explicitly rejects a PDF with no extractable text. Project images
+are separate assets, with model capability checks and optional vision-model
+routing. Uploaded documents and linked-folder documents should behave consistently.
+
+1. **Audit the end-to-end experience.** Use synthetic or explicitly approved
+   fixtures: text PDFs, scanned PDFs, mixed text/image pages, tables, screenshots,
+   and photos. Check upload and folder refresh, extraction, retrieval, and the
+   answering model. Record whether failures come from extraction, missing image
+   capability, routing, or retrieval rather than treating all of them as OCR bugs.
+2. **Specify PDF and OCR behavior.** Decide when to use a text layer, when OCR is
+   needed (including mixed PDFs), and how to preserve page references, reading
+   order, and useful table structure. Define handling for encrypted, malformed,
+   oversized, partially readable, and truncated documents. Preserve original files;
+   distinguish originals from derived text and avoid duplicate extraction on refresh.
+3. **Specify image behavior.** Clarify when an image is sent directly to a capable
+   model versus described by the configured vision model. Cover image-only PDFs,
+   multiple images, unavailable models, and the difference between extracting text
+   and understanding a picture. Make unsupported or failed processing visible.
+4. **Evaluate implementation options.** Compare local OCR/vision choices against
+   actual host resources, accuracy, latency, maintenance, and privacy requirements.
+   Decide processing limits, caching, and whether long documents need background
+   work. Do not add a runtime dependency or cloud processing by assumption.
+5. **Make source state understandable.** Plan clear queued/processing/ready/failed
+   states where needed, useful retry actions, and page/source attribution. An upload
+   succeeding must not imply the model can read every page or image.
+
+Deliverable: a short findings/spec document with recommended scope, open decisions,
+and a fixture-based acceptance matrix before implementation. Test with known text
+and page references; failures must be explicit, existing PDF text extraction must
+stay working, and files must remain isolated to their owning user/project. Do not
+use the real diary corpus as a test dataset or send diary prompts.
+
+## Workstream 9 — Skills and reusable project workflows
+
+**Status: planning/discovery; user wants to work out the model before building it.**
+
+Start by agreeing what a skill means in noevia: reusable instructions, a workflow
+that uses existing tools, or an executable package. Inventory project instructions,
+toolboxes, MCP discovery, and the approval gate first. Coordinate with Workstream 5
+so skills do not create a second competing system for tool selection.
+
+Questions to resolve:
+
+- How are skills created/imported, inspected, enabled, updated, and removed?
+- Are they personal or shared, and selected per project, per chat, or automatically?
+- How do skill instructions interact with project instructions and context limits?
+- What formats are supported, and what compatibility is actually needed?
+- If a skill requires tools or dependencies, how are those requirements surfaced?
+- How does a user see which skill ran, what it did, and why it failed?
+
+Deliverable: a scoped proposal and one representative workflow, followed by an
+implementation plan. Skills must preserve tenant isolation and the existing write
+approval gate; importing instructions must not silently grant execution or tool
+permissions. Framework, package, and execution choices remain open decisions for
+the proposal.
+
 ## Sequencing
+
+**Current override:** the UI is settled for now. Start with Workstream 8's audit
+and specification, then Workstream 9's skills proposal. The earlier sequence below
+remains background backlog; verify current implementation status before taking an
+item on. This update records priorities and planning scope; the new research
+topics have not been implemented.
 
 1. Workstream 1 — hours, unblocks agent-driven deploys immediately.
 2. Workstream 4c — one function, highest felt improvement per line changed.
