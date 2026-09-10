@@ -303,3 +303,14 @@ exchange took 23.7 seconds. This was a live integration test, not a locally
 configured MCP endpoint. The QA chat/project were archived, local QA server and
 tabs closed, viewport reset, and Tailscale restored to stopped. No real diary or
 financial corpus was used.
+
+
+Shared-composer rollout: application `12ba04f` replaces `3320fc3`. All three
+production images use the new tag. `.bak.before-12ba04f` environment/Compose
+backups and the previous release are retained; no environment/schema additions
+were needed. Diary health passed and web-to-OCR health returned 200. The live
+authenticated browser confirmed the new Diary + menu and extras OFF by default.
+No production diary prompts were sent, nor were extras enabled against the real
+corpus. Execution/approval tests used isolated synthetic inference, MCP, and diary
+fixtures; the earlier real MCP integration test remains recorded above. Temporary
+QA servers/tabs were closed, viewport reset, and Tailscale returned to stopped.

@@ -141,3 +141,9 @@ All three images use `3320fc3`; no environment or Compose schema changes. Retain
 `.bak.before-3320fc3` backups with the previous release. Authenticated synthetic
 upload and actual Lemonade-to-Nextcloud MCP listing passed. The following rollout
 record commit is documentation only; deployed application source is `3320fc3`.
+
+Latest application rollout: `12ba04f` (shared composers and opt-in Diary extras),
+replacing `3320fc3`. All three images use `12ba04f`; no environment or Compose
+schema additions. Retain `.bak.before-12ba04f` backups and the previous release.
+Diary/OCR health and the live default-off menu check passed. The following rollout
+record is documentation only; deployed application source remains `12ba04f`.

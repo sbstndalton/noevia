@@ -222,3 +222,14 @@ Synthetic browser checks covered project-front-page and free-chat uploads, free-
 tool execution, Diary baseline/on/off/reload, all three write decisions, approval
 scope separation, cancellation, and mobile popup placement. No real diary prompts
 or corpus changes were used.
+
+
+Shared-composer rollout: application `12ba04f` replaces `3320fc3`. All three
+production images use the new tag. `.bak.before-12ba04f` environment/Compose
+backups and the previous release are retained; no environment/schema additions
+were needed. Diary health passed and web-to-OCR health returned 200. The live
+authenticated browser confirmed the new Diary + menu and extras OFF by default.
+No production diary prompts were sent, nor were extras enabled against the real
+corpus. Execution/approval tests used isolated synthetic inference, MCP, and diary
+fixtures; the earlier real MCP integration test remains recorded above. Temporary
+QA servers/tabs were closed, viewport reset, and Tailscale returned to stopped.
