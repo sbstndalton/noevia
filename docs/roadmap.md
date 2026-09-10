@@ -486,6 +486,43 @@ auth surface, and zip export is an escape hatch, not a storage mode.
   surface reachable from outside needs its own section in `SECURITY.md`, its own
   rate limiting, and to stay disabled unless the user turned it on in setup.
 
+### 7f-pre. The reference design: what Nextcloud does
+
+noevia is copying a model that already works, so it is worth stating plainly. Four
+pieces:
+
+1. **Nextcloud does not do HTTPS itself.** It assumes a reverse proxy in front
+   terminating TLS. "How do I get a certificate" is deliberately not its problem.
+   noevia already takes the same posture, and should keep taking it — see 7h.
+2. **The WebDAV URL is derived and shown, never asked for**:
+   `https://<host>/remote.php/dav/files/<username>/`, where `<host>` comes from its
+   `trusted_domains` list. That list is the direct analogue of noevia's
+   `PUBLIC_ORIGIN` plus `ADDITIONAL_TRUSTED_ORIGINS`.
+3. **App passwords.** WebDAV authenticates with HTTP Basic, meaning the credential
+   is sent **on every single request**. So Nextcloud has you generate a long random
+   per-device token in Settings → Security, shown once, pasted into the file client
+   instead of the account password. Three reasons, all of which apply here equally:
+   the real password never lands on the device; a lost device means revoking one
+   token rather than changing the account password; and it is the only way a file
+   client can authenticate at all when 2FA is on, since it cannot answer a 2FA
+   prompt. Each token carries a name and a last-used timestamp and is revocable on
+   its own.
+4. **It warns rather than blocks.** An admin "Security & setup warnings" panel goes
+   red on plain http or a misconfigured proxy. It does not prevent you running that
+   way; it keeps telling you.
+
+**noevia already has three of the four.** `PUBLIC_ORIGIN` is the trusted-domain
+list; TLS is already the operator's job; Settings → Profile and security already
+lists and revokes passkeys, which is the same shape a token list needs. The missing
+piece is the tokens themselves, and the warning surface.
+
+**A design constraint that follows from this.** The wizard must not ask the operator
+to make a security judgement they are not equipped to make. Every choice should
+default to the closed option, state its consequence in one plain sentence, and never
+present an option whose wrong answer is silently dangerous. Where a real risk cannot
+be removed — plain http on a LAN, say — name it in words a non-specialist can act
+on, and record the acknowledgement, the way Nextcloud's warnings panel does.
+
 ### 7f. The endpoint URL — derive it, do not ask twice
 
 **Nextcloud does not ask you for a WebDAV URL; it shows you one**
@@ -518,17 +555,107 @@ binary. The storage step asks it as three choices:
 | **This network only** | Mountable from devices on the LAN; never leaves it | plain http allowed with an explicit acknowledgement; HTTPS if the operator fronts it |
 | **Reachable from anywhere** | Mountable over the public origin | HTTPS enforced, no exception |
 
-**LAN-only must be private by construction, not by a check.** Serve DAV on its own
-container port rather than a path on the public one. The live deployment makes this
-clean: its tunnel is token-managed, so routing lives in the Cloudflare dashboard and
-**a port that has no public hostname mapped to it is simply not reachable from
-outside** — nothing to misconfigure. Compose publishes exactly one port today
-(`${COWORK_PORT:-8021}:8021`); DAV gets a second, and the operator has to take a
-deliberate action in Cloudflare to expose it.
+**Serve DAV on its own container port**, not a path on the public one. Compose
+publishes exactly one port today (`${COWORK_PORT:-8021}:8021`); DAV gets a second.
+Exposing a second port is then a deliberate act by the operator in whatever sits in
+front — adding a hostname in a tunnel dashboard, a `location` block in nginx, a
+port-forward. Doing nothing leaves it LAN-only.
 
-Deliberately *not* an IP allowlist. With `TRUST_PROXY=true` the client address comes
-from `x-forwarded-for`, which is caller-supplied; an allowlist would be exactly as
-trustworthy as that header. An unrouted port needs no trust.
+**But noevia cannot verify that, and must not claim to.** Whether a port is
+reachable from the internet depends entirely on infrastructure noevia has no view
+of. Promising "LAN only" as though it were enforced would be a lie the user relies
+on. The wizard should say what it actually means: *noevia serves this on port N and
+does not publish it; if you have not deliberately exposed port N, it stays on your
+network.*
+
+An IP allowlist was considered and rejected. With `TRUST_PROXY=true` the client
+address is read from `x-forwarded-for`, a caller-supplied header, so the allowlist
+would be exactly as trustworthy as that header — security theatre, and worse than
+honest wording because it *looks* like enforcement.
+
+**Plain http is permitted on the LAN scope, with the trade-off stated.** It is not
+safe — an app password crosses the LAN in cleartext, readable by anything else on
+that network — but it is the difference between a usable feature and one nobody can
+turn on. Say that in one sentence and require an explicit acknowledgement, the way
+the account step already handles a `private-lan-http` origin instead of refusing it.
+
+**HTTPS on the LAN scope is the operator's to provide, not noevia's.** A reverse
+proxy with an internal CA, Caddy, Traefik, or Tailscale all work. noevia should
+accept an override URL for that case and otherwise stay out of certificate
+issuance — `ADDITIONAL_TRUSTED_ORIGINS` (already in `index.cjs:66` and
+`compose.yaml:62`) is the existing seam for keeping a LAN name valid alongside the
+public one.
+
+**App passwords carry their scope.** A credential minted for LAN-only use records
+that and is refused on the public origin. Defence in depth: if the port is later
+routed publicly by mistake, existing LAN credentials do not silently become
+internet-facing ones.
+
+### 7g. Verified: a reverse proxy does not eat WebDAV verbs
+
+WebDAV uses HTTP methods most proxies never see — `PROPFIND`, `MKCOL`, `MOVE`,
+`LOCK`, `REPORT`. The standing worry is that whatever sits in front of noevia drops
+them and the whole feature is unusable from outside.
+
+Measured on one deployment (a Cloudflare tunnel, 2026-09-09) against a direct-to-
+origin control:
+
+| Method | through the proxy | direct to origin |
+| --- | --- | --- |
+| `GET` | 200 | 200 |
+| `HEAD`, `OPTIONS`, `PROPFIND`, `MKCOL`, `LOCK`, `REPORT` | 404 | 404 |
+
+Identical, so that proxy forwards them untouched and the 404s are **noevia's own
+router**, which matches on `req.method === 'GET'` / `'POST'` and nothing else.
+
+**This is evidence from one setup, not a design assumption.** noevia must not
+require, detect, or special-case any particular proxy — operators run nginx, Caddy,
+Traefik, Tailscale, a plain port-forward, or nothing at all. What the measurement
+buys is confidence that the approach is sound in at least one common arrangement,
+and a concrete failure mode to document: if a DAV client cannot mount, the first
+thing to check is whether the proxy in front passes `PROPFIND`. Some do not by
+default, and that is the operator's configuration to fix, not noevia's to work
+around.
+
+Two consequences for the build, neither proxy-specific:
+
+- **`OPTIONS` and `HEAD` need real handling before anything else works.** Every DAV
+  client opens with `OPTIONS` to read the `DAV:` capability header, and uses `HEAD`
+  for cheap existence checks. Both currently 404 on *all* routes — a small wart
+  worth fixing regardless of this workstream.
+- **Proxies impose their own request-body limits** (Cloudflare's free tier caps at
+  100 MB; nginx defaults to 1 MB via `client_max_body_size`). Diary Markdown is
+  nowhere near either, but it caps what the corpus accepts from outside, so it
+  belongs in the docs rather than being found by a failed upload.
+
+### 7h. Three access scopes, chosen in the wizard
+
+Exposure is a separate question from "do you want DAV at all", and the answer is not
+binary. The storage step asks it as three choices:
+
+| Scope | What it means | Transport |
+| --- | --- | --- |
+| **Off** (default) | Files reachable only through the app's own Markdown editor | n/a |
+| **This network only** | Mountable from devices on the LAN; never leaves it | plain http allowed with an explicit acknowledgement; HTTPS if the operator fronts it |
+| **Reachable from anywhere** | Mountable over the public origin | HTTPS enforced, no exception |
+
+**Serve DAV on its own container port**, not a path on the public one. Compose
+publishes exactly one port today (`${COWORK_PORT:-8021}:8021`); DAV gets a second.
+Exposing a second port is then a deliberate act by the operator in whatever sits in
+front — adding a hostname in a tunnel dashboard, a `location` block in nginx, a
+port-forward. Doing nothing leaves it LAN-only.
+
+**But noevia cannot verify that, and must not claim to.** Whether a port is
+reachable from the internet depends entirely on infrastructure noevia has no view
+of. Promising "LAN only" as though it were enforced would be a lie the user relies
+on. The wizard should say what it actually means: *noevia serves this on port N and
+does not publish it; if you have not deliberately exposed port N, it stays on your
+network.*
+
+An IP allowlist was considered and rejected. With `TRUST_PROXY=true` the client
+address is read from `x-forwarded-for`, a caller-supplied header, so the allowlist
+would be exactly as trustworthy as that header — security theatre, and worse than
+honest wording because it *looks* like enforcement.
 
 **Plain http is permitted on the LAN scope, with the trade-off stated.** It is not
 safe — an app password crosses the LAN in cleartext, readable by anything else on
