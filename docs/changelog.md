@@ -8,6 +8,15 @@ updated.
 
 ---
 
+## 2026-09-10 — Diary landing reflects its actual contents
+
+Empty diaries show a first-entry composer without a fictitious month. Populated
+diaries show memory files, recent entry dates and tenant Raw Sources Markdown,
+with month navigation below. Loading/errors do not masquerade as empty diaries.
+Operator-wide import paths remain administrator-only. 281 web / 171 diary tests
+(3 skipped), typecheck/build, synthetic browser and manual layout checks pass.
+Rollout pending.
+
 ## 2026-09-10 — first-entry folders survive interrupted writes
 
 New corpora receive Entries, AI Memory and Raw Sources seed READMEs with their
@@ -15,7 +24,7 @@ first logged exchange. Create-only writes use the existing durable journal and
 ETag recovery, preserving existing files and avoiding duplicate entries on retry.
 Existing/imported entry corpora are not migrated. AI Memory files join direct
 context reads without copying legacy memory. 171 diary tests (3 skipped), 281 web
-tests, typecheck/build and synthetic manual verification pass. Rollout pending.
+tests, typecheck/build and synthetic manual verification pass. Deployed `b34c33f`.
 
 ## 2026-09-10 — older entries remain available without semantic matches
 

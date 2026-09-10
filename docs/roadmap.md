@@ -193,7 +193,7 @@ have something to render and the user can see where things go.
 Implemented 2026-09-10: create-only, journal-replayable first-entry seeds, with
 legacy/imported corpus preservation and direct AI Memory context reads.
 171 diary / 281 web tests, typecheck/build and synthetic manual verification pass.
-Rollout pending.
+Deployed as `b34c33f`.
 
 **4b. Landing page becomes state-dependent.** `DiaryView.tsx` renders one landing for
 everyone. Split it:
@@ -207,6 +207,12 @@ everyone. Split it:
   **Other sources** (`Raw Sources/`, plus the `external-sources` API which today is
   **admin-only with no user-facing surface at all**). The month grid moves below
   these or into the sidebar.
+
+4b implemented 2026-09-10: empty composer and populated tenant Memory/Entries/Other
+sources panels, with up to seven dates from the latest two months and existing
+month navigation below. Operator-wide external source folders remain admin-only;
+exposing them requires tenant ownership, as recorded in the audit. Tests and
+synthetic responsive/manual checks pass. Rollout pending.
 
 **4c. Sending from the landing navigates to the day.** In `submit()`, when
 `scope === 'home'`, compute `entryDay` as it already does, then `setMonth(...)` /

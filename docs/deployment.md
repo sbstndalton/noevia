@@ -218,3 +218,10 @@ older-entry context fallback. All three candidates built and 234 isolated Linux
 server tests passed before cutover. Retain prior release and `.bak.before-23ba691`
 configuration backups. Diary/internal OCR health pass; zero restarts/OOM. No live
 diary test prompt or corpus access. Frontend bundle is unchanged from `5b1ef12`.
+
+
+Latest application rollout: **`b34c33f`**, replacing `23ba691`, adds durable
+first-entry scaffolding. All three candidates built; 234 isolated Linux server
+tests passed before cutover. Prior release and `.bak.before-b34c33f` configuration
+backups retained. Diary/internal OCR health pass, zero restarts/OOM. No production
+corpus touched; frontend bundle remains unchanged.

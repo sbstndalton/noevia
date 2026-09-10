@@ -79,8 +79,8 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 3: wizard restructure | Partial | Administrator flow is account → provider → diary → prefs → passkey; members start at diary. The dead-end models step is removed. Full diary-first/storage redesign remains deferred. |
 | 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
-| 4a: diary scaffolding | Implemented; rollout pending | First exchange in a new corpus journals create-only seed READMEs for Entries, AI Memory and Raw Sources. Existing journals/imported entry corpora are not migrated. |
-| 4b: diary zero state | Not implemented as specified | `DiaryView.tsx` still has the shared landing; month discovery adds the current month even when there are no entries. No dedicated first-entry composer / three-panel populated split. |
+| 4a: diary scaffolding | Complete and deployed | First exchange in a new corpus journals create-only seed READMEs for Entries, AI Memory and Raw Sources. Existing journals/imported entry corpora are not migrated. |
+| 4b: diary landing | Implemented; rollout pending | Empty composer; populated Memory, recent Entries and Other sources panels. Operator-wide external import folders remain admin-only pending tenant ownership. |
 | 4c: landing-to-day navigation | Complete and deployed | Send pins the browser-local date and routes history, streamed/local replies, errors and optional-tool scope to that day before preparation begins. Synthetic browser-local/server-backed regressions pass. |
 | 4d: diary visual/refactor work | Partial / defer cosmetics | Broad visual updates shipped, but the specified component split and new panel behavior have not. UI is now accepted; implement necessary behavior without restarting cosmetic work. |
 | 5a: duplicate tool-call guard | Complete and deployed | `tool-exchange.cjs` is instantiated inside `handleChat`; canonical arguments, exchange-only result reuse, read invalidation on attempted writes, and handler-level mocked streaming/fallback regression coverage. See Workstream 5a for denial/failure/validation semantics. |
@@ -393,3 +393,33 @@ tests, typecheck/build pass. New tests cover both layouts, existing files and
 tenants, partial failure/restart, deletion, imported corpus and ETag races. Manual
 in-memory first-entry exercise confirmed all three READMEs, the daily entry and
 zero pending journal work. No production corpus touched. Rollout pending.
+
+
+4a rollout: **`b34c33f`** replaces `23ba691` across all three services. Candidate
+builds and 234 isolated Linux server tests passed before cutover; retained prior
+release and `.bak.before-b34c33f` configuration backups. Diary/internal OCR health
+pass, zero restarts/OOM. No production diary prompt/corpus inspection or mutation.
+
+### Workstream 4b — state-dependent Diary landing (2026-09-10)
+
+An empty loaded diary has a centered first-entry composer and folder explanation,
+without the hero or invented current-month card. A populated diary shows Memory,
+Entries (up to seven dates from the latest two available months), Other sources
+(tenant Raw Sources Markdown), then month navigation. Canonical AI Memory and
+legacy memory aliases appear; file buttons use the existing guarded editor.
+Storage/file-browser controls remain accessible. Landing is a separate component.
+Loading and failed listings are distinct from an empty diary; failures do not
+promise an empty corpus or leave a perpetual loading indicator.
+
+The historic suggestion to expose external-sources to members is intentionally
+not applied: inspection confirms these are operator-wide paths, not tenant-owned.
+Other sources shows the member's own corpus files. Per-user external imports need
+a separate ownership model before sharing their metadata or content. Nested/raw
+binary source browsing remains limited to the existing Markdown file API.
+
+Verification: 281 web tests, typecheck/build, 171 diary tests (3 skipped, two
+existing warnings). Existing landing/day/extras/local-folder browser regression
+passes; new diary-landing.cjs covers empty/populated/error states, file/day links,
+no member external-source request, focus and 375/768/1440 in both themes. Manual
+synthetic browser and screenshot review confirmed layouts. No real diary access.
+Rollout pending. Calendar/context component extraction remains Workstream 4d.
