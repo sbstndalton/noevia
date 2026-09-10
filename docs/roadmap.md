@@ -1032,3 +1032,8 @@ exactly the trap. See "Capability detection" below.
 opaque documents including DOCX, migration of earlier local image uploads on
 refresh, transfer/processing progress, and image preparation status are implemented.
 No DOCX reader, archive extractor, or other subsequent roadmap feature is implied.
+
+2026-09-10 live audit follow-up: legacy migration now has one durable owner, and
+image replacement retires obsolete vision input when the new original is stored
+only. Actual server checks covered OCR, embeddings, Nextcloud approval actions,
+and isolated diary capture. See [coverage and remaining concerns](live-audit-2026-09-10.md).

@@ -233,3 +233,13 @@ No production diary prompts were sent, nor were extras enabled against the real
 corpus. Execution/approval tests used isolated synthetic inference, MCP, and diary
 fixtures; the earlier real MCP integration test remains recorded above. Temporary
 QA servers/tabs were closed, viewport reset, and Tailscale returned to stopped.
+
+### Live reliability audit follow-up — 2026-09-10
+
+The broader authorized production audit found and fixed repeat legacy migration
+into new administrator accounts and stale vision assets after stored-only image
+replacement. Regression verification: 264 web tests, typecheck/build; 157 diary
+tests, 3 skipped. Actual inference, Nextcloud read/write approvals, OCR, embeddings,
+and synthetic tenant diary capture were exercised. See
+[the coverage report](live-audit-2026-09-10.md) for evidence, latency observations,
+model accuracy failures, and exclusions. No real diary test prompts or corpus edits.
