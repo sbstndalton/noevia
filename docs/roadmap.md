@@ -6,26 +6,27 @@ unimplemented. Older sections retain their original context unless marked otherw
 
 ## Audited priorities — 2026-09-10
 
-See [the code-based roadmap audit](roadmap-audit.md) for completion status,
-evidence, corrected assumptions, and the next-task scope. The small deploy-docs
-and duplicate-tool-call reliability batch is complete locally. Next: onboarding
-correctness and diary navigation. PDFs/OCR/images remain the next feature focus;
-they do not supersede these existing correctness gaps. Storage and skills remain
-separately scoped design work.
+See [the code-based roadmap audit](roadmap-audit.md) for current status,
+evidence, corrected assumptions, and [the next-task prompt](codex-roadmap-handoff.md).
+Reliability (1/5a), PDFs/OCR/images (8), unified uploads, shared composer actions,
+and composer model controls are implemented and deployed through `66af1ad`.
+Last recorded verification: 266 web tests, typecheck/build, and 157 diary tests
+passing (3 skipped). This documentation review did not rerun those checks.
+
+Next: **onboarding correctness (3.5/3.6)**, then diary navigation (4c).
+Thinking controls (2/5b) remain planned beside the composer model selector.
+Document/model limitations and storage/skills architecture need separate scoped
+follow-ups. Historical specifications below are not evidence of shipped behavior.
 
 ## Product direction — 2026-09-10
 
-- **UI and sidebar: accepted for now.** The user is satisfied with the current
-  direction; pause further cosmetic iteration unless a bug or new request warrants
-  it. Deployed through `cd717b0`: palettes, project identity, compact editor,
-  clearer source management, separate pinned items, chat recency, manual/recent
-  project ordering, and transparent hover controls with readable long titles.
-  See [the UI review](ui-reference-review.md) for decisions and verification.
-- **Next feature focus: PDFs, OCR, and images.** Establish what works, what fails, and what the
-  source experience should be before choosing an implementation (Workstream 8).
-- **Also plan skills.** Define their role, scope, and relationship to existing
-  tools and project instructions (Workstream 9). No skill framework or OCR engine
-  has been selected by this update.
+- **UI and sidebar are accepted.** Preserve shared composer controls across chat,
+  project landing, and Diary home/day views. No broad cosmetic redesign.
+- **Diary extras are opt-in and OFF on reload.** The required companion pipeline
+  remains active; its model is not replaced by the extras model selector.
+- **PDF/OCR/image support has shipped.** Original files, OCR status and categorized
+  uploads work; DOCX is stored-only. Model accuracy and latency remain limitations.
+- **Skills remain planning work.** No skills framework has been selected.
 
 ## Context
 

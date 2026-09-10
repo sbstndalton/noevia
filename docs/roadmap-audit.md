@@ -1,5 +1,23 @@
 # Roadmap audit — 2026-09-10
 
+## Current handoff status — reconciled 2026-09-10
+
+The status table and priority order below are current; dated follow-ups retain
+the evidence from each earlier stage. Application release `66af1ad` is the latest
+recorded deployment (all three service images); `efd1c3c` records its verification.
+Last verified baseline: **266 web tests**, typecheck/build passing; **157 diary
+tests passing, 3 skipped**, with two existing dependency warnings. This handoff
+review checked source and deployment records; it did not rerun suites or probe
+production. See [the next-task prompt](codex-roadmap-handoff.md).
+
+Reliability, PDF/OCR/image support, unified uploads, shared composer actions,
+and composer model controls have shipped. Diary extras remain OFF by default;
+the companion pipeline remains active. Thinking controls are still planned.
+Known limits include stored-only DOCX, model color errors, slow inference/tool
+round trips, implausible throughput telemetry, and reasoning-only fallback text
+reaching the final answer. See [live audit coverage](live-audit-2026-09-10.md);
+passing checks do not imply exhaustive coverage or resolved model-quality issues.
+
 
 ## OCR/image completion follow-up — 2026-09-10
 
@@ -31,8 +49,8 @@ read-only production timezone check. That documentation-only audit made no
 implementation changes or deployments; its baseline was 194 web tests and
 155 diary tests (3 skipped).
 
-Reliability batch follow-up, 2026-09-10: Workstreams 1 and 5a are now complete
-locally. The updated statuses below reflect the implementation, not production.
+Historical reliability batch verification, 2026-09-10: Workstreams 1 and 5a
+were complete locally at this stage, before the later recorded production rollout.
 No production access, diary prompts, or corpus changes were made. Verification:
 `npm test` — 208 passing (14 new); `npm run typecheck` and `npm run build` —
 passing; diary `.venv/bin/python -m pytest tests/ -q` — 155 passing, 3 skipped.
@@ -56,7 +74,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | Item | Status | Evidence / remaining work |
 | --- | --- | --- |
 | UI/sidebar | Accepted, complete for now | Deployed `cd717b0`; see `ui-reference-review.md`. Do not reopen the visual redesign. |
-| 1: agent deploy contract | Complete locally | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. No deployment. |
+| 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
 | 2 / 5b: thinking modes | Not implemented | No reasoning-effort schema, override, badge, or verified-provider fallback in web code. `index.cjs` has `enable_thinking` suppression for a helper call, not the planned user-facing feature. Main streaming and non-streaming fallback bodies must both be considered. |
 | 3: wizard restructure | Partial | `SetupWizard.tsx` still uses account → provider → diary → models → prefs → passkey. Diary opt-in is an account checkbox; models remains deployment guidance. Timezone confirmation and display-name collection already exist. |
 | 3.5: invite onboarding | Confirmed gap | `auth.cjs:acceptInvite` omits `onboarded`; the database default is 1. `AuthGate.tsx` shows the wizard only when it is false. Existing invitation tests check diary choice/isolation, not onboarding. Resume mode exists, but a member-safe invited flow still needs verification. |
@@ -65,7 +83,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 4b: diary zero state | Not implemented as specified | `DiaryView.tsx` still has the shared landing; month discovery adds the current month even when there are no entries. No dedicated first-entry composer / three-panel populated split. |
 | 4c: landing-to-day navigation | Confirmed gap | `DiaryView.tsx:submit` computes entryDay but stores the conversation under existing scope and does not set month/day before streaming. Browser-local and server-backed paths both need tests. |
 | 4d: diary visual/refactor work | Partial / defer cosmetics | Broad visual updates shipped, but the specified component split and new panel behavior have not. UI is now accepted; implement necessary behavior without restarting cosmetic work. |
-| 5a: duplicate tool-call guard | Complete locally | `tool-exchange.cjs` is instantiated inside `handleChat`; canonical arguments, exchange-only result reuse, read invalidation on attempted writes, and handler-level mocked streaming/fallback regression coverage. See Workstream 5a for denial/failure/validation semantics. |
+| 5a: duplicate tool-call guard | Complete and deployed | `tool-exchange.cjs` is instantiated inside `handleChat`; canonical arguments, exchange-only result reuse, read invalidation on attempted writes, and handler-level mocked streaming/fallback regression coverage. See Workstream 5a for denial/failure/validation semantics. |
 | 5: deferred tool disclosure; 5c: planner/executor | Research only | Static toolbox cap/budget resolution and message-level Fast/Smart routing remain. No dynamic find_tools or phase-based planner/executor implementation found. |
 | 5d: offline Wikipedia | Not implemented; optional | No Wikipedia toolbox found. Requires a selected available service; it is not a prerequisite for OCR, skills, or correctness fixes. |
 | 5e: harness framing | Partial | Already explained in `docs/agent-brief.md`; root agent entry points now link the brief. |
@@ -76,36 +94,35 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
 | 7d / 7e / 7h / 7i: served storage | Not implemented | No noevia WebDAV server or noevia-issued app-password lifecycle found. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
-| 8: PDFs/OCR/images | Source-completeness/binary-read batch complete locally | [Implementation follow-up](spec-document-understanding.md#source-completeness-implementation-follow-up--2026-09-10): original retention, versioned native page extraction, conservative partial status, stale/failed source rows, page-range reads, and bounded byte-preserving S3/WebDAV reads. OCR/worker isolation, real image accuracy and host/projector verification remain open. |
+| 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX remains stored-only; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
 | 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
 
 ## Corrected priority order
 
-1. **Small reliability batch: complete locally.** Workstream 1 entry-point/runbook
-   links and Workstream 5a duplicate-call protection are implemented. The existing
-   approval gate remains; no deployment or diary corpus changes were made.
-2. **Onboarding correctness:** Workstream 3.5 and regression coverage for 3.6.
-   Invited users should get a member-safe setup path; preserve diary choice.
-   Then remove the dead-end models guidance step and improve diary opt-in order.
-   Do not make this depend on building a WebDAV server.
-3. **Diary navigation:** Workstream 4c, using mocked/synthetic exchanges only.
-   Preserve the server write path and browser timestamps. Scaffolding/zero state
-   (4a/4b) is a separate follow-up; reconcile its data model before changing it.
-4. **PDF/OCR/image audit and spec:** Workstream 8 is the user's next feature focus
-   after the small correctness fixes, not behind every historical research item.
-5. **Thinking modes:** Workstream 2 / 5b remains a real unimplemented feature.
-   Define a bounded output budget, capability verification, and fallback behavior
-   before implementing; do not equate a prompt hint with actual model support.
-6. **Storage architecture:** Workstream 7 needs a scoped spec, with app passwords
-   before exposing DAV. Existing working storage need not be replaced to do OCR.
-7. **Skills and tool research:** Workstream 9 and the relevant parts of 5. Defer
-   optional Wikipedia and planner/executor experiments until there is a concrete need.
+Completed prerequisites: Workstreams 1 and 5a, plus the subsequently requested
+PDF/OCR/image and shared-composer batches, are implemented and deployed.
 
-These priorities distinguish correctness work from feature research rather than
-blindly retaining the old numerical sequence. The user subsequently selected the
-PDF/OCR/image investigation after reporting failures; its initial local audit/spec
-and the subsequent source-completeness batch are complete locally. Onboarding and diary navigation remain open. Do not infer approval to
-implement all workstreams or change production from that investigation.
+1. **Onboarding correctness:** Workstream 3.5 and regression coverage for 3.6.
+   Invited users need a member-safe setup path; preserve explicit diary choice.
+   Establish missing-feature-row semantics before claiming data loss. Remove or
+   clarify dead-end model guidance only as needed for this bounded flow.
+2. **Diary navigation:** Workstream 4c, using synthetic exchanges. Preserve the
+   write path, timestamps, history, cancellation, and optional-tool approval scope.
+   Scaffolding/zero state (4a/4b) is a separate follow-up requiring data-model review.
+3. **Thinking modes:** Workstreams 2 / 5b. Place eventual controls beside the
+   shared composer model selector. Define budgets, actual model capability checks,
+   streaming/fallback behavior, and Diary companion versus extras scope first.
+4. **Document/model follow-ups:** Scope DOCX readers, OCR/vision accuracy,
+   processing latency, telemetry, and reasoning-only fallback separately using the
+   live audit evidence. Do not rebuild the already deployed Workstream 8 batch.
+5. **Storage architecture:** Workstream 7 needs a scoped spec; app passwords must
+   precede exposing DAV. Existing outbound Nextcloud support is not a DAV server.
+6. **Skills and tool research:** Workstream 9 and relevant parts of 5. Defer
+   optional Wikipedia and planner/executor experiments until concretely needed.
+
+Implement one bounded batch at a time. Later user requests authorized testing,
+push, and production rollout, but did not turn the historical roadmap into one
+unbounded task. Preserve the accepted sidebar and current composer behavior.
 
 ## Design cautions discovered during the audit
 
