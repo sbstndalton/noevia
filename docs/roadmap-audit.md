@@ -1,5 +1,37 @@
 # Roadmap audit — 2026-09-10
 
+## Live Diary activity and timeout feedback — 2026-09-10
+
+The user's follow-up explicitly requests live visibility and reports a 524 after
+leaving an active Diary view. The earlier after-completion reasoning fix was not
+sufficient. The noevia Diary path now streams immediate headers and 5-second
+keep-alives through both proxy and companion, actual provider reasoning/answer
+chunks, and actual retrieval/classification/summary/save/memory progress. The
+answer is visible before capture finishes; saving is confirmed separately.
+Optional tool calls remain attached to their conversation turn with unchanged
+approval gates. An elapsed timer accompanies the active phase. No synthetic tool
+calls or invented reasoning are shown. Providers that buffer or omit reasoning
+still show the real pipeline phase. The external OpenAI JSON surface is unchanged;
+noevia opts into its activity event protocol explicitly.
+
+Switching app views keeps the mounted request and transcript alive, without a
+second submission. Interrupted streams preserve the attempted message/partial
+response and report unconfirmed saving; no automatic retry. Proxy HTML is never
+shown as the error text. A full browser reload/close still does not provide durable
+conversation/job recovery; the journaled server operation may finish after the
+connection closes, so check the saved record before resending. Durable recovery
+remains open. Browser-local saves still require the connected folder and browser.
+
+Verification: 319 web tests, typecheck/build, 177 Diary tests passed (3 skipped,
+2 existing warnings). Tests cover headers/heartbeats before slow upstream, frame
+fragmentation, disconnect/no-retry, provider reasoning before answer, hidden log
+markers, rejection of truncated generation, server tenant context and memory-only
+local capture. Synthetic browser checks cover live thinking, leave/return while
+running, save phases, retained optional tool traces, sanitized 524 and partial-stream
+failure, plus prior scrolling/composer/navigation checks. No real Diary prompts or
+corpus edits. Broader roadmap remains paused; rollout recorded separately.
+
+
 ## Diary reading feedback — 2026-09-10
 
 The user authorized this focused fix during the broader testing pause. Other
