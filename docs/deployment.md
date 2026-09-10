@@ -247,3 +247,10 @@ v1. All three candidates built and 245 serial isolated Linux server tests passed
 before cutover. Prior release and `.bak.before-6570c51` backups retained. Diary and
 internal OCR health pass; zero restarts/OOM. No live settings/corpus mutation.
 Absent global default leaves existing chat requests unchanged.
+
+
+Latest application rollout: **`34df7c2`**, replacing `6570c51`, stops promoting
+reasoning-only narration into final answers. Candidates and 248 serial isolated
+Linux server tests passed before cutover. Retain prior release and
+`.bak.before-34df7c2` configuration backups. Compose reports services healthy.
+No production diary access; web bundle remains unchanged.

@@ -8,13 +8,21 @@ updated.
 
 ---
 
+## 2026-09-10 — engine throughput omits unstable short samples
+
+The display labels the engine rate as reported and omits invalid or sub-second
+count/rate samples instead of displaying timer-dominated spikes. Valid longer
+samples remain untouched; missing values stay unavailable. 297 web / 171 diary
+tests (3 skipped), typecheck/build, live read-only sample and manual UI check pass.
+This is sample filtering, not a repaired upstream benchmark. Rollout pending.
+
 ## 2026-09-10 — reasoning-only output is no longer presented as an answer
 
 The final-answer channel now reports that no final answer was returned instead of
 copying internal narration. Per-round tracking covers tool continuations, retaining
 tool results and separate reasoning. No extra inference/tool retries. 295 web /
 171 diary tests (3 skipped), typecheck/build and synthetic real-server browser
-verification pass. Model output quality remains a separate limitation. Rollout pending.
+verification pass. Model output quality remains a separate limitation. Deployed `34df7c2`.
 
 ## 2026-09-10 — thinking effort reports what the provider receives
 

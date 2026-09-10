@@ -521,3 +521,25 @@ real-server browser verifies the notice after an actual synthetic reasoning-only
 completion; screenshot review confirms the final transcript. No production prompt
 or corpus access. Rollout pending. Throughput telemetry, DOCX and model-quality
 issues remain open.
+
+
+Reasoning-only rollout: **`34df7c2`** replaces `6570c51` on all services after
+candidate builds and 248 serial isolated Linux server tests. Retained prior
+release and `.bak.before-34df7c2` configuration backups. Compose health passes.
+No real diary access; this fixes final-channel promotion, not model inference quality.
+
+### Live-audit follow-up — engine rate sample guard (2026-09-10)
+
+The engine display labels throughput as provider-reported. Missing/non-finite or
+nonpositive rates, invalid/fewer-than-two output counts and samples whose inferred
+count/rate window is below one second display unavailable. No arbitrary maximum
+speed is imposed and no replacement rate is fabricated. This suppresses tiny
+samples that could produce the audit's million-token/s spike; it does not repair
+upstream timing or claim an independently measured benchmark. Per-reply usage and
+latency reporting are unchanged.
+
+297 web tests, typecheck/build; 171 diary tests (3 skipped, two existing warnings)
+pass. Tests cover malformed/tiny samples, the live 109-token/13.185 tok/s sample,
+and valid high-throughput samples. A read-only live statistics query returned
+that normal sample. Manual fixture review confirmed the reported label and dash
+for unavailable statistics. No production prompt/corpus changes. Rollout pending.
