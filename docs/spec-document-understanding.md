@@ -308,3 +308,20 @@ recovered the same values after registering Qwen's matching mmproj. Missing imag
 bytes are now visible, length-limited descriptions fall back, and the description
 cache is credential/content scoped and expires. A 2xx capability probe alone is
 still not proof of perception; deployment verification uses actual image content.
+
+
+## Unified original storage and progress (2026-09-10)
+
+New uploads use `uploads.cjs` and the organized upload path. PDF/image/text/opaque
+files share storage routing and original-download authorization; unsupported
+formats are stored-only and explicitly disclosed to chat. A 25 MB storage limit
+is separate from extraction/context limits and the 8 MB vision-image budget.
+DOCX is accepted as a document container without unpacking it; general ZIP/RAR/
+7z/tar/compression bundles are refused. Reader support is intentionally separate
+from accepting bytes. Future readers must preserve original bytes and tenant scope.
+
+Refresh traverses the four managed categories only under the project's upload
+folder, retains originals on read failures, and copies old local image assets to
+connected storage before retiring their old references. It does not move existing
+root-level PDFs. Progress is per browser upload batch; background jobs remain
+in-memory and require retry if the server restarts, as documented above.

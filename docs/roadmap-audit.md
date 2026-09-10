@@ -136,3 +136,27 @@ synthetic mixed-PDF upload through Nextcloud, OCR-ready status, image perception
 page 2 and its signed amounts. Web-to-worker health and diary container health
 passed. Prior release/config backups remain available. Subsequent documentation
 commits record this evidence without changing the deployed application image.
+
+
+### Unified uploads follow-up — 2026-09-10
+
+The Sources page now has one upload control for all non-archive files up to 25 MB.
+New uploads use Documents/Images/Text/Other subfolders in connected storage, with
+matching UI groups. DOCX and other opaque formats are retained as originals and
+marked stored-only until a reader is implemented; Office containers are accepted
+although internally ZIP-based. Images over the 8 MB model-input budget are kept
+as originals with a resize explanation. No untrusted file is executed.
+
+Earlier local image uploads are copied to the configured project folder during
+refresh, with a stable ID suffix to avoid colliding with existing names. Local
+image copies are durable caches, not ephemeral container storage. Managed category
+folders are refreshed one level deep; unrelated reference trees are not traversed.
+The existing PDF originals/page store and diary write path remain unchanged.
+
+Upload progress now separates file reading, network transfer percentage, storage,
+extraction/OCR, and completion, with per-file elapsed time. Completed details can
+be expanded. Chat emits an image-processing status before waiting for inference.
+The background wrapper's accidental 1 MB cap was corrected to the 25 MB file limit
+plus base64 overhead. Verification: 255 web tests, typecheck/build pass; 155 diary
+tests pass, 3 skipped. Synthetic local browser checks covered mixed uploads and
+mobile source rows. The sidebar was not redesigned.

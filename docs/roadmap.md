@@ -1026,3 +1026,9 @@ exactly the trap. See "Capability detection" below.
 - Per-message toggles; Anthropic wire format; chain-of-thought visibility
   (the app never displays model reasoning tokens regardless of provider);
   any change to the diary pipeline's aux-model behavior.
+
+
+2026-09-10 upload follow-up: unified file uploads, grouped storage/UI, stored-only
+opaque documents including DOCX, migration of earlier local image uploads on
+refresh, transfer/processing progress, and image preparation status are implemented.
+No DOCX reader, archive extractor, or other subsequent roadmap feature is implied.
