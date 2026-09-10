@@ -1041,3 +1041,8 @@ and isolated diary capture. See [coverage and remaining concerns](live-audit-202
 Account cleanup from that audit also fixed administrator deletion after issuing
 invitations and protection of the last active administrator when other admins are
 disabled. Issued tokens are revoked atomically; audit history is retained.
+
+Composer follow-up: chat model selection now lives inside the text composer next
+to Send instead of in the top bar. A future thinking-effort control should sit
+beside it, using the reasoning behavior specified above; this placement change
+does not implement or claim model support for thinking settings.
