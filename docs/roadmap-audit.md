@@ -1,5 +1,19 @@
 # Roadmap audit — 2026-09-10
 
+## User testing pause — 2026-09-10
+
+The user will test for a couple of days. Pause implementation and deployments
+until feedback or an explicit resume request; do not resume automatically by date.
+The current recorded application release is 79cd24f. The detailed clarification
+and remaining-work summary are in [the roadmap](roadmap.md#user-testing-pause--2026-09-10).
+The estimate of one third to one half remaining is informal and effort-based,
+not measured completion. Shipped batches do not mean the full roadmap is complete.
+
+Claude Diary workflow decisions were adapted, not Claude's device tools themselves.
+Exact logging/wording/memory/conversation equivalence has not been tested. Add a
+reference-prompt and synthetic-behavior comparison after user feedback; keep real
+Diary corpus testing prohibited without specific authorization.
+
 ## Current handoff status — reconciled 2026-09-10
 
 The status table below is current; dated follow-ups preserve earlier evidence.
@@ -106,9 +120,11 @@ reasoning-only and short-sample telemetry fixes.
 4. **Tool research:** run the scoped experiments before adopting architectural changes;
    optional Wikipedia requires an operator-selected service.
 
-The 2026-09-10 continuation request now authorizes continuing the full roadmap,
+The earlier 2026-09-10 continuation request authorized continuing the full roadmap,
 with testing and a Git push after each implemented item. Keep each change bounded
-and reviewable; prior production rollout authorization remains in force. Preserve the accepted sidebar and current composer behavior.
+and reviewable when work resumes. The later user testing pause takes precedence
+over autonomous continuation and deployment. Preserve the accepted sidebar and
+current composer behavior.
 
 ## Design cautions discovered during the audit
 

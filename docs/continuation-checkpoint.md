@@ -1,9 +1,14 @@
 # Current continuation checkpoint — 2026-09-10
 
-The user resumed at home after a disconnect. Continue the full roadmap in tested,
-pushed increments; production rollout is authorized. Do not ask again for routine
-permission. User chose **reusable instructions using existing approved tools**
-for skills, not executable packages. No subagents requested.
+**Paused for user testing.** The user will test the current release for a couple
+of days. Do not implement or deploy more roadmap changes until they provide
+feedback or ask to resume. Do not create an automatic restart or monitoring task.
+See docs/roadmap.md for the full shipped/remaining and Claude Diary clarification.
+
+When resumed, continue in tested/pushed increments. User chose reusable
+instructions using existing approved tools for skills, not executable packages.
+No subagents requested. Claude-equivalent Diary behavior remains unverified;
+compare reference instructions and synthetic behavior after user feedback.
 
 ## Current work
 

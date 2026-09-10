@@ -4,17 +4,73 @@ Originally written 2026-09-09 against `8a78172`; priorities updated 2026-09-10.
 This is a mix of plans and completed work, not a claim that every item remains
 unimplemented. Older sections retain their original context unless marked otherwise.
 
+## User testing pause — 2026-09-10
+
+Implementation and deployments are paused while the user tests the current release
+for a couple of days. Resume when the user returns with feedback or explicitly
+asks to continue; elapsed time alone is not permission to restart. No automatic
+monitor or scheduled deployment is requested. Keep the current configuration
+stable, including Diary extras off on reload and file sharing off.
+
+Recorded application release: **`79cd24f`**, healthy at the last verification.
+The documentation commits after it do not change the running application.
+
+### Shipped versus remaining
+
+Completed batches include reliability fixes, PDF/OCR/images and bounded DOCX
+reading, shared composers, onboarding improvements, Diary navigation/landing/
+scaffolding/timezone/direct prior-entry fallback, thinking controls v1, app
+passwords, and limited default-off file sharing. Exact skill filenames and bounded
+metadata are implemented; the full skills lifecycle is not.
+
+**Roughly one third to one half of the work may remain by effort.** This is an
+informal planning estimate, not measured completion, a delivery date or a count
+of unchecked items. Several remaining items are large and still exploratory.
+
+| Remaining area | What is still needed |
+| --- | --- |
+| Storage | Full WebDAV/file-manager compatibility and companion-backed namespace operations; managed-volume defaults and resolved Unraid /boot-path protection without silently moving existing data. |
+| Instruction skills | Inspect/enable/disable/update lifecycle, explicit review/migration, and exclusion from every source/RAG path when disabled. The scoped proposal is complete; executable packages are not the chosen scope. |
+| Tools and routing | Deferred tool discovery and planner/executor experiments. Plans are written; benefits have not been benchmarked and the new runtime behavior is not implemented. |
+| Thinking/model behavior | Verified larger local budgets, broader provider/model support, and accuracy/performance evidence. Current high hints request 8,192 tokens; uncapped reasoning is not established. |
+| Optional integration | Offline Wikipedia requires a selected available service; it is not a prerequisite for core Diary use. |
+| Claude-like Diary behavior | Compare the available Claude Diary instructions and example behavior with noevia's prompts and synthetic exchanges before claiming equivalence. |
+
+### Diary and Claude Cowork clarification
+
+Diary is intended to retain its existing capture, retrieval and storage behavior.
+Last verification: 314 web tests, typecheck/build, 171 Diary tests passed (3 skipped,
+two existing warnings), and healthy deployed services. These checks used synthetic
+data. No test entry was sent to the user's real diary, so private-data end-to-end
+behavior has not been verified by the agent.
+
+The **workflow decisions** from the shared Claude Cowork Diary description were
+adapted: local date/time handling, bounded direct prior-entry reads when retrieval
+fails or is empty, tenant file listing/guarded writing, and disk-backed memory
+without a second Claude-side store. This is not an import of Claude's actual
+`device_bash`, `remote-devices`, `project_memory_*`, or staging implementations.
+Shell/heredoc appends were deliberately not ported: noevia must retain its journal
+and conditional-write protections and generate Diary structure mechanically.
+
+It has **not** been established that noevia follows Claude's exact rules for what
+to log, entry wording, memory-update decisions or conversational responses. A
+working Diary pipeline is not proof of Claude-equivalent Diary behavior. Make this
+comparison an explicit follow-up informed by the user's testing, using available
+reference instructions and synthetic fixtures; do not infer Claude's private
+implementation or access the real corpus for testing without authorization.
+
+Useful feedback during this pause: missing/duplicate entries, incorrect dates or
+titles, unexpected wording, poor prior-entry recall, memory behavior, and response
+latency/errors. User observations are not yet recorded as reproduced defects.
+
 ## Audited priorities — 2026-09-10
 
-See [the code-based roadmap audit](roadmap-audit.md) for current status,
-evidence, corrected assumptions, and [the next-task prompt](codex-roadmap-handoff.md).
-Reliability, document/image support, onboarding correctness, Diary navigation and
-landing, thinking effort v1, reasoning-only handling and rate sample guards have
-shipped. Current rollout: `e18f1de`, including DOCX body/table extraction. App-password
-lifecycle is verified locally; DAV is still unavailable. See the audit for verification and precise limits.
-Next: storage architecture/app passwords, then appliance onboarding. Wider
-thinking budgets, model quality/latency and skills/tool research remain separate
-work. Historical specifications below are not evidence of shipped behavior.
+See [the code-based roadmap audit](roadmap-audit.md) for detailed evidence and
+[the continuation checkpoint](continuation-checkpoint.md) for resume state.
+The testing pause above takes precedence over earlier instructions to continue
+autonomously. After feedback, prioritize reproduced Diary regressions and the
+behavior comparison, then the remaining scoped work above. Historical sections
+below retain their original context and are not evidence of shipped behavior.
 
 ## Product direction — 2026-09-10
 
@@ -24,7 +80,8 @@ work. Historical specifications below are not evidence of shipped behavior.
   remains active; its model is not replaced by the extras model selector.
 - **PDF/OCR/image support has shipped.** Original files, OCR status and categorized
   uploads work; bounded DOCX body/table extraction is deployed. Model accuracy and latency remain limitations.
-- **Skills remain planning work.** No skills framework has been selected.
+- **Skills use reusable instructions and existing approved tools.** The proposal
+  and existing metadata fix are complete; the full lifecycle remains planned.
 
 ## Context
 
