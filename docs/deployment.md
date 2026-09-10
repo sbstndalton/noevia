@@ -211,3 +211,10 @@ landing-to-day navigation. All three candidate images built before cutover;
 `.bak.before-5b1ef12`. All services have zero restarts/OOM; Diary and internal OCR
 health pass. Public authenticated Projects loads `index-BZjK7Bdp.js`. UI behavior
 was verified with synthetic local/browser-folder fixtures, without live capture.
+
+
+Latest application rollout: **`23ba691`**, replacing `5b1ef12`, adds bounded
+older-entry context fallback. All three candidates built and 234 isolated Linux
+server tests passed before cutover. Retain prior release and `.bak.before-23ba691`
+configuration backups. Diary/internal OCR health pass; zero restarts/OOM. No live
+diary test prompt or corpus access. Frontend bundle is unchanged from `5b1ef12`.

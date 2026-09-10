@@ -79,7 +79,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 3: wizard restructure | Partial | Administrator flow is account → provider → diary → prefs → passkey; members start at diary. The dead-end models step is removed. Full diary-first/storage redesign remains deferred. |
 | 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
-| 4a: diary scaffolding | Not implemented as specified | No first-entry scaffold for Entries, AI Memory, and Raw Sources in diary agent code. Existing storage lazily creates paths. |
+| 4a: diary scaffolding | Implemented; rollout pending | First exchange in a new corpus journals create-only seed READMEs for Entries, AI Memory and Raw Sources. Existing journals/imported entry corpora are not migrated. |
 | 4b: diary zero state | Not implemented as specified | `DiaryView.tsx` still has the shared landing; month discovery adds the current month even when there are no entries. No dedicated first-entry composer / three-panel populated split. |
 | 4c: landing-to-day navigation | Complete and deployed | Send pins the browser-local date and routes history, streamed/local replies, errors and optional-tool scope to that day before preparation begins. Synthetic browser-local/server-backed regressions pass. |
 | 4d: diary visual/refactor work | Partial / defer cosmetics | Broad visual updates shipped, but the specified component split and new panel behavior have not. UI is now accepted; implement necessary behavior without restarting cosmetic work. |
@@ -88,7 +88,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 5d: offline Wikipedia | Not implemented; optional | No Wikipedia toolbox found. Requires a selected available service; it is not a prerequisite for OCR, skills, or correctness fixes. |
 | 5e: harness framing | Partial | Already explained in `docs/agent-brief.md`; root agent entry points now link the brief. |
 | 6a: timezone | Complete, including production | Both Compose definitions, `.env.example`, wizard timezone helper, and timezone regression tests exist. Live read-only check: TZ=America/New_York, EDT -0400. The old statement that the live copy remains unapplied is stale. |
-| 6b: direct diary context | Implemented; rollout pending | Missing/empty/failed semantic retrieval falls back to bounded tenant file reads: two explicit past ISO dates plus three previous days by default. This is not exhaustive diary search. |
+| 6b: direct diary context | Complete and deployed | Missing/empty/failed semantic retrieval falls back to bounded tenant file reads: two explicit past ISO dates plus three previous days by default. This is not exhaustive diary search. |
 | 6c / 6d: memory ownership/privacy | Architectural constraints | Disk-backed diary memory already feeds context. Keep the single-store and no-cross-profile diary-content boundaries; these are not standalone missing UI features. |
 | 7a: Unraid state default | Original example hazard addressed | `deploy/examples/unraid-compose-manager.yml` requires COWORK_STATE_DIR explicitly. Generic `compose.yaml` and the manifest still use ./state. No named-volume default or explicit /boot-path rejection exists; those are separate remaining decisions. |
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
@@ -368,3 +368,28 @@ two existing warnings. Nine new synthetic tests cover unavailable/failed/empty
 retrieval, match precedence, explicit dates, budgets, read failures, isolation,
 and actual daily/monthly CorpusStore reads with no writes or pending journal work.
 No inference or production corpus was used. Rollout pending.
+
+
+6b rollout: **`23ba691`** replaces `5b1ef12` on all three services, following
+candidate builds and 234 isolated Linux server tests. Retained prior release and
+`.bak.before-23ba691` configuration backups. Diary health and internal OCR health
+pass, zero restarts/OOM. No production diary capture or corpus inspection used.
+
+### Workstream 4a — first-entry folders (2026-09-10)
+
+The first exchange in a new corpus creates one-line READMEs in Entries (or its
+configured prefix), AI Memory and Raw Sources. Initialization is a flag on the
+existing durable exchange intent, using ETag-guarded create-only writes. A partial
+failure remains pending; restart replay deduplicates the raw exchange and fills
+missing seeds. Existing/empty/custom README contents and concurrent user writes
+are preserved. Subsequent exchanges do not recreate deleted seed files. Existing
+journals and imported corpora with listed entry months are not migrated. Monthly
+layouts remain monthly; Entries README describes the configured layout honestly.
+Browser-local turns use the same CorpusStore and return changed files normally.
+AI Memory is read directly as context alongside legacy aliases; no shadow store.
+
+Verification: 171 diary tests pass, 3 skipped, two existing warnings; 281 web
+tests, typecheck/build pass. New tests cover both layouts, existing files and
+tenants, partial failure/restart, deletion, imported corpus and ETag races. Manual
+in-memory first-entry exercise confirmed all three READMEs, the daily entry and
+zero pending journal work. No production corpus touched. Rollout pending.

@@ -8,6 +8,15 @@ updated.
 
 ---
 
+## 2026-09-10 — first-entry folders survive interrupted writes
+
+New corpora receive Entries, AI Memory and Raw Sources seed READMEs with their
+first logged exchange. Create-only writes use the existing durable journal and
+ETag recovery, preserving existing files and avoiding duplicate entries on retry.
+Existing/imported entry corpora are not migrated. AI Memory files join direct
+context reads without copying legacy memory. 171 diary tests (3 skipped), 281 web
+tests, typecheck/build and synthetic manual verification pass. Rollout pending.
+
 ## 2026-09-10 — older entries remain available without semantic matches
 
 The companion now falls back to bounded direct tenant file reads when semantic
@@ -15,7 +24,7 @@ retrieval is missing, empty or fails. It reads two explicit past ISO dates plus
 three preceding days by default, within shared context limits. References state
 the limited scope; successful semantic matches avoid extra reads. Existing daily
 and monthly layouts remain the single source of truth. No write path changed.
-166 diary tests (3 skipped), 281 web tests, typecheck/build pass. Rollout pending.
+166 diary tests (3 skipped), 281 web tests, typecheck/build pass. Deployed `23ba691`.
 
 ## 2026-09-10 — landing Diary messages follow the selected day
 

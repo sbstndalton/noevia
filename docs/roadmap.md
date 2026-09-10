@@ -190,6 +190,11 @@ appears lazily on first write (`local_storage.py:15`, `webdav.py:89`), and
 three with a one-line seed `README.md` each, so the file browser and the new panels
 have something to render and the user can see where things go.
 
+Implemented 2026-09-10: create-only, journal-replayable first-entry seeds, with
+legacy/imported corpus preservation and direct AI Memory context reads.
+171 diary / 281 web tests, typecheck/build and synthetic manual verification pass.
+Rollout pending.
+
 **4b. Landing page becomes state-dependent.** `DiaryView.tsx` renders one landing for
 everyone. Split it:
 
@@ -468,7 +473,7 @@ A direct file read is the honest fallback when retrieval has not caught up.
 Implemented 2026-09-10: bounded direct reads when retrieval is absent, empty or
 fails, using existing tenant storage and explicit reference framing. Two explicit
 past ISO dates plus three preceding dates by default; no exhaustive search claim.
-166 diary / 281 web tests, typecheck/build pass. Rollout pending.
+166 diary / 281 web tests, typecheck/build pass. Deployed as `23ba691`.
 
 **6c. One memory store, not two kept in sync by hand.** Cowork's clearest warning:
 `project_memory_*` lives on Claude's side and *"does NOT automatically sync to the
