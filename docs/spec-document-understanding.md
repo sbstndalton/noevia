@@ -5,6 +5,71 @@ on a photo and no-text-layer warning on financial PDFs. This is an investigation
 and implementation proposal, **not an OCR release or a production diagnosis**.
 No production access, private documents, diary prompts, or corpus changes.
 
+## Source-completeness implementation follow-up — 2026-09-10
+
+The bounded section 1 batch is implemented locally, not deployed. The remaining
+sections below retain the original audit/proposal; this follow-up supersedes their
+statements about the current source-completeness and binary-read behavior.
+
+- S3 and WebDAV binary reads now preserve bytes and enforce the 25 MB limit while
+  consuming the stream, including missing or misleading Content-Length headers.
+  Over-limit streams are cancelled; existing auth, roots and redirect refusal stay.
+- Local uploads, legacy `/documents` uploads and linked-folder refresh use one
+  native-PDF contract. Original bytes and extracted pages are saved under the
+  authenticated workspace's `project-documents/<hashed-project-id>/` directory.
+  Remote files are not rewritten by extraction. Original downloads resolve the
+  source through project membership; arbitrary hashes/paths are never accepted.
+- Versions hash the original bytes and extractor version. Unchanged refreshes
+  reuse on-disk extraction only within the same user/project. Current bytes and
+  the last readable version are retained; superseded versions and removed sources
+  are pruned when project source operations are idle. This is not unlimited history.
+- The source stores ready/partial/failed state, physical page count/status,
+  truncation, native item coordinates, hashes and separate indexing status. A
+  failed replacement keeps old text explicitly marked stale; a new failure stays
+  visible with no readable text. All affected refresh filenames are reported.
+  Existing source rows display status and an original-PDF download action.
+- Native extraction is page-aware, with page labels carried into RAG chunks.
+  Image-bearing pages are conservatively `ocr-needed`, even with a digital header.
+  This intentionally flags decorative images too: it is not image-region OCR or
+  proof that text is missing. Blank pages remain blank. Password and parse failures
+  have explicit messages. There is still no OCR engine or structured table parser.
+- The compact project summary stays capped at 200,000 characters. A separate
+  page store retains up to 300 pages / 2,000,000 characters, with 200,000 characters
+  per page. Limits set partial/truncated status; page requests outside extracted
+  coverage fail explicitly. These output limits are not a hard CPU/RAM/time sandbox
+  for the native parser; worker isolation remains separate follow-up work.
+- `read_project_file` now accepts `startPage`, `endPage` (at most 5 pages) and
+  `offset`; responses include source/text versions, page status, and a continuation
+  offset for the 8,000-character payload cap. The authenticated
+  `/api/projects/:id/documents/pages?name=...&startPage=...` endpoint exposes the
+  same contract. Default chat context remains bounded excerpts, with completeness
+  notices; missing vector support is not a claim of full-document retrieval.
+- Upload, refresh and remote deletion serialize per project. Detached folders and
+  deleted projects are rechecked before refresh commits. Client config patches
+  cannot forge or erase metadata or replace server-derived PDF text, but can remove
+  a source. Original/page routes and caches are isolated by user and project.
+
+Uploads now report storage success with a `document` result even when extraction
+fails; inspect its state rather than treating HTTP 200 as readable content. This
+keeps unreadable originals available and failures visible for later OCR/retry.
+Existing source records are not silently backfilled from private storage: refresh
+linked PDFs or re-upload local PDFs to obtain original bytes and page metadata.
+Old local PDF text alone cannot reconstruct the original file.
+
+Verification includes real authenticated routes with two synthetic users, mocked
+storage/inference, cache and page-range fixtures, stale replacement/concurrent
+refresh/deletion tests, and browser inspection of source rows at 375/768/1440 widths
+in light/dark modes. Mobile row actions were corrected after visual QA exposed
+clipped status text. No production, real diary or financial documents were used.
+
+Verified after implementation: **238 web tests** (15 added to the 223-test audit
+baseline), typecheck and build pass; **155 diary tests pass, 3 skipped**, with
+two dependency deprecation warnings. `git diff --check` passes.
+
+Next: benchmark the optional OCR worker on synthetic scans and mixed pages;
+projector repair and real vision accuracy still need separate host verification.
+No OCR dependencies, job framework, diary-write changes or sidebar redesign landed.
+
 ## What the reported errors establish
 
 The photo message comes from `server/vision.cjs`: a failed image probe whose
@@ -209,8 +274,8 @@ rendered and visually inspected. Real provider output, browser interaction, live
 storage and vector-search quality were not evaluated; mocks establish code paths,
 not OCR or vision accuracy.
 
-Recommended next coding task: section 1's source completeness/binary-read batch,
-with its own acceptance tests, before choosing or installing OCR. Photo projector
+Original recommendation (now completed by the follow-up above): section 1's
+source completeness/binary-read batch before choosing or installing OCR. Photo projector
 repair remains a separate operator task. Onboarding and diary navigation remain
 open; the user's explicit request selected this investigation first, not the whole
 roadmap.

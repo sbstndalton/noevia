@@ -809,12 +809,13 @@ is what the live deployment already does with
 
 ## Workstream 8 — PDFs, OCR, and image understanding
 
-**Status: initial fixture audit/spec complete, 2026-09-10; OCR and production
-projector repair are not implemented.** See
+**Status: fixture audit/spec and bounded source-completeness/binary-read batch
+complete locally, 2026-09-10; OCR and production projector repair remain pending.** See
 [document understanding findings and proposal](spec-document-understanding.md).
 The user selected this investigation after reporting photo/PDF failures; onboarding
-and diary navigation remain open. The next proposed document batch is source
-completeness and binary-read correctness, followed by an OCR worker benchmark.
+and diary navigation remain open. Original preservation, page metadata/reads,
+stale/failed source states and binary-read correctness are implemented. The next
+document step is the separately scoped OCR worker benchmark.
 
 The current path is a starting point, not missing functionality across the board:
 `server/documents.cjs` extracts PDF text layers for project sources; it does not

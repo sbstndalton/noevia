@@ -18,6 +18,13 @@ now reproduce the reported failure paths and related gaps. Verification: 223 web
 tests, typecheck and build pass; diary 155 pass, 3 skip (two dependency warnings).
 No runtime code, production configuration, or private sources were changed.
 
+Source-completeness implementation follow-up: native page extraction/original
+retention, stale/failed source state, page reads, and binary storage fixes are now
+implemented locally. Verification: **238 web tests**, typecheck/build pass;
+**155 diary tests pass, 3 skipped** (two dependency deprecation warnings).
+Synthetic browser QA covered source rows and keyboard focus in light/dark modes
+at responsive widths. No deployment or real diary/financial-source access.
+
 ## Status and evidence
 
 | Item | Status | Evidence / remaining work |
@@ -43,7 +50,7 @@ No runtime code, production configuration, or private sources were changed.
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
 | 7d / 7e / 7h / 7i: served storage | Not implemented | No noevia WebDAV server or noevia-issued app-password lifecycle found. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
-| 8: PDFs/OCR/images | Initial fixture audit/spec complete | [Findings and proposal](spec-document-understanding.md): mixed PDFs silently omit scans, upload/sync lose completeness metadata, local originals are not retained, S3 binary reads corrupt bytes, and image routing is covered with mocks. OCR implementation, real image accuracy, host/projector verification and resource benchmarks remain open. |
+| 8: PDFs/OCR/images | Source-completeness/binary-read batch complete locally | [Implementation follow-up](spec-document-understanding.md#source-completeness-implementation-follow-up--2026-09-10): original retention, versioned native page extraction, conservative partial status, stale/failed source rows, page-range reads, and bounded byte-preserving S3/WebDAV reads. OCR/worker isolation, real image accuracy and host/projector verification remain open. |
 | 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
 
 ## Corrected priority order
@@ -71,7 +78,7 @@ No runtime code, production configuration, or private sources were changed.
 These priorities distinguish correctness work from feature research rather than
 blindly retaining the old numerical sequence. The user subsequently selected the
 PDF/OCR/image investigation after reporting failures; its initial local audit/spec
-is complete. Onboarding and diary navigation remain open. Do not infer approval to
+and the subsequent source-completeness batch are complete locally. Onboarding and diary navigation remain open. Do not infer approval to
 implement all workstreams or change production from that investigation.
 
 ## Design cautions discovered during the audit

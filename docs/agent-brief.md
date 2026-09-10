@@ -68,8 +68,11 @@ deployment.
 A project holds four kinds of source, and they are not interchangeable:
 
 - **Text files** — stored as text, RAG-indexed.
-- **PDFs** — text extracted at ingest by `documents.cjs` (`unpdf`), then stored as
-  ordinary text sources. **Not OCR**: a scanned page yields nothing and says so.
+- **PDFs** — native page text extracted by `documents.cjs` (`unpdf`).
+  `document-sources.cjs` keeps originals and versioned pages within each user/project;
+  compact text feeds RAG. Partial/failed/stale states reach the UI and model.
+  **Not OCR**: image-bearing pages are conservatively flagged for OCR. Older local
+  sources need re-uploading to preserve originals; see `spec-document-understanding.md`.
 - **Images** — stored as bytes under `workspace.assetDir(projectId)`, never inline
   in `projects.json`. Attached to the last user turn as `image_url` parts.
 - **Attached storage folders** — re-read on sync. Files from them carry
