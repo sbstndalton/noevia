@@ -8,13 +8,22 @@ updated.
 
 ---
 
+## 2026-09-10 — DOCX main-body text and tables
+
+Unified uploads and connected-folder refresh retain originals and extract bounded
+DOCX body/table text in the private worker, with explicit partial-coverage labels.
+Malformed replacements clear stale text and remain downloadable; no dependencies
+or corpus changes. 301 web / 171 diary tests (3 skipped), typecheck/build, six
+local worker tests and synthetic real-worker browser QA pass. Candidate Linux
+web/PDF/OCR checks and rollout pending. See the roadmap audit for parser limits.
+
 ## 2026-09-10 — engine throughput omits unstable short samples
 
 The display labels the engine rate as reported and omits invalid or sub-second
 count/rate samples instead of displaying timer-dominated spikes. Valid longer
 samples remain untouched; missing values stay unavailable. 297 web / 171 diary
 tests (3 skipped), typecheck/build, live read-only sample and manual UI check pass.
-This is sample filtering, not a repaired upstream benchmark. Rollout pending.
+This is sample filtering, not a repaired upstream benchmark. Deployed `3b1e256`.
 
 ## 2026-09-10 — reasoning-only output is no longer presented as an answer
 

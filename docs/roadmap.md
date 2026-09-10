@@ -8,15 +8,13 @@ unimplemented. Older sections retain their original context unless marked otherw
 
 See [the code-based roadmap audit](roadmap-audit.md) for current status,
 evidence, corrected assumptions, and [the next-task prompt](codex-roadmap-handoff.md).
-Reliability (1/5a), PDFs/OCR/images (8), unified uploads, shared composer actions,
-and composer model controls are implemented and deployed through `66af1ad`.
-Last recorded verification: 266 web tests, typecheck/build, and 157 diary tests
-passing (3 skipped). This documentation review did not rerun those checks.
-
-Next: **onboarding correctness (3.5/3.6)**, then diary navigation (4c).
-Thinking controls (2/5b) remain planned beside the composer model selector.
-Document/model limitations and storage/skills architecture need separate scoped
-follow-ups. Historical specifications below are not evidence of shipped behavior.
+Reliability, document/image support, onboarding correctness, Diary navigation and
+landing, thinking effort v1, reasoning-only handling and rate sample guards have
+shipped. Current rollout: `3b1e256`; DOCX body/table extraction is verified locally
+and awaiting image checks. See the audit for verification and precise limits.
+Next: storage architecture/app passwords, then appliance onboarding. Wider
+thinking budgets, model quality/latency and skills/tool research remain separate
+work. Historical specifications below are not evidence of shipped behavior.
 
 ## Product direction — 2026-09-10
 
@@ -25,7 +23,7 @@ follow-ups. Historical specifications below are not evidence of shipped behavior
 - **Diary extras are opt-in and OFF on reload.** The required companion pipeline
   remains active; its model is not replaced by the extras model selector.
 - **PDF/OCR/image support has shipped.** Original files, OCR status and categorized
-  uploads work; DOCX is stored-only. Model accuracy and latency remain limitations.
+  uploads work; bounded DOCX body/table extraction is awaiting rollout. Model accuracy and latency remain limitations.
 - **Skills remain planning work.** No skills framework has been selected.
 
 ## Context

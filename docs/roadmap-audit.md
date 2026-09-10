@@ -2,21 +2,15 @@
 
 ## Current handoff status — reconciled 2026-09-10
 
-The status table and priority order below are current; dated follow-ups retain
-evidence from earlier stages. Application **`baf38aa`** is deployed to all three
-services, replacing `66af1ad`. Fresh verification: **278 web tests**, typecheck/build;
-**157 diary tests passed, 3 skipped** (two existing dependency warnings). All
-**234 server tests** passed in a disposable production-host container with networking
-disabled and read-only repository fixtures. Synthetic browser regression, manual
-UI review and scoped production checks passed; see the onboarding rollout below.
-
-Reliability, PDF/OCR/image support, unified uploads, shared composer actions,
-and composer model controls, and onboarding correctness have shipped. Diary extras remain OFF by default;
-the companion pipeline remains active. Thinking controls are still planned.
-Known limits include stored-only DOCX, model color errors, slow inference/tool
-round trips, implausible throughput telemetry, and reasoning-only fallback text
-reaching the final answer. See [live audit coverage](live-audit-2026-09-10.md);
-passing checks do not imply exhaustive coverage or resolved model-quality issues.
+The status table below is current; dated follow-ups preserve earlier evidence.
+Application **`3b1e256`** is deployed across all three services. Onboarding,
+Diary navigation/scaffolding/landing, thinking effort v1, reasoning-only answer
+handling and reported-rate sample guards have shipped. DOCX body extraction is
+verified locally and awaiting its candidate image checks and rollout. Current
+verification: **301 web tests**, typecheck/build and **171 diary tests passed,
+3 skipped** (two existing warnings). Model accuracy, latency, uncapped local
+thinking and storage architecture remain open. Diary extras stay OFF on reload;
+the companion pipeline and all write approvals remain unchanged.
 
 
 ## OCR/image completion follow-up — 2026-09-10
@@ -94,26 +88,22 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
 | 7d / 7e / 7h / 7i: served storage | Not implemented | No noevia WebDAV server or noevia-issued app-password lifecycle found. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
-| 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX remains stored-only; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
+| 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX body/table reader verified locally, rollout pending; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
 | 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
 
 ## Corrected priority order
 
-Completed prerequisites: Workstreams 1 and 5a, PDF/OCR/image support, shared
-composers/model controls, and onboarding correctness (3.5/3.6) are deployed.
+Completed: reliability, PDF/OCR/images, composers/model controls, onboarding
+correctness, Diary navigation/scaffolding/landing/refactor, thinking v1 and the
+reasoning-only and short-sample telemetry fixes.
 
-1. **Diary navigation:** Workstream 4c, using synthetic exchanges. Preserve the
-   write path, timestamps, history, cancellation, and optional-tool approval scope.
-   Scaffolding/zero state (4a/4b) is a separate follow-up requiring data-model review.
-2. **Thinking modes:** Workstreams 2 / 5b. Put eventual controls beside the shared
-   composer model selector; verify budgets, model capabilities, streaming/fallback
-   behavior, and Diary companion versus extras scope first.
-3. **Document/model follow-ups:** Scope DOCX readers, OCR/vision accuracy,
-   latency, telemetry and reasoning-only fallback separately using the live audit.
-4. **Storage architecture:** Workstream 7 needs a scoped spec; app passwords must
-   precede exposing DAV. Existing outbound Nextcloud support is not a DAV server.
-5. **Skills and tool research:** Workstream 9 and relevant parts of 5. Defer
-   optional Wikipedia and planner/executor experiments until concretely needed.
+1. **DOCX:** finish candidate worker/web checks and rollout of bounded body/table extraction.
+2. **Storage architecture:** reconcile Workstream 7 into a scoped spec and implement
+   app passwords before exposing DAV, then the appliance/storage onboarding flow.
+3. **Thinking/model follow-ups:** verify wider provider budgets and investigate
+   latency/accuracy with synthetic evidence; do not promise uncapped generation.
+4. **Skills and tool research:** produce concrete designs for Workstream 9 and
+   relevant parts of 5; optional Wikipedia requires a selected available service.
 
 The 2026-09-10 continuation request now authorizes continuing the full roadmap,
 with testing and a Git push after each implemented item. Keep each change bounded
@@ -543,3 +533,32 @@ pass. Tests cover malformed/tiny samples, the live 109-token/13.185 tok/s sample
 and valid high-throughput samples. A read-only live statistics query returned
 that normal sample. Manual fixture review confirmed the reported label and dash
 for unavailable statistics. No production prompt/corpus changes. Rollout pending.
+
+
+Engine-rate rollout: **`3b1e256`** replaces `34df7c2` on all three services after
+candidate builds and 250 serial isolated Linux server tests. Health checks pass,
+zero restarts/OOM; previous release and configuration backups retained.
+
+### DOCX body-text reader v1 — 2026-09-10
+
+Unified uploads and connected-folder refresh now read DOCX main-body paragraphs
+and tables through the existing private worker. Originals remain downloadable.
+Extraction is always labelled partial: page layout, images, headers, footers,
+comments and footnotes are not interpreted. Deleted tracked text and field
+instructions are excluded. Failed replacements clear old readable/indexed text;
+re-upload/refresh retries failures, while successful content-hash/version matches
+reuse extraction. Existing stored DOCX requires re-upload or folder refresh; no
+background migration or real-source scan is performed.
+
+No dependencies or corpus paths added. ZIP files are never extracted to disk;
+relationships/macros are never executed or fetched. Limits: 25 MiB request,
+1,000 members, 2 MiB central directory, 64 MiB declared expanded total, 8 MiB main
+XML, compression ratio 200 and 200,000 output characters. DTD/entities, encrypted
+archives, duplicate members and unsupported encodings fail cleanly. Malformed or
+unsupported files retain originals with a visible unavailable-text reason.
+
+301 web tests, typecheck/build and 171 diary tests (3 skipped) pass. Six local
+worker tests pass; two real PDF/OCR tests await candidate-image fixture execution.
+Real worker + real app browser checks cover unified upload, byte-exact original
+download, labelled extracted model context, malformed replacement and responsive
+light/dark source rows. Only synthetic fixtures used. Rollout pending.

@@ -254,3 +254,9 @@ reasoning-only narration into final answers. Candidates and 248 serial isolated
 Linux server tests passed before cutover. Retain prior release and
 `.bak.before-34df7c2` configuration backups. Compose reports services healthy.
 No production diary access; web bundle remains unchanged.
+
+
+Latest application rollout: **`3b1e256`**, replacing `34df7c2`, guards unstable
+reported engine-rate samples. Candidates and 250 serial isolated Linux server
+tests passed before cutover. Prior release and `.bak.before-3b1e256` backups
+retained. Diary/internal OCR health pass; zero restarts/OOM. No corpus access.
