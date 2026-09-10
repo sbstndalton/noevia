@@ -232,3 +232,11 @@ Diary landing views. All three candidate images built and 234 isolated Linux
 server tests passed before cutover. Retained prior release and configuration
 backups `.bak.before-8edacf7`. Diary/internal OCR health pass, zero restarts/OOM.
 Synthetic browser checks cover the UI; no production diary access used.
+
+
+Latest application rollout: **`7a34a0a`**, replacing `8edacf7`, completes the Diary
+component split. Candidate images built first. The initial parallel test run hit
+a disposable secrets.key creation race; all 234 server tests then passed with
+`--test-concurrency=1` before cutover. Use that flag for subsequent isolated image
+runs. Retain prior release and `.bak.before-7a34a0a` configuration backups. Diary
+and internal OCR health pass; zero restarts/OOM. No production diary access.

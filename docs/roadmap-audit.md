@@ -75,14 +75,14 @@ at responsive widths. No deployment or real diary/financial-source access.
 | --- | --- | --- |
 | UI/sidebar | Accepted, complete for now | Deployed `cd717b0`; see `ui-reference-review.md`. Do not reopen the visual redesign. |
 | 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
-| 2 / 5b: thinking modes | Not implemented | No reasoning-effort schema, override, badge, or verified-provider fallback in web code. `index.cjs` has `enable_thinking` suppression for a helper call, not the planned user-facing feature. Main streaming and non-streaming fallback bodies must both be considered. |
+| 2 / 5b: thinking modes | Implemented v1; rollout pending | Admin default + project/free-chat/extras override; documented parameter support, labelled hints, rejection fallback and explicit high output budget. Uncapped local generation is not promised. |
 | 3: wizard restructure | Partial | Administrator flow is account → provider → diary → prefs → passkey; members start at diary. The dead-end models step is removed. Full diary-first/storage redesign remains deferred. |
 | 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Complete and deployed | First exchange in a new corpus journals create-only seed READMEs for Entries, AI Memory and Raw Sources. Existing journals/imported entry corpora are not migrated. |
 | 4b: diary landing | Complete and deployed | Empty composer; populated Memory, recent Entries and Other sources panels. Operator-wide external import folders remain admin-only pending tenant ownership. |
 | 4c: landing-to-day navigation | Complete and deployed | Send pins the browser-local date and routes history, streamed/local replies, errors and optional-tool scope to that day before preparation begins. Synthetic browser-local/server-backed regressions pass. |
-| 4d: diary visual/refactor work | Implemented; rollout pending | Landing, calendar and context sidebar are separate components. Existing tokens, responsive layout and shared composer behavior retained. |
+| 4d: diary visual/refactor work | Complete and deployed | Landing, calendar and context sidebar are separate components. Existing tokens, responsive layout and shared composer behavior retained. |
 | 5a: duplicate tool-call guard | Complete and deployed | `tool-exchange.cjs` is instantiated inside `handleChat`; canonical arguments, exchange-only result reuse, read invalidation on attempted writes, and handler-level mocked streaming/fallback regression coverage. See Workstream 5a for denial/failure/validation semantics. |
 | 5: deferred tool disclosure; 5c: planner/executor | Research only | Static toolbox cap/budget resolution and message-level Fast/Smart routing remain. No dynamic find_tools or phase-based planner/executor implementation found. |
 | 5d: offline Wikipedia | Not implemented; optional | No Wikipedia toolbox found. Requires a selected available service; it is not a prerequisite for OCR, skills, or correctness fixes. |
@@ -443,3 +443,58 @@ pass. Both synthetic Diary browser suites pass, including local-folder selection
 history/extras/cancellation, file/day links, both themes and responsive widths.
 Manual synthetic send/calendar review confirmed reply routing, month controls and
 future-date restrictions. No real diary access. Rollout pending.
+
+
+4d rollout: **`7a34a0a`** replaces `8edacf7` across all services. Initial parallel
+image tests hit an existing disposable secrets.key creation race; no cutover
+occurred on that failed check. All 234 server tests passed with test concurrency
+one before release. Use serial isolated image tests in future releases. Retained
+prior release/configuration backups `.bak.before-7a34a0a`. Diary/internal OCR health
+pass; zero restarts/OOM. No real diary access.
+
+### Workstream 2 / 5b — truthful thinking effort v1 (2026-09-10)
+
+Admin-set `settings.reasoning_effort_default` plus nullable/removable project
+override resolve project → global → default. Old projects inherit; explicit
+default sends no hint/parameter/budget. Settings and project editor expose these
+choices; compact selectors sit beside composer models in project/free chats and
+optional Diary extras. Companion capture returns before this policy and remains
+unchanged. Member global writes and cross-tenant project reads/writes are denied.
+
+Only the documented GPT-5.4 / https://api.openai.com/v1 pair receives
+reasoning_effort. Other models/endpoints use labelled best-effort hints. This
+conservative allowlist is documentation-backed, not a claim that a live OpenAI
+account was tested. Actual request mode appears with chat replies; Auto can pick
+a different model from the pre-send estimate. Parameter-field rejection retries
+once without it and demotes the credential/provider/model tuple for the process.
+Provider URL/key/model changes naturally use a new tuple. All tool rounds and the
+non-streaming fallback use the same policy; cancellation and fallback timeout
+remain active. Default/off wire bodies stay unchanged.
+
+High hints request an explicit 8,192-token output budget (max_completion_tokens
+on OpenAI, max_tokens elsewhere). Budget-field rejection retries once with the
+provider default and a warning, remembering that tuple. This is a bounded v1
+budget, **not uncapped reasoning or a guaranteed increase over every provider's
+implicit default**. Provider/context limits still apply. The historic claim that
+Default equals Medium on all models is false; Default means omit the parameter.
+No Anthropic wire format or vendor framework is introduced.
+
+Primary capability references checked 2026-09-10:
+[Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+and [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4).
+
+Verification: 292 web tests, typecheck/build; 171 diary tests (3 skipped, two
+existing warnings). Policy tests and real-handler tests cover resolution, unchanged
+default bodies, supported origin/model constraints, retries, cache scope, output
+fields, cancellation, streaming/fallback and tool continuation. Disposable real
+server/browser verifies admin/member permissions, cross-tenant denial, overrides,
+reload, actual high-hint chat/badge and 375/768/1440 both themes/focus. Existing
+Diary suites pass; manual optional-extras selection and screenshot review pass.
+Screenshot capture now completes theme transitions before taking evidence.
+
+A synthetic direct Lemonade/Qwen3.5-9B request with the exact high hint and 8,192
+budget returned HTTP 200 in 8,876 ms, 109 completion tokens, content present and
+finish_reason=stop. No diary prompt or corpus access. No live OpenAI call; wider
+model capability support and uncapped local budget policies remain unverified.
+Rollout pending; documented model-quality/telemetry/reasoning-narration issues are
+not resolved by these controls.

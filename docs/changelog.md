@@ -8,12 +8,23 @@ updated.
 
 ---
 
+## 2026-09-10 — thinking effort reports what the provider receives
+
+Added admin defaults, project/free-chat overrides and optional Diary extras effort
+controls beside model selection. Documented GPT-5.4 on OpenAI receives a parameter;
+other pairs get labelled hints. High hints request an explicit 8,192-token budget,
+with field-rejection fallback. Default leaves the request unchanged. The companion
+and approval gate remain unchanged. 292 web / 171 diary tests (3 skipped),
+typecheck/build, synthetic real-server/browser checks and local inference pass.
+Uncapped budgets and wider provider verification remain out of scope for this v1.
+Rollout pending.
+
 ## 2026-09-10 — Diary components are easier to maintain
 
 Landing, calendar and context sidebar are extracted from dense inline JSX.
 Existing navigation, storage and composer behavior remains; Up honors busy like
 other file navigation. 281 web / 171 diary tests (3 skipped), typecheck/build,
-both synthetic browser suites and manual calendar review pass. Rollout pending.
+both synthetic browser suites and manual calendar review pass. Deployed `7a34a0a`.
 
 ## 2026-09-10 — Diary landing reflects its actual contents
 

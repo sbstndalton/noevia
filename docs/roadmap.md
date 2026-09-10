@@ -113,6 +113,13 @@ Files: `apps/web/server/index.cjs`, `apps/web/src/components/ModelPopup.tsx` or
 
 ---
 
+Thinking-effort v1 implemented 2026-09-10: global/project inheritance, composer
+controls, actual request-mode labels, documented GPT-5.4 parameter support and
+one-time field rejection fallback. High hints use an explicit 8,192-token budget;
+this does not promise uncapped generation or an increase over unknown defaults.
+Default omits fields; it does not universally equal Medium. See audit for provider
+verification, real synthetic inference evidence and remaining limits. Rollout pending.
+
 ## Workstream 3 — Setup wizard restructure
 
 Current order: `account → provider → diary → models → prefs → passkey`.
@@ -236,7 +243,7 @@ unreviewable. The `ui mockups/Diary-html` mockups are the reference.
 
 4d implemented 2026-09-10: landing, calendar and context panel are separate
 components; existing behavior, responsive styles and composer controls preserved.
-281 web / 171 diary tests and both synthetic browser suites pass. Rollout pending.
+281 web / 171 diary tests and both synthetic browser suites pass. Deployed `7a34a0a`.
 
 Files: `apps/web/src/components/DiaryView.tsx` (split into `DiaryLanding.tsx`,
 `DiaryCalendar.tsx`, `DiaryContextPanel.tsx`), `apps/web/src/diary-workspace.ts`,
