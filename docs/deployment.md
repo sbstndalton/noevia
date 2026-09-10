@@ -156,3 +156,10 @@ environment or Compose schema additions. Fixed migration/image behavior and
 administrator deletion were verified against live routes. Synthetic account,
 diary and Nextcloud cleanup completed; public UI and health passed. See
 [the live audit report](live-audit-2026-09-10.md) for coverage and unresolved issues.
+
+Latest application rollout: `dc325d5`, replacing `4ec8269`. The chat model picker
+now sits inside the composer next to Send. All three images use this tag; retain
+`.bak.before-dc325d5` backups and the previous release. 266 web tests,
+typecheck/build, and 157 diary tests (3 skipped) passed. Synthetic mobile/desktop
+and light/dark checks passed; the live composer picker opens correctly. Diary/OCR
+health passed. Thinking-effort controls remain planned, not implemented here.

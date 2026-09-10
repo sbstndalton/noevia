@@ -326,3 +326,11 @@ vector retrieval and isolated diary capture were exercised. Synthetic accounts,
 corpora and the QA Nextcloud folder were removed. No real diary prompts/corpus
 changes. Backups `.bak.before-cfc3a05` and `.bak.before-4ec8269` and previous
 releases retained. [Coverage and remaining concerns](live-audit-2026-09-10.md).
+
+Composer model placement: `dc325d5` deployed to all services, replacing `4ec8269`.
+Removed the chat-header model selector and placed it beside Send inside the text
+composer, keeping the existing picker/routing behavior. Long labels truncate on
+mobile. 266 web tests, typecheck/build and 157 diary tests (3 skipped) passed;
+synthetic browser layout/switch/send checks and the live picker check passed.
+Thinking-effort options are a future follow-up. `.bak.before-dc325d5` backups and
+the prior release are retained; no environment/Compose changes were needed.
