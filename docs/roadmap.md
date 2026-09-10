@@ -210,6 +210,12 @@ scope rather than `'home'`. Net effect: you type, you land on today's log, and t
 reply streams in there. Guard the existing `navigate()` draft-discard confirm so it
 doesn't fire on this programmatic move.
 
+**4c implementation, 2026-09-10:** day selection precedes streaming/preparation
+for both saved storage and browser-local folders. A single pinned day owns recent
+history, replies, failures and extra-tool scope; returning home does not split the
+same day's conversation. 281 web / 157 diary tests (3 skipped), typecheck/build and
+synthetic browser/manual checks pass. Production rollout pending.
+
 **4d. UI polish** (the "still a little crude" note). Deliberately scoped small so it
 doesn't swallow the rest: the diary landing, the composer, and the three panels get
 `design-system.md` applied properly. `DiaryView.tsx` currently has

@@ -81,7 +81,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Not implemented as specified | No first-entry scaffold for Entries, AI Memory, and Raw Sources in diary agent code. Existing storage lazily creates paths. |
 | 4b: diary zero state | Not implemented as specified | `DiaryView.tsx` still has the shared landing; month discovery adds the current month even when there are no entries. No dedicated first-entry composer / three-panel populated split. |
-| 4c: landing-to-day navigation | Confirmed gap | `DiaryView.tsx:submit` computes entryDay but stores the conversation under existing scope and does not set month/day before streaming. Browser-local and server-backed paths both need tests. |
+| 4c: landing-to-day navigation | Implemented; rollout pending | Send pins the browser-local date and routes history, streamed/local replies, errors and optional-tool scope to that day before preparation begins. Synthetic browser-local/server-backed regressions pass. |
 | 4d: diary visual/refactor work | Partial / defer cosmetics | Broad visual updates shipped, but the specified component split and new panel behavior have not. UI is now accepted; implement necessary behavior without restarting cosmetic work. |
 | 5a: duplicate tool-call guard | Complete and deployed | `tool-exchange.cjs` is instantiated inside `handleChat`; canonical arguments, exchange-only result reuse, read invalidation on attempted writes, and handler-level mocked streaming/fallback regression coverage. See Workstream 5a for denial/failure/validation semantics. |
 | 5: deferred tool disclosure; 5c: planner/executor | Research only | Static toolbox cap/budget resolution and message-level Fast/Smart routing remain. No dynamic find_tools or phase-based planner/executor implementation found. |
@@ -115,9 +115,9 @@ composers/model controls, and onboarding correctness (3.5/3.6) are deployed.
 5. **Skills and tool research:** Workstream 9 and relevant parts of 5. Defer
    optional Wikipedia and planner/executor experiments until concretely needed.
 
-Implement one bounded batch at a time. Later user requests authorized testing,
-push, and production rollout, but did not turn the historical roadmap into one
-unbounded task. Preserve the accepted sidebar and current composer behavior.
+The 2026-09-10 continuation request now authorizes continuing the full roadmap,
+with testing and a Git push after each implemented item. Keep each change bounded
+and reviewable; prior production rollout authorization remains in force. Preserve the accepted sidebar and current composer behavior.
 
 ## Design cautions discovered during the audit
 
@@ -324,3 +324,22 @@ with final bundle `index-DE1yxV8o.js`. All services run with zero restarts/OOM;
 Diary health passes. Test tabs/local server were closed, viewport reset, and the
 initially stopped client Tailscale state restored. This scoped follow-up does not
 repeat the broad inference/MCP audit or resolve its documented model limits.
+
+
+### Workstream 4c — day-scoped Diary navigation (2026-09-10)
+
+Landing Send now selects the browser-local day before optional preparation or
+capture, with that day owning history, streamed/local replies and retry rollback.
+Returning home and sending again retains the same day's history and optional-tool
+approval scope. Past-day selections remain explicit, timestamps stay browser-local,
+and programmatic navigation does not invoke the unsent-draft discard prompt.
+Failures/cancelled extras preserve the draft in the selected day; cancelled extras
+never call capture. No diary writer or permission gate changed.
+
+Verification: 281 web tests, typecheck/build; 157 diary passed, 3 skipped (two
+existing warnings). Synthetic browser tests cover server-backed and simulated
+browser-local folders, midnight/year boundaries, previous-day isolation, returning
+home/history, failures, cancellation, extras scope and 375/768/1440 light/dark
+layouts/focus. Manual fixture review confirmed navigation before reply arrival.
+Reproduce with `qa/diary-navigation.cjs` after building, using PLAYWRIGHT_MODULE.
+No real diary prompts/corpus changes. Rollout pending.

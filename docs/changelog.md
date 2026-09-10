@@ -8,6 +8,16 @@ updated.
 
 ---
 
+## 2026-09-10 — landing Diary messages follow the selected day
+
+Landing messages previously stayed in a hidden home conversation. Send now opens
+the destination day first, preserving its existing history, local/streamed replies,
+retry state and optional-tool approval scope. Past-day selection and timestamps
+stay unchanged; cancellation never starts capture. 281 web tests, typecheck/build,
+157 diary tests (3 skipped), synthetic browser regressions and manual review pass.
+Production rollout pending.
+
+
 ## 2026-09-10 — resumable member onboarding and explicit Diary choices
 
 Invitations inherited a completed-onboarding default, skipping setup entirely.
