@@ -8,6 +8,21 @@ updated.
 
 ---
 
+## 2026-09-10 — resumable member onboarding and explicit Diary choices
+
+Invitations inherited a completed-onboarding default, skipping setup entirely.
+New invitees now start incomplete, and members get Diary/preferences/passkeys
+without administrator setup or global model controls. Saved Diary choices hydrate
+the wizard immediately; updates persist with visible failures and retained focus.
+Back and sign-out/resume clarify navigation; the dead-end models step is removed.
+Completion preserves existing consent and defaults missing rows off. The separate
+legacy feature backfill no longer re-enables missing rows on each restart.
+
+Verification: 278 web tests, typecheck/build, 157 diary tests (3 skipped, two
+existing warnings), synthetic real-server browser regression and manual review.
+Production rollout pending; see the later deployment record.
+
+
 ## 2026-09-10 — shared composers and opt-in Diary context
 
 Project landing pages and Diary lacked the composer controls, and free chats could

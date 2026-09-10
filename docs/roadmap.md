@@ -156,13 +156,23 @@ Concrete changes to `SetupWizard.tsx`:
    `1`, so anyone joining by invite **never sees the wizard at all** — no diary
    question, no provider, no prefs. Set `onboarded = 0` for invitees and give the
    wizard a `mode: 'invited'` that skips the setup-code/origin/admin-only steps.
-6. **Audit `markOnboarded` (`auth.cjs:490`)**: its insert branch writes
-   `diary_enabled = 0`, which can silently undo the wizard's answer on a race. The
-   conflict branch preserves it; make both preserve it.
+6. **Audit `markOnboarded`**: verified in the 2026-09-10 onboarding batch.
+   The conflict branch already preserves the stored choice atomically. Missing
+   rows have no recorded opt-in and remain off; completion is not consent.
+   The actual reproduced gap was repeated legacy backfill enabling missing rows
+   on restart, now gated by the original migration marker.
 7. **"Assume nothing" pass.** Every step keeps its explicit skip (already true), but
    no step may apply a value the user didn't see. Today `theme` is seeded from
    `localStorage` before it is asked — show what was detected rather than silently
    adopting it.
+
+**2026-09-10 bounded correctness follow-up:** items 5/6 are implemented and
+locally verified (rollout pending). New invitees resume onboarding; members skip
+bootstrap and provider/global-model setup. Explicit Diary yes/no is read from
+the authenticated account, saved on change, and retained across reload/completion.
+The dead-end models step is removed without a manager probe or full storage/wizard
+redesign. Back, sign-out/resume, and truthful preference skip semantics are tested.
+278 web tests, typecheck/build; 157 diary passed, 3 skipped. Next: Workstream 4c.
 
 Files: `apps/web/src/components/SetupWizard.tsx`, `apps/web/server/auth.cjs`,
 `apps/web/server/index.cjs` (`/api/setup/*`, `/api/profile/features`).

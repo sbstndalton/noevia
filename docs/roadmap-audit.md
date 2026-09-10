@@ -76,9 +76,9 @@ at responsive widths. No deployment or real diary/financial-source access.
 | UI/sidebar | Accepted, complete for now | Deployed `cd717b0`; see `ui-reference-review.md`. Do not reopen the visual redesign. |
 | 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
 | 2 / 5b: thinking modes | Not implemented | No reasoning-effort schema, override, badge, or verified-provider fallback in web code. `index.cjs` has `enable_thinking` suppression for a helper call, not the planned user-facing feature. Main streaming and non-streaming fallback bodies must both be considered. |
-| 3: wizard restructure | Partial | `SetupWizard.tsx` still uses account → provider → diary → models → prefs → passkey. Diary opt-in is an account checkbox; models remains deployment guidance. Timezone confirmation and display-name collection already exist. |
-| 3.5: invite onboarding | Confirmed gap | `auth.cjs:acceptInvite` omits `onboarded`; the database default is 1. `AuthGate.tsx` shows the wizard only when it is false. Existing invitation tests check diary choice/isolation, not onboarding. Resume mode exists, but a member-safe invited flow still needs verification. |
-| 3.6: markOnboarded | Audit/test gap, not proven data loss | Its conflict branch preserves diary choice; the insert branch uses 0. Do not claim an existing user's enabled diary is overwritten without reproducing it. Establish missing-row semantics and regression coverage first. |
+| 3: wizard restructure | Partial | Administrator flow is account → provider → diary → prefs → passkey; members start at diary. The dead-end models step is removed. Full diary-first/storage redesign remains deferred. |
+| 3.5: invite onboarding | Implemented; rollout pending | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
+| 3.6: markOnboarded | Verified; rollout pending | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Not implemented as specified | No first-entry scaffold for Entries, AI Memory, and Raw Sources in diary agent code. Existing storage lazily creates paths. |
 | 4b: diary zero state | Not implemented as specified | `DiaryView.tsx` still has the shared landing; month discovery adds the current month even when there are no entries. No dedicated first-entry composer / three-panel populated split. |
 | 4c: landing-to-day navigation | Confirmed gap | `DiaryView.tsx:submit` computes entryDay but stores the conversation under existing scope and does not set month/day before streaming. Browser-local and server-backed paths both need tests. |
@@ -272,3 +272,39 @@ host, followed by live rechecks of all three fixes and cleanup of every syntheti
 account, local corpus and the Nextcloud QA folder. The color-recognition assertion
 remains a model-quality failure; measured latency and telemetry limitations are
 recorded in the report. No broader roadmap implementation is implied.
+
+### Onboarding correctness — 2026-09-10 (pre-rollout)
+
+Workstreams 3.5/3.6 are implemented. New member and administrator invitations
+explicitly set onboarded=0. AuthGate supplies the authenticated account and its
+saved Diary choice before rendering, avoiding a late probe overwriting a choice.
+Members start at Diary, then preferences and passkeys; administrators retain
+optional personal-provider setup. Shared provider/model management stays role
+protected. The non-actionable model-manager step is removed.
+
+Both explicit Diary values persist at account creation and when changed in setup.
+Back does not recreate accounts; sign-out/reload repeats optional steps with saved
+account choices. Completion stops the wizard on subsequent sign-in/reload.
+Theme/palette apply immediately in this browser, as explained; Auto routing saves
+only on Use these preferences. Skipping preserves the previous browser setting.
+Timezone guidance remains truthful about the deployment boundary. Hardware passkey
+registration was not exercised; its optional skip/completion path was.
+
+Tests confirm markOnboarded already preserves either existing choice atomically.
+Its insert branch remains off: no feature row means no recorded consent. The
+reproduced defect was the original legacy feature backfill running every restart
+and enabling missing rows. Its migration marker now gates the backfill; original
+legacy upgrades retain compatibility and completed users stay completed. No schema
+addition or reset migration is needed.
+
+Fresh checks: 278 web tests (12 new), typecheck/build pass; diary 157 passed,
+3 skipped, two existing warnings. `apps/web/qa/onboarding.cjs` adds reproducible
+browser regression against disposable real local servers using an existing
+Playwright installation (PLAYWRIGHT_MODULE), with synthetic accounts. Coverage:
+fresh admin and invited member/admin, Diary yes/no, failed saves, changes/reload,
+Back, sign-out/resume, completion, role denial, account isolation, and
+375/768/1440 light/dark layouts and focus. Manual browser review confirmed the
+member boundary, saved opt-out, reload and completion; it caught and fixed toggle
+focus loss during save. No real diary prompts/corpus changes, dependencies,
+composer changes or write-path changes. Rollout pending. Next batch: Diary 4c.
+Known model-quality, latency, telemetry and stored-only DOCX limits remain.
