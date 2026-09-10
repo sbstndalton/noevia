@@ -314,3 +314,15 @@ No production diary prompts were sent, nor were extras enabled against the real
 corpus. Execution/approval tests used isolated synthetic inference, MCP, and diary
 fixtures; the earlier real MCP integration test remains recorded above. Temporary
 QA servers/tabs were closed, viewport reset, and Tailscale returned to stopped.
+
+Live reliability audit rollout: `4ec8269` is now deployed to all three services,
+following `cfc3a05` and `12ba04f`. Fixed repeat legacy migration into new admin
+accounts, stale image input after oversized replacement, and administrator
+deletion blocked by issued invitation/recovery tokens. Deletion also preserves
+the last active admin when other admins are disabled. All three fixes passed
+live rechecks; 266 web tests, typecheck/build, 157 diary tests (3 skipped), and
+222 server tests inside the built image passed. Real Nextcloud approvals, OCR,
+vector retrieval and isolated diary capture were exercised. Synthetic accounts,
+corpora and the QA Nextcloud folder were removed. No real diary prompts/corpus
+changes. Backups `.bak.before-cfc3a05` and `.bak.before-4ec8269` and previous
+releases retained. [Coverage and remaining concerns](live-audit-2026-09-10.md).

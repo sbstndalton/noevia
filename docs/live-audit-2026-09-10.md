@@ -69,5 +69,34 @@ to the real diary and no real corpus was edited.
 ## Regression verification
 
 266 web tests passed; typecheck and production build passed. Diary: 157 passed,
-3 skipped (2 existing warnings). Rollout and cleanup evidence follows after final
-verification.
+3 skipped (2 existing warnings). The final image also passed all 222 server tests
+in a disposable container on the production host, with networking disabled and
+no production data mounts. Repository deployment fixtures were mounted read-only
+because they are intentionally absent from the runtime image.
+
+## Rollout and cleanup
+
+Application `4ec8269` is deployed to all three containers, following `cfc3a05`
+(the migration/image fixes), which replaced `12ba04f`. Environment/Compose backups
+use `.bak.before-cfc3a05` and `.bak.before-4ec8269`; prior releases remain available.
+No Compose/environment schema changes were required.
+
+Both original bug reproductions passed against the running fixed server: a newly
+invited administrator received an empty workspace without a legacy marker, and
+stored-only image replacement removed old model input. Synthetic project and
+diary data survived the rollout. The subsequent account-deletion fix also passed
+its exact live reproduction. Final health, OCR 200, zero OOM/restarts, and the
+public UI were checked.
+
+The harness recorded 185 assertions, including initial failures and subsequent
+rechecks. The invitation-deletion failure and its cleanup consequence are marked
+resolved by successful live rechecks. The one unresolved assertion is the orange
+triangle being called yellow. A retrieval assertion was corrected to aggregate
+SSE deltas before checking `ORBIT-629`; its original check incorrectly assumed
+the code arrived in a single delta. The complete model answer was correct.
+
+All four synthetic accounts (including the post-deploy migration test account),
+their sessions/workspaces/diary tenant directories, and the exact Nextcloud QA
+folder were removed. Deletion revoked the test administrator's issued tokens;
+audit records remain by design. Test tabs were closed, the original dark theme
+and viewport restored, and the client's initially stopped Tailscale state restored.

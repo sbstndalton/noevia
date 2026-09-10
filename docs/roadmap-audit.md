@@ -249,3 +249,9 @@ foreign keys. Account deletion now revokes issued invitation/recovery tokens in
 the same transaction, keeps audit history, and protects the last active admin even
 when disabled admin accounts remain. Final regression count: 266 web tests;
 typecheck/build and 157 diary tests (3 skipped) pass.
+
+Final rollout `4ec8269` passed 222 server tests inside its image on the production
+host, followed by live rechecks of all three fixes and cleanup of every synthetic
+account, local corpus and the Nextcloud QA folder. The color-recognition assertion
+remains a model-quality failure; measured latency and telemetry limitations are
+recorded in the report. No broader roadmap implementation is implied.

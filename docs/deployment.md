@@ -147,3 +147,12 @@ replacing `3320fc3`. All three images use `12ba04f`; no environment or Compose
 schema additions. Retain `.bak.before-12ba04f` backups and the previous release.
 Diary/OCR health and the live default-off menu check passed. The following rollout
 record is documentation only; deployed application source remains `12ba04f`.
+
+Latest application rollout: `4ec8269` (live-audit fixes), following `cfc3a05`, which
+replaced `12ba04f`. All three images use `4ec8269`. Build and isolated image tests
+completed before switching the live symlink/version. Retain the prior releases
+and `.bak.before-cfc3a05` / `.bak.before-4ec8269` config/Compose backups. No
+environment or Compose schema additions. Fixed migration/image behavior and
+administrator deletion were verified against live routes. Synthetic account,
+diary and Nextcloud cleanup completed; public UI and health passed. See
+[the live audit report](live-audit-2026-09-10.md) for coverage and unresolved issues.
