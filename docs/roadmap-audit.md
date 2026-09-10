@@ -13,6 +13,11 @@ passing; diary `.venv/bin/python -m pytest tests/ -q` — 155 passing, 3 skipped
 The diary suite emitted two dependency deprecation warnings. No runtime
 dependencies, UI changes, or diary write-path changes were introduced.
 
+Document/image investigation follow-up: synthetic fixtures and 15 additional tests
+now reproduce the reported failure paths and related gaps. Verification: 223 web
+tests, typecheck and build pass; diary 155 pass, 3 skip (two dependency warnings).
+No runtime code, production configuration, or private sources were changed.
+
 ## Status and evidence
 
 | Item | Status | Evidence / remaining work |
@@ -38,7 +43,7 @@ dependencies, UI changes, or diary write-path changes were introduced.
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
 | 7d / 7e / 7h / 7i: served storage | Not implemented | No noevia WebDAV server or noevia-issued app-password lifecycle found. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
-| 8: PDFs/OCR/images | Existing foundation, investigation next | PDF text extraction and image capability/routing exist. Scanned PDFs explicitly fail without OCR. No OCR implementation added. |
+| 8: PDFs/OCR/images | Initial fixture audit/spec complete | [Findings and proposal](spec-document-understanding.md): mixed PDFs silently omit scans, upload/sync lose completeness metadata, local originals are not retained, S3 binary reads corrupt bytes, and image routing is covered with mocks. OCR implementation, real image accuracy, host/projector verification and resource benchmarks remain open. |
 | 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
 
 ## Corrected priority order
@@ -64,8 +69,10 @@ dependencies, UI changes, or diary write-path changes were introduced.
    optional Wikipedia and planner/executor experiments until there is a concrete need.
 
 These priorities distinguish correctness work from feature research rather than
-blindly retaining the old numerical sequence. The next coding task starts with
-item 2 (onboarding correctness), not the entire remaining roadmap.
+blindly retaining the old numerical sequence. The user subsequently selected the
+PDF/OCR/image investigation after reporting failures; its initial local audit/spec
+is complete. Onboarding and diary navigation remain open. Do not infer approval to
+implement all workstreams or change production from that investigation.
 
 ## Design cautions discovered during the audit
 
