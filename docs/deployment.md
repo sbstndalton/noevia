@@ -286,3 +286,14 @@ Latest rollout: **`79cd24f`**, replacing `9e2bfbb`, fixes bounded skill metadata
 filenames. 267 serial isolated Linux server and eight worker tests passed before
 cutover. All three services healthy; prior release and `.bak.before-79cd24f`
 backups retained. Frontend unchanged, no production corpus tests, DAV remains off.
+
+
+Latest rollout: **`ecaaa73`**, replacing `79cd24f`, fixes Diary saved-record
+presentation, provider reasoning transport/display, stationary day composer and
+Diary/ordinary-chat scroll following. All three images use `ecaaa73`; 267 Linux
+server and eight worker tests passed before cutover. Compose health passed,
+web/OCR returned 200, and all services have zero restarts/OOM. Public HTML and
+its JS/CSS return 200 and match the candidate build assets (`index-Dew5_5_t.js`,
+`index-Clk49Sb3.css`). Retain `79cd24f` and `.bak.before-ecaaa73` backups. No real
+Diary prompts or corpus changes. This rollout record is documentation only;
+application source remains `ecaaa73`. Broader roadmap testing pause continues.

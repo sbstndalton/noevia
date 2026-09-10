@@ -8,6 +8,18 @@ updated.
 
 ---
 
+## 2026-09-10 — Diary reading and reasoning feedback
+
+Deployed `ecaaa73`: saved summaries are a separate disclosure during the active
+conversation; the day composer stays outside scrolling content. Diary and normal
+chat stop following output when the reader scrolls up. Provider reasoning reaches
+the Diary thinking disclosure separately from journal text and follow-up history.
+Diary reasoning arrives at completion, only when the provider supplies it; live
+Diary streaming and durable full conversation history remain open.
+315 web tests, typecheck/build, 172 Diary tests (3 skips), synthetic browser checks,
+267 candidate Linux server tests and eight worker tests passed. All three services
+run the release, public assets match, zero restarts/OOM. Broader roadmap paused.
+
 ## 2026-09-10 — skill metadata names the file to load
 
 The existing skill index now supplies exact filenames, escapes metadata as JSON,

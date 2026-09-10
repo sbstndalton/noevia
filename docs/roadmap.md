@@ -24,7 +24,9 @@ retained previous thoughts, history filtering, navigation/errors/extras/cancel,
 saved-summary disclosure, scroll pause/resume, stationary day composer, landing,
 both themes and 375/768/1440 widths. Ordinary chat scroll is also tested against
 an isolated real app server and synthetic streaming provider. No real Diary test
-prompts or corpus changes. Production deployment status is recorded separately.
+prompts or corpus changes. Deployed application `ecaaa73` across all three services after 267 Linux server
+and eight worker tests; health and public build assets verified. The following
+rollout-record commit changes documentation only.
 
 
 Originally written 2026-09-09 against `8a78172`; priorities updated 2026-09-10.
