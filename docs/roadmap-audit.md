@@ -169,3 +169,17 @@ shows image preparation immediately, before waiting for model inference. The
 synthetic image response correctly identified both shapes, colors, and heading;
 QA chat/project were archived. See
 `changelog.md` for the verification record and deployment rollback details.
+
+
+### Composer actions — 2026-09-10
+
+Project chats now expose a compact + menu for files/photos, grouped built-in and
+connector toolboxes, and existing model/routing controls. Uploads use the same
+organized storage API and show progress beside the draft; sending waits until
+source processing and project refresh finish. Tool selections persist per project,
+not per message, and do not bypass any write-approval action. Free chats explain
+that sources and tools require a project. No skills/plugin runtime was added.
+
+Verification: 256 web tests, typecheck/build, 155 diary tests (3 skipped). Synthetic
+local browser checks covered mixed PNG/DOCX upload, persisted tool selection,
+Escape dismissal, model shortcut, and light/dark desktop/mobile appearance.

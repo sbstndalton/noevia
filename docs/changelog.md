@@ -8,6 +8,16 @@ updated.
 
 ---
 
+## 2026-09-10 — composer files and tool controls
+
+Tools and uploads were buried outside the conversation. A + control now opens
+a compact menu above the chat composer: Files and photos, Tools grouped into
+Built-in/Connectors, and Model and routing. Project tool selections use the
+existing permission-checked configuration route; all three write approvals remain.
+Uploads retain the existing file limits, organized Nextcloud storage, and progress.
+No skills or plugin execution features are implied by this menu.
+
+
 ## 2026-09-10 — unified uploads and visible processing
 
 Application release `48027ef` replaces `e3b29bb` in production. One Sources upload
