@@ -130,4 +130,4 @@ editor limit is 512 KiB per file. Browser-folder conversations have a separate b
 16 MiB request allowance and process snapshots in memory; normal requests retain the
 1 MiB limit. Local folder handles are never persisted. Optional sync only writes to
 the existing approved storage connection and refuses conflicting remote contents.
-See [Diary workspace](docs/diary-workspace.md) for limits and browser behavior.
+See [the diary doc](docs/diary.md) for limits and browser behavior.
