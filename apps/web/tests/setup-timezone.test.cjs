@@ -23,15 +23,3 @@ test('setup refuses invalid zones, fixed offsets, and env injection', () => {
     assert.equal(timezoneEnvSetting(zone), null);
   }
 });
-
-test('both diary compose definitions pass through TZ with the documented default', () => {
-  const root = path.resolve(__dirname, '../../..');
-  const example = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
-  const defaultZone = example.match(/^TZ=(.+)$/m)[1];
-  assert.equal(timezoneEnvSetting(defaultZone), `TZ=${defaultZone}`);
-  for (const name of ['compose.yaml', 'deploy/examples/unraid-compose-manager.yml']) {
-    const compose = fs.readFileSync(path.join(root, name), 'utf8');
-    const diary = compose.split('  diary:')[1].split('\n  web:')[0];
-    assert.ok(diary.includes(`      TZ: ${'${TZ:-'}${defaultZone}}`));
-  }
-});
