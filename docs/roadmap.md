@@ -4,7 +4,16 @@ Originally written 2026-09-09 against `8a78172`; priorities updated 2026-09-10.
 This is a mix of plans and completed work, not a claim that every item remains
 unimplemented. Older sections retain their original context unless marked otherwise.
 
-## Current priorities — 2026-09-10
+## Audited priorities — 2026-09-10
+
+See [the code-based roadmap audit](roadmap-audit.md) for completion status,
+evidence, corrected assumptions, and the next-task scope. Start with the small
+deploy-documentation and duplicate-tool-call reliability batch, then onboarding
+correctness and diary navigation. PDFs/OCR/images remain the next feature focus;
+they do not supersede these existing correctness gaps. Storage and skills remain
+separately scoped design work.
+
+## Product direction — 2026-09-10
 
 - **UI and sidebar: accepted for now.** The user is satisfied with the current
   direction; pause further cosmetic iteration unless a bug or new request warrants
@@ -12,7 +21,7 @@ unimplemented. Older sections retain their original context unless marked otherw
   clearer source management, separate pinned items, chat recency, manual/recent
   project ordering, and transparent hover controls with readable long titles.
   See [the UI review](ui-reference-review.md) for decisions and verification.
-- **Next: PDFs, OCR, and images.** Establish what works, what fails, and what the
+- **Next feature focus: PDFs, OCR, and images.** Establish what works, what fails, and what the
   source experience should be before choosing an implementation (Workstream 8).
 - **Also plan skills.** Define their role, scope, and relationship to existing
   tools and project instructions (Workstream 9). No skill framework or OCR engine
@@ -384,8 +393,9 @@ Implemented in the repository: both compose definitions pass `TZ` to the diary
 service, `.env.example` documents it, and setup's prefs step detects/confirms an
 IANA zone and shows the setting for the operator to apply. Subprocess tests pin
 the day and entry-header fallbacks across UTC midnight, including summer/winter
-offsets. The third compose copy on the live server remains out of scope and has
-not been changed; applying `TZ` there requires a separate deployment.
+offsets. **Audit update 2026-09-10:** the separately authorized deployment has
+also applied this to production; a read-only container check confirmed
+`TZ=America/New_York` and `EDT -0400`. The exposure described below is historical.
 
 **noevia has the identical exposure.** The diary container has `TZ` unset, so it
 runs on UTC while the user does not.
@@ -864,11 +874,9 @@ the proposal.
 
 ## Sequencing
 
-**Current override:** the UI is settled for now. Start with Workstream 8's audit
-and specification, then Workstream 9's skills proposal. The earlier sequence below
-remains background backlog; verify current implementation status before taking an
-item on. This update records priorities and planning scope; the new research
-topics have not been implemented.
+The [audited priority order](roadmap-audit.md#corrected-priority-order) supersedes
+this original sequence. Completed items below are retained for historical context;
+consult the audit before treating any of them as new work.
 
 1. Workstream 1 — hours, unblocks agent-driven deploys immediately.
 2. Workstream 4c — one function, highest felt improvement per line changed.
