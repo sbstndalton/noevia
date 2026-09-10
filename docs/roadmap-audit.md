@@ -29,7 +29,9 @@ markers, rejection of truncated generation, server tenant context and memory-onl
 local capture. Synthetic browser checks cover live thinking, leave/return while
 running, save phases, retained optional tool traces, sanitized 524 and partial-stream
 failure, plus prior scrolling/composer/navigation checks. No real Diary prompts or
-corpus edits. Broader roadmap remains paused; rollout recorded separately.
+corpus edits. Broader roadmap remains paused. Deployed application `3ef0501`; all three
+services and public assets verified after 271 Linux server/eight worker tests.
+The following rollout-record commit is documentation only.
 
 
 ## Diary reading feedback — 2026-09-10

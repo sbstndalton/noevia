@@ -8,6 +8,18 @@ updated.
 
 ---
 
+## 2026-09-10 — live Diary progress and long-request connection
+
+Deployed `3ef0501`. Diary now streams real provider thinking/answer output while
+retrieval and capture stages report their progress with an elapsed timer. Optional
+tool traces stay on their turn. Immediate response headers and keep-alives prevent
+silent long-running exchanges from waiting for capture before responding. Proxy
+HTML is sanitized, interrupted saves are explicitly unconfirmed, and there is no
+automatic resend. Switching app views keeps the mounted exchange; full page reload
+recovery remains open. 319 web tests, typecheck/build, 177 Diary tests (3 skips),
+synthetic browser regressions, 271 Linux server and eight worker tests passed.
+All services healthy; public build assets match. Broader roadmap remains paused.
+
 ## 2026-09-10 — Diary reading and reasoning feedback
 
 Deployed `ecaaa73`: saved summaries are a separate disclosure during the active

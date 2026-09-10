@@ -297,3 +297,14 @@ its JS/CSS return 200 and match the candidate build assets (`index-Dew5_5_t.js`,
 `index-Clk49Sb3.css`). Retain `79cd24f` and `.bak.before-ecaaa73` backups. No real
 Diary prompts or corpus changes. This rollout record is documentation only;
 application source remains `ecaaa73`. Broader roadmap testing pause continues.
+
+
+Latest rollout: **`3ef0501`**, replacing `ecaaa73`, streams live Diary provider
+output and actual capture phases with immediate headers/5-second keep-alives.
+271 isolated Linux server and eight worker tests passed before cutover. All three
+images run the release, Compose health passes, web/OCR return 200, zero restarts
+or OOM. Public HTML/JS/CSS match `index-DjreUSVc.js` / `index-CeqiWBYp.css` and
+include the live Diary activity/error UI. Prior release and `.bak.before-3ef0501`
+backups retained; no environment or Compose changes. No real Diary prompts or
+corpus edits. This rollout record changes documentation only; application source
+remains `3ef0501`. Full browser reload/job recovery remains future work.
