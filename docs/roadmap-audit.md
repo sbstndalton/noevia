@@ -127,3 +127,12 @@ synthetic scans/mixed pages and malformed/encrypted failures. Qwen's loaded
 llama-server command includes `--mmproj` and the synthetic image transcription
 returned the exact invoice, dates, signed amounts, and total. Production rollout
 and browser checks are recorded separately after completion.
+
+
+Production follow-up: `e3b29bb` is pushed and deployed, including Workstreams 1
+and 5a and this later OCR/image batch. Authenticated browser verification passed
+synthetic mixed-PDF upload through Nextcloud, OCR-ready status, image perception
+(blue circle, orange triangle, ZEBRA-73), and a correct answer citing scanned PDF
+page 2 and its signed amounts. Web-to-worker health and diary container health
+passed. Prior release/config backups remain available. Subsequent documentation
+commits record this evidence without changing the deployed application image.

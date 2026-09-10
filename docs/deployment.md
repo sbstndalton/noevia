@@ -115,3 +115,12 @@ to its existing checkpoint and `checkpoints.mmproj` equal to
 checkpoint field are rejected by this version. The matching projector was
 obtained from revision `3885219b6810b007914f3a7950a8d1b469d598a5`; restart Lemonade
 and verify a real synthetic image, not just its advertised vision label.
+
+
+Verified rollout: release `e3b29bb`, replacing `cd717b0`. All three production
+images use that tag. Config/Compose backups use `.bak.before-e3b29bb`; retain
+those with the previous release for rollback. Web-to-OCR health returned 200,
+diary passed its authenticated health check, and the authenticated browser passed
+synthetic mixed-PDF upload/OCR and image/PDF question checks. No real corpus was
+used for test prompts. The commit recording these results is documentation only;
+the deployed application source remains `e3b29bb`.

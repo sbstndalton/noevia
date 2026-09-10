@@ -8,6 +8,30 @@ updated.
 
 ---
 
+## 2026-09-10 — bounded reliability, OCR and image rollout
+
+Production now runs `e3b29bb` (previous `cd717b0` retained). This includes the
+agent deployment contract, duplicate tool-call protection, page-aware PDF source
+retention/status, binary source reads, isolated local OCR, and image handling fixes.
+All changes were pushed to main after 247 web tests, typecheck/build, 155 diary
+tests (3 skipped), and three real OCR container tests passed.
+
+Lemonade 10.8.0's Qwen 9B registration now loads its matching mmproj. Synthetic
+inference recovered an invoice, dated/signed amounts, and total; authenticated
+production chat identified a blue circle, orange triangle, and ZEBRA-73 from a
+separate image, then correctly cited the scanned second PDF page and its values.
+A synthetic mixed PDF uploaded through Nextcloud and showed OCR-ready status and
+an Original PDF link. No real diary prompts or financial-document tests were used.
+
+The live Compose Manager file now includes the internal OCR network and service;
+web can reach OCR health, diary is healthy, and all three images use `e3b29bb`.
+Compose/env backups carry `.bak.before-e3b29bb`; the Lemonade registration backup
+is `user_models.json.bak.noevia-vision-20260910`. OCR preserves original/native
+text, labels its output, and enforces documented resource limits. Existing PDFs
+need refresh/re-upload. OCR accuracy, complex tables, and handwriting still need
+human checking; interrupted polling after a server restart requires retry.
+
+
 ## 2026-09-08 — development continuation and QA
 
 Based on a clean `0f8a9c1` checkout. The older UI master prompt was treated as
@@ -210,3 +234,8 @@ and is not: it re-logs an exchange from the *current in-memory session* at
 append duplicates stamped today rather than repair anything.
 
 Tests: 151 python (+4), 162 node.
+
+Synthetic source refresh also passed through the browser's background polling
+path. The QA project and chat were archived (recoverable); their invented fixtures
+remain available for review. The temporary OCR test container and host fixtures
+were removed. Production remains on the tested application release `e3b29bb`.
