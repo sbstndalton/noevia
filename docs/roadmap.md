@@ -1046,3 +1046,8 @@ Composer follow-up: chat model selection now lives inside the text composer next
 to Send instead of in the top bar. A future thinking-effort control should sit
 beside it, using the reasoning behavior specified above; this placement change
 does not implement or claim model support for thinking settings.
+
+The same model control and composer layout now cover project landing pages and
+Diary landing/day views as well as free/project chats. Diary shows its fixed
+companion by default; only opt-in extras expose the optional context model picker.
+Coding's preview already places its disabled model control beside its send action.
