@@ -118,20 +118,34 @@ Concrete changes to `SetupWizard.tsx`:
    the user the wizard can't be trusted to do anything. Replace it with a live probe:
    if `MODEL_MANAGER_KIND` is set, show the detected manager and its model count; if
    not, one sentence and move on. Fold the result into the provider step.
-3. **Expand `prefs` past theme + auto-routing.** Add, as real questions:
+3. **Rework the storage step around the appliance decision (Workstream 7).** Two
+   peer choices, not a flat list of four backends:
+   - **"Let noevia hold my diary"** — the appliance path. Corpus in a
+     noevia-managed volume. Follow-up question: *should other devices be able to
+     reach these files?* If yes, enable the WebDAV endpoint (7d) and end setup by
+     showing the mount URL and a generated app password **once**, the way the
+     passkey step already handles a one-time secret.
+   - **"Connect storage I already run"** — the existing `StoragePicker`:
+     Nextcloud, WebDAV, S3.
+
+   Each says plainly what it costs: the appliance path is reachable from other
+   devices only if the endpoint is enabled; the connect path means noevia is not
+   the system of record and the files keep whatever sync the user already has.
+   Default to neither — this is exactly the "assume nothing" rule in point 7.
+4. **Expand `prefs` past theme + auto-routing.** Add, as real questions:
    - Thinking-mode global default (Workstream 2) — the natural home for it.
    - `insights_badge`, which today is silently defaulted to `0` in `user_features`
      and **never asked anywhere**, in the wizard or Settings.
    - Display name / timezone confirmation (the diary stamps local dates; getting this
      wrong misfiles entries).
-4. **Fix the invited-user hole.** `acceptInvite` in `auth.cjs` defaults `onboarded` to
+5. **Fix the invited-user hole.** `acceptInvite` in `auth.cjs` defaults `onboarded` to
    `1`, so anyone joining by invite **never sees the wizard at all** — no diary
    question, no provider, no prefs. Set `onboarded = 0` for invitees and give the
    wizard a `mode: 'invited'` that skips the setup-code/origin/admin-only steps.
-5. **Audit `markOnboarded` (`auth.cjs:490`)**: its insert branch writes
+6. **Audit `markOnboarded` (`auth.cjs:490`)**: its insert branch writes
    `diary_enabled = 0`, which can silently undo the wizard's answer on a race. The
    conflict branch preserves it; make both preserve it.
-6. **"Assume nothing" pass.** Every step keeps its explicit skip (already true), but
+7. **"Assume nothing" pass.** Every step keeps its explicit skip (already true), but
    no step may apply a value the user didn't see. Today `theme` is seeded from
    `localStorage` before it is asked — show what was detected rather than silently
    adopting it.
@@ -432,14 +446,51 @@ Option 1 is the one that makes "local" a real peer of the cloud backends rather
 than a lesser default. It also reuses the tenant-scoped path validation and
 conditional-write guards the proxy routes already have.
 
-**7c. The wizard should say which trade-off the user is choosing.** The storage step
+**7c. The wizard makes the choice, and names the trade-off.** The storage step
 currently lists Local / Nextcloud / WebDAV / S3 as if they were equivalent. They are
-not: local means "only reachable through this app" until 7b exists. Say so.
+not — today "local" means "reachable only through this app." See Workstream 3 for
+the reworked step; the short version is two real choices (noevia hosts it / connect
+storage you already run), with the access consequence stated on each.
 
-**Open question for the human:** is the goal (a) noevia as a fully self-contained
-appliance where the container owns the data and serves it out, or (b) noevia always
-deferring to an existing file service, with local as a starter mode? 7b option 1
-serves both; options 2 and 3 only serve (b). Answer before building.
+**ANSWERED 2026-09-09 — appliance, but opt-in.** noevia owns and serves its own
+data *when the user chooses that*. It is an option, never a requirement, and the
+choice is made during onboarding rather than in a config file. So: **option 1**.
+Options 2 and 3 are not pursued — a share sidecar is a second service with its own
+auth surface, and zip export is an escape hatch, not a storage mode.
+
+### 7d. What "serves its own data" means concretely
+
+- **A WebDAV endpoint noevia itself serves**, per user, tenant-scoped — the mirror
+  image of the WebDAV *client* already in `storage-client.cjs` / `webdav.py`.
+  Any OS can mount it; so can Nextcloud's external-storage connector, which is how
+  someone keeps Nextcloud in the picture without noevia depending on it.
+- **It must sit on top of the existing diary file API, not read the volume
+  directly.** `/api/diary/files` and `/api/diary/file` already carry tenant scoping,
+  relative-path validation, size limits and conditional writes; the journal and the
+  ETag guard are what keep a crash from corrupting the corpus. A DAV layer that
+  opens the files itself bypasses all of it. This is the same prohibition as
+  Workstream 6's "no shell heredocs" — the corpus has exactly one write path.
+- **Auth needs app passwords, not the session cookie.** WebDAV clients do not do
+  cookie sessions or passkeys, and `LEGACY_AUTH_COMPAT=false` removed the bearer
+  path deliberately. This wants per-device generated credentials, revocable
+  individually, shown once — the model Nextcloud itself uses, and the same shape as
+  the existing passkey list in Settings → Profile and security.
+- **Which container serves it.** The web container: it is the only one that is
+  supposed to be publicly reachable. The diary sidecar stays internal, per
+  `SECURITY.md`. That reinforces the point above — the web container reaches the
+  corpus through the diary API, so DAV naturally inherits the guarded path.
+- **Off by default, and it widens the attack surface.** A new authenticated write
+  surface reachable from outside needs its own section in `SECURITY.md`, its own
+  rate limiting, and to stay disabled unless the user turned it on in setup.
+
+### 7e. Where the corpus actually lives
+
+With the appliance answer, the default should be a **named Docker volume** rather
+than a bind mount: Docker allocates and manages it, it survives recreation, and it
+cannot silently land on the Unraid boot flash the way `./state` does (7a). A bind
+mount stays supported for operators who want the files at a known host path — which
+is what the live deployment already does with
+`COWORK_STATE_DIR=/mnt/docker/appdata/cowork/state`.
 
 ---
 
@@ -458,8 +509,13 @@ serves both; options 2 and 3 only serve (b). Answer before building.
    a client that omits the entry stamp makes it a live bug instead of a latent one.
 9. Workstream 7a (`./state` default) — one line, and it currently points at the
    Unraid boot flash for anyone following the deploy examples.
-10. Workstream 5 proper + 5c + 6b + 7b — research spikes; a `docs/spec-*.md` like
-    the reasoning-effort one, not code. 7b needs the open question answered first.
+10. Workstream 7e (named volume as the default corpus location) — with 7a, since
+    both are about where state lands.
+11. Workstream 7d (noevia's own WebDAV endpoint) + the Workstream 3 storage step —
+    the appliance path. Biggest single item here: a new authenticated, externally
+    reachable write surface, app-password auth, and a `SECURITY.md` section. Spec
+    it first, the way `spec-reasoning-effort.md` was specced.
+12. Workstream 5 proper + 5c + 6b — research spikes; a `docs/spec-*.md`, not code.
 
 ## Verification
 
