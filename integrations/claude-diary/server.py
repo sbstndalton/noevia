@@ -15,7 +15,7 @@ def call(name,args,config):
     url=config['url']
     if not url.startswith('https://') or not url.endswith('/api/diary-connector'):raise ValueError('A HTTPS noevia connector URL is required')
     data=json.dumps({**args,'action':actions[name]}).encode()
-    req=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json','Authorization':'Bearer '+config['token']})
+    req=urllib.request.Request(url,data=data,headers={'User-Agent':'noevia-diary/1.0','Content-Type':'application/json','Authorization':'Bearer '+config['token']})
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self,*args):return None
     try:

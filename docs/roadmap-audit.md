@@ -25,12 +25,13 @@ worker adds Ghostscript; no cloud document processor is used. Verification:
 329 web tests, typecheck/build, 13 real Linux worker tests and synthetic browser
 checks covering notices, failures preserving sources, and responsive UI.
 
-Shared Diary integration is designed around direct server edits with version checks,
-not desktop-sync timing. See [shared-editing design](spec-diary-shared-editing.md).
-Nextcloud notify-push diagnostics found proxy trust failure; Mac client queue health
-could not be inspected due to protected state. No sync/trust/Claude configuration
-or real Diary data changed. The scoped Claude adapter and independent push repair
-remain follow-up work; the broader roadmap stays paused for user testing.
+Shared Diary API deployed in `12a1646`: dedicated revocable credentials and
+version-checked Markdown operations prevent stale replacements. The Claude plugin
+is packaged privately but not installed; Claude UI automation became unavailable.
+Nextcloud push callbacks are repaired and all six self-tests pass after restart.
+Desktop sync timing and pending Mac/cloud differences remain unverified; no real
+Diary data changed. See [shared-editing status](spec-diary-shared-editing.md).
+The broader roadmap stays paused for user testing.
 
 
 Rollout complete: `ddbe852` on all three services; 281 Linux server and 13 worker

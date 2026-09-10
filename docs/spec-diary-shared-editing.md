@@ -2,7 +2,8 @@
 
 Decision (2026-09-10): use the live Nextcloud copy as the authority. The user chose
 the most reliable integration rather than requiring a Mac-folder workflow.
-This is a design and diagnostic record; Claude has not been connected or migrated.
+The scoped API is deployed in `12a1646`. The private Claude plugin is packaged,
+but has not been imported into Claude; no local/cloud files have been reconciled.
 
 ## Observed state
 
@@ -20,8 +21,8 @@ This is a design and diagnostic record; Claude has not been connected or migrate
   This is a concrete notification-path defect, not proof of the entire sync cause.
 - No local MCP servers appear in Claude's standard desktop MCP configuration.
   That does not establish the state of its separately configured remote connectors.
-- No journal contents were changed or test prompts sent. No proxy trust settings,
-  sync databases, local/cloud copies or Claude configuration were changed.
+- No journal contents were changed or test prompts sent. Sync databases and
+  local/cloud copies remain untouched. Push callbacks were repaired as below.
 
 ## Chosen integration
 
@@ -45,13 +46,16 @@ and reconciled explicitly with the latest server version when reconnecting.
 Before switching, compare and reconcile any pending Mac/cloud differences without
 choosing either copy automatically, then retain a backup of both versions.
 
-This is a follow-up implementation, not an already configured Claude connector.
+The API and stdio plugin are implemented; Claude installation remains outstanding.
 A generic filesystem folder or a non-conditional write tool is not equivalent.
 
 ## Independent sync repair
 
-Trace the actual reverse-proxy path and correct only the verified proxy addresses,
-then rerun notify-push's self-test. Do not broadly trust arbitrary networks or
+Repaired with `deploy/nextcloud/repair-push.py` (`c42f16a`): callbacks use
+`http://nextcloud-aio-apache.nextcloud-aio:23973`. Only that exact internal hostname
+was added to trusted domains. Trusted proxies and the public push endpoint are
+unchanged. All six self-tests pass, including after container restart. AIO may
+recreate this container during updates; rerun the documented repair afterward. Do not broadly trust arbitrary networks or
 forwarded headers just to make the test green. Check the Mac client queue/status
 through its UI; protected logs were unavailable to this session. Verify both
 upload and download with a disposable non-Diary file and measured timestamps.
@@ -69,3 +73,21 @@ Push health improves responsiveness but does not make two writers transactional.
 References: [Nextcloud macOS File Provider documentation](https://docs.nextcloud.com/server/stable/user_manual/en/desktop/macosvfs.html),
 [notify-push and self-test](https://github.com/nextcloud/notify_push),
 [reverse-proxy trust configuration](https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/reverse_proxy_configuration.html).
+
+## Implemented and verified — 2026-09-10
+
+Production `12a1646` exposes dedicated hashed, revocable per-user credentials and
+only Markdown list/read/versioned-write operations. Browser sessions cannot
+substitute for connector credentials; Origin requests, traversal, disabled users
+and stale versions are rejected. Tests use an isolated synthetic companion.
+332 web tests, typecheck/build, three Python bridge tests, synthetic HTTP QA,
+284 Linux server and 13 worker tests pass. Production rejects invalid credentials
+and out-of-scope paths without touching the corpus.
+
+The private plugin/config ZIP is outside Git and Nextcloud, under
+`~/.local/share/noevia/`. Its MCP initialization exposes three tools. Claude UI
+automation became unavailable before import; installation and a real Claude
+round trip are not verified. Import grants live Diary access and must preserve
+write approvals. Separate read-only credentials, semantic append/idempotent
+recovery, pending Mac/cloud reconciliation and measured desktop sync remain open.
+Whole-file writes currently require a read version and never automatically retry.

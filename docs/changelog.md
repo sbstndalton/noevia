@@ -8,6 +8,16 @@ updated.
 
 ---
 
+## 2026-09-10 — shared Diary server connector and Nextcloud push repair
+
+Deployed `12a1646`: dedicated revocable Diary credentials and live version-checked
+Markdown tools. Stale saves conflict rather than overwriting newer files. Private
+Claude plugin prepared; import and a real Claude round trip remain outstanding.
+The plugin identifies itself as `noevia-diary/1.0` because production rejects the
+default Python client identifier. Synthetic tests pass; no corpus edits performed.
+Nextcloud push now uses its internal Apache callback; six self-tests pass before
+and after restart. Rerun the repair after AIO recreates the push container.
+
 ## 2026-09-10 — oversized PDFs and native local-Qwen thinking
 
 Deployed `ddbe852` (including `2408c32`). PDFs up to 60 MB receive asynchronous

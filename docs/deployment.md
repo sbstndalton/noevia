@@ -331,3 +331,15 @@ and `.bak.before-ddbe852` backups retained. No environment schema/Compose change
 Ghostscript is added inside the existing restricted OCR image. No real Diary tests,
 model loads, proxy trust changes or Claude migration. Subsequent documentation
 commit records this rollout; application runtime stays `ddbe852`.
+
+
+Latest application rollout: **`12a1646`**, replacing `ddbe852`, adds the scoped
+Diary connector. All three production containers run this release with zero
+restarts/OOM; public HTML and unchanged JS/CSS return 200. 332 web tests,
+typecheck/build, three bridge tests, synthetic HTTP checks, 284 Linux server and
+13 worker tests pass. Invalid credentials return 401; traversal returns 400 in
+production without corpus access. Prior release and `.bak.before-12a1646` retained.
+The subsequent bridge-only change adds its explicit HTTP client identifier; it
+runs on the Mac, not in the production containers. Claude import remains pending.
+See `../deploy/nextcloud/README.md` for the separately applied push repair and AIO
+update caveat. No production Diary prompts or file modifications were used in QA.
