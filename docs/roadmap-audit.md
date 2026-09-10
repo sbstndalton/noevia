@@ -157,6 +157,6 @@ Upload progress now separates file reading, network transfer percentage, storage
 extraction/OCR, and completion, with per-file elapsed time. Completed details can
 be expanded. Chat emits an image-processing status before waiting for inference.
 The background wrapper's accidental 1 MB cap was corrected to the 25 MB file limit
-plus base64 overhead. Verification: 255 web tests, typecheck/build pass; 155 diary
+plus base64 overhead. Verification: 256 web tests, typecheck/build pass; 155 diary
 tests pass, 3 skipped. Synthetic local browser checks covered mixed uploads and
 mobile source rows. The sidebar was not redesigned.
