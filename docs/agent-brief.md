@@ -77,7 +77,9 @@ A project holds four kinds of source, and they are not interchangeable:
   client sends only uploads.** Breaking that invariant blanks file contents.
 
 Every project created since `0a451e8` gets its own Nextcloud folder at
-`noevia projects/<name>-<id>`, auto-attached as a source. Uploads are written
+`noevia projects/<name>`, auto-attached as a source (new WebDAV projects; a
+numbered suffix handles collisions). Existing paths remain unchanged; S3 retains
+the unique ID suffix because it cannot atomically create directories. Uploads are written
 there as real files then synced in — one path whether the file came from the
 browser or was dropped into the folder from a phone.
 

@@ -84,3 +84,27 @@ motion, and settings row refinements. Verified locally with synthetic data acros
 375/768/1440 widths in both modes, including cancel/save/reload, a failed save and
 retry, menu Escape/focus, delete cancellation, all settings panels, and full tool
 approval arguments. No ChatGPT feature placeholders were added.
+
+## Project navigation and storage follow-up
+
+The extra folder shortcut and nested "Open project" row duplicated navigation.
+Project rows now reveal a readable three-dot menu and a compose action; the menu
+retains Open project. Chat rows reveal pin, archive, and their options menu on
+hover or keyboard focus; touch devices expose them without hover.
+
+The editor puts identity beside the name, keeps instructions visible, and folds
+model/description into More settings. It displays the document upload location
+but does not edit sources. All file imports and folder links live on Sources.
+"Upload folder" names the destination for document uploads, while "Linked
+reference folders" means additional folders read without moving their files.
+Chats/settings and image assets remain in noevia; this folder is not a complete
+project backup. Imported text copies remain distinct from linked files.
+
+New WebDAV upload folders use readable names and atomically claim a numbered
+alternative when the name is taken. Existing folders are not renamed or moved.
+S3 keeps unique ID prefixes because directories cannot be claimed there.
+
+Validation: 190 Node tests; web typecheck/build; 155 Python passing, 3 skipped.
+Local synthetic browser: project identity save/cancel/retry, hover actions,
+project-scoped empty chat, pin/archive, link/unlink and focused folder dialog;
+phone/tablet/desktop checks in both themes, including all nine settings panels.
