@@ -70,7 +70,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | UI/sidebar | Accepted, complete for now | Deployed `cd717b0`; see `ui-reference-review.md`. Do not reopen the visual redesign. |
 | 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
 | 2 / 5b: thinking modes | V1 deployed; uncapped budgets remain open | Admin default + project/free-chat/extras override; documented parameter support, labelled hints, rejection fallback and explicit high output budget. Uncapped local generation is not promised. |
-| 3: wizard restructure | Partial | Administrator flow is account → provider → diary → prefs → passkey; members start at diary. The dead-end models step is removed. Full diary-first/storage redesign remains deferred. |
+| 3: wizard restructure | Verified, rollout pending | Fresh setup starts Welcome → Diary/chat choice → account, then provider/storage/preferences/passkey. Explicit hosted/external storage choices preserve saved configuration on skip/failure. Admin thinking preference is available; members retain their restricted flow. Insights was removed from the product and is not resurrected. |
 | 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Complete and deployed | First exchange in a new corpus journals create-only seed READMEs for Entries, AI Memory and Raw Sources. Existing journals/imported entry corpora are not migrated. |
@@ -85,8 +85,8 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 6b: direct diary context | Complete and deployed | Missing/empty/failed semantic retrieval falls back to bounded tenant file reads: two explicit past ISO dates plus three previous days by default. This is not exhaustive diary search. |
 | 6c / 6d: memory ownership/privacy | Architectural constraints | Disk-backed diary memory already feeds context. Keep the single-store and no-cross-profile diary-content boundaries; these are not standalone missing UI features. |
 | 7a: Unraid state default | Original example hazard addressed | `deploy/examples/unraid-compose-manager.yml` requires COWORK_STATE_DIR explicitly. Generic `compose.yaml` and the manifest still use ./state. No named-volume default or explicit /boot-path rejection exists; those are separate remaining decisions. |
-| 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
-| 7d / 7e / 7h / 7i: served storage | Not implemented | App-password lifecycle deployed; limited conditional Markdown DAV operations verified locally. Broad file-manager compatibility remains open. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
+| 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice setup flow is verified; broad device mounting remains open. |
+| 7d / 7e / 7h / 7i: served storage | Partial | App-password lifecycle deployed; limited conditional Markdown DAV operations verified locally. Broad file-manager compatibility remains open. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
 | 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX body/table reader deployed; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
 | 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
@@ -611,3 +611,20 @@ limits and failures. Real web app/listener plus synthetic companion browser QA
 covers actual credentials, opt-in/acknowledgement, tenant forwarding, revocation,
 stale writes and responsive light/dark settings. No real corpus access. Candidate
 image checks and rollout pending.
+
+
+### Resumed wizard verification — 2026-09-10
+
+Home-LAN SSH at 10.69.0.130 confirms production still at 2525de5; Tailscale was
+unreachable. The saved wizard batch adds an explicit pre-account Diary/chat
+choice, two storage paths with no preselection, and the existing administrator
+thinking control in preferences. Existing completed accounts are not reset.
+
+Focused browser checks now cover saved external connection loading, failed load
+(disables editing/saving), selection/skip preservation, failed hosted save,
+successful hosted save and sharing remaining off. Found and fixed the external
+picker's initial local-state/save race: it initializes to an external kind and
+waits for saved settings before enabling controls. No connection or corpus is
+contacted by these tests. Existing onboarding role/reload/focus checks pass in
+both themes at 375/768/1440; screenshot review passes. 310 web tests, typecheck,
+build and 171 Diary tests (3 skipped, two existing warnings) pass. Rollout pending.

@@ -1,7 +1,7 @@
 # Continuation checkpoint — 2026-09-10, user disconnecting
 
-User asked to save and stop before internet disconnection. Latest instruction
-supersedes autonomous continuation until they resume. Full roadmap remains open.
+User resumed on the home network. LAN SSH to 10.69.0.130 works; Tailscale SSH
+timed out. Full roadmap work is active again.
 User chose **reusable instructions using existing approved tools** for skills;
 produce that scoped proposal, not executable packages or a new framework.
 
@@ -98,3 +98,10 @@ compatibility identifiers, accepted UI/shared composers, Diary extras OFF on
 reload, companion pipeline and all three tool-write approval actions. Test and
 push each implemented roadmap item; production rollout previously authorized.
 No subagents unless explicitly requested. No real diary/corpus testing.
+
+
+Resume verification: storage hosted/external loading, skip preservation, failure
+and hosted-save browser checks now pass. StoragePicker initial-load race fixed.
+310 web tests, typecheck/build and 171 Diary tests (3 skipped) pass. This supersedes
+the earlier focused-QA gap. Next candidate includes wizard and b45390a together,
+with production baseline still 2525de5. See latest audit for rollout status.

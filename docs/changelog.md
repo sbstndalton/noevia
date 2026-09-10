@@ -8,6 +8,15 @@ updated.
 
 ---
 
+## 2026-09-10 — explicit Diary and storage choices during setup
+
+Fresh setup asks Diary/chat before account creation. Storage offers server-held
+or existing external service choices; skipping and failed saves preserve the
+configuration. The picker waits for saved settings before editing or saving.
+Admin preferences include the existing thinking default. 310 web tests,
+typecheck/build, 171 Diary tests (3 skipped) and expanded synthetic browser checks
+pass. Existing completed users remain completed. Rollout pending.
+
 ## 2026-09-10 — optional bounded Diary file sharing
 
 Added a separate, default-off listener and per-user sharing controls. Supported

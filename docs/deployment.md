@@ -19,7 +19,8 @@ already stale by the next day.
 
 ## Reaching the host
 
-SSH as root. **Use Tailscale at `100.70.173.74`.** The `daserver` SSH alias points
+SSH as root. Off-site use Tailscale at `100.70.173.74`; on the home LAN use
+`10.69.0.130` (verified again 2026-09-10). The `daserver` SSH alias points
 at `10.69.0.130`, which only resolves on the home LAN — Tailscale reports "peers
 are advertising routes but `--accept-routes` is false", which is why the LAN
 address stays unreachable off-site.
