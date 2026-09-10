@@ -30,10 +30,18 @@ test('landing and day view reuse only the target day history without modifying s
   const before = JSON.stringify(turns);
   const home = diaryExchangeTarget(null, turns, new Date('2026-09-10T22:00:00-04:00'));
   const day = diaryExchangeTarget('2026-09-10', turns, new Date('2026-09-10T22:00:00-04:00'));
-  assert.deepEqual(home.history, turns['2026-09-10'].slice(-16));
+  assert.deepEqual(JSON.parse(JSON.stringify(home.history)), turns['2026-09-10'].slice(-16));
   assert.deepEqual(day.history, home.history);
   home.history.push({role:'user',content:'new'});
   assert.equal(JSON.stringify(turns),before);
   assert.equal(diaryExchangeTarget('2026-09-08', turns).history.length,0);
   assert.equal(diaryExchangeTarget(null, {}, new Date('2026-09-10T22:00:00-04:00')).history.length,0);
+});
+
+test('provider reasoning stays in the display transcript and out of subsequent history', () => {
+  const turns = {'2026-09-10': [{role:'assistant',content:'Answer',reasoning:'Provider reasoning'}]};
+  const {history} = diaryExchangeTarget('2026-09-10', turns);
+  assert.equal(history[0].content, 'Answer');
+  assert.equal(history[0].reasoning, undefined);
+  assert.equal(turns['2026-09-10'][0].reasoning, 'Provider reasoning');
 });

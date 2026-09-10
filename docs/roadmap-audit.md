@@ -1,5 +1,32 @@
 # Roadmap audit — 2026-09-10
 
+## Diary reading feedback — 2026-09-10
+
+The user authorized this focused fix during the broader testing pause. Other
+roadmap implementation remains paused. The active conversation now shows the
+original user message and complete companion answer, with the saved diary record
+in a separate disclosure (collapsed when this session has conversation turns).
+The day composer is outside the transcript scroll. Diary and ordinary chat follow
+new output only at the bottom; scrolling up pauses following, and returning to the
+bottom or sending resumes it. Ordinary chat's smooth auto-scroll was removed
+because its intermediate scroll events incorrectly disabled following.
+
+Provider-returned reasoning is carried separately through both server and local
+Diary exchanges and displayed using the existing thinking disclosure. It is not
+included in journal prose or follow-up history. The companion still uses a single
+non-streaming request: reasoning arrives with completion, only when returned by
+the provider. Live Diary token/reasoning streaming and durable full conversational
+history remain future work; reopening after reload shows the saved diary record.
+
+Verification: 315 web tests, typecheck/build, 172 Diary tests passed (3 skipped,
+2 existing warnings). Synthetic Chrome checks cover server/local Diary reasoning,
+retained previous thoughts, history filtering, navigation/errors/extras/cancel,
+saved-summary disclosure, scroll pause/resume, stationary day composer, landing,
+both themes and 375/768/1440 widths. Ordinary chat scroll is also tested against
+an isolated real app server and synthetic streaming provider. No real Diary test
+prompts or corpus changes. Production deployment status is recorded separately.
+
+
 ## User testing pause — 2026-09-10
 
 The user will test for a couple of days. Pause implementation and deployments
