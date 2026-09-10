@@ -280,3 +280,15 @@ Synthetic source refresh also passed through the browser's background polling
 path. The QA project and chat were archived (recoverable); their invented fixtures
 remain available for review. The temporary OCR test container and host fixtures
 were removed. Production remains on the tested application release `e3b29bb`.
+
+Composer release `3320fc3` is deployed, replacing `48027ef`. All three service
+images use the new tag; `.bak.before-3320fc3` config/Compose backups and the prior
+release are retained. Diary health passed and web-to-OCR health returned 200.
+The authenticated production browser verified a composer upload to Nextcloud and
+enabled Nextcloud Files using the new menu. Qwen on the real Lemonade endpoint
+then made exactly one `nc_webdav_list_directory` MCP call against the synthetic
+project's Documents folder. The successful result named the synthetic DOCX; the
+exchange took 23.7 seconds. This was a live integration test, not a locally
+configured MCP endpoint. The QA chat/project were archived, local QA server and
+tabs closed, viewport reset, and Tailscale restored to stopped. No real diary or
+financial corpus was used.

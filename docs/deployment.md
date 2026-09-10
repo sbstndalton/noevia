@@ -135,3 +135,9 @@ used a separate synthetic project, never a real diary or financial source.
 Tailscale was restored to its previous stopped state after verification. The
 synthetic chat and project are archived. The rollout record is documentation only;
 the deployed application source remains `48027ef`.
+
+Latest application rollout: `3320fc3` (composer actions), replacing `48027ef`.
+All three images use `3320fc3`; no environment or Compose schema changes. Retain
+`.bak.before-3320fc3` backups with the previous release. Authenticated synthetic
+upload and actual Lemonade-to-Nextcloud MCP listing passed. The following rollout
+record commit is documentation only; deployed application source is `3320fc3`.
