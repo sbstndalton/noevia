@@ -8,6 +8,23 @@ updated.
 
 ---
 
+## 2026-09-10 — MTP controls, acceptance and fixed inference footer
+
+Deployed `cac1778`, including `df8a486` (New chat launch) and `8eb7b99` (native
+MTP Yes/No load controls and permanent inference footer). Chat and Diary show
+actual acceptance: cumulative backend counters when available, otherwise the
+current user's last response timings, labelled accordingly. Installed llama.cpp
+b9632 uses the latter and updates at completion. Unsupported models explain why
+MTP cannot be enabled; existing GPU/cache/context settings survive changes.
+
+325 web tests, 178 Diary tests (3 skipped), typecheck/build, synthetic browser
+checks, 277 isolated Linux server tests and eight worker tests pass. The Diary
+wheel-scroll regression timed out during concurrent browser runs and passed on
+its isolated rerun. All three services run `cac1778` with zero restarts/OOM;
+Diary healthy, web/OCR 200, public assets match. No production model loads or
+real Diary corpus tests. Multi-GPU benchmarking and compatible external draft
+models remain experiments. Broader roadmap testing pause continues.
+
 ## 2026-09-10 — live Diary progress and long-request connection
 
 Deployed `3ef0501`. Diary now streams real provider thinking/answer output while

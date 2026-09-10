@@ -308,3 +308,15 @@ include the live Diary activity/error UI. Prior release and `.bak.before-3ef0501
 backups retained; no environment or Compose changes. No real Diary prompts or
 corpus edits. This rollout record changes documentation only; application source
 remains `3ef0501`. Full browser reload/job recovery remains future work.
+
+
+Latest rollout: **`cac1778`**, replacing `3ef0501`, includes native MTP load
+controls, actual acceptance telemetry in Chat/Diary, permanent inference details
+and New chat launch. `8eb7b99` was built but not cut over; the installed backend
+needed the per-response timing fallback added in `cac1778`. All three images
+run `cac1778`; 277 isolated Linux server and eight worker tests passed before
+cutover. Diary health, web HTTP 200 and internal OCR health 200 pass; no restarts
+or OOM. Public HTML/assets return 200 and match `index-D3bApFIM.js` and
+`index-DObGn_iJ.css`. Prior `3ef0501` release and `.bak.before-cac1778` backups
+retained; no environment schema/Compose changes, inference model loads or corpus
+tests. This rollout record changes documentation only; runtime remains `cac1778`.

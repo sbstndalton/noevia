@@ -39,6 +39,10 @@ at 375/768/1440 widths in Chat and Diary. New-chat landing and Diary scrolling
 regressions pass. No real Diary prompts or corpus changes. Deployment recorded
 separately.
 
+Rollout complete: `cac1778` on all three services, replacing `3ef0501`; 277 Linux
+server and eight worker tests passed before cutover. Health/public assets match.
+No production model settings or Diary corpus changed for testing.
+
 
 ## Live Diary activity and timeout feedback — 2026-09-10
 
