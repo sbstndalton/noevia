@@ -366,22 +366,51 @@ sandbox VM reports UTC and the model was manually subtracting 4 hours for EDT.
 That arithmetic caused a real misfiled entry. Its own fix: run
 `TZ=America/New_York date` so the conversion happens in the command.
 
-**noevia has the identical exposure, live.** The diary container has `TZ` unset, so
-`datetime.now().date()` returns `2026-09-10` while the user is on `2026-09-09
-21:20 EDT`. Seven server-side call sites use `datetime.now()` as a fallback:
-`app.py:399, 517, 626, 633`, `pipeline.py:134, 159`, `corpus.py:75`.
+**noevia has the identical exposure.** The diary container has `TZ` unset, so it
+runs on UTC while the user does not.
 
-It is currently *latent*, not live, because `DiaryView.tsx:130` computes
-`entryDay`/`entryTime` from the browser clock and `_run_exchange` prefers them. So
-the write path is right and only the fallbacks are wrong — which means one client
-that omits the stamp writes to the wrong day, silently, and only during evening
-hours. `corpus.py:75` would stamp `01:20` instead of `21:20`.
+*Reproduce it* — the window is local 20:00 to midnight, when UTC has already rolled
+over:
 
-Fix the same way Cowork did — in the environment, not the call sites: set `TZ` on
-the diary container from a configured user timezone, so every fallback already
-agrees with the client stamp. Add a test pinning the fallback to the configured
-zone. Note `journal.py:76/90` should *stay* UTC: those are event timestamps, not
-diary dates, and UTC is correct for them.
+```sh
+ssh <host> "docker exec cowork-diary-1 python -c \
+  'from datetime import datetime; print(datetime.now().date())'"
+date +%F        # your machine
+```
+
+Measured 2026-09-09 21:20 EDT: container said `2026-09-10`, local said `2026-09-09`.
+Outside that window both agree, which is exactly why it hides.
+
+*Why it is latent and not live:* `DiaryView.tsx:130` computes `entryDay`/`entryTime`
+from the browser clock, and `_run_exchange` (`app.py:399`) prefers them. The real
+write path is therefore correct. Seven server-side sites use `datetime.now()` as the
+**fallback**, and each is wrong by a day in that window:
+
+| Site | What it decides |
+| --- | --- |
+| `app.py:399` | `now = entry_time or datetime.now()` — the day an entry is filed under |
+| `app.py:517` | `api_day` with no month — which day "today's log" means |
+| `app.py:626`, `:633` | file-date fallback |
+| `pipeline.py:134`, `:159` | logging and re-log timestamps |
+| `corpus.py:75` | the `### HH:MM` header itself — would read `01:20`, not `21:20` |
+
+*The fix, and why it is this one:* set `TZ` on the diary container from a
+user-configured timezone, so every fallback is already right. Auditing seven call
+sites to thread a timezone through is the version that rots — a new `datetime.now()`
+added later silently reintroduces the bug. Fixing the environment cannot be
+forgotten by the next contributor.
+
+Concretely: a `TZ` build/runtime var on the diary service in all three compose
+copies; the timezone collected in the wizard's prefs step (Workstream 3, point 4,
+which already proposes asking for it); a test that pins a fallback to the configured
+zone rather than to the host's. `journal.py:76` and `:90` must **stay UTC** — those
+are event timestamps, not diary dates, and UTC is correct for them.
+
+*Related, and outstanding:* after the aux-model fix (`changelog.md`, 2026-09-09) a
+new entry should render as `### HH:MM — Topic` rather than a bare `### HH:MM`. That
+has not been observed yet — it needs a real diary write, which is the user's to
+make. If topics are still missing on the next entry, the summariser is still not
+running and the aux fix did not take.
 
 **6b. Read prior entries as plain files, not through a retrieval index.** Cowork
 uses `cat`/`grep` over the day files directly. noevia already has the equivalent in
