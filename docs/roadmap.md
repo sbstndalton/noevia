@@ -892,7 +892,9 @@ use the real diary corpus as a test dataset or send diary prompts.
 
 ## Workstream 9 — Skills and reusable project workflows
 
-**Status: planning/discovery; user wants to work out the model before building it.**
+**Proposal complete; implementation planned.** The user selected reusable instructions
+using existing approved tools. See [the scoped proposal](spec-instruction-skills.md)
+for lifecycle, context/permission boundaries and a representative workflow.
 
 Start by agreeing what a skill means in noevia: reusable instructions, a workflow
 that uses existing tools, or an executable package. Inventory project instructions,

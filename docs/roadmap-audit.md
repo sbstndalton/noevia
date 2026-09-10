@@ -89,7 +89,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 7d / 7e / 7h / 7i: served storage | Partial | App-password lifecycle deployed; limited conditional Markdown DAV operations verified locally. Broad file-manager compatibility remains open. Outbound PROPFIND/MKCOL and saved Nextcloud credentials are client functions, not these features. No managed corpus volume default / Off-LAN-Public sharing wizard. |
 | 7f / 7g: endpoint and proxy notes | Design/reference material | These describe requirements and prior experiments, not shipped endpoint features. The roadmap repeats 7g/7h sections; reconcile before implementing storage. |
 | 8: PDFs/OCR/images | Implemented and deployed | Original retention, native pages, isolated OCR, asynchronous status, bounded binary reads, image projector configuration, unified categorized uploads and progress are shipped. DOCX body/table reader deployed; OCR/vision accuracy and inference latency remain limitations. See the follow-ups and live audit report. |
-| 9: skills | Planning only | No selected skills format, execution model, or lifecycle. Coordinate with existing instructions/toolboxes rather than adding a parallel framework. |
+| 9: skills | Proposal complete; implementation planned | User selected reusable instructions using existing approved tools. See spec-instruction-skills.md for current code inventory, project-file lifecycle, context boundaries, representative weekly review and acceptance plan. No executable package framework. |
 
 ## Corrected priority order
 
