@@ -321,6 +321,128 @@ leaving them as local quirks.
 
 ---
 
+## Workstream 6 — Port Claude Cowork's diary-logging loop
+
+Source: a Cowork session describing, in its own words, exactly how it logs to the
+user's diary. Worth porting because it is a *working* implementation of the same
+job noevia's diary does — but it runs on macOS through a device bridge, and noevia
+runs in a container. The mechanics do not transfer; the **decisions** do.
+
+### What Cowork actually does
+
+Everything goes through one MCP server (`remote-devices`) bridging a cloud session
+to the Mac. For the diary specifically it uses only four functions:
+
+| Cowork | What it is for |
+| --- | --- |
+| `device_bash` | `date` for the clock; `cat`/`tail`/`grep` to read prior entries for context; `cat >> file << EOF` heredocs to append `### <time>` sections; `python3` for bulk edits when `sed -i` fails |
+| `device_list_dir` | Check whether `Entries/2026/September/September 9, 2026.md` exists before touching it |
+| `project_memory_read/write` | Persistent working notes — format rules, day-boundary rule — **on Claude's side, not on disk** |
+| `device_stage_files` | Deliberately unused for the diary; only for files needing a tool the machine lacks |
+
+No uploads, no artifacts, no staging. Read, append, done.
+
+### The four decisions worth taking, and how each maps to a container
+
+**6a. Do timezone conversion in the environment, never in arithmetic.** Cowork's
+sandbox VM reports UTC and the model was manually subtracting 4 hours for EDT.
+That arithmetic caused a real misfiled entry. Its own fix: run
+`TZ=America/New_York date` so the conversion happens in the command.
+
+**noevia has the identical exposure, live.** The diary container has `TZ` unset, so
+`datetime.now().date()` returns `2026-09-10` while the user is on `2026-09-09
+21:20 EDT`. Seven server-side call sites use `datetime.now()` as a fallback:
+`app.py:399, 517, 626, 633`, `pipeline.py:134, 159`, `corpus.py:75`.
+
+It is currently *latent*, not live, because `DiaryView.tsx:130` computes
+`entryDay`/`entryTime` from the browser clock and `_run_exchange` prefers them. So
+the write path is right and only the fallbacks are wrong — which means one client
+that omits the stamp writes to the wrong day, silently, and only during evening
+hours. `corpus.py:75` would stamp `01:20` instead of `21:20`.
+
+Fix the same way Cowork did — in the environment, not the call sites: set `TZ` on
+the diary container from a configured user timezone, so every fallback already
+agrees with the client stamp. Add a test pinning the fallback to the configured
+zone. Note `journal.py:76/90` should *stay* UTC: those are event timestamps, not
+diary dates, and UTC is correct for them.
+
+**6b. Read prior entries as plain files, not through a retrieval index.** Cowork
+uses `cat`/`grep` over the day files directly. noevia already has the equivalent in
+`workspace_files.file_list` / `read_file`, exposed as `/api/diary/files`. The gap is
+that the *diary companion model* reaches its own corpus only through the embedding
+index — which currently fails open (`embedding failed for a chunk … will retry on
+next reindex`, see `changelog.md`), leaving recent entries unreachable as context.
+A direct file read is the honest fallback when retrieval has not caught up.
+
+**6c. One memory store, not two kept in sync by hand.** Cowork's clearest warning:
+`project_memory_*` lives on Claude's side and *"does NOT automatically sync to the
+AI Memory folder on your actual disk — Two different stores, same content kept in
+sync by hand."* Roadmap 4a proposes scaffolding `AI Memory/`. **Decide now that the
+folder on disk is the only store.** If noevia later grows session-side memory, it
+must read and write that folder, not shadow it.
+
+**6d. Keep diary content out of any cross-session profile.** Cowork explicitly
+refuses to write diary content into its broader user-profile memory: *"grief/safety
+content from here has no business living in it."* noevia has no such store today.
+If one is ever added, this boundary is the requirement, not a preference.
+
+### What does NOT port
+
+Shell-out-to-`bash` as the write mechanism. Cowork can afford it because it is
+driving one user's Mac interactively. noevia is multi-tenant, writes through a
+journal + ETag-guarded store precisely so a crash cannot corrupt the corpus, and
+generates structure mechanically in `corpus.py`. A heredoc append would bypass all
+of that. **The model must never write diary structure directly** — see `diary.md`.
+
+---
+
+## Workstream 7 — Self-contained storage when there is no cloud
+
+Today `CORPUS_BACKEND` defaults to `local`, with `CORPUS_LOCAL_ROOT=/app/data/corpus`
+bind-mounted from `${COWORK_STATE_DIR:-./state}/diary`. So "everything lives in the
+container" already technically works. Three things make it unsatisfying in practice.
+
+**7a. The `./state` default is a footgun on Unraid.** `${COWORK_STATE_DIR:-./state}`
+resolves relative to the compose project directory. Under Compose Manager that is
+`/boot/config/plugins/compose.manager/projects/Cowork` — **the USB boot flash**:
+small, wear-sensitive, and not meant for live data. The live deployment sets
+`COWORK_STATE_DIR=/mnt/docker/appdata/cowork/state` so it is fine *there*, but the
+default is wrong for the platform the deploy examples target. Either default to a
+named Docker volume (which Docker allocates and manages, and which never lands on
+the flash) or refuse to start when the resolved path is under `/boot`.
+
+**7b. Local files are unreachable from anywhere else.** The reason WebDAV/Nextcloud
+is attractive is not storage — it is *access*: phone, laptop, file manager. A local
+corpus is a directory on the server with no way in. The in-app Markdown
+viewer/editor (`diary.md`) is the only door, and there is no sync client.
+
+Options, roughly in order of effort:
+
+1. **Expose the corpus over the app's own WebDAV endpoint.** noevia already speaks
+   WebDAV as a *client* (`storage-client.cjs`, `webdav.py`); serving it is the
+   mirror image. Any OS can mount it, including Nextcloud's own external-storage
+   connector — which is how a local corpus becomes reachable without running
+   Nextcloud at all.
+2. **A share sidecar** — Samba or a WebDAV server container mounting the same
+   volume. No app changes, but a second service and its own auth surface.
+3. **Export/import in the UI** — a zip download and upload. Cheapest, and much
+   weaker: not a live path, just a manual escape hatch.
+
+Option 1 is the one that makes "local" a real peer of the cloud backends rather
+than a lesser default. It also reuses the tenant-scoped path validation and
+conditional-write guards the proxy routes already have.
+
+**7c. The wizard should say which trade-off the user is choosing.** The storage step
+currently lists Local / Nextcloud / WebDAV / S3 as if they were equivalent. They are
+not: local means "only reachable through this app" until 7b exists. Say so.
+
+**Open question for the human:** is the goal (a) noevia as a fully self-contained
+appliance where the container owns the data and serves it out, or (b) noevia always
+deferring to an existing file service, with local as a starter mode? 7b option 1
+serves both; options 2 and 3 only serve (b). Answer before building.
+
+---
+
 ## Sequencing
 
 1. Workstream 1 — hours, unblocks agent-driven deploys immediately.
@@ -332,8 +454,12 @@ leaving them as local quirks.
 6. Workstream 5a (duplicate tool-call guard) — small, standalone, do it early;
    it is a bug fix, not a spike.
 7. Workstream 5d (offline Wikipedia toolbox) — additive, no new machinery.
-8. Workstream 5 proper + 5c — research spikes only; a `docs/spec-*.md` like the
-   reasoning-effort one, not code, until measured on the 9B target.
+8. Workstream 6a (container `TZ`) — small and self-contained; do it early, before
+   a client that omits the entry stamp makes it a live bug instead of a latent one.
+9. Workstream 7a (`./state` default) — one line, and it currently points at the
+   Unraid boot flash for anyone following the deploy examples.
+10. Workstream 5 proper + 5c + 6b + 7b — research spikes; a `docs/spec-*.md` like
+    the reasoning-effort one, not code. 7b needs the open question answered first.
 
 ## Verification
 
