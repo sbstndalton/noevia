@@ -1037,3 +1037,7 @@ No DOCX reader, archive extractor, or other subsequent roadmap feature is implie
 image replacement retires obsolete vision input when the new original is stored
 only. Actual server checks covered OCR, embeddings, Nextcloud approval actions,
 and isolated diary capture. See [coverage and remaining concerns](live-audit-2026-09-10.md).
+
+Account cleanup from that audit also fixed administrator deletion after issuing
+invitations and protection of the last active administrator when other admins are
+disabled. Issued tokens are revoked atomically; audit history is retained.

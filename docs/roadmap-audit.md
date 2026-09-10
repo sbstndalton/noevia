@@ -243,3 +243,9 @@ tests, 3 skipped. Actual inference, Nextcloud read/write approvals, OCR, embeddi
 and synthetic tenant diary capture were exercised. See
 [the coverage report](live-audit-2026-09-10.md) for evidence, latency observations,
 model accuracy failures, and exclusions. No real diary test prompts or corpus edits.
+
+Live cleanup also reproduced administrator deletion failing on issued invitation
+foreign keys. Account deletion now revokes issued invitation/recovery tokens in
+the same transaction, keeps audit history, and protects the last active admin even
+when disabled admin accounts remain. Final regression count: 266 web tests;
+typecheck/build and 157 diary tests (3 skipped) pass.

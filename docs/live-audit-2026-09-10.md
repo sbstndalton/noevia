@@ -22,6 +22,11 @@ to the real diary and no real corpus was edited.
   previous image asset remained attached to chat. Replacement now removes that
   stale asset before installing new vision input. Regression coverage verifies
   resizing below the limit restores vision and pruning removes superseded bytes.
+- **Administrator deletion failed after issuing invitations.** Live cleanup
+  returned a foreign-key error because invitation/recovery rows referenced their
+  creator. Deletion now revokes those tokens and deletes the user atomically,
+  retaining audit history. A related regression prevents deleting the last active
+  administrator merely because another disabled administrator exists.
 
 ## Exercised against production
 
@@ -63,6 +68,6 @@ to the real diary and no real corpus was edited.
 
 ## Regression verification
 
-264 web tests passed; typecheck and production build passed. Diary: 157 passed,
+266 web tests passed; typecheck and production build passed. Diary: 157 passed,
 3 skipped (2 existing warnings). Rollout and cleanup evidence follows after final
 verification.
