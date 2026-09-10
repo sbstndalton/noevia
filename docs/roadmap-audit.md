@@ -75,7 +75,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 | --- | --- | --- |
 | UI/sidebar | Accepted, complete for now | Deployed `cd717b0`; see `ui-reference-review.md`. Do not reopen the visual redesign. |
 | 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
-| 2 / 5b: thinking modes | Implemented v1; rollout pending | Admin default + project/free-chat/extras override; documented parameter support, labelled hints, rejection fallback and explicit high output budget. Uncapped local generation is not promised. |
+| 2 / 5b: thinking modes | V1 deployed; uncapped budgets remain open | Admin default + project/free-chat/extras override; documented parameter support, labelled hints, rejection fallback and explicit high output budget. Uncapped local generation is not promised. |
 | 3: wizard restructure | Partial | Administrator flow is account → provider → diary → prefs → passkey; members start at diary. The dead-end models step is removed. Full diary-first/storage redesign remains deferred. |
 | 3.5: invite onboarding | Complete and deployed (`baf38aa`) | New invitees explicitly start incomplete. Members receive Diary → preferences → passkey, with no bootstrap/provider/global-model step. Authenticated session state supplies the saved Diary choice before rendering. |
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
@@ -498,3 +498,26 @@ finish_reason=stop. No diary prompt or corpus access. No live OpenAI call; wider
 model capability support and uncapped local budget policies remain unverified.
 Rollout pending; documented model-quality/telemetry/reasoning-narration issues are
 not resolved by these controls.
+
+
+Thinking v1 rollout: **`6570c51`** replaces `7a34a0a` across all three services.
+Candidate images and 245 serial isolated Linux server tests passed before cutover.
+Retain prior release and `.bak.before-6570c51` configuration backups. Diary/internal
+OCR health pass; zero restarts/OOM. No real diary access or production settings
+changes. Existing projects inherit the absent global default (no wire changes).
+
+### Live-audit follow-up — reasoning is not a final answer (2026-09-10)
+
+The chat handler no longer copies reasoning-only output into the final-answer
+channel. It emits a clear no-final-answer notice, keeping reasoning separate and
+completed tool results intact. Final-answer tracking is per round, so earlier
+content does not conceal a missing final tool continuation. No extra inference,
+write, or automatic tool retry is introduced. This addresses the application's
+promotion behavior, not model accuracy or the provider's tendency to omit content.
+
+295 web tests, typecheck/build; 171 diary tests (3 skipped, two existing warnings)
+pass. Real-handler tests cover stream/fallback and tool continuations. Disposable
+real-server browser verifies the notice after an actual synthetic reasoning-only
+completion; screenshot review confirms the final transcript. No production prompt
+or corpus access. Rollout pending. Throughput telemetry, DOCX and model-quality
+issues remain open.

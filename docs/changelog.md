@@ -8,6 +8,14 @@ updated.
 
 ---
 
+## 2026-09-10 — reasoning-only output is no longer presented as an answer
+
+The final-answer channel now reports that no final answer was returned instead of
+copying internal narration. Per-round tracking covers tool continuations, retaining
+tool results and separate reasoning. No extra inference/tool retries. 295 web /
+171 diary tests (3 skipped), typecheck/build and synthetic real-server browser
+verification pass. Model output quality remains a separate limitation. Rollout pending.
+
 ## 2026-09-10 — thinking effort reports what the provider receives
 
 Added admin defaults, project/free-chat overrides and optional Diary extras effort
@@ -17,7 +25,7 @@ with field-rejection fallback. Default leaves the request unchanged. The compani
 and approval gate remain unchanged. 292 web / 171 diary tests (3 skipped),
 typecheck/build, synthetic real-server/browser checks and local inference pass.
 Uncapped budgets and wider provider verification remain out of scope for this v1.
-Rollout pending.
+Deployed `6570c51`.
 
 ## 2026-09-10 — Diary components are easier to maintain
 

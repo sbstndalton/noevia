@@ -240,3 +240,10 @@ a disposable secrets.key creation race; all 234 server tests then passed with
 `--test-concurrency=1` before cutover. Use that flag for subsequent isolated image
 runs. Retain prior release and `.bak.before-7a34a0a` configuration backups. Diary
 and internal OCR health pass; zero restarts/OOM. No production diary access.
+
+
+Latest application rollout: **`6570c51`**, replacing `7a34a0a`, adds thinking effort
+v1. All three candidates built and 245 serial isolated Linux server tests passed
+before cutover. Prior release and `.bak.before-6570c51` backups retained. Diary and
+internal OCR health pass; zero restarts/OOM. No live settings/corpus mutation.
+Absent global default leaves existing chat requests unchanged.

@@ -118,7 +118,7 @@ controls, actual request-mode labels, documented GPT-5.4 parameter support and
 one-time field rejection fallback. High hints use an explicit 8,192-token budget;
 this does not promise uncapped generation or an increase over unknown defaults.
 Default omits fields; it does not universally equal Medium. See audit for provider
-verification, real synthetic inference evidence and remaining limits. Rollout pending.
+verification, real synthetic inference evidence and remaining limits. Deployed `6570c51`.
 
 ## Workstream 3 — Setup wizard restructure
 
