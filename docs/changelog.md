@@ -139,3 +139,39 @@ refusal, request limits and approved-origin checks. Diary tests cover failed-edi
 acknowledgment, crash recovery, stale-retrieval exclusion, empty-document cleanup
 and refusal of nonconforming S3 stores. The UI was exercised with an isolated local
 fixture using synthetic responses.
+
+---
+
+## 2026-09-09 — deployed `f6832bf`
+
+Three commits shipped to DaServer, replacing `8a78172`:
+
+- `d8a6f2c` journal poison pill — one malformed entry no longer blocks every
+  subsequent diary write.
+- `def7c18` state directory permissions — parents of a nested state path took the
+  umask rather than `0o700`.
+- `f6832bf` docs consolidated from ten files to nine; the old
+  `noevia-design-system.md` palette was stale and would have reintroduced the
+  fire-engine red the UI overhaul removed.
+
+Verified before push: 162 node, 147 python + 3 skipped, typecheck clean, on `main`
+rather than on the feature branch. Verified after deploy: both containers on
+`:f6832bf`, diary healthy, the poison-pill fix present *inside the running
+container*, `localhost:8021` and `https://cowork.daserver.work` both 200, no
+errors or tracebacks in either container log since restart.
+
+**Not yet verified against real data** — these need an authenticated browser
+session and were not done: a real diary write (the poison-pill fix is in exactly
+that path), a Nextcloud upload, and one MCP write approval.
+
+Rollback: `releases/8a78172` is on disk; repoint `current` and `COWORK_VERSION`,
+then rebuild. Env backup at `config/.env.bak.20260909203405`.
+
+### Incident during this deploy
+
+The working tree's entire `docs/` directory disappeared mid-session — all nine
+files at once, after they were committed and pushed. This is the same Nextcloud
+eviction that previously ate `dist/assets` and `node_modules`. Nothing was lost
+(`git checkout -- docs/` restored it, and `origin/main` was never affected), but
+it is a reminder that this checkout lives on a sync client that removes files
+underneath you. Commit early; do not treat the working tree as durable storage.

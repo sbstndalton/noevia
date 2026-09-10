@@ -5,7 +5,17 @@ repo-root `DEPLOY.md`, which describes a generic single-host `docker compose up`
 for a fresh install. That flow does not match production, and following it here
 will not update anything.
 
-Verified 2026-09-08.
+Verified 2026-09-09 by deploying `f6832bf`.
+
+**Never trust a doc for what is currently live** — including this one. Check it:
+
+```sh
+ssh root@100.70.173.74 "readlink -f /mnt/docker/appdata/cowork/current; \
+  docker ps --format '{{.Names}}\t{{.Image}}' | grep cowork"
+```
+
+`changelog.md` says DaServer ran `0f8a9c1`; that was true on 2026-09-08 and was
+already stale by the next day.
 
 ## Reaching the host
 
