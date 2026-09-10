@@ -163,3 +163,11 @@ now sits inside the composer next to Send. All three images use this tag; retain
 typecheck/build, and 157 diary tests (3 skipped) passed. Synthetic mobile/desktop
 and light/dark checks passed; the live composer picker opens correctly. Diary/OCR
 health passed. Thinking-effort controls remain planned, not implemented here.
+
+Latest application rollout: `66af1ad`, replacing `dc325d5`. Shared composer model
+controls now include project landing and Diary home/day views. Diary extras stay
+opt-in; its default companion is displayed without exposing a replacement picker.
+All three images use the tag; `.bak.before-66af1ad` backups and the prior release
+are retained. 266 web tests, typecheck/build, and 157 diary tests (3 skipped) pass.
+Synthetic project/Diary picker and layout checks plus live project/default Diary
+checks passed. Diary/OCR health passed; no test prompt touched the real diary.

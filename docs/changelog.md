@@ -334,3 +334,11 @@ mobile. 266 web tests, typecheck/build and 157 diary tests (3 skipped) passed;
 synthetic browser layout/switch/send checks and the live picker check passed.
 Thinking-effort options are a future follow-up. `.bak.before-dc325d5` backups and
 the prior release are retained; no environment/Compose changes were needed.
+
+Shared composer controls: `66af1ad` deployed, replacing `dc325d5`. Project landing
+and Diary home/day composers now share the model-button component and placement
+used in free/project chats. Diary shows its fixed companion until extras are
+enabled; the enabled picker configures optional context only. Thinking options
+remain planned. Tests: 266 web, typecheck/build, 157 diary (3 skipped). Synthetic
+mobile/desktop and light/dark checks, scoped picker checks, live project/Diary
+checks and service health passed. No real diary prompts or corpus edits.
