@@ -13,8 +13,10 @@ labels, emoji controls, and ornamental badges. Most content sits directly on the
 canvas. Reserve panels for composers, dialogs, and things with distinct boundaries.
 
 The existing Polymetal Day/Night theme identifiers and `cowork-theme` key remain.
-Day uses an off-white canvas with neutral gray navigation. Night uses charcoal
-with a slightly darker sidebar. Burgundy stays in the wordmark and focus/details;
+Light/dark mode is independent of the palette: Warm uses cream and earth tones,
+Cool preserves the slate and soft-white default, and Neutral uses grayscale.
+Choose either in Settings → General or during setup. Palette selection is local
+to the browser and persists under `cowork-palette`. Burgundy stays in the wordmark and focus/details;
 primary actions use primary text color as their background with app-canvas text.
 Destructive actions retain their own danger color.
 
@@ -23,7 +25,7 @@ Destructive actions retain their own danger color.
 `apps/web/src/styles/tokens.css` owns the palette, spacing, radii, and aliases.
 `noevia.css` loads last and owns shared visual rules and responsive refinements.
 Component files keep their functional layout rules. Extend the existing semantic
-names; do not introduce another palette or framework.
+names; extend shared palette tokens rather than hardcoding component colors.
 
 UI text uses Inter with system fallbacks. Reserve monospace for code and detailed
 technical output. Page titles use 25–32px, medium weight; navigation is 13px;
@@ -54,14 +56,14 @@ or colored glow. Keyboard focus is a visible 2px ring.
 
 ## Contrast and theme startup
 
-`tests/theme-contrast.test.cjs` checks both themes against canvas, surface,
+`tests/theme-contrast.test.cjs` checks all six mode/palette combinations against canvas, surface,
 sidebar, app, and garnet tint: primary text at least 7:1; secondary/accent/success
 text at least 4.5:1; focus rings and control boundaries at least 3:1. Keep checked
 tokens as six-digit hex literals. Decorative borders may use transparency.
 
 `public/theme.js` runs before React and stylesheet loading, restoring the saved
-Day preference or defaulting to Night. It also sets the browser chrome color.
-App and setup changes update `data-theme` and that meta color without reloading.
+mode and palette preferences or defaulting to dark Cool. It also sets the browser chrome color.
+App and setup changes update `data-theme`, `data-palette`, and that meta color without reloading.
 Reduced-motion preferences disable transitions and animation.
 
 ## Functional boundaries
@@ -70,3 +72,11 @@ UI work does not alter authentication, tool approvals, diary dates, or storage.
 The approval card always shows full arguments and all three decisions. Diary
 browsing remains read-only; drafts are only submitted by explicit user action.
 Use synthetic fixtures for visual verification, never a live diary prompt.
+
+## Settings failure handling
+
+Usage and Users validate API responses before rendering. Missing or malformed
+fields show a retryable load error, while valid empty arrays render empty states.
+A panel-level error boundary keeps category navigation and Close available if a
+render fails. Local preview fixtures must implement both `/api/usage` and
+`/api/admin/users`; a blanket HTTP 200 with `{}` is not a valid empty response.

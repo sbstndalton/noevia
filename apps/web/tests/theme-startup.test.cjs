@@ -22,3 +22,17 @@ for (const [name, read, expected] of [
     assert.equal(attributes.content, expected === 'light' ? '#faf9f7' : '#1c1d20');
   });
 }
+
+for (const palette of ['warm', 'cool', 'neutral', 'invalid']) test(`restores ${palette} palette before first paint`, () => {
+  const attributes = {};
+  vm.runInNewContext(code, {
+    localStorage: { getItem: key => key === 'cowork-theme' ? 'light' : palette },
+    document: {
+      documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
+      querySelector: () => ({ setAttribute: (key, value) => { attributes[key] = value; } }),
+    },
+  });
+  assert.equal(attributes['data-theme'], 'light');
+  assert.equal(attributes['data-palette'], palette === 'invalid' ? 'cool' : palette);
+  assert.equal(attributes.content, {warm:'#fbf7f0',cool:'#faf9f7',neutral:'#fafafa',invalid:'#faf9f7'}[palette]);
+});
