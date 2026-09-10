@@ -19,7 +19,7 @@ for (const [name, read, expected] of [
       },
     });
     assert.equal(attributes['data-theme'], expected);
-    assert.equal(attributes.content, expected === 'light' ? '#faf9f7' : '#1c1d20');
+    assert.equal(attributes.content, expected === 'light' ? '#f7f9fc' : '#1c1d20');
   });
 }
 
@@ -34,5 +34,5 @@ for (const palette of ['warm', 'cool', 'neutral', 'invalid']) test(`restores ${p
   });
   assert.equal(attributes['data-theme'], 'light');
   assert.equal(attributes['data-palette'], palette === 'invalid' ? 'cool' : palette);
-  assert.equal(attributes.content, {warm:'#fbf7f0',cool:'#faf9f7',neutral:'#fafafa',invalid:'#faf9f7'}[palette]);
+  assert.equal(attributes.content, {warm:'#fbf7f0',cool:'#f7f9fc',neutral:'#fafafa',invalid:'#f7f9fc'}[palette]);
 });
