@@ -214,7 +214,7 @@ doesn't fire on this programmatic move.
 for both saved storage and browser-local folders. A single pinned day owns recent
 history, replies, failures and extra-tool scope; returning home does not split the
 same day's conversation. 281 web / 157 diary tests (3 skipped), typecheck/build and
-synthetic browser/manual checks pass. Production rollout pending.
+synthetic browser/manual checks pass. Deployed as `5b1ef12`.
 
 **4d. UI polish** (the "still a little crude" note). Deliberately scoped small so it
 doesn't swallow the rest: the diary landing, the composer, and the three panels get
@@ -464,6 +464,11 @@ that the *diary companion model* reaches its own corpus only through the embeddi
 index — which currently fails open (`embedding failed for a chunk … will retry on
 next reindex`, see `changelog.md`), leaving recent entries unreachable as context.
 A direct file read is the honest fallback when retrieval has not caught up.
+
+Implemented 2026-09-10: bounded direct reads when retrieval is absent, empty or
+fails, using existing tenant storage and explicit reference framing. Two explicit
+past ISO dates plus three preceding dates by default; no exhaustive search claim.
+166 diary / 281 web tests, typecheck/build pass. Rollout pending.
 
 **6c. One memory store, not two kept in sync by hand.** Cowork's clearest warning:
 `project_memory_*` lives on Claude's side and *"does NOT automatically sync to the

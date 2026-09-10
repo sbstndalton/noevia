@@ -81,14 +81,14 @@ at responsive widths. No deployment or real diary/financial-source access.
 | 3.6: markOnboarded | Complete and deployed (`baf38aa`) | Existing choices are preserved atomically; missing rows mean no recorded consent and stay off. Reproduced a separate repeated legacy backfill enabling missing rows on restart; it now runs only once. Existing onboarded accounts are unchanged. |
 | 4a: diary scaffolding | Not implemented as specified | No first-entry scaffold for Entries, AI Memory, and Raw Sources in diary agent code. Existing storage lazily creates paths. |
 | 4b: diary zero state | Not implemented as specified | `DiaryView.tsx` still has the shared landing; month discovery adds the current month even when there are no entries. No dedicated first-entry composer / three-panel populated split. |
-| 4c: landing-to-day navigation | Implemented; rollout pending | Send pins the browser-local date and routes history, streamed/local replies, errors and optional-tool scope to that day before preparation begins. Synthetic browser-local/server-backed regressions pass. |
+| 4c: landing-to-day navigation | Complete and deployed | Send pins the browser-local date and routes history, streamed/local replies, errors and optional-tool scope to that day before preparation begins. Synthetic browser-local/server-backed regressions pass. |
 | 4d: diary visual/refactor work | Partial / defer cosmetics | Broad visual updates shipped, but the specified component split and new panel behavior have not. UI is now accepted; implement necessary behavior without restarting cosmetic work. |
 | 5a: duplicate tool-call guard | Complete and deployed | `tool-exchange.cjs` is instantiated inside `handleChat`; canonical arguments, exchange-only result reuse, read invalidation on attempted writes, and handler-level mocked streaming/fallback regression coverage. See Workstream 5a for denial/failure/validation semantics. |
 | 5: deferred tool disclosure; 5c: planner/executor | Research only | Static toolbox cap/budget resolution and message-level Fast/Smart routing remain. No dynamic find_tools or phase-based planner/executor implementation found. |
 | 5d: offline Wikipedia | Not implemented; optional | No Wikipedia toolbox found. Requires a selected available service; it is not a prerequisite for OCR, skills, or correctness fixes. |
 | 5e: harness framing | Partial | Already explained in `docs/agent-brief.md`; root agent entry points now link the brief. |
 | 6a: timezone | Complete, including production | Both Compose definitions, `.env.example`, wizard timezone helper, and timezone regression tests exist. Live read-only check: TZ=America/New_York, EDT -0400. The old statement that the live copy remains unapplied is stale. |
-| 6b: direct diary context | Partial; original claim too broad | `agent/context.py` directly reads the current day, standing sections, and memory files. Older entries still use retrieval; a bounded older-entry fallback is the remaining design question. The browser-local path also supplies local reference material. |
+| 6b: direct diary context | Implemented; rollout pending | Missing/empty/failed semantic retrieval falls back to bounded tenant file reads: two explicit past ISO dates plus three previous days by default. This is not exhaustive diary search. |
 | 6c / 6d: memory ownership/privacy | Architectural constraints | Disk-backed diary memory already feeds context. Keep the single-store and no-cross-profile diary-content boundaries; these are not standalone missing UI features. |
 | 7a: Unraid state default | Original example hazard addressed | `deploy/examples/unraid-compose-manager.yml` requires COWORK_STATE_DIR explicitly. Generic `compose.yaml` and the manifest still use ./state. No named-volume default or explicit /boot-path rejection exists; those are separate remaining decisions. |
 | 7b / 7c: local storage UX | Partial | Storage clients and browser-local folder access exist, but they do not expose server-held files to other devices. The two-choice appliance setup flow is absent. |
@@ -343,3 +343,28 @@ home/history, failures, cancellation, extras scope and 375/768/1440 light/dark
 layouts/focus. Manual fixture review confirmed navigation before reply arrival.
 Reproduce with `qa/diary-navigation.cjs` after building, using PLAYWRIGHT_MODULE.
 No real diary prompts/corpus changes. Rollout pending.
+
+
+4c rollout: **`5b1ef12`** replaces `baf38aa` on all three services. Candidate
+images built and 234 isolated Linux server tests passed before cutover. Retained
+previous release and `.bak.before-5b1ef12` configuration backups. Diary health and
+web-to-OCR health pass; all services have zero restarts/OOM. Authenticated public
+Projects loads bundle `index-BZjK7Bdp.js`. No live diary prompts/corpus changes.
+
+### Workstream 6b — bounded direct older-entry context (2026-09-10)
+
+Semantic retrieval remains first choice. Missing, empty or failed retrieval now
+reads up to two explicit past ISO dates in the message and three preceding dates
+(default, configurable up to seven) through the tenant's existing CorpusStore.
+References are labelled limited direct reads, not semantic matches or exhaustive
+search. No arbitrary paths, second store, index prerequisite or writes are added.
+The fallback shares the retrieval budget, defaults to 1,200 estimated tokens,
+and has a hard 7,200-character cap and 2,400-character per-entry cap. Setting its
+budget to zero disables it. Individual read failures leave other dates available.
+Natural-language date interpretation and whole-corpus search remain out of scope.
+
+Verification: 281 web tests, typecheck/build; 166 diary tests pass, 3 skipped,
+two existing warnings. Nine new synthetic tests cover unavailable/failed/empty
+retrieval, match precedence, explicit dates, budgets, read failures, isolation,
+and actual daily/monthly CorpusStore reads with no writes or pending journal work.
+No inference or production corpus was used. Rollout pending.

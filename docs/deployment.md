@@ -203,3 +203,11 @@ exact bootstrap invite were removed; no diary test prompts/corpus writes. Tabs
 and the temporary local server were closed; viewport and stopped Tailscale state
 restored. The following record commit is documentation only; application source
 remains `baf38aa`. Diary 4c is next; known live-audit model limits remain unresolved.
+
+
+Latest application rollout: **`5b1ef12`**, replacing `baf38aa`, implements Diary
+landing-to-day navigation. All three candidate images built before cutover;
+234 isolated Linux server tests passed. Retain `baf38aa` and configuration backups
+`.bak.before-5b1ef12`. All services have zero restarts/OOM; Diary and internal OCR
+health pass. Public authenticated Projects loads `index-BZjK7Bdp.js`. UI behavior
+was verified with synthetic local/browser-folder fixtures, without live capture.

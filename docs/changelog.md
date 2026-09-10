@@ -8,6 +8,15 @@ updated.
 
 ---
 
+## 2026-09-10 — older entries remain available without semantic matches
+
+The companion now falls back to bounded direct tenant file reads when semantic
+retrieval is missing, empty or fails. It reads two explicit past ISO dates plus
+three preceding days by default, within shared context limits. References state
+the limited scope; successful semantic matches avoid extra reads. Existing daily
+and monthly layouts remain the single source of truth. No write path changed.
+166 diary tests (3 skipped), 281 web tests, typecheck/build pass. Rollout pending.
+
 ## 2026-09-10 — landing Diary messages follow the selected day
 
 Landing messages previously stayed in a hidden home conversation. Send now opens
@@ -15,7 +24,7 @@ the destination day first, preserving its existing history, local/streamed repli
 retry state and optional-tool approval scope. Past-day selection and timestamps
 stay unchanged; cancellation never starts capture. 281 web tests, typecheck/build,
 157 diary tests (3 skipped), synthetic browser regressions and manual review pass.
-Production rollout pending.
+Deployed as `5b1ef12`.
 
 
 ## 2026-09-10 — resumable member onboarding and explicit Diary choices
