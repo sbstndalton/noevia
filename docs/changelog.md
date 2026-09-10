@@ -8,6 +8,17 @@ updated.
 
 ---
 
+## 2026-09-10 — shared composers and opt-in Diary context
+
+Project landing pages and Diary lacked the composer controls, and free chats could
+not retain their own attachments/tool selection. All functional chat composers now
+share the + menu. Diary extras are opt-in for the current session and off on reload;
+its normal retrieval/capture remains active. Preparation uses the existing MCP
+approvals and tool loop, then supplies bounded reference to the diary companion.
+Attachments stay outside the diary corpus. See the audit for test evidence and
+behavioral boundaries.
+
+
 ## 2026-09-10 — composer files and tool controls
 
 Tools and uploads were buried outside the conversation. A + control now opens

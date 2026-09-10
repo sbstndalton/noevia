@@ -195,3 +195,30 @@ exchange took 23.7 seconds. This was a live integration test, not a locally
 configured MCP endpoint. The QA chat/project were archived, local QA server and
 tabs closed, viewport reset, and Tailscale restored to stopped. No real diary or
 financial corpus was used.
+
+
+### Shared composers and opt-in Diary extras — 2026-09-10
+
+The + menu now covers project landing pages, project chats, free chats, and both
+Diary landing/day composers. Free chats have tenant-owned, per-chat source/tool
+configuration; internal context records are excluded from the normal project list.
+
+Diary retrieval/capture is implemented in its companion pipeline, not a selectable
+MCP toolbox. It remains active. Extra attachments & tools defaults OFF on reload;
+turning it on enables separately stored attachments and selected MCP toolboxes for
+the current mounted Diary session. Settings/files persist, activation does not.
+Optional context is collected using the existing bounded tool loop and approval
+cards, then passed as at most 12,000 characters of untrusted reference material to
+the companion. It never replaces the raw user message or the existing diary write
+path. The same optional reference path supports local-folder exchanges. Failed or
+cancelled preparation does not start capture and restores the draft. Approval
+allow-for-chat is scoped to the tenant, session, date, and Diary view conversation.
+The extras model selector changes preparation only, not the companion model.
+
+Verification: 261 web tests, typecheck/build; 157 diary tests with 3 skipped. Tests
+cover default-off behavior, reference limits, tenant isolation, hidden contexts,
+approval/result pairing, cancellation, and raw diary text/history preservation.
+Synthetic browser checks covered project-front-page and free-chat uploads, free-chat
+tool execution, Diary baseline/on/off/reload, all three write decisions, approval
+scope separation, cancellation, and mobile popup placement. No real diary prompts
+or corpus changes were used.
