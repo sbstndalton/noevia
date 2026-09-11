@@ -34,7 +34,8 @@ available shared-backend memory, and non-Lemonade model limits remain a fallback
 
 338 tests, typecheck/build, and synthetic browser QA pass: manual/automatic
 compaction, transcript retention, cache reuse, failure handling, streamed errors,
-375/768/1440 widths and both palettes. Production rollout pending. No private
+375/768/1440 widths and both palettes. Deployed `ae39000`; all three services
+healthy, public assets match, 290 Linux server and 13 worker tests passed. No private
 financial data, Diary prompts, model reloads or live corpus changes used in QA.
 
 ## 2026-09-10 — shared Diary server connector and Nextcloud push repair

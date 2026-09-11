@@ -343,3 +343,15 @@ The subsequent bridge-only change adds its explicit HTTP client identifier; it
 runs on the Mac, not in the production containers. Claude import remains pending.
 See `../deploy/nextcloud/README.md` for the separately applied push repair and AIO
 update caveat. No production Diary prompts or file modifications were used in QA.
+
+
+Latest application rollout: **`ae39000`**, replacing `12a1646`. Adds per-chat
+context estimates, manual/automatic history summaries, bounded output and streamed
+context errors. All three images run this release, zero restarts/OOM; public
+HTML and assets `index-DjDPTIbR.js` / `index-Cf9BFFht.css` return 200. Unauthenticated
+context-window access returns 401. 338 web tests, typecheck/build, synthetic
+responsive UI/HTTP QA, 290 Linux server and 13 worker tests pass. Previous release
+and `.bak.before-ae39000` retained. No model reload, real chat retry, or Diary
+corpus changes. Refresh the browser to load the new controls. The first prepared
+request establishes its estimated context snapshot; existing chats can compact
+manually. Documentation-only follow-up does not change the runtime version.
