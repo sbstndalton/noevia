@@ -1,5 +1,35 @@
 # noevia roadmap
 
+## Chat context budgeting and compaction — 2026-09-10
+
+Added ordinary/project-chat context meter above the composer with an expandable
+breakdown of messages/summary, instructions/memory/sources, tools, generation
+reserve, safety buffer and free space. Counts are conservative UTF-8 estimates,
+not exact tokenizer or account totals; unknown limits use a labelled 8k fallback.
+Lemonade uses the loaded model's configured ctx_size, not its architecture maximum.
+The first prepared request establishes the meter; later visible output updates
+its estimate. Existing chats can use Compact chat before sending another turn.
+
+Manual and automatic compaction summarize older exchanges with the selected
+provider, preserve two recent exchanges verbatim, and keep the full visible/saved
+transcript. Summaries are private per-user/per-chat files and exact-prefix hashes
+invalidate them after edits. Failed/unusable/truncated summaries retain previous
+context; oversized sources/recent messages fail clearly rather than being dropped.
+Compaction is lossy and may omit details. Diary's separate journal is unchanged.
+
+Requests reserve up to 4,096 generation tokens and 15% estimation margin; automatic
+compaction triggers when input exceeds the remainder (about 72% for 32k). High
+effort cannot expand or discard this budget. Tool continuations are rechecked;
+context errors inside SSE are surfaced, and heartbeat frames cover silent waits.
+No automatic retry of tools or writes. Configured capacity is not a guarantee of
+available shared-backend memory, and non-Lemonade model limits remain a fallback.
+
+338 tests, typecheck/build, and synthetic browser QA pass: manual/automatic
+compaction, transcript retention, cache reuse, failure handling, streamed errors,
+375/768/1440 widths and both palettes. Production rollout pending. No private
+financial data, Diary prompts, model reloads or live corpus changes used in QA.
+
+
 ## PDF reduction, local thinking and shared Diary assessment — 2026-09-10
 
 User-authorized follow-up: `2408c32` makes configured local Qwen3/3.5 Low/High
