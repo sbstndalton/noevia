@@ -60,3 +60,30 @@ Adopt a replacement only after it meets the current behavior contract and delive
 measured reliability, capacity or latency benefits that justify its maintenance.
 The initial architecture/source review is complete; runtime qualification of the
 custom-Lemonade and vLLM alternatives remains open.
+
+
+### Installed manager evidence — 2026-09-13
+
+Installed `lemond --help` and `lemonade config --help` were read without changes.
+The existing image resolves to
+`ghcr.io/lemonade-sdk/lemonade-server@sha256:ac9d443c47c2eaa611934ba6cf09e4a3bcf6f3a472e0b4294845cf1093c996ab`.
+Tagged v10.8.0 runtime_config.cpp accepts backend binary paths and version tags;
+llamacpp_server.cpp resolves its executable via BackendUtils. A custom/pinned
+backend is therefore a supported configuration path in the installed source
+version, though binary/model execution compatibility is still untested.
+[Tagged configuration source](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/server/runtime_config.cpp),
+[tagged llama.cpp wrapper](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/server/backends/llamacpp_server.cpp).
+
+Read-only `/v1/system-info` reports Vulkan b9632 installed, llama.cpp ROCm b9631
+installable, and **vLLM ROCm installable** for this detected AMD GPU. The advertised
+vLLM artifact is `vllm0.20.1-rocm7.12.0-gfx1150-x64.tar.gz`. This identifies a concrete
+candidate under Lemonade itself; it is not an inference test or guarantee of GGUF,
+model architecture, vision or MTP compatibility. No install action was called.
+
+
+The advertised vLLM version's own [GGUF documentation](https://docs.vllm.ai/en/v0.20.1/features/quantization/gguf/)
+labels GGUF support experimental and under-optimized. Existing GGUF files should
+therefore not be treated as a proven drop-in vLLM migration. Qualify the exact
+artifact/tokenizer/architecture combination before downloading alternate weights
+or comparing speed. The next useful test is a pinned llama.cpp inside the current
+manager, with a separate private cache and the original manager/backend retained.
