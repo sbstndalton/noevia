@@ -1,0 +1,36 @@
+name: model-loader-test
+services:
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41
+    container_name: llama-vulkan-test
+    restart: unless-stopped
+    ports:
+      - "10.69.0.130:8082:8080"
+    devices:
+      - /dev/dri/renderD129:/dev/dri/renderD129
+      - /dev/dri/card1:/dev/dri/card1
+    volumes:
+      - /mnt/user/ai-models:/models:ro
+      - /mnt/docker/appdata/model-loader-test/config:/config:ro
+    command: ["--models-preset", "/config/models.ini", "--host", "0.0.0.0", "--port", "8080", "--models-max", "1"]
+    mem_limit: 14g
+    memswap_limit: 14g
+  model-loader:
+    image: model-loader-test:e11a6ec
+    container_name: model-loader-test
+    restart: unless-stopped
+    ports:
+      - "10.69.0.130:8092:8090"
+    environment:
+      MODELS_DIR: /models
+      MODELS_INI_PATH: /config/models.ini
+      DATA_DIR: /data
+      LLAMA_CONTAINERS: llama-vulkan-test
+      GPU_VRAM: llama-vulkan-test:12
+      HOST_RAM_RESERVE_GB: 16
+    volumes:
+      - /mnt/user/ai-models:/models:ro
+      - /mnt/docker/appdata/model-loader-test/config:/config
+      - /mnt/docker/appdata/model-loader-test/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: 512m

@@ -108,4 +108,4 @@ No new permissions or executable packages are introduced.
 349 web tests, typecheck/build and real synthetic HTTP lifecycle/context checks
 pass. Browser review covered enable/disable, updated versions, persistence,
 keyboard focus and 375/768/1440 widths in both themes. Existing three-decision
-approval regressions pass. Candidate release pending production rollout.
+approval regressions pass. Deployed as `095d308`; all three services healthy, 301 Linux server checks pass, public assets match.

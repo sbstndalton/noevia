@@ -355,3 +355,54 @@ and `.bak.before-ae39000` retained. No model reload, real chat retry, or Diary
 corpus changes. Refresh the browser to load the new controls. The first prepared
 request establishes its estimated context snapshot; existing chats can compact
 manually. Documentation-only follow-up does not change the runtime version.
+
+
+### Dedicated Diary support — 2026-09-12
+
+Diary alone runs `cowork-diary:ae39000-diary-smb-20260912`, image digest
+`sha256:4d3ead98e83c7192e4e77fc4e4b9d7ba52dca30b753a5e5bb0f758c4448c348d`.
+Its source is `/mnt/docker/appdata/cowork/releases/ae39000-diary-smb-20260912/services/diary`.
+The live `docker-compose.override.yml` pins this Diary image and build context
+while preserving the inference network. Web/OCR and `current` remain `ae39000`.
+Future full releases must deliberately remove/update this pin after incorporating
+the dedicated-volume code; do not silently revert it or discard future mounts.
+Main Compose now forwards `DIARY_LOCAL_VOLUMES`; currently empty, so real storage
+is unchanged. Config and both Compose files are backed up with
+`.bak.before-diary-smb-20260912`.
+
+195 isolated Linux Diary tests and synthetic real-image/bind HTTP checks passed.
+Diary health and zero restarts verified. Before enabling the selected tenant
+mapping, finish the Mac SMB pilot and the cutover steps in
+[spec-diary-smb.md](spec-diary-smb.md). The new `/boot/config/smb-extra.conf`
+currently defines only restricted synthetic `Diary-Pilot`. No real corpus export
+or new public port was introduced. Read-only pilot rollback is removing just its
+section and reloading Samba; no original Diary data needs deleting.
+
+
+### Unified context/storage release — 2026-09-12
+
+All three services now run `cc59e8f`. The cold-model context fix is deployed along
+with the existing dedicated-volume support. `current` points to this release;
+the temporary Diary-only image/build pin was removed because the unified source
+contains it. Inference networks and the unset DIARY_LOCAL_VOLUMES setting remain.
+Rollback env/Compose backups use `.bak.before-cc59e8f` and retain the old Diary
+pin. 342 local web tests, typecheck/build, real HTTP cold/auto-model regression,
+and 294 isolated Linux server tests passed. All 13 OCR worker checks passed
+after mounting their document fixtures. All services restarted,
+zero restarts/OOM; public web returned 200. No live inference/Diary prompt used.
+
+### Instruction skills — 2026-09-12
+
+All three services run `095d308`, replacing `cc59e8f`. 349 local web tests,
+typecheck/build, synthetic HTTP and responsive browser checks, and 301 Linux
+server tests pass. Zero restarts/OOM; public assets match index-Jg7lAr4m.js and
+index-DtPQRNYF.css. Rollback backups use .bak.before-095d308. Storage mapping
+remains unset. No inference model loads or real Diary prompts used.
+
+### Hugging Face MTP evidence — 2026-09-12
+
+All three services run `f6688f3`, replacing `095d308`; 353 local web tests,
+typecheck/build, public-GGUF synthetic HTTP checks, responsive browser QA and
+305 Linux server tests pass. Zero restarts/OOM. Public assets match
+index-CEkb-ul1.js and index-CJPL3E7N.css. Rollback backups use
+.bak.before-f6688f3. No inference loads/settings or Diary storage changes.

@@ -1,5 +1,61 @@
 # Current continuation checkpoint — 2026-09-10
 
+## Latest application increments — 2026-09-12
+
+Instruction skills shipped in `095d308`: explicit review/enable/disable, hashed
+updates and RAG/source exclusion. The requested MTP artifact inspection followed
+as `f6688f3`; see [artifact evidence](spec-mtp-artifacts.md). It checks the chosen
+public HF quantization, not installed byte identity, and does not enable MTP.
+The remaining roadmap stays active; see the reconciled [backlog](backlog.md).
+
+## Roadmap resumed — 2026-09-12
+
+The user explicitly resumed the remaining roadmap with “Just go”. The earlier
+testing pause is superseded. Continue in tested, documented deployment increments:
+reconcile stale backlog, ship the verified context fix, establish durable backups
+and restore evidence, then complete instruction skills, Diary recovery and the
+remaining scoped storage/tool experiments. Preserve all approval gates and tenant
+isolation. Mac SMB authentication remains an independent pending client step.
+No subagents or new Codex tasks were requested.
+
+## Latest handoff — 2026-09-12
+
+The user explicitly authorized implementing the dedicated Diary-only SMB plan.
+Storage support is part of the unified release (from `cc59e8f` onward). The old
+Diary-only image/build pin was deliberately removed when its source was included;
+inference networks remain preserved. All later releases retain the unset dedicated
+mapping until the real SMB pilot/cutover succeeds. See deployment.md for current
+image tags and rollback backups.
+
+The synthetic `Diary-Pilot` share exists and is restricted to SMB user sebastian,
+read-only, no guests/symlinks, private networks. Mac NetAuthAgent is waiting for
+that existing password; an asynchronous request asked the user to sign in there
+without pasting it. No real corpus migration or sync-selection change yet.
+Once signed in, verify `/Volumes/Diary-Pilot/visibility.md` (currently synthetic
+version three), same-name/atomic replacements and reconnect. Then rehash/drain,
+copy to a dedicated outside-Nextcloud volume, configure identity/reader UID 1000,
+export only its corpus, and enable the selected tenant's DIARY_LOCAL_VOLUMES.
+Keep SQLite outside the share. Preserve the old prefix to retain journal/index
+keys. SMB stays read-only; API/noevia guarded writes remain authoritative.
+
+Preflight: selected tenant `17522ab5-9f26-4913-890c-b9b08376cfa4`, corpus prefix
+`Documents/Important Documents/Diary`, source under
+`/mnt/user/nextcloud/Sebastian Dalton/files/`. Mac/server 80 files match; originals,
+comparison and SQLite snapshots live at `~/.local/share/noevia/diary-migration/20260912/`.
+Remote snapshots: `/mnt/docker/appdata/cowork/state/diary/migration-backups/20260912-diary-smb/`.
+0 pending/0 dirty at preflight. Recheck before cutover. 192 local/3 skipped, 195
+Linux tests passed; synthetic real-image HTTP/bind tests passed. Canonical
+DaServer log updated. See [the full evidence](spec-diary-smb.md).
+Unrelated roadmap work remains paused.
+
+Model Loader management UI is running on
+8092; test inference was stopped after calibration and original Qwen options
+restored. Gemma's near-128k test passed; Qwen 256k has only load/smoke evidence.
+Existing uncommitted context-loading fixes, HTTP QA and calibration tooling belong
+to that earlier user request; preserve them. They are not production changes.
+
+The older checkpoint below is historical and does not override this handoff.
+
 **Paused for user testing.** The user will test the current release for a couple
 of days. Do not implement or deploy more roadmap changes until they provide
 feedback or ask to resume. Do not create an automatic restart or monitoring task.

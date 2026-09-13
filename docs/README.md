@@ -13,6 +13,7 @@ content folded in below.
 | [design-system.md](design-system.md) | Polymetal palette, contrast contract, theme plumbing | Touching colour, tokens, or CSS |
 | [ui-overhaul.md](ui-overhaul.md) | The five-phase UI plan, with what shipped marked | Continuing UI work |
 | [diary.md](diary.md) | Diary requirements and as-built behaviour, including storage/sync | Touching the diary |
+| [spec-diary-smb.md](spec-diary-smb.md) | Server-local Diary and Mac SMB migration plan, concurrency gaps and acceptance checks | Planning Diary storage migration |
 | [roadmap.md](roadmap.md) | Planned work: setup wizard, thinking modes, diary zero-state, tool scaling | Planning what's next |
 | [changelog.md](changelog.md) | What was fixed and how it was verified, newest first | Checking whether something is already done |
 | [backlog.md](backlog.md) | Every open item from every source, deduplicated and ranked | Picking up loose ends |

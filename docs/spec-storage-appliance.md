@@ -1,5 +1,14 @@
 # Storage appliance implementation contract
 
+## Personal Diary SMB follow-up — 2026-09-12
+
+The [SMB migration plan](spec-diary-smb.md) adds a deployment-specific option:
+server-local tenant corpus, local bind mount for the companion, host SMB export
+for the Mac. This does not turn the limited DAV listener into an SMB service.
+Writable shared-volume access needs explicit conflict coordination; the current
+local backend's per-instance lock does not protect external editors. Pilot and
+migration are planned, not deployed; generic appliance/DAV work below stays separate.
+
 This reconciles Workstream 7's repeated sections. Existing storage and corpus
 paths remain unchanged; no production mount or migration is implied.
 

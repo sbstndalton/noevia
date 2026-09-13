@@ -1,5 +1,17 @@
 # Shared Diary editing: Claude and noevia
 
+## Updated direction — 2026-09-12
+
+The user now wants a direct SMB-mounted Diary working folder on the Mac. The
+[server-local/SMB migration plan](spec-diary-smb.md) supersedes the assumption below
+that Nextcloud must remain the long-term authority. It remains the current
+storage until a verified migration occurs; neither copy has been reconciled or
+moved by this update. Keep the scoped Diary API for guarded edits, including when
+its storage becomes local. Arbitrary SMB editing is not covered by its version
+checks, and the client sync diagnosis remains unverified.
+
+The 2026-09-10 decision and implementation evidence below are historical.
+
 Decision (2026-09-10): use the live Nextcloud copy as the authority. The user chose
 the most reliable integration rather than requiring a Mac-folder workflow.
 The scoped API is deployed in `12a1646`. The private Claude plugin is packaged,

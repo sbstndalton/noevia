@@ -1,5 +1,30 @@
 # Roadmap audit — 2026-09-10
 
+## Roadmap resumed — 2026-09-12
+
+The user explicitly resumed the remaining roadmap with “Just go”. The earlier
+testing pause is superseded. Continue in tested, documented deployment increments:
+reconcile stale backlog, ship the verified context fix, establish durable backups
+and restore evidence, then complete instruction skills, Diary recovery and the
+remaining scoped storage/tool experiments. Preserve all approval gates and tenant
+isolation. Mac SMB authentication remains an independent pending client step.
+No subagents or new Codex tasks were requested.
+
+## Latest review — 2026-09-12
+
+Dedicated Diary storage support and cold-load context resolution are deployed in `cc59e8f`.
+The synthetic read-only `Diary-Pilot` share exists; real cutover is pending the
+Mac SMB login and visibility check. All 80 Mac/server files match, with originals
+and consistent journal backups preserved. Tests: 192 local/3 skipped, 195 Linux;
+real-image synthetic bind/HTTP checks cover guarded saves, stale conflicts,
+reader UID access, missing-volume failure and recovery. See
+[the evidence and remaining steps](spec-diary-smb.md).
+
+Model Loader staging results and the deployed cold-load context
+fix are recorded in [the experiment report](../experiments/model-loader/README.md).
+All three production services now run `f6688f3`, adding reviewed instruction skills and selected-HF-artifact MTP checks. See deployment.md for validation. Dated observations
+below retain their original scope; they do not imply these follow-ups are deployed.
+
 ## Chat context budgeting and compaction — 2026-09-10
 
 Added ordinary/project-chat context meter above the composer with an expandable

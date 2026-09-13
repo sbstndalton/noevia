@@ -31,3 +31,6 @@ no recognized MTP tensors. `unsloth/Qwen3.5-9B-MTP-GGUF`, revision
 `9716a636ee4bddc3fed678220b7a33dd2a4160ae`, Q4_K_M: 442 entries, four
 NextN tensors and one declared prediction layer. These are artifact inspections,
 not generation benchmarks or verified installed-file hashes.
+
+Deployed as `f6688f3` on all three services. 305 Linux server tests pass;
+responsive UI checked at 375/768/1440 with light/dark examples.

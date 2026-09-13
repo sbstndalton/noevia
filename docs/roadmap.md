@@ -1,5 +1,61 @@
 # noevia roadmap
 
+## Latest application increments — 2026-09-12
+
+Instruction skills shipped in `095d308`: explicit review/enable/disable, hashed
+updates and RAG/source exclusion. The requested MTP artifact inspection followed
+as `f6688f3`; see [artifact evidence](spec-mtp-artifacts.md). It checks the chosen
+public HF quantization, not installed byte identity, and does not enable MTP.
+The remaining roadmap stays active; see the reconciled [backlog](backlog.md).
+
+## Roadmap resumed — 2026-09-12
+
+The user explicitly resumed the remaining roadmap with “Just go”. The earlier
+testing pause is superseded. Continue in tested, documented deployment increments:
+reconcile stale backlog, ship the verified context fix, establish durable backups
+and restore evidence, then complete instruction skills, Diary recovery and the
+remaining scoped storage/tool experiments. Preserve all approval gates and tenant
+isolation. Mac SMB authentication remains an independent pending client step.
+No subagents or new Codex tasks were requested.
+
+## Completed on resume — 2026-09-12
+
+`cc59e8f` is deployed on all three services: cold-model context resolution now
+checks the selected model's actual allocation after loading. Per-model observed
+allocations are remembered and always rechecked; automatic maximum-context
+calibration is still separate work. Dedicated Diary support remains present.
+Daily noevia backups now run on a separate array disk with archive verification;
+11 restored SQLite databases and restored credential decryption passed. See
+[backup scope/restore evidence](../deploy/backups/README.md). The older backlog
+has been reconciled to remove already-shipped OCR/DOCX/vision/build work.
+
+## Current priorities — 2026-09-12
+
+**Diary storage: support deployed; Mac sign-in blocks cutover.** Dedicated
+operator-owned tenant volumes, fail-closed identity checks and SMB reader
+ownership on atomic saves are implemented. All three services now run `cc59e8f`, which incorporates that support.
+The restricted read-only `Diary-Pilot` share exists and rejects anonymous access.
+All 80 Mac/server files match by SHA-256; originals and journal snapshots are
+preserved. 192 local tests (3 skips), 195 Linux tests, and a synthetic bind/HTTP
+pilot passed. See [implementation evidence](spec-diary-smb.md).
+
+Next: complete the open Mac SMB sign-in, measure fresh-open visibility and rename
+saves, then recheck/drain/copy and activate the dedicated real corpus. No real
+storage selection or sync folder has changed. Keep the journal/index outside the
+share. SMB is read-only; noevia and the scoped Diary API perform guarded writes.
+Ordinary writable SMB editing still needs coordination and index invalidation.
+
+**Model/context work: experiment complete, cold-load fix deployed.**
+[Model Loader calibration](../experiments/model-loader/README.md) verified Gemma
+E4B at 131,072 allocated / 127,992 actual prompt tokens on the isolated backend.
+Qwen's 262,144 allocation passed a short smoke test only; full capacity is not
+verified. Records are per model/backend/configuration. Generation speed did not
+improve materially in the Qwen comparison. The noevia cold-model 8k fallback fix
+and per-model observations are deployed in `cc59e8f`; original inference settings were restored.
+
+The user subsequently resumed the remaining scoped roadmap work.
+Older dated sections below are historical unless superseded here.
+
 ## Chat context budgeting and compaction — 2026-09-10
 
 Added ordinary/project-chat context meter above the composer with an expandable
@@ -204,7 +260,7 @@ of unchecked items. Several remaining items are large and still exploratory.
 
 | Remaining area | What is still needed |
 | --- | --- |
-| Storage | Full WebDAV/file-manager compatibility and companion-backed namespace operations; managed-volume defaults and resolved Unraid /boot-path protection without silently moving existing data. |
+| Storage | Prioritize the scoped server-local/SMB Diary pilot and conflict-safe migration in `spec-diary-smb.md`. Full WebDAV/file-manager compatibility and companion-backed namespace operations; managed-volume defaults and resolved Unraid /boot-path protection without silently moving existing data. |
 | Instruction skills | Inspect/enable/disable/update lifecycle, explicit review/migration, and exclusion from every source/RAG path when disabled. The scoped proposal is complete; executable packages are not the chosen scope. |
 | Tools and routing | Deferred tool discovery and planner/executor experiments. Plans are written; benefits have not been benchmarked and the new runtime behavior is not implemented. |
 | Thinking/model behavior | Verified larger local budgets, broader provider/model support, and accuracy/performance evidence. Current high hints request 8,192 tokens; uncapped reasoning is not established. |
@@ -745,6 +801,11 @@ of that. **The model must never write diary structure directly** — see `diary.
 ---
 
 ## Workstream 7 — Self-contained storage when there is no cloud
+
+**2026-09-12 update:** the personal Diary SMB migration is now an active planning
+priority; see [spec-diary-smb.md](spec-diary-smb.md). The earlier exclusion of a
+share sidecar below is superseded for this workflow. Generic DAV remains a
+separate capability. Raw shared-volume writes require their own conflict contract.
 
 Today `CORPUS_BACKEND` defaults to `local`, with `CORPUS_LOCAL_ROOT=/app/data/corpus`
 bind-mounted from `${COWORK_STATE_DIR:-./state}/diary`. So "everything lives in the

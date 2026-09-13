@@ -1,88 +1,47 @@
-# Backlog
+# Backlog — reconciled 2026-09-12
 
-Every open item from every source, deduplicated. Planned *projects* live in
-`roadmap.md`; this is the list of loose ends.
+The user resumed roadmap implementation. This replaces the stale checklist;
+[roadmap.md](roadmap.md) and the latest audit record deployment evidence.
 
-Sources merged: both master prompts' open-work sections, `QA-2026-09-08.md`'s
-remaining live work, and `ui-overhaul.md`'s leftovers.
+## Completed from the older backlog
 
-## Infrastructure — top priority
+- Qwen3.5 9B vision projector configuration and synthetic image verification.
+- Bounded DOCX reading, PDF/OCR and image processing.
+- Repeated real Linux container builds, Compose validation and deployments.
+- noevia daily backups on a separate array disk, with a verified isolated restore.
+  See [the backup runbook](../deploy/backups/README.md) for actual scope and limits.
+- Cold-model context resolution and per-model allocation observations: `cc59e8f`.
+  This is not automatic maximum-capacity calibration or a model speedup.
 
-**Backups.** `/mnt/docker` is a single-device btrfs pool on one NVMe with no
-redundancy and no backup, holding `secrets.key`, which decrypts stored provider API
-keys. The Unraid Appdata Backup plugin is installed but unconfigured. Everything
-else on this page is less important than this.
+- Instruction-skill lifecycle and source/RAG exclusion: `095d308`.
 
-## Models and vision
+## Active work
 
-1. **Qwen3.5 mmproj.** Qwen3.5 *is* a vision model; it currently fails with
-   `image input is not supported — hint: you may need to provide the mmproj`. Its
-   multimodal projector was never downloaded. unsloth publishes `mmproj-BF16.gguf`,
-   `mmproj-F16.gguf`, `mmproj-F32.gguf` in `unsloth/Qwen3.5-9B-GGUF`; model files
-   live at `/mnt/user/ai-models/models--unsloth--*/snapshots/<hash>/`.
+- Complete authenticated Mac SMB pilot and real Diary cutover. Existing 80-file
+  originals match and are preserved; the production dedicated mapping is not on.
+- Durable Diary transcript/job recovery across browser reloads and reconnects.
+- Install and verify the scoped Claude Diary bridge; compare reference behavior
+  using synthetic examples, without real Diary prompts.
+- Finish per-model capacity qualification and evaluate deployment profiles;
+  preserve workload/hardware/backend identity and safe memory headroom.
+- Deferred tool discovery and planner/executor experiments, following the scoped
+  research plan rather than adopting an unmeasured framework.
+- Remaining storage appliance defaults/path protection and companion-backed
+  namespace operations; do not advertise general DAV compliance prematurely.
 
-   **`gemma-4-E2B` has its mmproj on disk and still fails the probe**, so Lemonade
-   is not automatically loading projectors. Find out how it is configured to load
-   one for E4B before assuming a download alone fixes Qwen. If Qwen gains vision it
-   both sees and reasons well, which may remove the need for the two-stage
-   pipeline — though the pipeline stays useful for choosing which model looks.
+## Smaller open items
 
-2. ~~Vision probe reports a verdict, not a reason~~ — **done**, see `changelog.md`.
+- Automatic/staleness-based refresh of attached project sources.
+- Review older projects without a managed folder; preserve existing attachments.
+- Optional empty-folder cleanup after project deletion (currently retained safely).
+- Updated chat titles after message edits; branching remains a product/data-model
+  decision rather than an implied change to existing destructive editing.
+- MCP availability/degraded-state indicator and current toolbox-manifest audit.
+- Usage cost estimates and administrator aggregation.
+- Scheduled/Plugins/Explore/Coding preview treatment; these are not functional
+  execution systems. Optional offline Wikipedia needs an available service.
+- Broader model accuracy, reasoning-budget, MTP and multi-GPU benchmarks.
 
-## Projects and sources
-
-3. **Periodic source re-sync.** Sources refresh on project-dialog save and on manual
-   Refresh. A file edited directly in Nextcloud is not noticed until one of those.
-   Consider a staleness check on project open, or a background re-sync.
-4. **Backfill project folders.** Projects created before `0a451e8` have no
-   `projectFolder`, so uploads there fail with a message saying so. Live has one:
-   **Random Questions**. Projects that already share a folder are not automatically
-   split or moved either.
-5. **Deleting a project leaves its folder.** Deliberate — removing a project should
-   not destroy files — but folders accumulate. Consider offering to remove an empty
-   one.
-6. **Documents beyond PDF.** `documents.cjs` is structured for more types; `.docx`
-   via `mammoth` or similar is the obvious next one. **No OCR path exists** for
-   scanned PDFs.
-
-## Tools
-
-7. **Tavily hygiene.** 1,000 free credits/month. `tavily_search` is 1–2 credits;
-   **`tavily_crawl` is many requests from one call** and can spend a month's
-   allowance on one large site — hence the separate `web-crawl` box. Consider
-   leaving it disabled. Be deliberate about enabling `web-search` alongside
-   `nextcloud-sharing`: search results are untrusted text and the approval gate is
-   the real protection.
-8. **`MCP_TOOLBOX_MANIFEST` may be behind upstream.** `nextcloud-mcp-server` now
-   advertises 110+ tools plus semantic search across Notes, Files, News, Deck and
-   Mail. Worth a re-scan for tools that belong in existing boxes.
-
-## Chat
-
-9. **Chat titles do not update when a message is edited.**
-10. **Message editing is destructive, not branching.** Deliberate — it is what makes
-    the token saving real — but Claude and ChatGPT keep the old branch behind a
-    `< 1/2 >` switcher. A data-model change; decide before users get attached to
-    either behaviour.
-
-## UI
-
-11. **"Local MCP Active" indicator.** Achievable from `GET /api/toolboxes`
-    (`{ mcp: { configured, error, discovered } }`) but **not wired**. Show a
-    degraded state when `mcp.error` is non-null.
-12. **The placeholder question — needs an operator decision.** `Scheduled`,
-    `Plugins`, `Explore` and the Coding workspace are previews. Hiding them behind a
-    flag versus styling them as first-class navigation are opposite calls, and this
-    was never settled.
-
-## Usage
-
-13. **Usage page**: cost estimates and an admin-wide aggregated view.
-
-## Testing
-
-14. **Live RAG/embedding smoke test.** The local Node runtime lacks the optional
-    `sqlite-vec` dependency, so smoke tests fall back to direct source injection.
-    Needs the real deployment.
-15. **Container builds and Compose validation** were never run locally — Docker was
-    unavailable on the Mac.
+Backup follow-ups: include the new Diary corpus after migration, exercise a full
+restored companion/provider workflow (web startup is verified), and establish off-site recovery if chosen.
+The new job does not back up unrelated appdata or the entire Nextcloud service.
