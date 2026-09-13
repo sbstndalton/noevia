@@ -1388,3 +1388,10 @@ The same model control and composer layout now cover project landing pages and
 Diary landing/day views as well as free/project chats. Diary shows its fixed
 companion by default; only opt-in extras expose the optional context model picker.
 Coding's preview already places its disabled model control beside its send action.
+
+### Saved-storage Diary recovery — 2026-09-12
+
+Implemented durable exchange IDs, per-user reply/status records and browser
+reload recovery. Duplicate IDs cannot resend, and server-interrupted outcomes
+remain uncertain. Browser-local pending saves and optional-tool preparation
+transcripts remain separate. See [scope and validation](spec-diary-recovery.md).

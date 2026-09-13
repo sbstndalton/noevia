@@ -19,7 +19,8 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 
 - Complete authenticated Mac SMB pilot and real Diary cutover. Existing 80-file
   originals match and are preserved; the production dedicated mapping is not on.
-- Durable Diary transcript/job recovery across browser reloads and reconnects.
+- Browser-local Diary pending-save recovery and optional-tool preparation history;
+  saved-storage conversation recovery is implemented (see spec-diary-recovery.md).
 - Install and verify the scoped Claude Diary bridge; compare reference behavior
   using synthetic examples, without real Diary prompts.
 - Finish per-model capacity qualification and evaluate deployment profiles;
