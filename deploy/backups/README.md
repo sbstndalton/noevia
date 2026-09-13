@@ -46,3 +46,18 @@ identity markers and read-only SMB policy.
 Follow-up: the restored web image starts with the restored accounts/configuration
 and serves HTTP in a network-none container. This verifies web startup, not a full
 end-to-end restored Diary/provider exchange. No restored state replaced production.
+
+
+### Full synthetic workflow restore — 2026-09-13
+
+`node apps/web/qa/restore-http.cjs` passed with real web and Diary processes and a
+synthetic HTTP provider. It created disposable state, captured an entry, stopped
+both writers, archived/extracted into a new directory, then verified restored
+login, prior corpus, encrypted provider credential use, continued Diary capture,
+and HTTP 409 for a stale file write. All temporary state was removed afterward.
+
+This complements the production archive integrity/key/startup checks above. It
+does not replay the real journal or send restored private data to a provider, and
+is not a container-image or disaster-site recovery test. Off-site backup has no
+chosen destination or budget; the user deferred that decision. Dedicated corpus
+archive coverage still needs verification after SMB storage cutover.

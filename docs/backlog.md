@@ -32,8 +32,8 @@ The user resumed roadmap implementation. This replaces the stale checklist;
   using synthetic examples, without real Diary prompts.
 - Finish per-model capacity qualification and evaluate deployment profiles;
   preserve workload/hardware/backend identity and safe memory headroom.
-- Deferred tool discovery and planner/executor experiments, following the scoped
-  research plan rather than adopting an unmeasured framework.
+- Initial deferred-discovery/planning comparison is complete: retain current routing.
+  Distinct Smart/Fast pairs remain a later adoption gate; see the experiment report.
 - Remaining storage appliance companion-backed namespace operations; do not advertise general DAV compliance prematurely.
 
 ## Queued investigation — 2026-09-13
@@ -45,17 +45,38 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 
 ## Smaller open items
 
-- Review older projects without a managed folder; preserve existing attachments.
+- Older-project audit complete: 52 ordinary projects, five managed; the remaining
+  47 have no references/uploads/assets. Existing lazy folder creation is sufficient;
+  no empty-folder migration performed.
 - Optional empty-folder cleanup after project deletion (currently retained safely).
 - Updated chat titles after message edits; branching remains a product/data-model
   decision rather than an implied change to existing destructive editing.
 - Explicit Docker health checks for web/OCR (HTTP checks currently verify rollout).
 - MCP availability/degraded-state indicator and current toolbox-manifest audit.
 - Usage cost estimates and administrator aggregation.
-- Scheduled/Plugins/Explore/Coding preview treatment; these are not functional
-  execution systems. Optional offline Wikipedia needs an available service.
+- Scheduled/Plugins/Explore/Coding preview treatment is already implemented with
+  disabled controls and explicit labels. Optional offline Wikipedia still needs
+  a selected service; it is not an installed execution system.
 - Broader model accuracy, reasoning-budget, MTP and multi-GPU benchmarks.
 
-Backup follow-ups: include the new Diary corpus after migration, exercise a full
-restored companion/provider workflow (web startup is verified), and establish off-site recovery if chosen.
+Backup follow-ups: include the new Diary corpus after migration, the full
+synthetic restored companion/provider workflow now passes, and establish off-site recovery if chosen.
 The new job does not back up unrelated appdata or the entire Nextcloud service.
+
+## Implemented candidates awaiting UI verification / rollout
+
+Production remains `8fa1112`. Candidate `6c45621` adds opt-in browser-local Diary
+recovery, edited-first-message automatic titles and web/OCR Docker healthchecks.
+The real image probes pass healthy/503-negative tests. Recovery behavior has passed
+synthetic folder failure/conflict/reopen/account-isolation checks; final layout,
+forget/disable and title interactions are pending stalled browser controls.
+
+The next candidate adds MCP availability/degraded status, explicit administrator
+model pricing and administrator aggregate usage. 367 tests, typecheck/build and
+real HTTP permissions/isolation/pricing tests pass. Live read-only MCP audit:
+160 Nextcloud and five Tavily tools; no missing curated names or explicit write
+annotations in curated read allowlists. Discovery is not proof of execution access.
+
+Off-site backup destination and budget are undecided by the user. Existing local
+backups continue. Empty managed folders stay retained: recursive WebDAV deletion
+can race a new external upload, so automatic cleanup needs a safer storage contract.

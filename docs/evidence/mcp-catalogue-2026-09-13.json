@@ -1,0 +1,151 @@
+{
+  "checkedAt": "2026-09-13T07:37:44.455Z",
+  "servers": [
+    {
+      "id": "nextcloud",
+      "discovered": 160,
+      "convertible": 160,
+      "boxes": [
+        {
+          "id": "nextcloud-notes",
+          "expected": 7,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-calendar",
+          "expected": 9,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-calendar-admin",
+          "expected": 2,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-tasks",
+          "expected": 6,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-files",
+          "expected": 11,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-file-comments",
+          "expected": 2,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-sharing",
+          "expected": 6,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-mail",
+          "expected": 12,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-mail-send",
+          "expected": 1,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-contacts",
+          "expected": 8,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-talk",
+          "expected": 11,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-tables",
+          "expected": 6,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-deck",
+          "expected": 10,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-deck-workflow",
+          "expected": 9,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-deck-structure",
+          "expected": 11,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-deck-notes",
+          "expected": 8,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-collectives",
+          "expected": 11,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-collectives-admin",
+          "expected": 9,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-news",
+          "expected": 8,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "nextcloud-cookbook",
+          "expected": 11,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        }
+      ]
+    },
+    {
+      "id": "tavily",
+      "discovered": 5,
+      "convertible": 5,
+      "boxes": [
+        {
+          "id": "web-search",
+          "expected": 3,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        },
+        {
+          "id": "web-crawl",
+          "expected": 2,
+          "missing": [],
+          "explicitWriteHintsInReadAllowlist": []
+        }
+      ]
+    }
+  ]
+}

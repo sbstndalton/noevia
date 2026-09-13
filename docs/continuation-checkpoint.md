@@ -232,3 +232,29 @@ behavior checks pass. Browser control stalled on synthetic localhost:31239 tabs;
 user was asked to dismiss any blocking dialog/close those disposable tabs. Final
 layout/disable/title interaction and container checks remain before rollout.
 Production remains 8fa1112. Do not mistake this candidate for a deployed release.
+
+
+## Whole-roadmap continuation — 2026-09-13 additional candidate
+
+Production is still 8fa1112; 6c45621 candidate images built, no rollout.
+Browser controls stalled on localhost:31239 tab 10 after synthetic editor Cancel;
+other tab inputs silently do nothing. User asked asynchronously to dismiss/close
+synthetic tabs. Do not bypass the denied Codex native-app access. UI QA remains
+required before rollout. Test servers: Diary fixture31239 and usage realHTTP31281.
+
+User confirmed opt-in browser-local recovery; off-site backup undecided.
+New MCP status and usage costs/admin aggregates: 367 tests/typecheck/build pass.
+Usage realHTTP test passes auth/CSRF/tenant isolation, rate validation, unknown and
+malformed account coverage; rerun after final changes before deployment.
+Full synthetic restore-http.cjs now PASS: login, corpus, continued capture,
+encrypted provider credential, stale-write409. No real journal replay/corpus test.
+Initial drill assertion bugs (SSE whitespace/login route) fixed in fixture only.
+42 Gemma tool-routing runs complete, results committed under experiments/tool-routing:
+retain current routing (deferred/planner slower); same model, simulated approval.
+Live catalogue audit and older-project counts recorded in backlog/evidence.
+
+Next: finish blocked browser QA, review current candidate, build/test Linux images,
+roll out with installed preflight up.sh wrapper; then remaining saved-storage
+optional-preparation history, Claude bridge, SMB authenticated cutover, context
+qualification, backend portability and scoped DAV namespace roadmap. Do not mark
+these done. Never test real Diary prompts/corpus. No subagents requested.

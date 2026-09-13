@@ -54,8 +54,8 @@ Provider/default output limits remain visible; this experiment does not prove
 uncapped local thinking or support for an undocumented reasoning parameter.
 
 Adopt only if the measured tradeoff is useful on the configured local models.
-No benchmark has been run for this proposed pipeline, so it remains an experiment
-plan rather than a production router change.
+A bounded same-model benchmark is now complete; see the dated results below.
+A distinct configured Smart/Fast pair is not yet qualified.
 
 ## Optional offline Wikipedia
 
@@ -77,3 +77,12 @@ skills, document handling or storage correctness.
 The user-selected instruction-skills proposal in spec-instruction-skills.md shares
 these permission boundaries. None of these research items authorizes new executable
 packages, a global auto-approve mode, or real Diary corpus testing.
+
+## Measured result — 2026-09-13
+
+[Runner, results and limits](../experiments/tool-routing/README.md): 42 synthetic
+runs and eight scripted safety tests. Median elapsed baseline/deferred/planner:
+8.64 / 12.91 / 26.97 seconds. Deferred schemas shrank, but total input grew.
+The planning pass added latency and tokens. Keep the current production path;
+there is no evidence here supporting adoption. This completes the initial bounded
+comparison, not qualification of all model pairs or production integration.
