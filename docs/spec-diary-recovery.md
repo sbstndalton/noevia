@@ -33,3 +33,5 @@ A real socket disconnect test proves the result is collected once after the brow
 leaves. Orphaned running records recover as uncertain. Browser QA submits a new
 synthetic message, reloads and restores both exchanges; mobile wrapping is verified.
 No real Diary prompt, corpus write or inference request used.
+
+Deployed in `f7b9d95`; 308 Linux server checks passed and all services are healthy.

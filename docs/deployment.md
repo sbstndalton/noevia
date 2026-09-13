@@ -406,3 +406,12 @@ typecheck/build, public-GGUF synthetic HTTP checks, responsive browser QA and
 305 Linux server tests pass. Zero restarts/OOM. Public assets match
 index-CEkb-ul1.js and index-CJPL3E7N.css. Rollback backups use
 .bak.before-f6688f3. No inference loads/settings or Diary storage changes.
+
+### Saved-storage Diary recovery — 2026-09-12
+
+All three services run `f7b9d95`, replacing `f6688f3`. 356 local web tests,
+typecheck/build, mock-companion HTTP and browser reload checks, and 308 Linux
+server tests pass. Services healthy with zero restarts/OOM; public assets match
+index-BnGKPbgk.js and index-CJPL3E7N.css. Rollback configs use
+.bak.before-f7b9d95. New per-user web-state records are included in existing
+backups. Dedicated real Diary mapping remains unset; no real corpus prompts used.

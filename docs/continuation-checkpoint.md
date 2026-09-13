@@ -6,6 +6,8 @@ Instruction skills shipped in `095d308`: explicit review/enable/disable, hashed
 updates and RAG/source exclusion. The requested MTP artifact inspection followed
 as `f6688f3`; see [artifact evidence](spec-mtp-artifacts.md). It checks the chosen
 public HF quantization, not installed byte identity, and does not enable MTP.
+Saved-storage Diary recovery then shipped in `f7b9d95` (356 local / 308 Linux tests);
+see spec-diary-recovery.md for crash uncertainty and local-folder exclusions.
 The remaining roadmap stays active; see the reconciled [backlog](backlog.md).
 
 ## Roadmap resumed — 2026-09-12
@@ -139,3 +141,16 @@ apps/web. Keep node_modules -> ~/.noevia-deps/node_modules and dist ->
 QA scripts clean their disposable servers/state. Prior persistent fixtures on
 31240/31244 were stopped before disconnect. Old browser tabs may remain pointing
 there; do not mistake them for production. No active background monitor/automation.
+
+## Backend portability discussion — 2026-09-12
+
+User asked whether repeated workarounds justify replacing Lemonade with direct
+llama.cpp or vLLM. No production inference migration performed. Recommendation:
+test direct llama.cpp with per-model saved profiles and adapt management/context
+reporting; OpenAI-compatible chat alone does not replace Lemonade's management API.
+Existing standalone test showed capacity/control benefits, not a generation speedup
+(13.75 versus 13.71 tok/s across different configurations). Current upstream llama.cpp
+documents router presets/model limits. Current Lemonade documents custom pinned
+backend binaries, an intermediate option requiring installed-version verification.
+vLLM now lists Ryzen AI 300 gfx1150 with ROCm >=7.0.2; DaServer's complete
+kernel/driver/model stack has not been qualified. Do not assert its GPU is unsupported.
