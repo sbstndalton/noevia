@@ -1,4 +1,4 @@
-# Backlog — reconciled 2026-09-12
+# Backlog — reconciled 2026-09-13
 
 The user resumed roadmap implementation. This replaces the stale checklist;
 [roadmap.md](roadmap.md) and the latest audit record deployment evidence.
@@ -19,7 +19,7 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 - Guarded generic fresh-install managed-volume setup; existing binds remain
   compatible and the live Unraid storage layout remains unchanged.
 
-- Active-project source refresh: return/focus/online refresh with a one-minute
+- Active-project source refresh (`8fa1112`): return/focus/online refresh with a one-minute
   cooldown and five-minute staleness checks while visible; waits during generation.
 
 ## Active work
@@ -49,6 +49,7 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 - Optional empty-folder cleanup after project deletion (currently retained safely).
 - Updated chat titles after message edits; branching remains a product/data-model
   decision rather than an implied change to existing destructive editing.
+- Explicit Docker health checks for web/OCR (HTTP checks currently verify rollout).
 - MCP availability/degraded-state indicator and current toolbox-manifest audit.
 - Usage cost estimates and administrator aggregation.
 - Scheduled/Plugins/Explore/Coding preview treatment; these are not functional

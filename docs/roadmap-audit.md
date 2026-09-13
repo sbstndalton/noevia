@@ -22,7 +22,7 @@ reader UID access, missing-volume failure and recovery. See
 
 Model Loader staging results and the deployed cold-load context
 fix are recorded in [the experiment report](../experiments/model-loader/README.md).
-All three production services now run `f6688f3`, adding reviewed instruction skills and selected-HF-artifact MTP checks. See deployment.md for validation. Dated observations
+All three production services now run `8fa1112`, including reviewed instruction skills, selected-HF-artifact MTP checks, saved-storage Diary recovery and active-project source refresh. See deployment.md for validation. Dated observations
 below retain their original scope; they do not imply these follow-ups are deployed.
 
 ## Chat context budgeting and compaction — 2026-09-10
@@ -884,3 +884,19 @@ long overlapping requests, project isolation and disposed callbacks. Synthetic
 real-HTTP skill review/exclusion regression passes; Sources guidance reviewed in
 light/dark and 375/768/1440 layouts without horizontal overflow. Candidate rollout
 is pending; production remains f7b9d95 until the deployment record confirms it.
+
+## Source refresh rollout — 2026-09-13
+
+All three services now run `8fa1112`, replacing `f7b9d95`. Candidate validation:
+358 local web tests, typecheck/build and 308 isolated Linux server tests pass.
+The installed boot-storage preflight wrapper passed and performed the rollout.
+Diary reports Docker healthy; web setup-status and OCR health return HTTP 200.
+Web/OCR have no Docker healthcheck configured, so Compose's Healthy output alone
+is not application-health evidence. All three show zero restarts and no OOM.
+Public assets match `index-DJTWu6Rf.js` and `index-CJPL3E7N.css`.
+
+Rollback release `f7b9d95` and configuration backups `.bak.before-8fa1112` remain.
+No storage mapping, production model setting or real Diary corpus was changed.
+The earlier managed-volume installer/preflight commits are included; live host
+bindings remain intact. This is a verified increment, not completion of the
+remaining SMB authentication/cutover, context qualification or tool experiments.

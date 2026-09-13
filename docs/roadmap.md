@@ -1435,3 +1435,5 @@ long overlapping requests, project isolation and disposed callbacks. Synthetic
 real-HTTP skill review/exclusion regression passes; Sources guidance reviewed in
 light/dark and 375/768/1440 layouts without horizontal overflow. Candidate rollout
 is pending; production remains f7b9d95 until the deployment record confirms it.
+
+Source-refresh rollout is verified as `8fa1112`; see deployment.md for checks and rollback.

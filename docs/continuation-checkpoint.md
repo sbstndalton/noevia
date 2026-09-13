@@ -1,4 +1,11 @@
-# Current continuation checkpoint — 2026-09-10
+# Current continuation checkpoint — 2026-09-13
+
+## Current release — 2026-09-13
+
+Active-project source refresh is deployed as `8fa1112` (358 local / 308 Linux
+tests, typecheck/build pass). Public assets and service HTTP checks match. The
+boot-storage preflight wrapper was used successfully; managed-volume defaults
+remain generic-fresh-install only. Rollback is f7b9d95. See deployment.md.
 
 ## Latest application increments — 2026-09-12
 
@@ -196,3 +203,19 @@ long overlapping requests, project isolation and disposed callbacks. Synthetic
 real-HTTP skill review/exclusion regression passes; Sources guidance reviewed in
 light/dark and 375/768/1440 layouts without horizontal overflow. Candidate rollout
 is pending; production remains f7b9d95 until the deployment record confirms it.
+
+## Source refresh rollout — 2026-09-13
+
+All three services now run `8fa1112`, replacing `f7b9d95`. Candidate validation:
+358 local web tests, typecheck/build and 308 isolated Linux server tests pass.
+The installed boot-storage preflight wrapper passed and performed the rollout.
+Diary reports Docker healthy; web setup-status and OCR health return HTTP 200.
+Web/OCR have no Docker healthcheck configured, so Compose's Healthy output alone
+is not application-health evidence. All three show zero restarts and no OOM.
+Public assets match `index-DJTWu6Rf.js` and `index-CJPL3E7N.css`.
+
+Rollback release `f7b9d95` and configuration backups `.bak.before-8fa1112` remain.
+No storage mapping, production model setting or real Diary corpus was changed.
+The earlier managed-volume installer/preflight commits are included; live host
+bindings remain intact. This is a verified increment, not completion of the
+remaining SMB authentication/cutover, context qualification or tool experiments.
