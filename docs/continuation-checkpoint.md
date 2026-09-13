@@ -258,3 +258,25 @@ roll out with installed preflight up.sh wrapper; then remaining saved-storage
 optional-preparation history, Claude bridge, SMB authenticated cutover, context
 qualification, backend portability and scoped DAV namespace roadmap. Do not mark
 these done. Never test real Diary prompts/corpus. No subagents requested.
+
+
+Candidate afbaefc is committed/pushed and all three DaServer images built.
+314 isolated Linux server tests pass. Production remains8fa1112; no cutover.
+Backend-portability source/architecture review added in spec-backend-portability.md;
+custom-Lemonade/vLLM runtime qualification remains open. Host kfd exists, which
+is not ROCm qualification. Do not install drivers or migrate production from this.
+
+Ongoing code after afbaefc adds saved-storage optional-preparation journaling:
+server wrapper persists before preparation, collects status/reasoning/tool display
+history without approval IDs, links completed preparation to capture by tenant/day/
+message. Browser recovery groups both into one exchange and clearly labels
+preparation-only records. Local-folder mode omits server recovery IDs (browser
+opt-in remains separate). Unit checks currently371 pass; updated fullstackfixture
+is being run. No rollout or browser QA claimed for this ongoing batch.
+
+Preparation follow-up verification:372 web tests, typecheck/build pass. The updated
+real web+Diary synthetic restore fixture passes preparation completion/linking,
+duplicate409 and actual browser-request abort recovering as uncertain, plus the
+previous complete restore checks. Final browser presentation still blocked; no
+production rollout. Artifact bundle index-Cpq63qY9.js before the final warning-text
+addition (rebuild output should be checked for the final exact hash).

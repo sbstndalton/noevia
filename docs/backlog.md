@@ -38,7 +38,7 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 
 ## Queued investigation — 2026-09-13
 
-- Backend portability: evaluate direct llama.cpp, a pinned/custom backend under
+- [Backend portability review](spec-backend-portability.md): evaluate direct llama.cpp, a pinned/custom backend under
   Lemonade, and separately vLLM. Include management/context adapters and portable
   tested profiles, with measured reliability and performance. The user requested
   roadmap inclusion for consideration; no immediate backend migration.

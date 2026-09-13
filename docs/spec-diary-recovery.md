@@ -67,3 +67,21 @@ recovery, wrong-folder refusal, competing-content conflict, successful explicit
 retry, draft/editor/tool-result recovery, account isolation and no automatic
 inference redispatch. Browser control stalled during final layout/disable checks;
 those remain pending before rollout. 361 web tests, typecheck/build pass.
+
+
+### Saved-storage optional preparation candidate — 2026-09-13
+
+Preparation receives its own durable record before the tool/model path starts.
+A capture links to a completed same-tenant/day/message preparation; duplicate IDs
+are refused. Reopening groups preparation and capture into one visible exchange.
+Unlinked preparation is explicitly not a saved entry. Recovery strips approval
+IDs and presents tool history without actionable approval controls. Interrupted
+calls are historical and never replayed. Reference material stays labelled as
+optional context, not a companion answer. Local-folder sessions do not request
+this server journal; their separate browser recovery remains opt-in.
+
+Tool history has bounded per-call/overall storage and reports truncation. Existing
+streamed tool result previews remain previews (up to300characters), not a claim
+that complete private tool output is archived. Application restart does not replay
+preparation or infer whether an interrupted external write succeeded. Candidate
+verification/rollout is pending; production behavior is still the earlier version.
