@@ -87,3 +87,36 @@ therefore not be treated as a proven drop-in vLLM migration. Qualify the exact
 artifact/tokenizer/architecture combination before downloading alternate weights
 or comparing speed. The next useful test is a pinned llama.cpp inside the current
 manager, with a separate private cache and the original manager/backend retained.
+
+
+### Why fitting and remembered profiles are separate
+
+The installed source already has context auto-tuning: a ctx_size of-1 uses a
+memory/metadata calculation. Its KV formula assumes F16 keys and values; when
+metadata is missing it estimates from model size. Explicit values bypass that
+calculation. It does not account for the configured quantized KV types in this
+formula. This is a concrete reason to measure per-model profiles rather than
+assume that an automatic estimate maximizes the tested workload.
+[Tagged auto-tune implementation](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/include/lemon/auto_tune.h).
+
+Lemonade's wrapper passes a resolved --ctx-size. In llama.cpp b10920 the fitting
+code treats n_ctx==0 as automatic; a nonzero context is not the automatic-context
+case. Explicit --ctx-size0 also sets a no-reduction sentinel unless separately
+overridden. Therefore adding --fit alone is not a demonstrated maximum-context
+fix, and blindly setting zero is not the safe-memory policy tested here.
+[Tagged fitting code](https://github.com/ggml-org/llama.cpp/blob/b10920/common/fit.cpp),
+[tagged argument handling](https://github.com/ggml-org/llama.cpp/blob/b10920/common/arg.cpp).
+
+These are source observations, not a reproduced explanation of the user's exact
+historic8k load. noevia's generic8k fallback and backend allocation are distinct;
+the deployed cold-load correction addresses the former. Native fitting, an
+operator recommendation and a completed near-capacity trial remain different
+levels of evidence. Preserve the exact backend, KV, concurrency and workload
+identity when remembering or applying a limit.
+
+
+noevia allocation-observation records now name the health version correctly as
+managerVersion, leave engineVersion unknown and label qualification as
+allocation-observation-only. Earlier backendVersion fields were manager versions,
+not engine build proof. Live allocation is always rechecked; a stress-test profile
+still requires the separate exact artifact/backend/workload fingerprint.

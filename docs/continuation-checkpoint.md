@@ -304,3 +304,16 @@ Rename/delete blocked on async user scope choice: protect managed Entries/AI Mem
 index paths vs allow them with explicit warning. Continue independent work.
 Qwen253944-token test still active session1378, only~28% at365seconds; do not abandon.
 Candidate0d9f691 tar on server not built; avoid contending image builds during test.
+
+
+Latest code is3d63178 (MKCOL), followed by94dd1cd backend evidence and18347e7
+calibration-container fingerprint/backup evidence, all pushed. Current uncommitted
+allocation metadata clarification changes backendVersion to managerVersion with
+engineVersion:null and qualification:allocation-observation-only;373 tests/type/
+build pass. No app rollout. Production remains8fa1112.
+
+Active Qwen test session1378 is~77%/196608tokens at1445seconds; target253944.
+Memory has stayed above6.66GiB. Continue to completion and verify restoration.
+Tests/image builds afterafbaefc still need Linux verification; wait until GPU test
+finishes before server builds. Browser remains stalled; user hasn't answered
+managed-path rename/delete policy yet. Do not implement dependent destructive ops.
