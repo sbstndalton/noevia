@@ -3,6 +3,18 @@
 Isolated DaServer experiment authorized on 2026-09-12. This is an operator tool,
 not a background job and not a production-provider replacement.
 
+## Current follow-up — 2026-09-13
+
+Production noevia is8fa1112, and its cold-load correction has been deployed since
+cc59e8f. The historic final-state statements below describe September12 only.
+A guarded Qwen262144/253952-token trial is currently running; results are pending.
+The original Gemma32768 q5_0/q4_0 allocation is recorded for restoration.
+
+Fingerprint collection now reads the actual test container's immutable image ID,
+not a mutable local image tag. Both resolved to the same ID for this active trial,
+so its recorded backend identity remains valid. Future retagging alone cannot
+misidentify which backend the test container runs.
+
 ## Measured results — 2026-09-12
 
 | Model/configuration | Allocated context | Largest completed prompt | Result |

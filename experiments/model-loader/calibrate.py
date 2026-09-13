@@ -51,7 +51,7 @@ def atomic_json(path, data):
 def identity(config):
     evidence = ssh(
         f'cat {ROOT}/results/model-sha256.txt; '
-        'docker image inspect ghcr.io/ggml-org/llama.cpp:server-vulkan --format "{{.Id}}"; '
+        'docker inspect llama-vulkan-test --format "{{.Image}}"; '
         'uname -r; cat /sys/class/drm/card1/device/vendor /sys/class/drm/card1/device/device; '
         'head -1 /proc/meminfo')
     material = {'hardware_model_backend': evidence, 'config': config,
@@ -273,5 +273,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     MODEL = args.test_model
     if not 1024 <= args.prompt_tokens <= args.context - 128 or args.context > args.native_context:
-        parser.error('Prompt must leave 128 tokens headroom; context must not exceed native 262144')
+        parser.error(f'Prompt must leave 128 tokens headroom; context must not exceed native {args.native_context}')
     run(args)

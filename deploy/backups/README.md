@@ -61,3 +61,8 @@ does not replay the real journal or send restored private data to a provider, an
 is not a container-image or disaster-site recovery test. Off-site backup has no
 chosen destination or budget; the user deferred that decision. Dedicated corpus
 archive coverage still needs verification after SMB storage cutover.
+
+
+Scheduled-run evidence: on2026-09-13 the04:10 EDT job completed at04:10:18,
+verified both state archives and restarted web/Diary. Subsequent inspection found
+all three production services running, with zero restarts/OOM reported.
