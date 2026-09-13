@@ -1,3 +1,4 @@
+# Generic fresh-install storage overrides do not apply here; preserve explicit COWORK_STATE_DIR binds.
 # Cowork stack for Unraid Compose Manager.
 #
 # Keep secrets in a separate .env file and configure Compose Manager's

@@ -5,7 +5,10 @@
     "method": "docker-compose",
     "compose_file": "compose.yaml",
     "env_file": ".env",
-    "env_example": ".env.example"
+    "env_example": ".env.example",
+    "fresh_initializer": "bash deploy/init-managed.sh",
+    "fresh_storage": "Docker-managed web-data and diary-data volumes; initializer refuses existing deployments",
+    "existing_storage": "Preserve .env and COWORK_STATE_DIR bindings; no implicit migration"
   },
   "preconditions": [
     {
@@ -316,6 +319,20 @@
     {
       "name": "MCP_NEXTCLOUD_ORIGINS",
       "purpose": "Comma-separated origins that are the same Nextcloud the MCP server uses; a user's stored app password is forwarded only to these",
+      "secret": false,
+      "human_required": false,
+      "default": ""
+    },
+    {
+      "name": "COWORK_WEB_STORAGE",
+      "purpose": "Optional generic Compose mount override; fresh initializer selects web-data. Takes precedence over COWORK_STATE_DIR. Existing installs leave absent/empty to retain bindings.",
+      "secret": false,
+      "human_required": false,
+      "default": ""
+    },
+    {
+      "name": "COWORK_DIARY_STORAGE",
+      "purpose": "Optional generic Compose mount override; fresh initializer selects diary-data. Takes precedence over COWORK_STATE_DIR. Existing installs leave absent/empty to retain bindings.",
       "secret": false,
       "human_required": false,
       "default": ""

@@ -16,3 +16,6 @@ __pycache__/
 
 # Local QA may link generated assets outside a sync-managed checkout.
 /apps/web/dist
+
+# Atomic fresh-install environment staging.
+.env.fresh.*

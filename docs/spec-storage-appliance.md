@@ -78,3 +78,14 @@ Implemented a host-side PHP mount validator and gated Compose-up wrapper. Resolv
 symlink/missing-path aliases and checks a separately mounted boot device. Existing
 state binds are unchanged; managed-volume fresh-install defaults remain open.
 See deploy/preflight/README.md for invocation and the direct-start bypass limit.
+
+### Fresh managed storage — 2026-09-13
+
+The generic guided fresh-install path now uses deploy/init-managed.sh to create
+a private .env selecting Docker-managed web-data and diary-data volumes. It
+refuses existing configuration/state, explicit storage/project environment,
+Cowork containers and detected existing Cowork volumes. It starts nothing.
+Generic Compose retains its previous host-bind fallback for existing installations;
+explicit storage overrides select volumes only for intentionally initialized setups.
+The live Unraid template retains COWORK_STATE_DIR bindings. Resolved Compose
+checks verify both modes; this is not a migration or an automatic backup policy.

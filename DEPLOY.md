@@ -57,7 +57,8 @@ credentials and model management, which the wizard does not cover.
 | `INFERENCE_API_KEY` | Bearer key for that endpoint, if it requires one | Ask the human | **yes** | `HUMAN-REQUIRED` if the endpoint authenticates; otherwise leave empty |
 | `PUBLIC_ORIGIN` | The URL humans type into the browser (scheme + host + port). Locks the auth origin allow-list and derives the passkey ID | The wizard prefills it from the address the operator loaded the app at and writes what they confirm; set it here only to pre-seed. `https://` is recommended; a private-network `http://` address (LAN IP, bare LAN hostname, localhost) is accepted with a warning, a public `http://` domain is not | no | `HAS-SAFE-DEFAULT` (`http://localhost:8021`) |
 | `COWORK_PORT` | Host port for the web UI | Pick a free port | no | `HAS-SAFE-DEFAULT` (`8021`) |
-| `COWORK_STATE_DIR` | Host directory for all durable state (diary corpus + SQLite journal, web accounts/secrets/first-run code) | Pick a host path on a volume that survives restarts | no | `HAS-SAFE-DEFAULT` (`./state`) |
+| `COWORK_STATE_DIR` | Existing/explicit host bind root, used when storage overrides are empty | Preserve the current path on upgrades | no | Compatibility fallback: `./state` |
+| `COWORK_WEB_STORAGE`, `COWORK_DIARY_STORAGE` | Explicit generic Compose mount sources, taking precedence over `COWORK_STATE_DIR` | Fresh initializer selects `web-data` and `diary-data`; never point existing state at empty volumes | no | Managed volumes for initialized fresh installs |
 | `DIARY_CHAT_MODEL`, `DIARY_AUX_MODEL`, `EMBEDDING_MODEL` | Model names the inference endpoint serves | Ask the human which models their endpoint exposes | no | `HAS-SAFE-DEFAULT` (`default`) |
 | `UI_AUTH_TOKEN` | Optional UI API token; falls back to `DIARY_AUTH_TOKEN` when empty | Leave empty unless the human wants it distinct | **yes** | `HAS-SAFE-DEFAULT` (empty = reuse `DIARY_AUTH_TOKEN`) |
 | `WEBAUTHN_RP_ID` | Passkey identifier; must match the browser's hostname | Derived from `PUBLIC_ORIGIN` when empty; override only for unusual proxy setups | no | `HAS-SAFE-DEFAULT` (derived) |
@@ -83,21 +84,28 @@ them and let the operator finish setup in the browser.
 
 ## 3. Deploy steps
 
-Run from the repository root. Each block is idempotent; re-running a failed
-block after fixing the cause is safe.
+Run from the repository root. The fresh-install initializer refuses reinitialization;
+keep any existing configuration when resuming setup.
 
 ### 3.1 Create `.env`
 
-This step is **optional**. With no `.env` at all the stack starts on the
-defaults in `compose.yaml`, and the wizard collects the public origin and the
-inference endpoint in the browser (§3.5). Create one only to pre-configure
-values the wizard does not cover — external diary storage (S3/WebDAV), local
-model management, `TRUST_PROXY` behind a reverse proxy — or because the operator
-prefers pre-seeding:
+For a **new installation**, initialize Docker-managed web and Diary volumes:
 
 ```sh
-cp .env.example .env
+bash deploy/init-managed.sh
 ```
+
+This creates a private `.env` only after checking that no environment file, state
+path, Cowork containers or managed state volumes already exist. It creates no
+volumes and starts no services. The next Compose startup allocates `web-data` and
+`diary-data` under the existing `cowork` project name.
+
+For an **existing installation**, keep its `.env` and storage bindings. The
+initializer deliberately refuses it. For an explicitly chosen host bind on a new
+installation, copy `.env.example` only when `.env` does not exist and set
+`COWORK_STATE_DIR`; leave `COWORK_WEB_STORAGE` and `COWORK_DIARY_STORAGE` empty.
+Running Compose without the initializer still retains the legacy `./state` fallback;
+that compatibility path does not silently move an existing installation.
 
 Then fill in only the rows the operator actually chose, e.g.:
 
@@ -213,12 +221,14 @@ docker compose exec -T web node -e "fetch(process.env.INFERENCE_BASE_URL.replace
 # expect: models 200
 
 # 4.6 Durable state exists on the host volume
-ls "${COWORK_STATE_DIR:-./state}/diary" "${COWORK_STATE_DIR:-./state}/web"
-# expect: both directories non-empty (SQLite DB, corpus/, accounts data)
+docker compose exec -T web test -f /app/server/ui-data/secrets.key
+docker compose exec -T diary test -d /app/data
+# Works for managed volumes and host binds. Inspect the selected mounts with
+# docker inspect when locating host storage; do not assume ./state is in use.
 
 # 4.7 Optional, only if diary is enabled and the human chooses to verify:
 # the human logs an entry from the UI, then:
-find "${COWORK_STATE_DIR:-./state}/diary/users" -path '*/corpus/*' -name '*.md' -mmin -5 -print
+docker compose exec -T diary find /app/data/users -path '*/corpus/*' -name '*.md' -mmin -5 -print
 # For the account that wrote the entry, expect a path under users/<user-id>/corpus.
 # Remote storage: inspect the configured bucket/WebDAV path instead; no local
 # Markdown file is expected. Do not read or print another user's diary content.
@@ -303,3 +313,10 @@ docker compose exec -T web node -e "fetch(process.env.OCR_BASE_URL+'/health').th
 
 Direct Node development without `OCR_BASE_URL` remains native-text-only. See
 `docs/spec-document-understanding.md` for processing limits and retry behavior.
+
+Managed-volume lifecycle: ordinary `docker compose down` retains state; never use
+`down -v` or prune these volumes unless deliberately discarding their data. Include
+both selected volumes and the matching web encryption key in backups. Changing
+`COWORK_STATE_DIR` has no effect while explicit storage overrides are set. A later
+storage change requires a separate copy/restore and verification, not only editing
+these variables. The live Unraid Compose Manager template keeps explicit host binds.

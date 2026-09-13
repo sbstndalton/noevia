@@ -170,3 +170,13 @@ Compose dry-run pass. The wrapper rejects writable boot-directory/device aliases
 direct Compose GUI startup bypasses it. Run the wrapper for future deployments.
 No live mounts or application images changed; managed-volume fresh defaults remain
 next storage work. Web regression suite remains 356 passing, typecheck/build pass.
+
+### Generic fresh installs — 2026-09-13
+
+Added guarded deploy/init-managed.sh and explicit generic Compose storage
+overrides. Guided new installs select named web-data/diary-data volumes; existing
+.env/state/engine deployments are refused by initialization. Empty overrides keep
+the old COWORK_STATE_DIR/./state bind behavior. Live Unraid Compose remains on its
+existing host bindings. Four initializer tests, preflight tests, real Compose
+resolution for managed/explicit-bind/no-env modes, 356 web tests and typecheck/build
+pass. No app-image rollout is necessary for these installer/operator-only changes.
