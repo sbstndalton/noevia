@@ -161,3 +161,12 @@ User requested adding backend portability to the roadmap as a possible future
 investigation and, for now, explaining what has been implemented and why.
 Roadmap/backlog updated; this is not authorization to switch production backends
 immediately. Current application release remains f7b9d95.
+
+## Continued storage safeguards — 2026-09-13
+
+User said work can continue. Installed /mnt/docker/appdata/cowork/tools/preflight/
+check.php and up.sh. PHP tests, local wrapper failure/argument tests and live
+Compose dry-run pass. The wrapper rejects writable boot-directory/device aliases;
+direct Compose GUI startup bypasses it. Run the wrapper for future deployments.
+No live mounts or application images changed; managed-volume fresh defaults remain
+next storage work. Web regression suite remains 356 passing, typecheck/build pass.

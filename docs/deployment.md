@@ -59,6 +59,13 @@ Back the live one up first:
 
 ## The deploy
 
+Before any Compose `up` on Unraid, validate resolved writable mounts with the
+[host-side preflight](../deploy/preflight/README.md). The installed wrapper is
+`/mnt/docker/appdata/cowork/tools/preflight/up.sh`; call it from the existing
+Compose Manager project directory with `--env-file ... --` followed by the usual
+`up` options. It rejects writable `/boot` paths/device aliases without changing
+state bindings. Direct Compose Manager GUI startup bypasses this helper.
+
 ```sh
 SHA=$(git rev-parse --short HEAD)
 git archive --format=tar.gz -o "/tmp/$SHA.tar.gz" HEAD

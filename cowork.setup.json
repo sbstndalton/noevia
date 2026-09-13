@@ -19,6 +19,11 @@
     {
       "check": "test -f compose.yaml && test -f .env.example",
       "expect": "exit 0 (run from a repo checkout)"
+    },
+    {
+      "check": "On Unraid: docker compose config --format json | php deploy/preflight/check.php --config-json -",
+      "expect": "exit 0 before starting containers; run on Docker host to resolve symlinks",
+      "note": "Use bash deploy/preflight/up.sh -- -d --build to gate startup. Ordinary Docker/Compose Manager startup bypasses this helper; existing state paths are preserved."
     }
   ],
   "required_env": [

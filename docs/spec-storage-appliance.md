@@ -71,3 +71,10 @@ Do not use the real diary corpus as a test dataset.
 Initial endpoint implementation now covers step 2's bounded operations and step
 3's settings control. See [dav.md](dav.md). Broad file-manager compatibility and
 the appliance onboarding flow remain follow-ups; production sharing stays off.
+
+### Boot-storage preflight — 2026-09-13
+
+Implemented a host-side PHP mount validator and gated Compose-up wrapper. Resolves
+symlink/missing-path aliases and checks a separately mounted boot device. Existing
+state binds are unchanged; managed-volume fresh-install defaults remain open.
+See deploy/preflight/README.md for invocation and the direct-start bypass limit.

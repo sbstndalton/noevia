@@ -14,6 +14,8 @@ The user resumed roadmap implementation. This replaces the stale checklist;
   This is not automatic maximum-capacity calibration or a model speedup.
 
 - Instruction-skill lifecycle and source/RAG exclusion: `095d308`.
+- Host-side Unraid boot-storage preflight and gated Compose-up wrapper;
+  installed and verified against live configuration in dry-run mode.
 
 ## Active work
 
@@ -27,7 +29,7 @@ The user resumed roadmap implementation. This replaces the stale checklist;
   preserve workload/hardware/backend identity and safe memory headroom.
 - Deferred tool discovery and planner/executor experiments, following the scoped
   research plan rather than adopting an unmeasured framework.
-- Remaining storage appliance defaults/path protection and companion-backed
+- Remaining storage appliance managed-volume defaults and companion-backed
   namespace operations; do not advertise general DAV compliance prematurely.
 
 ## Queued investigation — 2026-09-13

@@ -118,6 +118,12 @@ it is already git-ignored; if it isn't, stop and report).
 
 ### 3.2 Build and start
 
+On Unraid, use the host-side boot-storage preflight before starting services;
+see [deploy/preflight/README.md](deploy/preflight/README.md). From the repo root:
+`bash deploy/preflight/up.sh -- -d --build`. This checks resolved writable mounts
+before `up`; it preserves the current state directory. Other hosts can use the
+same helper with PHP 8+, or the ordinary commands below.
+
 ```sh
 docker compose build          # first run pulls base images; several minutes is normal
 docker compose up -d
