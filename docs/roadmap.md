@@ -1,5 +1,14 @@
 # noevia roadmap
 
+## Visual identity follow-up — 2026-09-13
+
+The user wants a more distinctive UI, beyond functional correctness and repeated
+generic styling. UI UX Pro Max has been installed and its initial recommendations
+reviewed. See [the proposed design direction](spec-ui-direction.md): task-specific
+composition for Diary, Projects, Chat and Settings, with a coherent shared identity.
+Next is a populated screen prototype and visual review, not a blanket reskin.
+Existing functional candidate verification and production state remain unchanged.
+
 ## Current execution status — 2026-09-13
 
 Production remains `8fa1112` (active-project source refresh). Committed candidates
