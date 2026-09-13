@@ -91,7 +91,7 @@ manager, with a separate private cache and the original manager/backend retained
 
 ### Why fitting and remembered profiles are separate
 
-The installed source already has context auto-tuning: a ctx_size of-1 uses a
+The installed source already has context auto-tuning: a ctx_size of -1 uses a
 memory/metadata calculation. Its KV formula assumes F16 keys and values; when
 metadata is missing it estimates from model size. Explicit values bypass that
 calculation. It does not account for the configured quantized KV types in this
@@ -101,14 +101,14 @@ assume that an automatic estimate maximizes the tested workload.
 
 Lemonade's wrapper passes a resolved --ctx-size. In llama.cpp b10920 the fitting
 code treats n_ctx==0 as automatic; a nonzero context is not the automatic-context
-case. Explicit --ctx-size0 also sets a no-reduction sentinel unless separately
+case. Explicit --ctx-size 0 also sets a no-reduction sentinel unless separately
 overridden. Therefore adding --fit alone is not a demonstrated maximum-context
 fix, and blindly setting zero is not the safe-memory policy tested here.
 [Tagged fitting code](https://github.com/ggml-org/llama.cpp/blob/b10920/common/fit.cpp),
 [tagged argument handling](https://github.com/ggml-org/llama.cpp/blob/b10920/common/arg.cpp).
 
 These are source observations, not a reproduced explanation of the user's exact
-historic8k load. noevia's generic8k fallback and backend allocation are distinct;
+historic 8k load. noevia's generic 8k fallback and backend allocation are distinct;
 the deployed cold-load correction addresses the former. Native fitting, an
 operator recommendation and a completed near-capacity trial remain different
 levels of evidence. Preserve the exact backend, KV, concurrency and workload
@@ -120,3 +120,6 @@ managerVersion, leave engineVersion unknown and label qualification as
 allocation-observation-only. Earlier backendVersion fields were manager versions,
 not engine build proof. Live allocation is always rechecked; a stress-test profile
 still requires the separate exact artifact/backend/workload fingerprint.
+
+
+The isolated candidate is saved in [experiments/backend-portability](../experiments/backend-portability/README.md). Its Compose configuration passes the installed server’s `docker compose config --quiet`. It binds only loopback port 8083, uses a separate cache, and mounts the existing public Gemma repository read-only. This is configuration validation only: no candidate container, backend download or inference has started. Complete the active Qwen trial and production restoration before runtime qualification.

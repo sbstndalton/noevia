@@ -1,0 +1,18 @@
+name: lemonade-pinned-test
+services:
+  manager:
+    image: ghcr.io/lemonade-sdk/lemonade-server@sha256:ac9d443c47c2eaa611934ba6cf09e4a3bcf6f3a472e0b4294845cf1093c996ab
+    container_name: lemonade-pinned-test
+    restart: "no"
+    command: ["./lemond", "--host", "0.0.0.0", "--port", "8000", "/cache"]
+    ports:
+      - "127.0.0.1:8083:8000"
+    devices:
+      - /dev/dri/renderD129:/dev/dri/renderD129
+      - /dev/dri/card1:/dev/dri/card1
+    volumes:
+      - /mnt/docker/appdata/lemonade-pinned-test/cache:/cache
+      - ./config.json:/cache/config.json:ro
+      - /mnt/user/ai-models/models--unsloth--gemma-4-E4B-it-GGUF:/models/models--unsloth--gemma-4-E4B-it-GGUF:ro
+    mem_limit: 14g
+    memswap_limit: 14g
