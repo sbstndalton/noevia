@@ -154,3 +154,10 @@ documents router presets/model limits. Current Lemonade documents custom pinned
 backend binaries, an intermediate option requiring installed-version verification.
 vLLM now lists Ryzen AI 300 gfx1150 with ROCm >=7.0.2; DaServer's complete
 kernel/driver/model stack has not been qualified. Do not assert its GPU is unsupported.
+
+## Latest user steering — 2026-09-13
+
+User requested adding backend portability to the roadmap as a possible future
+investigation and, for now, explaining what has been implemented and why.
+Roadmap/backlog updated; this is not authorization to switch production backends
+immediately. Current application release remains f7b9d95.

@@ -30,6 +30,13 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 - Remaining storage appliance defaults/path protection and companion-backed
   namespace operations; do not advertise general DAV compliance prematurely.
 
+## Queued investigation — 2026-09-13
+
+- Backend portability: evaluate direct llama.cpp, a pinned/custom backend under
+  Lemonade, and separately vLLM. Include management/context adapters and portable
+  tested profiles, with measured reliability and performance. The user requested
+  roadmap inclusion for consideration; no immediate backend migration.
+
 ## Smaller open items
 
 - Automatic/staleness-based refresh of attached project sources.

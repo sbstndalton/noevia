@@ -1,12 +1,36 @@
 # noevia roadmap
 
+## Backend portability investigation — 2026-09-13
+
+User requested adding this as something worth investigating, not an immediate
+migration. Keep Lemonade serving production while evaluating whether direct
+llama.cpp or vLLM would reduce configuration and maintenance problems.
+
+- Separate model execution from model management: chat compatibility alone does
+  not cover downloads, load/unload, health, context allocation or GPU arbitration.
+- Assess direct llama.cpp model presets and a backend adapter for noevia; retain
+  tested per-model context/hardware profiles independently of the serving backend.
+- Compare against Lemonade with a pinned/custom backend build before deciding
+  whether replacing its management layer adds value.
+- Qualify vLLM against DaServer's actual kernel, driver, memory, models and required
+  features as a separate candidate; do not assume hardware-family support alone
+  proves this deployment works.
+- Compare reliability, usable context, load time, memory, tool/vision/MTP behavior,
+  generation speed and maintenance effort on synthetic workloads. Preserve a
+  rollback path and existing model bytes. Migrate only on supporting evidence.
+
+Existing standalone trials demonstrated context/control benefits but no meaningful
+generation speedup. This item is queued for investigation; the present request is
+roadmap documentation and an explanation of completed work.
+
 ## Latest application increments — 2026-09-12
 
 Instruction skills shipped in `095d308`: explicit review/enable/disable, hashed
 updates and RAG/source exclusion. The requested MTP artifact inspection followed
 as `f6688f3`; see [artifact evidence](spec-mtp-artifacts.md). It checks the chosen
 public HF quantization, not installed byte identity, and does not enable MTP.
-The remaining roadmap stays active; see the reconciled [backlog](backlog.md).
+Saved-storage Diary recovery followed in `f7b9d95`, the latest application release.
+See the reconciled [backlog](backlog.md) for remaining work.
 
 ## Roadmap resumed — 2026-09-12
 
@@ -33,7 +57,7 @@ has been reconciled to remove already-shipped OCR/DOCX/vision/build work.
 
 **Diary storage: support deployed; Mac sign-in blocks cutover.** Dedicated
 operator-owned tenant volumes, fail-closed identity checks and SMB reader
-ownership on atomic saves are implemented. All three services now run `cc59e8f`, which incorporates that support.
+ownership on atomic saves are implemented. The support was unified in `cc59e8f` and remains in the latest release, `f7b9d95`.
 The restricted read-only `Diary-Pilot` share exists and rejects anonymous access.
 All 80 Mac/server files match by SHA-256; originals and journal snapshots are
 preserved. 192 local tests (3 skips), 195 Linux tests, and a synthetic bind/HTTP
