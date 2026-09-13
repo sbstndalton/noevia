@@ -72,3 +72,8 @@ composition and a separate translucent navigation/control layer. Synthetic conte
 uses ordinary work projects. The CSS material implementation is a proposal for web,
 not a claim to reproduce Apple's native optical renderer. See prototypes/README.md
 for current evidence and limits. Do not promote the rejected treatment to production.
+
+Study 03 fixes a reproduced account-menu stacking regression from the prototype’s
+sidebar blur and restores functioning palette choices. The material is now bounded
+to the mode control and popovers; pointer reflection is verified. See the prototype
+README for exact browser checks. No production stylesheet changed.

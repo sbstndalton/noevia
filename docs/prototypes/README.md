@@ -37,3 +37,26 @@ sizes different from the requested viewport and produces composited screenshots;
 do not count those captures as completed exact-breakpoint QA. Measured page width
 and scroll width matched at the reported widths. Full cross-palette accessibility,
 Diary and all-view regression remain required before production adoption.
+
+## Study 03 — reproduced bugs and bounded glass
+
+Reproduced the mobile account menu being painted behind the app: the filtered
+sidebar formed a stacking context. Removed parent-level filters; a browser hit
+test now confirms the entire menu sits above the page, and Settings opens from it.
+Project menus were also checked above content, within the viewport, with Escape.
+Removed root color overrides that disabled effective palette switching. All six
+appearance combinations now produce their distinct existing canvas values.
+Restored a visible search-field boundary and a three-line phone description.
+
+The Chat/Code control is the bounded material study: transparent fill, inner rim,
+background blur and a reflected highlight that follows the pointer via one queued
+animation frame. The highlight's live coordinates were verified in browser.
+No filters on the sidebar, composer or settings-navigation ancestors. Menus use
+mostly opaque glass for readable text. Reduced motion stops tracking; reduced
+transparency/increased contrast use opaque surfaces. This is not native refraction.
+
+Browser verification now reports exact 375/768/1440 widths with matching page scroll
+widths. Inspected Projects, mobile Settings, Diary and a populated synthetic chat;
+checked both modes and all palette selections. These focused checks supersede the
+previous resize limitation for these views; they do not claim every possible visual
+issue or production integration is finished. 373 tests, typecheck/build pass.

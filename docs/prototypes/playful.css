@@ -1,14 +1,5 @@
 /* Study 02: preserve app navigation and screen regions; redesign their hierarchy. */
-:root[data-theme='light'] {
- --bg-app:#f8f8f6;--bg-chrome:#efefec;--bg-surface:#ffffff;--bg-surface-hover:#f2f2ef;
- --text-primary:#20221f;--text-secondary:#5c6059;--nav-active:#dedfd9;--nav-hover:#e5e6e0;
- --border-subtle:#dedfd8;--control-border:#777c72;--focus-ring:#3457bc;
-}
-:root[data-theme='dark'] {
- --bg-app:#191b19;--bg-chrome:#141614;--bg-surface:#232623;--bg-surface-hover:#2b2f2b;
- --text-primary:#f0f1eb;--text-secondary:#b5bbb0;--nav-active:#343a32;--nav-hover:#292e27;
- --border-subtle:#42483f;--control-border:#889180;--focus-ring:#aebfff;
-}
+/* Existing six theme/palette combinations remain authoritative. */
 /* Typography carries the hierarchy; ornament does not. */
 .projects-hero h1 { font-size:52px;line-height:1.05;font-weight:600;letter-spacing:-2.4px; }
 .projects-hero-sub { font-size:13px;margin-top:14px;color:var(--text-secondary); }
@@ -58,19 +49,29 @@
 .settings-shell { border-radius:12px; }
 @media(max-width:700px){.projects-hero h1{font-size:38px;letter-spacing:-1.5px}.projects-head .seg{gap:18px}.projects-head{padding-top:24px;flex-wrap:wrap}.projects-head .projects-search{flex-basis:100%;width:100%;min-width:0;margin-bottom:5px}.projects-grid{gap:16px;padding-top:20px}.project-card{min-height:228px;padding:22px}.project-card-top{row-gap:20px}.project-card-name{font-size:21px}.diary-landing h1{font-size:31px;letter-spacing:-.9px}.project-title{font-size:30px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-/* Material layer: optical chrome over a quiet, opaque content plane. */
-:root { --study-glass:rgba(246,248,248,.72);--study-glass-edge:rgba(255,255,255,.9);--study-glass-shadow:0 7px 24px rgba(35,46,55,.09); }
-:root[data-theme='dark'] { --study-glass:rgba(39,45,48,.76);--study-glass-edge:rgba(224,238,249,.16);--study-glass-shadow:0 7px 24px rgba(0,0,0,.24); }
-body { background:var(--bg-app); }
-.sidebar { background:linear-gradient(155deg,rgba(201,216,229,.22),transparent 48%,rgba(196,204,197,.2)),color-mix(in srgb,var(--bg-chrome) 84%,transparent);border-right:1px solid var(--study-glass-edge);box-shadow:8px 0 35px #17273606;backdrop-filter:blur(28px) saturate(1.25);-webkit-backdrop-filter:blur(28px) saturate(1.25); }
-.app-mode-switch { padding:4px;border:1px solid var(--study-glass-edge);border-radius:22px;background:var(--study-glass);backdrop-filter:blur(20px);box-shadow:var(--study-glass-shadow); }
-.app-mode-switch button { border-radius:18px;min-height:32px; }
-.app-mode-switch button.is-selected { background:var(--bg-surface);box-shadow:0 1px 5px #10223412; }
-.sidebar .nav-item { border-radius:11px; }
-.sidebar .chat-row.is-active .nav-item,.sidebar .nav-item.is-active { background:var(--study-glass);box-shadow:inset 0 1px var(--study-glass-edge),0 3px 12px #152b3510; }
-.account-popover,.ctx-menu,.popup { background:var(--study-glass);backdrop-filter:blur(28px) saturate(1.3);-webkit-backdrop-filter:blur(28px) saturate(1.3);border:1px solid var(--study-glass-edge);box-shadow:var(--study-glass-shadow);border-radius:16px; }
-.composer-inner,.project-composer .composer-inner { background:color-mix(in srgb,var(--bg-surface) 91%,transparent);border-color:var(--control-border);border-radius:19px;box-shadow:0 10px 30px #10243408,inset 0 1px var(--study-glass-edge);backdrop-filter:blur(18px); }
-.settings-shell { background:var(--bg-app); }
-.settings-navigation { background:var(--study-glass);backdrop-filter:blur(20px); }
-@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.sidebar,.app-mode-switch,.account-popover,.ctx-menu,.popup,.composer-inner,.settings-navigation{background:var(--bg-surface);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;border-color:var(--control-border)}}
-@supports not (backdrop-filter:blur(1px)){.sidebar,.app-mode-switch,.account-popover,.ctx-menu,.popup{background:var(--bg-surface)}}
+/* Study 03. Blur belongs on bounded surfaces, never the sidebar ancestor:
+   filtering the ancestor traps its account menu behind the app-main layer. */
+:root { --study-glass-fill:rgba(251,253,255,.66);--study-glass-menu:rgba(251,253,255,.92);--study-glass-edge:rgba(255,255,255,.95);--study-glass-rim:rgba(93,114,139,.25);--study-glass-shadow:rgba(38,58,81,.13);--study-glass-selected:rgba(255,255,255,.91); }
+:root[data-theme='dark'] { --study-glass-fill:rgba(54,64,77,.57);--study-glass-menu:rgba(30,37,45,.95);--study-glass-edge:rgba(227,240,255,.33);--study-glass-rim:rgba(189,217,247,.15);--study-glass-shadow:rgba(0,0,0,.32);--study-glass-selected:rgba(113,132,153,.27); }
+.sidebar {
+ background:radial-gradient(ellipse 260px 400px at -80px 220px,rgba(141,182,214,.25),transparent 85%),radial-gradient(ellipse 240px 380px at 210px 650px,rgba(193,160,128,.16),transparent 85%),var(--bg-chrome);
+ border-right:1px solid var(--border-subtle);
+ /* Do not add filter, backdrop-filter, transform or isolation here. */
+}
+.app-mode-switch { position:relative;padding:5px;gap:4px;border-radius:26px;border:1px solid var(--study-glass-edge);background:linear-gradient(125deg,rgba(255,255,255,.16),transparent 45%,rgba(255,255,255,.12)),var(--study-glass-fill);backdrop-filter:blur(14px) saturate(1.5);-webkit-backdrop-filter:blur(14px) saturate(1.5);box-shadow:inset 0 0 0 1px var(--study-glass-rim),inset 0 -2px 3px rgba(121,154,180,.12),0 6px 18px var(--study-glass-shadow); }
+.app-mode-switch button { position:relative;border-radius:21px;min-height:34px;box-shadow:none;transition:background .18s,box-shadow .18s; }
+.app-mode-switch button.is-selected { background:var(--study-glass-selected);box-shadow:inset 0 1px var(--study-glass-edge),0 2px 6px var(--study-glass-shadow); }
+.sidebar .nav-item { border-radius:9px; }
+.sidebar .chat-row.is-active .nav-item,.sidebar .nav-item.is-active { background:var(--nav-active);box-shadow:none; }
+.account-popover,.ctx-menu,.popup { background:var(--study-glass-menu);border:1px solid var(--study-glass-edge);border-radius:15px;backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);box-shadow:inset 0 0 0 1px var(--study-glass-rim),0 12px 30px var(--study-glass-shadow); }
+/* Writing and form controls remain opaque. */
+.composer-inner,.project-composer .composer-inner { background:var(--bg-surface);border:1px solid var(--control-border);border-radius:16px;box-shadow:0 4px 14px #00000008; }
+.settings-shell,.settings-navigation { background:var(--bg-app); }
+/* Restore a visible search affordance; the previous bare placeholder read as a label. */
+.projects-head .projects-search { border:1px solid var(--control-border);border-radius:8px;padding:9px 12px;margin-bottom:8px;min-height:38px; }
+@media(max-width:700px){.projects-head .projects-search{margin-top:12px}.project-card{min-height:210px}.project-card-goal{-webkit-line-clamp:3}.app-mode-switch{padding:3px;gap:3px}.app-mode-switch button{min-height:36px}}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.app-mode-switch,.account-popover,.ctx-menu,.popup{background:var(--bg-surface);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;border-color:var(--control-border)}.sidebar{background:var(--bg-chrome)}}
+@supports not (backdrop-filter:blur(1px)){.app-mode-switch,.account-popover,.ctx-menu,.popup{background:var(--bg-surface)}}
+.app-mode-switch::before { content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(70px circle at var(--glass-x,20%) var(--glass-y,0%),rgba(255,255,255,.6),transparent 80%);opacity:.55; }
+[data-theme='dark'] .app-mode-switch::before { opacity:.22; }
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.app-mode-switch::before{display:none}}
