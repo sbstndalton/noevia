@@ -36,3 +36,13 @@ no project, account, storage-credential or general Nextcloud access.
 Existing Mac-only edits are not automatically merged. Compare them before switching
 writers. Whole-file saves require the prior version and never automatically retry;
 semantic append/idempotent operation recovery remains future work.
+
+
+## Installed-package verification — 2026-09-13
+
+The existing private installed server.py matches this repository byte-for-byte.
+An actual stdio process passed initialize, initialized notification, tools/list
+and ping using the installed configuration; no Diary tool was called and no
+credential/content was printed. Three bridge unit tests pass. This proves local
+bootstrap only: Claude plugin import/enablement and a synthetic client comparison
+remain pending. Do not treat a desktop configuration file as proof of Cowork use.

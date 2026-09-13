@@ -280,3 +280,27 @@ duplicate409 and actual browser-request abort recovering as uncertain, plus the
 previous complete restore checks. Final browser presentation still blocked; no
 production rollout. Artifact bundle index-Cpq63qY9.js before the final warning-text
 addition (rebuild output should be checked for the final exact hash).
+
+
+ACTIVE MAINTENANCE TEST: exec session1378 runs Qwen262144/253952 synthetic
+calibration from experiments/model-loader/calibrate.py; log/tmp/noevia-qwen-capacity.log,
+records/tmp/model-loader-calibration/*/trial-253952.json. Do not abandon it.
+It unloaded original Gemma32768 q5_0/q4_0, test now processing253944 tokens;
+latest memory7.45GiB, no production chat model. Monitor stops test below4GiB or
+when production loads a chat model, then finally restores original options.
+Explicitly verify stopped test and restored production before declaring finished.
+Candidate0d9f691 archive uploaded to releases but not yet extracted/built; avoid
+concurrent server image builds during capacity timing. No production app cutover.
+Installed Claude stdio handshake/tools-list/ping passed without live Diary call;
+client import still pending. Browser remains stalled awaiting user dialog cleanup.
+
+
+Further uncommitted batch: bodyless DAV MKCOL through companion /api/directory,
+exclusive local mkdir, no implicit ancestors/overwrites; raw DAV409 for missing
+parent while conditional PUT conflicts remain412. Tests373 web/type/build,
+195 full Diary + new volume-identity test (15 dedicated pass), full real web+Diary
+restore/DAV lifecycle HTTP pass. No UI change for MKCOL; listener remains off.
+Rename/delete blocked on async user scope choice: protect managed Entries/AI Memory/
+index paths vs allow them with explicit warning. Continue independent work.
+Qwen253944-token test still active session1378, only~28% at365seconds; do not abandon.
+Candidate0d9f691 tar on server not built; avoid contending image builds during test.

@@ -97,10 +97,10 @@ Record the change in the canonical DaServer changelog.
 
 - **`UPGRADES.md` on the server is stale.** It describes a retired
   AnythingLLM + LiteLLM stack. Ignore it.
-- **`/mnt/docker` has no redundancy and no backup** — a single-device btrfs pool on
-  one NVMe, holding `secrets.key`, which decrypts stored provider API keys. The
-  Unraid Appdata Backup plugin is installed but unconfigured. This is the top item
-  in `backlog.md`.
+- **`/mnt/docker` has no redundancy** — the single-device pool now has daily
+  noevia state/configuration backups on a separate array disk. See
+  [backup scope and restore evidence](../deploy/backups/README.md). This does not
+  cover unrelated appdata or the remote Nextcloud corpus; off-site is undecided.
 - The route from a sandboxed dev environment to `10.69.0.130` has been transiently
   flaky ("No route to host" that resolved on retry). One SSH failure does not mean
   the host is down.

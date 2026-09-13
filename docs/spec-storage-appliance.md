@@ -89,3 +89,13 @@ Generic Compose retains its previous host-bind fallback for existing installatio
 explicit storage overrides select volumes only for intentionally initialized setups.
 The live Unraid template retains COWORK_STATE_DIR bindings. Resolved Compose
 checks verify both modes; this is not a migration or an automatic backup policy.
+
+
+### Companion-backed folder creation candidate — 2026-09-13
+
+MKCOL now reaches a private companion directory API and an exclusive local mkdir.
+It refuses missing ancestors, duplicates, unsupported bodies and nonlocal storage;
+volume identity checks remain active. See dav.md for tests and deployment status.
+Rename/delete/locks and desktop interoperability remain open. A user decision is
+pending on protection of managed Entries/AI Memory/index paths before destructive
+namespace operations. No new production listener has been enabled.

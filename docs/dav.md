@@ -8,8 +8,9 @@ migrated, and the Diary sidecar must remain private.
 
 This is a limited endpoint for clients that explicitly issue HTTP file operations,
 not yet a general file-manager mount. Supported: OPTIONS, HEAD, GET, PROPFIND
-(Depth 0/1; allprop or named properties), conditional PUT of UTF-8 Markdown.
-Unsupported: MKCOL, DELETE, MOVE, COPY, PROPPATCH, LOCK, UNLOCK, REPORT and infinite
+(Depth 0/1; allprop or named properties), conditional PUT of UTF-8 Markdown. The current candidate adds bodyless MKCOL
+through the companion; it is not yet deployed. Unsupported: DELETE, MOVE, COPY,
+PROPPATCH, LOCK, UNLOCK, REPORT and infinite
 depth. Consequently it does **not** advertise DAV class 1/2 compliance. Mounting in
 Finder/Windows/Nextcloud is not claimed. Existing folders can be listed; new files
 must have an existing parent. No last-modified timestamp is fabricated.
@@ -77,3 +78,26 @@ property discovery and method semantics. This limited implementation deliberatel
 omits unsupported compliance claims. Automated real HTTP and synthetic app/worker
 boundary tests cover supported operations; broad desktop client compatibility is
 remaining work.
+
+
+## Folder creation candidate — 2026-09-13
+
+MKCOL creates exactly one directory through the authenticated tenant companion
+API. It never makes missing ancestors or overwrites an existing resource. Empty
+body only; conditional MKCOL and encoded bodies are explicitly unsupported.
+Existing path, transport, opt-in, credential and concurrency checks apply; access
+is rechecked after body reading. A missing parent returns409, an existing resource
+405, and success201. Local volume identity is checked before filesystem access.
+No direct web-service corpus mount or new sharing exposure is introduced.
+
+Empty folders have no document to index or capture operation to replay. Writes
+inside them retain the existing guarded file path. Folder operations require
+server-local storage. The endpoint still does not claim DAV class1/2 compliance
+or desktop mount interoperability. Rename/delete scope awaits the user's choice
+about protecting managed Diary paths; no destructive method is implemented here.
+
+Verification:373 web tests, typecheck/build;195 Diary tests plus the new dedicated
+volume-identity test (15-test dedicated suite passes), three existing skips and
+two dependency warnings. Real web+Diary HTTP verifies create/list/child-write,
+missing parent, duplicate resource, opt-in denial and credential revocation using
+only disposable state. Candidate image/rollout checks remain pending.

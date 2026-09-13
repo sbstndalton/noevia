@@ -1,5 +1,22 @@
 # noevia roadmap
 
+## Current execution status — 2026-09-13
+
+Production remains `8fa1112` (active-project source refresh). Candidates `afbaefc`
+and `0d9f691` add opt-in browser recovery, preparation history, title correction,
+Docker healthchecks, MCP status and explicit usage estimates/admin totals. These
+are committed and pushed but await final browser checks and rollout. `afbaefc`
+passed314 Linux tests; `0d9f691` passed372 local tests/typecheck/build and fullstack
+synthetic restore/preparation checks. Browser controls are stalled on a disposable
+test dialog; this is not completed UI verification.
+
+Initial tool-routing experiments are complete: retain current routing because
+deferred/planner variants added latency and tokens. Full synthetic restore passed.
+The [backend review](spec-backend-portability.md) distinguishes compatible inference
+from lifecycle/context support. Remaining decisions and implementation are tracked
+in [backlog.md](backlog.md); off-site destination is undecided and real SMB cutover
+still needs authenticated Mac verification. Historical dated sections follow.
+
 ## Backend portability investigation — 2026-09-13
 
 User requested adding this as something worth investigating, not an immediate
@@ -20,8 +37,8 @@ llama.cpp or vLLM would reduce configuration and maintenance problems.
   rollback path and existing model bytes. Migrate only on supporting evidence.
 
 Existing standalone trials demonstrated context/control benefits but no meaningful
-generation speedup. This item is queued for investigation; the present request is
-roadmap documentation and an explanation of completed work.
+generation speedup. The initial source/architecture review is complete; runtime
+qualification of the alternative stacks remains open. See the linked review above.
 
 ## Latest application increments — 2026-09-12
 
@@ -29,7 +46,7 @@ Instruction skills shipped in `095d308`: explicit review/enable/disable, hashed
 updates and RAG/source exclusion. The requested MTP artifact inspection followed
 as `f6688f3`; see [artifact evidence](spec-mtp-artifacts.md). It checks the chosen
 public HF quantization, not installed byte identity, and does not enable MTP.
-Saved-storage Diary recovery followed in `f7b9d95`, the latest application release.
+Saved-storage Diary recovery followed in `f7b9d95`; later releases are listed above.
 See the reconciled [backlog](backlog.md) for remaining work.
 
 ## Roadmap resumed — 2026-09-12
