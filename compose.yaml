@@ -29,6 +29,8 @@ services:
       DIARY_EXTERNAL_SOURCES: ${DIARY_EXTERNAL_SOURCES:-}
       DIARY_AUTH_TOKEN: ${DIARY_AUTH_TOKEN:-}
       DIARY_LEGACY_USER_ID: ${DIARY_LEGACY_USER_ID:-}
+      # Operator-only mapping; add matching bind mounts in an override.
+      DIARY_LOCAL_VOLUMES: ${DIARY_LOCAL_VOLUMES:-}
       DB_PATH: /app/data/index.db
       LLM_BASE_URL: ${INFERENCE_BASE_URL:-http://host.docker.internal:11434/v1}
       LLM_API_KEY: ${INFERENCE_API_KEY:-}
