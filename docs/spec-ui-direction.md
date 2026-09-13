@@ -31,28 +31,25 @@ UI font is Inter; Projects uses a repeated card grid. Earlier changes already
 removed many shadows and panel backgrounds. Further cosmetic subtraction alone
 is unlikely to answer the user's request.
 
-## Proposed direction to prototype
+## Accepted direction and layout constraint
 
-A personal working library with a distinct writing space:
+The user described the playful precision of Apple and Lego, with room for
+serious work, then explicitly required keeping the layout developed from their
+Claude and ChatGPT suggestions. Preserve docs/design-system.md and the latest
+sidebar behavior in docs/ui-reference-review.md as the structural reference.
+The previous proposal to turn Projects into a new list/library arrangement is
+superseded. Do not reorganize screens to manufacture visual novelty.
 
-- Diary: date-led hierarchy, generous reading measure and a considered serif for
-  prose/headings where it improves reading; compact sans-serif controls. Entries
-  should feel like writing, with clear separation of text, activity and metadata.
-- Projects: a browsable library, with title, purpose and recent activity aligned
-  for scanning. Use rows or meaningful grouping instead of identical large cards
-  for every item. Keep project actions discoverable with keyboard and touch.
-- Chat: let the conversation occupy the page; distinguish speaker, reply and tool
-  activity through typography and placement. Keep the composer easy to find.
-- Settings: compact, labelled controls and clear section structure appropriate
-  to configuration work. Avoid giving each setting a decorative content card.
-- Shared identity: one deliberate type hierarchy, consistent navigation and a
-  restrained accent. Vary density and composition according to the task, while
-  preserving learned control behavior. Both themes must be designed deliberately.
+Apply character through tactile controls, considered project identities, rounded
+heading typography, restrained color and clear pressed/selected states. Keep the
+continuous canvas, sidebar/rail, centred project grid, chat column/composer,
+Settings dialog and Diary memory/storage panel. Functional content stays focused.
 
-These are proposals, not user-approved visual choices. A useful next artifact is
-one populated Diary view and one populated Projects view using synthetic content,
-including a narrow-screen treatment. Compare their visual character before a
-system-wide replacement. User-provided references can refine the direction.
+The first attempt is [the actual-app preview](prototypes/README.md), using the
+existing React component tree and an isolated stylesheet. Synthetic projects and
+Diary entries demonstrate the treatment without accessing real user content.
+The earlier standalone layout experiment was discarded. This is a local design
+study, not a deployed redesign or a completed all-view accessibility review.
 
 ## Implementation and release constraints
 
@@ -63,6 +60,5 @@ remaining QA can finish independently. No production UI or behavior was changed
 by this investigation.
 
 Manual visual review is still required: populated/empty/error states, actual
-reading and editing, visible focus, both themes and responsive layouts. The
-current stalled synthetic browser dialog remains a browser automation blocker;
-source inspection or a generated design-system report cannot substitute for QA.
+reading and editing, visible focus, both themes and responsive layouts. Browser controls resumed during this prototype review. Source inspection or a
+generated design-system report cannot substitute for visual QA.

@@ -6,7 +6,9 @@ The user wants a more distinctive UI, beyond functional correctness and repeated
 generic styling. UI UX Pro Max has been installed and its initial recommendations
 reviewed. See [the proposed design direction](spec-ui-direction.md): task-specific
 composition for Diary, Projects, Chat and Settings, with a coherent shared identity.
-Next is a populated screen prototype and visual review, not a blanket reskin.
+An actual-app synthetic prototype is now available (docs/prototypes/README.md).
+The user explicitly requires retaining the existing Claude/ChatGPT-inspired layout;
+visual character is being explored within it, not by reorganizing the screens.
 Existing functional candidate verification and production state remain unchanged.
 
 ## Current execution status — 2026-09-13

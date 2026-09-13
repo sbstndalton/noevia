@@ -1,0 +1,38 @@
+/* Design study: visual treatment only, over the existing noevia component tree. */
+:root[data-theme='light'] { --bg-app:#f7f6f0; --bg-chrome:#eaece3; --bg-surface:#fffef9; --bg-surface-hover:#eeefe7; --nav-active:#dce6cb; --nav-hover:#e3e7da; }
+:root[data-theme='dark'] { --bg-app:#232923; --bg-chrome:#1c231d; --bg-surface:#2d352d; --bg-surface-hover:#374037; --nav-active:#43533b; --nav-hover:#343e31; }
+/* Keep the six existing theme/palette definitions and saved preferences authoritative
+   for text, focus, danger and other semantic colors. */
+.projects-hero h1,.project-title,.diary-landing h1,.settings-title h1,.coding-welcome h1 { font-family:ui-rounded,'SF Pro Rounded',var(--font-ui); font-weight:650; letter-spacing:-.8px; }
+.sidebar .nav-item,.sidebar .new-chat-btn { border-radius:11px; }
+.sidebar .nav-item:hover { background:var(--nav-hover); }
+.sidebar .chat-row.is-active .nav-item { box-shadow:inset 3px 0 var(--text-secondary); }
+.app-mode-switch { border:1px solid var(--border);border-radius:12px;padding:3px; }
+.app-mode-switch button.is-selected { box-shadow:0 2px 2px #00000015,inset 0 1px #ffffff18; }
+.btn,.modal-btn { border-radius:11px; }
+.btn-primary,.modal-btn.primary { box-shadow:0 2px 0 var(--control-border),inset 0 1px #ffffff20; }
+.btn:active:not(:disabled),.modal-btn:active:not(:disabled),.send-btn:active:not(:disabled) { transform:translateY(1px);box-shadow:inset 0 1px 2px #00000024; }
+.project-card { background:var(--bg-surface); border-radius:16px; border-bottom-width:3px; }
+.project-card:hover { transform:none; border-color:var(--control-border); box-shadow:none; }
+.project-badge { width:36px;height:36px;border:1px solid currentColor;border-radius:10px;box-shadow:inset 0 2px #ffffff30,0 2px 0 color-mix(in srgb,currentColor 25%,transparent);background:color-mix(in srgb,currentColor 9%,var(--bg-surface)); }
+.project-badge svg { width:21px;height:21px; }
+.project-card-name { font-weight:650; }
+.composer-inner,.project-composer .composer-inner { border-radius:19px;border-bottom-width:2px;box-shadow:0 4px 12px #00000008,inset 0 1px #ffffff18; }
+.send-btn { box-shadow:0 2px 0 var(--control-border),inset 0 1px #ffffff24; }
+.diary-overview > section h2 { display:flex;align-items:center;gap:8px; }
+.diary-overview > section h2::before { content:'';width:8px;height:8px;border-radius:3px;background:var(--text-secondary); }
+.diary-overview > section:nth-child(2) h2::before { border-radius:50%; }
+.diary-overview > section:nth-child(3) h2::before { border-radius:1px;transform:rotate(45deg); }
+.diary-month-grid .month-card { border-radius:10px;padding-left:16px;border-left:3px solid var(--border); }
+.calendar-day { border-radius:11px; }
+.calendar-today { background:var(--nav-active);box-shadow:inset 0 -2px var(--control-border); }
+.settings-shell { box-shadow:0 16px 60px #00000025; }
+.account-popover,.ctx-menu,.popup { box-shadow:0 9px 30px #00000024,inset 0 1px #ffffff12; }
+@media(prefers-reduced-motion:reduce){.btn:active:not(:disabled),.modal-btn:active:not(:disabled),.send-btn:active:not(:disabled){transform:none}}
+/* Small, tangible identity tiles; color stays concentrated around navigation. */
+.project-badge { width:42px;height:42px;border-radius:12px;background:#e9b59c;border-color:#b27c60;box-shadow:inset 0 2px #ffffff65,0 3px 0 #b27c60; }
+.project-card:has(.project-icon[style*="67, 106, 171"]) .project-badge { background:#b8cfec;border-color:#718caf;box-shadow:inset 0 2px #ffffff65,0 3px 0 #718caf; }
+.project-card:has(.project-icon[style*="90, 121, 60"]) .project-badge { background:#c9d99e;border-color:#889c62;box-shadow:inset 0 2px #ffffff65,0 3px 0 #889c62; }
+.project-badge svg { color:#293629!important; }
+
+[data-theme="dark"] .sidebar .project-icon { filter:brightness(1.65) saturate(.8); }
