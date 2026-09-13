@@ -19,6 +19,9 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 - Guarded generic fresh-install managed-volume setup; existing binds remain
   compatible and the live Unraid storage layout remains unchanged.
 
+- Active-project source refresh: return/focus/online refresh with a one-minute
+  cooldown and five-minute staleness checks while visible; waits during generation.
+
 ## Active work
 
 - Complete authenticated Mac SMB pilot and real Diary cutover. Existing 80-file
@@ -42,7 +45,6 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 
 ## Smaller open items
 
-- Automatic/staleness-based refresh of attached project sources.
 - Review older projects without a managed folder; preserve existing attachments.
 - Optional empty-folder cleanup after project deletion (currently retained safely).
 - Updated chat titles after message edits; branching remains a product/data-model

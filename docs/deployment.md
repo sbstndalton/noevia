@@ -78,7 +78,7 @@ COWORK_SOURCE_DIR=/mnt/docker/appdata/cowork/releases/$SHA COWORK_VERSION=$SHA d
 # Stop here if candidate verification fails (see the image-test mounts below).
 ln -sfn /mnt/docker/appdata/cowork/releases/$SHA /mnt/docker/appdata/cowork/current
 sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=$SHA/' /mnt/docker/appdata/cowork/config/.env
-docker compose --env-file /mnt/docker/appdata/cowork/config/.env up -d --no-build --wait --wait-timeout 120"
+bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --wait --wait-timeout 120"
 ```
 
 A build takes ~10 min over the Tailscale relay. Run it in the background and poll

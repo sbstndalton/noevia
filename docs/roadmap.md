@@ -1419,3 +1419,19 @@ Implemented durable exchange IDs, per-user reply/status records and browser
 reload recovery. Duplicate IDs cannot resend, and server-interrupted outcomes
 remain uncertain. Browser-local pending saves and optional-tool preparation
 transcripts remain separate. See [scope and validation](spec-diary-recovery.md).
+
+## Active project source refresh — 2026-09-13
+
+Opening a project already refreshed attached folders. This follow-up adds return,
+focus, online and visibility triggers with a one-minute cooldown, plus a one-minute
+timer that refreshes after five minutes of staleness. Only the open project runs;
+hidden/offline tabs and active project generation defer new automatic requests.
+In-flight work is deduplicated across view changes; already-started server jobs
+continue. Existing bounded source sync, stale-source error handling and instruction
+skill re-review remain intact. No whole-drive polling or Diary corpus tests.
+
+358 web tests, typecheck and build pass. Scheduler tests cover cooldowns, failures,
+long overlapping requests, project isolation and disposed callbacks. Synthetic
+real-HTTP skill review/exclusion regression passes; Sources guidance reviewed in
+light/dark and 375/768/1440 layouts without horizontal overflow. Candidate rollout
+is pending; production remains f7b9d95 until the deployment record confirms it.

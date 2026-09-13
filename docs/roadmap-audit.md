@@ -868,3 +868,19 @@ Skills-index rollout: **`79cd24f`** replaces `9e2bfbb` on all services after 267
 serial isolated Linux server tests and eight worker tests. Compose health passes;
 prior release and `.bak.before-79cd24f` backups retained. No corpus testing or
 sharing exposure enabled. Frontend bundle is unchanged from the wizard release.
+
+## Active project source refresh — 2026-09-13
+
+Opening a project already refreshed attached folders. This follow-up adds return,
+focus, online and visibility triggers with a one-minute cooldown, plus a one-minute
+timer that refreshes after five minutes of staleness. Only the open project runs;
+hidden/offline tabs and active project generation defer new automatic requests.
+In-flight work is deduplicated across view changes; already-started server jobs
+continue. Existing bounded source sync, stale-source error handling and instruction
+skill re-review remain intact. No whole-drive polling or Diary corpus tests.
+
+358 web tests, typecheck and build pass. Scheduler tests cover cooldowns, failures,
+long overlapping requests, project isolation and disposed callbacks. Synthetic
+real-HTTP skill review/exclusion regression passes; Sources guidance reviewed in
+light/dark and 375/768/1440 layouts without horizontal overflow. Candidate rollout
+is pending; production remains f7b9d95 until the deployment record confirms it.
