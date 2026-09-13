@@ -1,15 +1,15 @@
-# Reusable instruction skills — proposed v1
+# Reusable instruction skills — implemented v1
 
 User-selected scope (2026-09-10): reusable instructions using existing approved
 tools. No executable packages, dependency installers, shell hooks or new agent
-framework. This is a design and implementation plan, not a shipped skills UI.
+framework. The lifecycle is implemented; the release record below states deployment status.
 
 ## Existing building blocks
 
-`index.cjs` already parses simple frontmatter from project source text with
+Before this change, `index.cjs` parsed simple frontmatter from project source text with
 `parseSkillFrontmatter`, lists name/description/version via `skillsIndexFor`, and
 uses the existing `read_project_file` tool to load full content. Project
-instructions are a separate field. `rag.filesContext` currently includes the same
+instructions are a separate field. `rag.filesContext` included the same
 source files, so the index is not actually the only route for full skill text to
 enter context. The index also omits the filename when a display name exists,
 although the loading tool requires an exact filename. These are concrete gaps to
@@ -93,4 +93,19 @@ loads without extra writes. Synthetic data only; Diary companion remains unchang
 
 Implementation follow-up: the existing index now includes exact filenames and
 bounded, escaped metadata. This closes the filename/index-size gap only; explicit
-selection, migration and source/RAG exclusion remain the proposed next steps.
+selection, migration and source/RAG exclusion were subsequently implemented as recorded below.
+
+## Implementation evidence — 2026-09-12
+
+Implemented project-owned review/enable/disable and content-hash re-review on
+updates, exact filenames, metadata validation, source/RAG exclusion (including
+stale vector hits), bounded paginated reads, missing-tool explanations and
+server-side tenant isolation. Existing recognized files require visible review.
+Selections persist; removed files lose selections. Mid-exchange updates or
+disabling block subsequent reads; already loaded context cannot be revoked.
+No new permissions or executable packages are introduced.
+
+349 web tests, typecheck/build and real synthetic HTTP lifecycle/context checks
+pass. Browser review covered enable/disable, updated versions, persistence,
+keyboard focus and 375/768/1440 widths in both themes. Existing three-decision
+approval regressions pass. Candidate release pending production rollout.
