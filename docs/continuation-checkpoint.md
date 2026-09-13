@@ -219,3 +219,16 @@ No storage mapping, production model setting or real Diary corpus was changed.
 The earlier managed-volume installer/preflight commits are included; live host
 bindings remain intact. This is a verified increment, not completion of the
 remaining SMB authentication/cutover, context qualification or tool experiments.
+
+## Whole-roadmap request — 2026-09-13
+
+User explicitly requested working through the whole roadmap until done, asking
+about conflicts while continuing independent work. Chose opt-in browser-local
+recovery. Off-site backup destination remains undecided and is not configured.
+Current candidate adds browser-local recovery (spec-diary-recovery.md), explicit
+web/OCR image healthchecks and automatic-title updates after first-message edits
+while preserving custom titles. 361 tests/typecheck/build and synthetic recovery
+behavior checks pass. Browser control stalled on synthetic localhost:31239 tabs;
+user was asked to dismiss any blocking dialog/close those disposable tabs. Final
+layout/disable/title interaction and container checks remain before rollout.
+Production remains 8fa1112. Do not mistake this candidate for a deployed release.

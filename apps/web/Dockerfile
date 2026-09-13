@@ -22,4 +22,5 @@ RUN cd server && npm ci --no-fund --no-audit
 COPY server ./server
 ENV UI_PORT=8021
 EXPOSE 8021
+HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+(process.env.UI_PORT||8021)+'/api/setup/status',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "server/index.cjs"]

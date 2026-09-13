@@ -35,3 +35,35 @@ synthetic message, reloads and restores both exchanges; mobile wrapping is verif
 No real Diary prompt, corpus write or inference request used.
 
 Deployed in `f7b9d95`; 308 Linux server checks passed and all services are healthy.
+
+## Opt-in browser-local recovery — 2026-09-13 (candidate)
+
+The user chose opt-in recovery on the same browser. Local-folder sessions can now
+save a per-user/session IndexedDB record: unsent draft, selected date, conversation
+and optional tool history, pending local/sync changes with their conflict baselines,
+unsaved Markdown editor text, and a structured-cloned directory identity. No local
+recovery copy is uploaded to the server. This does not encrypt records separately
+from the browser profile; the opt-in explains profile access and browser-data loss.
+
+Reopening offers explicit reconnect/recover. File System Access `isSameEntry`
+requires the original folder; changed online connection identity blocks restoring
+pending sync. New online sync defaults off after recovery. No prompt or file write
+is replayed. Pending approvals become denied history without reusable IDs. An
+interrupted operation stays labelled uncertain. Explicit retries accept matching
+completed content or an empty new-file placeholder, but differing nonempty text
+conflicts. This is best-effort File System Access conflict checking, not a lock
+against arbitrary concurrent external editors.
+
+Records are limited to 4 MiB of UTF-8 state; oversize/quota errors are visible,
+and persistence is awaited before a local write/sync or local inference dispatch.
+Typing and streamed-history snapshots debounce for 200 ms; sudden page/process
+loss can omit the latest unflushed text. Folder access still requires a reconnect
+selection. Turning the option off removes this session's copy; other saved sessions
+have explicit Forget controls. There is no automatic deletion of recovery records.
+Saved-storage optional-tool preparation recovery remains separate work.
+
+Synthetic real-IndexedDB/OPFS checks passed: opt-in, failed disk write, fresh-page
+recovery, wrong-folder refusal, competing-content conflict, successful explicit
+retry, draft/editor/tool-result recovery, account isolation and no automatic
+inference redispatch. Browser control stalled during final layout/disable checks;
+those remain pending before rollout. 361 web tests, typecheck/build pass.
