@@ -2,13 +2,18 @@
 
 ## Current execution status — 2026-09-13
 
-Production remains `8fa1112` (active-project source refresh). Candidates `afbaefc`
-and `0d9f691` add opt-in browser recovery, preparation history, title correction,
-Docker healthchecks, MCP status and explicit usage estimates/admin totals. These
-are committed and pushed but await final browser checks and rollout. `afbaefc`
-passed314 Linux tests; `0d9f691` passed372 local tests/typecheck/build and fullstack
-synthetic restore/preparation checks. Browser controls are stalled on a disposable
-test dialog; this is not completed UI verification.
+Production remains `8fa1112` (active-project source refresh). Committed candidates
+add opt-in browser recovery, preparation history, title correction, Docker
+healthchecks, MCP status, explicit usage estimates/admin totals, companion-backed
+DAV folder creation and truthful allocation-observation metadata. Latest local
+validation: 373 web tests, typecheck/build; synthetic fullstack restore,
+preparation recovery and DAV directory lifecycle pass. Final browser checks and
+rollout remain open because controls stalled on a disposable test dialog.
+
+Qwen's 262,144-context trial passed with 253,944 input tokens and at least 6.05 GiB
+host memory available; production Gemma was restored and independently verified.
+This is an exact-profile synthetic capacity result, not a speed/quality guarantee.
+See [calibration evidence](../experiments/model-loader/README.md).
 
 Initial tool-routing experiments are complete: retain current routing because
 deferred/planner variants added latency and tokens. Full synthetic restore passed.

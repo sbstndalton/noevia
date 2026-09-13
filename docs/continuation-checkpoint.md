@@ -317,3 +317,15 @@ Memory has stayed above6.66GiB. Continue to completion and verify restoration.
 Tests/image builds afterafbaefc still need Linux verification; wait until GPU test
 finishes before server builds. Browser remains stalled; user hasn't answered
 managed-path rename/delete policy yet. Do not implement dependent destructive ops.
+
+
+## Qwen calibration completed — 2026-09-13 08:49 UTC
+
+Session 1378 completed successfully. Qwen accepted 253,944 tokens in 262,144
+context, recalled CONTEXT-7429, finish=stop, minimum available 6.046 GiB, no guards.
+Request 2,140.185 seconds. Test stopped, Gemma restored with exact original options;
+live slots independently show four idle 32,768-token slots. Evidence is committed
+under docs/evidence/qwen-context-2026-09-13.json; raw telemetry is retained on server.
+There is no active GPU calibration now. Pinned Lemonade candidate configuration
+is committed in cab205a and passes Compose validation; no runtime started.
+Production app remains 8fa1112; final browser QA and rollout are still open.

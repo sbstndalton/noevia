@@ -5,15 +5,22 @@ not a background job and not a production-provider replacement.
 
 ## Current follow-up — 2026-09-13
 
-Production noevia is8fa1112, and its cold-load correction has been deployed since
-cc59e8f. The historic final-state statements below describe September12 only.
-A guarded Qwen262144/253952-token trial is currently running; results are pending.
-The original Gemma32768 q5_0/q4_0 allocation is recorded for restoration.
+Production noevia remains `8fa1112`. The guarded Qwen trial passed with 253,944
+input tokens at a configured 262,144-token context: correct start-marker recall,
+complete output, no guard events and minimum 6.05 GiB host memory available.
+The request took 2,140.2 seconds (35.7 minutes), mostly prompt processing.
+This qualifies the exact b10920, q8 KV, one-slot synthetic text profile; it does
+not establish reasoning quality, vision or concurrent-session capacity.
+[Machine-readable evidence](../../docs/evidence/qwen-context-2026-09-13.json).
 
-Fingerprint collection now reads the actual test container's immutable image ID,
-not a mutable local image tag. Both resolved to the same ID for this active trial,
-so its recorded backend identity remains valid. Future retagging alone cannot
-misidentify which backend the test container runs.
+The test container stopped and production Gemma was restored with its original
+32,768-context Vulkan q5_0/q4_0 settings. An independent live slots query confirmed
+four idle slots, each with 32,768 tokens. No saved model options changed.
+
+Fingerprint collection reads the actual test container's immutable image ID,
+not a mutable local tag. The recorded raw trial and telemetry are also retained
+on DaServer under results/calibration. Historical September 12 results follow;
+the Qwen qualification above supersedes their then-unverified capacity status.
 
 ## Measured results — 2026-09-12
 
