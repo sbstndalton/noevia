@@ -5,8 +5,8 @@
 Production remains `8fa1112` (active-project source refresh). Committed candidates
 add opt-in browser recovery, preparation history, title correction, Docker
 healthchecks, MCP status, explicit usage estimates/admin totals, companion-backed
-DAV folder creation and truthful allocation-observation metadata. Latest local
-validation: 373 web tests, typecheck/build; synthetic fullstack restore,
+DAV folder creation and truthful allocation-observation metadata. Candidate `8bc4339` passes 318 Linux web tests, 199 Linux Diary tests,
+373 local web tests and typecheck/build; synthetic fullstack restore,
 preparation recovery and DAV directory lifecycle pass. Final browser checks and
 rollout remain open because controls stalled on a disposable test dialog.
 

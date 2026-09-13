@@ -329,3 +329,24 @@ under docs/evidence/qwen-context-2026-09-13.json; raw telemetry is retained on s
 There is no active GPU calibration now. Pinned Lemonade candidate configuration
 is committed in cab205a and passes Compose validation; no runtime started.
 Production app remains 8fa1112; final browser QA and rollout are still open.
+
+
+## Candidate verification — 2026-09-13
+
+All three candidate images `8bc4339` built successfully on DaServer. The exact
+web image passes 318 isolated Linux server tests. Diary passes 199 Linux tests
+(two existing dependency warnings); its production code is unchanged between
+7628a4c and 8bc4339. Local validation passes 373 web tests, typecheck and build.
+Real web/OCR image health probes pass both healthy and deliberate HTTP 503 cases.
+
+The initial 7628a4c web run found a test-ordering assumption when preparation and
+capture share a millisecond timestamp; the corrected assertion finds the capture
+by ID. The full Linux suite then passed. This changed the test, not recovery logic.
+
+Production still runs `8fa1112`; no current symlink, saved configuration, storage
+mapping or live app container was changed for candidate verification. Browser QA
+is incomplete because the synthetic localhost:31239 dialog blocks controls.
+Required UI review remains a release gate. The Mac has no mounted SMB pilot yet,
+and namespace rename/delete waits for the managed-path policy answer. Off-site
+backup destination/budget remain undecided. The Qwen calibration has completed
+and restored Gemma; no active GPU test remains.

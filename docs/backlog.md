@@ -26,15 +26,13 @@ The user resumed roadmap implementation. This replaces the stale checklist;
 
 - Complete authenticated Mac SMB pilot and real Diary cutover. Existing 80-file
   originals match and are preserved; the production dedicated mapping is not on.
-- Browser-local Diary pending-save recovery and optional-tool preparation history;
-  saved-storage conversation recovery is implemented (see spec-diary-recovery.md).
+- Finish browser QA and release of opt-in browser-local Diary recovery and optional-tool preparation history; implementation and synthetic HTTP checks are complete (see spec-diary-recovery.md).
 - Install and verify the scoped Claude Diary bridge; compare reference behavior
   using synthetic examples, without real Diary prompts.
-- Finish per-model capacity qualification and evaluate deployment profiles;
-  preserve workload/hardware/backend identity and safe memory headroom.
+- Gemma 131,072 and Qwen 262,144 synthetic one-slot capacity profiles now qualify. Applying those profiles to another backend/build and broader workloads still needs measurement; preserve exact configuration identity and memory headroom.
 - Initial deferred-discovery/planning comparison is complete: retain current routing.
   Distinct Smart/Fast pairs remain a later adoption gate; see the experiment report.
-- Remaining storage appliance companion-backed namespace operations; do not advertise general DAV compliance prematurely.
+- Companion-backed DAV folder creation is implemented and tested. Rename/delete policy awaits the managed-path decision; locks and real client interoperability remain open. Do not advertise general DAV compliance prematurely.
 
 ## Queued investigation — 2026-09-13
 
@@ -80,3 +78,17 @@ annotations in curated read allowlists. Discovery is not proof of execution acce
 Off-site backup destination and budget are undecided by the user. Existing local
 backups continue. Empty managed folders stay retained: recursive WebDAV deletion
 can race a new external upload, so automatic cleanup needs a safer storage contract.
+
+
+Latest candidate `8bc4339` includes all implementations above plus preparation
+recovery, DAV folder creation and explicit manager-versus-engine version metadata.
+Local verification passes 373 web tests, typecheck and build. Linux Diary passed
+199 tests. The initial Linux web run exposed a same-millisecond test-ordering
+assumption; the assertion now locates the capture by its ID. Final image validation
+is recorded in roadmap-audit.md. Production remains `8fa1112` until UI verification.
+
+The user selected browser-local recovery as opt-in. Off-site backup still has no
+chosen destination or budget: it means another copy away from DaServer for host or
+site loss. The existing local backup job remains in place; no external storage or
+paid service has been provisioned. The production WebDAV corpus is outside that
+job's current scope; dedicated-corpus coverage follows the storage cutover.
