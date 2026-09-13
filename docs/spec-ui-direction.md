@@ -62,3 +62,13 @@ by this investigation.
 Manual visual review is still required: populated/empty/error states, actual
 reading and editing, visible focus, both themes and responsive layouts. Browser controls resumed during this prototype review. Source inspection or a
 generated design-system report cannot substitute for visual QA.
+
+## User correction — architectural materials, not childish styling
+
+Study 01 was rejected. The user wants artistic expression comparable to
+architecture and Apple's Liquid Glass, while preserving the agreed layout.
+Study 02 replaces the bevels and pastel identity tiles with a hierarchy-focused
+composition and a separate translucent navigation/control layer. Synthetic content
+uses ordinary work projects. The CSS material implementation is a proposal for web,
+not a claim to reproduce Apple's native optical renderer. See prototypes/README.md
+for current evidence and limits. Do not promote the rejected treatment to production.

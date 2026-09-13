@@ -14,14 +14,26 @@ layout. This prototype changes no app component hierarchy, navigation destinatio
 sidebar sizing, reading-column widths, Settings structure or Diary panel placement.
 The initial standalone alternative layout was discarded before delivery.
 
-Visual changes: tactile project identity tiles, gentle depth on controls,
-rounded heading typography, a warm light/forest dark study palette, and small
-geometric distinctions in Diary sections. This is a proposed appearance, not a
-production theme migration. Sample tile colors are matched to the three synthetic
-project identities; production integration must derive them from saved metadata.
+## Study 02 — architectural materials
 
-Verified in the browser: project filtering, Diary landing/entry navigation, theme
-toggle, mobile rail and responsive layouts at 375/768/1440. No page-level horizontal
-overflow in measured views. Full cross-palette accessibility and all-view regression
-review remain requirements before any production adoption. Application tests,
-typecheck and build pass; the production bundle is unchanged by these files.
+The user rejected Study 01 as a superficial bevel/color pass with childish sample
+names. They clarified that artistic, architectural materials and Apple's Liquid
+Glass are the useful reference. Study 02 replaces the first stylesheet.
+
+The content remains on an opaque reading surface. Translucent, blurred materials
+are restricted to navigation, popovers and controls, with quiet optical edges and
+solid fallbacks for reduced transparency, increased contrast or missing blur
+support. This is a CSS interpretation, not Apple's native Liquid Glass renderer.
+Reference: https://developer.apple.com/design/human-interface-guidelines/materials
+
+Hierarchy now uses a larger project title, underlined section selection, separate
+icon/title rows, stronger project names, distinct metadata baselines and editorial
+Diary typography. Realistic synthetic project names, source counts and activity
+replace the earlier decorative content. Navigation and screen regions remain.
+
+Verification: 373 application tests, typecheck and build pass. Browser inspection
+covered light/dark Projects at the normal window size. Resizing currently reports
+sizes different from the requested viewport and produces composited screenshots;
+do not count those captures as completed exact-breakpoint QA. Measured page width
+and scroll width matched at the reported widths. Full cross-palette accessibility,
+Diary and all-view regression remain required before production adoption.

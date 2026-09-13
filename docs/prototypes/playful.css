@@ -1,38 +1,76 @@
-/* Design study: visual treatment only, over the existing noevia component tree. */
-:root[data-theme='light'] { --bg-app:#f7f6f0; --bg-chrome:#eaece3; --bg-surface:#fffef9; --bg-surface-hover:#eeefe7; --nav-active:#dce6cb; --nav-hover:#e3e7da; }
-:root[data-theme='dark'] { --bg-app:#232923; --bg-chrome:#1c231d; --bg-surface:#2d352d; --bg-surface-hover:#374037; --nav-active:#43533b; --nav-hover:#343e31; }
-/* Keep the six existing theme/palette definitions and saved preferences authoritative
-   for text, focus, danger and other semantic colors. */
-.projects-hero h1,.project-title,.diary-landing h1,.settings-title h1,.coding-welcome h1 { font-family:ui-rounded,'SF Pro Rounded',var(--font-ui); font-weight:650; letter-spacing:-.8px; }
-.sidebar .nav-item,.sidebar .new-chat-btn { border-radius:11px; }
-.sidebar .nav-item:hover { background:var(--nav-hover); }
-.sidebar .chat-row.is-active .nav-item { box-shadow:inset 3px 0 var(--text-secondary); }
-.app-mode-switch { border:1px solid var(--border);border-radius:12px;padding:3px; }
-.app-mode-switch button.is-selected { box-shadow:0 2px 2px #00000015,inset 0 1px #ffffff18; }
-.btn,.modal-btn { border-radius:11px; }
-.btn-primary,.modal-btn.primary { box-shadow:0 2px 0 var(--control-border),inset 0 1px #ffffff20; }
-.btn:active:not(:disabled),.modal-btn:active:not(:disabled),.send-btn:active:not(:disabled) { transform:translateY(1px);box-shadow:inset 0 1px 2px #00000024; }
-.project-card { background:var(--bg-surface); border-radius:16px; border-bottom-width:3px; }
-.project-card:hover { transform:none; border-color:var(--control-border); box-shadow:none; }
-.project-badge { width:36px;height:36px;border:1px solid currentColor;border-radius:10px;box-shadow:inset 0 2px #ffffff30,0 2px 0 color-mix(in srgb,currentColor 25%,transparent);background:color-mix(in srgb,currentColor 9%,var(--bg-surface)); }
-.project-badge svg { width:21px;height:21px; }
-.project-card-name { font-weight:650; }
-.composer-inner,.project-composer .composer-inner { border-radius:19px;border-bottom-width:2px;box-shadow:0 4px 12px #00000008,inset 0 1px #ffffff18; }
-.send-btn { box-shadow:0 2px 0 var(--control-border),inset 0 1px #ffffff24; }
-.diary-overview > section h2 { display:flex;align-items:center;gap:8px; }
-.diary-overview > section h2::before { content:'';width:8px;height:8px;border-radius:3px;background:var(--text-secondary); }
-.diary-overview > section:nth-child(2) h2::before { border-radius:50%; }
-.diary-overview > section:nth-child(3) h2::before { border-radius:1px;transform:rotate(45deg); }
-.diary-month-grid .month-card { border-radius:10px;padding-left:16px;border-left:3px solid var(--border); }
-.calendar-day { border-radius:11px; }
-.calendar-today { background:var(--nav-active);box-shadow:inset 0 -2px var(--control-border); }
-.settings-shell { box-shadow:0 16px 60px #00000025; }
-.account-popover,.ctx-menu,.popup { box-shadow:0 9px 30px #00000024,inset 0 1px #ffffff12; }
-@media(prefers-reduced-motion:reduce){.btn:active:not(:disabled),.modal-btn:active:not(:disabled),.send-btn:active:not(:disabled){transform:none}}
-/* Small, tangible identity tiles; color stays concentrated around navigation. */
-.project-badge { width:42px;height:42px;border-radius:12px;background:#e9b59c;border-color:#b27c60;box-shadow:inset 0 2px #ffffff65,0 3px 0 #b27c60; }
-.project-card:has(.project-icon[style*="67, 106, 171"]) .project-badge { background:#b8cfec;border-color:#718caf;box-shadow:inset 0 2px #ffffff65,0 3px 0 #718caf; }
-.project-card:has(.project-icon[style*="90, 121, 60"]) .project-badge { background:#c9d99e;border-color:#889c62;box-shadow:inset 0 2px #ffffff65,0 3px 0 #889c62; }
-.project-badge svg { color:#293629!important; }
-
-[data-theme="dark"] .sidebar .project-icon { filter:brightness(1.65) saturate(.8); }
+/* Study 02: preserve app navigation and screen regions; redesign their hierarchy. */
+:root[data-theme='light'] {
+ --bg-app:#f8f8f6;--bg-chrome:#efefec;--bg-surface:#ffffff;--bg-surface-hover:#f2f2ef;
+ --text-primary:#20221f;--text-secondary:#5c6059;--nav-active:#dedfd9;--nav-hover:#e5e6e0;
+ --border-subtle:#dedfd8;--control-border:#777c72;--focus-ring:#3457bc;
+}
+:root[data-theme='dark'] {
+ --bg-app:#191b19;--bg-chrome:#141614;--bg-surface:#232623;--bg-surface-hover:#2b2f2b;
+ --text-primary:#f0f1eb;--text-secondary:#b5bbb0;--nav-active:#343a32;--nav-hover:#292e27;
+ --border-subtle:#42483f;--control-border:#889180;--focus-ring:#aebfff;
+}
+/* Typography carries the hierarchy; ornament does not. */
+.projects-hero h1 { font-size:52px;line-height:1.05;font-weight:600;letter-spacing:-2.4px; }
+.projects-hero-sub { font-size:13px;margin-top:14px;color:var(--text-secondary); }
+.projects-hero { align-items:center; }
+.projects-head { padding-top:38px;padding-bottom:0;margin-bottom:0;align-items:center; }
+.projects-head .seg { gap:25px;align-self:stretch; }
+.projects-head .seg button { border-radius:0;background:none;padding:18px 0;border-bottom:2px solid transparent; }
+.projects-head .seg button.is-selected { background:none;border-bottom-color:var(--text-primary);color:var(--text-primary);font-weight:600;border-radius:0; }
+.projects-head .projects-search { border:0;border-radius:0;background:none;width:210px;padding:12px 0;box-shadow:none; }
+.projects-head .projects-search:focus { outline:2px solid var(--focus-ring);outline-offset:2px; }
+.projects-grid { gap:22px;padding-top:26px; }
+.project-card { display:flex;flex-direction:column;min-height:254px;padding:25px 26px 19px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:9px;box-shadow:none;transition:border-color .16s,background .16s; }
+.project-card:hover { transform:none;box-shadow:none;background:var(--bg-surface);border-color:var(--control-border); }
+.project-card-top { display:grid;grid-template-columns:1fr 30px;row-gap:25px;align-items:start; }
+.project-badge { grid-row:1;grid-column:1;width:30px;height:30px;background:none;border:0;border-radius:0;box-shadow:none;display:flex;align-items:center;justify-content:start; }
+.project-badge svg { width:29px;height:29px;stroke-width:1.5; }
+.project-card-name { grid-column:1/-1;grid-row:2;font-size:21px;line-height:1.2;font-weight:550;letter-spacing:-.65px;overflow-wrap:anywhere; }
+.project-card-options { grid-column:2;grid-row:1; }
+.project-card-goal { font-size:13px;line-height:1.65;margin-top:12px;margin-bottom:24px; }
+.project-card-meta { margin-top:auto;padding-top:15px;border-top:1px solid var(--border-subtle);gap:13px; }
+.project-chip,.project-card-time { font-size:11px;font-variant-numeric:tabular-nums; }
+.project-card:focus-visible { outline:2px solid var(--focus-ring);outline-offset:4px; }
+/* Flat, confident controls, with consistent focus and no simulated bevels. */
+.btn,.modal-btn { border-radius:7px;font-weight:550;box-shadow:none; }
+.btn-primary,.modal-btn.primary { padding:11px 17px;min-height:42px;box-shadow:none; }
+.btn:active:not(:disabled),.modal-btn:active:not(:disabled),.send-btn:active:not(:disabled) { transform:none;opacity:.78;box-shadow:none; }
+.sidebar .nav-item,.sidebar .new-chat-btn { border-radius:6px; }
+.app-mode-switch { background:none;border:0;padding:0; }
+.app-mode-switch button { border-radius:5px;box-shadow:none; }
+.app-mode-switch button.is-selected { box-shadow:none; }
+.sidebar .project-icon { color:var(--text-secondary)!important; }
+.project-card .project-icon { color:var(--text-primary)!important; }
+.project-card:hover .project-icon { color:var(--accent-text)!important; }
+/* Writing gets its own typographic voice, in the existing reading column. */
+.diary-landing h1 { font-family:Georgia,'Times New Roman',serif;font-size:38px;line-height:1.18;font-weight:400;letter-spacing:-1.2px; }
+.diary-intro { font-size:14px;line-height:1.7; }
+.diary-overview > section { background:none;border:0;border-radius:0;padding:19px 0;border-top:1px solid var(--control-border); }
+.diary-overview > section h2 { font-size:13px;font-weight:650;letter-spacing:0; }
+.diary-overview > section h2:before { content:none; }
+.diary-file-list button { padding-left:0;line-height:1.6; }
+.diary-month-grid .month-card { border-radius:0;border-left:0;padding:20px 0;border-bottom:1px solid var(--border-subtle); }
+.diary-context { font-size:12px; }
+.composer-inner,.project-composer .composer-inner { border-radius:12px;border:1px solid var(--control-border);box-shadow:none; }
+.send-btn { box-shadow:none; }
+.project-title { font-size:38px;line-height:1.15;letter-spacing:-1.4px;font-weight:550; }
+.settings-title h1 { font-size:29px;letter-spacing:-.8px;font-weight:550; }
+.settings-shell { border-radius:12px; }
+@media(max-width:700px){.projects-hero h1{font-size:38px;letter-spacing:-1.5px}.projects-head .seg{gap:18px}.projects-head{padding-top:24px;flex-wrap:wrap}.projects-head .projects-search{flex-basis:100%;width:100%;min-width:0;margin-bottom:5px}.projects-grid{gap:16px;padding-top:20px}.project-card{min-height:228px;padding:22px}.project-card-top{row-gap:20px}.project-card-name{font-size:21px}.diary-landing h1{font-size:31px;letter-spacing:-.9px}.project-title{font-size:30px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* Material layer: optical chrome over a quiet, opaque content plane. */
+:root { --study-glass:rgba(246,248,248,.72);--study-glass-edge:rgba(255,255,255,.9);--study-glass-shadow:0 7px 24px rgba(35,46,55,.09); }
+:root[data-theme='dark'] { --study-glass:rgba(39,45,48,.76);--study-glass-edge:rgba(224,238,249,.16);--study-glass-shadow:0 7px 24px rgba(0,0,0,.24); }
+body { background:var(--bg-app); }
+.sidebar { background:linear-gradient(155deg,rgba(201,216,229,.22),transparent 48%,rgba(196,204,197,.2)),color-mix(in srgb,var(--bg-chrome) 84%,transparent);border-right:1px solid var(--study-glass-edge);box-shadow:8px 0 35px #17273606;backdrop-filter:blur(28px) saturate(1.25);-webkit-backdrop-filter:blur(28px) saturate(1.25); }
+.app-mode-switch { padding:4px;border:1px solid var(--study-glass-edge);border-radius:22px;background:var(--study-glass);backdrop-filter:blur(20px);box-shadow:var(--study-glass-shadow); }
+.app-mode-switch button { border-radius:18px;min-height:32px; }
+.app-mode-switch button.is-selected { background:var(--bg-surface);box-shadow:0 1px 5px #10223412; }
+.sidebar .nav-item { border-radius:11px; }
+.sidebar .chat-row.is-active .nav-item,.sidebar .nav-item.is-active { background:var(--study-glass);box-shadow:inset 0 1px var(--study-glass-edge),0 3px 12px #152b3510; }
+.account-popover,.ctx-menu,.popup { background:var(--study-glass);backdrop-filter:blur(28px) saturate(1.3);-webkit-backdrop-filter:blur(28px) saturate(1.3);border:1px solid var(--study-glass-edge);box-shadow:var(--study-glass-shadow);border-radius:16px; }
+.composer-inner,.project-composer .composer-inner { background:color-mix(in srgb,var(--bg-surface) 91%,transparent);border-color:var(--control-border);border-radius:19px;box-shadow:0 10px 30px #10243408,inset 0 1px var(--study-glass-edge);backdrop-filter:blur(18px); }
+.settings-shell { background:var(--bg-app); }
+.settings-navigation { background:var(--study-glass);backdrop-filter:blur(20px); }
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.sidebar,.app-mode-switch,.account-popover,.ctx-menu,.popup,.composer-inner,.settings-navigation{background:var(--bg-surface);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;border-color:var(--control-border)}}
+@supports not (backdrop-filter:blur(1px)){.sidebar,.app-mode-switch,.account-popover,.ctx-menu,.popup{background:var(--bg-surface)}}
