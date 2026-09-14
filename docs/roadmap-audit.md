@@ -1176,3 +1176,26 @@ Synthetic browser regression lives in apps/web/qa/diary-editor.cjs and covers
 failure preservation, server conflict/reconciliation, keyboard save and responsive
 light/dark panes. No real corpus or model calls; no deployment. See workspace spec
 for the unfinished parts of increment 1 and subsequent decision-dependent work.
+
+
+## Integrated Diary Markdown workspace — 2026-09-14 continuation
+
+Implemented locally: integrated page editor, responsive persistent file rail,
+source/preview/split, outline and loading/error/retry states. Server and local
+conflicts retain source and offer explicit comparison/rebase or confirmed reload.
+Local editor writes no longer share pending capture records; local save success
+and remote sync failure are separate states. Later edits retain the original
+pending remote base. Existing local-folder read-before-write limitations remain.
+
+Added source-relative Markdown file links, bounded explicit text search and
+backlinks, plus exact current-source Markdown download. Search is transient and
+reports partial results; it does not implement a whole-corpus search index.
+No source reformatting, raw-capture changes, new inference calls or browser cache.
+
+Verified in the combined local set: 404 web tests, typecheck/build, 196 Diary
+passed and three skipped (two existing warnings). Browser checks include
+server/local conflict and failure recovery, save/sync separation, original sync
+base preservation, discard protection, list retry, search/backlinks, safe links,
+unsaved-source export and responsive light/dark workspace. Production remains
+fca1f19. Revision retention is awaiting the requested user decision; full archive
+export, trash/import and richer date/tag/dialect behavior remain unimplemented.

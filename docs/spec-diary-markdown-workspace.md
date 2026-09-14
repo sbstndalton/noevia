@@ -1,6 +1,6 @@
 # Diary Markdown workspace
 
-Status: first editor increment implemented locally, 2026-09-14. Not deployed; no migration.
+Status: integrated editor and bounded navigation/search implemented locally, 2026-09-14. Not deployed; no migration.
 
 ## Direction
 
@@ -69,21 +69,49 @@ existing three tool-write approval actions and explicit human editor saves.
 Test stored Markdown round trips, conflict preservation, safe preview links/HTML,
 attachment authorization, keyboard navigation and responsive editor layouts.
 
-## Delivery status
+## Delivery status — 2026-09-14 continuation
 
-First editor increment implemented locally: expanded responsive workspace dialog,
-folder browsing, source/preview split, explicit keyboard save, retained editor after
-save, dirty/saving/error feedback and server stored-version comparison. Accepting
-a reviewed base retains the draft; a later competing write still encounters the
-existing hash/ETag guard. Discard/reload asks explicitly. Markdown source is kept
-verbatim; the existing limited preview renderer is unchanged.
+Implemented locally:
 
-Verified: 390 web tests, typecheck/build, 21 relevant Diary workspace tests;
-synthetic browser save, failed-save draft preservation, conflict comparison,
-manual reconciliation, keyboard save and 375/768/1440 light/dark layouts.
+- A page workspace replaces the modal editor. One file rail moves below the
+  writing area at narrow widths; folder filtering, explicit refresh, loading,
+  failure/retry and valid empty states are distinct. The original Diary view and
+  its draft remain mounted while editing. Returning to it confirms unsaved edits.
+- Source, preview and split modes; bounded heading outline; explicit Cmd/Ctrl+S;
+  dirty/saving/saved/error feedback. Source formatting/frontmatter stays verbatim.
+  Rendering is deferred while typing; no rich-text conversion was introduced.
+- Server conflicts automatically attempt a comparison, preserving the draft.
+  Local-folder conflicts now support the same explicit comparison/rebase/reload
+  controls. Server saves still use hash/ETag guards. Browser-folder saves retain
+  the existing read-before-write check; this is not atomic compare-and-swap
+  against unrelated applications writing through the OS.
+- Editor local writes are separate from capture pending-save records. A successful
+  local write advances the editor baseline even if online sync fails. Existing
+  pending sync keeps its original remote base across subsequent edits. Pending
+  capture writes to the same path must be resolved before an editor save.
+- Ordinary inline relative `.md` links stay inside the tenant root. Anchors,
+  wiki links and unsupported syntax remain plain text. Raw HTML is not executed.
+- Explicit literal search includes the selected folder and its descendants;
+  backlinks scan from the Diary root. Both use current source, with no durable
+  derived index or model calls. Bounds: 50 files, 50 folders, eight levels, 4 MiB,
+  30 results and a 15-second browser deadline. Partial/unreadable results are
+  labelled. A local folder is scanned once into a bounded transient snapshot.
+- Download Markdown exports the current source, including unsaved changes, without
+  saving it to the corpus. This is single-file export, not whole-vault backup.
 
-Remaining in increment 1: local-folder conflict reconciliation (existing pending
-save/sync recovery remains), richer file-loading feedback, replacing the expanded
-dialog with an integrated page workspace, and wider keyboard/accessibility QA.
-No revisions, backlinks, new offline cache, trash or encryption implemented.
-Production remains fca1f19; no deployment performed.
+Verified across the local change set: 404 web tests, typecheck/build; 196 Diary
+passed, three skipped (two existing dependency warnings). Synthetic browser checks
+cover server/local failures, competing edits, rebase and reload, original-base
+sync retry, guarded navigation, file-list failure/retry, search/backlinks, safe
+relative links, exact unsaved-source download, keyboard save and 375/768/1440
+light/dark layouts. No production Diary prompts or corpus access used.
+
+Next: revision history after retention/placement policy is settled; date/tag
+filters; broader Markdown fidelity and large-corpus qualification; full portable
+export with attachments/manifest, reversible trash/restore and previewed import.
+The revision-retention question is pending: proposed 50 revisions/file for 90 days
+with a total cap. This is a proposal, not an enabled policy. New persistent browser
+caching, rich text and encryption remain separate decisions.
+
+Production remains fca1f19; no deployment performed. Synthetic review server:
+`node apps/web/qa/workspace-preview.cjs` (default localhost:31329, process memory).
