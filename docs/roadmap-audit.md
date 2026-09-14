@@ -1,5 +1,32 @@
 # Roadmap audit — 2026-09-10
 
+## Managed Trash release — 2026-09-14
+
+Production **724cd34** replaces ee86c24 (candidate details below). Exact Linux
+web image: first parallel run had one failure from concurrent tests racing on a
+shared `ui-data/secrets.key` (EEXIST, harness only); serial rerun
+`node --test --test-concurrency=1 server/*.test.cjs` with the three read-only
+config fixtures passed all 345. Diary image suite 275 passed.
+
+Backup ab_20260914_112117 (web and Diary archives present). Guarded app-only
+rollout with automatic rollback to ee86c24 passed; native llama container
+unchanged. All four services healthy, zero restarts/OOM. Public assets match
+index-ByZk1SN-.js / index-2LTQHseZ.css; `/api/diary/workspace-trash` returns 401
+unauthenticated and the Diary image imports `agent.workspace_trash`.
+**Not yet done:** authenticated synthetic production Trash/restore browser check
+at a phone viewport. No real Diary access.
+
+Rollback: `current` + `COWORK_VERSION=ee86c24`, `.bak.before-724cd34` config/Compose
+backups, then app-only preflight/up.sh --no-build --no-deps --wait web diary ocr.
+
+Remaining roadmap, in order:
+1. Authenticated synthetic production verification of Trash/restore (mobile sizes).
+2. Remaining Markdown fidelity work and scoped Claude client verification.
+3. Continue docs/backlog.md and spec-diary-markdown-workspace.md items.
+Still unapproved/not enabled: automatic purge, 50-revision/90-day retention,
+offsite/paid backup destination, Wikipedia service, legacy WebDAV migration.
+
+
 ## Managed Trash candidate — 2026-09-14
 
 Adds reversible single-file Trash/restore for app-managed Markdown, with saved

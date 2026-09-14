@@ -769,3 +769,14 @@ at the same viewport. Normal viewport/New chat restored. No real Diary access.
 Rollback e9358ab and .bak.before-ee86c24 configuration/Compose backups retained;
 app-only preflight/up.sh with --no-build --no-deps --wait web diary ocr.
 Next: reversible managed trash/recovery; no retention/purge policy enabled.
+
+## Managed Trash release — 2026-09-14
+
+Production **724cd34** replaces ee86c24 with reversible single-file Markdown
+Trash/restore. 345 exact-image web server tests pass when run serially (the
+parallel run can race on `ui-data/secrets.key`); Diary image 275 pass. Backup
+ab_20260914_112117 taken first. Guarded app-only rollout passed; all four
+services healthy, zero restarts/OOM, native llama container unchanged. Public
+assets index-ByZk1SN-.js / index-2LTQHseZ.css. Rollback ee86c24 with
+`.bak.before-724cd34` configuration/Compose backups; script
+/tmp/noevia-deploy-724cd34.sh on the operator machine and server.
