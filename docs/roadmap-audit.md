@@ -1,11 +1,12 @@
 # Roadmap audit — 2026-09-10
 
-## App-owned Diary candidate — 2026-09-14
+## App-owned Diary deployed — 2026-09-14
 
 Implemented transactional tenant-local Diary storage and delayed immutable WebDAV
 backup, explicit copy/verify import, portable restore and status UI. This supersedes
-the pending SMB working-corpus direction. Candidate only: production remains
-`5894266`, with no real Diary import or deployment. See
+the pending SMB working-corpus direction. Deployed as `55b2767` after explicit authorization and verified backup/image
+checks. The real Diary remains on its original WebDAV connection until explicit
+import. Direct llama.cpp integration is now authorized as the next implementation. See
 [design, limitations and restore runbook](spec-managed-diary.md).
 
 ## Roadmap resumed — 2026-09-12

@@ -501,3 +501,24 @@ for persistent state, backup/restore and staged rollout requirements. Existing
 legacy corpora remain active until explicit verified import. Preserve the full
 Diary DB-parent directory in disaster-recovery archives: `managed-diary.db` is
 primary data, not a rebuildable retrieval cache.
+
+
+## Managed Diary release — 2026-09-14
+
+User authorized the current changes for GitHub and production. All three services
+now run **55b2767**, replacing 5894266. Exact candidate images passed 324 serial
+Linux server tests and 220 Diary tests (two existing dependency warnings). OCR's
+image ID is identical to the previous verified release. Local web tests,
+typecheck/build, synthetic WebDAV/restore and responsive editor checks passed.
+
+Pre-release backup `ab_20260914_022413` verified web and Diary state and restarted
+both services. Retain 5894266 and `.bak.before-55b2767` env/Compose backups. The
+installed writable-mount preflight passed; the full Diary state remains on
+`/mnt/docker/appdata/cowork/state/diary` at `/app/data`. All services report healthy;
+web setup-status and internal OCR health return 200. Public JS/CSS hashes match
+`index-C03IOv_X.js` / `index-0b_5wm7O.css`. Authenticated browser reload and Diary
+calendar/storage controls passed. The existing Diary visibly remains on WebDAV
+with the explicit import preview available. No real import or test prompt was sent.
+
+The direct llama.cpp rewrite starts after this release; no production inference
+backend switch is included in 55b2767.

@@ -1,8 +1,9 @@
 # App-owned Diary with delayed WebDAV backup
 
-Implementation candidate, 2026-09-14. Not deployed; no real Diary imported.
+Deployed as `55b2767` on 2026-09-14 after explicit user authorization. No real
+Diary imported; existing users retain their original backend until verified import.
 This replaces the proposed dedicated SMB working corpus as the current direction.
-The existing production release and all original corpora remain in place.
+All original corpora remain in place. See deployment.md for rollout evidence.
 
 ## Behavior
 
