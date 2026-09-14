@@ -1,5 +1,14 @@
 # Roadmap audit — 2026-09-10
 
+## Native preset suggestions — 2026-09-14
+
+Production **be34fa5**: Model Loader's autoconfig sizing now lives in noevia as an
+admin "Suggest settings from model file" action (see deployment.md). Model Loader
+itself stays a separate, stopped-by-default operator tool. Possible follow-ups: load-test
+the larger suggested contexts for Qwen 4B and the Gemmas before adopting them; port
+Model Loader's benchmark suite or measured-throughput readback if wanted.
+
+
 ## Freebuff review release — 2026-09-14
 
 Production **1d9bf6a** (see deployment.md). Freebuff implemented, Claude reviewed and

@@ -799,3 +799,24 @@ The same day's server cleanup had removed the stopped `lemonade`,
 (restart `no`) from their retained Compose files: llama-vulkan-test at its pinned
 digest, model-loader-test rebuilt from its pinned source. Lemonade was re-pulled as
 `latest`, so a native rollback may get a newer Lemonade than the 10.8.0 it replaced.
+
+## Native preset suggestions release — 2026-09-14
+
+Production **be34fa5** replaces 1d9bf6a. Admins get "Suggest settings from model file"
+in the native runtime profile: noevia reads GGUF headers through a new read-only
+`${LLAMACPP_MODELS_DIR}:/models:ro` web mount and sizes KV cache (hybrid SSM,
+sliding-window, shared-KV layers), vision projector, built-in MTP draft KV and a 1 GiB
+reserve, with a 5% margin, against `LLAMACPP_MEMORY_LIMIT` (14g). The sizing is
+adapted from scratchhax/model-loader e11a6ec (MIT; see THIRD_PARTY_NOTICES.md).
+Suggestions only fill the editor draft; applying still uses CAS, unload-all and reload
+rollback. Estimates matched the 2026-09-12/13 calibration peaks: Qwen3.5 9B at 262144
+with mmproj 12.7 vs 13.2 GiB raw, Gemma 4 E4B at 131072 with mmproj 8.5 vs 8.6.
+The live override gained the web mount and two environment keys
+(`.bak.before-be34fa5` retained). Web image 349/349, Diary 275. Backup
+ab_20260914_165258. Guarded rollout (restores the override on failure) passed; four
+services healthy, zero restarts/OOM, native llama unchanged, web cannot write
+`/models`. In-container production run over the live presets suggested Qwen 4B 262144
+(11.3 GiB, draft-mtp), Qwen 9B 262144 (13.4), Gemma E4B 131072 (8.9), Gemma E2B 131072
+(6.3), refused nomic, and left models.ini unchanged. Suggestions are unqualified until
+load-tested; production presets were not changed. Assets index-l9jdb2u8.js /
+index-D-dyhOXC.css. Rollback 1d9bf6a plus the override backup.
