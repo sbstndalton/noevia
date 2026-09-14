@@ -1,6 +1,6 @@
 # Diary Markdown workspace
 
-Status: proposed roadmap item, 2026-09-14. No runtime changes or migration.
+Status: first editor increment implemented locally, 2026-09-14. Not deployed; no migration.
 
 ## Direction
 
@@ -71,5 +71,19 @@ attachment authorization, keyboard navigation and responsive editor layouts.
 
 ## Delivery status
 
-Proposed and documented only. No new editor, revisions, backlinks, offline cache,
-trash, synchronization engine or encryption shipped or deployed in this pass.
+First editor increment implemented locally: expanded responsive workspace dialog,
+folder browsing, source/preview split, explicit keyboard save, retained editor after
+save, dirty/saving/error feedback and server stored-version comparison. Accepting
+a reviewed base retains the draft; a later competing write still encounters the
+existing hash/ETag guard. Discard/reload asks explicitly. Markdown source is kept
+verbatim; the existing limited preview renderer is unchanged.
+
+Verified: 390 web tests, typecheck/build, 21 relevant Diary workspace tests;
+synthetic browser save, failed-save draft preservation, conflict comparison,
+manual reconciliation, keyboard save and 375/768/1440 light/dark layouts.
+
+Remaining in increment 1: local-folder conflict reconciliation (existing pending
+save/sync recovery remains), richer file-loading feedback, replacing the expanded
+dialog with an integrated page workspace, and wider keyboard/accessibility QA.
+No revisions, backlinks, new offline cache, trash or encryption implemented.
+Production remains fca1f19; no deployment performed.

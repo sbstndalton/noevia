@@ -1158,3 +1158,21 @@ backup and rollback evidence. Populated Usage/pricing browser release checks pas
 Diary Markdown workspace remains proposed; Code execution, SMB cutover and off-site
 backup decisions remain unfinished. This is one application release, not roadmap
 completion. The deployment record commit is documentation only.
+
+
+## Markdown editor first increment — 2026-09-14
+
+Implemented locally: expanded workspace dialog with bounded folder browsing,
+source/preview panes, explicit Cmd/Ctrl+S, dirty/save feedback and retained editor
+on success. Server comparison retains the draft and offers explicit reviewed-base
+acceptance or confirmed discard/reload. Existing guarded saves remain authoritative.
+Local-folder pending saves/sync keep their existing recovery contract; comparison
+is disabled there pending a separate reconciliation increment.
+
+Verification: clean starting HEAD da237c6; preview 31287 responds. Production
+rechecked on fca1f19 with all services healthy, zero restarts/OOM. 390 web tests,
+typecheck/build and 21 Diary workspace tests pass (two existing dependency warnings).
+Synthetic browser regression lives in apps/web/qa/diary-editor.cjs and covers
+failure preservation, server conflict/reconciliation, keyboard save and responsive
+light/dark panes. No real corpus or model calls; no deployment. See workspace spec
+for the unfinished parts of increment 1 and subsequent decision-dependent work.
