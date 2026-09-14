@@ -1199,3 +1199,24 @@ base preservation, discard protection, list retry, search/backlinks, safe links,
 unsaved-source export and responsive light/dark workspace. Production remains
 fca1f19. Revision retention is awaiting the requested user decision; full archive
 export, trash/import and richer date/tag/dialect behavior remain unimplemented.
+
+## Model guidance and inference hardware — 2026-09-14
+
+Implemented locally following the CanIRun.ai product review: Models → Guidance
+filters reported capabilities and assesses one explicit memory pool against model
+file size and a configurable reserve. Unknown values remain unknown; no speed,
+quality or runtime-compatibility guarantees. Download variants share the plan;
+the first variant is no longer labelled a recommended quant without evidence.
+Model-list loading/empty/error/retry and invalid-response handling were tightened.
+
+Authenticated, GET-only hardware reading calls the configured Lemonade system-info
+endpoint and returns only CPU/memory/GPU fields. Shared memory is separate from
+VRAM and RAM. Applying a reported capacity is explicit. CanIRun code/catalogues
+were not imported; its hosted API is not used. See spec-model-guidance.md.
+
+Verified: 404 web tests, typecheck/build; actual synthetic HTTP auth, GET-only,
+field allowlisting, failure/retry; browser capability/fit/unknown states,
+read/apply hardware, download-plan continuity, retry and responsive light/dark.
+All checks avoid inference/model changes. A read-only production upstream query
+verified system-info availability; noevia's new route is local only. Production
+rechecked on fca1f19, all services healthy with zero restarts/OOM. No rollout.

@@ -60,3 +60,12 @@ QA and recheck live state before any release; use docs/deployment.md and the
 mandatory preflight wrapper. The broader roadmap remains open: SMB client/cutover,
 off-site destination/budget, managed-path rename/delete policy and client bridge
 workflow retain their existing decisions and safety constraints.
+
+## Models follow-up — 2026-09-14 (local)
+
+Switch/Manage now distinguish model loading, empty lists and retryable failure;
+model responses are validated before use. The model window adds Guidance with
+reported-capability filtering, an explicit memory plan and read-only inference
+hardware information. Download variants share the plan. This does not complete
+reasoning-setting load retry, runtime model qualification or automatic routing.
+See spec-model-guidance.md and the latest roadmap verification record. No deployment.
