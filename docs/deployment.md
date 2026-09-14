@@ -742,3 +742,30 @@ Retain 11155df and .bak.before-e9358ab env/Compose backups for app-only rollback
 The two added managed SQLite tables are additive; no live data was imported.
 Next: short-height populated sidebar fix, then reversible managed trash/recovery,
 Markdown fidelity and scoped Claude client verification. No subagents authorized.
+
+
+## Short-screen sidebar release — 2026-09-14
+
+Production **ee86c24** replaces e9358ab. Short-height/keyboard navigation scrolls
+without collapsing history; touch Options targets remain 44px, and menus fit the
+visible viewport. Expanded phone rail is opaque; section overlap caps removed.
+
+429 local web tests, typecheck/build; seven populated viewport/keyboard cases in
+both themes with scroll/hit/menu Rename/Escape checks and reviewed screenshots.
+Existing mobile and Diary editor suites pass. Exact Linux web image: 345 server
+tests pass. Initial image run lacked repository config fixtures; mounting the
+three read-only config fixtures resolved its sole ENOENT failure. Diary/OCR image
+identities match the previously verified release. CI 34826626504 all jobs passed.
+
+Backup ab_20260914_051311 verified both archives; completed 05:13:27 EDT.
+Preflight and app-only rollout passed, native container unchanged. All four
+services healthy, zero restarts/OOM; OCR HTTP 200. Public assets match
+index-B4SS5Cq1.js / index-kRE51da1.css. Production 375×360 synthetic ordinary chat
+returned SIDEBAR_RELEASE_OK (5.0 s, 516 input/103 output, 26.4 tok/s, 32768 context,
+MTP61.2%, no tools). Actual sidebar scrolling exposed its recent row; coordinate
+Options click opened a fully visible menu and Archive removed the synthetic row
+at the same viewport. Normal viewport/New chat restored. No real Diary access.
+
+Rollback e9358ab and .bak.before-ee86c24 configuration/Compose backups retained;
+app-only preflight/up.sh with --no-build --no-deps --wait web diary ocr.
+Next: reversible managed trash/recovery; no retention/purge policy enabled.
