@@ -820,3 +820,21 @@ services healthy, zero restarts/OOM, native llama unchanged, web cannot write
 (6.3), refused nomic, and left models.ini unchanged. Suggestions are unqualified until
 load-tested; production presets were not changed. Assets index-l9jdb2u8.js /
 index-D-dyhOXC.css. Rollback 1d9bf6a plus the override backup.
+
+## Model Loader and calibration releases — 2026-09-14
+
+Production **ccd313e** (after 21599e8, 2c82567, 6ea246f the same day). Measured native
+context calibration: load checks bound the search, then near-full streamed prompts run
+middle-out under an admin time limit with recall checks; the passing size is saved and
+the model is loaded with it. Model Loader (scratchhax/model-loader e11a6ec, MIT) runs as
+`cowork-model-loader-1` with the model folder, llamacpp config dir and Docker socket, no
+published port; noevia serves it to admins at `/model-loader` (same-origin writes only,
+no cookie forwarding, URL rewriting, bundled checksummed scripts, strict CSP). Its build
+patch keeps the preset preamble (`version = 1`), which upstream configparser rejected;
+the first bfbeb42 rollout failed its health check on that and rolled back automatically.
+New .env keys MODEL_LOADER_DATA_DIR / _LLAMA_CONTAINERS / _GPU_VRAM (cowork-llama-1:14) /
+_HOST_RAM_RESERVE_GB (8). Rollback 6ea246f with `.bak.before-ccd313e` env/Compose
+backups, then `docker rm -f cowork-model-loader-1`. The old `model-loader-test`,
+`llama-vulkan-test` and `lemonade` containers stay stopped for the native rollback.
+Note: saving from Model Loader rewrites models.ini without comments inside sections, and
+its backend restart restarts the whole llama container.
