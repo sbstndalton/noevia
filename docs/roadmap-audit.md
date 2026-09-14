@@ -1226,3 +1226,13 @@ control after its busy state, without stealing focus from a control the user has
 moved to. File navigation focuses the workspace heading; editing a new path does
 not move focus on each keystroke. Verified by browser keyboard-save focus assertion
 and the full Diary/model browser regressions; 404 web tests, typecheck/build pass.
+
+Context rail correction: project/chat/Diary rails now use the continuous back
+canvas without independent tint, blur or shadow. Diary's Markdown navigation
+is on the right; at 1100px and below both Diary contexts flow below content,
+without the former 150px cap. The landing overview keeps entries while the
+context browser owns files, eliminating repeated memory/source sections.
+Synthetic browser assertions cover placement, one file browser, transparency,
+overflow and retained editor recovery at phone/tablet/desktop widths; light/dark
+screenshots reviewed. 404 web tests, typecheck and build pass. Local preview
+updated; not deployed.
