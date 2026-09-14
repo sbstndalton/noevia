@@ -183,3 +183,15 @@ recovery, proxy errors, preview/restore failure safety and malformed ZIP paths.
 Download failure/retry and draft preservation pass six viewport sizes in both
 themes. Visual QA exposed telemetry overlapping the phone export button; workspace
 scroll clearance now keeps it reachable and a center hit-test guards the fix.
+
+## Managed ZIP import — shipped e9358ab
+
+The in-app preview/import path accepts noevia-workspace-v1 archives up to 32 MiB
+compressed, retaining existing expanded limits. Only new Imports/<name> folders
+in app-managed storage are supported; all destination conflicts are refused.
+Preview shows paths and identical-content duplicates. Apply revalidates under
+tenant locks and refuses pending capture writes. It never changes active layout
+settings. Source, folders, backup update, idempotent receipt and index outbox
+commit together. Index transfer retries after failure; ordinary recovery performs
+indexing. No inference occurs in preview/Apply. A fresh preview recognizes a
+completed import receipt. Reversible trash and retention remain pending.

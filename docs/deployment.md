@@ -699,7 +699,7 @@ real-HTTP restore workflow verifies the new ZIP export and isolated restore.
 
 Backup ab_20260914_043757 verified both state archives; completion 04:38:12.
 The installed mount preflight and --no-deps web diary ocr rollout passed. All four
-services healthy, restarts0/OOMfalse; OCR HTTP200. Public assets are
+services healthy, zero restarts/OOM; OCR HTTP 200. Public assets are
 index-m33txJ5p.js / index-KAGKyq4l.css. Production 375×360 ordinary synthetic chat
 returned EXPORT_RELEASE_OK in3.0s,514in49out,26.2tok/s,32768context,MTP59.2%, no
 tool calls. Chat archived,viewportreset,Newchat. No real Diary corpus access.
@@ -708,3 +708,37 @@ App-only rollback: current symlink and COWORK_VERSION back to48432fe, then
 installed preflight/up.sh with --no-build --no-deps --wait web diary ocr. Keep
 current native override and provider configuration. Config/Compose backups are
 .bak.before-11155df; no schema, credentials or backend changes were made.
+
+## Previewed managed workspace import release — 2026-09-14
+
+Production application **e9358ab** replaces 11155df. ZIP preview and explicit Apply
+into a new managed Imports folder are deployed, including transactional source /
+empty-folder / backup / retry-receipt / index-outbox handling. Preview recognizes
+a completed import after reload. Existing data/settings are preserved; legacy
+storage is not migrated. Browser upload cap is 32 MiB. No retention policy added.
+
+429 local web tests, typecheck/build; 258 local Diary tests (three skipped, two
+existing warnings). Exact Linux images passed 346 web/proxy and 261 Diary tests.
+CI 34825276184 passed all three jobs. Synthetic six-size/two-theme import UI,
+editor save/conflict regressions and seven-size/two-theme mobile suite passed.
+The real synthetic HTTP recovery workflow verifies ZIP export/import/retry/readback.
+
+Backup ab_20260914_045459 verified both archives and completed at 04:55:15.
+Installed preflight and app-only deployment passed; native container unchanged.
+All four services healthy, zero restarts/OOM; OCR HTTP 200 at its configured 8030
+port. An initial manual probe used the wrong 8090 port; corrected probe succeeded.
+Public assets match index-CrOIZ7n1.js / index-D-NOzdGs.css. Production 375×360
+ordinary-chat smoke returned IMPORT_RELEASE_OK in 3.7 s, 516 input/68 output tokens, 26.9 tok/s,
+32,768 context, MTP 60.0%, no tool calls. Synthetic chat archived; normal viewport
+and New chat restored. Real Diary was never opened/read/imported/reindexed.
+
+Production mobile follow-up discovered: expanded sidebar at 375×360 leaves no
+visible recent-chat list (header/footer consume available height). AX/locator
+menu clicks had no effect until normal viewport was restored, where menu/archive
+worked. This is a pending populated-sidebar reachability regression to fix next;
+existing mobile suite did not catch it. Do not call mobile QA complete.
+
+Retain 11155df and .bak.before-e9358ab env/Compose backups for app-only rollback.
+The two added managed SQLite tables are additive; no live data was imported.
+Next: short-height populated sidebar fix, then reversible managed trash/recovery,
+Markdown fidelity and scoped Claude client verification. No subagents authorized.

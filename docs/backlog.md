@@ -7,7 +7,7 @@ Portable workspace ZIP export and isolated operator restore are deployed in
 GPU/app qualification and backend cutover are complete; see roadmap-audit.md.
 
 
-Production was verified on `11155df` on September 14. The dated checklist below
+Production was verified on `e9358ab` on September 14. The dated checklist below
 is historical; this current list supersedes its shipped/pending labels.
 
 - Continue mobile bug fixes and phone/landscape UI verification, then repeat
@@ -20,7 +20,7 @@ is historical; this current list supersedes its shipped/pending labels.
   by `55b2767`. Do not reimplement the older pending entries below.
 - App-owned Diary supersedes the SMB working-corpus proposal. The real Diary
   remains on WebDAV until explicit verified import; use synthetic data for QA.
-- Remaining scoped work: previewed workspace import and reversible recovery, the scoped Claude bridge client verification, and native workload
+- Remaining scoped work: short-height populated sidebar reachability, reversible recovery, the scoped Claude bridge client verification, and native workload
   reliability. Inspect existing storage/version/backup contracts before adding
   overlapping revision or retention features.
 - DAV rename/delete/locking and general client interoperability need a defined
