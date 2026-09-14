@@ -1,7 +1,12 @@
-"""Build-time patch: serve bundled browser libraries instead of CDN copies.
+"""Build-time patches for noevia.
 
-Fails the build if an expected tag is missing, so an upstream change cannot silently
-reintroduce a third-party script.
+1. Serve bundled browser libraries instead of CDN copies.
+2. Accept llama.cpp preset files that start with top-level keys (`version = 1`) before the
+   first section. Python's configparser rejects them, and Model Loader rewrites the whole
+   file on save, so the preamble is captured on read and written back unchanged.
+
+Fails the build if an expected line is missing, so an upstream change cannot silently
+reintroduce a third-party script or drop the preamble handling.
 """
 from pathlib import Path
 
@@ -31,3 +36,33 @@ for path in templates.rglob('*.html'):
 
 main = Path('/srv/app/main.py')
 main.write_text(main.read_text() + '\n\n# noevia: bundled browser libraries.\nfrom fastapi.staticfiles import StaticFiles as _NoeviaStatic\napp.mount("/_vendor", _NoeviaStatic(directory="/srv/vendor"), name="noevia-vendor")\n')
+
+ini = Path('/srv/app/ini.py')
+text = ini.read_text()
+old_read = """    cp = _new_parser()
+    if settings.models_ini_path.exists():
+        cp.read(settings.models_ini_path, encoding="utf-8")
+    return cp"""
+new_read = """    cp = _new_parser()
+    cp._noevia_preamble = ""
+    if settings.models_ini_path.exists():
+        # noevia: keep top-level keys such as `version = 1` that precede the first section.
+        lines = settings.models_ini_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        first = next((i for i, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))
+        cp._noevia_preamble = "".join(lines[:first])
+        cp.read_string("".join(lines[first:]), source=str(settings.models_ini_path))
+    return cp"""
+old_write = """    text = buf.getvalue()
+
+    tmp = path.with_suffix(path.suffix + ".tmp")"""
+new_write = """    preamble = getattr(cp, "_noevia_preamble", "")
+    if preamble and not preamble.endswith("\\n"):
+        preamble += "\\n"
+    text = preamble + buf.getvalue()
+
+    tmp = path.with_suffix(path.suffix + ".tmp")"""
+for old, new in ((old_read, new_read), (old_write, new_write)):
+    if text.count(old) != 1:
+        raise SystemExit(f'ini.py: expected exactly one {old.splitlines()[0]!r}')
+    text = text.replace(old, new)
+ini.write_text(text)
