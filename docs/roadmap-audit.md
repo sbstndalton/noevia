@@ -1220,3 +1220,9 @@ read/apply hardware, download-plan continuity, retry and responsive light/dark.
 All checks avoid inference/model changes. A read-only production upstream query
 verified system-info availability; noevia's new route is local only. Production
 rechecked on fca1f19, all services healthy with zero restarts/OOM. No rollout.
+
+Keyboard follow-up: explicit editor save/compare restores the previously focused
+control after its busy state, without stealing focus from a control the user has
+moved to. File navigation focuses the workspace heading; editing a new path does
+not move focus on each keystroke. Verified by browser keyboard-save focus assertion
+and the full Diary/model browser regressions; 404 web tests, typecheck/build pass.
