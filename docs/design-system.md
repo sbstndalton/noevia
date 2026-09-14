@@ -15,8 +15,11 @@ canvas. Reserve panels for composers, dialogs, and things with distinct boundari
 The existing Polymetal Day/Night theme identifiers and `cowork-theme` key remain.
 Light/dark mode is independent of the palette: Warm uses cream and earth tones,
 Cool preserves the slate and soft-white default, and Neutral uses grayscale.
-Choose either in Settings → General or during setup. Palette selection is local
-to the browser and persists under `cowork-palette`. Burgundy stays in the wordmark and focus/details;
+Sage adds mineral green and Iris adds ink violet, each with light/dark tokens.
+Choose in Settings → General. Each mode keeps its own palette, saved with the
+authenticated profile. Existing browser keys remain as the before-paint cache;
+`cowork-palette-light` and `cowork-palette-dark` preserve independent choices.
+Loading, saving and retry feedback describe profile synchronization. Burgundy stays in the wordmark and focus/details;
 primary actions use primary text color as their background with app-canvas text.
 Destructive actions retain their own danger color.
 
@@ -100,3 +103,43 @@ Menus support arrows, Home/End and Escape, stay inside the viewport, and use a
 short opacity/position transition. Reduced-motion preferences disable it. Project
 save failures leave the editor open and show the error immediately above its
 footer. Settings retain their category structure with quieter row dividers.
+
+## Shared optical material — 2026-09-13 continuation
+
+Study 03's accepted sidebar material is now shared in the final application CSS.
+Decorative `--glass-*` tokens extend tokens.css; existing text, focus, theme and
+palette contracts remain authoritative. Settings navigation/header/selection,
+composers, project cards and context rails share a directional rim and tonal depth.
+Only bounded controls/popovers use background blur. Never filter/transform the
+sidebar ancestor or composer ancestor; child menus must remain above the content.
+Reading planes remain opaque. Reduced-transparency/contrast fallbacks remove
+optical effects. See settings-audit.md for implementation and verification scope;
+this material is implemented locally and not deployed.
+
+### Control interaction refinement
+
+Enabled buttons, fields and bounded composer/card surfaces now share a fading,
+pointer-following reflection. Animation settles and stops; it does not run an idle
+page loop. Do not overwrite existing absolute/fixed control positioning or filter
+menu ancestors. Shared control/panel radius tokens live in tokens.css. Settings
+rows stack descriptions and align actions. Native selects progressively use a
+styled base-select picker where supported, retaining native fallback and keyboard
+behavior. Reduced preferences suppress optical motion/transparency.
+
+## Optical reflection update — 2026-09-13
+
+Pointer response combines a narrow white glint, an opposing cool reflection and
+an angled warm sheen. Coordinates and angle ease with pointer movement, keeping
+content sharp. This CSS material does not claim native optical refraction. Existing
+reduced-motion, transparency and high-contrast fallbacks remain in place. All ten
+mode/palette combinations pass the automated semantic contrast checks.
+
+### Live scene supersedes pointer reflections
+
+The September 13 rewrite removes mirrored pointer highlights and CSS ambient drift.
+One locally generated WebGL field lights translucent surfaces from several moving
+sources. Rounded edge-distance refraction is adapted from dashersw/liquid-glass-js
+(MIT attribution in public/liquid-glass-LICENSE.txt); ybouane/liquidglass supplied
+additional live compositing reference. It does not capture private page content.
+No-WebGL, reduced-motion/transparency and contrast fallbacks keep opaque readable
+surfaces. Background animation is owned exclusively by public/glass.js.

@@ -36,3 +36,10 @@ for (const palette of ['warm', 'cool', 'neutral', 'invalid']) test(`restores ${p
   assert.equal(attributes['data-palette'], palette === 'invalid' ? 'cool' : palette);
   assert.equal(attributes.content, {warm:'#fbf7f0',cool:'#f7f9fc',neutral:'#fafafa',invalid:'#f7f9fc'}[palette]);
 });
+
+for(const mode of ['light','dark'])test(`independent ${mode} palette restores before React`,()=>{
+ const attributes={}; const storage={'cowork-theme':mode,'cowork-palette':'warm','cowork-palette-light':'sage','cowork-palette-dark':'iris'};
+ vm.runInNewContext(code,{localStorage:{getItem:key=>storage[key]},document:{documentElement:{setAttribute:(k,v)=>attributes[k]=v},querySelector:()=>({setAttribute:(k,v)=>attributes[k]=v})}});
+ assert.equal(attributes['data-palette'],mode==='light'?'sage':'iris');
+ assert.equal(attributes.content,mode==='light'?'#f4f8f5':'#22202b');
+});

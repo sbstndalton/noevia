@@ -1470,3 +1470,11 @@ light/dark and 375/768/1440 layouts without horizontal overflow. Candidate rollo
 is pending; production remains f7b9d95 until the deployment record confirms it.
 
 Source-refresh rollout is verified as `8fa1112`; see deployment.md for checks and rollback.
+
+### 2026-09-13 Settings/material continuation
+
+See [Settings category audit](settings-audit.md) and the latest
+[verification record](roadmap-audit.md). First reliability increment and shared
+material are implemented locally, with 376 tests/typecheck/build and focused
+browser verification. Not deployed; all-view integration/release QA remains open.
+Next: storage action serialization/retry, Users action errors, model-loading states.

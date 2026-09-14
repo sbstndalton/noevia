@@ -952,3 +952,199 @@ Production remains last verified at `8fa1112`; functional candidate `8bc4339` is
 built but not deployed. Recheck live state before rollout. Broader roadmap work
 remains authorized, with outstanding user decisions preserved in the handoff.
 See [the paste-ready continuation prompt](codex-handoff.md).
+
+## Settings reliability and shared material — 2026-09-13 continuation
+
+**Implemented locally:** [category audit](settings-audit.md), retryable validated
+profile/connection loading, named action feedback and busy states, retained name
+drafts, Diary preference failure feedback and accurate planned-feature labels.
+Actual authenticated server routes already persisted names/preferences; new tests
+exercise those paths rather than treating mock success as persistence evidence.
+The malformed instruction-skills response that crashed Sources now fails visibly.
+
+**Material implemented:** accepted Study 03 moved into real application assets;
+shared treatment extends across Settings, headers, composers, cards, context rails,
+menus, coding preview and modal/setup surfaces. Layout, approval cards, semantic
+palette identifiers and the unfiltered sidebar ancestor are preserved. Preview
+now uses the same application CSS rather than a competing injected stylesheet.
+
+**Verified:** 376 web tests, typecheck and build. Browser Settings category/layout
+matrix at measured 375/768/1440 in both themes; all six appearance combinations.
+Name pending/success/reload, failed save retains draft, successful retry; Diary
+preference on/off/reload and forced failure; connections load failure/retry/empty.
+Representative desktop Settings/Projects/Sources/Diary and mobile Settings,
+Projects/chat screenshots reviewed. Mobile account menu opens Settings above page;
+composer draft editing, visible keyboard ring and files/tools popover checked.
+Synthetic preview now explicitly returns valid settings/source data and rejects
+unsupported settings mutations (501), instead of pretending they succeeded.
+
+**Still unverified / not deployed:** full populated model manager, setup wizard,
+security ceremonies, all destructive/user administration actions, real storage /
+provider integrations, and exhaustive all-view/all-palette visual regression.
+The 54 Settings category/theme/width checks are not 54 screenshot reviews.
+Finish these release gates before deploying the redesign. No production connection,
+model, corpus, storage mapping or sharing permission was changed. Existing
+functional candidate `8bc4339` stays independently reviewable; production was last
+verified at `8fa1112`, not rechecked during this local UI increment.
+
+**Next bounded Settings work:** serialize StoragePicker actions and add direct
+load retry; improve Users mutation and clipboard errors; expose reasoning-load
+failure/retry and explicit model-list empty/loading states. App-password initial
+load/retry and the stale disabled account-menu usage shortcut also remain.
+SMB client/cutover, off-site backup destination/budget, managed DAV policy and
+Claude-client workflow remain open with their prior safety constraints.
+
+## Interactive glass controls follow-up — 2026-09-13
+
+User review found remaining mismatched buttons/dropdowns, square Settings rows
+and reflection limited to the sidebar switch. Implemented a shared pointer light
+layer for enabled buttons, fields, project cards, composers and navigation controls.
+It eases toward the pointer, fades on exit and stops scheduling frames when settled.
+Touch/reduced-motion/transparency/contrast skip tracking; positioned controls keep
+their original positioning, with no filtered/transforming menu ancestors.
+
+Buttons now share padding, optical edges, pressed/hover feedback and rounded
+corners. Settings rows stack name/description and align their action, with responsive
+wrapping; stat/rate/preview surfaces use consistent corners. Native select semantics
+remain: browsers supporting base-select get a rounded, blurred option panel with
+an entry transition, rotating chevron and selected/focus states. Other browsers
+retain native option panels. Mobile category chevron wrapping was reproduced and
+fixed in this pass.
+
+Verified locally: 378 web tests, typecheck/build. New motion tests check settling,
+coordinate updates, exit cleanup, touch/reduced-motion and positioned-button
+preservation. Browser verifies actual reflected coordinates/opacity on the Diary
+button, open option panel, Down/Enter selecting Nextcloud then restoring local
+without saving, and all Settings categories at measured 375/768/1440 light/dark
+without dialog overflow. Representative mobile and desktop screenshots reviewed.
+The original browser tab's zoom caused inconsistent captures; a clean verification
+tab supplied the measured breakpoints. No production deployment or storage changes.
+
+## Independent profile appearance — 2026-09-13
+
+**Implemented:** Sage (mineral green) and Iris (ink violet) join Warm, Cool and
+Neutral in both modes. Light and dark retain independent palettes. An authenticated
+profile appearance endpoint validates and stores the pair plus mode in SQLite,
+scoped exclusively to the session user. Browser keys supply the initial paint and
+migrate to profile storage. Serialized writes preserve the latest choice, including
+changes made during hydration; errors retain pending choices for an explicit retry.
+General reports loading, saving, saved and retry states.
+
+Glass now combines a narrow glint, opposing tinted reflection and pointer-dependent
+angle instead of a single colored spotlight. Reduced-motion/transparency/contrast
+and touch safeguards remain.
+
+**Verified locally:** 389 web tests, typecheck and build. Tests cover all ten
+mode/palette contrast combinations, startup cache, hydration races, ordered writes,
+failed-save retry, endpoint validation/authentication, account isolation and SQLite
+reopening. Browser review confirms Sage light/Iris dark independent selection and
+restoration after reload in the synthetic preview; Settings palette layout reviewed.
+
+**Deployment:** not deployed. Preview profile storage is deliberately process-memory
+only; the production implementation uses SQLite. Existing release gates and safety
+constraints remain unchanged. No real profile, corpus, provider or storage data used.
+
+## Ambient light refinement — 2026-09-13
+
+Implemented a low-contrast 36-second alternating background drift on the main
+workspace and Settings. Reduced shared hover reflection opacity to 40% and the
+mode-switch glint from .55 to .25. Reduced-motion/transparency and increased
+contrast disable the ambient field. No layout, profile or data changes.
+Verified locally: 389 tests, typecheck/build; browser confirms changing background
+positions and computed button sheen opacity .4, with dark Settings visual review.
+Not deployed; available in the synthetic local preview.
+
+## Usage theme repair and inference island — 2026-09-13
+
+Implemented: removed the angled hover gradient and its rotating coordinate entirely.
+Ambient background now has one gradient; opening Settings pauses the workspace
+animation beneath it. Inference telemetry has a darker rounded island with inset
+spacing and wrapping. Usage's obsolete surface/line/muted/accent variables were
+replaced with active theme tokens; cards, filters, text and heatmap now follow both
+modes. Rounded cards, larger period controls and removal of the empty graph frame
+complete this visual increment. Existing usage loading/error/retry remains intact.
+
+Verified locally: 389 tests, typecheck/build. Browser reviewed Usage in light and
+dark (white vs dark green card backgrounds with corresponding text), confirmed
+background canvas paused while Settings runs, and reviewed telemetry island.
+Preview has synthetic empty usage; populated aggregate/rates release QA remains
+outstanding. Not deployed; no data or approval-policy changes.
+
+## Shared live glass scene rewrite — 2026-09-13
+
+Replaced pointer tracking (including opposite/mirrored highlights) with one WebGL
+scene. Three diffuse light sources travel across the same field; rounded panel
+edges refract that field. The single canvas moves into Settings when open and back
+to the workspace on close. Surface transparency now exposes the moving field;
+opaque composer wrapper removed. Text and private content are never rasterized.
+
+References reviewed: dashersw/liquid-glass-js and ybouane/liquidglass. Adapted the
+first project's MIT rounded-distance shader math (license shipped in public/).
+The second project's live-scene/layered-compositing design informed the approach;
+neither full DOM-capture wrapper is installed. This implementation refracts its
+procedural light field, not screenshots of arbitrary page content. No remote
+textures or rendering services. Max 900px scene dimension, approximately 30fps,
+one context; visibility and accessibility preferences stop rendering, unavailable
+or lost WebGL leaves the normal readable interface.
+
+Verified: 390 tests, typecheck/build; lifecycle tests cover single canvas switching,
+hidden/reduced-motion stop/resume and no-WebGL fallback. Browser reviewed light/dark
+Settings and workspace, confirmed one canvas and no browser errors. Not deployed.
+
+## Code glass parity and seam correction — 2026-09-13
+
+Implemented: Code workspace now exposes the shared light scene; its composer is
+one padded rounded glass surface with transparent draft input, consistent controls,
+focus outline and explicit draft-only copy. Side panel is a rounded glass island,
+overlaying rather than squeezing content below 1000px. Sidebar header and mobile
+rail spacing corrected. Code composer/panel participate in the renderer's bounded
+surface list. Shader edge distortion fades continuously at the boundary instead
+of cutting off; ResizeObserver keeps sampled panel bounds aligned after resizing.
+
+Verified: 390 tests, typecheck/build. Browser reviewed Code light/dark, mobile
+composer and light side panel, desktop layout, and measured 375/768/1440 widths
+without document overflow. Single scene retained. Code execution remains disabled;
+no repository access, models or private data involved. Not deployed.
+
+## Button highlight contour check — 2026-09-13
+
+Inspector toggle and sidebar section toggles lacked a radius. They now share the
+12px control radius with shell/header icon buttons and the Diary header link;
+pseudo-element contours inherit their control shape. Browser inspected computed
+radii and Settings buttons. 390 tests, typecheck/build pass. Local only, not deployed.
+
+## Account shortcut and continuous chrome — 2026-09-14
+
+Enabled the account-menu Usage & activity shortcut and passed an explicit initial
+category through Chat/Code into Settings; ordinary Settings opens General. Removed
+the stale Preview label. Popup glass now derives from active palette chrome rather
+than fixed cool colors. Header and sidebar share a material with dividing borders
+removed in Chat, Code and Settings.
+
+Verified 390 tests, typecheck/build; browser clicked account shortcut through to
+loaded token totals, and confirmed dark/light popup colors change. Synthetic empty
+usage remains explicit. Not deployed; no data changes.
+
+## Context layout consolidation and light/Sources polish — 2026-09-14
+
+Removed top-right context drawer/toggle. Project overview retains its existing
+Instructions/Memory/Sources rail; project chats show one persistent context rail.
+Below 1100px both rails stack after the main content instead of overlaying it.
+Unscoped chats no longer show an empty project-context drawer. Sources receives
+consistent spaced file rows/storage panel and suppresses the unrelated chat composer.
+Light scene is neutral and lower intensity; softer palette-derived rims replace
+clashing colored edge shading.
+
+Verified: 390 tests, typecheck/build. Browser reviewed populated synthetic Sources,
+light surfaces and removal of the toggle. Persistent project-chat rail and breakpoint
+rules implemented; broader project-chat responsive visual QA remains before release.
+Not deployed. Source actions/data handling and write approvals unchanged.
+
+## Diary product references and Markdown workspace — 2026-09-14
+
+Added spec-diary-markdown-workspace.md after reviewing Moodiary documentation and
+existing noevia Markdown editor/storage code. Prioritized editor ergonomics and
+conflict resolution, revision history, Markdown links/backlinks, search/filtering,
+and portable export/recovery. Existing guarded saves are the base; no second
+content backend, automatic offline browser cache or corpus migration introduced.
+Status: proposed, documentation only; not implemented, verified or deployed.

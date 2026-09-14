@@ -20,3 +20,14 @@ test('users accepts valid lists and empty accounts', () => {
 test('malformed users fails before rendering the user list', () => {
   for (const value of [{}, null, { users: null }, { users: [null] }, { users: [{ id: 'test' }] }]) assert.throws(() => parseUsers(value), /invalid users response/);
 });
+
+const { parseProfile, parseProviders } = exportsObject;
+test('profile rejects malformed success responses and accepts an empty security list', () => {
+  const profile={user:{id:'one',username:'fixture',displayName:'Fixture',role:'member'},passkeys:[],sessions:[]};
+  assert.equal(parseProfile(profile),profile);
+  for(const value of [{},null,{...profile,passkeys:[{}]},{...profile,sessions:[{id:'one',lastSeenAt:'bad'}]},{...profile,user:{}}]) assert.throws(()=>parseProfile(value));
+});
+test('connections distinguishes a valid empty list from a malformed response', () => {
+  assert.equal(parseProviders({providers:[]}).providers.length,0);
+  for(const value of [{},null,{providers:[{}]},{providers:null}]) assert.throws(()=>parseProviders(value));
+});

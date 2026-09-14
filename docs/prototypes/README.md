@@ -60,3 +60,20 @@ widths. Inspected Projects, mobile Settings, Diary and a populated synthetic cha
 checked both modes and all palette selections. These focused checks supersede the
 previous resize limitation for these views; they do not claim every possible visual
 issue or production integration is finished. 373 tests, typecheck/build pass.
+
+## Study 04 — shared application material and Settings
+
+The accepted material now lives in the real `noevia.css`, with semantic optical
+tokens in `tokens.css` and the bounded reflection script in `public/glass.js`.
+`playful.css` is retained only as a historical entry point; the preview injects no
+competing design stylesheet. Settings now participates in the material treatment.
+
+`settings-fixture.cjs` supplies an explicit synthetic admin profile, process-memory
+name/Diary preference updates, delayed loading, empty security/connection/usage
+lists and disabled sharing. Open http://localhost:31287/__qa to fail the next
+profile, Diary preference or connections request. Restart resets these values.
+Unsupported settings mutations return 501; do not use real credentials. Instruction
+skills use a valid empty list. None of this is proof of production integration.
+
+See ../settings-audit.md for category status and ../roadmap-audit.md for verification
+and remaining release gates. The prior 8bc4339 deployment candidate is unchanged.
