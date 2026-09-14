@@ -686,3 +686,25 @@ against synthetic stored files, not the real production Diary corpus.
 Retain 02495a7 and .bak.before-48432fe env/Compose backups for app-only rollback
 using the preflight wrapper with --no-build --no-deps --wait web diary ocr.
 The pinned native backend/provider configuration remains in place.
+
+
+## Portable workspace export release — 2026-09-14
+
+Application 11155df replaces 48432fe; native router container unchanged.
+427 local web tests, typecheck/build, 344 exact Linux web/proxy tests and 236
+exact Linux Diary tests passed. GitHub CI 34823510937 passed all three jobs.
+OCR image identity matches 48432fe. Synthetic browser checks cover six viewport
+sizes and both themes; broader viewport/editor regressions passed. The synthetic
+real-HTTP restore workflow verifies the new ZIP export and isolated restore.
+
+Backup ab_20260914_043757 verified both state archives; completion 04:38:12.
+The installed mount preflight and --no-deps web diary ocr rollout passed. All four
+services healthy, restarts0/OOMfalse; OCR HTTP200. Public assets are
+index-m33txJ5p.js / index-KAGKyq4l.css. Production 375×360 ordinary synthetic chat
+returned EXPORT_RELEASE_OK in3.0s,514in49out,26.2tok/s,32768context,MTP59.2%, no
+tool calls. Chat archived,viewportreset,Newchat. No real Diary corpus access.
+
+App-only rollback: current symlink and COWORK_VERSION back to48432fe, then
+installed preflight/up.sh with --no-build --no-deps --wait web diary ocr. Keep
+current native override and provider configuration. Config/Compose backups are
+.bak.before-11155df; no schema, credentials or backend changes were made.

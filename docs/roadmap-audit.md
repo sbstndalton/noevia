@@ -1,5 +1,34 @@
 # Roadmap audit — 2026-09-10
 
+## Portable workspace export release — 2026-09-14
+
+Production application **11155df** replaces 48432fe. Stored-workspace ZIP export
+and verified isolated operator restore are deployed. Raw Markdown/binary bytes,
+empty folders and checksums round-trip; no corpus migration or retention policy
+was introduced. Phone export controls remain clear of the telemetry row.
+
+427 local web tests, typecheck/build; 233 local Diary tests (three skipped),
+344 exact-image web/proxy tests and 236 exact-image Diary tests pass. Two existing
+Python dependency warnings remain. GitHub CI 34823510937 passed all three jobs.
+Six-size/two-theme ZIP failure/retry/download/draft and center hit checks passed;
+seven-size/two-theme viewport/composer/settings checks and editor conflict/rebase
+regressions also passed. The real synthetic web/Diary recovery workflow now
+verifies authenticated binary export, unauthenticated/method rejection, archive
+preview and exact restoration to a new folder.
+
+Backup ab_20260914_043757 verified both state archives and completed at 04:38:12.
+Installed mount preflight passed. All four services healthy, zero restarts/OOM;
+native container unchanged, OCR HTTP 200. Public assets match index-m33txJ5p.js
+and index-KAGKyq4l.css. Production 375×360 ordinary-chat smoke returned
+EXPORT_RELEASE_OK in 3.0 s (514 input/49 output, 26.2 tok/s), 32,768 context and
+MTP59.2%, with no tool calls. Exact synthetic chat archived through its menu,
+viewport reset and New chat restored. No real Diary corpus access/export.
+
+Retain 48432fe and .bak.before-11155df config/Compose backups for app-only rollback.
+Next: in-app import preview/conflict handling and reversible recovery; operator
+ZIP restore is new-directory-only and does not activate or merge a live corpus.
+
+
 ## Portable workspace export candidate — 2026-09-14
 
 Added authenticated stored-workspace ZIP download with original Markdown/binary
