@@ -195,3 +195,43 @@ settings. Source, folders, backup update, idempotent receipt and index outbox
 commit together. Index transfer retries after failure; ordinary recovery performs
 indexing. No inference occurs in preview/Apply. A fresh preview recognizes a
 completed import receipt. Reversible trash and retention remain pending.
+
+## Managed Trash candidate — 2026-09-14
+
+Explicit single-file Trash and restore are available for saved Markdown in
+app-managed storage. The editor requires a clean saved buffer; server-side SHA
+compare-and-swap rejects changed or missing source. Capture-layout paths, the
+Diary index, files containing exchange markers and files over 512 KiB are refused.
+Legacy storage and browser folders are unchanged. No folder removal, permanent
+purge or automatic retention is enabled.
+
+Source removal/restoration, recovery receipt, backup generation and index outbox
+commit in one SQLite transaction. Pending capture writes block mutations. Ordinary
+recovery drains index invalidation; removing a source clears its old retrieval
+chunks. Mutation/list endpoints do not invoke inference or replay pending writes.
+Restore refuses existing files, folders and conflicting ancestor paths. Operation
+IDs make uncertain retries harmless, including retries after subsequent editing.
+The editor copy remains visible after trashing; compare storage before saving.
+
+Recovery capsules are hidden `.noevia-trash/<operation-uuid>.json` source files,
+format `noevia-trash-v1`, containing original path, SHA-256, exact base64 bytes,
+timestamp and trashed/restored state. They are not Markdown and are not indexed.
+The existing ZIP and immutable WebDAV backup formats include these files in the
+same source snapshot and checksum verification as other files. Restored capsules
+remain as receipts with their original bytes; no retention policy is implied.
+Existing export size/count limits include capsules and therefore fail explicitly
+if the complete export exceeds bounds. Trash pages scan 100 records at a time,
+including retained restore receipts; Load more reaches later records.
+
+Whole-backup isolated restore retains the hidden capsules. In-app ZIP import
+keeps them inside the new Imports folder and does not activate them as this
+Diary's Trash. To recover a capsule from either isolated output, run from
+`services/diary`:
+
+```sh
+python -m agent.workspace_trash /path/to/.noevia-trash/OPERATION_UUID.json /path/to/new-note.md
+```
+
+This verifies the capsule and creates only the explicitly chosen new file with
+private permissions. Existing destinations, including symlinks, are refused.
+No real Diary corpus, migration, capture replay or reindex was used for QA.

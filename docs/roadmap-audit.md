@@ -1,5 +1,28 @@
 # Roadmap audit — 2026-09-10
 
+## Managed Trash candidate — 2026-09-14
+
+Adds reversible single-file Trash/restore for app-managed Markdown, with saved
+buffer guards, capture/index protection, SHA compare-and-swap, occupied-path
+refusal and idempotent operation receipts. Source, recovery capsule, backup
+schedule and index invalidation commit atomically. Pending capture writes block
+mutations; endpoints perform no inference. No legacy migration or purge policy.
+
+Hidden recovery capsules retain exact bytes inside both ZIP and immutable remote
+backups, including after restore. Imported capsules remain inside their new
+Imports folder for isolated operator extraction; this is stated in the UI and
+workspace specification. Existing archive bounds count recovery content.
+
+429 web tests, typecheck/build; 272 local Diary tests with three existing skips.
+Synthetic real web/Diary HTTP recovery verifies auth/method guards, no-inference
+mutations, uncertain retry, ZIP capsule inclusion and restored source. Six-size,
+two-theme UI covers dirty drafts, lost responses, collision retry, reload with
+an empty active folder, 44px center hits, reduced motion and enlarged text.
+Existing seven-size mobile and editor save/conflict/reconciliation suites pass.
+Light and dark screenshots reviewed. No real Diary access. Production remains
+ee86c24 pending Linux image qualification and rollout.
+
+
 ## Short-screen sidebar release — 2026-09-14
 
 Production **ee86c24** replaces e9358ab. Short-height/keyboard navigation scrolls
