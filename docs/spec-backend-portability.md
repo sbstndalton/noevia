@@ -1,5 +1,12 @@
 # Backend portability investigation — 2026-09-13
 
+**2026-09-14 decision update:** the user authorized direct llama.cpp implementation.
+The native router adapter and application integration are now implemented; see
+[direct native integration](spec-direct-llamacpp.md). The investigation and
+alternative recommendations below retain their historical scope. Production
+Lemonade is retained for rollback and until GPU cutover qualification.
+
+
 Decision: retain production Lemonade while qualifying an isolated pinned backend.
 The user's request was to investigate a replacement, not migrate immediately.
 Existing direct llama.cpp staging proved larger context is feasible, but its

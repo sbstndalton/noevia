@@ -1,5 +1,17 @@
 # Roadmap audit — 2026-09-10
 
+## Direct native llama.cpp implementation — 2026-09-14
+
+Implemented native router lifecycle/readiness, public variant downloads and durable
+status, guarded native INI profiles, per-slot context/build observations, metrics,
+capability-aware UI and generic Compose overlay. No replacement router, Docker
+socket, production backend switch or real Diary test traffic. See
+[implementation and qualification boundary](spec-direct-llamacpp.md). Earlier
+Lemonade-retention recommendations below are historical. Verified: 423 web tests,
+218 Diary tests/3 skipped, typecheck/build, native HTTP/browser regressions and
+pinned-image API contract. Production remains healthy on `55b2767`.
+
+
 ## App-owned Diary deployed — 2026-09-14
 
 Implemented transactional tenant-local Diary storage and delayed immutable WebDAV
