@@ -281,7 +281,7 @@ at responsive widths. No deployment or real diary/financial-source access.
 
 | Item | Status | Evidence / remaining work |
 | --- | --- | --- |
-| UI/sidebar | Accepted, complete for now | Deployed `cd717b0`; see `ui-reference-review.md`. Do not reopen the visual redesign. |
+| UI/sidebar | Reopened by user; app-wide glass in progress | Preserve the Claude/ChatGPT layout. Local Study 03 received positive sidebar feedback; extend treatment across all views and Settings. See `spec-ui-direction.md` and `codex-handoff.md`. Not deployed. |
 | 1: agent deploy contract | Complete and deployed | Root `AGENTS.md`/`CLAUDE.md` link the brief and distinguish generic `DEPLOY.md`/`cowork.setup.json` from the existing live Unraid runbook. Wizard wording matches the implemented account checkbox and models guidance. Included in `e3b29bb` and subsequent releases. |
 | 2 / 5b: thinking modes | V1 deployed; uncapped budgets remain open | Admin default + project/free-chat/extras override; documented parameter support, labelled hints, rejection fallback and explicit high output budget. Uncapped local generation is not promised. |
 | 3: wizard restructure | Deployed | Fresh setup starts Welcome → Diary/chat choice → account, then provider/storage/preferences/passkey. Explicit hosted/external storage choices preserve saved configuration on skip/failure. Admin thinking preference is available; members retain their restricted flow. Insights was removed from the product and is not resurrected. |
@@ -921,3 +921,34 @@ Required UI review remains a release gate. The Mac has no mounted SMB pilot yet,
 and namespace rename/delete waits for the managed-path policy answer. Off-site
 backup destination/budget remain undecided. The Qwen calibration has completed
 and restored Gemma; no active GPU test remains.
+
+
+## Latest user direction and handoff — 2026-09-13
+
+The user now says the sidebar glass looks good and asks to carry the treatment
+across the whole UI, top to bottom, explicitly including the untouched Settings
+panel. Preserve the existing Claude/ChatGPT-inspired layout and mature artistic
+character. This supersedes the earlier closed UI/sidebar status and earlier
+rejections of the sidebar treatment; it is not approval of unreviewed screens.
+
+Next work:
+- Extend the accepted local material language through Chat, Projects, project
+  details/sources, Diary, Code/preview surfaces, menus, dialogs, Settings and setup.
+  Keep reading surfaces legible and material behavior consistent. Preserve the
+  fixed account-menu stacking bug and all six theme/palette combinations.
+- Audit every Settings category against actual component and server behavior.
+  Distinguish working controls, missing wiring, explicitly unavailable previews,
+  and decisions requiring user input. Begin implementing concrete missing settings
+  with persistence, loading/error feedback and appropriate tests. The user did not
+  specify which category first; choose from the audit rather than inventing a new
+  feature set or enabling external services without configuration.
+- Extend the synthetic fixture where needed to verify settings. Its default mock
+  responses are not evidence of working production persistence.
+- Complete all-view responsive, keyboard and theme QA before promoting the design.
+
+At handoff, no changes implementing this latest app-wide request have been made.
+The last implementation commit is `5dd573c`; the local preview is on port 31287.
+Production remains last verified at `8fa1112`; functional candidate `8bc4339` is
+built but not deployed. Recheck live state before rollout. Broader roadmap work
+remains authorized, with outstanding user decisions preserved in the handoff.
+See [the paste-ready continuation prompt](codex-handoff.md).

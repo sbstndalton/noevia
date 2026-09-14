@@ -77,3 +77,16 @@ Study 03 fixes a reproduced account-menu stacking regression from the prototype�
 sidebar blur and restores functioning palette choices. The material is now bounded
 to the mode control and popovers; pointer reflection is verified. See the prototype
 README for exact browser checks. No production stylesheet changed.
+
+
+## Latest acceptance and expansion — 2026-09-13
+
+User: “The glass is looking quite good in the sidebar. Now just needs to be
+implemented across the whole ui. Top to bottom. The settings panel is untouched.
+Also, need to start working on these settings.”
+
+Use Study 03 as the accepted starting point, preserving its sidebar appearance.
+Extend the material language across the application and Settings without changing
+the agreed layout. Audit Settings functionality as a separate concrete workstream;
+mock fixture responses do not prove persisted behavior. No implementation of this
+latest request occurred before the user requested a roadmap save and handoff.
