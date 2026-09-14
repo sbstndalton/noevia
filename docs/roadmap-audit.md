@@ -1,5 +1,33 @@
 # Roadmap audit — 2026-09-10
 
+## Native model UI release — 2026-09-14
+
+Production application **02495a7** replaces 2570a02. The pinned native router
+container is unchanged. Chat choices and auto roles exclude embedding/reranking
+models; Manage retains them. Legacy MTP controls are capability-gated, with native
+profile guidance. All approval actions have 44-pixel minimum height and retain
+full argument disclosure.
+
+424 local web tests, typecheck/build and synthetic model/approval browser checks
+passed. The exact Linux web image passed 343 server tests; Diary/OCR image IDs
+match the previously verified release. GitHub CI 34821414694 passed all three
+jobs. Scheduled backup ab_20260914_041001 verified web/Diary archives immediately
+before release. Env and both Compose backups use .bak.before-02495a7.
+
+Installed mount preflight passed; all four services healthy, zero restarts/OOM.
+Public assets match index-DPDvw100.js and index-BdQJWaar.css; OCR health returns
+200. Authenticated 390×844/375×360 production checks confirmed the corrected chat
+picker, preserved embedding in Manage and fitting dialog. A synthetic ordinary
+chat returned UI_RELEASE_OK in 5.0 s (524 input / 95 output, 24.3 tok/s), with
+32,768 context and native MTP acceptance 56.5%. The exact test chat was archived;
+viewport reset and browser left on New chat. No real Diary prompt/corpus access.
+
+App-only rollback: set current and COWORK_VERSION to 2570a02, then invoke the
+preflight wrapper from the live Compose folder with --no-build --no-deps --wait
+for web diary ocr. Preserve the current native override/provider configuration;
+do not use the separate backend rollback merely to revert this application.
+
+
 ## Native model selection and mobile approvals — 2026-09-14
 
 Candidate fixes normalize native effective embedding/reranking flags for loaded

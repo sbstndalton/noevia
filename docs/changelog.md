@@ -1,5 +1,13 @@
 ## 2026-09-14 — Qualified direct native inference in production
 
+### 2026-09-14 — native model UI and mobile approvals
+
+Deployed 02495a7: embedding/reranking excluded from chat selection, accurate native
+MTP guidance, 44-pixel approval targets. Full arguments and three decisions verified
+in six viewports/both themes. 424 web tests, 343 exact-image server tests and CI
+passed. Production synthetic chat and all four service health checks passed.
+
+
 Switched the existing 2570a02 app release to pinned native llama.cpp with guarded
 GPU and isolated app/client workload tests. Preserved existing model IDs, shared
 provider settings and rollback backups; retained Lemonade stopped for recovery.
