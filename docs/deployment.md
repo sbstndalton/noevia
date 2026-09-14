@@ -456,3 +456,23 @@ cutover. All containers healthy, zero restarts/OOM; web and internal OCR health 
 Public assets match index-DwIft049.js / index-CG4nO7GL.css. Authenticated Settings
 shows profile-saved appearance, one scene and no legacy inspector toggle. No real
 Diary prompts/corpus edits or storage mapping/model configuration changes.
+
+## Diary workspace, model guidance and context rails — 2026-09-14
+
+Production now runs **a6d15c3** on web, Diary and OCR, replacing fca1f19.
+Includes guarded Markdown editing/recovery/navigation, explicit hardware and
+memory guidance, and continuous context rails that move below narrow content.
+GitHub main includes all five application commits.
+
+Validation: 404 local web tests, typecheck/build and synthetic responsive editor
+checks pass. Exact candidate images pass 324 serial Linux server tests, 199 Diary
+tests (two existing dependency warnings), and all 13 OCR tests with fixtures.
+The installed writable-mount preflight passed. All three services are healthy
+with zero restarts/OOM; web setup-status and internal OCR return HTTP 200.
+Public JS/CSS hashes match the tested build (index-CXIpF5Wf.js and
+index-DGAF1v_V.css). Authenticated production reload succeeds, and the project
+view has one transparent context rail. No real Diary prompts or corpus edits.
+
+Retain fca1f19 and config/Compose backups .bak.before-a6d15c3 for rollback.
+No environment schema, mounts or model configuration changes. This documentation
+commit records the rollout; deployed application source remains a6d15c3.
