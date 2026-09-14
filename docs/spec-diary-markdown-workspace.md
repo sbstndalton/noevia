@@ -1,7 +1,7 @@
 # Diary Markdown workspace
 
-Status: integrated editor/navigation/search are deployed. Date/tag filter candidate
-implemented and synthetically verified on 2026-09-14; rollout pending. No migration.
+Status: integrated editor/navigation/search, including date/tag filters, are deployed
+as 48432fe and verified on 2026-09-14. No migration.
 
 ## Direction
 

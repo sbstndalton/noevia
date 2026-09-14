@@ -1,12 +1,12 @@
 # Backlog — current execution 2026-09-14
 
 Native chat selection/MTP guidance fixes and full mobile approval-card coverage
-are deployed and production-verified as 02495a7. Date/tag filters are now locally verified; qualify/deploy them, then continue
-portable workspace recovery.
+are deployed and production-verified. Date/tag filters are deployed in 48432fe.
+Continue portable workspace export/recovery.
 GPU/app qualification and backend cutover are complete; see roadmap-audit.md.
 
 
-Production was verified on `02495a7` on September 14. The dated checklist below
+Production was verified on `48432fe` on September 14. The dated checklist below
 is historical; this current list supersedes its shipped/pending labels.
 
 - Continue mobile bug fixes and phone/landscape UI verification, then repeat

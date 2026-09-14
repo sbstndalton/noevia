@@ -1,5 +1,31 @@
 # Roadmap audit — 2026-09-10
 
+## Markdown filters release — 2026-09-14
+
+Production application **48432fe** replaces 02495a7, adding bounded dated-filename
+and hashtag filters to stored Markdown search. The UI explains the supported
+syntax; no corpus migration, model call or persistent search index was introduced.
+426 web tests, typecheck/build, six-size/two-theme filter QA and the existing
+server/local editor save/conflict/reconciliation checks passed. The exact Linux
+web image passed 343 server tests. Diary/OCR image IDs remain identical to the
+previous qualified release. GitHub CI 34822124225 passed all three jobs.
+
+Fresh backup ab_20260914_042006 verified both state archives. Installed mount
+preflight passed; native router container unchanged. All four services healthy,
+zero restarts/OOM, internal OCR HTTP 200. Public assets match index-DiUxf1Ea.js
+and index-CyMgPvGj.css. Production keyboard-height UI reviewed at 375×360. Final
+synthetic ordinary chat returned FILTER_RELEASE_OK in 7.7 s (622 input/44 output
+on final call, 30.4 tok/s), with 32,768 context and live MTP58.7%. It made one
+safe built-in get_current_time call despite the prompt requesting no tools; no
+external write or Diary access occurred. Both synthetic release chats archived;
+viewport reset and New chat restored. Filter functionality itself was tested
+against synthetic stored files, not the real production Diary corpus.
+
+Retain 02495a7 and .bak.before-48432fe env/Compose backups for app-only rollback
+using the preflight wrapper with --no-build --no-deps --wait web diary ocr.
+The pinned native backend/provider configuration remains in place.
+
+
 ## Markdown date/tag filter candidate — 2026-09-14
 
 Added inclusive dated-filename and whole-hashtag filters to the existing bounded

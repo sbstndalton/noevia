@@ -1,5 +1,13 @@
 ## 2026-09-14 — Qualified direct native inference in production
 
+### 2026-09-14 — Markdown date/tag filters
+
+Deployed 48432fe: bounded stored-file search supports inclusive filename dates and
+whole hashtags, alone or combined with text. 426 web tests, 343 Linux image tests,
+CI and synthetic six-size/two-theme editor checks passed. Production health and
+ordinary-chat smoke test passed; no real Diary corpus used.
+
+
 ### 2026-09-14 — native model UI and mobile approvals
 
 Deployed 02495a7: embedding/reranking excluded from chat selection, accurate native
