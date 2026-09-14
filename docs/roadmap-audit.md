@@ -1,5 +1,28 @@
 # Roadmap audit — 2026-09-10
 
+## Previewed managed workspace import candidate — 2026-09-14
+
+Adds noevia ZIP preview and explicit Apply into a new `Imports/<name>` folder,
+with conflict checks and identical-content information. Browser uploads are capped
+at 32 MiB; expanded archives retain the existing 5,000 file / 256 MiB limits.
+Legacy/browser storage stays on isolated operator restore. Active layout settings,
+existing raw capture and source bytes remain unchanged; this is not a corpus cutover.
+
+Source, empty folders, backup generation/deadline, retry receipt and indexing outbox
+commit in one SQLite transaction. Same archive/destination retries return the
+receipt without overwriting later edits. Journal failure retains the outbox;
+normal recovery indexes afterward. Preview/Apply do not call inference. Pending
+capture writes block import. ZIP validation now rejects directory payloads, entry
+mode/path disagreement and malformed manifests; export enforces its transport cap.
+
+429 web tests, typecheck/build; 258 Diary tests (three skipped, two existing warnings).
+Synthetic six-size/two-theme UI covers conflicts, changed-name invalidation, uncertain
+retry and retained drafts; phone screenshots reviewed. Real synthetic web/Diary
+HTTP export/import/retry/readback and backup/restore workflow passes. Full-suite
+compatibility failure in an early indexing hook was fixed before this candidate.
+Production remains 11155df pending exact-image qualification and deployment.
+
+
 ## Portable workspace export release — 2026-09-14
 
 Production application **11155df** replaces 48432fe. Stored-workspace ZIP export
