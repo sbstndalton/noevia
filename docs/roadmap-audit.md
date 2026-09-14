@@ -10,7 +10,8 @@ existing raw capture and source bytes remain unchanged; this is not a corpus cut
 
 Source, empty folders, backup generation/deadline, retry receipt and indexing outbox
 commit in one SQLite transaction. Same archive/destination retries return the
-receipt without overwriting later edits. Journal failure retains the outbox;
+receipt without overwriting later edits. A fresh preview recognizes the same receipt
+after a browser reload, so an uncertain success is not mistaken for a conflict. Journal failure retains the outbox;
 normal recovery indexes afterward. Preview/Apply do not call inference. Pending
 capture writes block import. ZIP validation now rejects directory payloads, entry
 mode/path disagreement and malformed manifests; export enforces its transport cap.
