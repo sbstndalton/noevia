@@ -1,5 +1,13 @@
 # Roadmap audit — 2026-09-10
 
+## App-owned Diary candidate — 2026-09-14
+
+Implemented transactional tenant-local Diary storage and delayed immutable WebDAV
+backup, explicit copy/verify import, portable restore and status UI. This supersedes
+the pending SMB working-corpus direction. Candidate only: production remains
+`5894266`, with no real Diary import or deployment. See
+[design, limitations and restore runbook](spec-managed-diary.md).
+
 ## Roadmap resumed — 2026-09-12
 
 The user explicitly resumed the remaining roadmap with “Just go”. The earlier

@@ -490,3 +490,14 @@ index-Bm_DWXB9.css. Authenticated production Diary opens with Calendar selected
 and date markers loaded. No prompts sent or corpus edits. Retain a6d15c3 and
 .bak.before-5894266 configuration backups for rollback. This record is
 documentation only; deployed application source remains 5894266.
+
+
+## App-owned Diary candidate — not deployed (2026-09-14)
+
+The managed Diary implementation is prepared locally; production remains
+`5894266`. No new storage mapping, real import or architecture rollout is authorized
+by this implementation task. See [the managed Diary runbook](spec-managed-diary.md)
+for persistent state, backup/restore and staged rollout requirements. Existing
+legacy corpora remain active until explicit verified import. Preserve the full
+Diary DB-parent directory in disaster-recovery archives: `managed-diary.db` is
+primary data, not a rebuildable retrieval cache.

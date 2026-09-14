@@ -1,6 +1,11 @@
 # Diary storage: server-local corpus and SMB access
 
-Status: storage support deployed on 2026-09-12; restricted synthetic SMB pilot
+Current direction (2026-09-14): app-owned Diary with delayed WebDAV backups now
+supersedes the proposed SMB working-corpus cutover. See
+[the managed Diary design](spec-managed-diary.md). The existing SMB implementation
+and pilot below are historical evidence; no real cutover was performed.
+
+Historical status: storage support deployed on 2026-09-12; restricted synthetic SMB pilot
 created. Mac SMB authentication is pending. Real Diary cutover is not yet done.
 
 ## Implementation evidence — 2026-09-12
