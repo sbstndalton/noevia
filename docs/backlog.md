@@ -1,6 +1,6 @@
 # Backlog — current execution 2026-09-14
 
-Production was verified on `55b2767` on September 14. The dated checklist below
+Production was verified on `2570a02` on September 14. The dated checklist below
 is historical; this current list supersedes its shipped/pending labels.
 
 - Continue mobile bug fixes and phone/landscape UI verification, then repeat

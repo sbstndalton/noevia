@@ -522,3 +522,27 @@ with the explicit import preview available. No real import or test prompt was se
 
 The direct llama.cpp rewrite starts after this release; no production inference
 backend switch is included in 55b2767.
+
+## Mobile viewport and native adapter release — 2026-09-14
+
+Production web, Diary and OCR run **2570a02**, replacing 55b2767. Mobile composers
+remain reachable at keyboard height; model/settings dialogs follow the visible
+viewport and phone telemetry uses one scrollable row. Direct llama.cpp support
+is included, while the active production inference backend remains Lemonade.
+Native GPU workload qualification and cutover are still outstanding.
+
+Verification: 423 local web tests, typecheck/build, seven viewport sizes in both
+themes, keyboard/draft/zoom regressions, all personal settings categories, Diary
+calendar/list and Markdown conflict/save checks, native profiles and model guidance.
+The exact Linux candidate passed 342 server tests and 221 Diary tests (two existing
+dependency warnings). OCR image matches the previously verified image. GitHub CI
+passed. Backup `ab_20260914_031839` verified web/Diary state before the installed
+mount preflight performed rollout. All three services are healthy with zero
+restarts/OOM; web and internal OCR probes return 200. Public assets match
+`index-DZyp8_tE.js` and `index-D7vxMZ0U.css`, with `/viewport.js` present.
+
+Authenticated production checks reproduced and resolved the short-height composer
+bug, verified populated model selection and administrator settings, and completed
+a synthetic ordinary-chat inference returning `MOBILE_OK`. That test chat was
+archived. No real Diary prompts, corpus edits/import or model configuration changes.
+Retain 55b2767 and `.bak.before-2570a02` env/Compose backups for rollback.
