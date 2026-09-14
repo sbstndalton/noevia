@@ -1,7 +1,8 @@
 # Backlog — current execution 2026-09-14
 
 Native chat selection/MTP guidance fixes and full mobile approval-card coverage
-are deployed and production-verified as 02495a7. Continue Markdown date/tag filtering and portable workspace recovery.
+are deployed and production-verified as 02495a7. Date/tag filters are now locally verified; qualify/deploy them, then continue
+portable workspace recovery.
 GPU/app qualification and backend cutover are complete; see roadmap-audit.md.
 
 

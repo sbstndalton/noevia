@@ -123,3 +123,20 @@ test('backlinks resolve source-relative paths and skip images and fenced code',a
  const report=await searchMarkdownFolder({path:'',query:'nested/note.md',kind:'backlinks',list:async()=>({files:Object.keys(files).map(path=>({path,name:path,isDir:false}))}),read:async path=>({path,content:files[path],version:'v1'})});
  assert.equal(report.results.length,1);assert.equal(report.results[0].path,'a.md');
 });
+
+
+test('date and whole-tag filters combine with text, inclusive dates and undated exclusion',async()=>{
+ const {searchMarkdownFolder}=load('diary-file-search.ts');
+ const files={'2024-02-29.md':'Target #Work','2024-03-01-note.md':'Target #work','2024-03-02.md':'Target #workday','undated.md':'Target #work','2024-02-30.md':'Target #work'};
+ const options={path:'',query:'target',list:async()=>({files:Object.keys(files).map(path=>({path,name:path,isDir:false}))}),read:async path=>({path,content:files[path],version:'v'})};
+ const report=await searchMarkdownFolder({...options,filters:{from:'2024-02-29',to:'2024-03-01',tag:'#WORK'}});
+ assert.deepEqual(Array.from(report.results,r=>r.path),['2024-02-29.md','2024-03-01-note.md']);
+ const tagOnly=await searchMarkdownFolder({...options,query:'',filters:{tag:'work'}});assert.equal(tagOnly.results.length,4);
+ const dateOnly=await searchMarkdownFolder({...options,query:'',filters:{from:'2024-03-02'}});assert.deepEqual(Array.from(dateOnly.results,r=>r.path),['2024-03-02.md']);
+ for(const filters of [{from:'2024-02-30'},{from:'2024-03-02',to:'2024-03-01'},{tag:'two tags'}])await assert.rejects(searchMarkdownFolder({...options,filters}));
+});
+test('hashtag matching ignores frontmatter and closed or unclosed code fences',()=>{
+ const {markdownTags}=load('diary-file-search.ts');
+ const text='---\ntags: [#private]\n---\n# A heading\n#Work #work/project #café #workday\n`#inline`\n~~~js\n#hidden\n~~~~\n```\n#unfinished';
+ assert.deepEqual(Array.from(markdownTags(text)),['work','work/project','café','workday']);
+});

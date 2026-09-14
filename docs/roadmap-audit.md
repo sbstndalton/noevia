@@ -1,5 +1,17 @@
 # Roadmap audit — 2026-09-10
 
+## Markdown date/tag filter candidate — 2026-09-14
+
+Added inclusive dated-filename and whole-hashtag filters to the existing bounded
+stored-source search. Filters combine with text or work alone; changed inputs
+clear stale results. No index, model call or persistent copy is added. Syntax and
+limits are explicit in the UI and Markdown workspace spec. 426 web tests,
+typecheck/build, editor server/local conflict regressions and six-size/two-theme
+filter browser checks pass. Candidate image qualification/deployment remains.
+Next: portable workspace export with attachments/manifest and reversible recovery,
+reusing managed-storage snapshot/restore contracts where possible.
+
+
 ## Native model UI release — 2026-09-14
 
 Production application **02495a7** replaces 2570a02. The pinned native router

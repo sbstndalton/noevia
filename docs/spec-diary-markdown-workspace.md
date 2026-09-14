@@ -1,6 +1,7 @@
 # Diary Markdown workspace
 
-Status: integrated editor and bounded navigation/search implemented locally, 2026-09-14. Not deployed; no migration.
+Status: integrated editor/navigation/search are deployed. Date/tag filter candidate
+implemented and synthetically verified on 2026-09-14; rollout pending. No migration.
 
 ## Direction
 
@@ -115,3 +116,26 @@ caching, rich text and encryption remain separate decisions.
 
 Production remains fca1f19; no deployment performed. Synthetic review server:
 `node apps/web/qa/workspace-preview.cjs` (default localhost:31329, process memory).
+
+
+## Date and tag filters — 2026-09-14
+
+The existing transient search now combines optional text, inclusive from/through
+dates and one whole hashtag, or accepts filters without a text query. Dates match
+valid ISO dates at the start of Markdown filenames (YYYY-MM-DD.md or a dated name
+with a space, underscore or dash suffix). Undated/monthly files do not match date
+filters. It does not infer dates from prose, timestamps or frontmatter.
+
+Tags are case-insensitive #hashtags in prose, with Unicode letters/numbers,
+underscores, hyphens and slash-separated names. Frontmatter, fenced and inline
+code are excluded; YAML tag arrays and wiki syntax are not claimed. Unknown source
+formatting stays unchanged. Backlinks retain their independent unfiltered scan.
+Changed input cancels an outstanding search and clears old results. Invalid dates,
+reversed ranges and malformed tags are rejected. Existing 50-file/4-MiB bounds,
+partial-result labels, tenant scoping and stored-source-only behavior remain.
+
+426 web tests, typecheck/build, existing server/local editor failure/conflict/save
+browser regressions, and new date/tag filtering checks at six mobile/landscape/
+tablet/desktop sizes in both themes passed. Unsaved drafts remain unchanged and
+all fixture writes/inference counts are zero. `qa/workspace-filters.cjs` is the
+reproducible browser check. No real Diary corpus was read for these tests.
