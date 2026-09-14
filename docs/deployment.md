@@ -546,3 +546,91 @@ bug, verified populated model selection and administrator settings, and complete
 a synthetic ordinary-chat inference returning `MOBILE_OK`. That test chat was
 archived. No real Diary prompts, corpus edits/import or model configuration changes.
 Retain 55b2767 and `.bak.before-2570a02` env/Compose backups for rollback.
+
+## Direct native backend cutover — 2026-09-14
+
+**Current:** application web/Diary/OCR images remain `2570a02`; inference is now
+`cowork-llama-1`, immutable image
+`sha256:9f88885b46c8af0696d02b6d0d93f39cc0d81f29b99fb45030dcaf3a0193e282`
+(pinned server-vulkan digest in `deploy/examples/unraid-llamacpp.override.yml`).
+The live Compose Manager override now adds native inference on the internal
+Compose network, without host ports. Its web mount shares the **directory**
+`/mnt/docker/appdata/cowork/config/llamacpp` at `/llamacpp-config`; the router sees
+it read-only at `/config`. Public models remain `/mnt/user/ai-models:ro`.
+Writable native downloads use `/mnt/docker/appdata/cowork/state/llamacpp-cache`.
+
+`INFERENCE_BASE_URL` and `AUX_INFERENCE_BASE_URL` are `http://llama:8080/v1`;
+`MODEL_MANAGER_KIND=llamacpp`, manager base `http://llama:8080`. The saved `default`
+row in `state/web/shared-providers.json` also has the native URL: **this saved row
+can override the environment**, so changing environment alone is insufficient.
+Only that endpoint changed; no private providers, tenant model selections or
+Diary storage settings changed. Real Diary stays legacy WebDAV until its explicit
+verified import. All eleven installed Lemonade names, including historical hash
+IDs, remain available as native preset sections pointing at the same public files.
+
+Qualified presets: Qwen 4B Q8 MTP, Gemma E4B and E2B have 32,768 context/one slot;
+Qwen 9B retains the previously qualified 262,144 context/one slot profile. Chat
+models use q8 KV, flash attention, GPU layers 999, 1 GiB prompt cache and microbatch
+1024. Vision projectors retain 1024 image-token caps. Nomic uses 2048 context,
+mean pooling and original q5_0/q4_0 cache flags. Router `models-max=1`, memory cap
+14 GiB. Host swap enforcement remains unavailable; the rollout watchdog observed
+available memory and failed closed below 4 GiB. This watchdog was disarmed after
+acceptance; it is not a newly installed background scheduler.
+
+Lemonade, Model Loader UI, and `llama-vulkan-test` are **stopped**, restart `no`.
+Lemonade's saved Compose restart policy is also `no`. Do not start those containers
+while native is running. Their caches/configuration are retained for rollback.
+No inference services were run concurrently during qualification or rollout.
+
+The fresh pre-cutover backup `ab_20260914_034204` contains verified web and Diary
+archives. All operations and confidential config backups are in
+`/mnt/docker/appdata/cowork/operations/native-20260914b` (directory mode 0700).
+This successful run has `complete`, no guard event, and immutable-in-practice
+original config copies. The earlier `native-20260914` attempt is retained as failure
+evidence: a compound SSH launch blocked heartbeat delivery, causing rollback;
+concurrent repair of the rollback script was corrected and the original state
+independently restored before retry. **Never edit an executing shell script.**
+The successor launch used an independent heartbeat thread and the saved-provider
+change was integrated before app startup.
+
+Rollback, if required, is the reviewed host script:
+
+```sh
+bash /mnt/docker/appdata/cowork/operations/native-20260914b/rollback.sh
+```
+
+It stops app clients and native, verifies native stopped, restores the environment,
+both Compose files, saved shared-provider endpoint and Lemonade Compose file,
+restores Lemonade's original loaded models/options, and runs the installed mount
+preflight before bringing the app back. It retains the stopped native container.
+After rollback, verify all app services and Lemonade health; never run both GPU
+providers. Do not replace production state with an old appdata archive merely to
+switch inference backends.
+
+Evidence: real GPU chat/tools/cancellation, 28,671 measured input tokens with
+2048 output reserve, embedding/aux/chat reloads, Gemma/Qwen vision; minimum free
+host memory 8.67 GiB. Isolated real noevia HTTP verified all three write approvals
+and grant scope; actual Diary LLMClient tested synthetic chat/aux/embedding without
+opening a corpus. Numerical embedding differences remain: 18-vector cosine minimum
+0.99884; all eight intended retrievals agree, including native queries against old
+vectors. This is scoped compatibility evidence, not proof for every retrieval.
+
+Authenticated production returned `NATIVE_PROD_OK` (519 input/89 output tokens,
+8.6 s, 23 tok/s), reported 32768 context/one slot and 58.6% MTP acceptance. The exact
+synthetic chat was archived. Phone 390×844 and keyboard-height 375×360 composer,
+model dialog and profile-read checks passed; viewport reset. All four containers
+are healthy with zero restart/OOM. Native profile editing was not applied in the
+production UI. No real Diary prompts, corpus changes or reindex.
+
+The app bundle is unchanged; no new image rebuild was needed for this backend
+cutover. New configuration examples, reproducible qualification scripts and
+populated mobile tests are committed separately. Pending UI polish: exclude native
+embedding presets from chat selection and replace the legacy “Enable MTP? No”
+control with accurate native-profile guidance/status.
+
+Post-cutover config/rollback archive:
+`/mnt/disk3/noevia-backups/native-config-20260914.tar.gz`, mode 0600,
+9,454 bytes, gzip verification passed. It includes the current env, native presets,
+saved shared-provider registry, live Compose files, and the successful operation's
+before/after configuration material. This archive contains credentials/configuration;
+keep it private. It supplements the verified appdata backup, not a state reset.

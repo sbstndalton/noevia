@@ -1,5 +1,43 @@
 # Roadmap audit — 2026-09-10
 
+## Native GPU qualification and production cutover — 2026-09-14
+
+Production now uses direct llama.cpp **b10920-eafe15a5e**, pinned Vulkan image,
+with one loaded model process at a time. Web/Diary/OCR application images remain
+**2570a02**; this is a qualified backend/configuration cutover, not another app
+image deployment. All four services are healthy, zero restarts/OOM. Lemonade,
+Model Loader UI and the old GPU experiment are stopped with restart disabled.
+All 11 existing model identities are retained as presets; no tenant selections
+were rewritten. The saved shared default-provider endpoint was updated alongside
+the environment because it otherwise retained the old Lemonade URL.
+
+Real GPU tests passed chat, structured tools, cancellation, a 28,671-token input
+with 2,048 output tokens reserved, embedding/auxiliary/chat eviction and reload,
+Gemma vision and Qwen 9B vision at 262,144 context. Minimum available host memory
+was 8.67 GiB. Separate isolated application tests passed the actual Diary LLMClient
+and all three tool approvals, including reapproval in a different chat. No real
+Diary prompt, corpus access/import or reindex. Eighteen synthetic embedding vectors
+and eight retrieval pairs verified new queries against old vectors as well as a
+new synthetic index; arithmetic differs slightly across backend builds.
+
+Authenticated production phone testing returned `NATIVE_PROD_OK` (8.6 s, 519 input /
+89 output tokens, 23 tok/s), reported 32,768 per slot and live MTP acceptance.
+375×360 composer/dialog hit checks passed; native profiles show the deployed
+context/KV/MTP settings. The exact synthetic chat was archived. The native profile
+editor was read only. Backup `ab_20260914_034204` verified both app state volumes.
+The first cutover attempt rolled back on a missing operator heartbeat; corrected
+launch and pre-start saved-provider updates passed the subsequent guarded rollout.
+See [runbook](deployment.md) and [machine-readable evidence](evidence/native-cutover-2026-09-14.json).
+
+Additional populated mobile QA passed source actions, long filenames/folders,
+delete cancellation, and upload rejection/progress at six viewports in both themes.
+423 web tests, typecheck/build pass; app assets remain unchanged.
+Next concrete UI fixes: native embedding presets appear in the chat picker, and
+the legacy MTP control says “No”/unverified despite active native MTP metrics.
+Native management is through Manage → Native runtime profile. Continue the
+remaining Markdown-workspace roadmap and extended mobile approval-card tests.
+
+
 ## Mobile viewport and native adapter release — 2026-09-14
 
 Production web, Diary and OCR run **2570a02**, replacing 55b2767. Mobile composers

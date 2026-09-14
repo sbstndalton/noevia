@@ -1,0 +1,670 @@
+{
+  "date": "2026-09-14",
+  "image": "ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41",
+  "actual_image": "sha256:9f88885b46c8af0696d02b6d0d93f39cc0d81f29b99fb45030dcaf3a0193e282",
+  "gpu_trial": {
+    "minimum_available_gib": 8.67281723022461,
+    "guard_event": null,
+    "models_restored_exactly": true,
+    "checks": [
+      {
+        "name": "4B MTP chat and context",
+        "seconds": 4.81,
+        "result": {
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "NATIVE_OK"
+                }
+              }
+            ],
+            "created": 1789371154,
+            "model": "Qwen_Qwen3.5-4B-GGUF-Q8_0",
+            "system_fingerprint": "b10920-eafe15a5e",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 4,
+              "prompt_tokens": 19,
+              "total_tokens": 23,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-8fhnco0KQqRQ7YcjELq5poqx8rSp6aq2",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 19,
+              "prompt_ms": 274.305,
+              "prompt_per_token_ms": 14.437105263157894,
+              "prompt_per_second": 69.26596307030495,
+              "predicted_n": 4,
+              "predicted_ms": 117.605,
+              "predicted_per_token_ms": 39.20166666666667,
+              "predicted_per_second": 25.509119510224906,
+              "draft_n": 3,
+              "draft_n_accepted": 3
+            }
+          },
+          "context": 32768,
+          "slots": 1,
+          "build": "b10920-eafe15a5e",
+          "states": {
+            "Gemma-4-E4B-it-GGUF": "unloaded",
+            "Qwen3.5-9B-GGUF-UD-Q4_K_XL": "unloaded",
+            "Qwen_Qwen3.5-4B-GGUF-Q8_0": "loaded",
+            "gemma-4-E2B-it-GGUF-UD-Q4_K_XL": "unloaded",
+            "nomic-embed-text-v1-GGUF": "unloaded"
+          }
+        }
+      },
+      {
+        "name": "structured synthetic tool call",
+        "seconds": 1.8,
+        "result": {
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                  {
+                    "type": "function",
+                    "function": {
+                      "name": "synthetic_lookup",
+                      "arguments": "{\"key\":\"test-7429\"}"
+                    },
+                    "id": "NFhKfSNpwJqO80w1f4b3h9InBRSBDKAi"
+                  }
+                ]
+              }
+            }
+          ],
+          "created": 1789371156,
+          "model": "Qwen_Qwen3.5-4B-GGUF-Q8_0",
+          "system_fingerprint": "b10920-eafe15a5e",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 32,
+            "prompt_tokens": 291,
+            "total_tokens": 323,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "id": "chatcmpl-AwLx0eA9QcyRUoogzWzWT547ufYbVfJY",
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 291,
+            "prompt_ms": 884.772,
+            "prompt_per_token_ms": 3.040453608247423,
+            "prompt_per_second": 328.89829244144255,
+            "predicted_n": 32,
+            "predicted_ms": 860.014,
+            "predicted_per_token_ms": 27.742387096774195,
+            "predicted_per_second": 36.045924833781775,
+            "draft_n": 24,
+            "draft_n_accepted": 24
+          }
+        }
+      },
+      {
+        "name": "stream cancellation releases slot",
+        "seconds": 0.72,
+        "result": {
+          "idle_after_disconnect": true
+        }
+      },
+      {
+        "name": "post-cancel chat",
+        "seconds": 0.31,
+        "result": {
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "NATIVE_OK"
+                }
+              }
+            ],
+            "created": 1789371157,
+            "model": "Qwen_Qwen3.5-4B-GGUF-Q8_0",
+            "system_fingerprint": "b10920-eafe15a5e",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 4,
+              "prompt_tokens": 19,
+              "total_tokens": 23,
+              "prompt_tokens_details": {
+                "cached_tokens": 15
+              }
+            },
+            "id": "chatcmpl-Mbo4KtngfvM4DJEyUI2vd0tupM094xW7",
+            "timings": {
+              "cache_n": 15,
+              "prompt_n": 4,
+              "prompt_ms": 101.192,
+              "prompt_per_token_ms": 25.298,
+              "prompt_per_second": 39.52881650723378,
+              "predicted_n": 4,
+              "predicted_ms": 110.275,
+              "predicted_per_token_ms": 36.75833333333333,
+              "predicted_per_second": 27.20471548401723,
+              "draft_n": 3,
+              "draft_n_accepted": 3
+            }
+          },
+          "context": 32768,
+          "slots": 1,
+          "build": "b10920-eafe15a5e",
+          "states": {
+            "Gemma-4-E4B-it-GGUF": "unloaded",
+            "Qwen3.5-9B-GGUF-UD-Q4_K_XL": "unloaded",
+            "Qwen_Qwen3.5-4B-GGUF-Q8_0": "loaded",
+            "gemma-4-E2B-it-GGUF-UD-Q4_K_XL": "unloaded",
+            "nomic-embed-text-v1-GGUF": "unloaded"
+          }
+        }
+      },
+      {
+        "name": "28k prompt with 2k output reserve",
+        "seconds": 94.47,
+        "result": {
+          "measured_input": 28671,
+          "reserved_output": 2048,
+          "result": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "NATIVE-7429"
+                }
+              }
+            ],
+            "created": 1789371252,
+            "model": "Qwen_Qwen3.5-4B-GGUF-Q8_0",
+            "system_fingerprint": "b10920-eafe15a5e",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 8,
+              "prompt_tokens": 28671,
+              "total_tokens": 28679,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-npaVMUQAugaFIdtWGNBId9I9NPO1DXhW",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 28671,
+              "prompt_ms": 92054.711,
+              "prompt_per_token_ms": 3.210725506609466,
+              "prompt_per_second": 311.4560861529401,
+              "predicted_n": 8,
+              "predicted_ms": 289.637,
+              "predicted_per_token_ms": 41.376714285714286,
+              "predicted_per_second": 24.168182932429215,
+              "draft_n": 6,
+              "draft_n_accepted": 6
+            }
+          }
+        }
+      },
+      {
+        "name": "embedding evicts chat; ordered batch",
+        "seconds": 1.04,
+        "result": {
+          "dimensions": 768,
+          "ordered_batch": true,
+          "usage": {
+            "prompt_tokens": 16,
+            "total_tokens": 16
+          }
+        }
+      },
+      {
+        "name": "Diary auxiliary identity reload",
+        "seconds": 4.92,
+        "result": {
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "NATIVE_OK"
+                }
+              }
+            ],
+            "created": 1789371258,
+            "model": "gemma-4-E2B-it-GGUF-UD-Q4_K_XL",
+            "system_fingerprint": "b10920-eafe15a5e",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 5,
+              "prompt_tokens": 17,
+              "total_tokens": 22,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-pT379AS6E9F8ueHdUitD9xDdP5WILGEV",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 17,
+              "prompt_ms": 359.332,
+              "prompt_per_token_ms": 21.137176470588233,
+              "prompt_per_second": 47.31000857146038,
+              "predicted_n": 5,
+              "predicted_ms": 92.178,
+              "predicted_per_token_ms": 23.0445,
+              "predicted_per_second": 43.394302328104324
+            }
+          },
+          "context": 32768,
+          "slots": 1,
+          "build": "b10920-eafe15a5e",
+          "states": {
+            "Gemma-4-E4B-it-GGUF": "unloaded",
+            "Qwen3.5-9B-GGUF-UD-Q4_K_XL": "unloaded",
+            "Qwen_Qwen3.5-4B-GGUF-Q8_0": "unloaded",
+            "gemma-4-E2B-it-GGUF-UD-Q4_K_XL": "loaded",
+            "nomic-embed-text-v1-GGUF": "unloaded"
+          }
+        }
+      },
+      {
+        "name": "Diary chat identity reload",
+        "seconds": 5.84,
+        "result": {
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "NATIVE_OK"
+                }
+              }
+            ],
+            "created": 1789371264,
+            "model": "Gemma-4-E4B-it-GGUF",
+            "system_fingerprint": "b10920-eafe15a5e",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 5,
+              "prompt_tokens": 17,
+              "total_tokens": 22,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-asaBMlbP10uITPJIr2nlBPFA2RT9Te54",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 17,
+              "prompt_ms": 182.638,
+              "prompt_per_token_ms": 10.743411764705883,
+              "prompt_per_second": 93.08030092313757,
+              "predicted_n": 5,
+              "predicted_ms": 170.951,
+              "predicted_per_token_ms": 42.73775,
+              "predicted_per_second": 23.398517703903458
+            }
+          },
+          "context": 32768,
+          "slots": 1,
+          "build": "b10920-eafe15a5e",
+          "states": {
+            "Gemma-4-E4B-it-GGUF": "loaded",
+            "Qwen3.5-9B-GGUF-UD-Q4_K_XL": "unloaded",
+            "Qwen_Qwen3.5-4B-GGUF-Q8_0": "unloaded",
+            "gemma-4-E2B-it-GGUF-UD-Q4_K_XL": "unloaded",
+            "nomic-embed-text-v1-GGUF": "unloaded"
+          }
+        }
+      },
+      {
+        "name": "Gemma vision projector",
+        "seconds": 0.9,
+        "result": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "Red"
+              }
+            }
+          ],
+          "created": 1789371265,
+          "model": "Gemma-4-E4B-it-GGUF",
+          "system_fingerprint": "b10920-eafe15a5e",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 104,
+            "total_tokens": 106,
+            "prompt_tokens_details": {
+              "cached_tokens": 1
+            }
+          },
+          "id": "chatcmpl-s6rTtrsctQjfHs0KPG3CxZxq9hUS4pzw",
+          "timings": {
+            "cache_n": 1,
+            "prompt_n": 103,
+            "prompt_ms": 833.255,
+            "prompt_per_token_ms": 8.08985436893204,
+            "prompt_per_second": 123.61161949223226,
+            "predicted_n": 2,
+            "predicted_ms": 44.115,
+            "predicted_per_token_ms": 44.115,
+            "predicted_per_second": 22.66802674827156
+          }
+        }
+      },
+      {
+        "name": "Qwen 9B qualified allocation",
+        "seconds": 8.49,
+        "result": {
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "NATIVE_OK"
+                }
+              }
+            ],
+            "created": 1789371273,
+            "model": "Qwen3.5-9B-GGUF-UD-Q4_K_XL",
+            "system_fingerprint": "b10920-eafe15a5e",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 4,
+              "prompt_tokens": 19,
+              "total_tokens": 23,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-H2OkTAKCUGL8NH97dta3Xu7eLxTKwQmH",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 19,
+              "prompt_ms": 596.721,
+              "prompt_per_token_ms": 31.406368421052633,
+              "prompt_per_second": 31.840675960792396,
+              "predicted_n": 4,
+              "predicted_ms": 259.35,
+              "predicted_per_token_ms": 86.45,
+              "predicted_per_second": 11.56737998843262
+            }
+          },
+          "context": 262144,
+          "slots": 1,
+          "build": "b10920-eafe15a5e",
+          "states": {
+            "Gemma-4-E4B-it-GGUF": "unloaded",
+            "Qwen3.5-9B-GGUF-UD-Q4_K_XL": "loaded",
+            "Qwen_Qwen3.5-4B-GGUF-Q8_0": "unloaded",
+            "gemma-4-E2B-it-GGUF-UD-Q4_K_XL": "unloaded",
+            "nomic-embed-text-v1-GGUF": "unloaded"
+          }
+        }
+      },
+      {
+        "name": "Qwen 9B vision at 262k allocation",
+        "seconds": 1.84,
+        "result": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "Red"
+              }
+            }
+          ],
+          "created": 1789371275,
+          "model": "Qwen3.5-9B-GGUF-UD-Q4_K_XL",
+          "system_fingerprint": "b10920-eafe15a5e",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 75,
+            "total_tokens": 77,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "id": "chatcmpl-f7pvCAA5tHqaOgrnW8UB36jJvyuap4cc",
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 75,
+            "prompt_ms": 1514.847,
+            "prompt_per_token_ms": 20.19796,
+            "prompt_per_second": 49.50995050985347,
+            "predicted_n": 2,
+            "predicted_ms": 75.392,
+            "predicted_per_token_ms": 75.392,
+            "predicted_per_second": 13.264006791171477
+          }
+        }
+      },
+      {
+        "name": "embedding after vision eviction",
+        "seconds": 0.54,
+        "result": {
+          "dimensions": 768,
+          "ordered_batch": true,
+          "usage": {
+            "prompt_tokens": 16,
+            "total_tokens": 16
+          }
+        }
+      },
+      {
+        "name": "return to original 4B identity",
+        "seconds": 3.78,
+        "result": {
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "NATIVE_OK"
+                }
+              }
+            ],
+            "created": 1789371279,
+            "model": "Qwen_Qwen3.5-4B-GGUF-Q8_0",
+            "system_fingerprint": "b10920-eafe15a5e",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 4,
+              "prompt_tokens": 19,
+              "total_tokens": 23,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-5GLut57JkvgOA6YdYRVKH0igqZo0Fx3C",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 19,
+              "prompt_ms": 197.358,
+              "prompt_per_token_ms": 10.387263157894736,
+              "prompt_per_second": 96.2717498150569,
+              "predicted_n": 4,
+              "predicted_ms": 113.104,
+              "predicted_per_token_ms": 37.70133333333333,
+              "predicted_per_second": 26.52426085726411,
+              "draft_n": 3,
+              "draft_n_accepted": 3
+            }
+          },
+          "context": 32768,
+          "slots": 1,
+          "build": "b10920-eafe15a5e",
+          "states": {
+            "Gemma-4-E4B-it-GGUF": "unloaded",
+            "Qwen3.5-9B-GGUF-UD-Q4_K_XL": "unloaded",
+            "Qwen_Qwen3.5-4B-GGUF-Q8_0": "loaded",
+            "gemma-4-E2B-it-GGUF-UD-Q4_K_XL": "unloaded",
+            "nomic-embed-text-v1-GGUF": "unloaded"
+          }
+        }
+      }
+    ]
+  },
+  "app_trial": {
+    "minimum_available_gib": 14.526607513427734,
+    "guard_event": null,
+    "models_restored_exactly": true,
+    "profiles": {
+      "Qwen_Qwen3.5-4B-GGUF-Q8_0": {
+        "model": "/models/models--bartowski--Qwen_Qwen3.5-4B-GGUF/snapshots/4168f45a16a1290d65a4ec0fa312ae917a4c15d6/Qwen_Qwen3.5-4B-Q8_0.gguf",
+        "ctx-size": 32768,
+        "parallel": 1,
+        "ngl": 999,
+        "flash-attn": "on",
+        "cache-type-k": "q8_0",
+        "cache-type-v": "q8_0",
+        "jinja": "true",
+        "cache-ram": 1024,
+        "ubatch-size": 1024,
+        "reasoning": "on",
+        "reasoning-format": "deepseek",
+        "spec-type": "draft-mtp"
+      },
+      "Qwen3.5-9B-GGUF-UD-Q4_K_XL": {
+        "model": "/models/models--unsloth--Qwen3.5-9B-GGUF/snapshots/3885219b6810b007914f3a7950a8d1b469d598a5/Qwen3.5-9B-UD-Q4_K_XL.gguf",
+        "ctx-size": 262144,
+        "parallel": 1,
+        "ngl": 999,
+        "flash-attn": "on",
+        "cache-type-k": "q8_0",
+        "cache-type-v": "q8_0",
+        "jinja": "true",
+        "cache-ram": 1024,
+        "ubatch-size": 1024,
+        "mmproj": "/models/models--unsloth--Qwen3.5-9B-GGUF/snapshots/3885219b6810b007914f3a7950a8d1b469d598a5/mmproj-F16.gguf",
+        "mmproj-offload": "on",
+        "image-max-tokens": 1024,
+        "reasoning": "on",
+        "reasoning-format": "deepseek"
+      },
+      "Gemma-4-E4B-it-GGUF": {
+        "model": "/models/models--unsloth--gemma-4-E4B-it-GGUF/snapshots/bfc15c382204943c3a8fff0c750b94ae2364d7a3/gemma-4-E4B-it-Q4_K_M.gguf",
+        "ctx-size": 32768,
+        "parallel": 1,
+        "ngl": 999,
+        "flash-attn": "on",
+        "cache-type-k": "q8_0",
+        "cache-type-v": "q8_0",
+        "jinja": "true",
+        "cache-ram": 1024,
+        "ubatch-size": 1024,
+        "mmproj": "/models/models--unsloth--gemma-4-E4B-it-GGUF/snapshots/bfc15c382204943c3a8fff0c750b94ae2364d7a3/mmproj-F16.gguf",
+        "mmproj-offload": "on",
+        "image-max-tokens": 1024
+      },
+      "gemma-4-E2B-it-GGUF-UD-Q4_K_XL": {
+        "model": "/models/models--unsloth--gemma-4-E2B-it-GGUF/snapshots/0314792d7f1f7e229411f620751375812bb9faf2/gemma-4-E2B-it-UD-Q4_K_XL.gguf",
+        "ctx-size": 32768,
+        "parallel": 1,
+        "ngl": 999,
+        "flash-attn": "on",
+        "cache-type-k": "q8_0",
+        "cache-type-v": "q8_0",
+        "jinja": "true",
+        "cache-ram": 1024,
+        "ubatch-size": 1024,
+        "mmproj": "/models/models--unsloth--gemma-4-E2B-it-GGUF/snapshots/0314792d7f1f7e229411f620751375812bb9faf2/mmproj-BF16.gguf",
+        "mmproj-offload": "on",
+        "image-max-tokens": 1024
+      },
+      "nomic-embed-text-v1-GGUF": {
+        "model": "/models/models--nomic-ai--nomic-embed-text-v1-GGUF/snapshots/90c80ac5c2a0d13de9a36cf1dec39f34acee54a8/nomic-embed-text-v1.Q4_K_S.gguf",
+        "ctx-size": 2048,
+        "parallel": 1,
+        "ngl": 999,
+        "flash-attn": "on",
+        "cache-type-k": "q5_0",
+        "cache-type-v": "q4_0",
+        "jinja": "true",
+        "cache-ram": 1024,
+        "ubatch-size": 1024,
+        "embedding": "true",
+        "pooling": "mean"
+      }
+    },
+    "checks": [
+      {
+        "name": "actual Diary LLMClient and embedding compatibility",
+        "seconds": 20.73,
+        "result": {
+          "output": "{\"embedding_cosine_to_lemonade\": [0.9988409722623565, 0.9991764722537112, 0.9999830318214178, 0.9999806596744689, 0.9999808208382508, 0.9999790457358604, 0.9999820230042125, 0.9999809409439909, 0.9999794840243985, 0.9999844024631348, 0.9999829449620883, 0.9999732223932711, 0.9999781642284027, 0.999964727816376, 0.99997387671391, 0.9999754053267554, 0.9999750648597757, 0.999966432370379], \"retrieval\": [{\"expected\": 0, \"old\": 0, \"new_query_old_index\": 0, \"new\": 0}, {\"expected\": 1, \"old\": 1, \"new_query_old_index\": 1, \"new\": 1}, {\"expected\": 2, \"old\": 2, \"new_query_old_index\": 2, \"new\": 2}, {\"expected\": 3, \"old\": 3, \"new_query_old_index\": 3, \"new\": 3}, {\"expected\": 4, \"old\": 4, \"new_query_old_index\": 4, \"new\": 4}, {\"expected\": 5, \"old\": 5, \"new_query_old_index\": 5, \"new\": 5}, {\"expected\": 6, \"old\": 6, \"new_query_old_index\": 6, \"new\": 6}, {\"expected\": 7, \"old\": 7, \"new_query_old_index\": 7, \"new\": 7}], \"auxiliary\": \"AUX_OK\", \"auxiliary_reasoning_chars\": 487, \"streamed_chat\": \"DIARY_CLIENT_OK\", \"embedding_reload\": true}\n"
+        }
+      },
+      {
+        "name": "actual app HTTP and write approvals",
+        "seconds": 20.3,
+        "result": {
+          "output": "PASS native app deny deny\nPASS native app once approve\nPASS native app once deny\nPASS native app all approve_all\nPASS native app all scoped grant\nPASS native app new-chat deny\nPASS actual native app HTTP: cold load/context/stream/tool loop; deny, allow once, chat-scoped grant and separate-chat reapproval; synthetic MCP writes only.\n"
+        }
+      }
+    ]
+  },
+  "production": {
+    "application_release": "2570a02",
+    "native_build": "b10920-eafe15a5e",
+    "models_max": 1,
+    "host_ports": [],
+    "result": "NATIVE_PROD_OK",
+    "seconds": 8.6,
+    "prompt_tokens": 519,
+    "completion_tokens": 89,
+    "tokens_per_second": 23.0,
+    "context_per_slot": 32768,
+    "slots": 1,
+    "mtp_acceptance": 0.58585858,
+    "mobile_viewports": [
+      [
+        390,
+        844
+      ],
+      [
+        375,
+        360
+      ]
+    ],
+    "synthetic_chat_archived": true,
+    "backup": "ab_20260914_034204"
+  },
+  "limitations": [
+    "Synthetic workloads only; no real Diary corpus access or reindex.",
+    "Embedding arithmetic differs across builds; 18 vectors checked and eight intended retrieval results retained against both old and new indexes.",
+    "No general concurrency or quality benchmark, and no claimed MTP speedup.",
+    "GPU trial embedding used f16 KV; subsequent app and deployed profile use original q5_0/q4_0 KV."
+  ]
+}

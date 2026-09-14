@@ -1,3 +1,12 @@
+## 2026-09-14 — Qualified direct native inference in production
+
+Switched the existing 2570a02 app release to pinned native llama.cpp with guarded
+GPU and isolated app/client workload tests. Preserved existing model IDs, shared
+provider settings and rollback backups; retained Lemonade stopped for recovery.
+Verified live phone chat, 32k context and actual MTP counters; archived synthetic
+verification chat. Added repeatable native and populated mobile QA. No real Diary
+corpus testing, migration or reindex. See deployment.md for exact rollback.
+
 # Changelog
 
 ## Mobile viewport and native adapter release — 2026-09-14

@@ -1,5 +1,11 @@
 # Backlog — current execution 2026-09-14
 
+Current priority after the 2026-09-14 native cutover: fix the native chat picker
+including embedding presets and replace its misleading legacy MTP toggle with
+native-profile/runtime status. Add populated mobile approval-card coverage.
+GPU/app qualification and backend cutover are complete; see roadmap-audit.md.
+
+
 Production was verified on `2570a02` on September 14. The dated checklist below
 is historical; this current list supersedes its shipped/pending labels.
 

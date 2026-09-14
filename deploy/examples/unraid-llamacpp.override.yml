@@ -1,0 +1,28 @@
+# Replace the Lemonade-network override only after native workload qualification.
+# Keep the prior override and environment for rollback. Stop Lemonade and other
+# GPU test containers first; disable their automatic restart while native is live.
+services:
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41
+    restart: unless-stopped
+    command: ["--models-preset", "/config/models.ini", "--host", "0.0.0.0", "--port", "8080", "--models-max", "1", "--metrics"]
+    devices:
+      - ${LLAMACPP_RENDER_DEVICE:?Set the qualified device}:${LLAMACPP_RENDER_DEVICE}
+      - ${LLAMACPP_CARD_DEVICE:?Set the qualified device}:${LLAMACPP_CARD_DEVICE}
+    volumes:
+      - ${LLAMACPP_MODELS_DIR:?Set existing public model directory}:/models:ro
+      - ${LLAMACPP_CONFIG_DIR:?Set qualified preset directory}:/config:ro
+      - ${LLAMACPP_CACHE_DIR:?Set dedicated writable native cache}:/cache
+    environment:
+      LLAMA_CACHE: /cache
+    mem_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
+    memswap_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
+    labels:
+      net.unraid.docker.managed: composeman
+      net.unraid.docker.shell: sh
+    # Internal Compose network only; no host ports and no Docker socket.
+  web:
+    environment:
+      LLAMACPP_PRESET_PATH: /llamacpp-config/models.ini
+    volumes:
+      - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config

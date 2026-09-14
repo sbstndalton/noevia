@@ -4,8 +4,9 @@ Implemented on `feat/direct-llamacpp`, 2026-09-14. This supersedes the earlier
 recommendation to keep Lemonade as the required management layer. noevia talks
 directly to llama.cpp's existing router; it does not schedule model processes,
 implement another router, or mount the Docker socket. Lemonade remains an optional
-rollback adapter. Production application release is `2570a02`; its active inference backend remains
-Lemonade until the native GPU workload qualification and cutover.
+rollback adapter. Production application release is `2570a02`; its active inference backend is now the qualified pinned native router. See the
+2026-09-14 runbook and evidence for the completed cutover; the historical boundary
+notes below describe pre-cutover validation.
 
 ## Operator configuration
 
