@@ -1,5 +1,23 @@
 # Roadmap audit — 2026-09-10
 
+## Native model selection and mobile approvals — 2026-09-14
+
+Candidate fixes normalize native effective embedding/reranking flags for loaded
+and unloaded models, exclude those capabilities from chat and auto-role choices,
+and prevent an embedding-only loaded model becoming the default chat model.
+Manage retains those models and their native identities. Switch model now gates
+legacy MTP controls by runtime capability and explains native profile management.
+Approval buttons have 44-pixel minimum height; full arguments remain untruncated.
+
+Verified: 424 web tests, typecheck/build; synthetic real-HTTP default/cold/auto model
+regressions; native picker and Manage at 375/768/1440 widths in both themes;
+full approval text, all three decisions, failure/retry and touch reachability at
+320×568, 375×667, 390×360, 667×375, 768×1024 and 1440×900 in both themes.
+No real Diary traffic, writes or model configuration changes. Production rollout
+is pending candidate image qualification. Continue Markdown date/tag filters and
+portable workspace recovery after this release.
+
+
 ## Native GPU qualification and production cutover — 2026-09-14
 
 Production now uses direct llama.cpp **b10920-eafe15a5e**, pinned Vulkan image,

@@ -1,8 +1,8 @@
 # Backlog — current execution 2026-09-14
 
-Current priority after the 2026-09-14 native cutover: fix the native chat picker
-including embedding presets and replace its misleading legacy MTP toggle with
-native-profile/runtime status. Add populated mobile approval-card coverage.
+Native chat selection/MTP guidance fixes and full mobile approval-card coverage
+are implemented and locally verified; qualify and deploy the candidate next.
+Then continue Markdown date/tag filtering and portable workspace recovery.
 GPU/app qualification and backend cutover are complete; see roadmap-audit.md.
 
 
@@ -12,9 +12,8 @@ is historical; this current list supersedes its shipped/pending labels.
 - Continue mobile bug fixes and phone/landscape UI verification, then repeat
   GitHub, candidate-image, production deployment and production verification.
   The user explicitly authorized this release cycle on September 14.
-- Native llama.cpp application integration is pushed in `1aeb231`; real GPU
-  workload qualification and a controlled backend cutover remain. Keep one
-  GPU inference backend active and retain a tested rollback configuration.
+- Native llama.cpp is qualified and active in production. Keep one GPU inference
+  backend active and retain the tested rollback configuration.
 - App-owned Diary, Markdown editing, calendar, recovery, edited-message titles,
   service health checks, MCP availability and usage pricing/aggregation shipped
   by `55b2767`. Do not reimplement the older pending entries below.
