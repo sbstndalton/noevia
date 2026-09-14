@@ -1148,3 +1148,13 @@ conflict resolution, revision history, Markdown links/backlinks, search/filterin
 and portable export/recovery. Existing guarded saves are the base; no second
 content backend, automatic offline browser cache or corpus migration introduced.
 Status: proposed, documentation only; not implemented, verified or deployed.
+
+## Consolidated release deployed — 2026-09-14
+
+Release fca1f19 / release-2026.09.14 is pushed and deployed to DaServer; supersedes
+prior local-only status for implemented work through this record. All three services
+healthy; see deployment.md for candidate tests, authenticated browser verification,
+backup and rollback evidence. Populated Usage/pricing browser release checks pass.
+Diary Markdown workspace remains proposed; Code execution, SMB cutover and off-site
+backup decisions remain unfinished. This is one application release, not roadmap
+completion. The deployment record commit is documentation only.

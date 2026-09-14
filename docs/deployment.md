@@ -438,3 +438,21 @@ No storage mapping, production model setting or real Diary corpus was changed.
 The earlier managed-volume installer/preflight commits are included; live host
 bindings remain intact. This is a verified increment, not completion of the
 remaining SMB authentication/cutover, context qualification or tool experiments.
+
+## Unified glass and Settings release — 2026-09-14
+
+All three services run **fca1f19**, replacing 8fa1112. Twelve unpublished UI/theme
+increments were consolidated into this release commit; existing published backend
+candidates are included. GitHub release tag: release-2026.09.14.
+
+390 local web tests, typecheck/build, synthetic HTTP usage and full backup/restore
+checks pass. Exact candidate images pass 321 serial Linux server tests, 199 Diary
+tests (two existing dependency warnings), and 13 OCR tests with document fixtures.
+Populated synthetic browser QA verified account/aggregate costs and pricing save.
+
+Pre-release backup ab_20260914_001944 verified successfully. Retain 8fa1112 and
+config/Compose backups .bak.before-fca1f19. Installed mount preflight passed before
+cutover. All containers healthy, zero restarts/OOM; web and internal OCR health 200.
+Public assets match index-DwIft049.js / index-CG4nO7GL.css. Authenticated Settings
+shows profile-saved appearance, one scene and no legacy inspector toggle. No real
+Diary prompts/corpus edits or storage mapping/model configuration changes.
