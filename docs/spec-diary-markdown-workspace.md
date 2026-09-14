@@ -139,3 +139,47 @@ browser regressions, and new date/tag filtering checks at six mobile/landscape/
 tablet/desktop sizes in both themes passed. Unsaved drafts remain unchanged and
 all fixture writes/inference counts are zero. `qa/workspace-filters.cjs` is the
 reproducible browser check. No real Diary corpus was read for these tests.
+
+## Portable workspace export and isolated recovery — 2026-09-14
+
+The workspace's Export section downloads stored Markdown, binary attachments and
+empty folders as a ZIP. `workspace/` holds unchanged source paths and bytes;
+`manifest.json` holds file sizes, SHA-256 checksums, directories and corpus layout
+settings. It includes no credentials, retrieval databases, unsaved drafts or
+optional chat attachments stored outside the corpus. Browser-folder mode explains
+that the existing folder can be copied with the file manager; it does not silently
+export the different server corpus.
+
+Bounds: 5,000 files, 5,000 directories, 64 MiB per file, 256 MiB total source bytes,
+8 MiB manifest. Export is an explicit authenticated, tenant-scoped read. Pending
+Diary writes block export. Cold tenant initialization defers replay/indexing until
+ordinary Diary access. Managed files/directories use one SQLite read transaction;
+legacy storage uses two matching bounded snapshots and excludes its separate
+`noevia-backups` history. External legacy writers cannot be atomically locked: two
+matching scans detect observed changes, not a filesystem-wide atomic snapshot.
+No new archive is retained server-side. The browser downloads private plain files.
+
+Operator recovery is available from `services/diary`:
+
+```sh
+python -m agent.workspace_restore /path/to/noevia-workspace.zip
+python -m agent.workspace_restore /path/to/noevia-workspace.zip --destination /path/to/new-folder --fingerprint REVIEWED_SHA256
+```
+
+The first command verifies and previews all paths without writing. The second
+rechecks the exact reviewed archive and restores only into a new directory.
+Traversal, links/special entries, duplicates, overlapping paths, unlisted content,
+checksum failures and size violations are rejected before writes. Existing folders
+are never merged or overwritten. Handled write failures remove only the newly
+created destination; a hard process/host failure can leave that new folder partial.
+Review/remove a partial isolated folder before retrying. This does not activate a
+Diary corpus, rewrite raw capture, or update the retrieval index. In-app import
+preview, conflict choices and reversible trash remain future work; revision
+retention still requires a policy decision.
+
+Synthetic tests cover exact binary/Markdown round trips, metadata-name collisions,
+empty folders, source changes, tenant boundaries, pending writes, deferred
+recovery, proxy errors, preview/restore failure safety and malformed ZIP paths.
+Download failure/retry and draft preservation pass six viewport sizes in both
+themes. Visual QA exposed telemetry overlapping the phone export button; workspace
+scroll clearance now keeps it reachable and a center hit-test guards the fix.

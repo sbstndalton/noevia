@@ -1,5 +1,21 @@
 # Roadmap audit — 2026-09-10
 
+## Portable workspace export candidate — 2026-09-14
+
+Added authenticated stored-workspace ZIP download with original Markdown/binary
+bytes, empty folders and checksum manifest; isolated operator recovery previews
+and verifies before restoring to a new directory only. Export defers cold-tenant
+replay/indexing and refuses pending writes. Managed reads are one SQLite snapshot;
+legacy export requires two matching bounded snapshots. In-app import and reversible
+trash are still pending. Browser-folder export remains a file-manager copy.
+
+427 web tests, typecheck/build and 233 Diary tests (three skipped, two existing
+warnings) pass, plus synthetic download/failure/retry/draft checks at six sizes in
+both themes and existing server/local editor conflict/save/reconciliation QA.
+A screenshot-detected telemetry overlap is fixed with workspace scroll clearance
+and verified center hit testing. Production remains 48432fe pending qualification.
+
+
 ## Markdown filters release — 2026-09-14
 
 Production application **48432fe** replaces 02495a7, adding bounded dated-filename
