@@ -5,7 +5,9 @@
 `apps/web/server/gguf-meta.cjs` and `apps/web/server/llamacpp-autoconfig.cjs` adapt the
 GGUF metadata reader and KV-cache/projector sizing from
 [scratchhax/model-loader](https://github.com/scratchhax/model-loader) at commit
-`e11a6ec307fa405144678930d507046163369b46`, under the MIT License:
+`e11a6ec307fa405144678930d507046163369b46`, under the MIT License. The same pinned
+release is also built unmodified (apart from bundling its browser libraries) by
+`deploy/model-loader/Dockerfile` and served to administrators at `/model-loader`:
 
 ```
 MIT License

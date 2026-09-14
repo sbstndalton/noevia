@@ -18,6 +18,28 @@ services:
     mem_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
     memswap_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
     # No published ports; model administration stays on the Compose network.
+  # Model Loader (github.com/scratchhax/model-loader, MIT): model downloads, the full
+  # models.ini editor, autoconfig, benchmarks and backend restarts. It has no login and
+  # holds the Docker socket, so it publishes no port; noevia serves it to administrators
+  # at /model-loader.
+  model-loader:
+    build:
+      context: ${COWORK_SOURCE_DIR:-.}/deploy/model-loader
+    image: cowork-model-loader:${COWORK_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      MODELS_DIR: /models
+      MODELS_INI_PATH: /config/models.ini
+      DATA_DIR: /data
+      LLAMA_CONTAINERS: ${MODEL_LOADER_LLAMA_CONTAINERS:-}
+      GPU_VRAM: ${MODEL_LOADER_GPU_VRAM:-}
+      HOST_RAM_RESERVE_GB: ${MODEL_LOADER_HOST_RAM_RESERVE_GB:-8}
+    volumes:
+      - ${LLAMACPP_MODELS_DIR}:/models
+      - ${LLAMACPP_CONFIG_DIR}:/config
+      - ${MODEL_LOADER_DATA_DIR:?Set a writable Model Loader data directory}:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: 512m
   web:
     environment:
       INFERENCE_BASE_URL: http://llama:8080/v1
@@ -31,6 +53,7 @@ services:
       LLAMACPP_CACHE_PATH: /cache
       # Calibration stops a step when host available memory falls below this.
       LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB: ${LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB:-4}
+      MODEL_LOADER_URL: http://model-loader:8090
     volumes:
       - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config
       - ${LLAMACPP_MODELS_DIR}:/models:ro
