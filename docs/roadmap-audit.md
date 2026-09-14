@@ -1,5 +1,20 @@
 # Roadmap audit — 2026-09-10
 
+## Short-screen navigation candidate — 2026-09-14
+
+Reproduced populated history collapsing to zero at 320×360. Short-height and
+keyboard-height rails now scroll as a whole; section height caps no longer
+cause overlapping rows. Touch chat rows retain one stable 44px Options control,
+with Pin/Archive available in its menu. Expanded phone navigation is opaque.
+Context menus use the visible keyboard viewport and reposition on resize.
+
+429 web tests, typecheck/build, seven viewport/keyboard cases in both themes,
+real scrolling/center-hit/menu-selection/focus checks and screenshot review pass.
+Existing seven-size mobile and Diary editor recovery suites pass. All data is
+synthetic; no inference/corpus calls. Production remains e9358ab pending image
+qualification and rollout. Reversible managed trash remains the next roadmap work.
+
+
 ## Previewed managed workspace import release — 2026-09-14
 
 Production application **e9358ab** replaces 11155df. ZIP preview and explicit Apply
