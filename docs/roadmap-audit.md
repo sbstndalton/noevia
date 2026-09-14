@@ -1236,3 +1236,12 @@ Synthetic browser assertions cover placement, one file browser, transparency,
 overflow and retained editor recovery at phone/tablet/desktop widths; light/dark
 screenshots reviewed. 404 web tests, typecheck and build pass. Local preview
 updated; not deployed.
+
+Diary calendar landing follow-up (local): home now loads the current month with
+Calendar selected and an above-calendar List toggle. List uses the selected
+month's entries in descending yyyy-mm-dd order; month arrows browse history.
+Switching views preserves the capture draft. One transparent composer dock sits
+below either view; phone layout remains in flow so calendar dates are unobscured.
+Day-specific writing and Markdown context remain available. Synthetic preview
+has sample dates. Browser checks verify date ordering, draft retention and editor
+recovery; 404 web tests, typecheck/build pass. Not deployed.
