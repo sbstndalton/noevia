@@ -27,6 +27,10 @@ services:
       # Preset suggestions read model file headers read-only and size against this limit.
       LLAMACPP_MODELS_PATH: /models
       LLAMACPP_MEMORY_LIMIT: ${LLAMACPP_MEMORY_LIMIT:-14g}
+      LLAMACPP_CACHE_PATH: /cache
+      # Calibration stops a step when host available memory falls below this.
+      LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB: ${LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB:-4}
     volumes:
       - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config
       - ${LLAMACPP_MODELS_DIR}:/models:ro
+      - ${LLAMACPP_CACHE_DIR}:/cache:ro
