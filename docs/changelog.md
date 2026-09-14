@@ -8,6 +8,20 @@ updated.
 
 ---
 
+## Calendar landing rollout — 2026-09-14
+
+All three services run **5894266**, replacing a6d15c3. Diary opens on the current
+month with Calendar selected, a List toggle above, and the composer below.
+404 local web tests, typecheck/build and synthetic responsive/draft recovery
+checks pass; the candidate passes 324 serial Linux server tests. Diary/OCR image
+IDs are identical to the prior release's verified images (199/13 tests).
+Mount preflight passed; all services healthy, zero restarts/OOM; web and OCR
+health return 200. Public JS/CSS hashes match index-CdTrv7d0.js and
+index-Bm_DWXB9.css. Authenticated production Diary opens with Calendar selected
+and date markers loaded. No prompts sent or corpus edits. Retain a6d15c3 and
+.bak.before-5894266 configuration backups for rollback. This record is
+documentation only; deployed application source remains 5894266.
+
 ## Diary workspace, model guidance and context rails — 2026-09-14
 
 Production now runs **a6d15c3** on web, Diary and OCR, replacing fca1f19.
