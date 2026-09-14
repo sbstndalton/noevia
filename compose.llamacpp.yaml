@@ -25,8 +25,12 @@ services:
       MODEL_MANAGER_BASE_URL: http://llama:8080
       LLAMACPP_PRESET_PATH: /llamacpp-config/models.ini
       EMBEDDING_MODEL: ${LLAMACPP_EMBED_MODEL:?Set an installed native embedding identity}
+      # Preset suggestions read model file headers read-only and size against this limit.
+      LLAMACPP_MODELS_PATH: /models
+      LLAMACPP_MEMORY_LIMIT: ${LLAMACPP_MEMORY_LIMIT:-14g}
     volumes:
       - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config
+      - ${LLAMACPP_MODELS_DIR}:/models:ro
   diary:
     environment:
       LLM_BASE_URL: http://llama:8080/v1
