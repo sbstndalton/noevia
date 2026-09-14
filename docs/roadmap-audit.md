@@ -1,5 +1,19 @@
 # Roadmap audit — 2026-09-10
 
+## Mobile viewport correction — 2026-09-14
+
+Reproduced an off-screen chat composer at keyboard-sized height and cramped
+model dialogs in landscape. The shell follows the visual viewport while preserving
+pinch zoom; short-height empty-chat decoration yields to the composer. Mobile
+telemetry stays present in one horizontally scrollable row. Model/settings dialogs
+respect visible height, and phone model forms use 16px text to avoid focus zoom.
+Synthetic browser QA covers seven screen sizes in both themes, keyboard shrink/
+restore, draft retention, model dialog controls, settings categories, and Diary
+calendar/list composer reachability. Markdown save/conflict/reconciliation tests
+also pass. 423 web tests, typecheck and build pass. No real Diary data was used.
+The user authorized continued roadmap fixes and repeated GitHub/production cycles;
+production remains `55b2767` until a separately verified release.
+
 ## Direct native llama.cpp implementation — 2026-09-14
 
 Implemented native router lifecycle/readiness, public variant downloads and durable

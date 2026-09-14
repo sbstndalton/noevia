@@ -1,4 +1,29 @@
-# Backlog — reconciled 2026-09-13
+# Backlog — current execution 2026-09-14
+
+Production was verified on `55b2767` on September 14. The dated checklist below
+is historical; this current list supersedes its shipped/pending labels.
+
+- Continue mobile bug fixes and phone/landscape UI verification, then repeat
+  GitHub, candidate-image, production deployment and production verification.
+  The user explicitly authorized this release cycle on September 14.
+- Native llama.cpp application integration is pushed in `1aeb231`; real GPU
+  workload qualification and a controlled backend cutover remain. Keep one
+  GPU inference backend active and retain a tested rollback configuration.
+- App-owned Diary, Markdown editing, calendar, recovery, edited-message titles,
+  service health checks, MCP availability and usage pricing/aggregation shipped
+  by `55b2767`. Do not reimplement the older pending entries below.
+- App-owned Diary supersedes the SMB working-corpus proposal. The real Diary
+  remains on WebDAV until explicit verified import; use synthetic data for QA.
+- Remaining scoped work: Markdown date/tag filtering and portable workspace
+  export, the scoped Claude bridge client verification, and native workload
+  reliability. Inspect existing storage/version/backup contracts before adding
+  overlapping revision or retention features.
+- DAV rename/delete/locking and general client interoperability need a defined
+  storage contract. Empty remote folders remain retained to avoid racing uploads.
+- Off-site recovery requires a destination/budget; optional Wikipedia requires
+  a selected service. Neither is an installed capability or a release claim.
+
+## Historical reconciliation — 2026-09-13
 
 The user resumed roadmap implementation. This replaces the stale checklist;
 [roadmap.md](roadmap.md) and the latest audit record deployment evidence.
