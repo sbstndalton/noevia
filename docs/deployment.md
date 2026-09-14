@@ -780,3 +780,22 @@ services healthy, zero restarts/OOM, native llama container unchanged. Public
 assets index-ByZk1SN-.js / index-2LTQHseZ.css. Rollback ee86c24 with
 `.bak.before-724cd34` configuration/Compose backups; script
 /tmp/noevia-deploy-724cd34.sh on the operator machine and server.
+
+## Freebuff review release — 2026-09-14
+
+Production **1d9bf6a** replaces 724cd34: GFM task-list checkboxes in Markdown
+preview, 44px touch targets at tablet/phone widths, per-file test data dirs (web
+server tests now pass in parallel: 345/345 in the exact image), plus new
+`qa/markdown-fidelity.cjs` and `qa/mobile-audit.cjs`. Implemented by Freebuff and
+reviewed by Claude, who removed an unneeded calendar height cap and Diary layout
+change. Diary image 275 pass. Backup ab_20260914_162750. Guarded app-only rollout
+passed; four services healthy, zero restarts/OOM, native llama unchanged. Public
+assets index-DFjfsfNx.js / index-DfW-uDoU.css. Rollback 724cd34 with
+`.bak.before-1d9bf6a` backups.
+
+The same day's server cleanup had removed the stopped `lemonade`,
+`model-loader-test` and `llama-vulkan-test` containers that
+`operations/native-20260914b/rollback.sh` starts. They were recreated stopped
+(restart `no`) from their retained Compose files: llama-vulkan-test at its pinned
+digest, model-loader-test rebuilt from its pinned source. Lemonade was re-pulled as
+`latest`, so a native rollback may get a newer Lemonade than the 10.8.0 it replaced.

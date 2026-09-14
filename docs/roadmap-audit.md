@@ -1,5 +1,15 @@
 # Roadmap audit — 2026-09-10
 
+## Freebuff review release — 2026-09-14
+
+Production **1d9bf6a** (see deployment.md). Freebuff implemented, Claude reviewed and
+fixed; all six browser QA suites and the unit/image tests pass. Next roadmap items are
+unchanged: authenticated synthetic production Trash/restore check, Markdown fidelity
+follow-ups, scoped Claude client verification. n-gram (Engram) SSD offload is not
+applicable: current models have no n-gram tables and llama.cpp b10920 lacks
+`--model-ngram`; revisit only with an Engram model and a newer pinned build.
+
+
 ## Managed Trash release — 2026-09-14
 
 Production **724cd34** replaces ee86c24 (candidate details below). Exact Linux
