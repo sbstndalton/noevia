@@ -1,5 +1,17 @@
 # Roadmap audit — 2026-09-10
 
+## Page-load performance — 2026-09-14
+
+Production **e4b2f73** (see deployment.md). The main cause of slow loading was 20–40%
+packet loss on the home internet link. That needs fixing at the modem/router/ISP, not in
+code. App side: compressed, cacheable static files; lazy chunks for Settings/model
+management, Diary, Projects, Coding and the wizard; auth checks preloaded; fonts
+non-blocking. Locally the composer is usable in 530 ms instead of 1200 ms at 150 ms RTT.
+Next: fix the three pre-existing browser QA failures (diary-landing, diary-reading,
+reasoning). Optionally self-host Inter/JetBrains Mono to drop the two third-party
+origins.
+
+
 ## Model management folded into noevia — 2026-09-14
 
 Model Loader (scratchhax/model-loader e11a6ec, MIT) is folded into `services/model-manager`

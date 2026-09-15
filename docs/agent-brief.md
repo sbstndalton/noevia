@@ -30,6 +30,9 @@ coordinated migration across the live deployment; see `deployment.md`.
 - `apps/web/src/App.tsx` (842 lines) — chat state, SSE consumption, theme manager.
 - `apps/web/server/index.cjs` (~3700 lines) — the whole server: routes, tools,
   MCP, routing, approvals.
+- `apps/web/src/lazy-views.tsx` — Settings, Diary, Projects and Coding load as lazy
+  chunks (prefetched when idle); import them from here, not directly, or they rejoin
+  the first bundle. `server/static-files.cjs` serves the build (compression, caching).
 - `apps/web/server/` — also `storage-client.cjs` (WebDAV/S3), `documents.cjs`
   (PDF text), `rag.cjs`, `mcp.cjs`, `workspace.cjs`, `auth.cjs`, `secrets.cjs`,
   `vision.cjs`, `model-manager.cjs`.

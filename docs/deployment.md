@@ -838,3 +838,44 @@ backups, then `docker rm -f cowork-model-loader-1`. The old `model-loader-test`,
 `llama-vulkan-test` and `lemonade` containers stay stopped for the native rollback.
 Note: saving from Model Loader rewrites models.ini without comments inside sections, and
 its backend restart restarts the whole llama container.
+
+## Page-load performance release — 2026-09-14
+
+Production **e4b2f73** replaces a8d5bd2 and also carries 155a541 (model manager sees
+Hugging Face cache-layout models). Measured first: the origin serves the page in ~5 ms
+and every upstream call behind the first screen takes 2–25 ms. The slowness came from
+(1) **20–40% packet loss on the home internet link**, seen from both the Mac and the
+server to 1.1.1.1 with 0% on the LAN. TCP SYN retransmits make connect/TLS to any
+Cloudflare site take 1–9 s, and cloudflared logs QUIC timeouts and DNS i/o timeouts.
+The same link explains the npm stalls and the earlier unreachable episode, and it needs
+fixing at the modem/router/ISP. (2) Round trips and bytes: nothing was compressed or
+cacheable at the origin, one 542 KB bundle, Google Fonts blocked render, and the auth
+checks waited for the bundle.
+
+Now `server/static-files.cjs` serves brotli/gzip with one-year `immutable` caching for
+hashed `/assets/*` and `no-cache` + ETag for the rest. Settings/model management, Diary,
+Projects, Coding, the wizard and WebAuthn are lazy chunks prefetched when idle. index.html
+preloads `/api/setup/status` and `/api/auth/session`. Fonts load from a deferred script,
+and stats/health polling pauses in hidden tabs. Cloudflare HITs the immutable assets; it
+drops the ETag on index.html (HTML rewriting), which is harmless at ~0.5 KB.
+
+Numbers (`apps/web/qa/load-perf.cjs`, time until the composer is usable, medians):
+local at 150 ms RTT / 12 Mbps, 1200 → 530 ms, cold transfer 815 → 273 KB, warm reload
+735 → 14 KB; at 400 ms / 3 Mbps, 3.68 → 1.32 s. The production origin over LAN at 150 ms
+reaches sign-in in 526 ms. Over the real internet link, production runs vary 1.5–13.6 s
+with 20–30% loss, so they measure the link, not the app. The sign-in screen's cold
+transfer went 259 → 183 KB.
+
+Images were built without npm/pip as overlays: cowork-web on a8d5bd2 with the local
+e4b2f73 dist (packed with COPYFILE_DISABLE=1; an earlier pack carried macOS `._*` files)
+plus `server/`, and cowork-model-loader on a8d5bd2 with `app/`. Diary/OCR were retagged,
+unchanged since a8d5bd2. Exact web image: 367/367 server tests, with `.env.example`,
+`compose.yaml` and `deploy/` mounted at `/` for the repo-level compose test. Model manager
+11/11. Backup ab_20260914_233056 (web and Diary archives gzip-verified). The guarded
+rollout passed; five services healthy, zero restarts/OOM, native llama unchanged. The
+model manager lists five files, all without entries (models.ini stays empty by the
+user's choice), with projectors for Qwen 9B and both Gemmas. Assets index-Ckupi_DT.js /
+index-CweMon5t.css. Browser QA: 15 suites pass. diary-landing, diary-reading and
+reasoning fail identically on the unchanged 155a541 build (pre-existing). Rollback
+a8d5bd2 with `.bak.before-e4b2f73` env/Compose/override backups; script
+`claude-output/noevia-deploy-e4b2f73.sh`.
