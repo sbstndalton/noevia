@@ -18,13 +18,13 @@ services:
     mem_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
     memswap_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
     # No published ports; model administration stays on the Compose network.
-  # Model Loader (github.com/scratchhax/model-loader, MIT): model downloads, the full
-  # models.ini editor, autoconfig, benchmarks and backend restarts. It has no login and
-  # holds the Docker socket, so it publishes no port; noevia serves it to administrators
-  # at /model-loader.
+  # Model manager (Model Loader by scratchhax, MIT, folded into services/model-manager):
+  # downloads, the models.ini editor, autoconfig, telemetry, benchmarks and backend
+  # restarts. It has no login and holds the Docker socket, so it publishes no port;
+  # noevia's Settings → Models & routing drives its JSON API for administrators.
   model-loader:
     build:
-      context: ${COWORK_SOURCE_DIR:-.}/deploy/model-loader
+      context: ${COWORK_SOURCE_DIR:-.}/services/model-manager
     image: cowork-model-loader:${COWORK_VERSION:-local}
     restart: unless-stopped
     environment:
