@@ -3,7 +3,8 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --no-fund --no-audit
+# Prefer IPv4 for registry lookups: hosts with a broken IPv6 route otherwise time out.
+RUN NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
 COPY . .
 RUN node --test tests/*.test.cjs && npm run build
 
@@ -18,7 +19,7 @@ COPY --from=build /app/dist ./dist
 COPY server/package.json server/package-lock.json* ./server/
 # Project-RAG deps (both native modules — installed fresh so the platform-matching
 # prebuilt binaries land here; server/.dockerignore keeps the macOS copy out).
-RUN cd server && npm ci --no-fund --no-audit
+RUN cd server && NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
 COPY server ./server
 ENV UI_PORT=8021
 EXPOSE 8021

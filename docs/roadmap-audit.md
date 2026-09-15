@@ -1,5 +1,20 @@
 # Roadmap audit — 2026-09-10
 
+## Model management folded into noevia — 2026-09-14
+
+Model Loader (scratchhax/model-loader e11a6ec, MIT) is folded into `services/model-manager`
+(upstream import commit, then noevia changes) and drives Settings → Models & routing:
+Library, Download, Configure (full editor + autoconfig with vision switch), Hardware
+(sysfs amdgpu busy/dedicated/shared GTT/temp/power/clock for the card mapped into the
+llama container, unified-memory labelling, engine and host charts, load-failure diagnosis,
+logs, test prompt, restart), Benchmarks, Prompts, Routing. The chat box keeps a minimal
+switcher. Section writes are revision-checked and applied through a router reload that
+unloads only on request. The separate /model-loader page is retired. OpenWebUI syncing is
+intentionally not included (noevia calls the engine directly).
+Next: canirun.ai-assisted recommendations (verified against HF files and the estimator),
+and a general hardware profile for machines where noevia does not share the host.
+
+
 ## Native preset suggestions — 2026-09-14
 
 Production **be34fa5**: Model Loader's autoconfig sizing now lives in noevia as an
