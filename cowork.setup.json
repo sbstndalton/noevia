@@ -324,6 +324,27 @@
       "default": ""
     },
     {
+      "name": "MCP_SERVERS",
+      "purpose": "Several MCP servers as comma-separated `id|url|auth` entries; auth is nextcloud, bearer:ENV_NAME or none, and omitting it means none. Takes precedence over MCP_SERVER_URL. URLs are logged at startup, so tokens go in their own variable via bearer:NAME",
+      "secret": false,
+      "human_required": false,
+      "default": ""
+    },
+    {
+      "name": "ENABLED_TOOLBOXES",
+      "purpose": "Comma-separated curated toolboxes the picker offers; unset offers all of them and `core` is always offered",
+      "secret": false,
+      "human_required": false,
+      "default": ""
+    },
+    {
+      "name": "TAVILY_API_KEY",
+      "purpose": "Service token for an MCP server configured with bearer:TAVILY_API_KEY; the name is referenced from MCP_SERVERS and the value never appears in a URL",
+      "secret": true,
+      "human_required": false,
+      "default": ""
+    },
+    {
       "name": "COWORK_WEB_STORAGE",
       "purpose": "Optional generic Compose mount override; fresh initializer selects web-data. Takes precedence over COWORK_STATE_DIR. Existing installs leave absent/empty to retain bindings.",
       "secret": false,

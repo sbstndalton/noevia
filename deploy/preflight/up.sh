@@ -14,5 +14,12 @@ for argument in "$@"; do
     compose_args+=("$argument")
   fi
 done
-docker compose "${compose_args[@]}" config --format json | php "$preflight_dir/check.php" --config-json -
+expect_args=()
+# The live Compose file is a hand-maintained third copy; a key dropped while
+# copying it turns MCP off silently. Advisory only — it never blocks the start.
+if [[ -f "$preflight_dir/web-env-keys.txt" ]]; then
+  expect_args=(--expect-env "$preflight_dir/web-env-keys.txt")
+fi
+docker compose "${compose_args[@]}" config --format json \
+  | php "$preflight_dir/check.php" --config-json - "${expect_args[@]}"
 exec docker compose "${compose_args[@]}" up "${up_args[@]}"
