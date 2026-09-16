@@ -879,3 +879,23 @@ index-CweMon5t.css. Browser QA: 15 suites pass. diary-landing, diary-reading and
 reasoning fail identically on the unchanged 155a541 build (pre-existing). Rollback
 a8d5bd2 with `.bak.before-e4b2f73` env/Compose/override backups; script
 `deploy/examples/overlay-release.sh`.
+
+## Releases a48a8c4 and 503b1c5 — 2026-09-15/16
+
+**a48a8c4** (MCP compose keys and drift check, model refresh on change, in-app MCP server
+off by default, unified Models & routing, minimal chat model panel, General settings,
+cost estimates removed). Overlay on `cowork-web:e4b2f73` (no dependency changes);
+diary/ocr/model-loader retagged. Five services healthy, zero restarts, native llama
+unchanged. **Gaps:** no appdata backup was taken first, and the shipped `dist` carried
+one stale bundle (index.html references the correct one). Rollback `e4b2f73` with
+`.env.bak.before-a48a8c4`.
+
+**503b1c5** (docs only: single roadmap and master prompt, `deploy/examples/overlay-release.sh`).
+Backup `ab_20260916_151428` taken first. All images retagged from `a48a8c4`, no rebuild;
+release dir `releases/503b1c5`, `COWORK_VERSION=503b1c5`, web/diary/ocr recreated via
+preflight `up.sh`. Five healthy, zero restarts, native llama unchanged; model-loader still
+runs its `e4b2f73` tag as before. Deployed over Tailscale (`root@100.70.173.74`) because
+the Mac was off the LAN. Rollback `a48a8c4` with `.env.bak.before-503b1c5`.
+
+Open on the live host: no models served (models.ini empty, GGUFs removed); the live
+Compose Manager file lacks the MCP keys (`mcp: disabled`).
