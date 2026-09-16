@@ -199,7 +199,7 @@ Without a `vision` role, images go to the answering model if a cached probe says
 it can read them. **A model that cannot read images answers 400 for the whole
 request**, which is why the probe exists. Probes are scoped to endpoint,
 credentials and model, expire, and now distinguish a missing projector from an
-unsupported model — see `backlog.md` for the outstanding Qwen mmproj work.
+unsupported model — see `roadmap.md` for the outstanding Qwen mmproj work.
 
 ### Placeholder surfaces
 

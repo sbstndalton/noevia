@@ -75,5 +75,5 @@ profile, Diary preference or connections request. Restart resets these values.
 Unsupported settings mutations return 501; do not use real credentials. Instruction
 skills use a valid empty list. None of this is proof of production integration.
 
-See ../settings-audit.md for category status and ../roadmap-audit.md for verification
+See ../roadmap.md for category status and ../roadmap.md for verification
 and remaining release gates. The prior 8bc4339 deployment candidate is unchanged.

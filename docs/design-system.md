@@ -113,7 +113,7 @@ composers, project cards and context rails share a directional rim and tonal dep
 Only bounded controls/popovers use background blur. Never filter/transform the
 sidebar ancestor or composer ancestor; child menus must remain above the content.
 Reading planes remain opaque. Reduced-transparency/contrast fallbacks remove
-optical effects. See settings-audit.md for implementation and verification scope;
+optical effects. See roadmap.md for implementation and verification scope;
 this material is implemented locally and not deployed.
 
 ### Control interaction refinement

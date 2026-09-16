@@ -164,7 +164,7 @@ and `.bak.before-cfc3a05` / `.bak.before-4ec8269` config/Compose backups. No
 environment or Compose schema additions. Fixed migration/image behavior and
 administrator deletion were verified against live routes. Synthetic account,
 diary and Nextcloud cleanup completed; public UI and health passed. See
-[the live audit report](live-audit-2026-09-10.md) for coverage and unresolved issues.
+[the live audit report](roadmap.md) for coverage and unresolved issues.
 
 Latest application rollout: `dc325d5`, replacing `4ec8269`. The chat model picker
 now sits inside the composer next to Send. All three images use this tag; retain
@@ -878,4 +878,4 @@ user's choice), with projectors for Qwen 9B and both Gemmas. Assets index-Ckupi_
 index-CweMon5t.css. Browser QA: 15 suites pass. diary-landing, diary-reading and
 reasoning fail identically on the unchanged 155a541 build (pre-existing). Rollback
 a8d5bd2 with `.bak.before-e4b2f73` env/Compose/override backups; script
-`claude-output/noevia-deploy-e4b2f73.sh`.
+`deploy/examples/overlay-release.sh`.

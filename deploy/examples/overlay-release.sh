@@ -1,0 +1,60 @@
+#!/bin/bash
+# Guarded overlay release for the live DaServer install. Run ON the server as root.
+#
+# For releases where apps/web dependencies are unchanged since OLD: reuse OLD's
+# installed node_modules instead of running npm on the box (its IPv6 route to the
+# registry is broken). Replaces the web image's dist/ and server/ only, retags the
+# unchanged diary/ocr/model-loader images, repoints the release, and rolls back
+# automatically if the health wait fails. The native engine must stay untouched.
+#
+# Before running:
+#   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` then `npm run build` in apps/web
+#      (a stale build dir ships dead bundles), then from apps/web:
+#      COPYFILE_DISABLE=1 tar -h --no-xattrs -czf app-$NEW.tar.gz dist server
+#      (-h: dist is a symlink locally), and `git archive --format=tar.gz -o src-$NEW.tar.gz $NEW`.
+#   2. scp both to /tmp on the server.
+#   3. Take the appdata backup:
+#      php /usr/local/emhttp/plugins/appdata.backup/scripts/backup.php
+# Usage: overlay-release.sh OLD NEW
+# Afterwards: record the release in docs/deployment.md and the DaServer changelog.
+set -euo pipefail
+OLD=${1:?old release sha}; NEW=${2:?new release sha}
+base=/mnt/docker/appdata/cowork; config=$base/config/.env
+manager=/boot/config/plugins/compose.manager/projects/Cowork
+
+[ "$(readlink -f "$base/current")" = "$base/releases/$OLD" ]
+[ "$(sed -n 's/^COWORK_VERSION=//p' "$config")" = "$OLD" ]
+
+mkdir -p "$base/releases/$NEW"
+tar -xzf "/tmp/src-$NEW.tar.gz" -C "$base/releases/$NEW"
+
+work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
+tar -xzf "/tmp/app-$NEW.tar.gz" -C "$work"
+rm -rf "$work/server/node_modules" "$work/server/ui-data"
+cat > "$work/Dockerfile" <<DOCKER
+FROM cowork-web:$OLD
+RUN find /app/server -maxdepth 1 -type f -delete && rm -rf /app/server/fixtures /app/dist
+COPY dist /app/dist
+COPY server /app/server
+DOCKER
+docker build -q -t "cowork-web:$NEW" "$work" >/dev/null
+for svc in diary ocr model-loader; do
+  docker image inspect "cowork-$svc:$OLD" >/dev/null 2>&1 && docker tag "cowork-$svc:$OLD" "cowork-$svc:$NEW"
+done
+
+cp -p "$config" "$config.bak.before-$NEW"
+old_native=$(docker inspect cowork-llama-1 --format '{{.Id}}')
+cd "$manager"
+ln -sfn "$base/releases/$NEW" "$base/current"
+sed -i "s/^COWORK_VERSION=.*/COWORK_VERSION=$NEW/" "$config"
+if ! bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-deps --wait --wait-timeout 180 web diary ocr; then
+  ln -sfn "$base/releases/$OLD" "$base/current"
+  cp -p "$config.bak.before-$NEW" "$config"
+  bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-deps --wait --wait-timeout 180 web diary ocr
+  echo "ROLLED BACK to $OLD" >&2; exit 1
+fi
+[ "$(docker inspect cowork-llama-1 --format '{{.Id}}')" = "$old_native" ]
+docker inspect cowork-web-1 cowork-diary-1 cowork-ocr-1 cowork-llama-1 cowork-model-loader-1 \
+  --format '{{.Name}} {{.State.Health.Status}} restarts={{.RestartCount}}'
+rm -f "/tmp/src-$NEW.tar.gz" "/tmp/app-$NEW.tar.gz"
+echo "RELEASE_${NEW}_COMPLETE"
