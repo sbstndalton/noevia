@@ -126,6 +126,27 @@ mobile composer and tap targets).
 - **Research** — AIO-style master container managing the stack.
 - **Later** — Mac-native app.
 
+## Research priorities
+
+Ranked. Each ends in a written recommendation in `docs/`, with measurements from this
+deployment's models.
+
+1. **Context efficiency: scripts before tokens.** Cut how much context tool calls use by
+   moving mechanical work into code. Measure first: log tokens per tool call and per tool
+   result over real use, then (a) trim results in code before the model sees them,
+   (b) replace repeated multi-step tool sequences with one task-shaped scripted tool,
+   (c) answer purely mechanical requests without the model, and (d) summarise old tool
+   results instead of carrying them forward. Script only sequences the logs show repeating.
+2. Known-good settings per model and hardware.
+3. Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU.
+4. Backend portability (llama.cpp vs vLLM).
+5. Code-mode harness switcher (Hermes, opencode, DeepSeek…).
+6. Headscale vs NetBird to replace a slow Tailscale.
+7. AIO-style master container managing the stack.
+
+Research tied to a build item stays with it: task-conditional tool loading (E) and deep
+research mode (I) are both measure-first, then build.
+
 ## Order
 
 1. Live stats, settings ✕.
@@ -136,7 +157,8 @@ mobile composer and tap targets).
 6. Modes and projects.
 7. Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
 8. Task-conditional tool loading (measured) and the deep research spec.
-9. Research items.
+9. Research priorities, starting with context efficiency. It can run alongside
+   the build items above, since it begins with logging.
 
 ## Testing rules
 

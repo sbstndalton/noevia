@@ -281,6 +281,39 @@ does not apply — with measurements. Then build.
 
 ---
 
+## R. Research priorities
+
+Ranked. Each ends in a recommendation in `docs/` backed by measurements on this
+deployment's models.
+
+1. **Context efficiency: scripts before tokens (research priority #1).** The model should
+   spend its context on judgement, not on mechanical work. Tool calls are a major spender:
+   a result can be up to `TOOL_RESULT_CAP` (8,000 chars) and stays in the conversation for
+   every later turn, and each multi-step tool sequence costs a model round per step.
+   - **Measure first.** Log, per chat turn: input tokens, tokens contributed by each tool
+     schema and each tool result, and the tool call sequence. Aggregate over real use
+     (synthetic accounts plus the `diary-test` copy locally; no real Diary). The output is a
+     ranked list of which tools and sequences consume the most context.
+   - **Then, in order of measured payoff:**
+     (a) trim results in code before the model sees them — keep names, dates, matched
+     lines; drop markup and boilerplate; return top-k ranked hits, not raw lists;
+     (b) replace sequences the logs show repeating (list → read → read…) with one
+     task-shaped tool that runs the steps in code and returns a compact answer — these
+     belong in the curated boxes, with the same approval gate for anything that writes;
+     (c) answer purely mechanical requests (date maths, folder listings, diary lookups by
+     date) without a model call, extending what code already does (`heuristicWantsSmart`,
+     Diary structure, the duplicate tool-call guard);
+     (d) replace old tool results in the history with short summaries once used.
+   - **Don't** guess scripts up front; only script what the logs show repeating. Keep the
+     model path for anything unusual.
+   - **Done when** the report shows context per turn and tokens-to-first-answer before and
+     after on the same fixtures, with task completion no worse.
+2. Known-good settings per model × hardware (C3).
+3. Wider model evidence and backend portability (C8).
+4. Code-mode harness switcher (D3).
+5. Headscale vs NetBird (H1).
+6. AIO-style master container (H2).
+
 ## Suggested order
 
 1. G1 live stats, A4 close ✕ — small and visible.
@@ -291,6 +324,7 @@ does not apply — with measurements. Then build.
 6. D1–D2 modes and projects.
 7. F1–F4 diary.
 8. E2 task-conditional tool loading (measure first), I spec.
-9. Research: D3, H1–H3, C3 settings database.
+9. Research in R's ranked order — start R1 (context efficiency) early; its logging can
+   run alongside the build items.
 
 Commit per item with the three checks green and screenshots reviewed.
