@@ -96,7 +96,8 @@ from storage, not just from the project.
 
 ### Tools
 
-- `MCP_SERVERS` takes `id|url|auth` entries. `auth` is `nextcloud` (forward the
+- `MCP_SERVERS` takes `id|url|auth` entries. `auth` is `internal` (noevia's own
+  in-process server — see below), `nextcloud` (forward the
   user's Nextcloud app password), `bearer:ENV_NAME` (a service token read from
   that env var), or `none`. **Omitting or misspelling it yields `none`** — a
   server never inherits a credential by accident.
@@ -110,6 +111,40 @@ from storage, not just from the project.
   `toolTokenBudgetFor(model)`, the latter from *measured* prefill rate against the
   live endpoint (`tokens ≈ 240 + chars/3.6`, error table in `index.cjs`). Dropped
   tools are reported, never silently withheld.
+
+### noevia's own MCP server
+
+`MCP_INTERNAL_PORT` (default `0`, nothing binds) starts a SECOND listener on
+`127.0.0.1` inside the web process — `server/mcp-internal.cjs` for the
+transport and tokens, `server/mcp-internal-tools.cjs` for what the tools do.
+It offers two boxes, `diary` (three reads) and `project-docs` (three reads,
+three gated writes), so a small model reaches the Diary and project files
+through the same MCP path it already uses for Nextcloud and Tavily.
+
+Four things about it are load-bearing:
+
+- **Never publish the port.** It answers to a capability token, not a session
+  cookie. It is deliberately absent from `ports:` in both compose files and a
+  qa assertion keeps it that way.
+- **`internal` is accepted only for a loopback IP LITERAL.** A name — including
+  `localhost` — can be made to resolve elsewhere. A non-loopback entry is
+  dropped, never downgraded to `none`.
+- **The token decides whose data is touched.** `mcpInternalAuth()` mints a
+  30-second HMAC token carrying `uid`/`pid` from `requestScope`, and the server
+  establishes the request scope FROM that token via `runAs`. Without that step
+  the handlers would inherit whatever scope happened to be on the event loop,
+  which is a cross-tenant read; there is a test for it. No tool schema has a
+  user, tenant or project field, so a prompt-injected argument has nothing to
+  aim at.
+- **`w:1` only after approval.** The gate in `index.cjs` is unchanged; the
+  internal server additionally keeps its own write set and refuses a write
+  presented with `w:0`, so a tool wrongly listed under a box's `reads` fails
+  closed rather than writing unreviewed.
+
+The Diary box is **read-only** and that is deliberate: the sidecar has no
+append endpoint (`/api/entries/edit` corrects one already-logged exchange by
+its `xid`), and `/api/chat` is the only route that creates entries, which the
+"do not send prompts to the diary" rule puts out of bounds.
 
 **The approval gate is a security control, not decoration.** Every write tool
 blocks the chat until a human answers. Arguments are shown in full and

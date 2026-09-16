@@ -107,6 +107,12 @@ services:
       # Origins that are the SAME Nextcloud the MCP server talks to. Only a
       # credential stored for one of these is ever forwarded. Empty = never.
       MCP_NEXTCLOUD_ORIGINS: ${MCP_NEXTCLOUD_ORIGINS:-}
+      # noevia's own capabilities over MCP (Diary reads, project documents).
+      # In-process second listener on loopback; 0 disables it entirely and is
+      # the default. NEVER add this to `ports:` — it answers to a capability
+      # token, not a session cookie. Pair it with an MCP_SERVERS entry:
+      #   noevia|http://127.0.0.1:8022/mcp|internal
+      MCP_INTERNAL_PORT: ${MCP_INTERNAL_PORT:-0}
       UI_DATA_DIR: /app/server/ui-data
     volumes:
       - ${COWORK_WEB_STORAGE:-${COWORK_STATE_DIR:-./state}/web}:/app/server/ui-data

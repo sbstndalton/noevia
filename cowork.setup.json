@@ -345,6 +345,13 @@
       "default": ""
     },
     {
+      "name": "MCP_INTERNAL_PORT",
+      "purpose": "Port for noevia's own in-process MCP server (Diary reads, project documents), bound to 127.0.0.1 only and never published. 0 disables it; enabling it also needs an MCP_SERVERS entry with auth `internal` pointing at a loopback IP literal",
+      "secret": false,
+      "human_required": false,
+      "default": "0"
+    },
+    {
       "name": "COWORK_WEB_STORAGE",
       "purpose": "Optional generic Compose mount override; fresh initializer selects web-data. Takes precedence over COWORK_STATE_DIR. Existing installs leave absent/empty to retain bindings.",
       "secret": false,
