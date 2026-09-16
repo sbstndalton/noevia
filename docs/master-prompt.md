@@ -167,10 +167,57 @@ settings captured 2026-09-15). ChatGPT-style depth, Claude-style polish.
 1. **Tool-call menu under the thinking box** in every mode, including Diary: compact,
    collapsible, one entry per call with name and result. · `ChatView.tsx` `ThinkingBlock`
    / `ToolChips`, Diary views.
-2. **Automatic tool awareness.** When a request implies a tool the project hasn't enabled
-   ("check my calendar"), the model or UI must notice. **Measure first** against the
-   routing research. Candidate shape: a short catalogue line naming available-but-unselected
-   boxes plus a UI prompt "Enable Calendar for this chat?", still behind approvals.
+2. **Task-conditional tool loading (measure first).** Toolboxes and MCP servers load
+   automatically for the task at hand instead of being hand-selected per project.
+
+   **Why this shape.** A tool-search/unlock pattern — one discovery tool, schemas injected
+   after the model asks — is what `docs/spec-tool-routing-research.md` measured on the
+   local models (42 runs, 2026-09-13): median 8.64 s baseline, **12.91 s** deferred,
+   26.97 s planner. Schemas shrank but total input grew, because discovery costs an extra
+   model round. So route **before** the model call with no extra LLM round, load **once
+   per task**, and don't change the tool list mid-conversation: that invalidates the
+   llama.cpp prefix cache. This design was not what was measured, so it needs its own
+   benchmark before it ships.
+
+   - **Registry.** Extend `MCP_TOOLBOX_MANIFEST` in `apps/web/server/index.cjs` with what
+     the router matches on: capability tags, 2–5 example tasks, `autoLoad`
+     (`allowed`/`never`, admin-set) and `requires` (other box ids). No second registry;
+     skills already share this one.
+   - **Router, before the first model call.** Embed the task summary (the first message, or
+     a cheap summary when the topic changes) through the embeddings call `rag.cjs` already
+     makes, score it against box descriptions and examples, and take the top-k above a
+     threshold. When `ragAvailable()` is false, fall back to today's project selection.
+   - **Permission ceiling.** Auto-load may only add boxes the deployment offers
+     (`toolboxOffered`) and not marked `never`. Credential rules (Nextcloud origin
+     allowlist, `bearer:`) are unchanged. Loading a box never pre-approves anything: every
+     write still stops at the approval card with full arguments. Policy gates live in the
+     router, never in the prompt.
+   - **Session-scoped.** Chosen boxes stick for the chat. Re-route only on an explicit task
+     change or user action, applied at a turn boundary. The tool menu (E1) shows what was
+     loaded and why, with one-click remove; a user's own selection always beats the router.
+   - **Budgets.** The result still passes `toolCapFor()` and `toolTokenBudgetFor()`, and
+     drops are reported, as today.
+   - **Conflicts across servers.** A box binds only its own server's tools; when two servers
+     offer the same name, the first in `MCP_SERVERS` wins and it is logged
+     (`discoverMcpTools`). The router must also never load two boxes exposing the same tool
+     name in one session — prefer the higher-scoring box. Namespace tool names only if the
+     live catalogue actually collides (160 Nextcloud + 5 Tavily today: none).
+   - **Latency.** Router cost is one embedding call (target < 100 ms) plus a one-time
+     prefill of the loaded schemas. Changing tools mid-session costs a full prefix
+     re-prefill, hence session scoping. Record wall time, input tokens, prefill and
+     completion rate per run.
+   - **Dependencies.** MCP has no dependency protocol. Declare `requires` in the manifest
+     and resolve it transitively when routing. If the closure would break the cap, load
+     nothing extra and say so — never a partial box.
+   - **Measurement gate.** Add a `router` variant to `experiments/tool-routing/` beside
+     baseline/deferred/planner, on the same fixtures (malicious tool output, wrong-name
+     hallucination, missing capability, each approval decision). Ship behind an
+     off-by-default flag; enable only if completion ≥ baseline and median latency is no
+     worse than baseline plus a small, stated margin.
+   - **Tests.** Router unit tests: ceiling, `never`, `requires` closure, cap overflow,
+     collision avoidance, fallback without embeddings. A `qa/` browser check that the tool
+     menu shows auto-loaded boxes with remove. The approval card is unchanged for a write
+     from an auto-loaded box.
 
 ## F. Diary
 
@@ -234,7 +281,7 @@ does not apply — with measurements. Then build.
 5. G2 live log tab, E1 tool menu, B1 settings sub-pages.
 6. D1–D2 modes and projects.
 7. F1–F4 diary.
-8. E2 automatic tool awareness (measure first), I spec.
+8. E2 task-conditional tool loading (measure first), I spec.
 9. Research: D3, H1–H3, C3 settings database.
 
 Commit per item with the three checks green and screenshots reviewed.

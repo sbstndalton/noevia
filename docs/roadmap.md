@@ -87,9 +87,11 @@ mobile composer and tap targets).
 
 ### E. Tools
 - **Open** — Tool-call menu under the thinking box in every mode, including Diary.
-- **Open, measure first** — Automatic tool awareness when a request implies a tool that
-  isn't enabled. [spec-tool-routing-research.md](spec-tool-routing-research.md) rejected
-  deferred disclosure and a planner/executor split for chat routing.
+- **Open, measure first** — Task-conditional tool loading: a pre-turn embedding router picks
+  toolboxes for the task from the manifest, loads them for the session, and adds no
+  discovery round. A tool-search/unlock variant was already measured slower on these
+  models (12.91 s vs 8.64 s median). Adopt only if the `experiments/tool-routing` runner
+  shows equal-or-better completion without higher latency.
 - **Open** — Write access to the Diary from the in-app MCP server needs a sidecar append
   endpoint; the box is read-only by design until the user decides.
 - **Decision** — Optional offline Wikipedia needs a chosen service.
@@ -133,7 +135,7 @@ mobile composer and tap targets).
 5. Live log tab, tool-call menu, settings sub-pages.
 6. Modes and projects.
 7. Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
-8. Tool awareness (measured) and the deep research spec.
+8. Task-conditional tool loading (measured) and the deep research spec.
 9. Research items.
 
 ## Testing rules
