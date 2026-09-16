@@ -2,11 +2,20 @@
 
 You are working on **noevia**, in `noevia-application/` of the project "AI frontend
 thing" (GitHub `sbstndalton/noevia`, branch `feat/direct-llamacpp`, live release
-`a48a8c4`). This is the single executable brief; it replaces every earlier master prompt, handoff
+`503b1c5`). This is the single executable brief; it replaces every earlier master prompt, handoff
 and report. `docs/roadmap.md` is the matching plan, with status for every item.
 
 **Read first:** `AGENTS.md`, `docs/agent-brief.md` (incl. "Settings shape" and "noevia's
 own MCP server"), `docs/roadmap.md`, and `docs/deployment.md` before any deploy.
+
+**Your judgement over this document.** This brief was drafted by another model. Where it
+prescribes *how* to build something — thresholds, component shapes, data structures,
+library choices, file layout — treat that as a starting proposal. If current best practice
+or your own reading of the code says otherwise, do the better thing and write one line in
+the commit saying what you changed and why. Two things are not proposals: the
+non-negotiables below, and the measurement gates (anything marked *measure first* ships
+only on evidence from this deployment's models, not on general benchmarks). Verify every
+factual claim here — paths, function names, numbers — against the code before relying on it.
 
 **Files:** never write scratch output, deploy scripts or tarballs into
 `AI frontend thing/claude-output/` (retired). Durable docs go in `docs/`; deploy helpers
