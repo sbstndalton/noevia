@@ -13,7 +13,8 @@ Status words: **Shipped** = deployed and verified · **Open** = to build ·
 ## Where things stand — 2026-09-16
 
 - Last recorded live release **`503b1c5`** on DaServer (`https://cowork.daserver.work`; see
-  `deployment.md`, not re-verified since), five containers healthy, native llama.cpp (`cowork-llama-1`) as the only inference backend.
+  `deployment.md`, not re-verified since), five containers healthy, native llama.cpp
+  (`cowork-llama-1`) as the only inference backend.
 - **No models are served.** `models.ini` was emptied and the GGUF weights removed from
   `/mnt/user/ai-models`; only `Ornith-1.5-9B-Q5_K_M` remains, without an entry. Earlier
   notes record the entry deletion as the user's choice. Re-downloading is the user's call;
@@ -165,7 +166,8 @@ deployment's models. Can run alongside the build order.
 1. **Context efficiency: scripts before tokens** ([spec](spec-context-projection.md)).
    Measure tool/context consumption first; then trim deterministic waste with tool-aware
    reducers (full results kept authoritative); collapse recurring sequences into task-shaped
-   tools; handle mechanical work without the model; summarize only where still needed. Includes
+   tools; handle mechanical work without the model; summarize only where still needed. Script only
+   sequences the logs show repeating. Includes
    the protected-input preflight, validate-before-commit compaction, atomic tool-call groups and
    the authoritative / model-facing / UI layer split. Acceptance: fewer model-facing tokens, no
    lost results, no worse completion, fewer LLM compaction calls.

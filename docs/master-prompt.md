@@ -188,10 +188,11 @@ Design: `docs/spec-context-projection.md` §3–4. Recommended scope for the nex
 
 ## B. Settings information architecture
 
-Inspiration: `ui mockups/inspiration/` (ChatGPT/Codex and Claude settings captures),
+Inspiration: `ui mockups/inspiration/` (51 screenshots incl. ChatGPT/Codex and Claude settings
+captured 2026-09-15),
 `docs/spec-ui-direction.md`, `docs/ui-reference-review.md`. ChatGPT-level depth, Claude polish.
 
-1. More side-panel entries — Profile, Personalization, Appearance, Data & storage — and split
+1. More side-panel entries — Profile, Personalization, Appearance, Data & storage, Notifications when built — and split
    overloaded pages (General holds profile + preferences + capabilities). One concern per page;
    keep "Planned features" honest. · `SettingsShell.tsx` `PERSONAL`/`ADMIN`,
    `GeneralSettings.tsx` · `qa/general-settings.cjs`.
@@ -287,35 +288,59 @@ Inspiration: `ui mockups/inspiration/` (ChatGPT/Codex and Claude settings captur
 1. **Tool-call menu under the thinking box** in every mode, including Diary: compact,
    collapsible, one entry per call with name and result. · `ChatView.tsx` `ThinkingBlock` /
    `ToolChips`, Diary views.
-2. **Task-conditional tool loading (measure first).** Toolboxes load for the task at hand
-   instead of being hand-selected per project.
-   - **Why this shape.** Model-driven tool search/unlock was measured on these models
-     (`docs/spec-tool-routing-research.md`, 2026-09-13): median 8.64 s baseline, 12.91 s
-     deferred (~2× input), 26.97 s planner. Row-Bot's `tools/discovery.py` does the same and
-     stays rejected here. Route **before** the model call with no extra LLM round, load once per
-     task, don't change tools mid-conversation (it invalidates the llama.cpp prefix cache).
-   - **Registry.** Extend `MCP_TOOLBOX_MANIFEST` (`apps/web/server/index.cjs`, entries today:
-     `id, server, label, description, tools, reads`) only with fields this work or R1 needs:
-     example tasks / capability tags, `autoLoad` (`allowed`/`never`, admin-set), `requires`,
-     `resultReducer`. One registry; skills share it.
-   - **Router.** Embed the task summary via the embeddings call `rag.cjs` already makes; score
-     against box descriptions and examples; top-k above a threshold. Fall back to project
-     selection when `ragAvailable()` is false.
-   - **Permission ceiling.** Only boxes the deployment offers (`toolboxOffered`) and not
-     `never`. Credential rules unchanged. Loading never pre-approves a write. Policy lives in
-     the router, never in the prompt.
-   - **Session-scoped**, changed only at turn boundaries; the tool menu shows what loaded and
-     why, with remove; user selection beats the router.
-   - **Budgets** still pass `toolCapFor()` / `toolTokenBudgetFor()`; drops reported.
-   - **Conflicts:** a box binds only its own server's tools; duplicate names across servers keep
-     the first in `MCP_SERVERS` (logged in `discoverMcpTools`); never load two boxes exposing the
-     same name in one session. Namespace only if the live catalogue collides.
-   - **Dependencies:** declare `requires`, resolve transitively; if the closure breaks the cap,
-     load nothing extra and say so.
-   - **Gate:** add a `router` variant to `experiments/tool-routing/` on the same fixtures;
-     off-by-default flag; enable only if completion ≥ baseline and median latency ≤ baseline plus
-     a stated margin. Unit tests for ceiling, `never`, `requires`, cap overflow, collisions,
-     fallback; a `qa/` check for the tool menu; approval card unchanged for auto-loaded writes.
+2. **Task-conditional tool loading (measure first).** Toolboxes and MCP servers load
+   automatically for the task at hand instead of being hand-selected per project.
+
+   **Why this shape.** A tool-search/unlock pattern — one discovery tool, schemas injected
+   after the model asks — is what `docs/spec-tool-routing-research.md` measured on the
+   local models (42 runs, 2026-09-13): median 8.64 s baseline, **12.91 s** deferred,
+   26.97 s planner. Schemas shrank but total input grew, because discovery costs an extra
+   model round. Row-Bot's `tools/discovery.py` does the same and stays rejected on
+   this evidence. So route **before** the model call with no extra LLM round, load **once
+   per task**, and don't change the tool list mid-conversation: that invalidates the
+   llama.cpp prefix cache. This design was not what was measured, so it needs its own
+   benchmark before it ships.
+
+   - **Registry.** Extend `MCP_TOOLBOX_MANIFEST` in `apps/web/server/index.cjs` with what
+     the router matches on: capability tags, 2–5 example tasks, `autoLoad`
+     (`allowed`/`never`, admin-set), `requires` (other box ids) and `resultReducer`
+     (for R1's deterministic reducers). Add only fields this work needs. No second
+     registry; skills already share this one.
+   - **Router, before the first model call.** Embed the task summary (the first message, or
+     a cheap summary when the topic changes) through the embeddings call `rag.cjs` already
+     makes, score it against box descriptions and examples, and take the top-k above a
+     threshold. When `ragAvailable()` is false, fall back to today's project selection.
+   - **Permission ceiling.** Auto-load may only add boxes the deployment offers
+     (`toolboxOffered`) and not marked `never`. Credential rules (Nextcloud origin
+     allowlist, `bearer:`) are unchanged. Loading a box never pre-approves anything: every
+     write still stops at the approval card with full arguments. Policy gates live in the
+     router, never in the prompt.
+   - **Session-scoped.** Chosen boxes stick for the chat. Re-route only on an explicit task
+     change or user action, applied at a turn boundary. The tool menu (E1) shows what was
+     loaded and why, with one-click remove; a user's own selection always beats the router.
+   - **Budgets.** The result still passes `toolCapFor()` and `toolTokenBudgetFor()`, and
+     drops are reported, as today.
+   - **Conflicts across servers.** A box binds only its own server's tools; when two servers
+     offer the same name, the first in `MCP_SERVERS` wins and it is logged
+     (`discoverMcpTools`). The router must also never load two boxes exposing the same tool
+     name in one session — prefer the higher-scoring box. Namespace tool names only if the
+     live catalogue actually collides (160 Nextcloud + 5 Tavily today: none).
+   - **Latency.** Router cost is one embedding call (target < 100 ms) plus a one-time
+     prefill of the loaded schemas. Changing tools mid-session costs a full prefix
+     re-prefill, hence session scoping. Record wall time, input tokens, prefill and
+     completion rate per run.
+   - **Dependencies.** MCP has no dependency protocol. Declare `requires` in the manifest
+     and resolve it transitively when routing. If the closure would break the cap, load
+     nothing extra and say so — never a partial box.
+   - **Measurement gate.** Add a `router` variant to `experiments/tool-routing/` beside
+     baseline/deferred/planner, on the same fixtures (malicious tool output, wrong-name
+     hallucination, missing capability, each approval decision). Ship behind an
+     off-by-default flag; enable only if completion ≥ baseline and median latency is no
+     worse than baseline plus a small, stated margin.
+   - **Tests.** Router unit tests: ceiling, `never`, `requires` closure, cap overflow,
+     collision avoidance, fallback without embeddings. A `qa/` browser check that the tool
+     menu shows auto-loaded boxes with remove. The approval card is unchanged for a write
+     from an auto-loaded box.
 
 ## F. Diary and storage
 
@@ -387,14 +412,17 @@ deployment's models. May run alongside the build order.
      search, file read, web, command output) plus duplicate collapse and aged-result stubs, with
      generic head/tail only as fallback — the complete result stays in the authoritative record
      with a pointer from the projection; (b) collapse recurring sequences into task-shaped tools
-     in the curated boxes, writes still gated; (c) answer purely mechanical requests without the
-     model, extending `heuristicWantsSmart`, Diary structure and the duplicate-call guard;
+     in the curated boxes, writes still gated; (c) answer purely mechanical requests (date maths,
+     folder listings, Diary lookups by date) without a model call, extending
+     `heuristicWantsSmart`, Diary structure and the duplicate-call guard;
      (d) summarize old context only where still needed.
+   - **Don't** guess scripts up front; only script what the logs show repeating. Keep the
+     model path for anything unusual.
    - **Invariants:** atomic tool-call groups (assistant `tool_calls` + all results); never
      fabricate or replay to repair; explicit interrupted states (`not_started`,
      `outcome_unknown`, `denied`, `timed_out`, `cancelled`). References: DeepSeek Harness
      `packages/compaction/*` (`0d1f500`), Row-Bot `src/row_bot/agent.py` (`e5803e3`).
-   - **Done when** model-facing tokens drop on the same fixtures, authoritative results stay
+   - **Done when** context per turn and tokens-to-first-answer drop on the same fixtures, authoritative results stay
      complete, task completion is no worse, and LLM compaction calls fall where reduction made
      room.
 2. **Configuration-scoped qualification** design (C8).
