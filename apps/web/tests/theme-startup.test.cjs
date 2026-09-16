@@ -43,3 +43,41 @@ for(const mode of ['light','dark'])test(`independent ${mode} palette restores be
  assert.equal(attributes['data-palette'],mode==='light'?'sage':'iris');
  assert.equal(attributes.content,mode==='light'?'#f4f8f5':'#22202b');
 });
+
+// Presentation preferences restore in the same pass as the theme. Applied
+// after React mounts they would flash the previous setting, which is the whole
+// reason this file exists.
+for (const [name, stored, expected] of [
+  ['saved preferences', { 'noevia:chat-font': 'serif', 'noevia:density': 'compact', 'noevia:motion': 'reduced' },
+    { 'data-chat-font': 'serif', 'data-density': 'compact', 'data-motion': 'reduced' }],
+  ['a new installation', {},
+    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system' }],
+  ['values that are not offered', { 'noevia:chat-font': 'comic', 'noevia:density': '../../etc', 'noevia:motion': '1' },
+    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system' }],
+]) {
+  test(`presentation preferences are ready before React with ${name}`, () => {
+    const attributes = {};
+    vm.runInNewContext(code, {
+      localStorage: { getItem: (key) => (key in stored ? stored[key] : null) },
+      document: {
+        documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
+        querySelector: () => ({ setAttribute: () => {} }),
+      },
+    });
+    for (const [attribute, value] of Object.entries(expected)) assert.equal(attributes[attribute], value, attribute);
+  });
+}
+
+test('presentation preferences survive blocked storage', () => {
+  const attributes = {};
+  vm.runInNewContext(code, {
+    localStorage: { getItem: () => { throw new Error('Storage blocked'); } },
+    document: {
+      documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
+      querySelector: () => ({ setAttribute: () => {} }),
+    },
+  });
+  assert.equal(attributes['data-chat-font'], 'sans');
+  assert.equal(attributes['data-density'], 'comfortable');
+  assert.equal(attributes['data-motion'], 'system');
+});

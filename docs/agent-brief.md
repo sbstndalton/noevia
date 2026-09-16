@@ -66,6 +66,33 @@ deployment.
 
 ## Architecture reference
 
+### Settings shape
+
+**General** is profile, presentation preferences and a capabilities report —
+`src/components/GeneralSettings.tsx`, built from one `Row` (what the setting is
+on the left, the control on the right). Chat font, density and motion live in
+`src/preferences.ts` under `noevia:` keys, are applied as `data-*` attributes
+on `<html>` by `public/theme.js` **before paint** for the same reason the theme
+is, and are per-device on purpose; only appearance follows the account.
+
+Capabilities there are **reported, not toggled**: each one is either operator
+configuration (tools, retrieval) or has its own screen (the Diary), so a second
+switch would be a second source of truth. There is deliberately no control for
+write approvals.
+
+**Models & routing** is one interface, not tabs — `models/ModelsSettings.tsx`.
+Search, `Your models` against `Discover` (the Hugging Face download flow), and
+a detail view per model carrying its `models.ini` settings and autoconfig.
+Routing (what Auto resolves to) is the first section; Hardware, Benchmarks and
+the prompt library are collapsed panels on the same page. The chat box's panel
+(`ModelPopup.tsx`) is only Auto-or-a-model plus the toolboxes, with a link
+here; everything else it used to hold now lives on this page.
+
+Usage & activity reports tokens and replies. **Cost estimation was removed** —
+a self-hosted box running local GGUFs has no provider bill, and the old
+estimate excluded hardware and electricity, which is most of the real cost.
+A test asserts the summary never grows a money figure again.
+
 ### Sources
 
 A project holds four kinds of source, and they are not interchangeable:
