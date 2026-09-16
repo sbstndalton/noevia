@@ -1478,3 +1478,33 @@ See [Settings category audit](settings-audit.md) and the latest
 material are implemented locally, with 376 tests/typecheck/build and focused
 browser verification. Not deployed; all-view integration/release QA remains open.
 Next: storage action serialization/retry, Users action errors, model-loading states.
+
+## Usability pass — 2026-09-16
+
+Collected by the user after using release `a48a8c4`. Executable brief:
+`claude-output/master-prompt-2026-09-16.md` (outside the repo). **Research** items end
+in a written recommendation, not code.
+
+**Testing for all of it:** diary work uses a *copy* of `diary-test/` from the project
+folder (never the folder itself, never the real Diary). UI work is checked visually on a
+local spin-up after every change — 375/768/1440, light and dark — not only by suites.
+
+| Area | Items |
+|---|---|
+| A. Mobile & visual | Sidebar collapses completely into a full-screen drawer the moment the viewport shrinks · search button hidden under the top bar · iPhone renders brighter than Chrome on macOS, and macOS shows banding · settings ✕ unlike every other close control |
+| B. Settings IA | More side-panel sub-pages (Profile, Personalization, Appearance, Data…), one concern per page · model manager as its own full page with a back button; settings keeps a simple summary |
+| C. Model management | Easy mode (auto-tune context against real VRAM, MTP type, KV-cache quant) with an Advanced toggle for every field · parity audit against Model Loader, kept running for comparison · safe defaults after download (8k context, MTP when available, model's own template) · deleted model → "No model selected" · choose download storage (Unraid shares) · routing clarity · **research:** per-hardware known-good configs |
+| D. Modes & projects | Chat, Cowork and Code modes; projects enabled per mode · optional shared context layer across modes · **research:** Code harness switcher (Hermes, opencode, DeepSeek) |
+| E. Tools | Tool-call menu under the thinking box in every mode incl. Diary · automatic tool awareness when a request implies a tool that isn't enabled — **measure first**: deferred disclosure and planner/executor were rejected in `spec-tool-routing-research.md` |
+| F. Diary | Separate MCP server with its own needs · inherits every main-interface change · faster entry loads (serve the local copy, then push to WebDAV) · WebDAV as a storage plugin, not Nextcloud-only |
+| G. Telemetry & logs | Tokens/s and stats don't update live · admin tab streaming the llama.cpp log live |
+| I. Deep research mode | Gemini/NotebookLM-style cited long-form research as a background job — **spec first** |
+| H. Platform (research) | Headscale vs NetBird to replace a slow Tailscale · AIO-style master container managing the stack · Mac-native app, later |
+
+**Carry-over:** production serves no models (GGUF weights deleted, re-download pending) ·
+live compose lacks the MCP keys · empty the build dir before the next deploy.
+
+**Order:** live stats + close ✕ → deleted model + safe defaults → full-page model manager
+with Easy/Advanced and the parity audit → mobile drawer and colour → log tab, tool menu,
+settings sub-pages → modes/projects → diary → tool awareness (measured) and the deep
+research spec → research items.
