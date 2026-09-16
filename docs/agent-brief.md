@@ -1,7 +1,8 @@
 # noevia — agent brief
 
 Read this top to bottom before touching anything. It assumes no prior context.
-State verified at commit `8a78172`, 2026-09-09.
+State verified at commit `8a78172`, 2026-09-09; later sections were added without a full
+re-audit, so verify against code before relying on any detail. Current plan: `roadmap.md`.
 
 ## What noevia is
 
@@ -65,6 +66,18 @@ fall back to direct source injection. A live RAG/embedding test needs the real
 deployment.
 
 ## Architecture reference
+
+### Context layers
+
+Three views of one conversation, not three stores: the **authoritative record** (what
+happened, including complete tool results), the **model-facing projection** (the bounded
+request: system text, optional summary, protected recent messages, reduced tool results,
+schemas), and the **human presentation**. Projections are derived and regenerable; the
+record is never rewritten to make a request fit. Deterministic steps (preflight, reduction)
+come before any summarizer call, a summary commits only after the rebuilt request validates,
+and tool-call groups are atomic. See [spec-context-projection.md](spec-context-projection.md).
+Agent-execution boundaries (Prompt Architect, harnesses, durable jobs, execution nodes,
+browser) are in [spec-agent-execution.md](spec-agent-execution.md).
 
 ### Settings shape
 

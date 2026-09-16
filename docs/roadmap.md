@@ -12,16 +12,16 @@ Status words: **Shipped** = deployed and verified · **Open** = to build ·
 
 ## Where things stand — 2026-09-16
 
-- Live release **`a48a8c4`** on DaServer (`https://cowork.daserver.work`), five containers
-  healthy, native llama.cpp (`cowork-llama-1`) as the only inference backend.
+- Last recorded live release **`503b1c5`** on DaServer (`https://cowork.daserver.work`; see
+  `deployment.md`, not re-verified since), five containers healthy, native llama.cpp (`cowork-llama-1`) as the only inference backend.
 - **No models are served.** `models.ini` was emptied and the GGUF weights removed from
   `/mnt/user/ai-models`; only `Ornith-1.5-9B-Q5_K_M` remains, without an entry. Earlier
   notes record the entry deletion as the user's choice. Re-downloading is the user's call;
   `nomic-embed-text-v1` is what project retrieval needs.
 - The live Compose Manager file lacks the six MCP keys, so startup logs `mcp: disabled`.
   The user edits that file; the preflight drift check names the missing keys.
-- `a48a8c4` was deployed without the pre-deploy appdata backup the runbook calls for and
-  is not yet recorded in `deployment.md` or the DaServer changelog. Do both next deploy.
+- `a48a8c4` shipped without the pre-deploy backup; both it and `503b1c5` are recorded in
+  `deployment.md`. The DaServer changelog in Nextcloud was not found locally.
 - Empty the local build directory before building a release (a stale bundle shipped).
 
 ## Shipped (do not rebuild)
@@ -50,6 +50,11 @@ mobile composer and tap targets).
 - **Open** — Short-height populated sidebar reachability (carried from the backlog).
 - **Open** — Mobile checks for Settings, Projects, Code and the setup wizard, and software
   keyboard behaviour (Freebuff covered Chat and Diary only).
+- **Research** — Deterministic design-rule check: run Impeccable (`detect --json`, plain CSS
+  supported) once against `apps/web/src`, triage findings against existing tests, mobile QA
+  and screenshots, then adopt as a dev-only check, borrow selected rules, or reject. Also
+  assess a lightweight post-edit scan for agent-driven UI work. Complements screenshot
+  review; never replaces it. No app dependency.
 - **Decision** — Scheduled, Plugins, Explore and Coding are preview surfaces: keep them as
   labelled previews, or hide them until built.
 
@@ -73,6 +78,12 @@ mobile composer and tap targets).
 - **Open** — Routing clarity: plain labels, what Auto does, per-project view.
 - **Open** — Hugging Face cache files can surface as hex identifiers; unconfirmed (the scanner
   already skips `blobs/`), needs a real HF-cache fixture.
+- **Open, design first** — Configuration-scoped qualification evidence: states (reported,
+  unverified, verified for this configuration, failed, stale, unavailable) tied to an identity
+  tuple (backend, model, artifact, projector, runtime, context, MTP profile, harness, prompt
+  preparation, suite, date); changes mark evidence stale. No universal score. Today calibration
+  history lacks artifact/preset identity and invalidation.
+  ([spec §1](spec-agent-execution.md))
 - **Research** — Known-good settings per model and hardware.
 - **Research** — Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU; and
   applying the qualified Gemma 131k / Qwen 262k profiles beyond their exact configuration.
@@ -83,7 +94,20 @@ mobile composer and tap targets).
 - **Open** — Chat, Cowork and Code modes; projects enabled per mode (C++ → Code, Random
   questions → Chat, HomeLab → all).
 - **Open** — Optional shared context layer across the modes a project is enabled in.
-- **Research** — Code-mode harness switcher (Hermes, opencode, DeepSeek…).
+- **Design before Code build** — `CodeHarness`: noevia-owned contract that external harnesses
+  (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
+  preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
+  every harness action classified through noevia's approval gate; one writer per workspace
+  first. Evaluate ACP as the adapter protocol. ([spec §3](spec-agent-execution.md))
+- **Research, benchmark first** — `PromptArchitect`: optional stronger model (local or cloud,
+  provider-neutral, official auth only) writes a structured execution prompt for the local
+  model. Modes Direct (default) / Local / Frontier; Auto only after paired fixtures prove a
+  benefit. Outbound context allowlist enforced in code, disclosure shown, original request
+  stays authoritative, no hidden reasoning stored. ([spec §2](spec-agent-execution.md))
+- **Later** — Cowork browser capability through a noevia-owned `BrowserExecutor` on an
+  execution node: isolated profiles, domain allowlists, secrets substituted outside model
+  context, consequential actions through approvals, run as durable jobs. Browser Use is one
+  candidate implementation. ([spec §6](spec-agent-execution.md))
 
 ### E. Tools
 - **Open** — Tool-call menu under the thinking box in every mode, including Diary.
@@ -91,7 +115,10 @@ mobile composer and tap targets).
   toolboxes for the task from the manifest, loads them for the session, and adds no
   discovery round. A tool-search/unlock variant was already measured slower on these
   models (12.91 s vs 8.64 s median). Adopt only if the `experiments/tool-routing` runner
-  shows equal-or-better completion without higher latency.
+  shows equal-or-better completion without higher latency. Model-driven tool search (as in
+  Row-Bot) stays rejected on that evidence. Add manifest fields only as this work needs them
+  (example tasks, `autoLoad`, `requires`, `resultReducer`); one registry, policy never in the
+  prompt, auto-loading never pre-approves a write.
 - **Open** — Write access to the Diary from the in-app MCP server needs a sidecar append
   endpoint; the box is read-only by design until the user decides.
 - **Decision** — Optional offline Wikipedia needs a chosen service.
@@ -124,31 +151,58 @@ mobile composer and tap targets).
 ### H. Platform
 - **Research** — Headscale vs NetBird to replace a slow Tailscale.
 - **Research** — AIO-style master container managing the stack.
-- **Later** — Mac-native app.
+- **Later** — Mac-native app as both client and optional trusted **execution node** (local
+  files, terminal, repositories, browser, notifications): server orchestrates, node executes
+  advertised capabilities after explicit pairing; never blanket control of the Mac.
+  ([spec §5](spec-agent-execution.md))
 
 ## Research priorities
 
-Ranked. Each ends in a written recommendation in `docs/`, with measurements from this
-deployment's models.
+Ranked. Each ends in a written recommendation in `docs/` with measurements from this
+deployment's models. Can run alongside the build order.
 
-1. **Context efficiency: scripts before tokens.** Cut how much context tool calls use by
-   moving mechanical work into code. Measure first: log tokens per tool call and per tool
-   result over real use, then (a) trim results in code before the model sees them,
-   (b) replace repeated multi-step tool sequences with one task-shaped scripted tool,
-   (c) answer purely mechanical requests without the model, and (d) summarise old tool
-   results instead of carrying them forward. Script only sequences the logs show repeating.
-2. Known-good settings per model and hardware.
-3. Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU.
-4. Backend portability (llama.cpp vs vLLM).
-5. Code-mode harness switcher (Hermes, opencode, DeepSeek…).
-6. Headscale vs NetBird to replace a slow Tailscale.
-7. AIO-style master container managing the stack.
+**Near-term**
+1. **Context efficiency: scripts before tokens** ([spec](spec-context-projection.md)).
+   Measure tool/context consumption first; then trim deterministic waste with tool-aware
+   reducers (full results kept authoritative); collapse recurring sequences into task-shaped
+   tools; handle mechanical work without the model; summarize only where still needed. Includes
+   the protected-input preflight, validate-before-commit compaction, atomic tool-call groups and
+   the authoritative / model-facing / UI layer split. Acceptance: fewer model-facing tokens, no
+   lost results, no worse completion, fewer LLM compaction calls.
+2. Configuration-scoped model qualification design (C).
+3. Impeccable UI-QA evaluation (A).
+4. Prompt Architect spec and benchmark design (D).
+
+**Before Code mode is built**
+5. `CodeHarness` contract, harness/prompt-preparation selectors, model × harness × architect
+   evidence, workspace ownership (D).
+
+**Before Cowork or Deep Research is built** ([spec §4](spec-agent-execution.md))
+6. Shared durable-work primitive: append-only events, derived state, restart recovery,
+   explicit uncertain side effects, fixed worker capability scope.
+
+**Before browser automation**
+7. `ExecutionNode` and `BrowserExecutor` contracts, browser security/approval model, then a
+   Browser Use evaluation on a node.
+
+**Other**
+8. Known-good settings per model and hardware.
+9. Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU.
+10. Backend portability (llama.cpp vs vLLM).
+11. Headscale vs NetBird to replace a slow Tailscale.
+12. AIO-style master container managing the stack.
+
+**Later:** Mac execution node and richer desktop capabilities; Auto architect/harness routing
+once evidence exists.
 
 Research tied to a build item stays with it: task-conditional tool loading (E) and deep
-research mode (I) are both measure-first, then build.
+research mode (I) are measure-first, then build.
 
 ## Order
 
+0. Compaction correctness: protected-input preflight and validate-before-commit
+   ([spec §3–4](spec-context-projection.md)). Placed first because it is a verified bug —
+   a compaction that shrinks but doesn't fit is saved before the fit check — and it is small.
 1. Live stats, settings ✕.
 2. Deleted model state, safe defaults after download.
 3. Full-page model manager with Easy/Advanced and the parity audit.
@@ -157,8 +211,8 @@ research mode (I) are both measure-first, then build.
 6. Modes and projects.
 7. Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
 8. Task-conditional tool loading (measured) and the deep research spec.
-9. Research priorities, starting with context efficiency. It can run alongside
-   the build items above, since it begins with logging.
+9. Research priorities in ranked order; context-efficiency logging can start alongside the
+   build items.
 
 ## Testing rules
 
@@ -173,6 +227,7 @@ research mode (I) are both measure-first, then build.
 
 - Renaming `cowork` identifiers.
 - A global "never ask" for write tools.
-- Vendoring an agent framework.
+- Vendoring an agent framework, or adopting an external harness/browser framework as noevia's
+  API; external projects are references and adapters, not the architecture.
 - Resurrecting Diary insights.
 - Exposing admin-only external-source mounts to members before tenant ownership exists.
