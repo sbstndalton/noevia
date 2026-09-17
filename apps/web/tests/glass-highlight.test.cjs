@@ -72,3 +72,13 @@ test('touch, reduced motion and non-glass targets do nothing', () => {
   flush();
   assert.deepEqual(text.props, {});
 });
+
+test('leaving before the queued frame runs does not re-light the control', () => {
+  const { handlers, el, flush } = load();
+  const button = el(true);
+  const outside = el(false);
+  handlers.pointermove({ target: button, clientX: 150, clientY: 60, pointerType: 'mouse' });
+  handlers.pointermove({ target: outside, clientX: 900, clientY: 900, pointerType: 'mouse' });
+  flush();
+  assert.equal('data-glass-active' in button.attrs, false);
+});
