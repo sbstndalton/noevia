@@ -60,6 +60,7 @@ credentials and model management, which the wizard does not cover.
 | `COWORK_STATE_DIR` | Existing/explicit host bind root, used when storage overrides are empty | Preserve the current path on upgrades | no | Compatibility fallback: `./state` |
 | `COWORK_WEB_STORAGE`, `COWORK_DIARY_STORAGE` | Explicit generic Compose mount sources, taking precedence over `COWORK_STATE_DIR` | Fresh initializer selects `web-data` and `diary-data`; never point existing state at empty volumes | no | Managed volumes for initialized fresh installs |
 | `DIARY_CHAT_MODEL`, `DIARY_AUX_MODEL`, `EMBEDDING_MODEL` | Model names the inference endpoint serves | Ask the human which models their endpoint exposes | no | `HAS-SAFE-DEFAULT` (`default`) |
+| `EMBEDDING_BASE_URL` | Optional separate OpenAI-compatible embeddings endpoint (e.g. CPU-only llama-server) so retrieval doesn't evict the chat model | Leave unset to use the inference endpoint | no | `HAS-SAFE-DEFAULT` (unset) |
 | `UI_AUTH_TOKEN` | Optional UI API token; falls back to `DIARY_AUTH_TOKEN` when empty | Leave empty unless the human wants it distinct | **yes** | `HAS-SAFE-DEFAULT` (empty = reuse `DIARY_AUTH_TOKEN`) |
 | `WEBAUTHN_RP_ID` | Passkey identifier; must match the browser's hostname | Derived from `PUBLIC_ORIGIN` when empty; override only for unusual proxy setups | no | `HAS-SAFE-DEFAULT` (derived) |
 | `TRUST_PROXY` | Set `true` only behind a reverse proxy so rate limiting/audit logs see real client IPs | Depends on deployment shape — ask if unclear | no | `HAS-SAFE-DEFAULT` (`false`) |

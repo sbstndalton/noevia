@@ -166,3 +166,62 @@ Build 657d21b, llama.cpp server-vulkan @sha256:94bd70ef…, `--models-max 2`, 29
 - Auto routing (`ui-data/auto-roles.json`, previous copy `.bak.before-d3`) pointed at two Gemma
   models no longer served, so Auto would have failed on every request. Now Fast =
   Qwen3.5-4B-Q5_K_M, Smart = Ornith-1.5-9B-Q5_K_M, Vision = Qwen3.5-4B-Q5_K_M.
+
+## APU memory and retrieval swap — measured 2026-09-17 09:50 EDT
+
+Release 127b300, llama.cpp b10920 (`eafe15a5e`), `--models-max 1`, 29 701 MiB RAM, no swap, no
+backup or mover running, nobody chatting. Sampled every 0.5 s (`free -m`,
+`/sys/class/drm/card1/device/mem_info_{gtt,vram}_used`); one short request per phase.
+
+**Kernel bounds already in place.** `amdgpu.gttsize=-1` (default), `ttm.pages_limit=3 801 760`
+pages, so `mem_info_gtt_total` = **14 850 MiB** (half of RAM), plus a 2 048 MiB BIOS VRAM carve-out.
+GPU allocations are therefore hard-capped at about 16.9 GiB. The syslog mirror is **not** enabled
+(`/boot/config/rsyslog.cfg` empty).
+
+| Loaded model | GTT used | VRAM used | Host `used` | `available` |
+|---|---|---|---|---|
+| gemma-4-E2B_q4_0-it, ctx 131 072 (not in D3; preset added 08:32) | 4 050 MiB | 2 017 MiB | 11 743 MiB | 17 950 MiB |
+| Qwen3.5-4B-Q5_K_M, ctx 24 576 | 3 145 MiB | 1 938 MiB | 10 761 MiB | 18 939 MiB |
+| nomic-embed-text-v1 (GPU) | 44 MiB | 280 MiB | 7 560 MiB | 22 140 MiB |
+| CPU-only nomic sidecar (`--device none`, 4 threads) beside the 4B | +0 | +0 | +280 MiB RSS | — |
+
+Host baseline without a chat model is about 7.5 GiB used (containers plus the RAM root filesystem);
+~20 GiB is page cache (reclaimable, including mmap'd weights).
+
+**Retrieval swap cost under `--models-max 1`** (wall time from the host, one request each):
+
+| Step | Time |
+|---|---|
+| 4B cold load + 8 tokens | 4.86 s |
+| 4B warm | 0.77 s |
+| embedding request, evicting the 4B | 0.74 s |
+| embedding warm | 0.06 s |
+| 4B again after the embedding (reload) | 3.84 s |
+| CPU sidecar: query / 1 200-char chunk / batch of 8 chunks (minus 53 ms `docker exec`) | ~30 ms / ~100–140 ms / ~780 ms |
+
+A RAG turn therefore adds about **4.6 s of swapping** and also drops the chat model's prompt cache,
+so a long chat re-prefills from scratch (at ~500 tok/s on the 4B, +20 s for 10k tokens). The CPU
+sidecar removes both, costs no GPU memory and answers a query in ~30 ms.
+
+**Proposal to the user (not applied).**
+1. **GTT:** keep the kernel default (14.85 GiB). It is already below "RAM − 10 GiB" (19.7 GiB);
+   lowering it further would block the 9B at longer contexts for no measured gain. What is missing
+   is evidence of what filled RAM during the outage: enable the syslog mirror first.
+2. **Engine guard:** add `--fit on --fit-target 1024` to the router command (both flags exist in
+   b10920), so a load that would overrun device memory shrinks unset options or fails cleanly.
+3. **Retrieval:** run nomic on CPU as a small service (`llama-server --device none -m
+   …nomic-embed-text-v1.Q8_0.gguf --embedding --pooling mean -c 2048 -t 4`) and set
+   `EMBEDDING_BASE_URL` on web (supported from this commit). Keep `--models-max 1` for chat models.
+   This also removes the memory objection to `features.toolRouter`.
+4. Only after 1–2 and a measured peak with the 9B loaded: consider `--models-max 2`.
+
+Outage hypothesis update: GPU memory alone cannot exceed ~16.9 GiB, and host baseline is ~7.5 GiB,
+so the engine by itself stayed below physical RAM even with two models. More likely contributors are
+RAM-backed paths (Unraid root filesystem, `/tmp`) during the 52 GB ZIM download or the appdata backup
+staging. Unverified; the syslog mirror is the way to find out.
+
+Project RAG after the `EMBEDDING_MODEL` rename: production has **no** project indexes
+(`ui-data/rag` is empty, no per-user `rag` folders), so nothing is stale and no reindex is needed.
+Indexes store only the vector dimension, not the model; a model change with a different dimension
+would be caught by the query-length check, one with the same dimension would not. Add a model
+stamp before switching embedding models.
