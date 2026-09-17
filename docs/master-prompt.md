@@ -2,9 +2,10 @@
 
 You are working on **noevia**, a self-hosted, local-first workspace for project-aware chat,
 tools and a private Diary. The repository is `noevia-application/` inside the project folder
-"AI frontend thing" (GitHub `sbstndalton/noevia`, branch `claude/compaction-correctness-fix-ltyu9p`, based on `feat/direct-llamacpp`; not deployed). The last
-recorded live release is `503b1c5` (see `docs/deployment.md`); confirm runtime state before
-assuming anything is live.
+"AI frontend thing" (GitHub `sbstndalton/noevia`, branch `claude/compaction-correctness-fix-ltyu9p`, based on
+`feat/direct-llamacpp`). The live release is **`127b300`** on DaServer (see `docs/deployment.md`,
+and `docs/roadmap.md` → "Where things stand" for what is live, off, broken and waiting on the
+user). Confirm runtime state before assuming anything is live.
 
 This is the single executable brief. `docs/roadmap.md` is the matching plan with status for
 every item; detailed designs live in the `docs/spec-*.md` files named below. Don't recreate
@@ -18,7 +19,8 @@ retired audits, backlogs, continuation files or extra master prompts — update 
 4. `docs/roadmap.md`
 5. `docs/master-prompt.md` (this file)
 6. `docs/deployment.md` before any deploy
-7. The spec for the item you pick up — especially `docs/spec-context-projection.md` and
+7. `docs/research-findings-2026-09-17.md` (measurements, outage, APU memory, ACP spike)
+8. The spec for the item you pick up — especially `docs/spec-context-projection.md` and
    `docs/spec-agent-execution.md`
 
 Then inspect the current branch, working tree, recent commits and the code for your item.
@@ -111,19 +113,23 @@ over Tailscale use `root@100.70.173.74`.
 
 ## Carry-over — keep visible
 
-- *Corrected 2026-09-17:* `models.ini` holds three presets (Qwen3.5-4B-Q5_K_M, gemma-4-E2B,
-  Ornith-1.5-9B) and their GGUFs are on disk again; none loaded. The D3 proposal is in
-  `research-known-good-settings.md`.
-- The live Compose Manager file
-  (`/boot/config/plugins/compose.manager/projects/Cowork/docker-compose.yml`) lacks the six
-  MCP keys, so startup logs `mcp: disabled`. The user edits that file.
-- The DaServer changelog (`Projects/Unraid/DaServer.md` in Nextcloud) was not found locally;
-  releases `a48a8c4` and `503b1c5` are recorded only in `docs/deployment.md`.
+- **DaServer went down on 2026-09-17 (~04:15 to 08:24, cause unknown).** Syslog is in RAM and
+  was lost. The engine is back at `--models-max 1`. Don't raise it, run parallel model loads,
+  start large downloads or run benchmarks during a backup or mover window until
+  `research-findings-2026-09-17.md` §7 is done: syslog mirror on, measured GTT peak, GTT cap or
+  `--fit`.
+- Live Compose override: `/boot/config/plugins/compose.manager/projects/Cowork/docker-compose.override.yml`.
+  It holds the D1 token/network, MCP keys, Kiwix service and feature env. Every edit gets a
+  `.bak.before-<reason>` copy. Env: `/mnt/docker/appdata/cowork/config/.env` (path in `envpath`).
+  There's no python on the host; edit files locally and scp them back.
+- Start services with `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file <.env> -- -d
+  --no-build --wait <services>` from the Compose Manager project directory. `up.sh` isn't
+  executable, so call it with `bash`.
+- Presets: Qwen3.5-4B (24 576), Ornith-1.5-9B (16 384), nomic-embed-text-v1. Backups are
+  `models.ini.bak-before-d3` and `ui-data/auto-roles.json.bak.before-d3`.
+  `EMBEDDING_MODEL=nomic-embed-text-v1` (renamed today); project RAG indexes may need a reindex.
+- `llama-vulkan-test` is stopped, not removed.
 - `docs/agent-brief.md`'s "verified at" header predates many sections; verify before relying.
-- The repository now requires `MODEL_LOADER_TOKEN` and a `models` Compose network
-  (`docs/research-master-container.md`). The live file doesn't have them yet; a deploy without
-  those operator steps fails compose validation. Don't apply them yourself.
-- The open decisions were settled on 2026-09-17; see **Decisions** below.
 
 ---
 
@@ -515,24 +521,51 @@ Still the user's, whatever the decisions say: deploying, spending money or credi
 downloading model weights to DaServer, editing live Compose/preset files, and anything
 touching the real Diary corpus.
 
-## Current phase — build the decisions, then bug hunt
+**Decisions added 2026-09-17 (later).** D14: coding harnesses run only with a permission config
+the adapter pins (`ask` for edit, bash and fetch) plus an OS sandbox. ACP prompts are the user
+experience, not the boundary (`experiments/acp-spike`). D15: browser automation enforces
+domain allowlists at an egress proxy, not in the browser tool (findings §10). D16:
+notifications never carry chat titles or text. D17: destructive automation (retention and
+similar) is opt-in, previews its count, and the server refuses unconfirmed deletes. D18: stay on
+llama.cpp Vulkan; vLLM only after the §8 gates.
 
-Order:
-1. D1 preflight check (repo side only);
-2. D5 previews flag and `features.cjs`;
-3. D8 folder sweep;
-4. D6 DAV ops;
-5. D10 Diary append;
-6. D12 deep research steps 4–5 (plan step, save, progress UI, cancel/partial save);
-7. D7 backup module;
-8. D9 Kiwix module;
-9. D4 design lint;
-10. D3 preset diff doc.
+## Current phase — stabilise, measure on the server, then build
 
-Each is one or more commits, with tests, the full checks and screenshots for UI. When those
-are done, run the bug hunt below.
+The decisions build (D1–D13) is done; see the roadmap. Work in this order, one commit or more
+per step, with tests and screenshots as usual.
 
-## Bug hunt (after the decisions are built)
+1. **Outage follow-up (needs the user for host settings).** Check the syslog mirror is on. With
+   only the 4B loaded, then 4B plus embedding, record `free -m` and
+   `/sys/class/drm/card*/device/mem_info_gtt_{used,total}`. Propose a GTT cap and
+   `--fit on --fit-target` to the user, with numbers. Record the results in
+   `research-known-good-settings.md`.
+2. **Embedding versus chat eviction.** Measure a RAG turn's latency with `--models-max 1`. If the
+   swap is the cost, pick a fix (a CPU-only embedding sidecar, or a second slot once §1 is safe) and
+   measure it. Verify project RAG after the `EMBEDDING_MODEL` rename, and add a reindex path if
+   indexes are stale.
+3. **Deep research gate (§8).** Run `experiments/deep-research/run.cjs` (A/B/C) on the 9B from
+   inside the web container, outside backup windows, detached with `nohup` and output to a file.
+   Write the results into the spec and decide on the plan step. If the gate fails, turn the
+   feature back off and say so.
+4. **Tool router in production shape.** Measure with the real Nextcloud boxes against the served
+   models. Enable `features.toolRouter` only if the gate holds there and memory allows the
+   embedding model to stay loaded.
+5. **Context efficiency (research priority 1).** Turn on `CONTEXT_LOG=1` for a week of normal use
+   (counts only), then write reducers for the repeats the logs show.
+6. **Prompt Architect benchmark** (spec §2) on the local models.
+7. **Product:** account-wide memory preferences (Personalization); Kiwix and vision checked in real
+   chats; Diary append checked end to end on the test corpus through the UI.
+8. **CodeHarness spike on the server (D14):** OpenCode over ACP in a sandbox container with a
+   worktree-only mount, no credentials and proxied egress, against the local models. Approvals map
+   to noevia's card as in findings §11.
+9. **SMB pilot (D11)** once the user provides the share, on a copy only.
+10. **Bug hunt**, below, after steps 1–8.
+
+Still the user's: deploying, spending money or credits, downloading model weights, editing
+live Compose or preset files beyond what a step above says was approved, host settings (GTT,
+syslog), and anything touching the real Diary corpus.
+
+## Bug hunt (after the current phase)
 
 Find and fix real bugs, in repeated passes, until a full pass finds
 nothing new.
@@ -573,13 +606,29 @@ still suspected but unproven, what needs the user).
 
 ### Practical notes from the last session
 
-- Playwright: `PLAYWRIGHT_MODULE=/Users/sebastiandalton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright`, `QA_SCREENSHOTS=/tmp`. There is no `timeout` command on macOS.
-- Model-manager pytest: `PYTHONPATH=/tmp/noevia-mm-venv/lib/python3*/site-packages ../diary/.venv/bin/python -m pytest -q` from `services/model-manager` (recreate the venv if missing).
-- Sign-in is rate limited (5 per 15 min): reuse a saved Playwright `storageState` in scripts.
-- Scope ambiguous selectors (e.g. the "Settings" button exists in the account popover and
-  elsewhere: use `.account-popover`).
-- Don't `execFileSync` a child that calls back into a server in the same process (deadlock).
-- Edit JS/TS with Python or the Edit tool, not `sed` (`&` in replacements corrupts code).
-- Leave nothing running: stop previews, the sidecar on 8010, any tunnel, and delete the run dir.
+- Playwright: `PLAYWRIGHT_MODULE=/Users/sebastiandalton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright`, `QA_SCREENSHOTS=/tmp/noevia-shots`. There's no `timeout` command on macOS; use `perl -e 'alarm N; exec @ARGV'`.
+- `apps/web/dist` is a symlink to `/tmp/noevia-qa-dist`. Empty it with `rm -rf /tmp/noevia-qa-dist/*`,
+  never delete the folder itself, or `npm run build` fails, and `| tail` hides the exit code.
+- Running every QA suite takes longer than a 10-minute tool call. Run it detached, writing results
+  to a file. Skip `nav.cjs` (helper), `workspace-preview.cjs` (manual server), `native-*` (GPU
+  window) and `load-perf.cjs` (report only). A crashed suite can leave a server on its port;
+  check `lsof -iTCP:<port>` before reading a failure as real.
+- New QA suites this session use API-created synthetic accounts, not the setup wizard:
+  `/api/setup/complete`, then `/api/profile/onboarding`, then inject cookies. Copy that pattern from
+  `qa/data-export.cjs` or `qa/personalization.cjs`. For chat, point `INFERENCE_BASE_URL` at a fake
+  OpenAI-compatible server and use a project with a model.
+- Vitest-free sandbox tests (`tool-exchange.test.cjs`, `vision-routing.test.cjs`) slice
+  `handleChat` out of `index.cjs`. A new global used there must be stubbed in their context, or the
+  whole suite hangs.
+- `npm run lint:design` now checks the type scale (`--text-*` tokens only), weights 400–700 and
+  undefined `var(--x)` across `src/` and `public/`.
+- Model-manager pytest: `../diary/.venv/bin/python -m pytest -q` from `services/model-manager`.
+- On the server, long jobs over SSH must use `nohup … &` with output to a file. Several open SSH
+  sessions during heavy I/O made sshd stop answering.
+- Sign-in is rate limited; reuse storage state or API cookies in scripts.
+- Edit JS/TS with Python or the Edit tool, not `sed` with complex replacements.
+- Leave nothing running: previews, the sidecar, servers on QA ports, temp dirs.
 
-Deploying stays the user's call: don't deploy, even when a pass is green, until they say so.
+Deploying stays the user's call. When they say deploy: take the appdata backup, run
+`deploy/examples/overlay-release.sh OLD NEW` (web-only overlays reuse the old image's
+node_modules), verify, and record the release in `docs/deployment.md`.

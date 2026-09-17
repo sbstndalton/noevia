@@ -10,18 +10,65 @@ stays in the `spec-*.md` files linked below. The executable brief is
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
 **Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
 
-## Where things stand — 2026-09-17
+## Where things stand — end of 2026-09-17
 
-- Live release **`127b300`** on DaServer (`https://cowork.daserver.work`, recorded in
-  `deployment.md`): web, Diary, OCR, model-loader, native llama.cpp and Kiwix healthy.
-- **Models served (D3 applied):** Qwen3.5-4B-Q5_K_M (24 576), Ornith-1.5-9B-Q5_K_M (16 384),
-  nomic-embed-text-v1; `--models-max 2`; Auto roles Fast 4B / Smart 9B / Vision 4B.
-- **MCP on:** Nextcloud, Tavily and the in-app server (loopback 8022). D1 model-loader token and
-  `models` network live.
-- **Features on** (user, 2026-09-17): previews, Diary append tool, deep research, offline
-  Wikipedia. Off-site backup off until a target exists.
-- Release packaging: keep `/tmp/noevia-qa-dist` as a folder (dist symlinks to it); the overlay
-  script now refuses a tarball without a built bundle.
+Branch `claude/compaction-correctness-fix-ltyu9p` (GitHub `sbstndalton/noevia`), last release
+**`127b300`** live on DaServer (`https://cowork.daserver.work`, see `deployment.md`).
+
+### Live and verified in production
+- Services: web, Diary, OCR, model-loader (token + `models` network, D1), native llama.cpp
+  (`--models-max 1`), Kiwix (`wikipedia_en_all_nopic_2026-06`, internal network). All healthy
+  after the 08:24 reboot.
+- Models (D3): Qwen3.5-4B-Q5_K_M (ctx 24 576, 22.7k-token prompt in 46 s), Ornith-1.5-9B-Q5_K_M
+  (16 384, 15.1k in 50 s), nomic-embed-text-v1 (768 dims). Auto roles: Fast 4B, Smart 9B, Vision 4B.
+- MCP: Nextcloud, Tavily, in-app server (loopback 8022; diary + project-docs boxes, 10 tools).
+- Features on through env: previews, Diary append tool, deep research (admin), offline Wikipedia.
+- New in 127b300: Settings → Data (export ZIP, import, archived chats with Restore, delete old
+  chats), Settings → Personalization (custom instructions, response style, background
+  notifications), keyboard shortcuts (⌘/Ctrl K, ⇧O, comma, slash), HIG type scale and
+  cleanups, plain-language tool rows, stale Auto-role 409 and alert, shared-memory (GTT)
+  warning on the Hardware tab, glass pointer glint.
+
+### Implemented, off or not yet proven
+- **Tool router** (`features.toolRouter`, off): gate passed on synthetic fixtures (14/14, 9.7 s vs
+  10.6 s, −23 % input tokens). Not measured on real Nextcloud boxes. With `--models-max 1` every
+  routed message loads the embedding model and evicts the chat model, so leave it off until
+  memory allows two models.
+- **Deep research** is on for admins, but the spec §8 gate never finished (run cut off by the
+  outage). Harness is ready: 12 questions + 4 project + 2 adversarial, variants A/B/C.
+- **Off-site backups** (D7): built, no target configured.
+- **DAV ops** (D6): built; the sharing listener is still unconfigured.
+- **Diary append** (D10): live, tested on synthetic corpora only (by rule), never against the real
+  Diary.
+- **Kiwix tool**: search verified from the web container, not yet used in a real model chat.
+- **Vision role** on the 4B: configured, no image test on the new presets.
+
+### Broken or risky right now
+- **Outage cause unknown.** DaServer went unresponsive around 04:15 (SSH banner timeouts, Unraid
+  UI down, later Cloudflare 530) after `--models-max 2`, a 52 GB ZIM download and an appdata
+  backup. Syslog is in RAM and was lost. Docker network overlap ruled out. Leading hypothesis:
+  unified-memory GTT allocations outside the container limit (findings §5, §7). Do not return to
+  `--models-max 2` before a GTT cap / `--fit` and a measured peak.
+- **Retrieval evicts chat** under `--models-max 1` (embedding and chat model swap on RAG turns).
+- **`EMBEDDING_MODEL` renamed** (`nomic-embed-text-v1-GGUF` → `nomic-embed-text-v1`). Project RAG
+  indexes built before today may be stale or empty; reindexing is unverified.
+- Glass banding on real devices: still the user's check (D13).
+- `llama-vulkan-test` container stopped and kept for rollback (user's request).
+- QA runner false alarms: `qa/nav.cjs` (helper) and `qa/workspace-preview.cjs` (manual preview
+  server) are not suites; `qa/native-live.cjs` needs the GPU window and leaves a server on 31329
+  if it crashes.
+
+### Research written today
+`research-findings-2026-09-17.md` §1–11: D3 caps, tool routing, deep-research status, HIG audit,
+outage, APU memory bounds (GTT, `--fit`), backend portability (stay on llama.cpp Vulkan), Unsloth
+GGUFs, BrowserExecutor boundary (egress proxy), ACP for CodeHarness plus the local spike
+(`experiments/acp-spike`: OpenCode writes silently by default; with `ask`, writes go through
+client fs, but approved shell commands run in the agent's own process).
+
+### Needs the user
+Enable the Unraid syslog mirror · GTT cap decision · SMB pilot share and credentials (D11) · an
+off-site target and budget (D7) · live-credit research run · a maintenance window for larger
+context probes · sign-in/billing for Claude or Codex harness adapters.
 
 ## Shipped (do not rebuild)
 
@@ -599,6 +646,28 @@ and cutover; an off-site provider and budget; a live-credit research measurement
   only attempts on non-existent usernames count toward the address block; once blocked, all attempts
   from it get the same 429 (no enumeration signal) · `auth-enumeration.test.cjs` (8 members × 4
   sign-ins from one address).
+
+- 2026-09-17 · after the hunt · Auto roles named two models no longer served, so every Auto
+  message failed upstream · 409 naming the role before any engine call, settings alert · `auto-roles-check.test.cjs`, `qa/llamacpp-http.cjs` · 8e4dcd0
+- 2026-09-17 · release tooling · a failed local build shipped an empty `dist/` into the image build
+  (stopped before switching) · overlay script refuses a tarball without a built bundle · c14df66
+- 2026-09-17 · f · message edit box used `--surface/--line/--muted-ink`, defined nowhere, so dark
+  mode got light fallbacks · real tokens + `undefined-token` design-lint rule · 7248c4a
+- 2026-09-17 · f · accepted glass study's pointer glint never ported (CSS read `--glass-x` nothing
+  set) · `public/glass-highlight.js` · 7248c4a; a queued frame re-lit a control after the pointer
+  left · `glass-highlight.test.cjs` · 52f982e
+- 2026-09-17 · f · archiving a chat hid it everywhere with no way back · Data → Archived chats · 52f982e
+- 2026-09-17 · e · data export would have included the internal Diary attachments project · filtered
+  like `/api/workspace` · 0d269fa
+- 2026-09-17 · e · delete-old-chats used a preview loaded before old chats arrived and deleted one
+  without confirmation (caught by QA) · fresh count on choose, server refuses unconfirmed deletes
+  (409) · `routes/account.test.cjs` · 25325ac
+- 2026-09-17 · f · `qa/mtp.cjs` broke when stats became a collapsed pill · opens the pill first · d2adc66
+- 2026-09-17 · f · phone Settings showed an empty bar holding a second close button under "Back to
+  app"; Projects empty state had two identical primary buttons; "1 workspace" on the Projects page ·
+  fixed with QA · 4aea5d3, 0d269fa
+- 2026-09-17 · a · test sandbox for `handleChat` lacked new globals and hung the whole suite ·
+  stubs added · 0e5ed34
 
 ## Testing rules
 
