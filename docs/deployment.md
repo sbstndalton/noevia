@@ -1135,3 +1135,32 @@ Hugging Face.
 Two bugs found by running it against the live hub, both fixed the same evening: repos looked
 "suitable" on the strength of a stray 10 MB GGUF with no quantisation in its name, and
 `ggml-org/gpt-oss-120b-GGUF` offered a 1.59 GB "BF16" file that is an EAGLE3 draft head.
+
+## Release ca5d2f6 — 2026-09-17 night (main after PR #1 and PR #2)
+
+First deploy from `main` rather than a branch: `ca5d2f6` is the merge of PR #2 (measured
+model tuning, server-judged Discover, tool routing, CPU embeddings, account memory) on top of
+PR #1 (settings-native model manager styling, layout mode, hub search that returns results).
+Everything in `faeb9d2` is included; PR #1 adds `apps/web/public/layout-mode.js`,
+`LayoutMode.tsx`, CSS, and the `hf.py`/`api.py`/`main.py` search changes.
+
+Checked before shipping: 679 web server tests, typecheck, design lint clean; the merge diff
+against the branch is PR #1's files only.
+
+Flow: appdata backup `ab_20260917_164749` (run with `setsid` — a plain `nohup … &` over SSH
+does not survive the session) → `deploy/examples/overlay-release.sh faeb9d2 ca5d2f6` (web
+overlay on `cowork-web:faeb9d2`, diary/ocr/model-loader retagged) → a second image for
+`cowork-model-loader` (`FROM cowork-model-loader:ca5d2f6`, `COPY app /srv/app`, import check)
+recreated through the preflight `up.sh`.
+
+Verified after: all five services healthy with `restarts=0`, native engine container untouched,
+`current` and `COWORK_VERSION` on `ca5d2f6`, D1 holds (the Diary cannot resolve `model-loader`),
+public 200 with bundle `index-BhBOCyc5.js` matching the local build, startup logs
+`mcp: nextcloud+tavily+noevia` with 176 tools across 3 servers, and Discover answering live hub
+searches against this machine's 12.5 GB budget (`gpt-oss` 6 shown / 20 untrusted / 13 unsuitable;
+`gemma` 7 shown). A bare `qwen3` search shows nothing under the trusted default because the hub's
+top 30 for that word are community fine-tunes — the "everyone" toggle widens it, as designed.
+
+Rollback: `overlay-release.sh`'s automatic path, or point `current` and `COWORK_VERSION` back at
+`faeb9d2` (`config/.env.bak.before-ca5d2f6`) and re-run the preflight `up` for web, diary, ocr and
+model-loader.
