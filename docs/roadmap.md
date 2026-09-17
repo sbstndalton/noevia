@@ -260,7 +260,7 @@ mobile composer and tap targets).
 
 ### H. Platform
 - **Researched 2026-09-17** — Headscale vs NetBird ([research-remote-access.md](research-remote-access.md)): don't migrate yet; neither changes the data path, the recorded slowness was WAN loss, DaServer's NAT allows direct paths. Measure with `tailscale ping`/`iperf3`/`mtr` from a remote client; if self-hosting is still wanted, Headscale.
-- **Research** — AIO-style master container managing the stack.
+- **Researched 2026-09-17** — AIO-style master container ([research-master-container.md](research-master-container.md)): don't build; keep Compose Manager. Found model-loader's socket-backed API reachable unauthenticated from the Diary container; repository fix adds `MODEL_LOADER_TOKEN` and a `models` network. **Operator action:** apply token and network changes to the live Compose Manager file.
 - **Later** — Mac-native app as both client and optional trusted **execution node** (local
   files, terminal, repositories, browser, notifications): server orchestrates, node executes
   advertised capabilities after explicit pairing; never blanket control of the Mac. Idea: Swiftlet
