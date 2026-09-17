@@ -43,10 +43,18 @@ mobile composer and tap targets).
 ## Open work
 
 ### A. Mobile and visual quality
-- **Open** — Sidebar collapses completely into a full-screen slide-out drawer the moment
-  the viewport shrinks; one toggle; bigger targets; optimise for vertical space.
-- **Open** — Search button is hidden under the top bar at small widths.
-- **Open** — iPhone renders much brighter than Chrome on macOS; macOS shows banding.
+- **Shipped** — At ≤600px the sidebar leaves the layout (no icon rail); one 44px "Open
+  navigation" toggle opens a full-width drawer (≤420px) that traps focus, returns it to the
+  toggle, closes on Escape/close/backdrop/selection, fits the software-keyboard viewport and
+  closes itself when the window grows past 600px.
+- **Shipped** — Search button hidden under the chat header between 601px and tablet widths
+  (and with 44px touch targets): the header drops the wordmark there so the tools fit on one row;
+  `mobile-viewport` asserts search is reachable at every width.
+- **Shipped, device check pending** — Both traced to the WebGL light field (`public/glass.js`):
+  a non-premultiplied, unclamped canvas (composited differently by WebKit and Blink) and a
+  5–12% gradient with only a few dozen 8-bit steps. It now outputs premultiplied, clamped
+  colour with ±½-step screen-space dither. Chrome looks unchanged; confirm on the iPhone and
+  the Mac display.
 - **Shipped** — One shared `CloseButton` for every dialog/popup close control (settings ✕ no longer differs).
 - **Open** — Short-height populated sidebar reachability (carried from the backlog).
 - **Open** — Mobile checks for Settings, Projects, Code and the setup wizard, and software
@@ -240,7 +248,7 @@ research mode (I) are measure-first, then build.
 1. **Shipped.** Live stats, settings ✕.
 2. **Shipped.** Deleted model state, safe defaults after download.
 3. **Shipped.** Full-page model manager with Easy/Advanced and the parity audit.
-4. Mobile drawer, search button, brightness and banding.
+4. **Shipped.** Mobile drawer, search button, brightness and banding (on-device check pending).
 5. Live log tab, tool-call menu, settings sub-pages.
 6. Modes and projects.
 7. Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
