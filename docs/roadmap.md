@@ -368,7 +368,14 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   network (or host mode) with model-loader; `overlay-release.sh` rolls back if the running diary can
   resolve `model-loader`. PHP tests run on DaServer in a temp dir; the live resolved config is
   **blocked** by it today, as intended, until the operator steps are applied.
-- [ ] 2. D5 previews flag and `server/features.cjs`
+- [x] 2. **D5** — `server/features.cjs` registry (env `NOEVIA_FEATURE_*` is authoritative and locks the
+  toggle; otherwise the admin setting in the auth DB `settings` table; default off), routes in
+  `server/routes/features.cjs` (`GET /api/features` booleans for any user, admin list/PUT), UI in
+  `src/components/features/` (Settings → Administration → Features; shared `.noevia-switch`).
+  `previews` gates Scheduled/Plugins/Explore and the Code mode switch/workspace. Flags are cached
+  per browser under `noevia:feature-flags` to avoid a layout shift. `qa/features.cjs` added.
+  Deviation: the "Planned features" settings page stays visible — it is an honest roadmap list,
+  not a dead-end surface.
 - [ ] 3. D8 folder sweep
 - [ ] 4. D6 DAV ops
 - [ ] 5. D10 Diary append

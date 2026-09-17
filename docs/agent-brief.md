@@ -216,7 +216,8 @@ unsupported model — see `roadmap.md` for the outstanding Qwen mmproj work.
 
 ### Placeholder surfaces
 
-`Scheduled`, `Plugins` and `Explore` (`Sidebar.tsx`) route to `PreviewPanel`. The
+`Scheduled`, `Plugins` and `Explore` (`Sidebar.tsx`) route to `PreviewPanel`; they and the Code
+switch are hidden unless the `previews` feature is on (`server/features.cjs`, D5). The
 Coding workspace renders `Interface preview · no execution` — separate navigation,
 empty project/task areas, an activity grid, a draft composer, a collapsible
 workspace panel. It does not read repositories, run commands, call a coding model,
