@@ -10,7 +10,7 @@ stays in the `spec-*.md` files linked below. The executable brief is
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
 **Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
 
-## Where things stand — 2026-09-17, night
+## Where things stand — 2026-09-17, night (post-deploy)
 
 `main` (GitHub `sbstndalton/noevia`), release **`ca5d2f6`** live on DaServer
 (`https://cowork.daserver.work`, see `deployment.md`). PR #1 and PR #2 are merged, so everything
@@ -18,8 +18,11 @@ built on the model-tuning branch — auto-tune, evidence-based context caps, mod
 server-judged Discover, tool routing, CPU embeddings, account memory — is deployed and verified.
 
 ### Live and verified in production
-- Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), Kiwix.
-  KoboldCpp was tested and removed (slower generation on every model, no router; findings §12).
+- Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), the CPU
+  embedding server `cowork-embed-1`, Kiwix. KoboldCpp was tested and removed (slower generation on
+  every model, no router; findings §12).
+- Tool routing is on and backed by `cowork-embed-1`; auto-tune, model folder sync and the
+  server-judged Discover panel are live (release `ca5d2f6`).
 - Models change over time at the user's discretion; don't treat a new or missing preset as a finding.
 - MCP: Nextcloud (160 tools), Tavily, in-app server (10 tools).
 - Features on through env: previews, Diary append tool, offline Wikipedia. **Deep research is off**
@@ -28,54 +31,58 @@ server-judged Discover, tool routing, CPU embeddings, account memory — is depl
   storage with a 502) and **Nextcloud Assistant runs on the native engine** (`integration_openai` →
   `http://noevia-llama:8080/v1`, verified with a text task).
 
-### Measured today (current phase)
-- **Step 1, APU memory:** GTT is already kernel-capped at 14.85 GiB (half of RAM) plus 2 GiB VRAM.
-  4B = 3.1 GiB GTT + 1.9 GiB VRAM; embedding 0.3 GiB. Proposal: keep the cap, add `--fit on
-  --fit-target 1024`, syslog mirror first. [research-known-good-settings.md](research-known-good-settings.md)
-- **Step 2, retrieval swap:** a RAG turn under `--models-max 1` adds ~4.6 s of swapping and drops the
-  prompt cache; a CPU nomic answers a query in ~30 ms. `EMBEDDING_BASE_URL` built (branch). Production
-  has no RAG indexes, so the embedding rename left nothing stale.
-- **Step 3, deep research gate:** failed on the 9B (citation validity 0.65–0.68 vs ≥ 0.95, B no
-  better than A on facts). Feature off. [spec-deep-research.md §8](spec-deep-research.md)
-- **Step 4, tool router in production shape:** gate holds on the real Nextcloud boxes (needed box
-  reaches the model 16/26 vs 8/26, 13.4 s vs 15.1 s). Enable only with a CPU embedder, after deploying
-  `EMBEDDING_BASE_URL`. [experiments/tool-routing/README.md](../experiments/tool-routing/README.md)
-- **Step 6 harness:** prompt-preparation benchmark (P0–P3, 18 fixtures) written and tested offline,
-  not yet run on the models.
-- **Step 7:** account-wide memory built (branch); Diary append verified end to end through the UI on a
-  diary-test copy.
-- **KoboldCpp vs llama.cpp (user request):** features at parity; KoboldCpp 8–53 % slower at
-  generation on 4B/9B and on MoE (gpt-oss-20b, Gemma 4 E4B/26B-A4B, Qwen3.6-35B-A3B). Rejected and
-  removed with its Qwen3.6 downloads. vLLM remains a possible future engine test.
-- **Model tuning fixed (branch, not deployed):** Easy mode had saved Qwen3.5's full 262K window
-  live. Tune now caps context by calibration, measured prompt speed or 32K; Measure context sits in
-  Easy mode; MTP defaults follow built-in layers, heads beside the model or in its source repo, by
-  mode. A Tune button per model in the chat picker; new files in the models folder are set up
-  automatically.
-- **Step 5:** `CONTEXT_LOG=1` on in production since 11:20 (counts only); read `report()` after a week.
-- **Step 6, prompt preparation (4B, run 2):** P0 raw 16/18, P1 template 15/18, P2 4B-as-architect
-  0/18 (list fields returned as strings). Direct stays default; next 3 repeats and a 9B architect.
-- **Step 9, CodeHarness spike (D14):** OpenCode over ACP solved a synthetic bug on the 4B (165 s) and
-  9B (265 s) in a read-only, capability-less container on an internal network with only the engine;
-  edits went through noevia's client fs, escape probes all blocked. `experiments/acp-spike`.
-- **Tool router re-measured best-first:** needed box 26/26, right first call 21/26, 10.8 s vs 14.3 s.
+### Measured, and now deployed
+Everything below was measured on the branch during 2026-09-17 and went live with `ca5d2f6`.
+
+- **APU memory (step 1):** GTT is kernel-capped at 14.85 GiB (half of RAM) plus 2 GiB VRAM. 4B = 3.1
+  GiB GTT + 1.9 GiB VRAM; embedding 0.3 GiB. Proposal: keep the cap, add `--fit on --fit-target 1024`
+  after the syslog mirror. [research-known-good-settings.md](research-known-good-settings.md)
+- **Retrieval swap (step 2):** a RAG turn under `--models-max 1` cost ~4.6 s of swapping and dropped
+  the prompt cache; a CPU nomic answers in ~30 ms. `cowork-embed-1` now serves embeddings and web
+  points at it through `EMBEDDING_BASE_URL`.
+- **Tool router (step 4):** best-first ordering reaches the needed box 26/26 (was 8/26), right first
+  call 21/26, 10.8 s vs 14.3 s median, on the real Nextcloud boxes. Live.
+  [experiments/tool-routing/README.md](../experiments/tool-routing/README.md)
+- **Auto-tune:** MTP gave +66 % on the 4B and +82 % on the 9B; micro-batch 512 beat 1024 and 2048.
+  Contexts are now verified by calibration (49 152 / 32 768 / 49 152 / 49 152) instead of the
+  unverified 131K–262K the old Easy mode saved.
+- **Discover:** results are judged against this machine — real file sizes and quants from the repo
+  tree, shards folded, companions excluded, publisher trust, fit against the 12.5 GB budget, ranked
+  fit → trust → popularity with a 90-day half-life. Verified live after deploy (`gpt-oss` 6 shown of
+  30; `gemma` 7 of 30).
+- **Deep research gate (step 3):** failed on the 9B (citation validity 0.65–0.68 vs ≥ 0.95). Feature
+  off, parked. [spec-deep-research.md §8](spec-deep-research.md)
+- **KoboldCpp vs llama.cpp:** feature parity, but 8–53 % slower at generation on every model tested.
+  Rejected and removed with its downloads. vLLM stays a possible future test under the §8 gates.
+- **Prompt preparation (step 6, 4B run 2):** P0 raw 16/18, P1 template 15/18, P2 4B-as-architect 0/18
+  (list fields returned as strings). Direct stays default; next 3 repeats and a 9B architect.
+- **CodeHarness spike (step 9, D14):** OpenCode over ACP solved a synthetic bug on the 4B (165 s) and
+  9B (265 s) in a read-only, capability-less container with only the engine reachable; escape probes
+  all blocked. `experiments/acp-spike`.
+- **Context logging (step 5):** `CONTEXT_LOG=1` on in production since 11:20, counts only. Read
+  `context-log.cjs report()` from about 2026-09-24 and write reducers for what repeats.
 
 ### Broken or risky right now
-- **Outage cause unknown** (04:15–08:24). Mover 03:40 and appdata backup 04:10 precede it; syslog
-  mirror still off. Leading guess moved from engine GTT to RAM-backed paths during the ZIM download
-  or backup staging (engine alone can't exceed ~16.9 GiB). Unproven.
-- **Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the loaded
-  model mid-conversation (it broke the deep-research run today). The engine has no API key on the
-  `nextcloud-aio` network.
-- **Tool router baseline is weak today:** with many Nextcloud boxes selected, the 5 000-token budget
-  sends only the first box or two.
-- Glass banding on real devices: the user's check (D13). `llama-vulkan-test` stopped, kept.
+- **Outage cause unknown** (2026-09-17, 04:15–08:24). Mover 03:40 and the appdata backup 04:10
+  precede it; the syslog mirror is still off, and syslog lives in RAM. Leading guess moved from
+  engine GTT to RAM-backed paths during the ZIM download or backup staging (the engine alone cannot
+  exceed ~16.9 GiB). Unproven — keep `--models-max 1`.
+- **The Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the
+  loaded model mid-conversation. Its thinking is disabled (2.9 s answers), but the collision remains.
+  The engine has no API key on the `nextcloud-aio` network.
+- **Deployed but only exercised by me:** the tool router (the 4B does not call the Tasks box —
+  suspect the tool description), Discover (a broad one-word query under the trusted default can show
+  nothing, because the hub's top 30 are community fine-tunes) and auto-tune's resumable state
+  (partials expire after 7 days).
+- Glass banding on real devices: the user's check (D13). `llama-vulkan-test` is stopped, kept.
 
 ### Needs the user
-Enable the Unraid syslog mirror · approve `--fit on --fit-target 1024` · deploy the branch (for
-`EMBEDDING_BASE_URL` + CPU embedder, then `features.toolRouter`) · decide on an engine API key shared
-by noevia and Nextcloud · SMB pilot share (D11) · off-site target (D7) · deep research when they return
-to it · live 4B preset now says ctx 262144 from the old Easy save (re-tune or calibrate after deploy).
+Enable the Unraid syslog mirror · approve `--fit on --fit-target 1024` · decide on an engine API key
+shared by noevia and the Nextcloud Assistant · SMB pilot share (D11) · off-site backup target (D7) ·
+deep research when they return to it · Talk's `changed-users` waits on an upstream AIO image · the
+glass banding check on real devices (D13).
+
+Deploying, spending, model weights on DaServer and live Compose/preset edits stay the user's call.
 
 ## Shipped (do not rebuild)
 

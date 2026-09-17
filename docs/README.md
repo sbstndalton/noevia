@@ -11,6 +11,7 @@ content folded in below.
 | [agent-brief.md](agent-brief.md) | Orientation, build/test, architecture, the hard "do not" rules | **Start here** on any fresh session |
 | [roadmap.md](roadmap.md) | The one plan: status, open work, order, testing rules | Deciding what to do next |
 | [master-prompt.md](master-prompt.md) | The one executable brief matching the roadmap | Handing work to an agent |
+| [session-kickoff.md](session-kickoff.md) | The short prompt to paste when starting a session | Starting a new agent session |
 | [deployment.md](deployment.md) | Live DaServer runbook; `deploy/examples/overlay-release.sh` | Shipping to production |
 | [changelog.md](changelog.md) | What was fixed and how it was verified | Checking whether something is done |
 | [design-system.md](design-system.md), [spec-ui-direction.md](spec-ui-direction.md), [ui-reference-review.md](ui-reference-review.md) | Palette, contrast, visual direction, references | Touching UI |

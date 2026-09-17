@@ -536,41 +536,43 @@ notifications never carry chat titles or text. D17: destructive automation (rete
 similar) is opt-in, previews its count, and the server refuses unconfirmed deletes. D18: stay on
 llama.cpp Vulkan; vLLM only after the §8 gates.
 
-## Current phase — stabilise, measure on the server, then build
+## Current phase — run on what is deployed, then build
 
-The decisions build (D1–D13) is done. Status on 2026-09-17 afternoon in `roadmap.md` → "Where things
+The decisions build (D1–D13) is done, and `main` is live on DaServer as **`ca5d2f6`** (PR #1 and
+PR #2 merged, deployed 2026-09-17 night). Everything measured on the old branch — auto-tune,
+evidence-based context caps, model folder sync, server-judged Discover, tool routing, CPU
+embeddings, account memory — is in production. Status detail in `roadmap.md` → "Where things
 stand". Work in this order, one commit or more per step, with tests and screenshots as usual.
 
-1. **Done — outage follow-up.** Measured (GTT cap 14.85 GiB exists; peaks recorded). Waiting on the
-   user: syslog mirror, `--fit` flags.
-2. **Done — embedding versus chat eviction.** Swap costs ~4.6 s; `EMBEDDING_BASE_URL` built; no stale
-   RAG indexes. To finish after a deploy: run a CPU nomic service and point web at it.
-3. **Parked — deep research.** Gate failed on the 9B; feature off. The user will pick it up later with
-   another agent. Don't work on it unless asked.
-4. **Done (measured), enable after deploy — tool router.** Best-first ordering (c36eee5) reaches the
-   needed box 26/26 on real Nextcloud boxes. Enable with a CPU embedder and `EMBEDDING_BASE_URL`
-   after deploy; the Tasks box is sent but the 4B does not call it (tool description check).
-5. **In progress — context efficiency.** `CONTEXT_LOG=1` is on live since 2026-09-17 11:20. After a
-   week, read `context-log.cjs report()` per user dir and write reducers for what repeats.
-6. **Started — Prompt Architect benchmark.** 4B run 2: P0 16/18, P1 15/18, P2 0/18 (schema). Next:
-   3 repeats, 9B as architect for the 4B, a lenient-schema control. Direct stays default.
-7. **Product:** account memory built; Diary append verified. Still: Kiwix and vision checked in
-   real chats (needs a signed-in user; ask the user to do it or to provide a synthetic test account
-   on production).
-8. **Done — KoboldCpp vs llama.cpp.** Rejected and removed (findings §12). vLLM is a possible future
-   engine test, only under the §8 gates and when the user asks.
-9. **Done — CodeHarness spike on the server (D14).** Solved on 4B and 9B in the sandbox; see
-   `experiments/acp-spike/README.md`. Next is spec §3 build work (worktrees, egress proxy, job events,
-   Code mode UI), after the user deploys the current branch.
-10. **SMB pilot (D11)** once the user provides the share.
-11. **Bug hunt**, below.
+1. **First, confirm the deployed state yourself.** `readlink -f /mnt/docker/appdata/cowork/current`,
+   `COWORK_VERSION`, `docker ps`, and the public bundle hash against a local build. Docs go stale
+   within a day on this box.
+2. **Context efficiency (step 5, in progress).** `CONTEXT_LOG=1` has been on in production since
+   2026-09-17 11:20. From about 2026-09-24, read `context-log.cjs report()` per user directory and
+   write deterministic reducers for whatever repeats. This is the next real piece of work.
+3. **Verify the deployed features in real use.** The tool router, CPU embeddings and Discover are
+   live but have only been exercised by me. Watch for: the 4B not calling the Tasks box (tool
+   description wording), Discover returning nothing for broad single-word queries under the trusted
+   default, and auto-tune's saved partial state expiring after 7 days.
+4. **Prompt Architect benchmark (step 6, started).** 4B run 2: P0 16/18, P1 15/18, P2 0/18 (schema).
+   Next: 3 repeats, the 9B as architect for the 4B, and a lenient-schema control. Direct stays the
+   default until evidence says otherwise.
+5. **CodeHarness build (step 9, spike done).** The ACP spike solved a real bug on both models in a
+   locked-down container (`experiments/acp-spike/README.md`). Next is spec §3 build work: worktrees,
+   egress proxy (D15), job events, Code mode UI.
+6. **SMB pilot (D11)** once the user provides the share.
+7. **Bug hunt**, below. The baseline is green; the three full rotations have not been run.
+8. **Parked — deep research.** The gate failed on the 9B and the feature is off. The user will pick
+   it up separately. Don't work on it unless asked.
+9. **Closed.** Outage follow-up measurement, embedding/chat eviction, the tool-router gate, the
+   KoboldCpp comparison (rejected, removed) and the CodeHarness spike are all done; don't redo them.
 
-Measurement hygiene learned today: one model slot is shared by noevia chats, Nextcloud Assistant and
-any test, so a concurrent request evicts the model under test. Check `docker logs cowork-llama-1`
-for recent requests before starting, and don't run two engine tests at once.
+Measurement hygiene: one model slot is shared by noevia chats, the Nextcloud Assistant and any test,
+so a concurrent request evicts the model under test. Check `docker logs cowork-llama-1` for recent
+requests before starting, and never run two engine tests at once.
 
-Still the user's: deploying, spending money or credits, host settings (GTT, syslog), and anything
-touching the real Diary corpus. Model files change at the user's discretion.
+Still the user's: deploying, spending money or credits, host settings (GTT, syslog), model weights on
+DaServer, live Compose and preset edits, and anything touching the real Diary corpus.
 
 ## Bug hunt (after the current phase)
 
@@ -629,9 +631,13 @@ still suspected but unproven, what needs the user).
   whole suite hangs.
 - `npm run lint:design` now checks the type scale (`--text-*` tokens only), weights 400–700 and
   undefined `var(--x)` across `src/` and `public/`.
-- Model-manager pytest: `../diary/.venv/bin/python -m pytest -q` from `services/model-manager`.
-- On the server, long jobs over SSH must use `nohup … &` with output to a file. Several open SSH
-  sessions during heavy I/O made sshd stop answering.
+- Model-manager pytest: `../diary/.venv/bin/python -m pytest -q` from `services/model-manager` (there
+  is no venv of its own; the Diary's has the dependencies).
+- On the server, long jobs over SSH must be detached with `setsid bash -c '… > log 2>&1' < /dev/null &`
+  — a plain `nohup … &` in an `ssh` command dies with the session (the appdata backup did). Several
+  open SSH sessions during heavy I/O made sshd stop answering.
+- `pkill -f` / `pgrep -f` patterns match your own SSH command line and will kill your session. Use a
+  bracketed pattern (`[d]aily-backup`) or an explicit PID.
 - Sign-in is rate limited; reuse storage state or API cookies in scripts.
 - Edit JS/TS with Python or the Edit tool, not `sed` with complex replacements.
 - Leave nothing running: previews, the sidecar, servers on QA ports, temp dirs.
