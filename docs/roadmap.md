@@ -310,6 +310,20 @@ deployment's models. Can run alongside the build order.
 11. Headscale vs NetBird to replace a slow Tailscale.
 12. AIO-style master container managing the stack.
 
+**References to evaluate (added 2026-09-17, not yet reviewed)**
+
+- [Ramps](https://www.ramps.studio/) — free tool that generates perceptually even OKLCH colour
+  scales and WCAG-checked semantic tokens from one brand colour. Question: could it inform or
+  replace how noevia's palettes and `tests/theme-contrast` tokens are derived?
+- [zoxilsi studio](https://studio.zoxilsi.cc/) ([source](https://github.com/zoxilsi/studio),
+  MIT; Next.js, Three.js, GLSL) — WebGL mesh-gradient editor with image/video/code export.
+  Question: a reference for the glass light field (`public/glass.js`) and banding-free
+  gradients, not a dependency.
+- [appllama-skills](https://github.com/Appllama/appllama-skills) (MIT; name/logo trademarked) —
+  agent skills for building native-quality mobile apps from top-app design patterns, using the
+  Appllama MCP design library and Expo simulator checks. Question: useful for the future Mac/iOS
+  client or as a pattern for agent-driven UI QA.
+
 **Later:** Mac execution node and richer desktop capabilities; Auto architect/harness routing
 once evidence exists.
 
