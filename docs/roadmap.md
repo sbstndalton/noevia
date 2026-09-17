@@ -587,9 +587,7 @@ be live); c (Diary): 1 (append claimed success while only queued); d (calibratio
 profile not reported); e (research/projects): 2 (budget-skipped questions reported as "no relevant
 source", same-day reports overwritten); f (UI): 2 (short-phone composer hidden, sub-44 px touch
 targets); plus `jobs.recover()` ignoring store kinds and the skewed close icon found during the
-build. **Suspected, not proven/fixed:** passkey options reveal whether a username has passkeys;
-two devices saving the same chat transcript still last-writer-wins; MTP evidence file grows slowly
-and is re-read per reply. **Needs the user:** applying D1's operator steps before the next deploy
+build. **Suspected, then fixed after the hunt:** passkey options revealed whether a username exists (now padded with stable decoy ids, `auth-enumeration.test.cjs`); two devices saving the same chat transcript were last-writer-wins (now revisioned saves with 409 + client merge, `chat-history-routes.test.cjs`, `tests/transcript-merge.test.cjs`, `qa/two-device-history.cjs`). **Still suspected:** MTP evidence file grows slowly and is re-read per reply. **Needs the user:** applying D1's operator steps before the next deploy
 (the new preflight blocks the live config until then); D3 preset diff and `--models-max 2`; SMB pilot
 and cutover; an off-site provider and budget; a live-credit research measurement.
 
