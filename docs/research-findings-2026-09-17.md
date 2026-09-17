@@ -134,7 +134,7 @@ GPU allocations on unified-memory hosts (proposed, not built).
 | 7 | ExecutionNode / BrowserExecutor | Not started |
 | 8 | Known-good settings | D3 caps verified; larger caps unprobed |
 | 9 | Wider model evidence / MoE offload | Not started |
-| 10 | Backend portability | Spec only |
+| 10 | Backend portability | Researched (§8): stay on llama.cpp Vulkan; revisit gates listed |
 | 11 | Headscale vs NetBird | Recommendation: don't migrate yet |
 | 12 | AIO master container | Recommendation: don't build |
 | E | Tool routing | Measured, passed, built behind a flag |
@@ -173,4 +173,30 @@ filesystem itself lives in RAM?
 Sources: [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md),
 [llama.cpp #19818 (APU OOM, GTT vs VRAM)](https://github.com/ggml-org/llama.cpp/issues/19818),
 [llama.cpp discussion #18839 (shared memory)](https://github.com/ggml-org/llama.cpp/discussions/18839),
+[AMD GPUs notes (llm-tracker)](https://llm-tracker.info/howto/AMD-GPUs).
+
+## 8. Backend portability: stay on llama.cpp Vulkan for now (priority 10)
+
+**Question.** Should the ROCm vLLM candidate in `spec-backend-portability.md` (gfx1150 artifact)
+move ahead?
+
+**Findings.**
+- On the same APU family (Strix Point, gfx1150), llama.cpp issue #19818 (still open) reports
+  that **ROCm sees only the BIOS VRAM area** (6.4 GiB of 96 GiB) and does not use GTT. Vulkan on the
+  same machine sees 53 GiB. A 30B model got SIGKILLed under ROCm right after its first request but
+  ran fully under Vulkan. That is the same ROCm stack vLLM uses on AMD.
+- vLLM's unified-memory (UMA) handling was still receiving fixes in mid-2026, and its GGUF
+  support is secondary to safetensors. The GGUF presets, projectors and evidence this deployment has
+  collected would not transfer as-is.
+- The immediate risk on this host is memory bounding (§5, §7). A second engine with a different
+  allocator makes that harder to reason about, not easier.
+
+**Recommendation.** Keep llama.cpp Vulkan as the only engine. Revisit vLLM once three things hold:
+(a) ROCm enumerates GTT on gfx1150 (#19818 closed); (b) a GTT cap is in place and measured here;
+(c) a workload vLLM should win on exists, for example several concurrent users, where continuous
+batching matters. Single-user chat at 300–500 tok/s prefill is not that workload. The equal-workload
+comparison in the spec stays the gate.
+
+Sources: [llama.cpp #19818](https://github.com/ggml-org/llama.cpp/issues/19818),
+[vLLM on ROCm (AMD docs)](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/vllm.html),
 [AMD GPUs notes (llm-tracker)](https://llm-tracker.info/howto/AMD-GPUs).
