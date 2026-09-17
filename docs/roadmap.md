@@ -129,9 +129,16 @@ mobile composer and tap targets).
   ([spec](spec-backend-portability.md)).
 
 ### D. Modes, projects and harnesses
-- **Open** — Chat, Cowork and Code modes; projects enabled per mode (C++ → Code, Random
-  questions → Chat, HomeLab → all).
-- **Open** — Optional shared context layer across the modes a project is enabled in.
+- **Shipped** — Projects carry `modes` (`chat`/`cowork`/`code`, at least one). Existing
+  projects migrate to `['chat']` on workspace load and are saved once; create/patch validate.
+  The chat sidebar lists Chat-enabled projects, the Projects page lists all with an
+  availability chip, a project not enabled for Chat shows why and hides its composer, and
+  `/api/chat` refuses it (409) before any inference. Project settings → "Available in".
+  Tenant isolation unchanged (per-user `projects.json`). Cowork and Code are recorded only;
+  they are enforced when those modes get routes.
+- **Blocked on a second working mode** — Optional shared context layer across a project's
+  modes (per project, per mode, off by default). Nothing can share context until Cowork or
+  Code exists, so no flag is stored yet; design it with that mode.
 - **Design before Code build** — `CodeHarness`: noevia-owned contract that external harnesses
   (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
   preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
@@ -263,7 +270,7 @@ research mode (I) are measure-first, then build.
 3. **Shipped.** Full-page model manager with Easy/Advanced and the parity audit.
 4. **Shipped.** Mobile drawer, search button, brightness and banding (on-device check pending).
 5. **Shipped.** Live log tab, tool-call menu, settings sub-pages (first split).
-6. Modes and projects.
+6. **Shipped (D1).** Modes and projects; the shared context layer (D2) waits for a second mode.
 7. Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
 8. Task-conditional tool loading (measured) and the deep research spec.
 9. Research priorities in ranked order; context-efficiency logging can start alongside the
