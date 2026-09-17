@@ -162,6 +162,54 @@ every message.
 - **Auto later:** choose Direct/Local/Frontier from measured benefit, task class, model,
   harness, the user's privacy policy, network availability and cost/latency preference.
 
+### Benchmark design — 2026-09-17 (not run)
+
+Lives beside the tool-routing runner as `experiments/prompt-preparation/`, same conventions:
+synthetic fixtures only, explicit endpoint/model flags, credentials only from environment,
+results written as JSON with a README table. Chat and Cowork task classes first; Code waits for
+CodeHarness.
+
+**Execution artifact schema** (validated with a JSON schema before execution; a failing artifact
+counts as a preparation failure, never silently falls back):
+
+```json
+{ "goal": "…", "context": ["…"], "constraints": ["…"], "investigation": ["…"],
+  "steps": [{ "n": 1, "do": "…", "done_when": "…" }], "capabilities": ["tool names"],
+  "approval_boundaries": ["…"], "verification": ["…"], "completion": "…", "non_goals": ["…"] }
+```
+Caps: ≤ 12 steps, ≤ 1,200 tokens total. The executing model receives the artifact plus the
+original request, labelled as authoritative.
+
+**Variants** (identical executor, tools, approvals, fixtures, three repeats, rotated order):
+
+| Id | Preparation |
+|---|---|
+| P0 | Raw request (today) |
+| P1 | Deterministic local template: the schema filled by code from the request, project instructions and tool list — no model call |
+| P2 | Local architect: strongest locally served model writes the artifact |
+| P3 | Frontier architect: one cloud model through its official API, outbound payload from the allowlisted builder |
+
+**Fixtures (18, synthetic):** 6 multi-step read tasks over a synthetic project (find, compare,
+compute), 4 write tasks behind approvals (one to decline), 3 tasks with injected instructions in
+tool results, 3 ambiguous requests where the right move is to ask, 2 long-context summaries near
+the context limit. Each has an exact or rubric-scored expected outcome.
+
+**Measured per run:** success (exact/rubric), steps and tool calls, invalid or blocked calls,
+approvals requested vs expected, injected-instruction compliance (must be 0), corrective
+iterations, executor input/output tokens, preparation tokens and cost, wall time split into
+preparation and execution, artifact schema failures, user-intervention proxies (clarifying
+questions asked when required).
+
+**Outbound audit (P3):** the payload builder's output is logged locally per run and a test
+scans it for forbidden classes (credential patterns, Diary paths, full file bodies beyond the
+selected snippets). Any hit invalidates the run.
+
+**Decision rules:** adopt P1 for a task class if it matches P2/P3 success within 1 fixture and
+costs no model call. Offer P2/P3 for a class only if success improves by ≥ 2 fixtures of 18
+with zero injected-instruction compliance and no increase in unexpected writes, and state the
+added wall time. Direct stays the default everywhere else. Record results in this section with
+the date and model configuration.
+
 ---
 
 ## 3. CodeHarness

@@ -158,7 +158,7 @@ mobile composer and tap targets).
   preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
   every harness action classified through noevia's approval gate; one writer per workspace
   first. Evaluate ACP as the adapter protocol. ([spec §3](spec-agent-execution.md))
-- **Research, benchmark first** — `PromptArchitect`: optional stronger model (local or cloud,
+- **Research, benchmark designed 2026-09-17 (not run)** — `PromptArchitect` (schema, P0–P3 variants, 18 fixtures, metrics, outbound audit and decision rules in [spec §2](spec-agent-execution.md)): optional stronger model (local or cloud,
   provider-neutral, official auth only) writes a structured execution prompt for the local
   model. Modes Direct (default) / Local / Frontier; Auto only after paired fixtures prove a
   benefit. Outbound context allowlist enforced in code, disclosure shown, original request
