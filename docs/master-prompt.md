@@ -565,11 +565,14 @@ screenshots as usual.
    hand-written ACP client, job events, the Code mode UI, the `code-sandbox` container, the §1
    identity tuple, and the Harness / Prompt-preparation selectors. See `spec-agent-execution.md`
    §3 "As built".
+   **Staged on the server, flag off** (2026-09-17): image built and escape-probed, a `scratch`
+   fixture repo with deliberate bugs to aim the first run at, the override staged but not wired
+   in. Read `deploy/examples/code-mode-staging.md` before touching any of it.
    **What is left, and it is the important part:** every rule is tested against a scripted fake
    agent (`server/fixtures/fake-acp-agent.cjs`). That proves the rules; it does not prove what
-   OpenCode and Claude Code actually send. Contract v1 needs a real run — `CODE_HARNESS_ENDPOINT`
-   pointed at the sandbox, a registered `CODE_REPOS`, and the user's go-ahead. An `Auto` harness
-   waits for evidence that does not exist yet.
+   OpenCode and Claude Code actually send — the `_meta` reader especially. Contract v1 needs one
+   real run against `scratch`, reading every approval, before Code mode points at a repository
+   that matters. An `Auto` harness waits for evidence that does not exist yet.
 6. **SMB pilot (D11)** once the user provides the share.
 7. **Bug hunt**, below. Baseline as of 2026-09-17 night: npm test 795, typecheck, build,
    lint:design, and **all 59 QA suites green** — after fixing `qa/models-settings.cjs`, which was

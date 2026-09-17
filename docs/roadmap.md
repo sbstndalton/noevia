@@ -255,9 +255,15 @@ mobile composer and tap targets).
   exit codes and the §1 identity tuple, read defensively and **naming what the harness did not
   report** rather than defaulting it; and the Harness / Prompt-preparation selectors, with no
   `Auto` (§2 permits one only after evidence) and the unavailable modes carrying their measured
-  reason. Still to do: `Auto` harness once evidence exists, and **a real end-to-end run against
-  OpenCode** — every rule is tested against a scripted fake agent, which proves the rules but not
-  what a real harness sends. Original item: noevia-owned contract that external harnesses
+  reason. **Staged on DaServer 2026-09-17 with the flag off** (`deploy/examples/code-mode-staging.md`,
+  and a copy at `/mnt/docker/appdata/cowork/tools/CODE-MODE-READY.md`): sandbox image built and
+  probed, `cowork_code-workspaces` volume with a deliberately buggy `scratch` fixture repo, the
+  override staged but *not* wired into the Compose Manager project. Staging found three real gaps,
+  now fixed — worktrees must sit on the shared volume at an identical path, a workspace must be
+  handed to the harness uid, and a handed-over worktree **cannot commit**, so a separate harness
+  user now gets `git clone --shared` with the branch fetched back on release. Still to do: `Auto`
+  harness once evidence exists, and **a real end-to-end run against OpenCode** — every rule is
+  tested against a scripted fake agent, which proves the rules but not what a real harness sends. Original item: noevia-owned contract that external harnesses
   (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
   preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
   every harness action classified through noevia's approval gate; one writer per workspace
