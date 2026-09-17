@@ -1,6 +1,6 @@
 # Deep research mode — spec
 
-Status: **spec, not built** (2026-09-16). Roadmap item I. Build only after the durable-work
+Status: steps 1–5 built behind `features.deepResearch` (admin-only, off) as of 2026-09-17; step 6 (the §8 gate on real models) is not run. Originally: **spec, not built** (2026-09-16). Roadmap item I. Build only after the durable-work
 primitive exists ([spec-agent-execution.md §4](spec-agent-execution.md)) and the measurement
 gate below has been run on this deployment's models.
 

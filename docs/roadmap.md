@@ -393,7 +393,15 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   `mcp-internal-tools.cjs` only when `features.diaryMcpWrite`; not in `reads`, so approval is
   always required; audited `diary.append` (xid, length). Tests: `test_diary_append.py`,
   `mcp-internal-tools.test.cjs`, `qa/diary-append-http.cjs`.
-- [ ] 6. D12 deep research steps 4–5
+- [x] 6. **D12** steps 4–5 — plan step (`research-plan.cjs`), service (`research-service.cjs`: budget
+  12 web calls/10 min/5 sources, one active job per project, report + `.sources.json` saved via the
+  upload path, artifacts on the job, cancel keeps finished sections, explicit partial save),
+  admin-only routes (`routes/research.cjs`, 404 unless `features.deepResearch`), Research tab in
+  the project (`src/components/research/`), `qa/research.cjs`. Deviation: files are named
+  `Research <date> <slug>.md` in the project's Text upload folder, because uploads only manage the
+  Documents/Images/Text/Other subfolders. The §8 measurement gate (real model) is still unrun —
+  no model is served on DaServer. Fixed on the way: `jobs.recover()` ignored `kinds`; the shared
+  close icon's second stroke was half length (skewed ×).
 - [ ] 7. D7 backup module
 - [ ] 8. D9 Kiwix module
 - [ ] 9. D4 design lint
