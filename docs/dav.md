@@ -105,7 +105,16 @@ only disposable state. Candidate image/rollout checks remain pending.
 
 ## Storage contract for rename, delete, copy and locks — proposal, 2026-09-17
 
-Status: **contract only; no destructive or locking method is implemented.** It fixes the
+Status (2026-09-17, D6): **DELETE, MOVE and COPY implemented; no LOCK.** Companion:
+`services/diary/agent/workspace_ops.py` via `POST /api/workspace-ops` (`stat`/`delete`/`move`/`copy`);
+web: `apps/web/server/dav-ops.cjs`, wired into `dav.cjs` only when the companion call is provided.
+`OPTIONS` sends `DAV: 1`. Protected set confirmed and extended with `AI Memory/**` (DAV only; the
+in-app Trash rule is unchanged). Deviations: replacing a *folder* destination is refused (409 —
+delete it first); a destination precondition is read from a tagged `If: <dest> (["etag"])`
+header; COPY needs no source `If-Match` (non-destructive); the interoperability matrix below has
+not been run yet, so `DAV: 1` ships ahead of it by decision D6.
+
+Original status: **contract only; no destructive or locking method is implemented.** It fixes the
 rules that DELETE, MOVE, COPY and LOCK must obey before any of them ships, so each can be
 built and tested against one definition. The protected-path set below reuses the rule the app
 already enforces for Trash (`workspace_trash.allowed`); widening or narrowing it is the user's
@@ -172,8 +181,6 @@ version and every refused request, and confirms protected paths stayed byte-iden
 3. Interop matrix for class 1; advertise `DAV: 1`.
 4. LOCK/UNLOCK only if a client in the matrix needs it to write reliably.
 
-### Decision needed
+### Decision (D6, 2026-09-17)
 
-Confirm the protected set: capture files, month files and the index (proposed, matches Trash).
-Options to consider: also protect `AI Memory/**`, or allow clients to reorganise everything
-outside `Entries/` freely.
+Protected set confirmed — capture files, month files, the index — plus `AI Memory/**`.

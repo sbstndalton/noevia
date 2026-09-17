@@ -381,7 +381,12 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   Documents/Images/Text/Other subfolders go only when PROPFIND shows no children and DELETE with
   `If-Match` on the collection ETag succeeds (no ETag → no delete; S3 has no dirs). Logged as
   `project.sweep`. Deviation: no route file — it is a post-commit hook, not an endpoint.
-- [ ] 4. D6 DAV ops
+- [x] 4. **D6** — Companion `workspace_ops.py` (`POST /api/workspace-ops`): DELETE = Trash capsules per
+  file, MOVE/COPY in one SQLite transaction, If-Match (428/412), protected set + `AI Memory/**`
+  (403), ≤500 entries/50 MiB (507), managed storage only (409), index outbox for old+new paths.
+  Web `server/dav-ops.cjs` (tenant-bound Destination, tagged `If` for destination, 503 +
+  Retry-After on unknown outcome), folder ETags in PROPFIND, `DAV: 1`, no LOCK. Tests:
+  `tests/test_workspace_ops.py` (19), `server/dav-ops.test.cjs`. Interop matrix still to run.
 - [ ] 5. D10 Diary append
 - [ ] 6. D12 deep research steps 4–5
 - [ ] 7. D7 backup module
