@@ -113,7 +113,11 @@ mobile composer and tap targets).
 - **Shipped** — A project or chat whose model is no longer installed shows "No model
   selected" (only when the local catalogue was read successfully; other providers exempt).
 - **Open** — Choose where downloads go (Unraid shares such as `ai-models`).
-- **Open** — Routing clarity: plain labels, what Auto does, per-project view.
+- **Shipped** — Routing clarity: roles read "Fast — quick answers", "Smart — harder questions",
+  "Vision — reads images (optional)" everywhere; "How Auto decides" states the real rules
+  (heuristic → one-word Fast check → fail-open to Fast; Vision describes images first); the
+  per-project table lists every project with Auto/Manual and the model it uses (or "No model
+  selected"). Copy lives in `src/routing-copy.ts` beside the server logic it mirrors.
 - **Open** — Hugging Face cache files can surface as hex identifiers; unconfirmed (the scanner
   already skips `blobs/`), needs a real HF-cache fixture.
 - **Open, design first** — Configuration-scoped qualification evidence: states (reported,
