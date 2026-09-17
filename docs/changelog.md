@@ -660,3 +660,31 @@ enabled; the enabled picker configures optional context only. Thinking options
 remain planned. Tests: 266 web, typecheck/build, 157 diary (3 skipped). Synthetic
 mobile/desktop and light/dark checks, scoped picker checks, live project/Diary
 checks and service health passed. No real diary prompts or corpus edits.
+
+## Model manager: settings-native styling, layout mode, working search — 2026-09-17
+
+Settings → Models & routing now draws on the same surfaces, radii, type scale and control
+sizes as the rest of the settings pane; see design-system.md. No class names or tab
+structure changed.
+
+Hugging Face search no longer asks the hub for `full=true`. That parameter existed only to
+fill in a per-repo GGUF file count, and it made the hub serialize every sibling file of
+every hit — against the client's 20s timeout an ordinary browse of the top 30 GGUF repos
+could time out and surface as "Network error" with an empty list. The count is now shown
+only when the hub volunteers it. A named search that the `gguf` tag filter answers with
+nothing is retried once without the filter and narrowed to repos that look like GGUF, so a
+repo the hub has not tagged is still findable; browse mode (no query) is not retried, since
+an untagged top-30 is not a GGUF browse. Failures are reported with the reason — a 401/403
+points at the saved token, a 429 explains that a token raises the rate limit — instead of a
+bare status code, and owner avatars, which noevia's Download tab never renders, can no
+longer fail the search. Changing Sort by re-runs the search, and the empty state
+distinguishes "nothing matched your search" from "the browse list came back empty".
+
+New: a Layout control in Settings → General (Automatic / Phone / Desktop), backed by
+`public/layout-mode.js` and user-agent detection.
+
+Verified locally: `npm run typecheck` and `npm run build` clean; web tests unchanged from
+this checkout's baseline (274 pass, 45 pre-existing environment failures, identical before
+and after); model-manager Python tests 19 passed, including 8 new ones covering the search
+query, both fallbacks and the error messages. The hub itself was not reachable from the
+development environment, so the search changes are verified against a mocked hub only.
