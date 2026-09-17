@@ -8,12 +8,18 @@
 #
 # The web container then needs, in its own environment:
 #   NOEVIA_FEATURE_CODE_HARNESS=true
-#   CODE_HARNESS_ENDPOINT=code-sandbox:8030      # NOT CODE_HARNESS_COMMAND: that spawns locally
-#   CODE_REPOS=noevia|/workspaces/repos/noevia   # repositories, named, absolute, git
+#   CODE_HARNESS_ENDPOINT=code-sandbox:8030       # NOT CODE_HARNESS_COMMAND: that spawns locally
+#   CODE_REPOS=scratch|/workspaces/repos/scratch  # repositories, named, absolute, git
+#   CODE_WORKSPACE_ROOT=/workspaces/trees         # worktrees on the SHARED volume, not tenant state
+#   CODE_HARNESS_USER=1000:1000                   # who the sandbox runs as
 #
-# One constraint worth stating plainly: the worktree path noevia creates must be the same path
-# inside the sandbox, because noevia sends it and the supervisor resolves it. Hence the same
-# volume at the same mount point in both containers.
+# Those last two are not optional, and staging this on DaServer is what proved it:
+#   * noevia creates the worktree and sends its absolute path; the supervisor resolves that same
+#     path. They must therefore be the same path — one volume, one mount point, both containers.
+#     Without CODE_WORKSPACE_ROOT the worktrees sit in the tenant's own state directory, which
+#     the sandbox cannot see (and must not).
+#   * noevia runs as root and the sandbox deliberately does not, so a freshly created worktree is
+#     root-owned and the harness cannot write it. CODE_HARNESS_USER hands each one over.
 services:
   code-sandbox:
     profiles: ["code"]
@@ -58,6 +64,9 @@ services:
     networks:
       - default
       - code
+    volumes:
+      # The same volume at the same mount point — see the note above about paths matching.
+      - code-workspaces:/workspaces
 
 networks:
   code:
