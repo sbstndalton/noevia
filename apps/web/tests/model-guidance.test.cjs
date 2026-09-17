@@ -31,3 +31,12 @@ test('an unknown catalogue or another provider never declares a model missing',(
  assert.equal(label({model:'Gone'},null),'Gone');
  assert.equal(label({model:'claude-x',provider:'anthropic'},[]),'claude-x');
 });
+test('warns when a unified-memory GPU may borrow nearly all host RAM',()=>{
+ const {sharedMemoryRisk:risk}=exports_;
+ // DaServer 2026-09-17: 29 GiB host, GTT allowed ~27 GiB.
+ const r=risk({unified:true,sharedTotalGB:27,hostTotalGB:29});
+ assert.equal(r.risky,true);assert.equal(r.leftGB,2);assert.match(r.message,/29 GiB/);assert.match(r.message,/27 GiB/);
+ assert.equal(risk({unified:true,sharedTotalGB:16,hostTotalGB:64}).risky,false);
+ assert.equal(risk({unified:false,sharedTotalGB:27,hostTotalGB:29}).risky,false);
+ for(const host of [0,null,NaN])assert.equal(risk({unified:true,sharedTotalGB:27,hostTotalGB:host}).risky,false);
+});
