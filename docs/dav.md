@@ -122,8 +122,8 @@ decision recorded at the end.
 3. **Protected paths.** Diary capture files under `Entries/**`, month files matching the
    configured month-file template, and the Diary index (`INDEX.md` or configured name) can
    never be deleted, moved, overwritten by COPY or MOVE, or locked by a client. Attempts return
-   **403** with a plain-text reason. These files change only through capture and the explicit
-   edit-by-xid flow.
+   **403** with a plain-text reason. Versioned PUT edits to them stay allowed, matching the
+   in-app Markdown editor and the Claude Diary bridge, which use the same guarded file API.
 4. **Conditional by default.** Destructive methods require `If-Match` with the current strong
    ETag of the source (and of an existing destination when overwriting). Missing precondition →
    **428**; stale → **412**. Folders use a folder version derived from their listing.

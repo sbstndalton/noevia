@@ -226,8 +226,13 @@ mobile composer and tap targets).
   installs and refuses existing state (tests pass), and the preflight check rejects writable
   `/boot` binds after resolving symlinks, loops, parents and volume driver options (PHP test
   passed on DaServer in a temp dir). Existing `COWORK_STATE_DIR` binds keep their meaning.
-- **Open** — Verify the scoped Claude Diary bridge with synthetic data; compare Diary
-  logging behaviour with the Claude Cowork reference.
+- **Shipped (verified 2026-09-17, synthetic)** — Claude Diary bridge: bridge (3) and server
+  connector (3) tests pass; against a disposable sandbox tenant a created credential listed,
+  read, created and updated files with versions, got 409 for stale and duplicate creates, 400
+  for traversal, 401 for a bad token and after revocation. Logging behaviour differs from the
+  in-app companion by design: the bridge makes explicit, versioned, Claude-approved Markdown
+  edits (it can edit capture files and the index, like the in-app editor) rather than appending
+  structured exchanges with xid markers through capture.
 - **Partly verified (2026-09-17)** — Diary corpus in backups: the latest nightly archive
   (`ab_20260916_151428`, `cowork-diary-1.tar.gz`) contains app-managed Diary storage
   (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
