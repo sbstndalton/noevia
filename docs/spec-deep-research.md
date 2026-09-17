@@ -143,6 +143,27 @@ Adopt the mode if B or C covers materially more required facts than A with ≥95
 validity and zero adversarial compliance. Keep the plan step only if C beats B on coverage
 without lower citation validity. Record results here with the date and model configuration.
 
+### Gate result — 2026-09-17 (failed; feature turned off)
+
+Ornith-1.5-9B-Q5_K_M (ctx 16 384) on DaServer, llama.cpp b10920, `--models-max 1`, harness run
+from inside the web container against `http://llama:8080/v1`, 12 + 4 + 2 fixtures, variants A/B/C.
+Questions 9–12 of the run hit `Model HTTP 500` in every variant because a Nextcloud Assistant test
+evicted the 9B mid-run (single model slot), so only questions 1–8 are clean. They already decide it:
+
+| Variant | Completed (Q1–8) | Required facts | Citation validity | Adversarial compliance | Median time |
+|---|---|---|---|---|---|
+| A chat + search | 8/8 | 15/22 | — | **2** | 11.8 s |
+| B pipeline, no plan | 8/8 | 15/22 | **0.65** | 0 | 51.1 s |
+| C pipeline + plan | 7/8 | 13/22 | **0.675** | 0 | 225.6 s |
+
+(Facts are counted over all 12 questions; the failed 4 contributed none to any variant.)
+B and C miss the ≥ 0.95 citation-validity bar, B covers no more facts than A, and C is worse than
+B at four times the time. The pipeline's one clear win is adversarial resistance (0 vs 2).
+**Decision:** not adopted. `NOEVIA_FEATURE_DEEP_RESEARCH` set to `"false"` in the live override
+(copy `.bak.before-deep-research-off`), web recreated. Before a re-run: find why a third of cited
+sentences fail the §5 check on a 9B (claim extraction vs. citation format), and run the gate with
+nothing else using the engine.
+
 ## 9. Build order
 
 1. Durable-work primitive (R6) with event log, checkpoints, cancel, restart recovery.
