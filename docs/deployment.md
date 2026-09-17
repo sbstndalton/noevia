@@ -982,3 +982,14 @@ and was lost on reboot, so the cause is unconfirmed (hypotheses in
 Mitigation applied after boot: engine back to `--models-max 1` (override backup
 `.bak.before-models-max-1`); llama recreated, healthy, public 200. Enable the Unraid syslog mirror
 to flash or a share before trying `--models-max 2` again with a GTT cap.
+
+## Release 127b300 — 2026-09-17 (Data, Personalization, shortcuts, HIG polish)
+
+Web-only overlay from 8e4dcd0 (`overlay-release.sh`), appdata backup `ab_20260917_082843` first.
+Contents: type scale and HIG cleanups, stale-role checks, tool router (flag off), Data (export,
+import, archived chats, delete old chats), Personalization (custom instructions, response style,
+background notifications), keyboard shortcuts, shared-memory warning, glass glint, undefined-token
+lint. Result: all services healthy with 0 restarts, Kiwix up, `mcp: nextcloud+tavily+noevia`, new
+routes 401 without a session, public bundle `index-nEvEttZ0.js` matches the build,
+`glass-highlight.js` 200. Engine stays at `--models-max 1`.
+Rollback: point `current` at `releases/8e4dcd0`, restore `.env.bak.before-127b300`, preflight `up` web.

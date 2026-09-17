@@ -12,7 +12,7 @@ Status words: **Shipped** = deployed and verified · **Open** = to build ·
 
 ## Where things stand — 2026-09-17
 
-- Live release **`8e4dcd0`** on DaServer (`https://cowork.daserver.work`, recorded in
+- Live release **`127b300`** on DaServer (`https://cowork.daserver.work`, recorded in
   `deployment.md`): web, Diary, OCR, model-loader, native llama.cpp and Kiwix healthy.
 - **Models served (D3 applied):** Qwen3.5-4B-Q5_K_M (24 576), Ornith-1.5-9B-Q5_K_M (16 384),
   nomic-embed-text-v1; `--models-max 2`; Auto roles Fast 4B / Smart 9B / Vision 4B.
