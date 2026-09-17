@@ -237,8 +237,7 @@ mobile composer and tap targets).
   (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
   moves to the SMB/dedicated root, since that path is not mounted yet.
 - **Decided (D7: encrypted S3-compatible snapshots module; provider is the user's)** — Off-site backup destination and budget.
-- **Decided (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion (kept today to avoid racing
-  uploads).
+- **Shipped on branch (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion; see Current phase.
 
 ### G. Telemetry and logs
 - **Shipped** — Footer tokens/s updates the moment each round's SSE `usage` event arrives instead of waiting on the 2.5s poll. A single long round still can't tick mid-generation: llama.cpp reports the rate only when a request finishes.
@@ -376,7 +375,12 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   per browser under `noevia:feature-flags` to avoid a layout shift. `qa/features.cjs` added.
   Deviation: the "Planned features" settings page stays visible — it is an honest roadmap list,
   not a dead-end surface.
-- [ ] 3. D8 folder sweep
+- [x] 3. **D8** — `server/project-sweep.cjs`: after a delete is saved, `rmdir` (never recursive) the
+  project's `project-uploads`/`project-documents`/`project-assets` dirs if empty and realpath-inside
+  the tenant dir; remote WebDAV folder (directly under `PROJECT_ROOT_FOLDER`) and its empty
+  Documents/Images/Text/Other subfolders go only when PROPFIND shows no children and DELETE with
+  `If-Match` on the collection ETag succeeds (no ETag → no delete; S3 has no dirs). Logged as
+  `project.sweep`. Deviation: no route file — it is a post-commit hook, not an endpoint.
 - [ ] 4. D6 DAV ops
 - [ ] 5. D10 Diary append
 - [ ] 6. D12 deep research steps 4–5
