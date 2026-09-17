@@ -29,6 +29,13 @@ docker compose config --format json | php deploy/preflight/check.php --config-js
 Rejects writable binds inside `/boot`, ancestor mounts exposing `/boot`, symlink
 aliases (including missing descendants), and alternate mountpoints on a separate
 boot device. Read-only mounts and normal Docker managed volumes are allowed.
+Also blocks (D1) a `model-loader` service whose `MODEL_LOADER_TOKEN` is unset or
+shorter than 32 characters, a `web` service without the same token, and a `diary`
+service sharing any network (or host networking) with `model-loader`. The token is
+compared, never printed. `overlay-release.sh` additionally rolls back if the running
+Diary container can resolve `model-loader`. The live file fails this check until the
+operator steps in `docs/research-master-container.md` are applied.
+
 Named volumes with driver options need separate verification and are refused by
 this helper; use ordinary binds for local paths so they can be inspected.
 

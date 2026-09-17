@@ -89,6 +89,50 @@ function envKeyDrift(array $config, string $expectedFile, string $service = 'web
     return ["$service: missing env keys versus the repository: " . implode(', ', $missing)];
 }
 
+/**
+ * The model manager holds the Docker socket (docs/research-master-container.md). Block a deploy
+ * where it runs without MODEL_LOADER_TOKEN, where web lacks the matching token, or where the
+ * Diary sidecar shares a network with it (so it could resolve `model-loader`). Names only; the
+ * token value is compared, never printed. A configuration without model-loader passes.
+ */
+function serviceEnv(array $settings): array {
+    $env = [];
+    foreach ($settings['environment'] ?? [] as $key => $value) {
+        if (is_string($key)) { $env[$key] = is_scalar($value) ? (string)$value : ''; continue; }
+        if (is_string($value)) { $pair = explode('=', $value, 2); $env[$pair[0]] = $pair[1] ?? ''; }
+    }
+    return $env;
+}
+function serviceNetworks(array $settings): array {
+    $mode = $settings['network_mode'] ?? '';
+    if (is_string($mode) && $mode !== '') return ["mode:$mode"];
+    $networks = $settings['networks'] ?? null;
+    if ($networks === null || $networks === []) return ['default'];
+    return array_is_list($networks) ? array_values(array_map('strval', $networks)) : array_map('strval', array_keys($networks));
+}
+function modelLoaderBoundary(array $config, string $manager = 'model-loader', string $diary = 'diary'): array {
+    $services = $config['services'] ?? [];
+    if (!isset($services[$manager]) || !is_array($services[$manager])) return [];
+    $errors = [];
+    $token = serviceEnv($services[$manager])['MODEL_LOADER_TOKEN'] ?? '';
+    if (strlen(trim($token)) < 32) $errors[] = "$manager: MODEL_LOADER_TOKEN is unset or shorter than 32 characters (openssl rand -hex 32).";
+    if (isset($services['web']) && is_array($services['web']) && $token !== '') {
+        $webToken = serviceEnv($services['web'])['MODEL_LOADER_TOKEN'] ?? '';
+        if (!hash_equals($token, $webToken)) $errors[] = "web: MODEL_LOADER_TOKEN is missing or differs from $manager's.";
+    }
+    $managerNets = serviceNetworks($services[$manager]);
+    if (in_array('mode:host', $managerNets, true)) $errors[] = "$manager: host networking exposes the socket-backed API.";
+    if (isset($services[$diary]) && is_array($services[$diary])) {
+        $diaryNets = serviceNetworks($services[$diary]);
+        $shared = array_values(array_intersect($managerNets, $diaryNets));
+        foreach ($diaryNets as $net) {
+            if ($net === 'mode:host' || $net === "mode:service:$manager") $shared[] = $net;
+        }
+        if ($shared) $errors[] = "$diary: shares a network with $manager and could resolve it (" . implode(', ', array_unique($shared)) . ').';
+    }
+    return $errors;
+}
+
 function preflightMain(array $arguments): int {
     try {
         if (count($arguments) < 2 || $arguments[0] !== '--config-json') throw new RuntimeException('Input required');
@@ -98,9 +142,10 @@ function preflightMain(array $arguments): int {
         $raw = @file_get_contents($arguments[1] === '-' ? 'php://stdin' : $arguments[1]);
         $config = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         if (!is_array($config) || empty($config['services']) || !is_array($config['services'])) throw new RuntimeException('No services');
-        $errors = validateMounts($config);
+        $errors = array_merge(validateMounts($config), modelLoaderBoundary($config));
         if ($errors) { foreach ($errors as $error) fwrite(STDERR, "BLOCKED: $error\n"); return 1; }
         echo "PASS: resolved writable mounts do not expose the protected boot directory/device.\n";
+        if (isset($config['services']['model-loader'])) echo "PASS: model-loader is token-gated and unreachable from the Diary sidecar.\n";
         if ($expectedFile !== '') {
             $drift = envKeyDrift($config, $expectedFile);
             foreach ($drift as $warning) fwrite(STDERR, "WARN: $warning\n");

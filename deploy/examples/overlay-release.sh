@@ -47,7 +47,12 @@ old_native=$(docker inspect cowork-llama-1 --format '{{.Id}}')
 cd "$manager"
 ln -sfn "$base/releases/$NEW" "$base/current"
 sed -i "s/^COWORK_VERSION=.*/COWORK_VERSION=$NEW/" "$config"
-if ! bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-deps --wait --wait-timeout 180 web diary ocr; then
+# D1: the preflight blocks a model-loader without MODEL_LOADER_TOKEN or sharing a network with
+# diary; after start, confirm at runtime that the Diary sidecar cannot resolve it.
+diary_isolated() {
+  ! docker exec cowork-diary-1 python -c 'import socket; socket.gethostbyname("model-loader")' >/dev/null 2>&1
+}
+if ! { bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-deps --wait --wait-timeout 180 web diary ocr && diary_isolated; }; then
   ln -sfn "$base/releases/$OLD" "$base/current"
   cp -p "$config.bak.before-$NEW" "$config"
   bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-deps --wait --wait-timeout 180 web diary ocr

@@ -359,6 +359,25 @@ research mode (I) are measure-first, then build.
 9. Research priorities in ranked order; context-efficiency logging can start alongside the
    build items.
 
+## Current phase — decisions build (2026-09-17)
+
+Build order from master-prompt.md § Current phase. Checked items are committed and pushed.
+
+- [x] 1. **D1 preflight** — `deploy/preflight/check.php` `modelLoaderBoundary()` blocks a deploy when
+  model-loader's `MODEL_LOADER_TOKEN` is unset/short, web lacks the same token, or diary shares a
+  network (or host mode) with model-loader; `overlay-release.sh` rolls back if the running diary can
+  resolve `model-loader`. PHP tests run on DaServer in a temp dir; the live resolved config is
+  **blocked** by it today, as intended, until the operator steps are applied.
+- [ ] 2. D5 previews flag and `server/features.cjs`
+- [ ] 3. D8 folder sweep
+- [ ] 4. D6 DAV ops
+- [ ] 5. D10 Diary append
+- [ ] 6. D12 deep research steps 4–5
+- [ ] 7. D7 backup module
+- [ ] 8. D9 Kiwix module
+- [ ] 9. D4 design lint
+- [ ] 10. D3 preset diff doc
+
 ## Testing rules
 
 - Diary work uses a per-run **copy** of `AI frontend thing/diary-test/`. Never the folder

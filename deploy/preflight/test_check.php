@@ -39,7 +39,32 @@ try {
     verify(count(envKeyDrift(['services'=>['diary'=>[]]], $expected)) === 1, 'Missing web service not reported');
     unlink($expected);
 
-    echo "PASS: direct/parent paths, symlink aliases, missing descendants, loops, read-only and managed volumes; env-key drift.\n";
+    // ---- model-loader boundary (blocking) ----
+    $tok = str_repeat('a', 64);
+    $good = ['services'=>[
+        'model-loader'=>['environment'=>['MODEL_LOADER_TOKEN'=>$tok], 'networks'=>['models'=>null]],
+        'web'=>['environment'=>['MODEL_LOADER_TOKEN'=>$tok], 'networks'=>['default'=>null, 'models'=>null]],
+        'diary'=>['networks'=>['default'=>null]]]];
+    verify(modelLoaderBoundary($good) === [], 'Isolated, token-gated model-loader rejected');
+    verify(modelLoaderBoundary(['services'=>['web'=>[]]]) === [], 'Config without model-loader rejected');
+    $unset = $good; $unset['services']['model-loader']['environment'] = [];
+    verify(count(modelLoaderBoundary($unset)) > 0, 'Unset token accepted');
+    $short = $good; $short['services']['model-loader']['environment']['MODEL_LOADER_TOKEN'] = 'abc';
+    verify(count(modelLoaderBoundary($short)) > 0, 'Short token accepted');
+    $webless = $good; $webless['services']['web']['environment'] = [];
+    verify(count(modelLoaderBoundary($webless)) > 0, 'Web without token accepted');
+    $sharedNet = $good; $sharedNet['services']['diary']['networks'] = ['default'=>null, 'models'=>null];
+    $msg = modelLoaderBoundary($sharedNet);
+    verify(count($msg) === 1 && str_contains($msg[0], 'models'), 'Diary on the models network accepted');
+    verify(!str_contains(implode('', modelLoaderBoundary($webless)), $tok), 'Boundary message leaked the token');
+    $defaults = $good; unset($defaults['services']['model-loader']['networks'], $defaults['services']['diary']['networks']);
+    verify(count(modelLoaderBoundary($defaults)) > 0, 'Both on the implicit default network accepted');
+    $hostMode = $good; $hostMode['services']['diary']['network_mode'] = 'host';
+    verify(count(modelLoaderBoundary($hostMode)) > 0, 'Diary host networking accepted');
+    $listEnv = $good; $listEnv['services']['model-loader']['environment'] = ["MODEL_LOADER_TOKEN=$tok"];
+    verify(modelLoaderBoundary($listEnv) === [], 'List-form token not understood');
+
+    echo "PASS: model-loader boundary; direct/parent paths, symlink aliases, missing descendants, loops, read-only and managed volumes; env-key drift.\n";
 } finally {
     foreach (['alias','relative','loop'] as $name) unlink("$root/$name");
     rmdir("$root/boot"); rmdir("$root/appdata"); rmdir($root);
