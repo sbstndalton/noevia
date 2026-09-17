@@ -74,7 +74,11 @@ Used as checklists, not dependencies.
 - 33 distinct font sizes including half pixels (12.5, 11.5, 13.5 px …) and nine weights
   (450, 550, 650, 750 …). A small fixed hierarchy is the single clearest HIG rule the app broke,
   and the in-between values are a recognisable generated-UI tell.
-- ~200 raw colour literals outside the token file (not yet addressed).
+- 87 raw colour literals outside the token file, almost all deliberate (theme swatch previews, chart
+  colours, white on accent). The real defect was different: 5 `var()` references to tokens defined
+  nowhere, whose light fallbacks broke the message edit box in dark mode (fixed; lint rule added).
+- The accepted glass study's pointer glint was never ported: CSS read `--glass-x` that nothing set
+  (fixed: `public/glass-highlight.js`).
 - Repetition: the same page title shown two or three times (bar, heading, first row).
 - Double selection cues (fill *and* outline ring).
 - Empty states without an action, or with two identical primary buttons on screen.
@@ -92,7 +96,7 @@ Used as checklists, not dependencies.
 puts material on the navigation/control layer, so glass stays there; only redundant cues were
 removed, not the material.
 
-**Next.** Colour literals → tokens with a lint rule; status vocabulary (Idle/Running/Waiting/
+**Next.** Status vocabulary (Idle/Running/Waiting/
 Failed…) unified across jobs, models and Diary; icon sizes on a scale.
 
 ## 5. Operations: DaServer became unreachable
@@ -135,3 +139,38 @@ GPU allocations on unified-memory hosts (proposed, not built).
 | 12 | AIO master container | Recommendation: don't build |
 | E | Tool routing | Measured, passed, built behind a flag |
 | I | Deep research gate | Harness ready, run interrupted |
+
+## 7. Keeping the engine inside host memory on a unified-memory iGPU
+
+**Question.** Follows §5: how can the engine be prevented from starving Unraid, whose root
+filesystem itself lives in RAM?
+
+**Findings (llama.cpp server README, current master; verify against the pinned image before use).**
+- The container `mem_limit` does not bound Vulkan allocations on an APU. The Vulkan backend
+  addresses BIOS VRAM **plus GTT**, and GTT is ordinary system RAM mapped for the GPU. So two loaded
+  models can use far more RAM than the 14 GB limit suggests.
+- The engine has its own fit logic. `--fit on` adjusts unset options to fit device memory,
+  `--fit-target MiB,…` sets a per-device safety margin, and `--fit-ctx N` sets a floor for context.
+  With `--models-max N` this is the engine-side guard, but "device memory" on an APU is the GTT size,
+  which by default can reach most of RAM.
+- The kernel is the hard bound. On amdgpu, GTT size is set by the `amdgpu.gttsize` parameter or the
+  TTM `pages_limit`. Capping GTT below physical RAM minus what Unraid needs (RAM root fs, Docker,
+  page cache) turns an OOM or thrash into a clean load failure that the engine reports.
+- `--cpu-moe` / `--n-cpu-moe N` keep expert weights on the CPU side. On a unified-memory host that
+  saves no memory, only GPU address space, so MoE offload (priority 9) is not a memory fix here.
+- `--load-mode` (mmap, mlock, …) decides whether weights sit in reclaimable page cache (mmap) or
+  pinned memory. mlock on this host would make pressure worse.
+
+**Recommendation (not applied; the server is down).**
+1. Keep `--models-max 1` until the cause is confirmed.
+2. Measure the real peak: `free -m` and `/sys/class/drm/card*/device/mem_info_gtt_used` with the 9B
+   and 4B loaded, and with no backup or mover running.
+3. Cap GTT at about physical RAM − 10 GB, and add `--fit on --fit-target <MiB margin>` to the engine
+   command. Then retry `--models-max 2` and record the result in `research-known-good-settings.md`.
+4. Product follow-up: the Hardware tab should show GTT used/total next to RAM on unified-memory
+   hosts. `model-manager` already reads GPU memory, so this is a small addition.
+
+Sources: [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md),
+[llama.cpp #19818 (APU OOM, GTT vs VRAM)](https://github.com/ggml-org/llama.cpp/issues/19818),
+[llama.cpp discussion #18839 (shared memory)](https://github.com/ggml-org/llama.cpp/discussions/18839),
+[AMD GPUs notes (llm-tracker)](https://llm-tracker.info/howto/AMD-GPUs).
