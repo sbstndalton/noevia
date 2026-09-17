@@ -73,8 +73,8 @@ mobile composer and tap targets).
 - **Open** — Parity audit against Model Loader, run with its own UI still up; port gaps.
 - **Open** — After a download, write safe defaults automatically: 8k context, MTP when the
   model ships a draft head, the model's own template and sampling defaults.
-- **Open** — A deleted model leaves projects and chats pointing at it; show "No model
-  selected".
+- **Shipped** — A project or chat whose model is no longer installed shows "No model
+  selected" (only when the local catalogue was read successfully; other providers exempt).
 - **Open** — Choose where downloads go (Unraid shares such as `ai-models`).
 - **Open** — Routing clarity: plain labels, what Auto does, per-project view.
 - **Open** — Hugging Face cache files can surface as hex identifiers; unconfirmed (the scanner
