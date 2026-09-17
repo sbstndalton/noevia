@@ -1042,3 +1042,30 @@ button, Easy mode and the router in a real chat.
 Rollback: `current` → `releases/127b300`, restore `config/.env.bak.before-ea57c83`, copy
 `docker-compose.override.yml.bak.before-embed-router` back, preflight `up` web and model-loader with
 `cowork-model-loader:8e4dcd0` (retag as `127b300` or set `COWORK_VERSION=127b300`), and remove `embed`.
+
+## Nextcloud AIO audit — 2026-09-17 afternoon (user request: optimise)
+
+Nextcloud 34.0.4 (AIO, PHP 8.4, Postgres, Redis, Imaginary, Elasticsearch, Collabora, Talk). Measured:
+`status.php` ~10 ms on the LAN, ~100 ms through Cloudflare, login page 137 ms; Postgres cache hit
+99.95 % (`shared_buffers` 256 MB for a 405 MB database, 75 k files); APCu + Redis caching and locking,
+OPcache 256 MB with JIT, cron background jobs current (96 jobs, none stuck), preview queue empty,
+Imaginary previews, no missing indices/columns/primary keys, all apps up to date. Idle CPU: Nextcloud
+~3.5 %, Postgres ~1 %. AIO rewrites PHP-FPM, `maintenance_window_start` (from
+`NEXTCLOUD_MAINTENANCE_WINDOW`, default 100 = any time) and Postgres settings on start, so hand
+tuning there does not persist and is not needed at these numbers.
+
+Changed:
+- Removed a stale `daily_backup_running` marker (created 10:15 by the interrupted `daily-backup.sh`
+  during the apache repair); left in place it could make AIO treat the nightly backup/update as
+  already running. No backup process was running.
+- (Earlier today) apache/talk repaired; `integration_openai` pointed at the native engine.
+
+Checked and left alone: "remote address could not be determined" only appears because setup checks
+run from the CLI; Caddy trusts private ranges and the host-network Cloudflare tunnel forwards the
+client IP. AIO Borg backup runs 04:00 UTC (00:00 Eastern, ~2 min), clear of mover 03:40 and appdata
+backup 04:10 Eastern.
+
+Needs the user: `default_phone_region` (country code), outgoing email server, Talk high-performance
+backend 2.1.1 lacks `changed-users` (upstream AIO image), and whether Nextcloud Assistant should get a
+dedicated task-processing worker (AI tasks otherwise wait for the 5-minute cron); in AIO that needs
+the mastercontainer environment or a community container.
