@@ -7,7 +7,8 @@ import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclie
 const policy = process.argv[2] || 'reject'; // reject | allow
 const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'acp-ws-')));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-home-'));
-const log = { policy, toolsOffered: [], toolCalls: [], permissions: [], clientFs: [], modelRounds: 0 };
+const TOOL = process.env.TOOL || 'write';
+const log = { policy, tool: TOOL, terminal: [], toolsOffered: [], toolCalls: [], permissions: [], clientFs: [], modelRounds: 0 };
 let step = 0;
 const sse = (res, chunks) => { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); for (const c of chunks) res.write(`data: ${JSON.stringify(c)}\n\n`); res.end('data: [DONE]\n\n'); };
 const model = http.createServer(async (req, res) => {
@@ -20,8 +21,8 @@ const model = http.createServer(async (req, res) => {
   if (!body.tools?.length) return sse(res, [{ ...base, choices: [{ index: 0, delta: { role: 'assistant', content: 'Title' }, finish_reason: 'stop' }] }]);
   if (!hasToolResult && step === 0) {
     step = 1;
-    const tool = names.includes('write') ? 'write' : names.find((n) => /write|edit|create/i.test(n));
-    const args = JSON.stringify({ filePath: path.join(ws, 'hello.txt'), content: 'written by agent\n' });
+    const tool = TOOL === 'bash' ? 'bash' : names.includes('write') ? 'write' : names.find((n) => /write|edit|create/i.test(n));
+    const args = TOOL === 'bash' ? JSON.stringify({ command: 'echo ran > hello.txt', description: 'Create hello.txt' }) : JSON.stringify({ filePath: path.join(ws, 'hello.txt'), content: 'written by agent\n' });
     return sse(res, [{ ...base, choices: [{ index: 0, delta: { role: 'assistant', tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: tool, arguments: args } }] }, finish_reason: null }] },
       { ...base, choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }]);
   }
@@ -44,6 +45,17 @@ const conn = new ClientSideConnection(() => ({
   },
   async sessionUpdate(n) { const u = n.update; if (u.sessionUpdate === 'tool_call' || u.sessionUpdate === 'tool_call_update') log.toolCalls.push({ type: u.sessionUpdate, kind: u.kind, status: u.status, title: u.title }); },
   async readTextFile(p) { log.clientFs.push({ op: 'read', path: p.path }); return { content: fs.existsSync(p.path) ? fs.readFileSync(p.path, 'utf8') : '' }; },
+  async createTerminal(p) {
+    log.terminal.push({ op: 'create', command: p.command, args: p.args });
+    const child = spawn(p.command, p.args || [], { cwd: p.cwd || ws, shell: !p.args?.length });
+    const t = { out: '', code: null }; child.stdout.on('data', (d) => { t.out += d; }); child.stderr.on('data', (d) => { t.out += d; });
+    t.done = new Promise((r) => child.on('exit', (code) => { t.code = code; r(); }));
+    const id = `t${log.terminal.length}`; (globalThis.terms ||= {})[id] = t; return { terminalId: id };
+  },
+  async terminalOutput(p) { const t = globalThis.terms[p.terminalId]; return { output: t.out, truncated: false, exitStatus: t.code === null ? undefined : { exitCode: t.code } }; },
+  async waitForTerminalExit(p) { const t = globalThis.terms[p.terminalId]; await t.done; return { exitCode: t.code }; },
+  async releaseTerminal() { return {}; },
+  async killTerminal() { return {}; },
   async writeTextFile(p) { log.clientFs.push({ op: 'write', path: p.path }); fs.writeFileSync(p.path, p.content); return {}; },
 }), ndJsonStream(Writable.toWeb(agent.stdin), Readable.toWeb(agent.stdout)));
 const timeout = setTimeout(() => { log.error = 'timeout'; finish(); }, 120000);
@@ -55,7 +67,7 @@ function finish() {
   agent.kill(); model.close(); fs.rmSync(ws, { recursive: true, force: true }); fs.rmSync(home, { recursive: true, force: true }); process.exit(0);
 }
 try {
-  const init = await conn.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false } });
+  const init = await conn.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true } });
   log.agent = init.agentInfo || null; log.protocolVersion = init.protocolVersion;
   const session = await conn.newSession({ cwd: ws, mcpServers: [] });
   const result = await conn.prompt({ sessionId: session.sessionId, prompt: [{ type: 'text', text: 'Create hello.txt' }] });

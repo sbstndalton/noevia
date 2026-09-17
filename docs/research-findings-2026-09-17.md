@@ -306,6 +306,9 @@ coding agents. Is that still sound, and can noevia's approval gate cover what th
    `session/request_permission` (kind `edit`). A reject was honoured, and an approved write was done
    **through the client's `fs/write_text_file`**. The adapter therefore has to pin each harness's
    permission config, and the sandbox is still needed for agents or defaults that don't cooperate.
+   Shell commands (kind `execute`) are gated by `ask` too, but an approved command ran in the
+   agent's own process, not through the client's `terminal/*`. For commands, the sandbox is the
+   only thing that contains what happens after approval.
 6. **Spike order.** Start with a native agent that can use the local OpenAI-compatible endpoint
    (OpenCode or Qwen Code) against the served 4B/9B models. Claude and Codex through adapters need
    their official sign-in and billing; that is the user's decision.
