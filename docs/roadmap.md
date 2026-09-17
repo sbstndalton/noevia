@@ -507,6 +507,11 @@ deploy 5, experiments 5.
   40-message model replay; oversize answers with a readable message ·
   `server/chat-history-routes.test.cjs`. Suspected, not fixed: two devices saving the same chat
   overwrite each other (last writer wins; no version check) — needs a merge design.
+- 2026-09-17 · pass 13 (a, context) · The chat handler cut the incoming history to the last 40
+  messages before the context projection, so older turns of any chat past 20 exchanges vanished from
+  the model's context with no summary (and the compaction prefix shifted every turn) · offer up to
+  1000 messages to the projection (compaction's own bound) and raise `/api/chat` body limit to match ·
+  `qa/chat-context.cjs` (long chat reaches the model).
 
 ## Testing rules
 
