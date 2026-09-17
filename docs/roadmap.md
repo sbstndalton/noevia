@@ -526,6 +526,15 @@ deploy 5, experiments 5.
   accounts from one invite (including admin invites), two administrators from one setup code, or
   two password resets from one link · consume inside the transaction with `… AND used_at IS NULL` /
   delete-if-matches and treat a lost race as used · `server/auth-races.test.cjs`.
+- 2026-09-17 · pass 15 (c) · No new confirmed bug: remote backup restore (checksummed immutable
+  manifest, tenant-scoped objects, new directory only, overlap checks) and DAV write guards reviewed.
+- 2026-09-17 · pass 16 (d) · No new confirmed bug: download destinations come from base names/stems
+  (no traversal), URL downloads reject slashes and `..`, all behind the model-loader token.
+- 2026-09-17 · pass 17 (e) · No new confirmed bug: in-memory caches (vision descriptions ≤64, Nextcloud
+  flows ≤100, approvals time out) are bounded; research stores are per workspace.
+- 2026-09-17 · pass 18 (f) · No new confirmed bug: keyboard focus rings visible on the first 30 tab
+  stops (375/1440, light/dark); no animation runs under `prefers-reduced-motion: reduce` in chat,
+  settings, projects and Diary. The earlier Settings "double highlight" was the test pointer hovering.
 
 ## Testing rules
 
