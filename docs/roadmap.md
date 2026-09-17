@@ -154,7 +154,8 @@ mobile composer and tap targets).
 - **Research** — AIO-style master container managing the stack.
 - **Later** — Mac-native app as both client and optional trusted **execution node** (local
   files, terminal, repositories, browser, notifications): server orchestrates, node executes
-  advertised capabilities after explicit pairing; never blanket control of the Mac.
+  advertised capabilities after explicit pairing; never blanket control of the Mac. Swiftlet is
+  a candidate optional local runtime for that node.
   ([spec §5](spec-agent-execution.md))
 
 ## Research priorities
@@ -185,11 +186,17 @@ deployment's models. Can run alongside the build order.
 
 **Before browser automation**
 7. `ExecutionNode` and `BrowserExecutor` contracts, browser security/approval model, then a
-   Browser Use evaluation on a node.
+   Browser Use evaluation on a node. Evaluate cua's VM-sandboxed computer server (Lume on the Mac,
+   Linux desktops on DaServer) as the Cowork computer-use shape; its host desktop driver only
+   later, as the highest-trust node capability. Telemetry off.
+   ([spec §5](spec-agent-execution.md))
 
 **Other**
 8. Known-good settings per model and hardware.
-9. Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU.
+9. Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU. Includes running larger
+   MoE models on DaServer by keeping experts in system memory or mmap'd from disk with llama.cpp's
+   own options (verify flags against the pinned build), measured on this GPU — the idea behind
+   flash-moe/Swiftlet, whose Metal-only code doesn't apply here.
 10. Backend portability (llama.cpp vs vLLM).
 11. Headscale vs NetBird to replace a slow Tailscale.
 12. AIO-style master container managing the stack.

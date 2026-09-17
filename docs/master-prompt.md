@@ -391,7 +391,8 @@ finding does or doesn't apply — with measurements. Then build.
    A native client that can optionally act as a trusted node (local files, terminal,
    repositories, browser, notifications) after explicit pairing; server orchestrates, node
    executes advertised capabilities; never blanket control of the Mac. Jan.ai may inform the
-   client only.
+   client only. Swiftlet (`909c042`, Apache-2.0; Swift/Metal SSD-streamed MoE, loopback
+   OpenAI-compatible server) is a candidate for the node's optional local model runtime.
 
 ---
 
@@ -452,13 +453,21 @@ deployment's models. May run alongside the build order.
    visible origin, action audit, consequential actions through the approval card, long flows as
    durable jobs. Then evaluate Browser Use (`d8110c5`, MIT) as one implementation on a desktop
    node: it has no approval gate (wrap it), heavy pinned deps, PostHog telemetry to disable, and
-   needs local Chrome — not for the web container.
+   needs local Chrome — not for the web container. Evaluate trycua/cua (`8cb8f6d`, MIT) the same
+   way: its guest-side computer server in a VM (Lume on the Mac, Docker/QEMU Linux desktops on
+   DaServer) is the preferred Cowork computer-use shape; its host desktop driver has no VM
+   boundary and comes later as the highest-trust node capability, with noevia's gate owning
+   every decision through its bounded-manifest/authorization hooks. Its agent loop has no
+   approval hook (wrap it). Disable its PostHog and component telemetry. Details: spec §5.
 
 **Other**
 
 8. Known-good settings per model × hardware.
 9. Wider model evidence (accuracy, reasoning budgets, MTP, multi-GPU) and backend portability
-   (`docs/spec-backend-portability.md`); no silent migration.
+   (`docs/spec-backend-portability.md`); no silent migration. Include larger MoE models on
+   DaServer by keeping experts in system memory / mmap'd from disk using llama.cpp's own options
+   (verify against the pinned build), measured. flash-moe (`3601d41`) and Swiftlet demonstrate
+   SSD expert streaming but are Metal-only; flash-moe has no license — idea only, no code.
 10. Headscale vs NetBird (H1).
 11. AIO-style master container (H2).
 
