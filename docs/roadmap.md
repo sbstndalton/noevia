@@ -323,6 +323,11 @@ deployment's models. Can run alongside the build order.
   agent skills for building native-quality mobile apps from top-app design patterns, using the
   Appllama MCP design library and Expo simulator checks. Question: useful for the future Mac/iOS
   client or as a pattern for agent-driven UI QA.
+- [Unsloth](https://github.com/unslothai/unsloth) (Apache-2.0 core) — fine-tuning and RL
+  library for local models, and a major publisher of GGUF quantizations (dynamic quants).
+  Questions: are its GGUFs the preferred source for Discover/known-good settings (R8), and is
+  local fine-tuning (for example a Diary-style or tool-calling adapter) worth a later spike on
+  this hardware?
 
 **Later:** Mac execution node and richer desktop capabilities; Auto architect/harness routing
 once evidence exists.
