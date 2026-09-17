@@ -993,3 +993,23 @@ lint. Result: all services healthy with 0 restarts, Kiwix up, `mcp: nextcloud+ta
 routes 401 without a session, public bundle `index-nEvEttZ0.js` matches the build,
 `glass-highlight.js` 200. Engine stays at `--models-max 1`.
 Rollback: point `current` at `releases/8e4dcd0`, restore `.env.bak.before-127b300`, preflight `up` web.
+
+## 2026-09-17 live changes on 127b300 (no release)
+
+- **Nextcloud AIO repaired.** `nextcloud-aio-apache` and `-talk` crash-looped after the nightly AIO
+  update (new mastercontainer, 4-week-old child images; supervisord pid dir missing on the tmpfs
+  `/run`), so `drive.daserver.work` returned 502 and the Diary's WebDAV storage failed. Fixed by
+  pulling `aio-apache`/`aio-talk` and running the mastercontainer's `Cron/StopContainers.php`, then
+  `Cron/StartAndUpdateContainers.php` (as `www-data`). `daily-backup.sh` is no use in this state:
+  it waits for apache forever.
+- **Nextcloud Assistant uses the native engine.** Override: `llama` joins the external
+  `nextcloud-aio` network with alias `noevia-llama` (not published on the host; copy
+  `.bak.before-nextcloud-ai`). Also connected live with `docker network connect`, so no engine
+  restart. `integration_openai`: `url=http://noevia-llama:8080/v1`, service name "noevia llama.cpp",
+  default completion model `Qwen3.5-4B-Q5_K_M`, image/speech providers off. Verified with a
+  `core:text2text` task (status successful). With `--models-max 1`, Assistant requests share the
+  one model slot with noevia chats and can evict the loaded model; the engine has no API key, so
+  anything on the `nextcloud-aio` network can use it.
+- **Deep research off.** `NOEVIA_FEATURE_DEEP_RESEARCH: "false"` (copy
+  `.bak.before-deep-research-off`), web recreated with `up.sh … --wait web`. Gate failed; see
+  `spec-deep-research.md` §8.
