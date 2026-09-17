@@ -51,8 +51,13 @@ since then are **not deployed**: account memory, `EMBEDDING_BASE_URL`, QA and ex
   Easy mode; MTP defaults follow built-in layers, heads beside the model or in its source repo, by
   mode. A Tune button per model in the chat picker; new files in the models folder are set up
   automatically.
-- **Prompt preparation, first run (4B):** P1 template 15/18 vs raw 14/18 with no injected-instruction
-  compliance; P2 failed on a harness bug (reasoning not disabled), re-run queued.
+- **Step 5:** `CONTEXT_LOG=1` on in production since 11:20 (counts only); read `report()` after a week.
+- **Step 6, prompt preparation (4B, run 2):** P0 raw 16/18, P1 template 15/18, P2 4B-as-architect
+  0/18 (list fields returned as strings). Direct stays default; next 3 repeats and a 9B architect.
+- **Step 9, CodeHarness spike (D14):** OpenCode over ACP solved a synthetic bug on the 4B (165 s) and
+  9B (265 s) in a read-only, capability-less container on an internal network with only the engine;
+  edits went through noevia's client fs, escape probes all blocked. `experiments/acp-spike`.
+- **Tool router re-measured best-first:** needed box 26/26, right first call 21/26, 10.8 s vs 14.3 s.
 
 ### Broken or risky right now
 - **Outage cause unknown** (04:15–08:24). Mover 03:40 and appdata backup 04:10 precede it; syslog

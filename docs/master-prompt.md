@@ -540,18 +540,21 @@ stand". Work in this order, one commit or more per step, with tests and screensh
    RAG indexes. To finish after a deploy: run a CPU nomic service and point web at it.
 3. **Parked — deep research.** Gate failed on the 9B; feature off. The user will pick it up later with
    another agent. Don't work on it unless asked.
-4. **Done (measured), enable after deploy — tool router.** Gate holds on real Nextcloud boxes. Next:
-   rank-then-fit selection, the four boxes still missed, then enable with the CPU embedder.
-5. **Context efficiency.** Turn on `CONTEXT_LOG=1` in the live web env (counts only) for a week, then
-   write reducers for what `context-log.cjs report()` shows repeating.
-6. **Prompt Architect benchmark.** Harness ready (`experiments/prompt-preparation`, runs from the
-   Diary container); run P0/P1/P2 on the served models with the engine otherwise idle.
+4. **Done (measured), enable after deploy — tool router.** Best-first ordering (c36eee5) reaches the
+   needed box 26/26 on real Nextcloud boxes. Enable with a CPU embedder and `EMBEDDING_BASE_URL`
+   after deploy; the Tasks box is sent but the 4B does not call it (tool description check).
+5. **In progress — context efficiency.** `CONTEXT_LOG=1` is on live since 2026-09-17 11:20. After a
+   week, read `context-log.cjs report()` per user dir and write reducers for what repeats.
+6. **Started — Prompt Architect benchmark.** 4B run 2: P0 16/18, P1 15/18, P2 0/18 (schema). Next:
+   3 repeats, 9B as architect for the 4B, a lenient-schema control. Direct stays default.
 7. **Product:** account memory built; Diary append verified. Still: Kiwix and vision checked in
    real chats (needs a signed-in user; ask the user to do it or to provide a synthetic test account
    on production).
 8. **Done — KoboldCpp vs llama.cpp.** Rejected and removed (findings §12). vLLM is a possible future
    engine test, only under the §8 gates and when the user asks.
-9. **CodeHarness spike on the server (D14):** OpenCode over ACP in a sandbox container.
+9. **Done — CodeHarness spike on the server (D14).** Solved on 4B and 9B in the sandbox; see
+   `experiments/acp-spike/README.md`. Next is spec §3 build work (worktrees, egress proxy, job events,
+   Code mode UI), after the user deploys the current branch.
 10. **SMB pilot (D11)** once the user provides the share.
 11. **Bug hunt**, below.
 
