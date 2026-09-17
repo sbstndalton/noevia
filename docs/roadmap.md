@@ -483,6 +483,13 @@ deploy 5, experiments 5.
   chat settings (32), project tabs (32 tall), project card options (30×33), Settings back (30 tall)
   and close (32 wide), project filter (38), thinking-effort select (38), "open an empty chat" (17) ·
   `(pointer: coarse), (max-width: 640px)` minimums · `qa/touch-targets.cjs`.
+- 2026-09-17 · pass 7 (a) · No new confirmed bug: client SSE reassembly, heartbeat during approval
+  waits (5 s keep-alive vs Cloudflare's idle limit), retry/edit truncation reviewed.
+- 2026-09-17 · pass 8 (b, admin/features) · Turning "Offline Wikipedia" or "Diary append tool" on in
+  Settings saved and showed "on", but both are wired into tool catalogues at startup, so nothing
+  changed until a restart (and turning them off left the tools live) · restart-wired features keep
+  answering with the running value and the page says "Restart the server to apply" ·
+  `features.test.cjs`, `qa/features.cjs`.
 
 ## Testing rules
 
