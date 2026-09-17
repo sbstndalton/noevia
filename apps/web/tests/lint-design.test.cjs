@@ -17,9 +17,25 @@ test('flags overshooting easing and gradient text only', () => {
   assert.equal(lint('h1 { -webkit-background-clip: text; background-clip: text; }').length, 2);
 });
 
+test('font sizes come from the type scale and weights from four steps', () => {
+  // HIG typography: a small hierarchy of text styles, no in-between weights.
+  const rules = (css) => lint(css).map((f) => f.rule);
+  assert.deepEqual(rules('p { font-size: var(--text-body); font-weight: 600; }'), []);
+  assert.deepEqual(rules('p { font-size: 13px; }'), []);
+  assert.deepEqual(rules('p { font-size: 12.5px; }'), ['type-scale']);
+  assert.deepEqual(rules('p { font-size: 14.5px; }'), ['type-scale']);
+  assert.deepEqual(rules('p { font-size: 18px; }'), ['type-scale']);
+  assert.deepEqual(rules('p { font-size: 0.75rem; }'), ['type-scale']);
+  assert.deepEqual(rules('p { font-size: inherit; font-size: 1em; }'), []);
+  assert.deepEqual(rules('b { font-weight: 550; }'), ['font-weight']);
+  assert.deepEqual(rules('b { font-weight: 650 }'), ['font-weight']);
+  assert.deepEqual(rules('b { font-weight: bold; font-weight: 700; }'), []);
+  assert.deepEqual(rules('--text-body: 13px;'), []);
+});
+
 test('the app stylesheets pass', () => {
   const fs = require('node:fs'), path = require('node:path');
-  const dir = path.join(__dirname, '../src/styles');
-  const findings = fs.readdirSync(dir).filter((f) => f.endsWith('.css')).flatMap((f) => lint(fs.readFileSync(path.join(dir, f), 'utf8'), f));
+  const dir = path.join(__dirname, '../src');
+  const findings = fs.readdirSync(dir, { recursive: true }).filter((f) => /\.(css|tsx)$/.test(f)).flatMap((f) => lint(fs.readFileSync(path.join(dir, f), 'utf8'), f));
   assert.deepEqual(findings, []);
 });
