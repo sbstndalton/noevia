@@ -2,7 +2,7 @@
 
 You are working on **noevia**, a self-hosted, local-first workspace for project-aware chat,
 tools and a private Diary. The repository is `noevia-application/` inside the project folder
-"AI frontend thing" (GitHub `sbstndalton/noevia`, branch `feat/direct-llamacpp`). The last
+"AI frontend thing" (GitHub `sbstndalton/noevia`, branch `claude/compaction-correctness-fix-ltyu9p`, based on `feat/direct-llamacpp`; not deployed). The last
 recorded live release is `503b1c5` (see `docs/deployment.md`); confirm runtime state before
 assuming anything is live.
 
@@ -120,6 +120,13 @@ over Tailscale use `root@100.70.173.74`.
 - The DaServer changelog (`Projects/Unraid/DaServer.md` in Nextcloud) was not found locally;
   releases `a48a8c4` and `503b1c5` are recorded only in `docs/deployment.md`.
 - `docs/agent-brief.md`'s "verified at" header predates many sections; verify before relying.
+- The repository now requires `MODEL_LOADER_TOKEN` and a `models` Compose network
+  (`docs/research-master-container.md`). The live file doesn't have them yet; a deploy without
+  those operator steps fails compose validation. Don't apply them yourself.
+- Waiting on the user (don't build around them): Impeccable download, preview surfaces,
+  DAV protected set, off-site backups, empty-folder cleanup, offline Wikipedia, Diary MCP
+  writes, SMB cutover, deep research budget/members/report location, production calibration
+  and benchmark runs, which models to serve.
 
 ---
 
@@ -474,19 +481,57 @@ deployment's models. May run alongside the build order.
 **Later:** Mac execution node and richer desktop capabilities; Auto prompt-preparation and Auto
 harness routing once evidence exists.
 
-## Suggested order
+## Current phase — bug hunt (roadmap exhausted as of 2026-09-17)
 
-0. **Compaction correctness** (section 0) — verified bug, small; first.
-1. G1 live stats, A4 close ✕.
-2. C4 deleted model, C3 safe defaults.
-3. B2 + C1 + C2 model manager full page, Easy/Advanced, parity audit.
-4. A1–A3 mobile drawer, search, brightness/banding.
-5. G2 live log tab, E1 tool menu, B1 settings sub-pages.
-6. D1–D2 modes and projects.
-7. F1–F4 Diary.
-8. E2 task-conditional tool loading (measure first), I spec.
-9. Research in R's order; start R1 logging early. Specs for R5–R7 must exist before their
-   modes are built.
+Every roadmap item that needs no user decision, no served model and no production access has
+shipped (see `docs/roadmap.md`). First re-read the roadmap: if a **Decision** has since been
+answered, or models are served again, that item comes first, under the same rules. Otherwise
+spend the session finding and fixing real bugs, in repeated passes, until a full pass finds
+nothing new.
 
-Commit per item with the three checks green and screenshots reviewed. Update
-`docs/roadmap.md` status when an item ships, and record evidence in the relevant spec.
+### One pass
+
+1. **Baseline.** From `apps/web`: `npm test`, `npm run typecheck`, `npm run build`; every
+   `qa/*.cjs` suite; pytest in `services/diary` and `services/model-manager`; `deploy` and
+   `experiments` tests. Record failures before changing anything.
+2. **Review the code, one area per pass**, rotating in this order and noting which one you did
+   in the commit message:
+   a. chat streaming and tool approvals (`server/index.cjs` chat handler, `chat-context.cjs`,
+      `App.tsx`, `ToolCalls.tsx`) — ordering of SSE events, abort/reconnect, duplicate sends;
+   b. auth, sessions, app passwords, DAV, internal MCP — tenant isolation, CSRF, member vs
+      admin, rate limits, secrets in logs/URLs;
+   c. Diary sidecar and storage — journaled writes, conflicts, managed backup outbox, restore;
+   d. model manager, calibration, evidence, downloads — races with loads, revision conflicts,
+      identity staleness, the Docker-socket service's token boundary;
+   e. projects, uploads (PDF/DOCX/images), RAG, modes, jobs, research runner;
+   f. UI at 320/375/768/1440 in light and dark, keyboard, touch targets, software keyboard,
+      reduced motion — on the local spin-up in a real browser, reading every screenshot.
+   For each hunk ask: wrong or inverted condition, off-by-one, null path, missing `await`,
+   dropped error, removed guard, stale closure/state, race, unbounded growth, leaked
+   secret, cross-tenant read. A finding needs a concrete failing scenario.
+3. **Prove it, then fix it.** Write the failing test first (unit, HTTP or Playwright), watch it
+   fail, fix at the root cause, watch it pass. No fix without a test, unless impossible —
+   say why in the commit.
+4. **Run the pass's checks again** (step 1's full set, not only the affected suite), then
+   commit one bug or one tight group per commit and push to the same branch.
+5. **Self-review your own diff** for the pass before starting the next pass, as a fresh
+   reviewer would; fixes introduce bugs too.
+6. Append a line per fixed bug to `docs/roadmap.md` under a `### Bug hunt` heading (date, area,
+   symptom, commit). False alarms and things you chose not to fix go there too, with the reason.
+
+Repeat passes, rotating areas, **at least three full rotations**. Stop only when a whole
+rotation finds no new confirmed bug; then write a short summary (bugs fixed per area, what is
+still suspected but unproven, what needs the user).
+
+### Practical notes from the last session
+
+- Playwright: `PLAYWRIGHT_MODULE=/Users/sebastiandalton/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright`, `QA_SCREENSHOTS=/tmp`. There is no `timeout` command on macOS.
+- Model-manager pytest: `PYTHONPATH=/tmp/noevia-mm-venv/lib/python3*/site-packages ../diary/.venv/bin/python -m pytest -q` from `services/model-manager` (recreate the venv if missing).
+- Sign-in is rate limited (5 per 15 min): reuse a saved Playwright `storageState` in scripts.
+- Scope ambiguous selectors (e.g. the "Settings" button exists in the account popover and
+  elsewhere: use `.account-popover`).
+- Don't `execFileSync` a child that calls back into a server in the same process (deadlock).
+- Edit JS/TS with Python or the Edit tool, not `sed` (`&` in replacements corrupts code).
+- Leave nothing running: stop previews, the sidecar on 8010, any tunnel, and delete the run dir.
+
+Deploying stays the user's call: don't deploy, even when a pass is green, until they say so.
