@@ -8,7 +8,7 @@
 # automatically if the health wait fails. The native engine must stay untouched.
 #
 # Before running:
-#   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` then `npm run build` in apps/web
+#   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` (keep the folder: dist symlinks to it) then `npm run build` in apps/web
 #      (a stale build dir ships dead bundles), then from apps/web:
 #      COPYFILE_DISABLE=1 tar -h --no-xattrs -czf app-$NEW.tar.gz dist server
 #      (-h: dist is a symlink locally), and `git archive --format=tar.gz -o src-$NEW.tar.gz $NEW`.
@@ -31,6 +31,8 @@ tar -xzf "/tmp/src-$NEW.tar.gz" -C "$base/releases/$NEW"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 tar -xzf "/tmp/app-$NEW.tar.gz" -C "$work"
 rm -rf "$work/server/node_modules" "$work/server/ui-data"
+# A failed local build leaves dist empty or missing; never ship that.
+[ -f "$work/dist/index.html" ] && ls "$work"/dist/assets/*.js >/dev/null 2>&1 || { echo "app-$NEW.tar.gz has no built dist/; rebuild locally" >&2; exit 1; }
 cat > "$work/Dockerfile" <<DOCKER
 FROM cowork-web:$OLD
 RUN find /app/server -maxdepth 1 -type f -delete && rm -rf /app/server/fixtures /app/dist

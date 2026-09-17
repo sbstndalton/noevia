@@ -10,20 +10,18 @@ stays in the `spec-*.md` files linked below. The executable brief is
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
 **Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
 
-## Where things stand — 2026-09-16
+## Where things stand — 2026-09-17
 
-- Last recorded live release **`657d21b`** (2026-09-17, D1 applied; previously `503b1c5`) on DaServer (`https://cowork.daserver.work`; see
-  `deployment.md`, not re-verified since), five containers healthy, native llama.cpp
-  (`cowork-llama-1`) as the only inference backend.
-- **No models are served.** `models.ini` was emptied and the GGUF weights removed from
-  `/mnt/user/ai-models`; only `Ornith-1.5-9B-Q5_K_M` remains, without an entry. Earlier
-  notes record the entry deletion as the user's choice. Re-downloading is the user's call;
-  `nomic-embed-text-v1` is what project retrieval needs.
-- The live Compose Manager file lacks the six MCP keys, so startup logs `mcp: disabled`.
-  The user edits that file; the preflight drift check names the missing keys.
-- `a48a8c4` shipped without the pre-deploy backup; both it and `503b1c5` are recorded in
-  `deployment.md`. The DaServer changelog in Nextcloud was not found locally.
-- Empty the local build directory before building a release (a stale bundle shipped).
+- Live release **`8e4dcd0`** on DaServer (`https://cowork.daserver.work`, recorded in
+  `deployment.md`): web, Diary, OCR, model-loader, native llama.cpp and Kiwix healthy.
+- **Models served (D3 applied):** Qwen3.5-4B-Q5_K_M (24 576), Ornith-1.5-9B-Q5_K_M (16 384),
+  nomic-embed-text-v1; `--models-max 2`; Auto roles Fast 4B / Smart 9B / Vision 4B.
+- **MCP on:** Nextcloud, Tavily and the in-app server (loopback 8022). D1 model-loader token and
+  `models` network live.
+- **Features on** (user, 2026-09-17): previews, Diary append tool, deep research, offline
+  Wikipedia. Off-site backup off until a target exists.
+- Release packaging: keep `/tmp/noevia-qa-dist` as a folder (dist symlinks to it); the overlay
+  script now refuses a tarball without a built bundle.
 
 ## Shipped (do not rebuild)
 
@@ -194,9 +192,8 @@ mobile composer and tap targets).
   `router` mode in `experiments/tool-routing`. Not wired into chat or the tool menu, and no
   flag exists yet: that follows only if the benchmark passes once models are served again.
   Manifest fields (`examples`, `autoLoad`, `requires`) get added with that wiring.
-- **Open** — Write access to the Diary from the in-app MCP server needs a sidecar append
-  endpoint; the box is read-only by design until the user decides.
-- **Built on branch (D9)** — Kiwix-serve module, off by default; not deployed.
+- **Shipped (D10, live 2026-09-17)** — Approval-gated, append-only `diary_append` in the in-app MCP server.
+- **Live (D9, 2026-09-17)** — Kiwix-serve with `wikipedia_en_all_nopic_2026-06` on an internal network; feature on.
 
 ### F. Diary and storage
 - **Shipped (audit + last composer fork)** — Diary already reuses the composer actions, model
@@ -275,7 +272,7 @@ mobile composer and tap targets).
 
 ### H. Platform
 - **Researched 2026-09-17** — Headscale vs NetBird ([research-remote-access.md](research-remote-access.md)): don't migrate yet; neither changes the data path, the recorded slowness was WAN loss, DaServer's NAT allows direct paths. Measure with `tailscale ping`/`iperf3`/`mtr` from a remote client; if self-hosting is still wanted, Headscale.
-- **Researched 2026-09-17** — AIO-style master container ([research-master-container.md](research-master-container.md)): don't build; keep Compose Manager. Found model-loader's socket-backed API reachable unauthenticated from the Diary container; repository fix adds `MODEL_LOADER_TOKEN` and a `models` network. **Operator action:** apply token and network changes to the live Compose Manager file.
+- **Researched 2026-09-17** — AIO-style master container ([research-master-container.md](research-master-container.md)): don't build; keep Compose Manager. Found model-loader's socket-backed API reachable unauthenticated from the Diary container; repository fix adds `MODEL_LOADER_TOKEN` and a `models` network. Applied live 2026-09-17 (657d21b).
 - **Later** — Mac-native app as both client and optional trusted **execution node** (local
   files, terminal, repositories, browser, notifications): server orchestrates, node executes
   advertised capabilities after explicit pairing; never blanket control of the Mac. Idea: Swiftlet

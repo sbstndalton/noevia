@@ -954,3 +954,19 @@ No image change. Each file edited was copied first (`*.bak.before-d3`, `*.bak.be
 
 Rollback: restore the three backups named above plus `models.ini.bak-before-d3` and
 `ui-data/auto-roles.json.bak.before-d3`, then run preflight `up`. The ZIM can be deleted freely.
+
+## Release 8e4dcd0 — 2026-09-17 (stale Auto roles)
+
+Web-only overlay from 657d21b (`deploy/examples/overlay-release.sh`), appdata backup
+`ab_20260917_040312` first. `/api/chat` answers 409 when an Auto role names a model the engine no
+longer serves; Models & routing shows which. All five core services healthy, restarts 0, Kiwix
+untouched, startup logs `mcp: nextcloud+tavily+noevia`, public bundle `index-C9EG4mc8.js`
+matches the local build.
+
+First attempt shipped an empty `dist/` (the local `/tmp/noevia-qa-dist` target had been deleted,
+so `npm run build` failed and the chained `tail` hid the exit code); the image build stopped
+before anything switched and the stray release folder was removed. The script now refuses a
+tarball without `dist/index.html` and JS assets.
+
+Rollback: `overlay-release.sh`'s automatic path, or manually point `current` at
+`releases/657d21b`, restore `.env.bak.before-8e4dcd0`, run preflight `up` for web.
