@@ -8,7 +8,7 @@ stays in the `spec-*.md` files linked below. The executable brief is
 [master-prompt.md](master-prompt.md).
 
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
-**Research** = ends in a written recommendation · **Decision** = waiting on the user.
+**Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
 
 ## Where things stand — 2026-09-16
 
@@ -67,7 +67,7 @@ mobile composer and tap targets).
   and screenshots, then adopt as a dev-only check, borrow selected rules, or reject. Also
   assess a lightweight post-edit scan for agent-driven UI work. Complements screenshot
   review; never replaces it. No app dependency.
-- **Decision** — Scheduled, Plugins, Explore and Coding are preview surfaces: keep them as
+- **Decided (D5: hide behind an off-by-default flag)** — Scheduled, Plugins, Explore and Coding are preview surfaces: keep them as
   labelled previews, or hide them until built.
 
 ### B. Settings structure
@@ -188,7 +188,7 @@ mobile composer and tap targets).
   Manifest fields (`examples`, `autoLoad`, `requires`) get added with that wiring.
 - **Open** — Write access to the Diary from the in-app MCP server needs a sidecar append
   endpoint; the box is read-only by design until the user decides.
-- **Decision** — Optional offline Wikipedia needs a chosen service.
+- **Decided (D9: Kiwix-serve module, off by default)** — Optional offline Wikipedia needs a chosen service.
 
 ### F. Diary and storage
 - **Shipped (audit + last composer fork)** — Diary already reuses the composer actions, model
@@ -214,7 +214,7 @@ mobile composer and tap targets).
   local WebDAV server. No Nextcloud-only copy remains in the storage UI.
 - **Open** — Mac SMB authenticated pilot, then the real Diary cutover
   ([spec](spec-diary-smb.md)).
-- **Contract written, build waits on a decision** — DAV rename/delete/copy/locks:
+- **Contract written; decided (D6: add `AI Memory/**`, build without LOCK)** — DAV rename/delete/copy/locks:
   [dav.md § Storage contract](dav.md) fixes invariants (single guarded write path, tenant root,
   protected capture/month/index paths reusing the Trash rule, If-Match required, DELETE =
   Trash, bounded all-or-nothing folder ops, explicit uncertain outcomes), per-method status
@@ -236,8 +236,8 @@ mobile composer and tap targets).
   (`ab_20260916_151428`, `cowork-diary-1.tar.gz`) contains app-managed Diary storage
   (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
   moves to the SMB/dedicated root, since that path is not mounted yet.
-- **Decision** — Off-site backup destination and budget.
-- **Decision** — Empty-folder cleanup after project deletion (kept today to avoid racing
+- **Decided (D7: encrypted S3-compatible snapshots module; provider is the user's)** — Off-site backup destination and budget.
+- **Decided (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion (kept today to avoid racing
   uploads).
 
 ### G. Telemetry and logs

@@ -123,10 +123,7 @@ over Tailscale use `root@100.70.173.74`.
 - The repository now requires `MODEL_LOADER_TOKEN` and a `models` Compose network
   (`docs/research-master-container.md`). The live file doesn't have them yet; a deploy without
   those operator steps fails compose validation. Don't apply them yourself.
-- Waiting on the user (don't build around them): Impeccable download, preview surfaces,
-  DAV protected set, off-site backups, empty-folder cleanup, offline Wikipedia, Diary MCP
-  writes, SMB cutover, deep research budget/members/report location, production calibration
-  and benchmark runs, which models to serve.
+- The open decisions were settled on 2026-09-17; see **Decisions** below.
 
 ---
 
@@ -481,12 +478,63 @@ deployment's models. May run alongside the build order.
 **Later:** Mac execution node and richer desktop capabilities; Auto prompt-preparation and Auto
 harness routing once evidence exists.
 
-## Current phase — bug hunt (roadmap exhausted as of 2026-09-17)
+## Decisions (settled 2026-09-17, by delegation from the user)
 
-Every roadmap item that needs no user decision, no served model and no production access has
-shipped (see `docs/roadmap.md`). First re-read the roadmap: if a **Decision** has since been
-answered, or models are served again, that item comes first, under the same rules. Otherwise
-spend the session finding and fixing real bugs, in repeated passes, until a full pass finds
+The user delegated these calls: best industry practice for security and code quality, and
+**modularity first**. Treat them as settled; record any deviation, with its reason, in the
+commit and in `docs/roadmap.md`.
+
+**Architecture rule for everything below.** New capabilities are self-contained modules:
+- **Server:** one `server/<feature>.cjs` with a factory taking injected dependencies
+  (`jobs`, `fetch`, stores, `now`), no reach into `index.cjs` globals. Its route handler lives
+  in `server/routes/<feature>.cjs` and is mounted with a single line in `index.cjs`. Unit tests
+  sit beside the module.
+- **UI:** a folder under `src/components/<feature>/`.
+- **Feature flags:** read once in a `server/features.cjs` registry (env + admin setting).
+  Every feature defaults to off unless stated.
+
+Don't grow `index.cjs`: when you touch a route block there, extract it.
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| D1 | Apply `MODEL_LOADER_TOKEN` + `models` network live | **Yes, at the next user-approved deploy**, as its first step, following `research-master-container.md`. Add a preflight check that fails the deploy if the token is unset or `diary` can resolve `model-loader`. | A Docker-socket holder reachable without auth is the highest-severity finding open. |
+| D2 | Production calibration / benchmarks | **Allowed only in a maintenance window the user starts** (the existing "Chat pauses for everyone" confirmation), one model at a time, 120 s prompt budget. Never scheduled or automatic. Results go to evidence + `research-known-good-settings.md`. | Measurement is required, but pausing users is the user's call. |
+| D3 | Models to serve | Recommend a small, qualified set: one ~4B general model, one ~9B (context capped at its verified size), `nomic-embed-text-v1` for retrieval. Remove `spec-type draft-eagle3` from presets without a draft model. **Downloading and editing live presets still happens only when the user says go.** Prepare the preset diff in `docs/`. | Evidence shows the live 131K–262K contexts are unverified. |
+| D4 | Impeccable design checker | **Adopt as dev-only**, pinned version, run via `npx` into a temp dir. Never a runtime dependency, not in the Docker image. Triage its findings once. Keep rules that match `spec-ui-direction.md` as a CI-style script `npm run lint:design`. | Deterministic checks are cheap; dev-only keeps the supply chain out of prod. |
+| D5 | Scheduled / Plugins / Explore / Coding previews | **Hide by default** behind `features.previews` (admin toggle, off). No dead-end surfaces in the product; keep the code. | Unbuilt surfaces erode trust and add support noise. |
+| D6 | DAV protected set | **Confirm the contract and add `AI Memory/**`** to the protected set. Build rename/delete/copy per `dav.md` as a module (`server/dav-ops.cjs`): DELETE = Trash, If-Match required, all-or-nothing bounded folder ops. Advertise `DAV: 1` only; no LOCK (class 2) until a client needs it. | Least privilege on the files the assistant depends on. Locks are complex and unneeded. |
+| D7 | Off-site backups | Build the **destination-agnostic** part: encrypted (age or libsodium, key held outside the backup), versioned, restic-style snapshots to any S3-compatible target, with retention (7 daily / 4 weekly / 6 monthly) and a restore test. Behind `features.offsiteBackup`, off. The provider and budget are configured by the user. | 3-2-1 practice. Client-side encryption means the provider never sees plaintext. |
+| D8 | Empty folders after project deletion | **Clean up**, but only via a guarded sweep: after the delete commits, remove the project's directory only if it's empty and still inside the tenant root (realpath check), idempotent, and logged. Never recursive delete of non-empty dirs. | Fixes clutter without racing uploads. |
+| D9 | Offline Wikipedia | **Kiwix-serve (ZIM)** as an optional Compose profile, read-only, on an internal network, exposed to chat as a read tool module. Off by default, not deployed until the user asks. | Mature, offline, no API keys, read-only. |
+| D10 | Diary writes through the in-app MCP | **Append-only**, through a new sidecar append endpoint that reuses the journaled write path. Each call needs the normal approval. Never edit or delete historical entries through MCP. Off by default (`features.diaryMcpWrite`). | Keeps the corpus's integrity guarantees; approvals stay mandatory. |
+| D11 | SMB pilot and Diary cutover | **Pilot yes, cutover no** until the pilot passes the spec's checks on a copy. The cutover is a user-run step with a verified backup and rollback. | Irreversible data moves need evidence and an owner. |
+| D12 | Deep research | Admin-only at first (`features.deepResearch`, off); members later by admin toggle. Default budget: 12 web calls, 10 min, 5 sources per sub-question. Reports saved to `Research/<date> <slug>.md` + `.sources.json` in the project via `uploads.ingest`. Measurement uses a sandbox model only. **No live-credit run without the user.** | Bounded cost, auditable output, measure before exposing. |
+| D13 | Glass effect device check | Stays the user's check on real devices; don't change `glass.js` further without their report. | Only real displays show the bug. |
+
+Still the user's, whatever the decisions say: deploying, spending money or credits,
+downloading model weights to DaServer, editing live Compose/preset files, and anything
+touching the real Diary corpus.
+
+## Current phase — build the decisions, then bug hunt
+
+Order:
+1. D1 preflight check (repo side only);
+2. D5 previews flag and `features.cjs`;
+3. D8 folder sweep;
+4. D6 DAV ops;
+5. D10 Diary append;
+6. D12 deep research steps 4–5 (plan step, save, progress UI, cancel/partial save);
+7. D7 backup module;
+8. D9 Kiwix module;
+9. D4 design lint;
+10. D3 preset diff doc.
+
+Each is one or more commits, with tests, the full checks and screenshots for UI. When those
+are done, run the bug hunt below.
+
+## Bug hunt (after the decisions are built)
+
+Find and fix real bugs, in repeated passes, until a full pass finds
 nothing new.
 
 ### One pass
