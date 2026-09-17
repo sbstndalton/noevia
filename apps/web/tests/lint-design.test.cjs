@@ -33,9 +33,21 @@ test('font sizes come from the type scale and weights from four steps', () => {
   assert.deepEqual(rules('--text-body: 13px;'), []);
 });
 
+test('flags var() references to tokens defined nowhere in the stylesheets', () => {
+  const { undefinedTokens } = require('../scripts/lint-design.cjs');
+  const files = [{ file: 'tokens.css', text: ':root { --bg-surface: #fff; --text-secondary: #555; }' },
+    { file: 'a.css', text: '.x { background: var(--bg-surface); color: var(--muted-ink, #6b7280); }\n.y { --local: 1px; margin: var(--local); }' },
+    { file: 'b.tsx', text: '<div style={{ color: "var(--text-secondary)", border: "var(--line)" }} />' }];
+  assert.deepEqual(undefinedTokens(files).map((f) => `${f.file}:${f.line}:${f.token}`), ['a.css:1:--muted-ink', 'b.tsx:1:--line']);
+});
+
 test('the app stylesheets pass', () => {
   const fs = require('node:fs'), path = require('node:path');
   const dir = path.join(__dirname, '../src');
   const findings = fs.readdirSync(dir, { recursive: true }).filter((f) => /\.(css|tsx)$/.test(f)).flatMap((f) => lint(fs.readFileSync(path.join(dir, f), 'utf8'), f));
   assert.deepEqual(findings, []);
+  const { undefinedTokens } = require('../scripts/lint-design.cjs');
+  const pub = path.join(__dirname, '../public');
+  const sources = [[dir, /\.(css|tsx?)$/], [pub, /\.js$/]].flatMap(([root, re]) => fs.readdirSync(root, { recursive: true }).filter((f) => re.test(f)).map((f) => ({ file: f, text: fs.readFileSync(path.join(root, f), 'utf8') })));
+  assert.deepEqual(undefinedTokens(sources), []);
 });
