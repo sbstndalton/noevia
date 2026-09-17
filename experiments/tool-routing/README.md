@@ -37,3 +37,18 @@ Run tests with `python3 -m unittest discover -s experiments/tool-routing -p 'tes
 See `python3 experiments/tool-routing/run.py --help` for explicit endpoint/model
 arguments. API credentials, if needed, come from TOOL_EXPERIMENT_API_KEY.
 Full synthetic answers and measurements are in gemma-e4b-results.json.
+
+## Router variant (prepared 2026-09-16, not yet measured)
+
+`--modes baseline router --embedding-model <id>` adds task-conditional loading: one
+embedding call before the first model call ranks the fixture's selected tools against
+the request, loads the top `--router-top-k` above `--router-threshold` once for the
+case, and never widens the selection. If embeddings fail it falls back to the full
+selection and records `router_fallback`. Rows add `router_ms` and `routed_tools`.
+The ranking mirrors `apps/web/server/tool-router.cjs`, whose unit tests cover the
+production policy (deployment ceiling, `autoLoad: never`, `requires` closure,
+whole-box cap, tool-name collisions, user selection, fallback).
+
+Gate from the roadmap: adopt only if completion ≥ baseline and median latency is no
+worse than baseline plus a stated margin, on this deployment's models. Not run yet:
+no chat or embedding model is currently served.

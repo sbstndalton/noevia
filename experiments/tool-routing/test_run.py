@@ -65,4 +65,27 @@ class RoutingTests(unittest.TestCase):
         self.assertFalse(result['success'])
 
 
+    def test_router_loads_matching_schemas_once_before_the_first_call(self):
+        def embedder(texts):
+            return [[1.0, 0.0] if ('parcel' in text or 'tracking' in text) else [0.0, 1.0] for text in texts]
+        client=Script(reply(call('lookup_parcel')),reply(content='BLUE-17'))
+        result=run_case(client,'synthetic',FIXTURES[1],'router',embedder=embedder,top_k=3,threshold=0.5)
+        self.assertTrue(result['success']);self.assertEqual(result['routed_tools'],['lookup_parcel'])
+        self.assertEqual([t['function']['name'] for t in client.requests[0]['tools']],['lookup_parcel'])
+        self.assertEqual(client.requests[0]['tools'],client.requests[1]['tools'])
+        self.assertEqual(len(client.requests),2)
+
+    def test_router_never_widens_the_selection_and_blocks_unrouted_tools(self):
+        embedder=lambda texts:[[1.0] for _ in texts]
+        client=Script(reply(call('write_note')),reply(content='42.50'))
+        result=run_case(client,'synthetic',FIXTURES[3],'router',embedder=embedder,top_k=3,threshold=0.1)
+        self.assertEqual(result['routed_tools'],['lookup_invoice']);self.assertEqual(result['writes'],0);self.assertEqual(result['blocked_calls'],1)
+
+    def test_router_failure_falls_back_to_the_selection(self):
+        def broken(_):raise ConnectionError('synthetic embeddings outage')
+        result=run_case(Script(reply(call('lookup_parcel')),reply(content='BLUE-17')),'synthetic',FIXTURES[0],'router',embedder=broken)
+        self.assertTrue(result['success']);self.assertEqual(result['router_fallback'],'ConnectionError')
+
+
+
 if __name__=='__main__':unittest.main()

@@ -160,7 +160,7 @@ mobile composer and tap targets).
   pretty-printed arguments and the result (kept up to 4,000 chars, stored with history).
   Open while calls run, collapsed after. Approvals stay outside the fold with full arguments.
   Replies saved in the old "name ✓" format still display.
-- **Open, measure first** — Task-conditional tool loading: a pre-turn embedding router picks
+- **Prepared, not measured** — Task-conditional tool loading: a pre-turn embedding router picks
   toolboxes for the task from the manifest, loads them for the session, and adds no
   discovery round. A tool-search/unlock variant was already measured slower on these
   models (12.91 s vs 8.64 s median). Adopt only if the `experiments/tool-routing` runner
@@ -168,6 +168,11 @@ mobile composer and tap targets).
   Row-Bot) stays rejected on that evidence. Add manifest fields only as this work needs them
   (example tasks, `autoLoad`, `requires`, `resultReducer`); one registry, policy never in the
   prompt, auto-loading never pre-approves a write.
+  Prepared 2026-09-16: `server/tool-router.cjs` (pure routing policy with unit tests: ceiling,
+  `never`, `requires` closure, whole-box cap, collisions, user selection, fallback) and a
+  `router` mode in `experiments/tool-routing`. Not wired into chat or the tool menu, and no
+  flag exists yet: that follows only if the benchmark passes once models are served again.
+  Manifest fields (`examples`, `autoLoad`, `requires`) get added with that wiring.
 - **Open** — Write access to the Diary from the in-app MCP server needs a sidecar append
   endpoint; the box is read-only by design until the user decides.
 - **Decision** — Optional offline Wikipedia needs a chosen service.
