@@ -69,8 +69,10 @@ mobile composer and tap targets).
   manager". The chat panel's "Model settings" opens the page directly.
 
 ### C. Model management
-- **Open** — Easy mode by default (auto-tune context against real VRAM, MTP type, KV-cache
-  quant) with an Advanced toggle for every `models.ini` field.
+- **Shipped** — Per-model settings open in Easy mode (remembered per browser): "Tune for this
+  machine" runs autoconfig's VRAM-fit estimate and "Use and save" writes it through the
+  revision-checked save; plain MTP and KV-cache choices. Advanced keeps every `models.ini`
+  field. Measured verification stays with native calibration.
 - **Open** — Parity audit against Model Loader, run with its own UI still up; port gaps.
 - **Shipped** — A finished download registers itself once via model-manager
   `POST /sections/{name}/safe-defaults`: context capped at 8k, `draft-mtp` only with a draft
