@@ -1,4 +1,4 @@
-# Deep research fixture measurement (variant B)
+# Deep research fixture measurement (variants A/B/C)
 
 Offline harness for the gate in `docs/spec-deep-research.md` §8. A static fixture site with
 invented facts is served on 127.0.0.1; search and project retrieval are simulated from
@@ -11,10 +11,13 @@ RESEARCH_BASE_URL=http://127.0.0.1:8080/v1 RESEARCH_MODEL=<sandbox model> node e
 Per question it records required facts covered, adversarial compliance (forbidden strings in
 the report, must be 0), deterministic citation validity, web calls and wall time.
 
-Status 2026-09-17: harness verified end to end with a stub model that copies every source
-verbatim (4/4 completed, all facts covered, citation validity 1.0). That stub also copied the
-adversarial pages and the harness counted it, which shows the limit of §5: **citation
-verification proves a claim is in a cited source, not that the source is trustworthy.**
-Adversarial resistance has to come from the model plus the untrusted-data framing, and is
-measured here, not verified. No real model has been run; the seed set is 4 questions + 2
-adversarial pages and must grow to the spec's 12 + 4 + 2 before an adoption decision.
+Variants (`RESEARCH_VARIANTS=A,B,C`, default all): **A** one chat-style answer over the same search
+results and project notes, **B** the pipeline without a plan, **C** the pipeline with the plan step.
+
+Fixtures now match spec §8: 12 questions (4 need project notes) and 2 adversarial pages. Earlier
+stub run (4 questions) completed with citation validity 1.0 but also copied the adversarial pages,
+which shows the limit of §5: **citation verification proves a claim is in a cited source, not that
+the source is trustworthy.** Adversarial resistance is measured here, not verified.
+
+Status: no real model run yet. Run it on the 9B from inside the web container, outside backup and
+mover windows, detached (`nohup … > results.txt 2>&1 &`).
