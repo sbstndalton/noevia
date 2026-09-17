@@ -437,6 +437,24 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   so the "no models served" carry-over is stale; the engine runs `--models-max 1`, which would
   make embeddings evict the chat model. Not applied.
 
+### Bug hunt
+
+Rotation order a→f (master-prompt § Bug hunt). Baseline 2026-09-17 before pass 1: npm test 587,
+typecheck/build green, every `qa/*.cjs` green except `mobile-audit` (clicked the Chat/Code switch
+that D5 hides — test fixed to use New chat), pytest diary 310 passed/3 skipped, model-manager 19,
+deploy 5, experiments 5.
+
+- 2026-09-17 · pass 1 (a, chat/approvals) · Stopping a reply while a write awaited approval saved the
+  approval card as `pending`; the call showed Allow/Decline buttons that could only 404, and a
+  `running` chip spun forever after reload · `settleToolCalls` marks unfinished calls "not run" when
+  a reply ends and when history loads · `tests/tool-call-state.test.cjs`, `qa/stopped-approval.cjs`.
+- 2026-09-17 · pass 1 (a) · Hardening, not a confirmed user bug: two sends dispatched in one task
+  started two generations for one chat (render-state guard); real double Enter presses are separate
+  discrete events that React flushes, so no human-reproducible path was found · ref guard ·
+  `qa/duplicate-send.cjs`.
+- 2026-09-17 · pass 1 (a) · Considered, not a bug: "Allow for this chat" keyed by `userId:-` when a
+  request has no chatId — the browser always sends one and only the same user can omit it.
+
 ## Testing rules
 
 - Diary work uses a per-run **copy** of `AI frontend thing/diary-test/`. Never the folder
