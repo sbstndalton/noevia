@@ -189,6 +189,22 @@ the proof that whoever creates the first account controls the server.
 Agents: do not perform this step yourself, and do not work around it by
 touching the database or flags (see §6).
 
+### 3.6 Where models are stored
+
+Downloads from the model manager land in the folder mounted at `/models`, which the native
+engine also reads. That folder is `LLAMACPP_MODELS_DIR` in `.env` (on Unraid, typically
+`/mnt/user/ai-models`); the Discover tab shows it as "Downloads go to", with free space.
+To move everything to another share, stop the stack, move the model folders, point
+`LLAMACPP_MODELS_DIR` at the new share and start again. The engine, model manager and web
+service must mount the **same** folder, or downloads appear that the engine cannot load.
+
+To add a second share, mount it **inside** the models folder in every service that mounts
+`/models` (e.g. `- /mnt/user/model-archive:/models/archive`, read-only for `llama` and `web`,
+read-write for `model-loader`). Folders that are mount points appear under **Save to** on the
+Discover tab; list other existing folders in `MODEL_DOWNLOAD_TARGETS=archive,...` on the
+model-loader service. Only folders directly inside `/models` are accepted, and the engine and
+scanner read up to four folders deep, so `/models/archive/<model>/<file>.gguf` works.
+
 ## 4. Verification
 
 Run the applicable checks and compare against the expected results.

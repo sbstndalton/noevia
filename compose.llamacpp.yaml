@@ -29,6 +29,7 @@ services:
     restart: unless-stopped
     environment:
       MODELS_DIR: /models
+      MODELS_HOST_PATH: ${LLAMACPP_MODELS_DIR}
       MODELS_INI_PATH: /config/models.ini
       DATA_DIR: /data
       LLAMA_CONTAINERS: ${MODEL_LOADER_LLAMA_CONTAINERS:-}

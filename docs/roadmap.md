@@ -112,7 +112,10 @@ mobile composer and tap targets).
   existing section; the preset reload never unloads, and a loaded model deferring it is shown.
 - **Shipped** — A project or chat whose model is no longer installed shows "No model
   selected" (only when the local catalogue was read successfully; other providers exempt).
-- **Open** — Choose where downloads go (Unraid shares such as `ai-models`).
+- **Shipped** — Download location: Discover shows where downloads land (host path via
+  `MODELS_HOST_PATH`, free space) and a **Save to** choice of the models folder or folders
+  directly inside it that are mount points or listed in `MODEL_DOWNLOAD_TARGETS`; the server
+  rejects anything else. DEPLOY.md §3.6 documents moving the models share and mounting more.
 - **Shipped** — Routing clarity: roles read "Fast — quick answers", "Smart — harder questions",
   "Vision — reads images (optional)" everywhere; "How Auto decides" states the real rules
   (heuristic → one-word Fast check → fail-open to Fast; Vision describes images first); the
