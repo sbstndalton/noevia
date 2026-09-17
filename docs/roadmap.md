@@ -419,7 +419,18 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   (profile `kiwix`, `ghcr.io/kiwix/kiwix-serve:3.7.0`, read-only, cap_drop ALL, internal network,
   no ports). Verified 2026-09-17 against a real kiwix-serve 3.7.0 on DaServer with a 26 MB test ZIM
   in a temporary container (removed with its image and files). Not deployed.
-- [ ] 9. D4 design lint
+- [x] 9. **D4** — Impeccable 4.1.0 (npm shim + its pinned `@impeccable/cli-darwin-arm64` binary) run once
+  from a temp dir, removed afterwards; nothing added to the app or image. `detect --json src`: 9 findings.
+  Triage: **real** side-tab accents on the approval card (`app.css`) and `.msg-warning` → uniform
+  border/tint; **newly caught** dead `.diary-tab` rules (no component uses the class; removed from
+  `diary-tab.css` and `noevia.css`); **noise** ×2 bounce-easing (`--ease-spring` is
+  `cubic-bezier(0.16,1,0.3,1)`, no overshoot — flagged by name), blockquote rule, ×2 palette/theme
+  swatch miniatures (thick left edge draws the sidebar; annotated). Kept locally as
+  `npm run lint:design` (`scripts/lint-design.cjs`: side-tab, overshoot-ease, gradient-text; inline
+  `design-lint: allow` with a reason), tested in `tests/lint-design.test.cjs`, which also keeps the
+  stylesheets clean in `npm test`. Recommendation: keep the local script; re-run Impeccable
+  occasionally on a URL scan of the local spin-up, not as a dependency. No post-edit hook: the
+  script runs in <0.1 s inside `npm test` already.
 - [ ] 10. D3 preset diff doc
 
 ## Testing rules
