@@ -17,9 +17,8 @@ Branch `claude/compaction-correctness-fix-ltyu9p` (GitHub `sbstndalton/noevia`),
 since then are **not deployed**: account memory, `EMBEDDING_BASE_URL`, QA and experiment harnesses.
 
 ### Live and verified in production
-- Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), Kiwix, and
-  **KoboldCpp v1.121** (`cowork-koboldcpp-1`, test engine, same models folder, 4B + CPU nomic,
-  shared provider "KoboldCpp (test)" at `http://koboldcpp:5001/v1`).
+- Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), Kiwix.
+  KoboldCpp was tested and removed (slower generation on every model, no router; findings §12).
 - Models change over time at the user's discretion; don't treat a new or missing preset as a finding.
 - MCP: Nextcloud (160 tools), Tavily, in-app server (10 tools).
 - Features on through env: previews, Diary append tool, offline Wikipedia. **Deep research is off**
@@ -43,14 +42,22 @@ since then are **not deployed**: account memory, `EMBEDDING_BASE_URL`, QA and ex
 - **Step 6 harness:** prompt-preparation benchmark (P0–P3, 18 fixtures) written and tested offline,
   not yet run on the models.
 - **Step 7:** account-wide memory built (branch); Diary append verified end to end through the UI on a
-  diary-test copy. Kobold vs llama.cpp comparison: running (results go to research-findings §12).
+  diary-test copy.
+- **KoboldCpp vs llama.cpp (user request):** features at parity; KoboldCpp 8–53 % slower at
+  generation on 4B/9B and on MoE (gpt-oss-20b, Gemma 4 E4B/26B-A4B, Qwen3.6-35B-A3B). Rejected and
+  removed with its Qwen3.6 downloads. vLLM remains a possible future engine test.
+- **Model tuning fixed (branch, not deployed):** Easy mode had saved Qwen3.5's full 262K window
+  live. Tune now caps context by calibration, measured prompt speed or 32K; Measure context sits in
+  Easy mode; MTP defaults follow built-in layers, heads beside the model or in its source repo, by
+  mode. A Tune button per model in the chat picker; new files in the models folder are set up
+  automatically.
+- **Prompt preparation, first run (4B):** P1 template 15/18 vs raw 14/18 with no injected-instruction
+  compliance; P2 failed on a harness bug (reasoning not disabled), re-run queued.
 
 ### Broken or risky right now
 - **Outage cause unknown** (04:15–08:24). Mover 03:40 and appdata backup 04:10 precede it; syslog
   mirror still off. Leading guess moved from engine GTT to RAM-backed paths during the ZIM download
   or backup staging (engine alone can't exceed ~16.9 GiB). Unproven.
-- **Two engines share one GPU.** KoboldCpp keeps a 4B loaded permanently next to llama.cpp; with both
-  4Bs loaded host `available` was 10.8 GiB. Fine, but no room for the 9B in both at once.
 - **Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the loaded
   model mid-conversation (it broke the deep-research run today). The engine has no API key on the
   `nextcloud-aio` network.
@@ -62,7 +69,7 @@ since then are **not deployed**: account memory, `EMBEDDING_BASE_URL`, QA and ex
 Enable the Unraid syslog mirror · approve `--fit on --fit-target 1024` · deploy the branch (for
 `EMBEDDING_BASE_URL` + CPU embedder, then `features.toolRouter`) · decide on an engine API key shared
 by noevia and Nextcloud · SMB pilot share (D11) · off-site target (D7) · deep research when they return
-to it · KoboldCpp keep/replace decision after the comparison.
+to it · live 4B preset now says ctx 262144 from the old Easy save (re-tune or calibrate after deploy).
 
 ## Shipped (do not rebuild)
 

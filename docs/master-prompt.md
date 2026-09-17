@@ -549,10 +549,8 @@ stand". Work in this order, one commit or more per step, with tests and screensh
 7. **Product:** account memory built; Diary append verified. Still: Kiwix and vision checked in
    real chats (needs a signed-in user; ask the user to do it or to provide a synthetic test account
    on production).
-8. **KoboldCpp vs llama.cpp (user request).** KoboldCpp runs beside the native engine on the same
-   models; finish the comparison (speed at 2k/15k, memory, tools, reasoning, vision, embeddings,
-   streaming, then the 9B), record it in `research-findings-2026-09-17.md` §12, and revisit D18 with
-   the numbers. Never run benchmarks while Nextcloud Assistant or chats are active if avoidable.
+8. **Done — KoboldCpp vs llama.cpp.** Rejected and removed (findings §12). vLLM is a possible future
+   engine test, only under the §8 gates and when the user asks.
 9. **CodeHarness spike on the server (D14):** OpenCode over ACP in a sandbox container.
 10. **SMB pilot (D11)** once the user provides the share.
 11. **Bug hunt**, below.

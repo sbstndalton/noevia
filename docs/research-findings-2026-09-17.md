@@ -349,6 +349,24 @@ second of those is available on llama.cpp too (`EMBEDDING_BASE_URL` + CPU nomic)
 What KoboldCpp lacks for noevia: the router (several models by name, load/unload API), which the
 model manager, Auto roles and calibration are built on; each instance serves one chat model.
 
-**MoE round (requested):** gpt-oss-20b, Gemma 4 E4B and 26B-A4B (QAT), Qwen3.6-35B-A3B IQ3_XXS
-(fits the GPU) and IQ4_XS (expert offload: `--n-cpu-moe`/`--moecpu` and `--fit`/`--autofit`).
-Results below when the run completes.
+**MoE round (all layers on the GPU, 2 repeats, generation tok/s at ~1.9k / ~11k tokens).**
+
+| Model | llama.cpp | KoboldCpp | Prompt tok/s |
+|---|---|---|---|
+| gpt-oss-20b Q4_K_M | **25.3 / 23.9** | 23.1 / 22.1 (−8 %) | equal (~530–550) |
+| Gemma 4 26B-A4B QAT UD-Q4_K_XL | **24.4 / 22.6** | 19.8 / 18.6 (−18 %) | equal (~430–460) |
+| Gemma 4 E4B QAT UD-Q4_K_XL | **22.8 / 21.2** | 19.0 / 17.9 (−17 %) | equal (~550–610) |
+| Qwen3.6-35B-A3B UD-IQ3_XXS | **24.5 / 23.4** | 15.2 / 11.0 (−38 / −53 %) | llama.cpp higher (344/378 vs 327/355) |
+
+Features stayed at parity (tools 3/3 everywhere). Gemma 4 did not separate reasoning on either
+engine with the default template. The expert-offload runs (Qwen3.6-35B IQ4_XS with
+`--n-cpu-moe`/`--moecpu` and `--fit`/`--autofit`) never started because of a harness container-name
+race; they were not re-run.
+
+**Decision (user, 2026-09-17): KoboldCpp rejected and removed.** It was slower at generation on
+every dense and MoE model tested, never faster, and lacks the router noevia is built on. Removed:
+the `koboldcpp` service and container, the provider row, the binary, the harness and its result
+files, and both Qwen3.6-35B-A3B downloads. D18 stands (llama.cpp Vulkan). **vLLM** stays a possible
+future engine test, under the §8 gates. Kept from this round: gpt-oss-20b, Gemma 4 E4B and Gemma 4
+26B-A4B in `/mnt/user/ai-models` (not in `models.ini`; the model page now sets new folder models up
+automatically).
