@@ -248,6 +248,63 @@ execution, tool schemas, compaction and recovery.
   beside the composer. `Auto` harness picks only from measured model × harness × architect
   evidence and shows the evidence, not a ranking.
 
+### ACP evaluation and contract v0 — 2026-09-17
+
+Read from agentclientprotocol.com (protocol overview, tool calls, agents list).
+
+**What ACP is.** JSON-RPC 2.0 between a *client* (editor/host) and an *agent* running as its
+subprocess. Agent methods: `initialize`, `authenticate`, `session/new`, `session/prompt`,
+optional `session/load`, `session/set_mode`, `logout`; notification `session/cancel`. Client
+methods: `session/request_permission`; optional `fs/read_text_file`, `fs/write_text_file`,
+`terminal/create|output|release|wait_for_exit|kill`, `elicitation/create`; notification
+`session/update` (message/thought chunks, `tool_call`, `tool_call_update`, plan, commands,
+mode). Tool calls carry `toolCallId`, `title`, `kind` (`read`, `edit`, `delete`, `move`,
+`search`, `execute`, `think`, `fetch`, `other`), `status` (`pending`, `in_progress`,
+`completed`, `failed`), content (blocks, `diff` with `path`/`oldText`/`newText`, `terminal`),
+`locations`, `rawInput`/`rawOutput`. Permission options: `allow_once`, `allow_always`,
+`reject_once`, `reject_always`; outcome `selected` or `cancelled`. Paths absolute.
+
+**Coverage.** Native: OpenCode, Hermes Agent, Gemini CLI, Goose, Cline, Qwen Code and others.
+Adapters: Claude Code (`zed-industries/claude-agent-acp`), Codex CLI
+(`agentclientprotocol/codex-acp`). DeepSeek Harness exposes an ACP sub-agent provider. So one
+ACP client covers every harness named in D3.
+
+**Recommendation: adopt ACP as the harness adapter protocol**, with noevia (on the execution
+node) as the ACP client. Do not design a bespoke protocol. Extend only through `_meta` and
+underscore-prefixed methods, never by changing ACP semantics.
+
+**Mapping to noevia (contract v0):**
+
+| ACP | noevia |
+|---|---|
+| `session/new` + `session/prompt` | job created on the durable-work primitive (§4); prompt = original request (+ execution artifact if prepared, labelled) |
+| `session/update` chunks, plan | job events (`step.*`), shown as progress; thoughts are not stored as reasoning text beyond the job view |
+| `tool_call` / `tool_call_update` | `tool.started|completed|failed`; `diff` content → patch artifact; `terminal` → command activity |
+| `kind` read/search | read repository (no approval) |
+| `kind` edit/move | edit file (approval card with the full diff) |
+| `kind` delete | delete (approval, always) |
+| `kind` fetch | network (approval unless the task's capability set allows the domain) |
+| `kind` execute | classified from `rawInput`: install (`npm/pip/cargo … install`), network (`curl`, `wget`, `git fetch/clone`), git push, delete (`rm`), otherwise execute command — each through the approval card |
+| `kind` other / think | other → approval; think → no action |
+| `session/request_permission` | noevia approval card with full `rawInput`/diff. `allow_once` → Allow once; `reject_once` → Decline; **`allow_always` → Allow for this chat only** (this job's session, same classified action type); `reject_always` → decline for this job. Nothing persists beyond the job; no global "never ask". Card dismissed or job cancelled → `cancelled` |
+| `fs/*`, `terminal/*` (client-provided) | offered only inside the job's workspace root; paths confined after `realpath`; denied outside |
+| `session/cancel` | job cancellation; subprocess tree killed after grace period |
+
+**Critical limit.** ACP permission is cooperative: an agent subprocess can use its own file and
+process access instead of `fs/*`/`terminal/*` and may not ask. Enforcement must therefore be
+OS-level on the node: the harness runs as an unprivileged user in a per-job worktree/container
+with no credentials mounted, network off unless granted, and git push credentials held by
+noevia, not the harness. ACP events are evidence of intent and progress, not the security
+boundary.
+
+**Gaps to fill via `_meta`:** token usage and cost per turn; model/provider actually used;
+harness version (for evidence identity §1); worktree/branch; terminal exit codes summarised
+per step.
+
+**Next steps (when Code is built):** a spike with OpenCode (native) and Claude Code
+(adapter) on a throwaway repository in a container, recording every `kind`/permission request
+against the mapping above; then contract v1 from what they actually send.
+
 ---
 
 ## 4. Durable work

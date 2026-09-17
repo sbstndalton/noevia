@@ -153,7 +153,7 @@ mobile composer and tap targets).
 - **Blocked on a second working mode** — Optional shared context layer across a project's
   modes (per project, per mode, off by default). Nothing can share context until Cowork or
   Code exists, so no flag is stored yet; design it with that mode.
-- **Design before Code build** — `CodeHarness`: noevia-owned contract that external harnesses
+- **Design before Code build; ACP evaluated 2026-09-17 → adopt** — `CodeHarness` (contract v0 mapping ACP kinds/permissions to noevia approvals, OS-level enforcement note, spike plan in [spec §3](spec-agent-execution.md)): noevia-owned contract that external harnesses
   (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
   preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
   every harness action classified through noevia's approval gate; one writer per workspace
