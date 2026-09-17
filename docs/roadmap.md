@@ -56,9 +56,12 @@ mobile composer and tap targets).
   colour with ±½-step screen-space dither. Chrome looks unchanged; confirm on the iPhone and
   the Mac display.
 - **Shipped** — One shared `CloseButton` for every dialog/popup close control (settings ✕ no longer differs).
-- **Open** — Short-height populated sidebar reachability (carried from the backlog).
-- **Open** — Mobile checks for Settings, Projects, Code and the setup wizard, and software
-  keyboard behaviour (Freebuff covered Chat and Diary only).
+- **Shipped** — Short-height populated sidebar reachability: `sidebar-reachability` covers 320×360, 375×360, 667×375 and a keyboard-height case, now through the phone drawer.
+- **Shipped** — Phone checks for the setup wizard, Settings, Projects and Code with a software
+  keyboard (`qa/mobile-surfaces.cjs`, real throwaway server). Fixed what it found: setup and
+  sign-in screens did not follow the visible viewport, so focused fields could sit behind the
+  keyboard; the phone Settings dialog stayed vertically centred while shrinking, hiding its
+  lower half; both now fit the visible viewport.
 - **Research** — Deterministic design-rule check: run Impeccable (`detect --json`, plain CSS
   supported) once against `apps/web/src`, triage findings against existing tests, mobile QA
   and screenshots, then adopt as a dev-only check, borrow selected rules, or reject. Also
