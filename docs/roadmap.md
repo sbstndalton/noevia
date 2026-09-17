@@ -443,7 +443,8 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   24 576, 9B at 16 384, `spec-type` removed, gemma E2B out of the served set, nomic embed added).
   Found while preparing it: the live `models.ini` has three presets and the GGUFs are back on disk,
   so the "no models served" carry-over is stale; the engine runs `--models-max 1`, which would
-  make embeddings evict the chat model. Not applied.
+  make embeddings evict the chat model. **Applied live 2026-09-17** with `--models-max 2`, caps
+  verified (4B 22.7k tokens in 46 s, 9B 15.1k in 50 s) and stale Auto roles fixed.
 
 ### Bug hunt
 

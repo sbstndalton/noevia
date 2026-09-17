@@ -55,11 +55,11 @@ with; `parallel 1` (a single slot) is assumed throughout.
 
 Record results here with date, build and preset hash (the evidence identity).
 
-## D3 preset proposal — prepared 2026-09-17, not applied
+## D3 preset proposal — prepared and applied 2026-09-17
 
 Decision D3: serve a small qualified set — one ~4B general model, one ~9B capped at its verified
 context, and `nomic-embed-text-v1` for retrieval — and drop `spec-type draft-eagle3` where no draft
-model exists. **Downloading and editing the live `models.ini` wait for the user's go.**
+model exists. **Applied live 2026-09-17** (user go given in the follow-up session; evidence below).
 
 Live state read on 2026-09-17 (read-only; this corrects the brief's "no models served"): the
 engine (`--models-preset /config/models.ini --models-max 1`) lists three presets, all unloaded;
@@ -144,3 +144,25 @@ Steps when the user says go (in a maintenance window, `docs/deployment.md` backu
    provisional caps with the verified sizes; record evidence here.
 5. Set Auto routing: Fast = Qwen3.5-4B-Q5_K_M, Smart = Ornith-1.5-9B-Q5_K_M; set
    `EMBEDDING_MODEL=nomic-embed-text-v1`.
+
+### D3 applied — evidence 2026-09-17
+
+Build 657d21b, llama.cpp server-vulkan @sha256:94bd70ef…, `--models-max 2`, 29 GiB host / 14 GiB engine limit.
+
+- `nomic-embed-text-v1.Q8_0.gguf` (146 146 432 bytes, GGUF magic checked) from
+  `huggingface.co/nomic-ai/nomic-embed-text-v1-GGUF`; `/v1/embeddings` returns 768 dimensions.
+  `EMBEDDING_MODEL` in `.env` renamed from `nomic-embed-text-v1-GGUF` to the preset name.
+- `models.ini` replaced with the diff above (previous file `models.ini.bak-before-d3`);
+  `/models` lists exactly Ornith-1.5-9B-Q5_K_M, Qwen3.5-4B-Q5_K_M, nomic-embed-text-v1.
+- Context measurement (direct engine request, cold load, 16 output tokens):
+
+| Model | Cap | Over-cap request | Near-cap prompt | Wall time | Prefill |
+|---|---|---|---|---|---|
+| Qwen3.5-4B-Q5_K_M | 24 576 | 26 475 → 400 (refused cleanly) | 22 695 → 200 | 46.0 s | 503 tok/s |
+| Ornith-1.5-9B-Q5_K_M | 16 384 | 17 025 → 400 | 15 135 → 200 | 50.3 s | 309 tok/s |
+
+  Both inside the 120 s budget, no engine errors, host available memory stayed ≥ 9 GiB. The caps
+  are verified as served; larger caps were not probed (would exceed the 60 s interactive target).
+- Auto routing (`ui-data/auto-roles.json`, previous copy `.bak.before-d3`) pointed at two Gemma
+  models no longer served, so Auto would have failed on every request. Now Fast =
+  Qwen3.5-4B-Q5_K_M, Smart = Ornith-1.5-9B-Q5_K_M, Vision = Qwen3.5-4B-Q5_K_M.

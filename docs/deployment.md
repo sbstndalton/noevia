@@ -933,3 +933,24 @@ current`, `COWORK_VERSION=503b1c5`, then preflight `up.sh … -d --no-build --wa
 Not done by agents: no sign-in to real accounts (no credentials entered); the real Diary corpus was
 not touched. Still running and not ours: `llama-vulkan-test` (documented as kept stopped for native
 rollback) is up — see the session summary.
+
+## 2026-09-17 follow-up on 657d21b — D3 applied, Kiwix live, features on (user decisions)
+
+No image change. Each file edited was copied first (`*.bak.before-d3`, `*.bak.before-kiwix-features`,
+`.env.bak.before-internal-mcp`); started with the installed preflight `up.sh`, all services healthy.
+
+- **D3:** embedding model downloaded, `models.ini` swapped, `--models-max 2`, `EMBEDDING_MODEL`
+  renamed, Auto roles fixed. Evidence in `research-known-good-settings.md` § D3 applied.
+- **D9 Kiwix:** `wikipedia_en_all_nopic_2026-06.zim` (52 690 706 555 bytes, size matches the
+  mirror) in `/mnt/disk3/kiwix`; `kiwix` service added to the live override on an internal
+  `kiwix` network shared only with web (Diary cannot resolve it); search for "Alan Turing" returns
+  results. `offline-wikipedia` added to `ENABLED_TOOLBOXES`.
+- **Features on** through override env: previews, Diary append tool, deep research, Kiwix.
+  Off-site backup stays off (no target — user chose to skip).
+- **In-app MCP server:** `MCP_INTERNAL_PORT=8022` and `noevia|http://127.0.0.1:8022/mcp|internal`
+  in `MCP_SERVERS`; `diary` and `project-docs` toolboxes enabled. Startup logs
+  `mcp: nextcloud+tavily+noevia`, 10 in-app tools; port 8022 is not published.
+- `llama-vulkan-test` stopped (container kept) at the user's request.
+
+Rollback: restore the three backups named above plus `models.ini.bak-before-d3` and
+`ui-data/auto-roles.json.bak.before-d3`, then run preflight `up`. The ZIM can be deleted freely.
