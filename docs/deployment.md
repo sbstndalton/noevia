@@ -1020,3 +1020,25 @@ Rollback: point `current` at `releases/8e4dcd0`, restore `.env.bak.before-127b30
 - **Model downloads (user request):** gpt-oss-20b Q4_K_M, Gemma 4 E4B and 26B-A4B QAT UD-Q4_K_XL
   (+ mmproj), Unsloth, sha256-verified, in `/mnt/user/ai-models/<name>/`, not in `models.ini`.
   Qwen3.6-35B-A3B IQ3_XXS/IQ4_XS were downloaded for the KoboldCpp test and deleted with it.
+
+## Release ea57c83 — 2026-09-17 afternoon (model tuning, Tune button, folder sync, account memory, router)
+
+Appdata backup `ab_20260917_130015` ("Backup created without issues") first. Web overlay from
+127b300 with `overlay-release.sh` (web, diary, ocr healthy; `RELEASE_ea57c83_COMPLETE`). The model
+manager changed, so `cowork-model-loader:ea57c83` was built as an overlay on `8e4dcd0` (new
+`/srv/app`) and only `model-loader` was recreated; the Diary still cannot resolve it (D1). Native
+engine untouched.
+
+Live config (override copy `.bak.before-embed-router`): new `embed` service (pinned llama.cpp image,
+`--device none`, nomic-embed-text-v1 Q8_0, `-c 4096 -ub 2048 --parallel 2`, 1 GiB, `default`
+network only, healthcheck `/health`); web gets `EMBEDDING_BASE_URL=http://embed:8080/v1` and
+`NOEVIA_FEATURE_TOOL_ROUTER=true`.
+
+Verified: live autoconfig recommends 32K for the 4B and 12K for the 9B (capped by measured prompt
+speed, memory estimate 262K), built-in MTP detected on both; web → embed 46 ms, 768 dims, with the 9B
+still loaded on the engine; MCP 176 tools. Not verified here (needs the user's session): the Tune
+button, Easy mode and the router in a real chat.
+
+Rollback: `current` → `releases/127b300`, restore `config/.env.bak.before-ea57c83`, copy
+`docker-compose.override.yml.bak.before-embed-router` back, preflight `up` web and model-loader with
+`cowork-model-loader:8e4dcd0` (retag as `127b300` or set `COWORK_VERSION=127b300`), and remove `embed`.
