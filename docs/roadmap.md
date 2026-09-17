@@ -173,7 +173,12 @@ mobile composer and tap targets).
 - **Decision** — Optional offline Wikipedia needs a chosen service.
 
 ### F. Diary and storage
-- **Open** — Diary views inherit every main-interface change (shared components).
+- **Shipped (audit + last composer fork)** — Diary already reuses the composer actions, model
+  control, reasoning control, send icon, thinking block, tool-call list, Markdown renderer,
+  modal close button, live timer, scroll hook and the app-level stats footer. The message
+  textarea (Enter to send, Shift+Enter newline, IME-safe) was copied in chat, projects and
+  Diary; it is now one `ComposerTextarea`. Deliberately still separate: the Diary reply layout,
+  whose capture/recovery states and edit-by-xid semantics differ from chat replies.
 - **Shipped (read path confirmed)** — Diary reads go browser → `/api/diary/today` →
   sidecar `/api/day` → the tenant's corpus backend. "App-hosted copy first, WebDAV after" is
   already managed mode (`managed_storage.py`: SQLite primary, debounced append-only WebDAV
@@ -184,7 +189,11 @@ mobile composer and tap targets).
   partial-failure behaviour (synthetic 20×50 ms month: ~1 s → under ⅓). Month listing
   (`list_months`) is still sequential PROPFINDs; measure on the SMB/WebDAV pilot before
   changing it.
-- **Open** — WebDAV as a storage plugin, not Nextcloud-only.
+- **Shipped (already in place, verified 2026-09-16)** — Generic WebDAV is a first-class storage
+  kind alongside Nextcloud and S3: the picker offers it, `storage-client.cjs` and the Diary
+  sidecar treat `webdav` and `nextcloud` identically apart from Nextcloud's login flow, managed
+  backups accept either, and `storage-client.test.cjs` / `restore-http.cjs` exercise it against a
+  local WebDAV server. No Nextcloud-only copy remains in the storage UI.
 - **Open** — Mac SMB authenticated pilot, then the real Diary cutover
   ([spec](spec-diary-smb.md)).
 - **Open** — DAV rename/delete/locking and client interoperability need a storage contract
@@ -280,7 +289,7 @@ research mode (I) are measure-first, then build.
 4. **Shipped.** Mobile drawer, search button, brightness and banding (on-device check pending).
 5. **Shipped.** Live log tab, tool-call menu, settings sub-pages (first split).
 6. **Shipped (D1).** Modes and projects; the shared context layer (D2) waits for a second mode.
-7. Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
+7. **Shipped.** Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
 8. Task-conditional tool loading (measured) and the deep research spec.
 9. Research priorities in ranked order; context-efficiency logging can start alongside the
    build items.
