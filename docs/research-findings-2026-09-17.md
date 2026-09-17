@@ -300,7 +300,13 @@ coding agents. Is that still sound, and can noevia's approval gate cover what th
 4. **Location.** Stdio means the harness runs next to its client. Put the ACP client on the
    execution node (DaServer container or the future Mac node) and relay job events to the web app
    over the existing jobs primitive. Don't wait for remote ACP.
-5. **Spike order.** Start with a native agent that can use the local OpenAI-compatible endpoint
+5. **Measured locally (experiments/acp-spike, OpenCode 1.18.31, fake model).** With the agent's
+   default config, a write inside the workspace happened **without any permission request**,
+   even though the client would have refused. With `permission: { edit: ask, … }` every write became
+   `session/request_permission` (kind `edit`). A reject was honoured, and an approved write was done
+   **through the client's `fs/write_text_file`**. The adapter therefore has to pin each harness's
+   permission config, and the sandbox is still needed for agents or defaults that don't cooperate.
+6. **Spike order.** Start with a native agent that can use the local OpenAI-compatible endpoint
    (OpenCode or Qwen Code) against the served 4B/9B models. Claude and Codex through adapters need
    their official sign-in and billing; that is the user's decision.
 
