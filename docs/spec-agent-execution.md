@@ -180,14 +180,14 @@ actions.
 - **Mac app:** both a native client and an optional trusted execution node (local files,
   terminal, repositories, browser, notifications). Jan.ai may inform the client, not the
   architecture or dependencies. Installing it never implies unrestricted control of the Mac.
-- **Computer use (reference: trycua/cua `8cb8f6d`, MIT).** The most complete open computer-use
-  stack; evaluate parts, not the platform (it is coupling toward a hosted/billing product).
+- **Idea — computer use (reference: trycua/cua `8cb8f6d`, MIT).** Suggestions to explore, not
+  decisions. The most complete open computer-use stack; if pursued, take parts, not the platform (it is coupling toward a hosted/billing product).
   - *Sandboxed desktops:* a guest-side FastAPI computer server exposes named commands (click,
     type, scroll, screenshot) over `POST /cmd` / `WS /ws`, PTY endpoints and Playwright exec
     (`libs/python/computer-server/computer_server/main.py`). Runtimes: Lume VMs on Apple Silicon
     (`libs/lume`, Swift, Virtualization framework), Docker/QEMU/XFCE/Kasm Linux desktops
     (`libs/python/cua-sandbox`). A Linux desktop sandbox could run on DaServer; macOS VMs need
-    the Mac node. A VM boundary is the preferred shape for Cowork computer use.
+    the Mac node. A VM boundary looks like the safer shape for Cowork computer use, if built.
   - *Host driver:* `libs/cua-driver` (Rust, MCP over stdio) controls apps on the real desktop
     with **no VM boundary** — the highest-trust capability a node can offer. Its `bounded` mode
     (reviewed tool manifest) and embedder-supplied `DriverAuthorizationHost` would let noevia's
@@ -197,7 +197,7 @@ actions.
     Browser Use.
   - *Telemetry on by default* (PostHog; `CUA_TELEMETRY_ENABLED=false`, plus separate Lume,
     driver and cuabot telemetry) — must be off in any evaluation.
-- **Local runtime on the Mac node (reference: leonickson1/Swiftlet `909c042`, Apache-2.0).** A
+- **Idea — local runtime on the Mac node (reference: leonickson1/Swiftlet `909c042`, Apache-2.0).** A
   Swift/Metal MoE runtime that streams experts from SSD (Qwen3.5/3.6/Next families) with a
   loopback-only OpenAI-compatible server (`Sources/SwiftletServer/main.swift`) and an embeddable
   `SwiftletCore` library. No tools, MCP or permissions. Candidate for the node's optional
@@ -251,7 +251,7 @@ A future Cowork capability, preferably on an execution node. Not wired into Chat
 | Secrets outside model context | Browser Use registry | Adopt pattern |
 | Domain/upload/download containment | Browser Use watchdogs | Adopt pattern |
 | Browser Use itself | — | Evaluate later on a node |
-| Sandboxed computer use (VM guest command server) | cua `computer-server`, `cua-sandbox`, `libs/lume` | Research with R7; VM boundary preferred |
-| Host desktop driver with bounded manifest + embedder authorization | cua `libs/cua-driver` | Research later; highest-trust capability |
-| SSD expert-streaming MoE runtime on the Mac | Swiftlet | Defer to the Mac node |
+| Sandboxed computer use (VM guest command server) | cua `computer-server`, `cua-sandbox`, `libs/lume` | Idea to explore with R7 |
+| Host desktop driver with bounded manifest + embedder authorization | cua `libs/cua-driver` | Idea, later if ever; highest-trust capability |
+| SSD expert-streaming MoE runtime on the Mac | Swiftlet | Idea for the Mac node |
 | SSD expert streaming on DaServer | danveloper/flash-moe (`3601d41`) | Reject as software: Metal-only, no license, one model, stale. Idea only — see roadmap research 9 |
