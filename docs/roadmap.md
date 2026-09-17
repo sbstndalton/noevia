@@ -551,6 +551,10 @@ deploy 5, experiments 5.
   claim within one event-loop turn; the D8 sweep cannot remove a folder a new project allocated.
 - 2026-09-17 · pass 24 (f) · No new functional bug: Diary reading at 375/1440. Cosmetic: the Diary
   breadcrumb separators sit off-baseline at 375 px — folded into UI polish (A8).
+- 2026-09-17 · pass 25 (a, privacy) · Deleting a chat while its reply was still streaming removed the
+  transcript, then the reply's final save wrote it back to disk — a deleted conversation persisted
+  (hidden from the sidebar) · history saves for tombstoned chats answer 410 ·
+  `chat-lists-routes.test.cjs`.
 
 ## Testing rules
 
