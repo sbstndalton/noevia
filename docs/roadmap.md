@@ -541,6 +541,16 @@ deploy 5, experiments 5.
   transcripts stayed on disk, unreachable) · server merges by id, deletions only via DELETE with
   tombstones so stale lists cannot resurrect them, list cap 200 → 1000 ·
   `server/chat-lists-routes.test.cjs`, `server/chat-lists.cjs`.
+- 2026-09-17 · pass 20 (b) · No new confirmed bug: sessions, internal MCP token replay, DAV
+  re-authorization after body reads, and new admin routes (features, backups, research) reviewed.
+- 2026-09-17 · pass 21 (c) · No new confirmed bug: sidecar tenant state creation is serialized under
+  `_tenant_lock` (one write lock per corpus).
+- 2026-09-17 · pass 22 (d) · No new confirmed bug: calibration start takes the exclusive maintenance
+  gate before any preset change.
+- 2026-09-17 · pass 23 (e) · No new confirmed bug: research start and off-site backup runs check and
+  claim within one event-loop turn; the D8 sweep cannot remove a folder a new project allocated.
+- 2026-09-17 · pass 24 (f) · No new functional bug: Diary reading at 375/1440. Cosmetic: the Diary
+  breadcrumb separators sit off-baseline at 375 px — folded into UI polish (A8).
 
 ## Testing rules
 
