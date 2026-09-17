@@ -16,7 +16,7 @@ saved), 3 injected instructions in files, 3 ambiguous requests (success = one qu
 An artifact that fails the schema (keys, ≤ 12 steps, known capabilities, ≤ 1 200 tokens) is a
 preparation failure; the request is not silently run raw.
 
-Run on DaServer from inside the web container, outside backup and mover windows, detached:
+Run on DaServer from inside the Diary container (the web image has no Python), outside backup and mover windows, detached:
 
 ```bash
 nohup python3 experiments/prompt-preparation/run.py --base http://<engine>/v1 \
