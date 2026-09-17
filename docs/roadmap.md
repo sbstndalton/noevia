@@ -687,3 +687,17 @@ and cutover; an off-site provider and budget; a live-credit research measurement
   API; external projects are references and adapters, not the architecture.
 - Resurrecting Diary insights.
 - Exposing admin-only external-source mounts to members before tenant ownership exists.
+- 2026-09-17 (afternoon) · baseline before the next rotation: npm test 661, Diary pytest 310, model
+  manager 27, deploy 4, experiments OK; 59 QA suites, 57 pass. `qa/features.cjs` and
+  `qa/offsite-backup.cjs` still clicked "Close settings" on phones, which 0d269fa hid; test-only fix.
+- 2026-09-17 · a (self-review) · the new Tune button showed for members, whose model manager is
+  admin-only · shown only with `modelManagement` · qa/native-model-picker covers admin and member
+- 2026-09-17 · d · Easy "Use and save" wrote Qwen3.5's native 262K context live (memory-only
+  estimate) · capped by calibration / measured prompt speed / 32K · 18c1349, ba10351
+- 2026-09-17 · d · any file with an "-mtp-" token counted as a draft head: multi-GB MTP model builds
+  were hidden, refused by safe defaults and could draft for themselves · size check · 18c1349
+- 2026-09-17 · e · tool router returned boxes in selection order, so a large earlier box used the
+  token budget before the best match · best first · c36eee5 (needed box 16/26 → 26/26 live)
+- 2026-09-17 · f · ConfigureTab crashed (blank page) on a sections response without arrays, now
+  reachable from chat through Tune · validated · ba10351
+
