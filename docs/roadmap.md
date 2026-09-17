@@ -83,7 +83,9 @@ mobile composer and tap targets).
   Diary & storage, Your connections, Usage & activity, Planned features. Personalization and
   Notifications stay under Planned until built. **Data → Export conversations shipped 2026-09-17**
   (ZIP of Markdown per chat + conversations.json, no reasoning text; `routes/export.cjs`,
-  `qa/data-export.cjs`); retention and import remain planned. Still open: deeper pages at
+  `qa/data-export.cjs`), and **Import conversations** (export ZIP or JSON; adds only, skips chats
+  already present, restores deleted ones under new ids, creates missing projects;
+  `chat-import.cjs`, `routes/import.cjs`). Retention and archived view remain planned. Still open: deeper pages at
   ChatGPT-level depth with Claude-level polish. References:
   `ui mockups/inspiration/`, [spec-ui-direction.md](spec-ui-direction.md),
   [ui-reference-review.md](ui-reference-review.md).
