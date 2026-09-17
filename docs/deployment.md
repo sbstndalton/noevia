@@ -1069,3 +1069,23 @@ Needs the user: `default_phone_region` (country code), outgoing email server, Ta
 backend 2.1.1 lacks `changed-users` (upstream AIO image), and whether Nextcloud Assistant should get a
 dedicated task-processing worker (AI tasks otherwise wait for the 5-minute cron); in AIO that needs
 the mastercontainer environment or a community container.
+
+## 2026-09-17 later — phone region, Assistant speed, Talk, 4B preset (user request)
+
+- **Phone region:** `default_phone_region = US`. No outgoing email server (user has none).
+- **Nextcloud Assistant speed.** AIO already runs a supervised `taskprocessing-worker` (dinit,
+  300 s timeout); tasks were picked up in under a second. The delay was the model thinking: a
+  one-sentence text task generated 1 010–1 859 hidden reasoning tokens (53–100 s). Set
+  `integration_openai llm_extra_params = {"chat_template_kwargs":{"enable_thinking":false}}`.
+  Measured end to end through Nextcloud's task queue: **2.9 s** (was 57.6 s / 100.1 s). The worker
+  caches app config for up to 300 s after a change. A host cron worker added briefly was removed
+  (duplicate of AIO's).
+- **Talk.** `aio-talk:latest` (published 2026-09-11) is already running and the mastercontainer is on
+  the newest `latest` (2026-09-16); `beta` is older. The high-performance backend 2.1.1 still lacks
+  `changed-users`; waiting on an upstream AIO image. Not pinned by hand (AIO would revert it).
+- **Qwen3.5-4B-Q5_K_M preset** (copy `models.ini.bak.before-4b-retune`): `ctx-size` 262144 → 32768
+  (Tune's capped recommendation), `cache-ram` 19968 → 4096 (a 19.5 GiB host prompt cache on a 29 GiB
+  host), `spec-type` draft-eagle3 (no draft model) → `draft-mtp` using the built-in nextn layer.
+  Verified: loads with `n_ctx_slot = 32768`, "creating MTP draft context against the target model";
+  generation 40.2 tok/s on a list (98 % accepted), 36.0 tok/s with thinking (83 %), 23.2 tok/s on
+  prose (41 %), against ~19 tok/s before. GTT 4.0 GiB, host available 16.4 GiB.
