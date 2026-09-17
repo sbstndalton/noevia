@@ -970,3 +970,15 @@ tarball without `dist/index.html` and JS assets.
 
 Rollback: `overlay-release.sh`'s automatic path, or manually point `current` at
 `releases/657d21b`, restore `.env.bak.before-8e4dcd0`, run preflight `up` for web.
+
+## 2026-09-17 outage and recovery
+
+DaServer became unreachable around 04:15 (SSH banner timeouts, Unraid UI down, later public 530).
+The user restarted it at about 08:24; all services came back healthy. Syslog lives in RAM on this host
+and was lost on reboot, so the cause is unconfirmed (hypotheses in
+`research-findings-2026-09-17.md` §5 and §7). Ruled out: the new Docker networks (`cowork_models`
+172.26.0.0/16, `cowork_kiwix` 172.27.0.0/16) don't overlap the LAN (10.69.0.0/24).
+
+Mitigation applied after boot: engine back to `--models-max 1` (override backup
+`.bak.before-models-max-1`); llama recreated, healthy, public 200. Enable the Unraid syslog mirror
+to flash or a share before trying `--models-max 2` again with a GTT cap.
