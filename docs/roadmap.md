@@ -179,7 +179,7 @@ mobile composer and tap targets).
   pretty-printed arguments and the result (kept up to 4,000 chars, stored with history).
   Open while calls run, collapsed after. Approvals stay outside the fold with full arguments.
   Replies saved in the old "name ✓" format still display.
-- **Prepared, not measured** — Task-conditional tool loading: a pre-turn embedding router picks
+- **Measured and built 2026-09-17 (gate passed; `features.toolRouter`, off by default)** — router 14/14 vs baseline 14/14, median 9.7 s vs 10.6 s, 23% fewer input tokens on Qwen3.5-4B ([results](../experiments/tool-routing/README.md)); chat narrows the project's own toolboxes per message and fails open. Original item: Task-conditional tool loading: a pre-turn embedding router picks
   toolboxes for the task from the manifest, loads them for the session, and adds no
   discovery round. A tool-search/unlock variant was already measured slower on these
   models (12.91 s vs 8.64 s median). Adopt only if the `experiments/tool-routing` runner

@@ -50,5 +50,26 @@ production policy (deployment ceiling, `autoLoad: never`, `requires` closure,
 whole-box cap, tool-name collisions, user selection, fallback).
 
 Gate from the roadmap: adopt only if completion ≥ baseline and median latency is no
-worse than baseline plus a stated margin, on this deployment's models. Not run yet:
-no chat or embedding model is currently served.
+worse than baseline plus a stated margin, on this deployment's models.
+
+### Measured 2026-09-17 — gate passed
+
+Qwen3.5-4B-Q5_K_M on native llama.cpp (Vulkan, ctx 24 576, `--models-max 2`), embeddings from
+`nomic-embed-text-v1` (Q8_0) on the same engine, run from inside the Diary container against the
+internal engine. Seven fixtures × two repeats × two modes, rotated order, synthetic tools only.
+Full rows in `qwen35-4b-router-results.json`.
+
+| Mode | Exact answers | Median elapsed | Input tokens | Output tokens | Writes / approvals |
+| --- | --- | --- | --- | --- | --- |
+| baseline | 14/14 | 10.59 s | 12 872 | 2 234 | 6 / 6 |
+| router | 14/14 | 9.72 s | 9 872 | 2 238 | 6 / 6 |
+
+Router overhead was 16–1 270 ms (the first call loads the embedding model; later ones are
+~15–85 ms). Input tokens fell 23 %, the large-catalogue case from 2 476 to 976 per case, with no
+fallback and no lost writes or approvals. Per-fixture medians differ by at most ±2 s either way,
+within run-to-run noise at n = 2. Decision: adopt behind `features.toolRouter` (off by default).
+
+Production applies the same policy at **toolbox** granularity rather than single tools: it only
+narrows the project's own selection (never adds a box, so it cannot offer an unapproved write)
+and keeps the whole selection when embeddings fail or no box clears the threshold
+(`apps/web/server/chat-tool-routing.cjs`).
