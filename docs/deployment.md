@@ -1117,3 +1117,21 @@ that can live on SSD via `--model-ngram --ngram-load-mode read`) needs ~64 GiB o
 table off-GPU — the smallest build is ~72 GB, ~38 GB of it the table. Revisit if a smaller Flash
 variant ships. Qwen3.8-27B is a fine-tune of 3.6 (dense); Granite 4.2 30B (IBM, official GGUF,
 Q3_K_S 12.7 GB) is the newest first-party model that fits but is dense, so slower than gpt-oss-20b.
+
+## Releases daea26f → faeb9d2 — 2026-09-17 evening (Discover judged for this server)
+
+Web overlays plus a model-loader image per release (its Python changed); appdata backups taken
+before each. `current` and `COWORK_VERSION` both point at `faeb9d2`.
+
+Discover now judges every search result against this machine (`services/model-manager/app/discover.py`):
+real file sizes and quantisations from the repo tree (cached an hour, shards folded together,
+mmproj/MTP/EAGLE/Medusa companions excluded), parameter count and mixture-of-experts from name and
+tags, publisher trust, and whether a Q4-or-better file fits the GPU budget (12.5 GB here). Ranking is
+fit → trusted publisher → popularity with a 90-day half-life. Untrusted publishers and unsuitable
+models are hidden by default with counts and one-click toggles; filters cover size, quantisation,
+parameters, architecture, vision, licence and publisher; the panel links to the same search on
+Hugging Face.
+
+Two bugs found by running it against the live hub, both fixed the same evening: repos looked
+"suitable" on the strength of a stray 10 MB GGUF with no quantisation in its name, and
+`ggml-org/gpt-oss-120b-GGUF` offered a 1.59 GB "BF16" file that is an EAGLE3 draft head.
