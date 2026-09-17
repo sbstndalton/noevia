@@ -121,8 +121,12 @@ mobile composer and tap targets).
   (heuristic → one-word Fast check → fail-open to Fast; Vision describes images first); the
   per-project table lists every project with Auto/Manual and the model it uses (or "No model
   selected"). Copy lives in `src/routing-copy.ts` beside the server logic it mirrors.
-- **Open** — Hugging Face cache files can surface as hex identifiers; unconfirmed (the scanner
-  already skips `blobs/`), needs a real HF-cache fixture.
+- **Closed, not reproducible (2026-09-17)** — Hugging Face cache hex identifiers. A real
+  HF-cache fixture (`models--org--repo/snapshots/<commit>/file.gguf` symlinked into
+  `blobs/<sha256>`) lists by file name and stem in `/models` and `/sections`; no hex-only name
+  appears (test `test_hugging_face_cache_layout_never_surfaces_hex_names`). The live native
+  router lists three plain ids, and the web layer already drops bare 32–40 hex ids. Reopen with
+  a screenshot if it recurs.
 - **Open, design first** — Configuration-scoped qualification evidence: states (reported,
   unverified, verified for this configuration, failed, stale, unavailable) tied to an identity
   tuple (backend, model, artifact, projector, runtime, context, MTP profile, harness, prompt
