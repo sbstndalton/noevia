@@ -18,6 +18,7 @@ content folded in below.
 | [spec-context-projection.md](spec-context-projection.md), [spec-agent-execution.md](spec-agent-execution.md), [spec-deep-research.md](spec-deep-research.md) | Context layers/compaction/reduction; qualification, Prompt Architect, CodeHarness, durable work, execution nodes, browser; deep research | Context, agent-execution or deep research work |
 | [research-remote-access.md](research-remote-access.md) | Headscale vs NetBird vs Tailscale recommendation | Changing remote access |
 | [research-master-container.md](research-master-container.md) | Docker socket threat model and master-container recommendation | Changing container lifecycle or the model manager |
+| [research-known-good-settings.md](research-known-good-settings.md) | Hardware, live presets vs measured context, provisional limits | Changing model presets |
 | other `spec-*.md` | Design specs (reasoning effort, tool routing, models, documents, MTP, skills, backend) | Working in that area |
 
 On 2026-09-16 the roadmap audit, backlog, continuation checkpoint, Codex handoffs, live

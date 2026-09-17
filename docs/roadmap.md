@@ -136,7 +136,7 @@ mobile composer and tap targets).
   preparation, suite, date); changes mark evidence stale. No universal score. Today calibration
   history lacks artifact/preset identity and invalidation.
   ([spec §1](spec-agent-execution.md))
-- **Research** — Known-good settings per model and hardware.
+- **Baseline written 2026-09-17, measurements need scheduling** — Known-good settings ([research-known-good-settings.md](research-known-good-settings.md)): live presets ask 131K–262K context while the only calibrations verified 16K (9B) and 24K (E4B); all presets set `draft-eagle3` without a draft model. Provisional limits and a measurement plan; production presets untouched.
 - **Research** — Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU; and
   applying the qualified Gemma 131k / Qwen 262k profiles beyond their exact configuration.
 - **Research** — Backend portability (llama.cpp vs vLLM), measured, no silent migration
