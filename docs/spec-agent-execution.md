@@ -338,6 +338,19 @@ build their own. Smallest thing that serves a real planned use case; no distribu
   `agent_runner.py::_filter_child_tools` (child ⊆ parent, delegation denied by default);
   DeepSeek `toolFilter` allow/deny (whether a child can widen: not verified in source).
 
+### Built 2026-09-17 — `apps/web/server/jobs.cjs`
+
+Append-only JSONL per job under the tenant's `jobs/` directory (0600), a fixed event-type
+allowlist (`job.created|started|completed|failed|cancelled|interrupted`, `step.*`, `progress`,
+`approval.requested|decided`, `tool.started|completed|uncertain`, `artifact.created`,
+`checkpoint.created`), state derived from events, no events accepted after a terminal state,
+`run(id, work)` with progress/checkpoint/artifact/uncertain helpers and an abort signal,
+`cancel`, `recover()` (unfinished → `interrupted`; waiting approvals are never resumed;
+uncertain effects stay listed), capabilities fixed at creation with child ⊆ parent enforced,
+and pruning of finished jobs by age/count. First consumer: background source processing
+(`source-jobs.cjs`), whose polls now report a restart as interrupted instead of a missing job.
+Deep research and Cowork build on it next.
+
 ---
 
 ## 5. ExecutionNode

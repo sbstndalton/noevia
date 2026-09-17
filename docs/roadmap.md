@@ -290,7 +290,7 @@ deployment's models. Can run alongside the build order.
    evidence, workspace ownership (D).
 
 **Before Cowork or Deep Research is built** ([spec §4](spec-agent-execution.md))
-6. Shared durable-work primitive: append-only events, derived state, restart recovery,
+6. **Built 2026-09-17** (`server/jobs.cjs`, first consumer: source processing; [spec §4](spec-agent-execution.md)). Shared durable-work primitive: append-only events, derived state, restart recovery,
    explicit uncertain side effects, fixed worker capability scope.
 
 **Before browser automation**
