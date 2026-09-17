@@ -1,0 +1,29 @@
+# D9: optional offline Wikipedia. Not deployed unless the operator adds this file.
+#   docker compose -f compose.yaml -f deploy/examples/kiwix.override.yml --profile kiwix up -d
+# Put one or more .zim files (https://download.kiwix.org/zim/) in ${KIWIX_ZIM_DIR}, then turn on
+# Settings -> Features -> Offline Wikipedia (or NOEVIA_FEATURE_KIWIX=true) and offer the
+# `offline-wikipedia` toolbox. kiwix-serve is read-only, has no published port and sits on an
+# internal network shared only with web.
+services:
+  kiwix:
+    image: ghcr.io/kiwix/kiwix-serve:3.7.0
+    profiles: [kiwix]
+    restart: unless-stopped
+    # The image's start.sh serves the named files from /data; the glob picks up every ZIM.
+    # The folder and files must be world-readable (the server runs unprivileged).
+    command: ["*.zim"]
+    volumes:
+      - ${KIWIX_ZIM_DIR:?Set KIWIX_ZIM_DIR to a folder of .zim files}:/data:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 64
+    networks: [kiwix]
+  web:
+    networks: [kiwix]
+    environment:
+      KIWIX_URL: http://kiwix:8080
+networks:
+  kiwix:
+    internal: true

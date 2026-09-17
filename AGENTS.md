@@ -1,7 +1,7 @@
 # noevia agent entry point
 
 Read [docs/agent-brief.md](docs/agent-brief.md) before changing code, then
-[docs/roadmap-audit.md](docs/roadmap-audit.md) for current status and priorities.
+[docs/roadmap.md](docs/roadmap.md) for current status and priorities.
 
 - [DEPLOY.md](DEPLOY.md) and [cowork.setup.json](cowork.setup.json) describe
   generic fresh installs. For the live Unraid deployment, follow the existing

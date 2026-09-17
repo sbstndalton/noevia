@@ -113,7 +113,7 @@ composers, project cards and context rails share a directional rim and tonal dep
 Only bounded controls/popovers use background blur. Never filter/transform the
 sidebar ancestor or composer ancestor; child menus must remain above the content.
 Reading planes remain opaque. Reduced-transparency/contrast fallbacks remove
-optical effects. See settings-audit.md for implementation and verification scope;
+optical effects. See roadmap.md for implementation and verification scope;
 this material is implemented locally and not deployed.
 
 ### Control interaction refinement
@@ -150,7 +150,7 @@ Model management arrived with its own `mm-*` vocabulary, written against the old
 `--bg`/`--border` aliases and its own radii, so Settings → Models & routing read as a
 different product from every other settings category. It now uses the same material as
 the rest of the pane: `--bg-surface` on `--border-subtle`, `--radius-panel` for panels and
-14px for rows, tiles, results and tables, `--radius-control` for fields and tabs, 13px/1.6
+14px for rows, tiles, results and tables, `--radius-control` for fields and tabs, `--text-footnote`/1.6
 secondary prose, and the shared rim/edge shadows with the same reduced-transparency
 fallback. Its buttons follow the shell — 38px, rising to 44px below the mobile breakpoint —
 rather than pinning 44px on desktop, and `.popup-tab` no longer gets a second flat border
@@ -158,8 +158,9 @@ drawn over the one the shell already gives it. This is presentation only; every 
 class name, and the structure of each tab, is unchanged.
 
 `public/layout-mode.js` runs before the app and decides the size the interface is drawn at.
-The preference (`cowork-layout-mode`: `auto`, `mobile`, `desktop`) is chosen in
-Settings → General, next to Appearance. Detection prefers UA Client Hints
+The preference (`cowork-layout-mode`: `auto`, `mobile`, `desktop`) is a Layout row in
+Settings → Appearance, alongside chat font, density and motion; like those it is saved on
+this device only. Detection prefers UA Client Hints
 (`navigator.userAgentData.mobile`) over the UA string, with a coarse-pointer and
 screen-size cross-check, and iPadOS's Mac user agent is resolved by `maxTouchPoints`.
 

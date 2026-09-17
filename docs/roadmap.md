@@ -1,1480 +1,708 @@
 # noevia roadmap
 
-## Visual identity follow-up — 2026-09-13
-
-The user wants a more distinctive UI, beyond functional correctness and repeated
-generic styling. UI UX Pro Max has been installed and its initial recommendations
-reviewed. See [the proposed design direction](spec-ui-direction.md): task-specific
-composition for Diary, Projects, Chat and Settings, with a coherent shared identity.
-An actual-app synthetic prototype is now available (docs/prototypes/README.md).
-The user explicitly requires retaining the existing Claude/ChatGPT-inspired layout;
-visual character is being explored within it, not by reorganizing the screens.
-Existing functional candidate verification and production state remain unchanged.
-
-## Current execution status — 2026-09-13
-
-Production remains `8fa1112` (active-project source refresh). Committed candidates
-add opt-in browser recovery, preparation history, title correction, Docker
-healthchecks, MCP status, explicit usage estimates/admin totals, companion-backed
-DAV folder creation and truthful allocation-observation metadata. Candidate `8bc4339` passes 318 Linux web tests, 199 Linux Diary tests,
-373 local web tests and typecheck/build; synthetic fullstack restore,
-preparation recovery and DAV directory lifecycle pass. Final browser checks and
-rollout remain open because controls stalled on a disposable test dialog.
-
-Qwen's 262,144-context trial passed with 253,944 input tokens and at least 6.05 GiB
-host memory available; production Gemma was restored and independently verified.
-This is an exact-profile synthetic capacity result, not a speed/quality guarantee.
-See [calibration evidence](../experiments/model-loader/README.md).
-
-Initial tool-routing experiments are complete: retain current routing because
-deferred/planner variants added latency and tokens. Full synthetic restore passed.
-The [backend review](spec-backend-portability.md) distinguishes compatible inference
-from lifecycle/context support. Remaining decisions and implementation are tracked
-in [backlog.md](backlog.md); off-site destination is undecided and real SMB cutover
-still needs authenticated Mac verification. Historical dated sections follow.
-
-## Backend portability investigation — 2026-09-13
-
-User requested adding this as something worth investigating, not an immediate
-migration. Keep Lemonade serving production while evaluating whether direct
-llama.cpp or vLLM would reduce configuration and maintenance problems.
-
-- Separate model execution from model management: chat compatibility alone does
-  not cover downloads, load/unload, health, context allocation or GPU arbitration.
-- Assess direct llama.cpp model presets and a backend adapter for noevia; retain
-  tested per-model context/hardware profiles independently of the serving backend.
-- Compare against Lemonade with a pinned/custom backend build before deciding
-  whether replacing its management layer adds value.
-- Qualify vLLM against DaServer's actual kernel, driver, memory, models and required
-  features as a separate candidate; do not assume hardware-family support alone
-  proves this deployment works.
-- Compare reliability, usable context, load time, memory, tool/vision/MTP behavior,
-  generation speed and maintenance effort on synthetic workloads. Preserve a
-  rollback path and existing model bytes. Migrate only on supporting evidence.
-
-Existing standalone trials demonstrated context/control benefits but no meaningful
-generation speedup. The initial source/architecture review is complete; runtime
-qualification of the alternative stacks remains open. See the linked review above.
-
-## Latest application increments — 2026-09-12
-
-Instruction skills shipped in `095d308`: explicit review/enable/disable, hashed
-updates and RAG/source exclusion. The requested MTP artifact inspection followed
-as `f6688f3`; see [artifact evidence](spec-mtp-artifacts.md). It checks the chosen
-public HF quantization, not installed byte identity, and does not enable MTP.
-Saved-storage Diary recovery followed in `f7b9d95`; later releases are listed above.
-See the reconciled [backlog](backlog.md) for remaining work.
-
-## Roadmap resumed — 2026-09-12
-
-The user explicitly resumed the remaining roadmap with “Just go”. The earlier
-testing pause is superseded. Continue in tested, documented deployment increments:
-reconcile stale backlog, ship the verified context fix, establish durable backups
-and restore evidence, then complete instruction skills, Diary recovery and the
-remaining scoped storage/tool experiments. Preserve all approval gates and tenant
-isolation. Mac SMB authentication remains an independent pending client step.
-No subagents or new Codex tasks were requested.
-
-## Completed on resume — 2026-09-12
-
-`cc59e8f` is deployed on all three services: cold-model context resolution now
-checks the selected model's actual allocation after loading. Per-model observed
-allocations are remembered and always rechecked; automatic maximum-context
-calibration is still separate work. Dedicated Diary support remains present.
-Daily noevia backups now run on a separate array disk with archive verification;
-11 restored SQLite databases and restored credential decryption passed. See
-[backup scope/restore evidence](../deploy/backups/README.md). The older backlog
-has been reconciled to remove already-shipped OCR/DOCX/vision/build work.
-
-## Current priorities — 2026-09-12
-
-**Diary storage: support deployed; Mac sign-in blocks cutover.** Dedicated
-operator-owned tenant volumes, fail-closed identity checks and SMB reader
-ownership on atomic saves are implemented. The support was unified in `cc59e8f` and remains in the latest release, `f7b9d95`.
-The restricted read-only `Diary-Pilot` share exists and rejects anonymous access.
-All 80 Mac/server files match by SHA-256; originals and journal snapshots are
-preserved. 192 local tests (3 skips), 195 Linux tests, and a synthetic bind/HTTP
-pilot passed. See [implementation evidence](spec-diary-smb.md).
-
-Next: complete the open Mac SMB sign-in, measure fresh-open visibility and rename
-saves, then recheck/drain/copy and activate the dedicated real corpus. No real
-storage selection or sync folder has changed. Keep the journal/index outside the
-share. SMB is read-only; noevia and the scoped Diary API perform guarded writes.
-Ordinary writable SMB editing still needs coordination and index invalidation.
-
-**Model/context work: experiment complete, cold-load fix deployed.**
-[Model Loader calibration](../experiments/model-loader/README.md) verified Gemma
-E4B at 131,072 allocated / 127,992 actual prompt tokens on the isolated backend.
-Qwen's 262,144 allocation passed a short smoke test only; full capacity is not
-verified. Records are per model/backend/configuration. Generation speed did not
-improve materially in the Qwen comparison. The noevia cold-model 8k fallback fix
-and per-model observations are deployed in `cc59e8f`; original inference settings were restored.
-
-The user subsequently resumed the remaining scoped roadmap work.
-Older dated sections below are historical unless superseded here.
-
-## Chat context budgeting and compaction — 2026-09-10
-
-Added ordinary/project-chat context meter above the composer with an expandable
-breakdown of messages/summary, instructions/memory/sources, tools, generation
-reserve, safety buffer and free space. Counts are conservative UTF-8 estimates,
-not exact tokenizer or account totals; unknown limits use a labelled 8k fallback.
-Lemonade uses the loaded model's configured ctx_size, not its architecture maximum.
-The first prepared request establishes the meter; later visible output updates
-its estimate. Existing chats can use Compact chat before sending another turn.
-
-Manual and automatic compaction summarize older exchanges with the selected
-provider, preserve two recent exchanges verbatim, and keep the full visible/saved
-transcript. Summaries are private per-user/per-chat files and exact-prefix hashes
-invalidate them after edits. Failed/unusable/truncated summaries retain previous
-context; oversized sources/recent messages fail clearly rather than being dropped.
-Compaction is lossy and may omit details. Diary's separate journal is unchanged.
-
-Requests reserve up to 4,096 generation tokens and 15% estimation margin; automatic
-compaction triggers when input exceeds the remainder (about 72% for 32k). High
-effort cannot expand or discard this budget. Tool continuations are rechecked;
-context errors inside SSE are surfaced, and heartbeat frames cover silent waits.
-No automatic retry of tools or writes. Configured capacity is not a guarantee of
-available shared-backend memory, and non-Lemonade model limits remain a fallback.
-
-338 tests, typecheck/build, and synthetic browser QA pass: manual/automatic
-compaction, transcript retention, cache reuse, failure handling, streamed errors,
-375/768/1440 widths and both palettes. Deployed `ae39000`; all three services
-healthy, public assets match, 290 Linux server and 13 worker tests passed. No private
-financial data, Diary prompts, model reloads or live corpus changes used in QA.
-
-
-## PDF reduction, local thinking and shared Diary assessment — 2026-09-10
-
-User-authorized follow-up: `2408c32` makes configured local Qwen3/3.5 Low/High
-use actual `chat_template_kwargs.enable_thinking` false/true. Default remains
-provider default; other providers retain their documented parameter/hint behavior.
-[Qwen’s model card](https://huggingface.co/Qwen/Qwen3.5-9B) documents the template switch; the installed template was also verified.
-This controls ordinary/project chat (including optional Diary extras), not the
-separately configured Diary companion's effort. Its provider reasoning still streams.
-The exact installed Qwen3.5-9B UD-Q4_K_XL GGUF was inspected read-only: it uses
-`enable_thinking` in its template but contains no MTP metadata/tensors. Its disabled
-MTP control is correct; the upstream model's training capability is insufficient.
-[Unsloth's separate MTP GGUF](https://huggingface.co/unsloth/Qwen3.5-9B-MTP-GGUF)
-is a potential replacement to validate, not an automatically installed model.
-
-`ddbe852` allows PDFs up to 60 MB into bounded asynchronous reduction. Native text
-is extracted, images recompressed, and a PDF under 25 MB is saved with a distinct
-`.compressed.pdf` name only after validation and matching page counts. If that
-fails, a complete native-text extract within the text limit may be saved as
-`.extracted.txt`, explicitly warning that images/scanned text/layout are omitted.
-Encrypted, malformed, over-300-page and unreducible files fail clearly. Originals
-remain on the user's computer; ordinary files retain the 25 MB limit. The private
-worker adds Ghostscript; no cloud document processor is used. Verification:
-329 web tests, typecheck/build, 13 real Linux worker tests and synthetic browser
-checks covering notices, failures preserving sources, and responsive UI.
-
-Shared Diary API deployed in `12a1646`: dedicated revocable credentials and
-version-checked Markdown operations prevent stale replacements. The Claude plugin
-is packaged privately but not installed; Claude UI automation became unavailable.
-Nextcloud push callbacks are repaired and all six self-tests pass after restart.
-Desktop sync timing and pending Mac/cloud differences remain unverified; no real
-Diary data changed. See [shared-editing status](spec-diary-shared-editing.md).
-The broader roadmap stays paused for user testing.
-
-
-Rollout complete: `ddbe852` on all three services; 281 Linux server and 13 worker
-tests passed before cutover. Health and public assets match; rollback retained.
-
-## MTP controls and persistent inference footer — 2026-09-10
-
-User-authorized follow-up: fresh launch/reload opens an unsaved New chat (separately
-tested/pushed as `df8a486`). Model selection/Manage now offer native MTP Yes/No,
-with an explicit Apply and load action for administrators because Lemonade model
-loading is shared. Native support comes from Lemonade's GGUF-derived `mtp` label
-and llamacpp recipe, never a model-name guess. Saved options are preserved,
-including context/cache/GPU split arguments. A successful load precedes saving the
-preference; a failed load leaves saved options unchanged. No automatic reload or
-model download happens on opening the selector. Native MTP models keep Lemonade's
-automatic default until explicitly overridden. Unsupported models show why Yes is
-unavailable; arbitrary tiny draft models are not automatically paired/downloaded.
-
-Inference details now stay open at the bottom, including Diary. Loaded MTP models
-show an acceptance bar using accepted/proposed draft-token totals. Newer backends
-can report cumulative counters. This server's llama.cpp b9632 instead reports
-per-response `draft_n`/`draft_n_accepted`: Chat and Diary forward these actual
-timings, labelled **last response**, updated at completion. These samples are
-user/model scoped, bounded and expire after ten minutes. Missing/invalid telemetry
-stays unavailable. Polls do not overlap; failed stats requests clear acceptance.
-
-Runtime inspected: Lemonade 10.8.0 / llama.cpp Vulkan; installed Qwen 3.5 4B has an
-MTP label, while the installed 9B/Gemma variants do not. No live model load/settings
-were changed for testing. Multi-GPU on/off throughput/latency/acceptance benchmarks
-and compatible external draft-model configuration remain explicit experiments;
-MTP is not assumed to be a free speedup. Broader roadmap pause remains in effect.
-
-Sources: [versioned load API](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/docs/api/lemonade.md#post-v1load),
-[native defaults](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/server/backends/llamacpp_server.cpp),
-[GGUF capabilities](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/include/lemon/gguf_capabilities.h),
-and [backend metrics normalization](https://github.com/lemonade-sdk/lemonade/blob/v10.8.0/src/cpp/server/prometheus_metrics.cpp).
-
-Validation: 325 web tests, 178 Diary tests (3 skipped), typecheck/build; isolated real-app/fake-Lemonade browser
-checks cover Yes/No before load, option preservation, persistence after success,
-failed-load safety, unsupported/member rejection, and acceptance footer visibility
-at 375/768/1440 widths in Chat and Diary. New-chat landing and Diary scrolling
-regressions pass. No real Diary prompts or corpus changes. Deployment recorded
-separately.
-
-Rollout complete: `cac1778` on all three services, replacing `3ef0501`; 277 Linux
-server and eight worker tests passed before cutover. Health/public assets match.
-No production model settings or Diary corpus changed for testing.
-
-
-## Live Diary activity and timeout feedback — 2026-09-10
-
-The user's follow-up explicitly requests live visibility and reports a 524 after
-leaving an active Diary view. The earlier after-completion reasoning fix was not
-sufficient. The noevia Diary path now streams immediate headers and 5-second
-keep-alives through both proxy and companion, actual provider reasoning/answer
-chunks, and actual retrieval/classification/summary/save/memory progress. The
-answer is visible before capture finishes; saving is confirmed separately.
-Optional tool calls remain attached to their conversation turn with unchanged
-approval gates. An elapsed timer accompanies the active phase. No synthetic tool
-calls or invented reasoning are shown. Providers that buffer or omit reasoning
-still show the real pipeline phase. The external OpenAI JSON surface is unchanged;
-noevia opts into its activity event protocol explicitly.
-
-Switching app views keeps the mounted request and transcript alive, without a
-second submission. Interrupted streams preserve the attempted message/partial
-response and report unconfirmed saving; no automatic retry. Proxy HTML is never
-shown as the error text. A full browser reload/close still does not provide durable
-conversation/job recovery; the journaled server operation may finish after the
-connection closes, so check the saved record before resending. Durable recovery
-remains open. Browser-local saves still require the connected folder and browser.
-
-Verification: 319 web tests, typecheck/build, 177 Diary tests passed (3 skipped,
-2 existing warnings). Tests cover headers/heartbeats before slow upstream, frame
-fragmentation, disconnect/no-retry, provider reasoning before answer, hidden log
-markers, rejection of truncated generation, server tenant context and memory-only
-local capture. Synthetic browser checks cover live thinking, leave/return while
-running, save phases, retained optional tool traces, sanitized 524 and partial-stream
-failure, plus prior scrolling/composer/navigation checks. No real Diary prompts or
-corpus edits. Broader roadmap remains paused. Deployed application `3ef0501`; all three
-services and public assets verified after 271 Linux server/eight worker tests.
-The following rollout-record commit is documentation only.
-
-
-## Diary reading feedback — 2026-09-10
-
-The user authorized this focused fix during the broader testing pause. Other
-roadmap implementation remains paused. The active conversation now shows the
-original user message and complete companion answer, with the saved diary record
-in a separate disclosure (collapsed when this session has conversation turns).
-The day composer is outside the transcript scroll. Diary and ordinary chat follow
-new output only at the bottom; scrolling up pauses following, and returning to the
-bottom or sending resumes it. Ordinary chat's smooth auto-scroll was removed
-because its intermediate scroll events incorrectly disabled following.
-
-Provider-returned reasoning is carried separately through both server and local
-Diary exchanges and displayed using the existing thinking disclosure. It is not
-included in journal prose or follow-up history. The companion still uses a single
-non-streaming request: reasoning arrives with completion, only when returned by
-the provider. Live Diary token/reasoning streaming and durable full conversational
-history remain future work; reopening after reload shows the saved diary record.
-
-Verification: 315 web tests, typecheck/build, 172 Diary tests passed (3 skipped,
-2 existing warnings). Synthetic Chrome checks cover server/local Diary reasoning,
-retained previous thoughts, history filtering, navigation/errors/extras/cancel,
-saved-summary disclosure, scroll pause/resume, stationary day composer, landing,
-both themes and 375/768/1440 widths. Ordinary chat scroll is also tested against
-an isolated real app server and synthetic streaming provider. No real Diary test
-prompts or corpus changes. Deployed application `ecaaa73` across all three services after 267 Linux server
-and eight worker tests; health and public build assets verified. The following
-rollout-record commit changes documentation only.
-
-
-Originally written 2026-09-09 against `8a78172`; priorities updated 2026-09-10.
-This is a mix of plans and completed work, not a claim that every item remains
-unimplemented. Older sections retain their original context unless marked otherwise.
-
-## User testing pause — 2026-09-10
-
-Implementation and deployments are paused while the user tests the current release
-for a couple of days. Resume when the user returns with feedback or explicitly
-asks to continue; elapsed time alone is not permission to restart. No automatic
-monitor or scheduled deployment is requested. Keep the current configuration
-stable, including Diary extras off on reload and file sharing off.
-
-Recorded application release: **`79cd24f`**, healthy at the last verification.
-The documentation commits after it do not change the running application.
-
-### Shipped versus remaining
-
-Completed batches include reliability fixes, PDF/OCR/images and bounded DOCX
-reading, shared composers, onboarding improvements, Diary navigation/landing/
-scaffolding/timezone/direct prior-entry fallback, thinking controls v1, app
-passwords, and limited default-off file sharing. Exact skill filenames and bounded
-metadata are implemented; the full skills lifecycle is not.
-
-**Roughly one third to one half of the work may remain by effort.** This is an
-informal planning estimate, not measured completion, a delivery date or a count
-of unchecked items. Several remaining items are large and still exploratory.
-
-| Remaining area | What is still needed |
-| --- | --- |
-| Storage | Prioritize the scoped server-local/SMB Diary pilot and conflict-safe migration in `spec-diary-smb.md`. Full WebDAV/file-manager compatibility and companion-backed namespace operations; managed-volume defaults and resolved Unraid /boot-path protection without silently moving existing data. |
-| Instruction skills | Inspect/enable/disable/update lifecycle, explicit review/migration, and exclusion from every source/RAG path when disabled. The scoped proposal is complete; executable packages are not the chosen scope. |
-| Tools and routing | Deferred tool discovery and planner/executor experiments. Plans are written; benefits have not been benchmarked and the new runtime behavior is not implemented. |
-| Thinking/model behavior | Verified larger local budgets, broader provider/model support, and accuracy/performance evidence. Current high hints request 8,192 tokens; uncapped reasoning is not established. |
-| Optional integration | Offline Wikipedia requires a selected available service; it is not a prerequisite for core Diary use. |
-| Claude-like Diary behavior | Compare the available Claude Diary instructions and example behavior with noevia's prompts and synthetic exchanges before claiming equivalence. |
-
-### Diary and Claude Cowork clarification
-
-Diary is intended to retain its existing capture, retrieval and storage behavior.
-Last verification: 314 web tests, typecheck/build, 171 Diary tests passed (3 skipped,
-two existing warnings), and healthy deployed services. These checks used synthetic
-data. No test entry was sent to the user's real diary, so private-data end-to-end
-behavior has not been verified by the agent.
-
-The **workflow decisions** from the shared Claude Cowork Diary description were
-adapted: local date/time handling, bounded direct prior-entry reads when retrieval
-fails or is empty, tenant file listing/guarded writing, and disk-backed memory
-without a second Claude-side store. This is not an import of Claude's actual
-`device_bash`, `remote-devices`, `project_memory_*`, or staging implementations.
-Shell/heredoc appends were deliberately not ported: noevia must retain its journal
-and conditional-write protections and generate Diary structure mechanically.
-
-It has **not** been established that noevia follows Claude's exact rules for what
-to log, entry wording, memory-update decisions or conversational responses. A
-working Diary pipeline is not proof of Claude-equivalent Diary behavior. Make this
-comparison an explicit follow-up informed by the user's testing, using available
-reference instructions and synthetic fixtures; do not infer Claude's private
-implementation or access the real corpus for testing without authorization.
-
-Useful feedback during this pause: missing/duplicate entries, incorrect dates or
-titles, unexpected wording, poor prior-entry recall, memory behavior, and response
-latency/errors. User observations are not yet recorded as reproduced defects.
-
-## Audited priorities — 2026-09-10
-
-See [the code-based roadmap audit](roadmap-audit.md) for detailed evidence and
-[the continuation checkpoint](continuation-checkpoint.md) for resume state.
-The testing pause above takes precedence over earlier instructions to continue
-autonomously. After feedback, prioritize reproduced Diary regressions and the
-behavior comparison, then the remaining scoped work above. Historical sections
-below retain their original context and are not evidence of shipped behavior.
-
-## Product direction — 2026-09-10
-
-- **UI and sidebar are accepted.** Preserve shared composer controls across chat,
-  project landing, and Diary home/day views. No broad cosmetic redesign.
-- **Diary extras are opt-in and OFF on reload.** The required companion pipeline
-  remains active; its model is not replaced by the extras model selector.
-- **PDF/OCR/image support has shipped.** Original files, OCR status and categorized
-  uploads work; bounded DOCX body/table extraction is deployed. Model accuracy and latency remain limitations.
-- **Skills use reusable instructions and existing approved tools.** The proposal
-  and existing metadata fix are complete; the full lifecycle remains planned.
-
-## Context
-
-A batch of ideas landed at once: agent-driven auto-deploy, low/medium/high thinking
-modes, a Nextcloud-style first-run setup, a diary toggle asked early, a diary landing
-page that starts empty, and "the UI is still a little crude."
-
-Reading the code first changes the shape of the work considerably. Three of the six
-asks are **already built** and need refinement rather than construction:
-
-| Ask | Reality |
-| --- | --- |
-| MD file an AI reads to auto-deploy | `DEPLOY.md` (agent-executable playbook, `STOP AND ASK THE HUMAN` markers) + `cowork.setup.json` (~35 declarative env vars, preconditions, health checks) already exist. |
-| Thinking modes | the reasoning-effort spec (appendix below) is complete — explicitly "spec only, no implementation", with three open questions now answered. |
-| First-run setup wizard | `apps/web/src/components/SetupWizard.tsx` is a 6-step, one-question-at-a-time flow with explicit skips, resumable mid-setup. |
-| Diary as an early toggle | Exists — but as a checkbox at the *bottom* of the account form, not a question. |
-| Diary zero-state landing | Real gap. Landing always renders the same hero + composer + month grid. |
-| Landing entry → current day | Real gap. Submitting from `scope: 'home'` writes to today but leaves you on the landing page. |
-
-So the work is: **one small honesty fix to the agent contract, one spec to implement,
-one wizard to restructure, and one genuinely new diary zero-state.**
-
-Decisions taken (from the clarifying round):
-- Thinking modes: **global default + per-project override**.
-- Diary: **scaffold `Entries/`, `AI Memory/`, `Raw Sources/` on first entry, and surface all three**.
-- Setup: **restructure and fill the real gaps** (not a full schema-driven rebuild).
-
----
-
-## Workstream 1 — Agent-readable deploy contract (small)
-
-**Completed locally, 2026-09-10; not deployed.** Root `AGENTS.md` and `CLAUDE.md`
-point to the agent brief, preserve cowork-prefixed identifiers, and distinguish
-`DEPLOY.md` / `cowork.setup.json` (generic fresh installs) from the existing
-[Unraid runbook](deployment.md) (tarball releases and separate Compose Manager copy).
-The runbook was linked, not recreated. The generic docs and manifest describe the
-actual account-step diary checkbox, optional diary storage step, and existing
-models guidance; the proposed diary-first wizard is still unimplemented.
-
----
-
-## Workstream 2 — Thinking modes (implement the parked spec)
-
-Follow the appendix spec verbatim except for the scope decision, which
-is now **global default + per-project override**. Keep the spec's two load-bearing
-safety properties — they are the reason it was parked, not incidental:
-
-1. **Three states: `default` / `low` / `high`.** No `medium` — it equals `default` on
-   every backend in the table, and a knob that does nothing anywhere is worse than no
-   knob. (This contradicts the literal "low medium high" ask; the honest version is
-   `default` in the middle slot.)
-2. **Never send a parameter the backend wasn't verified to accept.** A local Lemonade
-   server that 400s on an unknown field would break all chat for a project.
-
-Implementation:
-- **Schema**: `settings.reasoning_effort_default` (server-wide, admin-set) +
-  optional `reasoningEffort` on each project in `projects.json`. Absent = inherit;
-  older files stay valid. Resolution order: project → global → `default`.
-- **Server** (`apps/web/server/index.cjs`, near the chat body build at ~1693-1723,
-  where `chat_template_kwargs.enable_thinking` is already handled — reuse that seam):
-  apply the resolved effort to the outgoing body only for a provider marked verified.
-  On a 4xx mentioning the field, retry once without it, mark that provider base URL
-  `unverified` for the process lifetime, and fall back to the prompt hint.
-- **Fallback hints** (spec §5, verbatim): `low` → "Answer directly and concisely;
-  skip step-by-step reasoning."  `high` → "Think through this step by step before
-  answering."
-- **SSE**: emit `meta.reasoning` = `real | hint | off` so the UI can label the mode
-  honestly rather than implying a parameter was sent.
-- **UI**: a three-way selector in Settings → Models & routing (global) and in
-  `EditProjectModal.tsx` (override, with an "Inherit" state); a small badge in the
-  chat header whenever the resolved mode isn't `default`, styled to distinguish
-  `real` from `hint`.
-- **`high` raises `max_tokens` on the local/hint path** — see Workstream 5b. This
-  deliberately reverses the spec's open question (c). On a local endpoint that
-  ignores `reasoning_effort`, lifting the output ceiling is the only lever that does
-  anything real, and unattended long thinking is the thing local models are
-  genuinely good at.
-- **Out of scope, per spec**: Anthropic `thinking.budget_tokens` wire format,
-  per-message toggles, and any change to the diary pipeline (it runs on the aux model
-  with its own prompts — deliberately unaffected).
-
-Files: `apps/web/server/index.cjs`, `apps/web/src/components/ModelPopup.tsx` or
-`SettingsView.tsx`, `EditProjectModal.tsx`, `ChatView.tsx`, `types.ts`, `api.ts`.
-
----
-
-Thinking-effort v1 implemented 2026-09-10: global/project inheritance, composer
-controls, actual request-mode labels, documented GPT-5.4 parameter support and
-one-time field rejection fallback. High hints use an explicit 8,192-token budget;
-this does not promise uncapped generation or an increase over unknown defaults.
-Default omits fields; it does not universally equal Medium. See audit for provider
-verification, real synthetic inference evidence and remaining limits. Deployed `6570c51`.
-
-## Workstream 3 — Setup wizard restructure
-
-Current order: `account → provider → diary → models → prefs → passkey`.
-Proposed: `welcome → diary → account → provider → storage → prefs → passkey → done`.
-
-Concrete changes to `SetupWizard.tsx`:
-
-1. **Diary becomes its own question, before the account form.** Two large cards
-   ("Yes, I want a diary" / "Chat only") rather than a checkbox buried under the
-   password field. The answer is carried into `completeSetup({ diaryEnabled })`
-   unchanged — no server change needed.
-2. **Delete the `models` step.** It is currently a wall of text telling the user to
-   edit `.env` and restart, with a single Continue button — a dead end that teaches
-   the user the wizard can't be trusted to do anything. Replace it with a live probe:
-   if `MODEL_MANAGER_KIND` is set, show the detected manager and its model count; if
-   not, one sentence and move on. Fold the result into the provider step.
-3. **Rework the storage step around the appliance decision (Workstream 7).** Two
-   peer choices, not a flat list of four backends:
-   - **"Let noevia hold my diary"** — the appliance path. Corpus in a
-     noevia-managed volume. Follow-up question: *should other devices be able to
-     reach these files?* — **Off / This network only / Reachable from anywhere**
-     (7h), defaulting to Off. Anything but Off enables the WebDAV endpoint (7d) and
-     ends setup by showing the mount URL and a generated app password **once**, the
-     way the passkey step already handles a one-time secret. The LAN choice states,
-     in one sentence, that plain http sends that password in cleartext across the
-     local network, and takes an explicit acknowledgement rather than refusing.
-   - **"Connect storage I already run"** — the existing `StoragePicker`:
-     Nextcloud, WebDAV, S3.
-
-   Each says plainly what it costs: the appliance path is reachable from other
-   devices only if the endpoint is enabled; the connect path means noevia is not
-   the system of record and the files keep whatever sync the user already has.
-   Default to neither — this is exactly the "assume nothing" rule in point 7.
-4. **Expand `prefs` past theme + auto-routing.** Add, as real questions:
-   - Thinking-mode global default (Workstream 2) — the natural home for it.
-   - `insights_badge`, which today is silently defaulted to `0` in `user_features`
-     and **never asked anywhere**, in the wizard or Settings.
-   - Display name / timezone confirmation (the diary stamps local dates; getting this
-     wrong misfiles entries).
-5. **Fix the invited-user hole.** `acceptInvite` in `auth.cjs` defaults `onboarded` to
-   `1`, so anyone joining by invite **never sees the wizard at all** — no diary
-   question, no provider, no prefs. Set `onboarded = 0` for invitees and give the
-   wizard a `mode: 'invited'` that skips the setup-code/origin/admin-only steps.
-6. **Audit `markOnboarded`**: verified in the 2026-09-10 onboarding batch.
-   The conflict branch already preserves the stored choice atomically. Missing
-   rows have no recorded opt-in and remain off; completion is not consent.
-   The actual reproduced gap was repeated legacy backfill enabling missing rows
-   on restart, now gated by the original migration marker.
-7. **"Assume nothing" pass.** Every step keeps its explicit skip (already true), but
-   no step may apply a value the user didn't see. Today `theme` is seeded from
-   `localStorage` before it is asked — show what was detected rather than silently
-   adopting it.
-
-**2026-09-10 bounded correctness follow-up:** items 5/6 are implemented and
-deployed as `baf38aa`, replacing `66af1ad`. New invitees resume onboarding; members skip
-bootstrap and provider/global-model setup. Explicit Diary yes/no is read from
-the authenticated account, saved on change, and retained across reload/completion.
-The dead-end models step is removed without a manager probe or full storage/wizard
-redesign. Back, sign-out/resume, and truthful preference skip semantics are tested.
-278 web tests, typecheck/build; 157 diary passed, 3 skipped. Next: Workstream 4c.
-
-Files: `apps/web/src/components/SetupWizard.tsx`, `apps/web/server/auth.cjs`,
-`apps/web/server/index.cjs` (`/api/setup/*`, `/api/profile/features`).
-
----
-
-## Workstream 4 — Diary zero-state and first-entry flow
-
-This is the only fully-new work.
-
-**4a. Bootstrap the folder structure.** There is currently *no* bootstrap: `Entries/`
-appears lazily on first write (`local_storage.py:15`, `webdav.py:89`), and
-`AI Memory/` + `Raw Sources/` are mentioned in exactly one line of
-`services/diary/README.md` and created by nothing. On the first entry, scaffold all
-three with a one-line seed `README.md` each, so the file browser and the new panels
-have something to render and the user can see where things go.
-
-Implemented 2026-09-10: create-only, journal-replayable first-entry seeds, with
-legacy/imported corpus preservation and direct AI Memory context reads.
-171 diary / 281 web tests, typecheck/build and synthetic manual verification pass.
-Deployed as `b34c33f`.
-
-**4b. Landing page becomes state-dependent.** `DiaryView.tsx` renders one landing for
-everyone. Split it:
-
-- **Empty** (`/api/diary/source` returns no months, no memory files): drop the hero
-  and the month grid entirely. The composer is the only thing on the page, centred,
-  placeholder **"Write your first entry…"**. One line under it explaining that the
-  first entry creates the diary's folder structure.
-- **Populated**: three panels — **Memory** (`AI Memory/` + `MEMORY.md`, already
-  reachable via `listFiles()`), **Entries** (recent days, not just a month grid), and
-  **Other sources** (`Raw Sources/`, plus the `external-sources` API which today is
-  **admin-only with no user-facing surface at all**). The month grid moves below
-  these or into the sidebar.
-
-4b implemented 2026-09-10: empty composer and populated tenant Memory/Entries/Other
-sources panels, with up to seven dates from the latest two months and existing
-month navigation below. Operator-wide external source folders remain admin-only;
-exposing them requires tenant ownership, as recorded in the audit. Tests and
-synthetic responsive/manual checks pass. Deployed as `8edacf7`.
-
-**4c. Sending from the landing navigates to the day.** In `submit()`, when
-`scope === 'home'`, compute `entryDay` as it already does, then `setMonth(...)` /
-`setDay(entryDay)` *before* streaming, and route the streamed turns into the day's
-scope rather than `'home'`. Net effect: you type, you land on today's log, and the
-reply streams in there. Guard the existing `navigate()` draft-discard confirm so it
-doesn't fire on this programmatic move.
-
-**4c implementation, 2026-09-10:** day selection precedes streaming/preparation
-for both saved storage and browser-local folders. A single pinned day owns recent
-history, replies, failures and extra-tool scope; returning home does not split the
-same day's conversation. 281 web / 157 diary tests (3 skipped), typecheck/build and
-synthetic browser/manual checks pass. Deployed as `5b1ef12`.
-
-**4d. UI polish** (the "still a little crude" note). Deliberately scoped small so it
-doesn't swallow the rest: the diary landing, the composer, and the three panels get
-`design-system.md` applied properly. `DiaryView.tsx` currently has
-several 400+ character single-line JSX expressions — break the landing, calendar, and
-sidebar into components while touching them anyway, or the next change here is
-unreviewable. The `ui mockups/Diary-html` mockups are the reference.
-
-4d implemented 2026-09-10: landing, calendar and context panel are separate
-components; existing behavior, responsive styles and composer controls preserved.
-281 web / 171 diary tests and both synthetic browser suites pass. Deployed `7a34a0a`.
-
-Files: `apps/web/src/components/DiaryView.tsx` (split into `DiaryLanding.tsx`,
-`DiaryCalendar.tsx`, `DiaryContextPanel.tsx`), `apps/web/src/diary-workspace.ts`,
-`services/diary/agent/corpus_store.py` (scaffold), `apps/web/server/index.cjs`
-(expose external-sources to non-admins, read-only).
-
----
-
----
-
-## Workstream 5 — Scaling past a fixed tool catalogue (research → maybe)
-
-**Prior art check: noevia already has a better answer to "too many tools" than most
-of what's published.** `apps/web/server/index.cjs:565-850` implements toolboxes —
-named working sets, per-project selection, read/write gating per tool
-(`reads[]`), and two independent limits applied at resolve time: `toolCapFor(model)`
-and `toolTokenBudgetFor(model)`, the latter derived from *measured* prefill rate
-against the live endpoint with a documented `tokens ≈ 240 + chars/3.6` estimator and
-a real error table. Dropped tools are reported, never silently withheld. The
-`nextcloud-mcp-server` link in the batch is already wired in as the `nc_*` boxes.
-
-So this workstream is not "solve the problem" — it's the one tier above what's built.
-
-**The gap: selection is static per project.** A project that ticks Calendar + Files +
-Contacts + Deck pays for all four catalogues on *every* turn, at ~14 tok/s, whether
-or not the message is about a calendar. The budget then truncates in selection order,
-so late boxes become unreachable for reasons the user can't see.
-
-**The technique to evaluate — progressive/deferred tool disclosure.** Instead of
-sending every selected tool, send a small always-on core plus one meta-tool that
-searches the catalogue and loads schemas on demand. This is exactly what the Claude
-Code session that wrote this plan does: ~30 tools live, ~120 deferred behind a
-`ToolSearch` call. Applied to noevia:
-
-- Always send: `core` box + a `find_tools(query)` tool + one-line summaries of each
-  enabled box (`toolboxSummaries` already exists at line 1550 and already carries
-  `estTokens`).
-- `find_tools` returns full schemas for the 3-8 matching tools, injected into the
-  next turn's `tools` array for the rest of the conversation.
-- Cost model: box summaries are cheap; the full Calendar catalogue (4,512 measured
-  tokens) is only paid by conversations that actually reach for a calendar.
-
-**Honest caveats, and why this is "maybe" rather than "do it":**
-- It costs an extra round trip on the first tool use — at ~14 tok/s that is felt.
-- It depends on the model reliably calling a meta-tool, which small local models do
-  *less* well than they call ordinary tools. On a 9B this may simply not work.
-- The existing measured-budget machinery already prevents the catastrophic failure
-  (catalogue crowding out the conversation). This is an optimisation, not a fix.
-
-**Recommended shape if pursued**: build it behind an env flag as a third resolution
-mode alongside the existing cap/budget, measure it on the actual 9B target the same
-way `TOOL_PREAMBLE_TOKENS` was measured, and keep static resolution as the default
-until the numbers justify a switch. `resolveTools()` is the single seam.
-
-**On the rest of the link batch** — assessed, mostly not worth adopting:
-- `omnigent-ai/omnigent` — a meta-harness over Claude Code/Codex/Cursor. Wrong layer;
-  noevia's `MASTER-PROMPT` explicitly says "do not vendor an agent framework", and
-  `mcp.cjs` deliberately implements only three JSON-RPC calls. Ignore.
-- `mufasadb/ai-lego-bricks` — JSON-configured LLM workflow library. Same objection.
-- `cbcoutinho/nextcloud-mcp-server` — **already integrated** as the `nc_*` boxes. The
-  only actionable item: it now advertises 110+ tools and semantic search across
-  Notes/Files/Deck/Mail, so `MCP_TOOLBOX_MANIFEST` is likely behind upstream. Worth a
-  re-scan for newly-added tools that belong in existing boxes.
-- `ayghri/i-have-adhd` — a terse-output prompt skill. Not architecture, but the
-  *format discipline* is a fair reference for
-  `services/diary/config/prompts/system.md` if diary replies feel padded.
-- arXiv 2406.06608 — "The Prompt Report", a 58-technique prompting taxonomy. A
-  reference to keep, not a change to make. Useful when tuning the diary's
-  `skip_classifier` and `summarizer` prompts in `config/prompts/logging.md`.
-
-### From the Reddit batch (pasted as text; Reddit itself is unreachable here)
-
-Four items survive review. The model-recommendation threads are hardware shopping,
-not architecture, and are noted only where they touch code.
-
-**5a. Tool-call looping on Qwen3.8-27B — a real defect class, cheaply mitigated.**
-**Completed locally, 2026-09-10; not deployed.** The three-round limit remains.
-The streaming loop now owns an exchange-local result cache keyed by tool name and
-recursive canonical JSON: object keys sorted, array order retained. Equivalent
-calls reuse their full result while retaining each call ID and SSE chip/result
-pair, including the non-streaming fallback and final round.
-
-- Writes, denials, approval timeouts, and failed writes are reused for the whole
-  exchange: no automatic retry or second approval, even after a different write.
-- Reads (including errors) reuse results until an approved write is attempted.
-  That attempt invalidates reads even if it fails, because partial mutation is
-  possible. Denied/invalid/duplicate writes do not invalidate reads.
-- Malformed JSON and non-object arguments return validation errors without
-  approval or execution; corrected arguments can run. Empty arguments mean `{}`.
-- The allowed-tool set is checked before cache lookup; the existing execution
-  check and all three approval actions remain. Cancellation stops subsequent calls.
-- Cache lifetime is one handler invocation, never a chat, user, or project store.
-  Later exchanges can execute the same call again. This is loop protection, not
-  durable idempotency or protection against concurrent separate exchanges.
-
-Regression tests use the actual chat handler with mocked providers, approvals,
-and tools; no real diary or production services are involved. Provider chat-template
-investigation remains a separate deployment concern.
-
-**5b. Uncapped local thinking is the actual argument for Workstream 2.** The most
-substantive claim in the batch: local models beat commercial ones at *planning*
-specifically because there is no artificial thinking cap — "tens of thousands of
-thinking tokens, stress-testing edge cases" at 3-12 tok/s, unattended. This sharpens
-the reasoning-effort design: on a local provider, `high` should mean *remove the
-ceiling*, not "send `reasoning_effort: high`" (which local endpoints ignore anyway).
-Concretely, `high` on an unverified/local provider should raise `max_tokens` rather
-than only injecting the prompt hint — which is exactly open question **(c)** in
-the appendix, currently answered "out of scope". **Reverse that
-answer for the local path only.** The spec's caution was about honesty on providers
-that ignore the parameter; raising the output ceiling is a real, honest lever that
-works everywhere.
-
-**5c. Plan-with-big / execute-with-small is a better Auto router than Fast/Smart.**
-Same thread describes the pipeline that works: the large model maps out the
-architecture, a smaller fast model executes, and the pair beats either running solo.
-noevia's existing auto-router (`heuristicWantsSmart`, `classifierVerdict`) classifies
-each *message* as easy-or-hard. The suggested shape instead splits by *phase* within
-one exchange. Worth a spike, not a rewrite: the router already has the seam, and the
-change is which model handles the first turn versus the tool-execution rounds. File
-alongside Workstream 5 as a second research item.
-
-**5d. An offline Wikipedia RAG endpoint is a good toolbox candidate.** One link is a
-local API that serves full Wikipedia articles matched to a query. Against Tavily —
-already integrated as `web-search` / `web-crawl` — it has two properties that suit
-this deployment: it works with no internet, and it spends no metered credits (the
-`web-crawl` box's comment explicitly worries about burning "a month of credits on a
-single large site"). A `wikipedia` box of one or two read-only tools fits the
-existing `MCP_TOOLBOX_MANIFEST` shape with no new machinery. Low effort, clearly
-additive.
-
-**Noted, no action**: the 8GB-VRAM benchmark thread and the adaptive-KV-streaming
-tutorial are Lemonade/hardware tuning, not app changes — though the benchmark's
-split (fast-but-shallow vs slow-but-accurate) is the empirical case for 5c. One
-detail does touch code: MoE names like `Qwen3.6-35B-A3B` carry both a total and an
-active parameter count, and `toolTokenBudgetFor`'s fallback regex
-(`index.cjs:~790`) reads the first one. It happens to land on the right side here,
-and the measured-prefill path overrides it within a request or two, so this is a
-comment-worthy edge case rather than a bug.
-
-**5e. Settles the "is Cowork a harness" question, and reframes noevia.** The clearest
-answer in the batch: Claude.ai is an LLM with a cloud container; Claude Cowork is the
-same model with a container *you* host, giving it durable files and skills; Claude
-Code is a full agentic harness with no container unless you build one. The line that
-matters for this project: *"You can pretty easily make Claude Code operate like
-Cowork by putting it in a micro-VM and building a GUI on the front."* That is a
-one-sentence description of what noevia already is — a self-hosted container plus a
-GUI, wrapping a model with tools, permissions, and a session loop. Worth writing into
-the new `CLAUDE.md` (Workstream 1) as the project's own framing, because it explains
-*why* the toolbox permission gating and the mechanical diary writer exist rather than
-leaving them as local quirks.
-
----
-
-## Workstream 6 — Port Claude Cowork's diary-logging loop
-
-Source: a Cowork session describing, in its own words, exactly how it logs to the
-user's diary. Worth porting because it is a *working* implementation of the same
-job noevia's diary does — but it runs on macOS through a device bridge, and noevia
-runs in a container. The mechanics do not transfer; the **decisions** do.
-
-### What Cowork actually does
-
-Everything goes through one MCP server (`remote-devices`) bridging a cloud session
-to the Mac. For the diary specifically it uses only four functions:
-
-| Cowork | What it is for |
-| --- | --- |
-| `device_bash` | `date` for the clock; `cat`/`tail`/`grep` to read prior entries for context; `cat >> file << EOF` heredocs to append `### <time>` sections; `python3` for bulk edits when `sed -i` fails |
-| `device_list_dir` | Check whether `Entries/2026/September/September 9, 2026.md` exists before touching it |
-| `project_memory_read/write` | Persistent working notes — format rules, day-boundary rule — **on Claude's side, not on disk** |
-| `device_stage_files` | Deliberately unused for the diary; only for files needing a tool the machine lacks |
-
-No uploads, no artifacts, no staging. Read, append, done.
-
-### The four decisions worth taking, and how each maps to a container
-
-**6a. Do timezone conversion in the environment, never in arithmetic.** Cowork's
-sandbox VM reports UTC and the model was manually subtracting 4 hours for EDT.
-That arithmetic caused a real misfiled entry. Its own fix: run
-`TZ=America/New_York date` so the conversion happens in the command.
-
-Implemented in the repository: both compose definitions pass `TZ` to the diary
-service, `.env.example` documents it, and setup's prefs step detects/confirms an
-IANA zone and shows the setting for the operator to apply. Subprocess tests pin
-the day and entry-header fallbacks across UTC midnight, including summer/winter
-offsets. **Audit update 2026-09-10:** the separately authorized deployment has
-also applied this to production; a read-only container check confirmed
-`TZ=America/New_York` and `EDT -0400`. The exposure described below is historical.
-
-**noevia has the identical exposure.** The diary container has `TZ` unset, so it
-runs on UTC while the user does not.
-
-*Reproduce it* — the window is local 20:00 to midnight, when UTC has already rolled
-over:
-
-```sh
-ssh <host> "docker exec cowork-diary-1 python -c \
-  'from datetime import datetime; print(datetime.now().date())'"
-date +%F        # your machine
-```
-
-Measured 2026-09-09 21:20 EDT: container said `2026-09-10`, local said `2026-09-09`.
-Outside that window both agree, which is exactly why it hides.
-
-*Why it is latent and not live:* `DiaryView.tsx:130` computes `entryDay`/`entryTime`
-from the browser clock, and `_run_exchange` (`app.py:399`) prefers them. The real
-write path is therefore correct. Seven server-side sites use `datetime.now()` as the
-**fallback**, and each is wrong by a day in that window:
-
-| Site | What it decides |
-| --- | --- |
-| `app.py:399` | `now = entry_time or datetime.now()` — the day an entry is filed under |
-| `app.py:517` | `api_day` with no month — which day "today's log" means |
-| `app.py:626`, `:633` | file-date fallback |
-| `pipeline.py:134`, `:159` | logging and re-log timestamps |
-| `corpus.py:75` | the `### HH:MM` header itself — would read `01:20`, not `21:20` |
-
-*The fix, and why it is this one:* set `TZ` on the diary container from a
-user-configured timezone, so every fallback is already right. Auditing seven call
-sites to thread a timezone through is the version that rots — a new `datetime.now()`
-added later silently reintroduces the bug. Fixing the environment cannot be
-forgotten by the next contributor.
-
-Concretely: a `TZ` build/runtime var on the diary service in all three compose
-copies; the timezone collected in the wizard's prefs step (Workstream 3, point 4,
-which already proposes asking for it); a test that pins a fallback to the configured
-zone rather than to the host's. `journal.py:76` and `:90` must **stay UTC** — those
-are event timestamps, not diary dates, and UTC is correct for them.
-
-*Related, and outstanding:* after the aux-model fix (`changelog.md`, 2026-09-09) a
-new entry should render as `### HH:MM — Topic` rather than a bare `### HH:MM`. That
-has not been observed yet — it needs a real diary write, which is the user's to
-make. If topics are still missing on the next entry, the summariser is still not
-running and the aux fix did not take.
-
-**6b. Read prior entries as plain files, not through a retrieval index.** Cowork
-uses `cat`/`grep` over the day files directly. noevia already has the equivalent in
-`workspace_files.file_list` / `read_file`, exposed as `/api/diary/files`. The gap is
-that the *diary companion model* reaches its own corpus only through the embedding
-index — which currently fails open (`embedding failed for a chunk … will retry on
-next reindex`, see `changelog.md`), leaving recent entries unreachable as context.
-A direct file read is the honest fallback when retrieval has not caught up.
-
-Implemented 2026-09-10: bounded direct reads when retrieval is absent, empty or
-fails, using existing tenant storage and explicit reference framing. Two explicit
-past ISO dates plus three preceding dates by default; no exhaustive search claim.
-166 diary / 281 web tests, typecheck/build pass. Deployed as `23ba691`.
-
-**6c. One memory store, not two kept in sync by hand.** Cowork's clearest warning:
-`project_memory_*` lives on Claude's side and *"does NOT automatically sync to the
-AI Memory folder on your actual disk — Two different stores, same content kept in
-sync by hand."* Roadmap 4a proposes scaffolding `AI Memory/`. **Decide now that the
-folder on disk is the only store.** If noevia later grows session-side memory, it
-must read and write that folder, not shadow it.
-
-**6d. Keep diary content out of any cross-session profile.** Cowork explicitly
-refuses to write diary content into its broader user-profile memory: *"grief/safety
-content from here has no business living in it."* noevia has no such store today.
-If one is ever added, this boundary is the requirement, not a preference.
-
-### What does NOT port
-
-Shell-out-to-`bash` as the write mechanism. Cowork can afford it because it is
-driving one user's Mac interactively. noevia is multi-tenant, writes through a
-journal + ETag-guarded store precisely so a crash cannot corrupt the corpus, and
-generates structure mechanically in `corpus.py`. A heredoc append would bypass all
-of that. **The model must never write diary structure directly** — see `diary.md`.
-
----
-
-## Workstream 7 — Self-contained storage when there is no cloud
-
-**2026-09-12 update:** the personal Diary SMB migration is now an active planning
-priority; see [spec-diary-smb.md](spec-diary-smb.md). The earlier exclusion of a
-share sidecar below is superseded for this workflow. Generic DAV remains a
-separate capability. Raw shared-volume writes require their own conflict contract.
-
-Today `CORPUS_BACKEND` defaults to `local`, with `CORPUS_LOCAL_ROOT=/app/data/corpus`
-bind-mounted from `${COWORK_STATE_DIR:-./state}/diary`. So "everything lives in the
-container" already technically works. Three things make it unsatisfying in practice.
-
-**7a. The `./state` default is a footgun on Unraid.** `${COWORK_STATE_DIR:-./state}`
-resolves relative to the compose project directory. Under Compose Manager that is
-`/boot/config/plugins/compose.manager/projects/Cowork` — **the USB boot flash**:
-small, wear-sensitive, and not meant for live data. The live deployment sets
-`COWORK_STATE_DIR=/mnt/docker/appdata/cowork/state` so it is fine *there*, but the
-default is wrong for the platform the deploy examples target. Either default to a
-named Docker volume (which Docker allocates and manages, and which never lands on
-the flash) or refuse to start when the resolved path is under `/boot`.
-
-**7b. Local files are unreachable from anywhere else.** The reason WebDAV/Nextcloud
-is attractive is not storage — it is *access*: phone, laptop, file manager. A local
-corpus is a directory on the server with no way in. The in-app Markdown
-viewer/editor (`diary.md`) is the only door, and there is no sync client.
-
-Options, roughly in order of effort:
-
-1. **Expose the corpus over the app's own WebDAV endpoint.** noevia already speaks
-   WebDAV as a *client* (`storage-client.cjs`, `webdav.py`); serving it is the
-   mirror image. Any OS can mount it, including Nextcloud's own external-storage
-   connector — which is how a local corpus becomes reachable without running
-   Nextcloud at all.
-2. **A share sidecar** — Samba or a WebDAV server container mounting the same
-   volume. No app changes, but a second service and its own auth surface.
-3. **Export/import in the UI** — a zip download and upload. Cheapest, and much
-   weaker: not a live path, just a manual escape hatch.
-
-Option 1 is the one that makes "local" a real peer of the cloud backends rather
-than a lesser default. It also reuses the tenant-scoped path validation and
-conditional-write guards the proxy routes already have.
-
-**7c. The wizard makes the choice, and names the trade-off.** The storage step
-currently lists Local / Nextcloud / WebDAV / S3 as if they were equivalent. They are
-not — today "local" means "reachable only through this app." See Workstream 3 for
-the reworked step; the short version is two real choices (noevia hosts it / connect
-storage you already run), with the access consequence stated on each.
-
-**ANSWERED 2026-09-09 — appliance, but opt-in.** noevia owns and serves its own
-data *when the user chooses that*. It is an option, never a requirement, and the
-choice is made during onboarding rather than in a config file. So: **option 1**.
-Options 2 and 3 are not pursued — a share sidecar is a second service with its own
-auth surface, and zip export is an escape hatch, not a storage mode.
-
-### 7d. What "serves its own data" means concretely
-
-- **A WebDAV endpoint noevia itself serves**, per user, tenant-scoped — the mirror
-  image of the WebDAV *client* already in `storage-client.cjs` / `webdav.py`.
-  Any OS can mount it; so can Nextcloud's external-storage connector, which is how
-  someone keeps Nextcloud in the picture without noevia depending on it.
-- **It must sit on top of the existing diary file API, not read the volume
-  directly.** `/api/diary/files` and `/api/diary/file` already carry tenant scoping,
-  relative-path validation, size limits and conditional writes; the journal and the
-  ETag guard are what keep a crash from corrupting the corpus. A DAV layer that
-  opens the files itself bypasses all of it. This is the same prohibition as
-  Workstream 6's "no shell heredocs" — the corpus has exactly one write path.
-- **Auth needs app passwords, not the session cookie.** WebDAV clients do not do
-  cookie sessions or passkeys, and `LEGACY_AUTH_COMPAT=false` removed the bearer
-  path deliberately. This wants per-device generated credentials, revocable
-  individually, shown once — the model Nextcloud itself uses, and the same shape as
-  the existing passkey list in Settings → Profile and security.
-- **Which container serves it.** The web container: it is the only one that is
-  supposed to be publicly reachable. The diary sidecar stays internal, per
-  `SECURITY.md`. That reinforces the point above — the web container reaches the
-  corpus through the diary API, so DAV naturally inherits the guarded path.
-- **Off by default, and it widens the attack surface.** A new authenticated write
-  surface reachable from outside needs its own section in `SECURITY.md`, its own
-  rate limiting, and to stay disabled unless the user turned it on in setup.
-
-### 7f-pre. The reference design: what Nextcloud does
-
-noevia is copying a model that already works, so it is worth stating plainly. Four
-pieces:
-
-1. **Nextcloud does not do HTTPS itself.** It assumes a reverse proxy in front
-   terminating TLS. "How do I get a certificate" is deliberately not its problem.
-   noevia already takes the same posture, and should keep taking it — see 7h.
-2. **The WebDAV URL is derived and shown, never asked for**:
-   `https://<host>/remote.php/dav/files/<username>/`, where `<host>` comes from its
-   `trusted_domains` list. That list is the direct analogue of noevia's
-   `PUBLIC_ORIGIN` plus `ADDITIONAL_TRUSTED_ORIGINS`.
-3. **App passwords.** WebDAV authenticates with HTTP Basic, meaning the credential
-   is sent **on every single request**. So Nextcloud has you generate a long random
-   per-device token in Settings → Security, shown once, pasted into the file client
-   instead of the account password. Three reasons, all of which apply here equally:
-   the real password never lands on the device; a lost device means revoking one
-   token rather than changing the account password; and it is the only way a file
-   client can authenticate at all when 2FA is on, since it cannot answer a 2FA
-   prompt. Each token carries a name and a last-used timestamp and is revocable on
-   its own.
-4. **It warns rather than blocks.** An admin "Security & setup warnings" panel goes
-   red on plain http or a misconfigured proxy. It does not prevent you running that
-   way; it keeps telling you.
-
-**noevia already has three of the four.** `PUBLIC_ORIGIN` is the trusted-domain
-list; TLS is already the operator's job; Settings → Profile and security already
-lists and revokes passkeys, which is the same shape a token list needs. The missing
-piece is the tokens themselves, and the warning surface.
-
-**A design constraint that follows from this.** The wizard must not ask the operator
-to make a security judgement they are not equipped to make. Every choice should
-default to the closed option, state its consequence in one plain sentence, and never
-present an option whose wrong answer is silently dangerous. Where a real risk cannot
-be removed — plain http on a LAN, say — name it in words a non-specialist can act
-on, and record the acknowledgement, the way Nextcloud's warnings panel does.
-
-### 7f. The endpoint URL — derive it, do not ask twice
-
-**Nextcloud does not ask you for a WebDAV URL; it shows you one**
-(`https://host/remote.php/dav/files/<user>/`), derived from its configured trusted
-domain. noevia should do the same, because the wizard **already collects and
-validates exactly that value**: the account step's canonical-URL field, checked by
-`classifyOrigin()` into `public-https` / `loopback` / `private-lan-http` /
-`invalid`. Asking a second time invites the two answers to disagree, and a DAV URL
-that disagrees with `PUBLIC_ORIGIN` is a mount that silently fails.
-
-So: the mount URL is `<PUBLIC_ORIGIN>/dav/<user>/`, displayed at the end of setup
-with the generated app password. Offer an override field for split-horizon
-deployments (a separate hostname for DAV, or DAV kept LAN-only while the app is
-public), pre-filled from `PUBLIC_ORIGIN` and empty-means-inherit — never a second
-mandatory question.
-
-**HTTPS is required on the public path** — app passwords ride in a header on every
-request with no session protecting them. But "block plain http outright" would kill
-the ordinary homelab case, so the requirement is scoped to *reach*, not to DAV as a
-whole. See 7h.
-
-### 7i. App passwords — the piece noevia does not have yet
-
-Of Nextcloud's four pieces (7f-pre), this is the only one with no existing analogue.
-It is a prerequisite for DAV at any scope, so it is the first thing built in this
-workstream, not the last.
-
-**Why a token and not the account password.** WebDAV authenticates with HTTP Basic:
-the credential is sent on *every request*, sitting in a file client's config on
-every device. So the account password must never be the thing that is stored there.
-
-**Shape** — deliberately the same as the passkey list already in Settings →
-Profile and security, which is the closest existing thing:
-
-- Generated server-side, high entropy, **displayed once** at creation and never
-  retrievable again. Stored as a hash, like the account password
-  (`auth.cjs` already uses Argon2id — reuse it, do not invent a second scheme).
-- Carries a **name** ("laptop", "phone"), a **created** date, and a **last used**
-  timestamp so a stale one is visible.
-- **Revocable individually**, without touching the account password or any other
-  device.
-- **Scoped** to the access level it was minted under (7h). A LAN-scoped credential
-  is refused on the public origin — defence in depth if the port is later exposed.
-- **Never grants app login.** A DAV token authenticates DAV and nothing else; it
-  must not be accepted at `/api/auth/*` or on any chat route. This is the difference
-  between "a device can read my diary files" and "a device can act as me."
-
-**Cross-checks against what already exists:**
-
-- `LEGACY_AUTH_COMPAT=false` removed the general bearer-token path on purpose.
-  This does not reinstate it: tokens are accepted only on the DAV port, only via
-  Basic, only for corpus paths.
-- Rate-limit failed DAV auth the way `llm-rate-limit` and the login limiter
-  already do, and audit token creation and revocation through
-  `authService.audit()` alongside logins and tool writes.
-- Invited users get their own tokens; a token is per-user, never per-deployment.
-
-### 7h. Three access scopes, chosen in the wizard
-
-Exposure is a separate question from "do you want DAV at all", and the answer is not
-binary. The storage step asks it as three choices:
-
-| Scope | What it means | Transport |
-| --- | --- | --- |
-| **Off** (default) | Files reachable only through the app's own Markdown editor | n/a |
-| **This network only** | Mountable from devices on the LAN; never leaves it | plain http allowed with an explicit acknowledgement; HTTPS if the operator fronts it |
-| **Reachable from anywhere** | Mountable over the public origin | HTTPS enforced, no exception |
-
-**Serve DAV on its own container port**, not a path on the public one. Compose
-publishes exactly one port today (`${COWORK_PORT:-8021}:8021`); DAV gets a second.
-Exposing a second port is then a deliberate act by the operator in whatever sits in
-front — adding a hostname in a tunnel dashboard, a `location` block in nginx, a
-port-forward. Doing nothing leaves it LAN-only.
-
-**But noevia cannot verify that, and must not claim to.** Whether a port is
-reachable from the internet depends entirely on infrastructure noevia has no view
-of. Promising "LAN only" as though it were enforced would be a lie the user relies
-on. The wizard should say what it actually means: *noevia serves this on port N and
-does not publish it; if you have not deliberately exposed port N, it stays on your
-network.*
-
-An IP allowlist was considered and rejected. With `TRUST_PROXY=true` the client
-address is read from `x-forwarded-for`, a caller-supplied header, so the allowlist
-would be exactly as trustworthy as that header — security theatre, and worse than
-honest wording because it *looks* like enforcement.
-
-**Plain http is permitted on the LAN scope, with the trade-off stated.** It is not
-safe — an app password crosses the LAN in cleartext, readable by anything else on
-that network — but it is the difference between a usable feature and one nobody can
-turn on. Say that in one sentence and require an explicit acknowledgement, the way
-the account step already handles a `private-lan-http` origin instead of refusing it.
-
-**HTTPS on the LAN scope is the operator's to provide, not noevia's.** A reverse
-proxy with an internal CA, Caddy, Traefik, or Tailscale all work. noevia should
-accept an override URL for that case and otherwise stay out of certificate
-issuance — `ADDITIONAL_TRUSTED_ORIGINS` (already in `index.cjs:66` and
-`compose.yaml:62`) is the existing seam for keeping a LAN name valid alongside the
-public one.
-
-**App passwords carry their scope.** A credential minted for LAN-only use records
-that and is refused on the public origin. Defence in depth: if the port is later
-routed publicly by mistake, existing LAN credentials do not silently become
-internet-facing ones.
-
-### 7g. Verified: a reverse proxy does not eat WebDAV verbs
-
-WebDAV uses HTTP methods most proxies never see — `PROPFIND`, `MKCOL`, `MOVE`,
-`LOCK`, `REPORT`. The standing worry is that whatever sits in front of noevia drops
-them and the whole feature is unusable from outside.
-
-Measured on one deployment (a Cloudflare tunnel, 2026-09-09) against a direct-to-
-origin control:
-
-| Method | through the proxy | direct to origin |
-| --- | --- | --- |
-| `GET` | 200 | 200 |
-| `HEAD`, `OPTIONS`, `PROPFIND`, `MKCOL`, `LOCK`, `REPORT` | 404 | 404 |
-
-Identical, so that proxy forwards them untouched and the 404s are **noevia's own
-router**, which matches on `req.method === 'GET'` / `'POST'` and nothing else.
-
-**This is evidence from one setup, not a design assumption.** noevia must not
-require, detect, or special-case any particular proxy — operators run nginx, Caddy,
-Traefik, Tailscale, a plain port-forward, or nothing at all. What the measurement
-buys is confidence that the approach is sound in at least one common arrangement,
-and a concrete failure mode to document: if a DAV client cannot mount, the first
-thing to check is whether the proxy in front passes `PROPFIND`. Some do not by
-default, and that is the operator's configuration to fix, not noevia's to work
-around.
-
-Two consequences for the build, neither proxy-specific:
-
-- **`OPTIONS` and `HEAD` need real handling before anything else works.** Every DAV
-  client opens with `OPTIONS` to read the `DAV:` capability header, and uses `HEAD`
-  for cheap existence checks. Both currently 404 on *all* routes — a small wart
-  worth fixing regardless of this workstream.
-- **Proxies impose their own request-body limits** (Cloudflare's free tier caps at
-  100 MB; nginx defaults to 1 MB via `client_max_body_size`). Diary Markdown is
-  nowhere near either, but it caps what the corpus accepts from outside, so it
-  belongs in the docs rather than being found by a failed upload.
-
-### 7h. Three access scopes, chosen in the wizard
-
-Exposure is a separate question from "do you want DAV at all", and the answer is not
-binary. The storage step asks it as three choices:
-
-| Scope | What it means | Transport |
-| --- | --- | --- |
-| **Off** (default) | Files reachable only through the app's own Markdown editor | n/a |
-| **This network only** | Mountable from devices on the LAN; never leaves it | plain http allowed with an explicit acknowledgement; HTTPS if the operator fronts it |
-| **Reachable from anywhere** | Mountable over the public origin | HTTPS enforced, no exception |
-
-**Serve DAV on its own container port**, not a path on the public one. Compose
-publishes exactly one port today (`${COWORK_PORT:-8021}:8021`); DAV gets a second.
-Exposing a second port is then a deliberate act by the operator in whatever sits in
-front — adding a hostname in a tunnel dashboard, a `location` block in nginx, a
-port-forward. Doing nothing leaves it LAN-only.
-
-**But noevia cannot verify that, and must not claim to.** Whether a port is
-reachable from the internet depends entirely on infrastructure noevia has no view
-of. Promising "LAN only" as though it were enforced would be a lie the user relies
-on. The wizard should say what it actually means: *noevia serves this on port N and
-does not publish it; if you have not deliberately exposed port N, it stays on your
-network.*
-
-An IP allowlist was considered and rejected. With `TRUST_PROXY=true` the client
-address is read from `x-forwarded-for`, a caller-supplied header, so the allowlist
-would be exactly as trustworthy as that header — security theatre, and worse than
-honest wording because it *looks* like enforcement.
-
-**Plain http is permitted on the LAN scope, with the trade-off stated.** It is not
-safe — an app password crosses the LAN in cleartext, readable by anything else on
-that network — but it is the difference between a usable feature and one nobody can
-turn on. Say that in one sentence and require an explicit acknowledgement, the way
-the account step already handles a `private-lan-http` origin instead of refusing it.
-
-**HTTPS on the LAN scope is the operator's to provide, not noevia's.** A reverse
-proxy with an internal CA, Caddy, Traefik, or Tailscale all work. noevia should
-accept an override URL for that case and otherwise stay out of certificate
-issuance — `ADDITIONAL_TRUSTED_ORIGINS` (already in `index.cjs:66` and
-`compose.yaml:62`) is the existing seam for keeping a LAN name valid alongside the
-public one.
-
-**App passwords carry their scope.** A credential minted for LAN-only use records
-that and is refused on the public origin. Defence in depth: if the port is later
-routed publicly by mistake, existing LAN credentials do not silently become
-internet-facing ones.
-
-### 7g. Verified: Cloudflare Tunnel passes WebDAV verbs
-
-The obvious risk with the current deployment — app on a Cloudflare tunnel — was
-that Cloudflare would drop WebDAV's non-standard methods and make the whole
-appliance path unworkable from outside. **It does not.** Measured 2026-09-09
-against the live tunnel and, as a control, straight at the origin:
-
-| Method | via Cloudflare | direct to origin |
-| --- | --- | --- |
-| `GET` | 200 | 200 |
-| `HEAD`, `OPTIONS`, `PROPFIND`, `MKCOL`, `LOCK`, `REPORT` | 404 | 404 |
-
-Identical either way. The 404s are **noevia's own router**, which matches on
-`req.method === 'GET'` / `'POST'` and nothing else — Cloudflare is forwarding the
-verbs untouched. So the tunnel is not a blocker, and no Cloudflare configuration
-change is needed. (No Cloudflare Access sits in front either; if one is ever added,
-DAV clients cannot complete its browser SSO flow and would need service tokens.)
-
-Two consequences for the build:
-
-- **`OPTIONS` and `HEAD` need real handling before anything else works.** Every DAV
-  client starts with `OPTIONS` to read the `DAV:` capability header, and `HEAD` for
-  cheap existence checks. Both currently 404 on *all* routes, which is also a small
-  standalone wart worth fixing regardless of this workstream.
-- **Cloudflare's free tier caps request bodies at 100 MB.** Diary Markdown is
-  nowhere near it, but it caps what the corpus can accept from outside, so it
-  belongs in the docs rather than being discovered by a failed upload.
-
-### 7e. Where the corpus actually lives
-
-With the appliance answer, the default should be a **named Docker volume** rather
-than a bind mount: Docker allocates and manages it, it survives recreation, and it
-cannot silently land on the Unraid boot flash the way `./state` does (7a). A bind
-mount stays supported for operators who want the files at a known host path — which
-is what the live deployment already does with
-`COWORK_STATE_DIR=/mnt/docker/appdata/cowork/state`.
-
----
-
-## Workstream 8 — PDFs, OCR, and image understanding
-
-**Implemented, 2026-09-10:** native page extraction and originals, source status,
-binary reads, bounded local OCR for scans/mixed pages, asynchronous source polling,
-and image missing-file/truncation/cache fixes. The matching Qwen 9B projector is
-configured and real synthetic transcription passed. See the latest
-[roadmap audit](roadmap-audit.md) and [document understanding spec](spec-document-understanding.md)
-for exact bounds and verification. Existing sources need refresh/re-upload to gain
-OCR; native-only cached versions are invalidated. Handwriting and general table
-reconstruction are not promised. Onboarding and diary navigation remain open.
-
-The original investigation checklist follows for context:
-
-1. **Audit the end-to-end experience.** Use synthetic or explicitly approved
-   fixtures: text PDFs, scanned PDFs, mixed text/image pages, tables, screenshots,
-   and photos. Check upload and folder refresh, extraction, retrieval, and the
-   answering model. Record whether failures come from extraction, missing image
-   capability, routing, or retrieval rather than treating all of them as OCR bugs.
-2. **Specify PDF and OCR behavior.** Decide when to use a text layer, when OCR is
-   needed (including mixed PDFs), and how to preserve page references, reading
-   order, and useful table structure. Define handling for encrypted, malformed,
-   oversized, partially readable, and truncated documents. Preserve original files;
-   distinguish originals from derived text and avoid duplicate extraction on refresh.
-3. **Specify image behavior.** Clarify when an image is sent directly to a capable
-   model versus described by the configured vision model. Cover image-only PDFs,
-   multiple images, unavailable models, and the difference between extracting text
-   and understanding a picture. Make unsupported or failed processing visible.
-4. **Evaluate implementation options.** Compare local OCR/vision choices against
-   actual host resources, accuracy, latency, maintenance, and privacy requirements.
-   Decide processing limits, caching, and whether long documents need background
-   work. Do not add a runtime dependency or cloud processing by assumption.
-5. **Make source state understandable.** Plan clear queued/processing/ready/failed
-   states where needed, useful retry actions, and page/source attribution. An upload
-   succeeding must not imply the model can read every page or image.
-
-Deliverable: a short findings/spec document with recommended scope, open decisions,
-and a fixture-based acceptance matrix before implementation. Test with known text
-and page references; failures must be explicit, existing PDF text extraction must
-stay working, and files must remain isolated to their owning user/project. Do not
-use the real diary corpus as a test dataset or send diary prompts.
-
-## Workstream 9 — Skills and reusable project workflows
-
-**Proposal complete; implementation planned.** The user selected reusable instructions
-using existing approved tools. See [the scoped proposal](spec-instruction-skills.md)
-for lifecycle, context/permission boundaries and a representative workflow.
-
-Start by agreeing what a skill means in noevia: reusable instructions, a workflow
-that uses existing tools, or an executable package. Inventory project instructions,
-toolboxes, MCP discovery, and the approval gate first. Coordinate with Workstream 5
-so skills do not create a second competing system for tool selection.
-
-Questions to resolve:
-
-- How are skills created/imported, inspected, enabled, updated, and removed?
-- Are they personal or shared, and selected per project, per chat, or automatically?
-- How do skill instructions interact with project instructions and context limits?
-- What formats are supported, and what compatibility is actually needed?
-- If a skill requires tools or dependencies, how are those requirements surfaced?
-- How does a user see which skill ran, what it did, and why it failed?
-
-Deliverable: a scoped proposal and one representative workflow, followed by an
-implementation plan. Skills must preserve tenant isolation and the existing write
-approval gate; importing instructions must not silently grant execution or tool
-permissions. Framework, package, and execution choices remain open decisions for
-the proposal.
-
-## Sequencing
-
-The [audited priority order](roadmap-audit.md#corrected-priority-order) supersedes
-this original sequence. Completed items below are retained for historical context;
-consult the audit before treating any of them as new work.
-
-1. Workstream 1 — hours, unblocks agent-driven deploys immediately.
-2. Workstream 4c — one function, highest felt improvement per line changed.
-3. Workstream 3 — wizard restructure.
-4. Workstream 2 — thinking modes (touches the chat hot path; do it with the wizard's
-   prefs step landed so it has a home).
-5. Workstream 4a/4b/4d — the diary rebuild.
-6. Workstream 5a (duplicate tool-call guard) — small, standalone, do it early;
-   it is a bug fix, not a spike.
-7. Workstream 5d (offline Wikipedia toolbox) — additive, no new machinery.
-8. Workstream 6a (container `TZ`) — small and self-contained; do it early, before
-   a client that omits the entry stamp makes it a live bug instead of a latent one.
-9. Workstream 7a (`./state` default) — one line, and it currently points at the
-   Unraid boot flash for anyone following the deploy examples.
-10. Workstream 7e (named volume as the default corpus location) — with 7a, since
-    both are about where state lands.
-11. Workstream 7i (app passwords) — a prerequisite for DAV at any scope, and
-    independently useful. Build it first within Workstream 7.
-12. Workstream 7d (noevia's own WebDAV endpoint) + the Workstream 3 storage step —
-    the appliance path. Biggest single item here: a new authenticated, externally
-    reachable write surface, app-password auth, and a `SECURITY.md` section. Spec
-    it first, the way `spec-reasoning-effort.md` was specced.
-13. Workstream 5 proper + 5c + 6b — research spikes; a `docs/spec-*.md`, not code.
-
-## Verification
-
-- **Fresh install**: `docker compose up` from a clean `COWORK_STATE_DIR`, grab the
-  setup code from `docker compose logs web`, walk the wizard answering *no* to diary,
-  then *yes* on a second clean run. Confirm `user_features` matches the answer in both
-  cases and that nothing was applied that wasn't shown.
-- **Invite path**: generate an invite from Settings → Users, accept in a private
-  window, confirm the wizard now runs for the invitee.
-- **Zero-state diary**: point at an empty corpus root; landing shows only the
-  composer. Send one entry; confirm `Entries/`, `AI Memory/`, `Raw Sources/` are
-  created, the view navigates to today, and the reply streams into the day log.
-- **Thinking modes**: set global `high` against a known-good OpenAI-compatible
-  endpoint (badge reads "real"), then against local Lemonade (badge reads "hint",
-  chat does not break). Verify a project override beats the global, and that a 400 on
-  the field retries once and downgrades rather than failing the message.
-- **Tests**: `apps/web/server/*.test.cjs` (node test runner) and
-  `services/diary/tests/` (pytest). New tests: reasoning-effort resolution order and
-  the unverified-provider fallback; diary scaffold idempotency; `markOnboarded` not
-  clearing `diary_enabled`.
+The one planning document. Consolidated 2026-09-16 from the previous roadmap, the
+roadmap audit, the backlog, the continuation checkpoint, both Codex handoffs, the live
+and settings audits, the UI-overhaul plan, the Freebuff report and every master prompt.
+Their dated evidence is in git history and [changelog.md](changelog.md); design detail
+stays in the `spec-*.md` files linked below. The executable brief is
+[master-prompt.md](master-prompt.md).
+
+Status words: **Shipped** = deployed and verified · **Open** = to build ·
+**Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
+
+## Where things stand — 2026-09-17, afternoon
+
+Branch `claude/compaction-correctness-fix-ltyu9p` (GitHub `sbstndalton/noevia`), last release
+**`127b300`** live on DaServer (`https://cowork.daserver.work`, see `deployment.md`). Branch commits
+since then are **not deployed**: account memory, `EMBEDDING_BASE_URL`, QA and experiment harnesses.
+
+### Live and verified in production
+- Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), Kiwix.
+  KoboldCpp was tested and removed (slower generation on every model, no router; findings §12).
+- Models change over time at the user's discretion; don't treat a new or missing preset as a finding.
+- MCP: Nextcloud (160 tools), Tavily, in-app server (10 tools).
+- Features on through env: previews, Diary append tool, offline Wikipedia. **Deep research is off**
+  (gate failed, parked until the user returns to it).
+- **Nextcloud AIO repaired** (apache/talk crash-loop after the nightly update; this broke Diary
+  storage with a 502) and **Nextcloud Assistant runs on the native engine** (`integration_openai` →
+  `http://noevia-llama:8080/v1`, verified with a text task).
+
+### Measured today (current phase)
+- **Step 1, APU memory:** GTT is already kernel-capped at 14.85 GiB (half of RAM) plus 2 GiB VRAM.
+  4B = 3.1 GiB GTT + 1.9 GiB VRAM; embedding 0.3 GiB. Proposal: keep the cap, add `--fit on
+  --fit-target 1024`, syslog mirror first. [research-known-good-settings.md](research-known-good-settings.md)
+- **Step 2, retrieval swap:** a RAG turn under `--models-max 1` adds ~4.6 s of swapping and drops the
+  prompt cache; a CPU nomic answers a query in ~30 ms. `EMBEDDING_BASE_URL` built (branch). Production
+  has no RAG indexes, so the embedding rename left nothing stale.
+- **Step 3, deep research gate:** failed on the 9B (citation validity 0.65–0.68 vs ≥ 0.95, B no
+  better than A on facts). Feature off. [spec-deep-research.md §8](spec-deep-research.md)
+- **Step 4, tool router in production shape:** gate holds on the real Nextcloud boxes (needed box
+  reaches the model 16/26 vs 8/26, 13.4 s vs 15.1 s). Enable only with a CPU embedder, after deploying
+  `EMBEDDING_BASE_URL`. [experiments/tool-routing/README.md](../experiments/tool-routing/README.md)
+- **Step 6 harness:** prompt-preparation benchmark (P0–P3, 18 fixtures) written and tested offline,
+  not yet run on the models.
+- **Step 7:** account-wide memory built (branch); Diary append verified end to end through the UI on a
+  diary-test copy.
+- **KoboldCpp vs llama.cpp (user request):** features at parity; KoboldCpp 8–53 % slower at
+  generation on 4B/9B and on MoE (gpt-oss-20b, Gemma 4 E4B/26B-A4B, Qwen3.6-35B-A3B). Rejected and
+  removed with its Qwen3.6 downloads. vLLM remains a possible future engine test.
+- **Model tuning fixed (branch, not deployed):** Easy mode had saved Qwen3.5's full 262K window
+  live. Tune now caps context by calibration, measured prompt speed or 32K; Measure context sits in
+  Easy mode; MTP defaults follow built-in layers, heads beside the model or in its source repo, by
+  mode. A Tune button per model in the chat picker; new files in the models folder are set up
+  automatically.
+- **Step 5:** `CONTEXT_LOG=1` on in production since 11:20 (counts only); read `report()` after a week.
+- **Step 6, prompt preparation (4B, run 2):** P0 raw 16/18, P1 template 15/18, P2 4B-as-architect
+  0/18 (list fields returned as strings). Direct stays default; next 3 repeats and a 9B architect.
+- **Step 9, CodeHarness spike (D14):** OpenCode over ACP solved a synthetic bug on the 4B (165 s) and
+  9B (265 s) in a read-only, capability-less container on an internal network with only the engine;
+  edits went through noevia's client fs, escape probes all blocked. `experiments/acp-spike`.
+- **Tool router re-measured best-first:** needed box 26/26, right first call 21/26, 10.8 s vs 14.3 s.
+
+### Broken or risky right now
+- **Outage cause unknown** (04:15–08:24). Mover 03:40 and appdata backup 04:10 precede it; syslog
+  mirror still off. Leading guess moved from engine GTT to RAM-backed paths during the ZIM download
+  or backup staging (engine alone can't exceed ~16.9 GiB). Unproven.
+- **Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the loaded
+  model mid-conversation (it broke the deep-research run today). The engine has no API key on the
+  `nextcloud-aio` network.
+- **Tool router baseline is weak today:** with many Nextcloud boxes selected, the 5 000-token budget
+  sends only the first box or two.
+- Glass banding on real devices: the user's check (D13). `llama-vulkan-test` stopped, kept.
+
+### Needs the user
+Enable the Unraid syslog mirror · approve `--fit on --fit-target 1024` · deploy the branch (for
+`EMBEDDING_BASE_URL` + CPU embedder, then `features.toolRouter`) · decide on an engine API key shared
+by noevia and Nextcloud · SMB pilot share (D11) · off-site target (D7) · deep research when they return
+to it · live 4B preset now says ctx 262144 from the old Easy save (re-tune or calibrate after deploy).
+
+## Shipped (do not rebuild)
+
+Reliability fixes · PDF originals, OCR, images, DOCX · unified uploads · shared composers
+across chat, projects and Diary · onboarding and invite flows · Diary scaffolding,
+landing, day navigation, Markdown editing, calendar, recovery, trash, import/export,
+date/tag filters · thinking modes v1 ([spec](spec-reasoning-effort.md)) · duplicate
+tool-call guard · timezone handling · app passwords and limited Markdown DAV · instruction
+skills lifecycle · backups with verified restore · direct native llama.cpp · Model Loader
+folded into `services/model-manager` · page-load performance · MCP multi-server with
+bearer tokens, compose drift test and preflight check · in-app MCP server (Diary reads,
+project documents; off by default) · models refresh on change · unified Models & routing
+page · minimal chat model panel · General settings (profile, preferences, capabilities) ·
+cost estimates removed · Freebuff batch (parallel-test isolation, Markdown task lists,
+mobile composer and tap targets).
+
+## Open work
+
+### A. Mobile and visual quality
+- **Shipped** — At ≤600px the sidebar leaves the layout (no icon rail); one 44px "Open
+  navigation" toggle opens a full-width drawer (≤420px) that traps focus, returns it to the
+  toggle, closes on Escape/close/backdrop/selection, fits the software-keyboard viewport and
+  closes itself when the window grows past 600px.
+- **Shipped** — Search button hidden under the chat header between 601px and tablet widths
+  (and with 44px touch targets): the header drops the wordmark there so the tools fit on one row;
+  `mobile-viewport` asserts search is reachable at every width.
+- **Shipped, device check pending** — Both traced to the WebGL light field (`public/glass.js`):
+  a non-premultiplied, unclamped canvas (composited differently by WebKit and Blink) and a
+  5–12% gradient with only a few dozen 8-bit steps. It now outputs premultiplied, clamped
+  colour with ±½-step screen-space dither. Chrome looks unchanged; confirm on the iPhone and
+  the Mac display.
+- **Shipped** — One shared `CloseButton` for every dialog/popup close control (settings ✕ no longer differs).
+- **Shipped** — Short-height populated sidebar reachability: `sidebar-reachability` covers 320×360, 375×360, 667×375 and a keyboard-height case, now through the phone drawer.
+- **Shipped** — Phone checks for the setup wizard, Settings, Projects and Code with a software
+  keyboard (`qa/mobile-surfaces.cjs`, real throwaway server). Fixed what it found: setup and
+  sign-in screens did not follow the visible viewport, so focused fields could sit behind the
+  keyboard; the phone Settings dialog stayed vertically centred while shrinking, hiding its
+  lower half; both now fit the visible viewport.
+- **Shipped (D4)** — Deterministic design-rule check: run Impeccable (`detect --json`, plain CSS
+  supported) once against `apps/web/src`, triage findings against existing tests, mobile QA
+  and screenshots, then adopt as a dev-only check, borrow selected rules, or reject. Also
+  assess a lightweight post-edit scan for agent-driven UI work. Complements screenshot
+  review; never replaces it. No app dependency.
+- **Shipped (D5: hidden behind `features.previews`)** — Scheduled, Plugins, Explore and Coding are preview surfaces: keep them as
+  labelled previews, or hide them until built.
+
+8. **Shipped, first pass (2026-09-17) — UI polish from the user.** Applied: vendored Lucide icons with one distinct symbol per concept; System appearance by default (HIG dark-mode guidance); calmer status pill replacing the monospace stats bar; plain-language composer controls; shared empty states; sentence-case disclosures; inspector icon actions; aligned Diary breadcrumb; phone title sizes. Iterate on real-device feedback. Original request: The interface still reads as
+   AI-generated. Study Apple's Human Interface Guidelines
+   (https://developer.apple.com/design/human-interface-guidelines) and the skill collections
+   `justinwetch/HIGAgentSkills` and `aka-kika/akakika-skills` as references (patterns and checklists,
+   not dependencies); use open-source icon sets (license-compatible, vendored as SVG paths, no CDN)
+   and design tooling; apply to the shell, chat, projects, settings and Diary within the agreed
+   layout (`spec-ui-direction.md`), with the usual 375/768/1440 light/dark screenshots.
+
+### B. Settings structure
+- **Shipped (first split)** — General held profile, preferences and capabilities, and profile
+  identity was duplicated under "Profile & security". Personal settings are now Profile
+  (identity), Security (passkeys, sessions, sign-out, app passwords), Appearance, Capabilities,
+  Diary & storage, Your connections, Usage & activity, Planned features. Personalization and
+  Notifications stay under Planned until built. **Keyboard shortcuts shipped 2026-09-17** (⌘/Ctrl+K
+  search, ⌘/Ctrl+⇧O new chat, ⌘/Ctrl+, Settings, ⌘/Ctrl+/ list; `components/shortcuts/`, `qa/shortcuts.cjs`). **Personalization → Custom instructions shipped** (per-user, 4000 chars, added to every non-Diary chat, project instructions win; `account-instructions.cjs`, `qa/personalization.cjs`), response style, and opt-in background notifications (reply finished / approval needed, content-free, per device; `components/notifications/`, `qa/notifications.cjs`). **Data → Export conversations shipped 2026-09-17**
+  (ZIP of Markdown per chat + conversations.json, no reasoning text; `routes/export.cjs`,
+  `qa/data-export.cjs`), and **Import conversations** (export ZIP or JSON; adds only, skips chats
+  already present, restores deleted ones under new ids, creates missing projects;
+  `chat-import.cjs`, `routes/import.cjs`). Retention and archived view remain planned. Still open: deeper pages at
+  ChatGPT-level depth with Claude-level polish. References:
+  `ui mockups/inspiration/`, [spec-ui-direction.md](spec-ui-direction.md),
+  [ui-reference-review.md](ui-reference-review.md).
+- **Shipped** — The model manager is its own full page (← Settings back button); Settings →
+  Models & routing shows engine status, installed/loaded models, Auto routing and "Open model
+  manager". The chat panel's "Model settings" opens the page directly.
+
+### C. Model management
+- **Shipped** — Per-model settings open in Easy mode (remembered per browser): "Tune for this
+  machine" runs autoconfig's VRAM-fit estimate and "Use and save" writes it through the
+  revision-checked save; plain MTP and KV-cache choices. Advanced keeps every `models.ini`
+  field. Measured verification stays with native calibration.
+- **Shipped** — Parity audit against Model Loader (2026-09-16). Its own HTMX UI was run
+  locally from `services/model-manager` on a synthetic models folder (no Docker socket, so
+  container pages were empty; the live `cowork-model-loader-1` was not touched) and compared
+  with noevia's model manager page and the model-manager JSON API.
+
+  | Model Loader feature | noevia | Outcome |
+  |---|---|---|
+  | HF search (sort), repo files, fit estimates, download by URL, companion mmproj | Discover | Parity |
+  | Parallel chunked downloads, cancel, clear, HF token + test | Discover | Parity (chunk bars; no per-chunk speed sparklines — not ported, low value) |
+  | `models.ini` editor with tooltips, show CLI, rename, delete, revision-safe saves | Model detail (Advanced) | Parity |
+  | Raw `models.ini` and rolling backups | — | **Ported**: "Raw file & backups" (read-only; restore stays an operator task) |
+  | Models directory disk free/used | — | **Ported**: shown on Your models |
+  | Autoconfig: sessions, presets, fine-tune, spec profiles, vision, measured throughput, config history | Autoconfig panel | Parity |
+  | Benchmarks, sweeps, output, badges incl. clear | Benchmarks | Parity |
+  | Check for updates, delete model | Your models | Parity |
+  | Bulk delete | — | Not ported: rare and destructive; single delete with confirmation kept |
+  | Backend dashboard, logs + filter, restart, test prompt, failure diagnosis | Hardware | Parity (live-following log is G2) |
+  | Prompt library | Prompt library | Parity |
+  | Command palette (Cmd/Ctrl-K) | — | Not ported: app-wide concern, not model-specific |
+  | OpenWebUI sync, per-connection visibility, dead-id cleanup, capability sync | — | N/A: noevia is the client; no OpenWebUI |
+  | "Serves on" per backend, add another backend | — | N/A: one native engine; revisit with multi-backend |
+- **Shipped** — A finished download registers itself once via model-manager
+  `POST /sections/{name}/safe-defaults`: context capped at 8k, `draft-mtp` only with a draft
+  head beside the file, `jinja` for the GGUF template, no sampler keys. Never overwrites an
+  existing section; the preset reload never unloads, and a loaded model deferring it is shown.
+- **Shipped** — A project or chat whose model is no longer installed shows "No model
+  selected" (only when the local catalogue was read successfully; other providers exempt).
+- **Shipped** — Download location: Discover shows where downloads land (host path via
+  `MODELS_HOST_PATH`, free space) and a **Save to** choice of the models folder or folders
+  directly inside it that are mount points or listed in `MODEL_DOWNLOAD_TARGETS`; the server
+  rejects anything else. DEPLOY.md §3.6 documents moving the models share and mounting more.
+- **Shipped** — Routing clarity: roles read "Fast — quick answers", "Smart — harder questions",
+  "Vision — reads images (optional)" everywhere; "How Auto decides" states the real rules
+  (heuristic → one-word Fast check → fail-open to Fast; Vision describes images first); the
+  per-project table lists every project with Auto/Manual and the model it uses (or "No model
+  selected"). Copy lives in `src/routing-copy.ts` beside the server logic it mirrors.
+- **Closed, not reproducible (2026-09-17)** — Hugging Face cache hex identifiers. A real
+  HF-cache fixture (`models--org--repo/snapshots/<commit>/file.gguf` symlinked into
+  `blobs/<sha256>`) lists by file name and stem in `/models` and `/sections`; no hex-only name
+  appears (test `test_hugging_face_cache_layout_never_surfaces_hex_names`). The live native
+  router lists three plain ids, and the web layer already drops bare 32–40 hex ids. Reopen with
+  a screenshot if it recurs.
+- **First wave shipped 2026-09-17** — Configuration-scoped qualification evidence (design in [spec §1](spec-agent-execution.md)): `server/evidence.cjs` (identity hash, cheap artifact fingerprints, append-only store, derived states); the native manager computes live identity (build, endpoint hash, preset hash, model/projector/draft fingerprints, context, MTP); native calibration and the vision probe record evidence; `GET /api/models/evidence`; model details show verified/failed/stale/unverified/unavailable rows. MTP acceptance (from chat replies) and throughput (median of warm requests from a benchmark run of the saved preset, recorded when a run finished within 30 min is viewed) producers shipped 2026-09-17. Admin recheck (`POST /api/models/evidence/recheck`, image input; context stays with Measure context) shipped 2026-09-17. Design: states (reported,
+  unverified, verified for this configuration, failed, stale, unavailable) tied to an identity
+  tuple (backend, model, artifact, projector, runtime, context, MTP profile, harness, prompt
+  preparation, suite, date); changes mark evidence stale. No universal score.
+  ([spec §1](spec-agent-execution.md))
+- **Baseline written 2026-09-17, measurements need scheduling** — Known-good settings ([research-known-good-settings.md](research-known-good-settings.md)): live presets ask 131K–262K context while the only calibrations verified 16K (9B) and 24K (E4B); all presets set `draft-eagle3` without a draft model. Provisional limits and a measurement plan; production presets untouched.
+- **Research** — Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU; and
+  applying the qualified Gemma 131k / Qwen 262k profiles beyond their exact configuration.
+- **Research** — Backend portability (llama.cpp vs vLLM), measured, no silent migration
+  ([spec](spec-backend-portability.md)).
+
+### D. Modes, projects and harnesses
+- **Shipped** — Projects carry `modes` (`chat`/`cowork`/`code`, at least one). Existing
+  projects migrate to `['chat']` on workspace load and are saved once; create/patch validate.
+  The chat sidebar lists Chat-enabled projects, the Projects page lists all with an
+  availability chip, a project not enabled for Chat shows why and hides its composer, and
+  `/api/chat` refuses it (409) before any inference. Project settings → "Available in".
+  Tenant isolation unchanged (per-user `projects.json`). Cowork and Code are recorded only;
+  they are enforced when those modes get routes.
+- **Blocked on a second working mode** — Optional shared context layer across a project's
+  modes (per project, per mode, off by default). Nothing can share context until Cowork or
+  Code exists, so no flag is stored yet; design it with that mode.
+- **Design before Code build; ACP evaluated 2026-09-17 → adopt** — `CodeHarness` (contract v0 mapping ACP kinds/permissions to noevia approvals, OS-level enforcement note, spike plan in [spec §3](spec-agent-execution.md)): noevia-owned contract that external harnesses
+  (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
+  preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
+  every harness action classified through noevia's approval gate; one writer per workspace
+  first. Evaluate ACP as the adapter protocol. ([spec §3](spec-agent-execution.md))
+- **Research, benchmark designed 2026-09-17 (not run)** — `PromptArchitect` (schema, P0–P3 variants, 18 fixtures, metrics, outbound audit and decision rules in [spec §2](spec-agent-execution.md)): optional stronger model (local or cloud,
+  provider-neutral, official auth only) writes a structured execution prompt for the local
+  model. Modes Direct (default) / Local / Frontier; Auto only after paired fixtures prove a
+  benefit. Outbound context allowlist enforced in code, disclosure shown, original request
+  stays authoritative, no hidden reasoning stored. ([spec §2](spec-agent-execution.md))
+- **Later** — Cowork browser capability through a noevia-owned `BrowserExecutor` on an
+  execution node: isolated profiles, domain allowlists, secrets substituted outside model
+  context, consequential actions through approvals, run as durable jobs. Browser Use is one
+  candidate implementation. ([spec §6](spec-agent-execution.md))
+
+### E. Tools
+- **Shipped** — Tool calls render as one collapsible list under the thinking block in chat,
+  projects and Diary: a line per call with state, name and one-line result; each expands to
+  pretty-printed arguments and the result (kept up to 4,000 chars, stored with history).
+  Open while calls run, collapsed after. Approvals stay outside the fold with full arguments.
+  Replies saved in the old "name ✓" format still display.
+- **Measured and built 2026-09-17 (gate passed; `features.toolRouter`, off by default)** — router 14/14 vs baseline 14/14, median 9.7 s vs 10.6 s, 23% fewer input tokens on Qwen3.5-4B ([results](../experiments/tool-routing/README.md)); chat narrows the project's own toolboxes per message and fails open. Original item: Task-conditional tool loading: a pre-turn embedding router picks
+  toolboxes for the task from the manifest, loads them for the session, and adds no
+  discovery round. A tool-search/unlock variant was already measured slower on these
+  models (12.91 s vs 8.64 s median). Adopt only if the `experiments/tool-routing` runner
+  shows equal-or-better completion without higher latency. Model-driven tool search (as in
+  Row-Bot) stays rejected on that evidence. Add manifest fields only as this work needs them
+  (example tasks, `autoLoad`, `requires`, `resultReducer`); one registry, policy never in the
+  prompt, auto-loading never pre-approves a write.
+  Prepared 2026-09-16: `server/tool-router.cjs` (pure routing policy with unit tests: ceiling,
+  `never`, `requires` closure, whole-box cap, collisions, user selection, fallback) and a
+  `router` mode in `experiments/tool-routing`. Not wired into chat or the tool menu, and no
+  flag exists yet: that follows only if the benchmark passes once models are served again.
+  Manifest fields (`examples`, `autoLoad`, `requires`) get added with that wiring.
+- **Shipped (D10, live 2026-09-17)** — Approval-gated, append-only `diary_append` in the in-app MCP server.
+- **Live (D9, 2026-09-17)** — Kiwix-serve with `wikipedia_en_all_nopic_2026-06` on an internal network; feature on.
+
+### F. Diary and storage
+- **Shipped (audit + last composer fork)** — Diary already reuses the composer actions, model
+  control, reasoning control, send icon, thinking block, tool-call list, Markdown renderer,
+  modal close button, live timer, scroll hook and the app-level stats footer. The message
+  textarea (Enter to send, Shift+Enter newline, IME-safe) was copied in chat, projects and
+  Diary; it is now one `ComposerTextarea`. Deliberately still separate: the Diary reply layout,
+  whose capture/recovery states and edit-by-xid semantics differ from chat replies.
+- **Shipped (read path confirmed)** — Diary reads go browser → `/api/diary/today` →
+  sidecar `/api/day` → the tenant's corpus backend. "App-hosted copy first, WebDAV after" is
+  already managed mode (`managed_storage.py`: SQLite primary, debounced append-only WebDAV
+  backup outbox); fresh tenants default to it and legacy tenants move with "Copy verified files
+  & use app storage". The remaining latency was legacy WebDAV tenants on the daily layout:
+  a month view fetched every day file one at a time (up to 31 round trips). The WebDAV backend
+  now declares `concurrent_reads = 6` and those reads run together, in order, with the same
+  partial-failure behaviour (synthetic 20×50 ms month: ~1 s → under ⅓). Month listing
+  (`list_months`) is still sequential PROPFINDs; measure on the SMB/WebDAV pilot before
+  changing it.
+- **Shipped (already in place, verified 2026-09-16)** — Generic WebDAV is a first-class storage
+  kind alongside Nextcloud and S3: the picker offers it, `storage-client.cjs` and the Diary
+  sidecar treat `webdav` and `nextcloud` identically apart from Nextcloud's login flow, managed
+  backups accept either, and `storage-client.test.cjs` / `restore-http.cjs` exercise it against a
+  local WebDAV server. No Nextcloud-only copy remains in the storage UI.
+- **Open** — Mac SMB authenticated pilot, then the real Diary cutover
+  ([spec](spec-diary-smb.md)).
+- **Contract written; decided (D6: add `AI Memory/**`, build without LOCK)** — DAV rename/delete/copy/locks:
+  [dav.md § Storage contract](dav.md) fixes invariants (single guarded write path, tenant root,
+  protected capture/month/index paths reusing the Trash rule, If-Match required, DELETE =
+  Trash, bounded all-or-nothing folder ops, explicit uncertain outcomes), per-method status
+  codes, when to advertise `DAV: 1`/`2`, and the client interoperability matrix. Decision:
+  confirm the protected set (optionally add `AI Memory/**`).
+- **Shipped (verified 2026-09-17)** — Fresh-install managed volumes and the `/boot` guard were
+  already in place: `deploy/init-managed.sh` selects `web-data`/`diary-data` only for new
+  installs and refuses existing state (tests pass), and the preflight check rejects writable
+  `/boot` binds after resolving symlinks, loops, parents and volume driver options (PHP test
+  passed on DaServer in a temp dir). Existing `COWORK_STATE_DIR` binds keep their meaning.
+- **Shipped (verified 2026-09-17, synthetic)** — Claude Diary bridge: bridge (3) and server
+  connector (3) tests pass; against a disposable sandbox tenant a created credential listed,
+  read, created and updated files with versions, got 409 for stale and duplicate creates, 400
+  for traversal, 401 for a bad token and after revocation. Logging behaviour differs from the
+  in-app companion by design: the bridge makes explicit, versioned, Claude-approved Markdown
+  edits (it can edit capture files and the index, like the in-app editor) rather than appending
+  structured exchanges with xid markers through capture.
+- **Partly verified (2026-09-17)** — Diary corpus in backups: the latest nightly archive
+  (`ab_20260916_151428`, `cowork-diary-1.tar.gz`) contains app-managed Diary storage
+  (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
+  moves to the SMB/dedicated root, since that path is not mounted yet.
+- **Built on branch (D7)** — encrypted S3-compatible snapshots module; the provider and budget are still the user's.
+- **Shipped on branch (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion; see Current phase.
+
+### G. Telemetry and logs
+- **Shipped** — Footer tokens/s updates the moment each round's SSE `usage` event arrives instead of waiting on the 2.5s poll. A single long round still can't tick mid-generation: llama.cpp reports the rate only when a request finishes.
+- **Shipped** — Engine log (model manager → Hardware → Logs): "Follow live" polls the tail
+  every 2 s (paused when the tab is hidden), stays pinned to the newest line, pauses when you
+  scroll up with "Jump to latest", keeps a 1,000-line window, filters by text/level. The model
+  manager scrubs secret-shaped strings (auth headers, bearer/HF/sk-/GitHub/AWS/JWT tokens,
+  secret-named key=values, URL credentials) before filtering or returning lines; members get
+  403. Polling rather than SSE: no per-viewer Docker stream through the JSON proxy.
+
+### I. Deep research mode
+- **Spec written** ([spec-deep-research.md](spec-deep-research.md)) — cited reports as a
+  background job on the durable-work primitive: optional editable plan, per-sub-question
+  gather with deterministic reduction, bounded map-reduce synthesis, deterministic citation
+  check, report + sources saved via `uploads.ingest`. Why a plan step is permitted here despite
+  the chat planner result, and the measurement gate (chat+web vs pipeline with/without plan vs
+  `tavily_research`, on a local fixture site). Build waits for R6. Decisions listed in §10.
+- **Shipped 2026-09-17 (build steps 2–3, not user-reachable)** — `server/research-sources.cjs`
+  (source registry, deterministic boilerplate strip / heading-aware chunking / capped excerpts,
+  citation verifier with no model call) and `server/research-runner.cjs` (variant B on the jobs
+  primitive: web-call and time budgets, untrusted-source framing, window preflight, checkpoints,
+  cancel), with unit tests. Offline fixture site + measurement script in
+  `experiments/deep-research/` (seed set; verified with a stub model only). Finding: citation
+  checks can't catch faithfully quoted injected text — adversarial resistance is measured, not
+  verified. **Next needs the user:** a sandbox model run, Tavily wiring/budget, members, and
+  where reports are saved (§10).
+
+### H. Platform
+- **Researched 2026-09-17** — Headscale vs NetBird ([research-remote-access.md](research-remote-access.md)): don't migrate yet; neither changes the data path, the recorded slowness was WAN loss, DaServer's NAT allows direct paths. Measure with `tailscale ping`/`iperf3`/`mtr` from a remote client; if self-hosting is still wanted, Headscale.
+- **Researched 2026-09-17** — AIO-style master container ([research-master-container.md](research-master-container.md)): don't build; keep Compose Manager. Found model-loader's socket-backed API reachable unauthenticated from the Diary container; repository fix adds `MODEL_LOADER_TOKEN` and a `models` network. Applied live 2026-09-17 (657d21b).
+- **Later** — Mac-native app as both client and optional trusted **execution node** (local
+  files, terminal, repositories, browser, notifications): server orchestrates, node executes
+  advertised capabilities after explicit pairing; never blanket control of the Mac. Idea: Swiftlet
+  as an optional local runtime for that node.
+  ([spec §5](spec-agent-execution.md))
+
+## Research priorities
+
+Ranked. Each ends in a written recommendation in `docs/` with measurements from this
+deployment's models. Can run alongside the build order.
+
+**Near-term**
+1. **Context efficiency: scripts before tokens** ([spec](spec-context-projection.md)). Measurement log shipped 2026-09-16 (`CONTEXT_LOG=1`, counts and tool names only); collecting data and reducers still to do.
+   Measure tool/context consumption first; then trim deterministic waste with tool-aware
+   reducers (full results kept authoritative); collapse recurring sequences into task-shaped
+   tools; handle mechanical work without the model; summarize only where still needed. Script only
+   sequences the logs show repeating. Includes
+   the protected-input preflight, validate-before-commit compaction, atomic tool-call groups and
+   the authoritative / model-facing / UI layer split. Acceptance: fewer model-facing tokens, no
+   lost results, no worse completion, fewer LLM compaction calls.
+2. Configuration-scoped model qualification design (C).
+3. Impeccable UI-QA evaluation (A).
+4. Prompt Architect spec and benchmark design (D).
+
+**Before Code mode is built**
+5. `CodeHarness` contract, harness/prompt-preparation selectors, model × harness × architect
+   evidence, workspace ownership (D).
+
+**Before Cowork or Deep Research is built** ([spec §4](spec-agent-execution.md))
+6. **Built 2026-09-17** (`server/jobs.cjs`, first consumer: source processing; [spec §4](spec-agent-execution.md)). Shared durable-work primitive: append-only events, derived state, restart recovery,
+   explicit uncertain side effects, fixed worker capability scope.
+
+**Before browser automation**
+7. `ExecutionNode` and `BrowserExecutor` contracts, browser security/approval model, then a
+   Browser Use evaluation on a node. *Idea to explore, not a commitment:* cua's VM-sandboxed computer server (Lume on the Mac,
+   Linux desktops on DaServer) as one possible Cowork computer-use shape; its host desktop
+   driver, if ever, only as the highest-trust node capability. Telemetry off.
+   ([spec §5](spec-agent-execution.md))
+
+**Other**
+8. Known-good settings per model and hardware.
+9. Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU. *Idea to explore:* running larger
+   MoE models on DaServer by keeping experts in system memory or mmap'd from disk with llama.cpp's
+   own options (verify flags against the pinned build), measured on this GPU — the idea behind
+   flash-moe/Swiftlet, whose Metal-only code doesn't apply here.
+10. Backend portability (llama.cpp vs vLLM).
+11. Headscale vs NetBird to replace a slow Tailscale.
+12. AIO-style master container managing the stack.
+
+**References (added 2026-09-17; reviewed in [research-references.md](research-references.md): borrow ideas only, no dependencies)**
+
+- [Ramps](https://www.ramps.studio/) — free tool that generates perceptually even OKLCH colour
+  scales and WCAG-checked semantic tokens from one brand colour. Question: could it inform or
+  replace how noevia's palettes and `tests/theme-contrast` tokens are derived?
+- [zoxilsi studio](https://studio.zoxilsi.cc/) ([source](https://github.com/zoxilsi/studio),
+  MIT; Next.js, Three.js, GLSL) — WebGL mesh-gradient editor with image/video/code export.
+  Question: a reference for the glass light field (`public/glass.js`) and banding-free
+  gradients, not a dependency.
+- [appllama-skills](https://github.com/Appllama/appllama-skills) (MIT; name/logo trademarked) —
+  agent skills for building native-quality mobile apps from top-app design patterns, using the
+  Appllama MCP design library and Expo simulator checks. Question: useful for the future Mac/iOS
+  client or as a pattern for agent-driven UI QA.
+- [Unsloth](https://github.com/unslothai/unsloth) (Apache-2.0 core) — fine-tuning and RL
+  library for local models, and a major publisher of GGUF quantizations (dynamic quants).
+  Questions: are its GGUFs the preferred source for Discover/known-good settings (R8), and is
+  local fine-tuning (for example a Diary-style or tool-calling adapter) worth a later spike on
+  this hardware?
+
+**Later:** Mac execution node and richer desktop capabilities; Auto architect/harness routing
+once evidence exists.
+
+Research tied to a build item stays with it: task-conditional tool loading (E) and deep
+research mode (I) are measure-first, then build.
+
+## Order
+
+0. **Shipped.** Compaction correctness: protected-input preflight and validate-before-commit
+   ([spec §3–4](spec-context-projection.md)). Placed first because it is a verified bug —
+   a compaction that shrinks but doesn't fit is saved before the fit check — and it is small.
+1. **Shipped.** Live stats, settings ✕.
+2. **Shipped.** Deleted model state, safe defaults after download.
+3. **Shipped.** Full-page model manager with Easy/Advanced and the parity audit.
+4. **Shipped.** Mobile drawer, search button, brightness and banding (on-device check pending).
+5. **Shipped.** Live log tab, tool-call menu, settings sub-pages (first split).
+6. **Shipped (D1).** Modes and projects; the shared context layer (D2) waits for a second mode.
+7. **Shipped.** Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
+8. **Spec written / prepared.** Task-conditional tool loading (router + benchmark ready, not measured) and the deep research spec.
+9. Research priorities in ranked order; context-efficiency logging can start alongside the
+   build items.
+
+## Current phase — decisions build (2026-09-17)
+
+Build order from master-prompt.md § Current phase. Checked items are committed and pushed.
+
+- [x] 1. **D1 preflight** — `deploy/preflight/check.php` `modelLoaderBoundary()` blocks a deploy when
+  model-loader's `MODEL_LOADER_TOKEN` is unset/short, web lacks the same token, or diary shares a
+  network (or host mode) with model-loader; `overlay-release.sh` rolls back if the running diary can
+  resolve `model-loader`. PHP tests run on DaServer in a temp dir; the live resolved config is
+  **blocked** by it today, as intended, until the operator steps are applied.
+- [x] 2. **D5** — `server/features.cjs` registry (env `NOEVIA_FEATURE_*` is authoritative and locks the
+  toggle; otherwise the admin setting in the auth DB `settings` table; default off), routes in
+  `server/routes/features.cjs` (`GET /api/features` booleans for any user, admin list/PUT), UI in
+  `src/components/features/` (Settings → Administration → Features; shared `.noevia-switch`).
+  `previews` gates Scheduled/Plugins/Explore and the Code mode switch/workspace. Flags are cached
+  per browser under `noevia:feature-flags` to avoid a layout shift. `qa/features.cjs` added.
+  Deviation: the "Planned features" settings page stays visible — it is an honest roadmap list,
+  not a dead-end surface.
+- [x] 3. **D8** — `server/project-sweep.cjs`: after a delete is saved, `rmdir` (never recursive) the
+  project's `project-uploads`/`project-documents`/`project-assets` dirs if empty and realpath-inside
+  the tenant dir; remote WebDAV folder (directly under `PROJECT_ROOT_FOLDER`) and its empty
+  Documents/Images/Text/Other subfolders go only when PROPFIND shows no children and DELETE with
+  `If-Match` on the collection ETag succeeds (no ETag → no delete; S3 has no dirs). Logged as
+  `project.sweep`. Deviation: no route file — it is a post-commit hook, not an endpoint.
+- [x] 4. **D6** — Companion `workspace_ops.py` (`POST /api/workspace-ops`): DELETE = Trash capsules per
+  file, MOVE/COPY in one SQLite transaction, If-Match (428/412), protected set + `AI Memory/**`
+  (403), ≤500 entries/50 MiB (507), managed storage only (409), index outbox for old+new paths.
+  Web `server/dav-ops.cjs` (tenant-bound Destination, tagged `If` for destination, 503 +
+  Retry-After on unknown outcome), folder ETags in PROPFIND, `DAV: 1`, no LOCK. Tests:
+  `tests/test_workspace_ops.py` (19), `server/dav-ops.test.cjs`. Interop matrix still to run.
+- [x] 5. **D10** — Sidecar `POST /api/entries/append` (today only, `entryTime` must be now ±15 min,
+  UUIDv4 `requestId` = xid so replays never duplicate, no headings/markers, ≤8000 chars) on
+  `log_exchange`'s journal + guarded append. Web: `diary_append` tool in
+  `mcp-internal-tools.cjs` only when `features.diaryMcpWrite`; not in `reads`, so approval is
+  always required; audited `diary.append` (xid, length). Tests: `test_diary_append.py`,
+  `mcp-internal-tools.test.cjs`, `qa/diary-append-http.cjs`.
+- [x] 6. **D12** steps 4–5 — plan step (`research-plan.cjs`), service (`research-service.cjs`: budget
+  12 web calls/10 min/5 sources, one active job per project, report + `.sources.json` saved via the
+  upload path, artifacts on the job, cancel keeps finished sections, explicit partial save),
+  admin-only routes (`routes/research.cjs`, 404 unless `features.deepResearch`), Research tab in
+  the project (`src/components/research/`), `qa/research.cjs`. Deviation: files are named
+  `Research <date> <slug>.md` in the project's Text upload folder, because uploads only manage the
+  Documents/Images/Text/Other subfolders. The §8 measurement gate (real model) is still unrun —
+  no model is served on DaServer. Fixed on the way: `jobs.recover()` ignored `kinds`; the shared
+  close icon's second stroke was half length (skewed ×).
+- [x] 7. **D7** — `server/offsite-backup.cjs` (AES-256-GCM, HMAC chunk ids, 4 MiB chunks, encrypted
+  manifests, dedupe, restore into an empty dir with per-chunk and per-file verification, retention
+  7 daily/4 weekly/6 monthly + prune, restore test), `offsite-s3.cjs` (SigV4, HTTPS-only except
+  loopback, no credentials in URLs), `offsite-service.cjs` (env config, nightly at
+  `OFFSITE_BACKUP_HOUR`, status file, consistent SQLite copies via the online backup API),
+  `routes/offsite-backup.cjs`, Settings → Off-site backups. Operator env: `OFFSITE_BACKUP_S3_ENDPOINT`,
+  `_BUCKET`, `_REGION`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY`, `_PREFIX`, `OFFSITE_BACKUP_KEY_FILE`
+  (64 hex chars, refused inside a backed-up path), `OFFSITE_BACKUP_PATHS` (default `UI_DATA_DIR`;
+  add the Diary data mount to include the corpus). Deviation: Node AES-256-GCM instead of
+  age/libsodium (no new dependency). Tests: `offsite-backup.test.cjs`, `offsite-service.test.cjs`,
+  `qa/offsite-backup.cjs` (fake S3).
+- [x] 8. **D9** — `server/kiwix.cjs` read-only built-in box `offline-wikipedia` (`wikipedia_search`,
+  `wikipedia_read` with offset paging; only `/content/...` paths from this server; content labelled as
+  reference) when `features.kiwix` and `KIWIX_URL` are set. Compose: `deploy/examples/kiwix.override.yml`
+  (profile `kiwix`, `ghcr.io/kiwix/kiwix-serve:3.7.0`, read-only, cap_drop ALL, internal network,
+  no ports). Verified 2026-09-17 against a real kiwix-serve 3.7.0 on DaServer with a 26 MB test ZIM
+  in a temporary container (removed with its image and files). Not deployed.
+- [x] 9. **D4** — Impeccable 4.1.0 (npm shim + its pinned `@impeccable/cli-darwin-arm64` binary) run once
+  from a temp dir, removed afterwards; nothing added to the app or image. `detect --json src`: 9 findings.
+  Triage: **real** side-tab accents on the approval card (`app.css`) and `.msg-warning` → uniform
+  border/tint; **newly caught** dead `.diary-tab` rules (no component uses the class; removed from
+  `diary-tab.css` and `noevia.css`); **noise** ×2 bounce-easing (`--ease-spring` is
+  `cubic-bezier(0.16,1,0.3,1)`, no overshoot — flagged by name), blockquote rule, ×2 palette/theme
+  swatch miniatures (thick left edge draws the sidebar; annotated). Kept locally as
+  `npm run lint:design` (`scripts/lint-design.cjs`: side-tab, overshoot-ease, gradient-text; inline
+  `design-lint: allow` with a reason), tested in `tests/lint-design.test.cjs`, which also keeps the
+  stylesheets clean in `npm test`. Recommendation: keep the local script; re-run Impeccable
+  occasionally on a URL scan of the local spin-up, not as a dependency. No post-edit hook: the
+  script runs in <0.1 s inside `npm test` already.
+- [x] 10. **D3** — preset diff and go-steps in `research-known-good-settings.md` § D3 (4B capped at
+  24 576, 9B at 16 384, `spec-type` removed, gemma E2B out of the served set, nomic embed added).
+  Found while preparing it: the live `models.ini` has three presets and the GGUFs are back on disk,
+  so the "no models served" carry-over is stale; the engine runs `--models-max 1`, which would
+  make embeddings evict the chat model. **Applied live 2026-09-17** with `--models-max 2`, caps
+  verified (4B 22.7k tokens in 46 s, 9B 15.1k in 50 s) and stale Auto roles fixed.
+
+### Bug hunt
+
+Rotation order a→f (master-prompt § Bug hunt). Baseline 2026-09-17 before pass 1: npm test 587,
+typecheck/build green, every `qa/*.cjs` green except `mobile-audit` (clicked the Chat/Code switch
+that D5 hides — test fixed to use New chat), pytest diary 310 passed/3 skipped, model-manager 19,
+deploy 5, experiments 5.
+
+- 2026-09-17 · pass 1 (a, chat/approvals) · Stopping a reply while a write awaited approval saved the
+  approval card as `pending`; the call showed Allow/Decline buttons that could only 404, and a
+  `running` chip spun forever after reload · `settleToolCalls` marks unfinished calls "not run" when
+  a reply ends and when history loads · `tests/tool-call-state.test.cjs`, `qa/stopped-approval.cjs`.
+- 2026-09-17 · pass 1 (a) · Hardening, not a confirmed user bug: two sends dispatched in one task
+  started two generations for one chat (render-state guard); real double Enter presses are separate
+  discrete events that React flushes, so no human-reproducible path was found · ref guard ·
+  `qa/duplicate-send.cjs`.
+- 2026-09-17 · pass 1 (a) · Considered, not a bug: "Allow for this chat" keyed by `userId:-` when a
+  request has no chatId — the browser always sends one and only the same user can omit it.
+- 2026-09-17 · pass 2 (b, auth) · Password sign-in skipped Argon2 for unknown usernames (0.09 ms vs
+  12.5 ms), so response time revealed which accounts exist; and the limiter keyed on address+username
+  let one address spray passwords across any number of usernames · always verify against a lazily
+  created dummy hash; add a 30-per-15-min per-address limit · `server/auth-enumeration.test.cjs`.
+- 2026-09-17 · pass 2 (b) · Suspected, not fixed: passkey `authentication/options` returns the
+  credential ids of a known username and an empty list for an unknown one (enumeration). Returning
+  an empty list for everyone would break sign-in with non-discoverable passkeys
+  (`residentKey: 'preferred'`); needs a product decision on discoverable-only passkeys.
+- 2026-09-17 · pass 3 (c, Diary/storage) · The D10 append endpoint answered 200 "Added a note" when
+  storage refused the write and the journal only queued it · 202 `queued: true` unless the document
+  carries the new marker; the tool says the note is in the write queue ·
+  `tests/test_diary_append.py::test_append_reports_queued_when_storage_refuses_the_write`,
+  `mcp-internal-tools.test.cjs`.
+- 2026-09-17 · pass 4 (d, model manager) · No confirmed bug: token middleware (exact health exemption,
+  constant-time compare), admin-only proxy path checks, download tracker states and evidence
+  derivation reviewed. Noted: MTP evidence appends on every ≥0.05 acceptance change, so
+  `evidence.jsonl` grows slowly and is re-read per reply — watch, not fixed.
+- 2026-09-17 · pass 5 (e, projects/uploads/research) · No confirmed bug: project config patch indexes
+  a spread copy (only affects document indexing state, which that path never touches), upload caps,
+  research budget and job scoping reviewed.
+- 2026-09-17 · pass 6 (f, UI) · With the "inference unreachable" banner on short phones (375×553,
+  568×320), a new chat opened with the composer's add/send row off-screen or under the stats footer;
+  the header's settings button also wrapped below the title at ≤640 px · greeting shrinks before the
+  composer, header stays one row, stats footer and banner compact on short viewports ·
+  `qa/short-phone-composer.cjs`.
+- 2026-09-17 · pass 6 (f) · Touch targets under 44 px on phones/tablets: composer add/send (32),
+  chat settings (32), project tabs (32 tall), project card options (30×33), Settings back (30 tall)
+  and close (32 wide), project filter (38), thinking-effort select (38), "open an empty chat" (17) ·
+  `(pointer: coarse), (max-width: 640px)` minimums · `qa/touch-targets.cjs`.
+- 2026-09-17 · pass 7 (a) · No new confirmed bug: client SSE reassembly, heartbeat during approval
+  waits (5 s keep-alive vs Cloudflare's idle limit), retry/edit truncation reviewed.
+- 2026-09-17 · pass 8 (b, admin/features) · Turning "Offline Wikipedia" or "Diary append tool" on in
+  Settings saved and showed "on", but both are wired into tool catalogues at startup, so nothing
+  changed until a restart (and turning them off left the tools live) · restart-wired features keep
+  answering with the running value and the page says "Restart the server to apply" ·
+  `features.test.cjs`, `qa/features.cjs`.
+- 2026-09-17 · pass 9 (c) · No new confirmed bug: DAV move/delete enqueue old and new paths; the
+  outbox marks them dirty and retrieval already refuses dirty documents until reindexed.
+- 2026-09-17 · pass 10 (d, calibration) · When a calibration was interrupted or failed after
+  `models.ini` changed, the original profile was (correctly) not overwritten, but nothing told the
+  admin that the calibration's context size might still be in the profile · `restored: false` and an
+  explicit error sentence in both paths · `llamacpp-calibration.test.cjs`.
+- 2026-09-17 · pass 11 (e, research) · After the web-call budget ran out, later sub-questions were
+  written as "No source had relevant information" — a false claim about questions never searched —
+  and the report was not marked partial · "Not researched: the web-call budget was used up", partial
+  flag and researched count · `research-runner.test.cjs`.
+- 2026-09-17 · pass 13 (a, chat history) · **Data loss:** `POST /api/chats/:id/history` kept only the
+  last 40 messages (the model replay cap), so every save of a chat longer than 20 exchanges deleted
+  its oldest turns for good; saves over 1 MB (long reasoning or tool output) were refused with 413 and
+  the client ignored the failure · stored transcript cap 5000 messages / 32 MB, separate from the
+  40-message model replay; oversize answers with a readable message ·
+  `server/chat-history-routes.test.cjs`. Suspected, not fixed: two devices saving the same chat
+  overwrite each other (last writer wins; no version check) — needs a merge design.
+- 2026-09-17 · pass 13 (a, context) · The chat handler cut the incoming history to the last 40
+  messages before the context projection, so older turns of any chat past 20 exchanges vanished from
+  the model's context with no summary (and the compaction prefix shifted every turn) · offer up to
+  1000 messages to the projection (compaction's own bound) and raise `/api/chat` body limit to match ·
+  `qa/chat-context.cjs` (long chat reaches the model).
+- 2026-09-17 · pass 14 (b, auth) · One-time secrets were not single-use under concurrency: the
+  invitation, first-run setup code and recovery link were checked before the asynchronous Argon2 hash
+  and consumed after it without a guarded update, so two simultaneous submissions created two
+  accounts from one invite (including admin invites), two administrators from one setup code, or
+  two password resets from one link · consume inside the transaction with `… AND used_at IS NULL` /
+  delete-if-matches and treat a lost race as used · `server/auth-races.test.cjs`.
+- 2026-09-17 · pass 15 (c) · No new confirmed bug: remote backup restore (checksummed immutable
+  manifest, tenant-scoped objects, new directory only, overlap checks) and DAV write guards reviewed.
+- 2026-09-17 · pass 16 (d) · No new confirmed bug: download destinations come from base names/stems
+  (no traversal), URL downloads reject slashes and `..`, all behind the model-loader token.
+- 2026-09-17 · pass 17 (e) · No new confirmed bug: in-memory caches (vision descriptions ≤64, Nextcloud
+  flows ≤100, approvals time out) are bounded; research stores are per workspace.
+- 2026-09-17 · pass 18 (f) · No new confirmed bug: keyboard focus rings visible on the first 30 tab
+  stops (375/1440, light/dark); no animation runs under `prefers-reduced-motion: reduce` in chat,
+  settings, projects and Diary. The earlier Settings "double highlight" was the test pointer hovering.
+- 2026-09-17 · pass 19 (a, chat lists) · Free-chat and project-chat lists were saved by replacing the
+  whole list with the browser's copy, so a second tab/device — or the same tab sending in a new chat
+  before the previous save refreshed its state — silently removed chats from the sidebar (their
+  transcripts stayed on disk, unreachable) · server merges by id, deletions only via DELETE with
+  tombstones so stale lists cannot resurrect them, list cap 200 → 1000 ·
+  `server/chat-lists-routes.test.cjs`, `server/chat-lists.cjs`.
+- 2026-09-17 · pass 20 (b) · No new confirmed bug: sessions, internal MCP token replay, DAV
+  re-authorization after body reads, and new admin routes (features, backups, research) reviewed.
+- 2026-09-17 · pass 21 (c) · No new confirmed bug: sidecar tenant state creation is serialized under
+  `_tenant_lock` (one write lock per corpus).
+- 2026-09-17 · pass 22 (d) · No new confirmed bug: calibration start takes the exclusive maintenance
+  gate before any preset change.
+- 2026-09-17 · pass 23 (e) · No new confirmed bug: research start and off-site backup runs check and
+  claim within one event-loop turn; the D8 sweep cannot remove a folder a new project allocated.
+- 2026-09-17 · pass 24 (f) · No new functional bug: Diary reading at 375/1440. Cosmetic: the Diary
+  breadcrumb separators sit off-baseline at 375 px — folded into UI polish (A8).
+- 2026-09-17 · pass 25 (a, privacy) · Deleting a chat while its reply was still streaming removed the
+  transcript, then the reply's final save wrote it back to disk — a deleted conversation persisted
+  (hidden from the sidebar) · history saves for tombstoned chats answer 410 ·
+  `chat-lists-routes.test.cjs`.
+- 2026-09-17 · pass 25 (a, privacy) · Same race for context state: a reply finishing after its chat was
+  deleted re-saved the chat's context file (which can hold a conversation summary) · removed at the end
+  of the request when the chat is tombstoned · `qa/chat-context.cjs`.
+- 2026-09-17 · passes 26–30 (b–f) · No new confirmed bugs. Checked: per-user tombstones and context
+  routes stay in the tenant's workspace (b); queued append retries dedupe by marker (c); evidence
+  appends are whole-line (d); sidecar ZIP imports land only in `Imports/<new name>` with conflict
+  checks (e); full suite re-run after rotation 5 — every `qa/*.cjs`, pytest diary/model-manager,
+  deploy and experiments green (f and all).
+- 2026-09-17 · pass 31 (a) · No new confirmed bug (reload mid-stream aborts server-side as designed).
+- 2026-09-17 · pass 32–34 (b–d) · No new confirmed bugs (re-checked the pass-19/25 tombstone paths for
+  cross-tenant access, queued append retries, evidence line atomicity).
+- 2026-09-17 · pass 35 (e, research) · Running the same research question twice on one day overwrote
+  the first report and its sources file · numbered names when either file exists ·
+  `research-service.test.cjs`.
+- 2026-09-17 · pass 36 (f) · No new confirmed bug.
+- 2026-09-17 · rotation 7 (passes 37–42) · **No new confirmed bug in any area** — stop condition met.
+  Checked with a different technique: randomized fuzzing of `dav-ops` destination/If parsing,
+  chat-list merge, plan sanitizing, search-result parsing, report names and backup retention (20k +
+  5k cases, no crash or invariant break); a property fuzz of sidecar `workspace_ops` (300 corpora ×
+  25 random delete/move/copy steps, 1,634 successful operations) found no protected-file change, no
+  mutation by a refused operation and no content lost outside Trash; CSRF ordering of the new admin
+  routes; full-suite re-run green.
+
+**Bug hunt summary (2026-09-17, 7 rotations, 42 passes).** Fixed per area — a (chat/approvals/history):
+6 (stale approval cards after Stop, history truncated to 40 messages, >1 MB histories refused,
+context dropped past 40 messages, stale chat lists erasing chats, deleted chats resurrected by late
+saves ×2) plus one hardening (same-tick double send); b (auth/admin): 3 (sign-in username timing +
+password spraying, one-time secrets reusable under races, restart-wired feature toggles pretending to
+be live); c (Diary): 1 (append claimed success while only queued); d (calibration): 1 (unrestored
+profile not reported); e (research/projects): 2 (budget-skipped questions reported as "no relevant
+source", same-day reports overwritten); f (UI): 2 (short-phone composer hidden, sub-44 px touch
+targets); plus `jobs.recover()` ignoring store kinds and the skewed close icon found during the
+build. **Suspected, then fixed after the hunt:** passkey options revealed whether a username exists (now padded with stable decoy ids, `auth-enumeration.test.cjs`); two devices saving the same chat transcript were last-writer-wins (now revisioned saves with 409 + client merge, `chat-history-routes.test.cjs`, `tests/transcript-merge.test.cjs`, `qa/two-device-history.cjs`). The MTP evidence log growth is bounded too (compaction keeps the newest 50 records per model/category/identity past 1 MB, `evidence.test.cjs`). Nothing remains suspected. **Needs the user:** applying D1's operator steps before the next deploy
+(the new preflight blocks the live config until then); D3 preset diff and `--models-max 2`; SMB pilot
+and cutover; an off-site provider and budget; a live-credit research measurement.
+- 2026-09-17 · follow-up to pass 2 (b) · Found while preparing the deploy: the per-address limit
+  counted every sign-in, and behind the Cloudflare tunnel (TRUST_PROXY off) the whole household
+  shares one socket address, so 30 ordinary sign-ins in 15 minutes would have locked everyone out ·
+  only attempts on non-existent usernames count toward the address block; once blocked, all attempts
+  from it get the same 429 (no enumeration signal) · `auth-enumeration.test.cjs` (8 members × 4
+  sign-ins from one address).
+
+- 2026-09-17 · after the hunt · Auto roles named two models no longer served, so every Auto
+  message failed upstream · 409 naming the role before any engine call, settings alert · `auto-roles-check.test.cjs`, `qa/llamacpp-http.cjs` · 8e4dcd0
+- 2026-09-17 · release tooling · a failed local build shipped an empty `dist/` into the image build
+  (stopped before switching) · overlay script refuses a tarball without a built bundle · c14df66
+- 2026-09-17 · f · message edit box used `--surface/--line/--muted-ink`, defined nowhere, so dark
+  mode got light fallbacks · real tokens + `undefined-token` design-lint rule · 7248c4a
+- 2026-09-17 · f · accepted glass study's pointer glint never ported (CSS read `--glass-x` nothing
+  set) · `public/glass-highlight.js` · 7248c4a; a queued frame re-lit a control after the pointer
+  left · `glass-highlight.test.cjs` · 52f982e
+- 2026-09-17 · f · archiving a chat hid it everywhere with no way back · Data → Archived chats · 52f982e
+- 2026-09-17 · e · data export would have included the internal Diary attachments project · filtered
+  like `/api/workspace` · 0d269fa
+- 2026-09-17 · e · delete-old-chats used a preview loaded before old chats arrived and deleted one
+  without confirmation (caught by QA) · fresh count on choose, server refuses unconfirmed deletes
+  (409) · `routes/account.test.cjs` · 25325ac
+- 2026-09-17 · f · `qa/mtp.cjs` broke when stats became a collapsed pill · opens the pill first · d2adc66
+- 2026-09-17 · f · phone Settings showed an empty bar holding a second close button under "Back to
+  app"; Projects empty state had two identical primary buttons; "1 workspace" on the Projects page ·
+  fixed with QA · 4aea5d3, 0d269fa
+- 2026-09-17 · a · test sandbox for `handleChat` lacked new globals and hung the whole suite ·
+  stubs added · 0e5ed34
+
+## Testing rules
+
+- Diary work uses a per-run **copy** of `AI frontend thing/diary-test/`. Never the folder
+  itself, never the real Diary, never production.
+- Every UI change is checked visually on a local spin-up, repeatedly: 375/768/1440, light
+  and dark. Suites complement looking; they don't replace it.
+- Every commit: `npm test`, `npm run typecheck`, `npm run build` in `apps/web`, plus the
+  affected `qa/*.cjs` suites.
 
 ## Explicitly not doing
 
-- Renaming any `cowork` identifier (env vars, images, cookies, Unraid project name) —
-  intentional compatibility preservation, per `agent-brief.md`.
-- Anthropic extended-thinking wire format, per-message thinking toggles, or exposing
-  model reasoning tokens.
-- A schema-driven wizard that mirrors every Settings category.
+- Renaming `cowork` identifiers.
+- A global "never ask" for write tools.
+- Vendoring an agent framework, or adopting an external harness/browser framework as noevia's
+  API; external projects are references and adapters, not the architecture.
+- Resurrecting Diary insights.
+- Exposing admin-only external-source mounts to members before tenant ownership exists.
+- 2026-09-17 (afternoon) · baseline before the next rotation: npm test 661, Diary pytest 310, model
+  manager 27, deploy 4, experiments OK; 59 QA suites, 57 pass. `qa/features.cjs` and
+  `qa/offsite-backup.cjs` still clicked "Close settings" on phones, which 0d269fa hid; test-only fix.
+- 2026-09-17 · a (self-review) · the new Tune button showed for members, whose model manager is
+  admin-only · shown only with `modelManagement` · qa/native-model-picker covers admin and member
+- 2026-09-17 · d · Easy "Use and save" wrote Qwen3.5's native 262K context live (memory-only
+  estimate) · capped by calibration / measured prompt speed / 32K · 18c1349, ba10351
+- 2026-09-17 · d · any file with an "-mtp-" token counted as a draft head: multi-GB MTP model builds
+  were hidden, refused by safe defaults and could draft for themselves · size check · 18c1349
+- 2026-09-17 · e · tool router returned boxes in selection order, so a large earlier box used the
+  token budget before the best match · best first · c36eee5 (needed box 16/26 → 26/26 live)
+- 2026-09-17 · f · ConfigureTab crashed (blank page) on a sections response without arrays, now
+  reachable from chat through Tune · validated · ba10351
 
----
-
-# Appendix — reasoning-effort spec
-
-Folded in from the former `spec-reasoning-effort.md`. Workstream 2 above
-implements it, with two of its open questions now answered — see the note after
-the table.
-
-## The idea, and why it was parked
-
-A per-project or per-message control that trades reasoning depth against
-speed and cost (low / medium / high). Parked because the feature has an
-honest implementation on only a subset of providers, and a dishonest-feeling
-one on the rest — and "silently does nothing" is worse than "not offered."
-
-## Provider landscape (the whole problem in one table)
-
-| Provider family | Real mechanism | Shape |
-| --- | --- | --- |
-| OpenAI, OpenRouter-style `reasoning_effort` | Yes — `reasoning_effort` on the chat completion | one string: `low` / `medium` / `high` |
-| Anthropic-style extended thinking | Yes, but a **different shape**: `thinking: { type: "enabled", budget_tokens: N }` plus a required minimum output budget | token budget, not a level |
-| Locally hosted (Lemonade, Ollama, LM Studio, llama.cpp servers) | **No standard parameter.** Some model runtimes (not APIs) accept soft hints like `/think` or `/no_think` in the prompt; effect varies per model | none — at best a prompt hint |
-| Unknown/generic OpenAI-compatible endpoints | Unknown. Sending `reasoning_effort` is either ignored (harmless) or rejected with a 4xx (breaking chat) | unknown |
-
-The registry is intentionally generic: any OpenAI-compatible endpoint can be
-registered. So the provider family cannot always be known up front — which is
-exactly the trap. See "Capability detection" below.
-
-## Core design decisions (proposed)
-
-1. **Scope: per-project setting, defaulting to "default" (send nothing).**
-   Not per-message. A per-message toggle multiplies UI surface for a feature
-   whose value is mostly "set once per project"; the chat composer should not
-   grow a knob that most users on local models can never use honestly. A
-   per-project setting lives next to the existing per-project model choice
-   and reads the same way.
-2. **Three states: `default` / `low` / `high`.** Medium equals default in
-   every backend we know of; offering it invites a knob that does nothing
-   anywhere. `default` sends no parameter at all, which is the only choice
-   that is honest on every provider.
-3. **Never send a parameter the backend wasn't verified to accept.** The
-   failure mode to design against is breaking all chat for a project because
-   a local server 400s on an unknown field. Concretely:
-   - When the user picks `low`/`high`, the server sends `reasoning_effort`
-     **only** if the selected provider has been verified (see detection),
-     else falls back to the prompt hint — and says so.
-4. **Capability detection is optimistic-probe, cached, per provider base
-   URL.** First request after a mode change sends `reasoning_effort` with
-   `reasoning: { exclude: true }`-free minimal payload? No — simpler and
-   better: send the real request with the parameter; on a 4xx whose body
-   mentions the field (or a 400/422 generally, once, flag-worthy), retry once
-   without it, mark the provider `unverified` in memory, and surface a
-   one-time warning ("this provider rejected the reasoning setting; using
-   best-effort hints instead"). The cache lives for the process lifetime;
-   a provider edit resets it. This avoids both the probe-request cost and
-   the "test call lies about chat behavior" problem.
-5. **The honest fallback is a visible hint, not a hidden one.** When no real
-   mechanism applies, the injected hint is:
-   - `low`: "Answer directly and concisely; skip step-by-step reasoning."
-   - `high`: "Think through this step by step before answering."
-   The UI shows the selected mode with an indicator distinguishing "real"
-   (parameter sent) from "hint" (prompt-injected, best-effort), per the
-   parking-lot requirement that users not be misled.
-6. **Anthropic-shape providers are out of scope for v1.** The registry
-   speaks OpenAI-compatible chat completions; teaching it a second wire
-   format is a separate, larger project. The spec consciously ships without
-   it rather than pretending `reasoning_effort` covers it.
-7. **The diary pipeline is untouched.** Logging, editing, and commentary run
-   on the aux model with their own prompts; they are deliberately not
-   subject to the project's reasoning-effort choice.
-
-## What v1 actually is (mechanical once agreed)
-
-- `projects.json` schema: add optional `reasoningEffort: 'default' | 'low' | 'high'` (absent = default; older files stay valid).
-- Server: project read/write endpoints accept the field; the chat path, when a project is active and the field is `low`/`high`, applies decision 3/4 against the chat's resolved provider.
-- Chat SSE: emit a `meta.reasoning` event (`real` / `hint` / `off`) so the UI can label the mode honestly.
-- UI: a three-way selector in project settings; a small mode badge in the chat header when anything other than `default` is active.
-- No changes to provider registry storage, RAG, or the diary.
-
-## Open decisions — ANSWERED 2026-09-09
-
-- **(a)** Scope. Spec proposed per-project only. **Answered: global default +
-  per-project override.** Workstream 2 above is written to that decision, and it
-  supersedes the "per-project setting" wording in decision 1 and in the v1 list.
-- **(b)** Fallback hint on unverified providers — silent with a badge, or ask once?
-  **Answered: badge, no prompt.** Spec's proposal stands.
-- **(c)** Should `high` also raise `max_tokens`? Spec proposed out of scope.
-  **Answered: reversed for the local/hint path** — see Workstream 5b. On an endpoint
-  that ignores `reasoning_effort` entirely, the output ceiling is the only lever that
-  does anything real. It remains out of scope on verified providers, where the
-  parameter itself does the work.
-
-## Non-goals
-
-- Per-message toggles; Anthropic wire format; chain-of-thought visibility
-  (the app never displays model reasoning tokens regardless of provider);
-  any change to the diary pipeline's aux-model behavior.
-
-
-2026-09-10 upload follow-up: unified file uploads, grouped storage/UI, stored-only
-opaque documents including DOCX, migration of earlier local image uploads on
-refresh, transfer/processing progress, and image preparation status are implemented.
-No DOCX reader, archive extractor, or other subsequent roadmap feature is implied.
-
-2026-09-10 live audit follow-up: legacy migration now has one durable owner, and
-image replacement retires obsolete vision input when the new original is stored
-only. Actual server checks covered OCR, embeddings, Nextcloud approval actions,
-and isolated diary capture. See [coverage and remaining concerns](live-audit-2026-09-10.md).
-
-Account cleanup from that audit also fixed administrator deletion after issuing
-invitations and protection of the last active administrator when other admins are
-disabled. Issued tokens are revoked atomically; audit history is retained.
-
-Composer follow-up: chat model selection now lives inside the text composer next
-to Send instead of in the top bar. A future thinking-effort control should sit
-beside it, using the reasoning behavior specified above; this placement change
-does not implement or claim model support for thinking settings.
-
-The same model control and composer layout now cover project landing pages and
-Diary landing/day views as well as free/project chats. Diary shows its fixed
-companion by default; only opt-in extras expose the optional context model picker.
-Coding's preview already places its disabled model control beside its send action.
-
-### Saved-storage Diary recovery — 2026-09-12
-
-Implemented durable exchange IDs, per-user reply/status records and browser
-reload recovery. Duplicate IDs cannot resend, and server-interrupted outcomes
-remain uncertain. Browser-local pending saves and optional-tool preparation
-transcripts remain separate. See [scope and validation](spec-diary-recovery.md).
-
-## Active project source refresh — 2026-09-13
-
-Opening a project already refreshed attached folders. This follow-up adds return,
-focus, online and visibility triggers with a one-minute cooldown, plus a one-minute
-timer that refreshes after five minutes of staleness. Only the open project runs;
-hidden/offline tabs and active project generation defer new automatic requests.
-In-flight work is deduplicated across view changes; already-started server jobs
-continue. Existing bounded source sync, stale-source error handling and instruction
-skill re-review remain intact. No whole-drive polling or Diary corpus tests.
-
-358 web tests, typecheck and build pass. Scheduler tests cover cooldowns, failures,
-long overlapping requests, project isolation and disposed callbacks. Synthetic
-real-HTTP skill review/exclusion regression passes; Sources guidance reviewed in
-light/dark and 375/768/1440 layouts without horizontal overflow. Candidate rollout
-is pending; production remains f7b9d95 until the deployment record confirms it.
-
-Source-refresh rollout is verified as `8fa1112`; see deployment.md for checks and rollback.
-
-### 2026-09-13 Settings/material continuation
-
-See [Settings category audit](settings-audit.md) and the latest
-[verification record](roadmap-audit.md). First reliability increment and shared
-material are implemented locally, with 376 tests/typecheck/build and focused
-browser verification. Not deployed; all-view integration/release QA remains open.
-Next: storage action serialization/retry, Users action errors, model-loading states.

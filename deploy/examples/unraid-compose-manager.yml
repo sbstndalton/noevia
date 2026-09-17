@@ -77,6 +77,10 @@ services:
       # say) — otherwise password login from the LAN IP 403s. Passkeys still
       # only work from PUBLIC_ORIGIN's hostname; see README.
       ADDITIONAL_TRUSTED_ORIGINS: ${ADDITIONAL_TRUSTED_ORIGINS:-}
+      # Compose Manager sits behind Unraid's own proxy on most installs, and on a
+      # Cloudflare Tunnel on this one. Without it every request looks like it came
+      # from the proxy and per-IP rate limiting throttles everyone as one client.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
       CORPUS_ROOT: ${CORPUS_ROOT:-}
       WEBDAV_BASE_URL: ${WEBDAV_BASE_URL:-}
@@ -90,10 +94,39 @@ services:
       DEFAULT_PROVIDER_ID: ${DEFAULT_PROVIDER_ID:-default}
       DEFAULT_PROVIDER_LABEL: ${DEFAULT_PROVIDER_LABEL:-Local inference}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-default}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       MODEL_MANAGER_KIND: ${MODEL_MANAGER_KIND:-none}
       MODEL_MANAGER_BASE_URL: ${MODEL_MANAGER_BASE_URL:-http://host.docker.internal:11434}
       MODEL_MANAGER_API_KEY: ${MODEL_MANAGER_API_KEY:-}
       LLAMACPP_PRESET_PATH: ${LLAMACPP_PRESET_PATH:-}
+      # Optional MCP server. Empty = no MCP toolboxes, which is a healthy state,
+      # not a degraded one. These six keys are easy to leave out when this file
+      # is copied into Compose Manager by hand, and the symptom is not an error:
+      # the toolboxes simply do not appear. deployment-config.test.cjs and the
+      # preflight drift check exist to catch exactly that.
+      # One Nextcloud MCP server, the historical form.
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-}
+      # Several servers: `id|url|auth` entries, comma separated. auth is
+      # `nextcloud` (forward the user's Nextcloud app password), `bearer:NAME`
+      # (a service token read from that environment variable) or `none`.
+      # Omitting auth means none — a server never inherits the credential by
+      # accident. Takes precedence over MCP_SERVER_URL when set.
+      MCP_SERVERS: ${MCP_SERVERS:-}
+      # Which curated toolboxes are offered in the picker. Unset offers all of
+      # them; `core` is always offered.
+      ENABLED_TOOLBOXES: ${ENABLED_TOOLBOXES:-}
+      # Service tokens for MCP servers configured with `bearer:NAME`. The name
+      # is referenced from MCP_SERVERS; the value lives here and never in a URL.
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      # Origins that are the SAME Nextcloud the MCP server talks to. Only a
+      # credential stored for one of these is ever forwarded. Empty = never.
+      MCP_NEXTCLOUD_ORIGINS: ${MCP_NEXTCLOUD_ORIGINS:-}
+      # noevia's own capabilities over MCP (Diary reads, project documents).
+      # In-process second listener on loopback; 0 disables it entirely and is
+      # the default. NEVER add this to `ports:` — it answers to a capability
+      # token, not a session cookie. Pair it with an MCP_SERVERS entry:
+      #   noevia|http://127.0.0.1:8022/mcp|internal
+      MCP_INTERNAL_PORT: ${MCP_INTERNAL_PORT:-0}
       UI_DATA_DIR: /app/server/ui-data
     volumes:
       - ${COWORK_STATE_DIR:?Set COWORK_STATE_DIR}/web:/app/server/ui-data

@@ -164,7 +164,7 @@ and `.bak.before-cfc3a05` / `.bak.before-4ec8269` config/Compose backups. No
 environment or Compose schema additions. Fixed migration/image behavior and
 administrator deletion were verified against live routes. Synthetic account,
 diary and Nextcloud cleanup completed; public UI and health passed. See
-[the live audit report](live-audit-2026-09-10.md) for coverage and unresolved issues.
+[the live audit report](roadmap.md) for coverage and unresolved issues.
 
 Latest application rollout: `dc325d5`, replacing `4ec8269`. The chat model picker
 now sits inside the composer next to Send. All three images use this tag; retain
@@ -878,4 +878,260 @@ user's choice), with projectors for Qwen 9B and both Gemmas. Assets index-Ckupi_
 index-CweMon5t.css. Browser QA: 15 suites pass. diary-landing, diary-reading and
 reasoning fail identically on the unchanged 155a541 build (pre-existing). Rollback
 a8d5bd2 with `.bak.before-e4b2f73` env/Compose/override backups; script
-`claude-output/noevia-deploy-e4b2f73.sh`.
+`deploy/examples/overlay-release.sh`.
+
+## Releases a48a8c4 and 503b1c5 — 2026-09-15/16
+
+**a48a8c4** (MCP compose keys and drift check, model refresh on change, in-app MCP server
+off by default, unified Models & routing, minimal chat model panel, General settings,
+cost estimates removed). Overlay on `cowork-web:e4b2f73` (no dependency changes);
+diary/ocr/model-loader retagged. Five services healthy, zero restarts, native llama
+unchanged. **Gaps:** no appdata backup was taken first, and the shipped `dist` carried
+one stale bundle (index.html references the correct one). Rollback `e4b2f73` with
+`.env.bak.before-a48a8c4`.
+
+**503b1c5** (docs only: single roadmap and master prompt, `deploy/examples/overlay-release.sh`).
+Backup `ab_20260916_151428` taken first. All images retagged from `a48a8c4`, no rebuild;
+release dir `releases/503b1c5`, `COWORK_VERSION=503b1c5`, web/diary/ocr recreated via
+preflight `up.sh`. Five healthy, zero restarts, native llama unchanged; model-loader still
+runs its `e4b2f73` tag as before. Deployed over Tailscale (`root@100.70.173.74`) because
+the Mac was off the LAN. Rollback `a48a8c4` with `.env.bak.before-503b1c5`.
+
+Open on the live host: no models served (models.ini empty, GGUFs removed); the live
+Compose Manager file lacks the MCP keys (`mcp: disabled`).
+
+## Release 657d21b — 2026-09-17 (decisions build, bug hunt, UI first pass, D1 applied)
+
+Production **657d21b** replaces 503b1c5, deployed on the user's instruction ("you can deploy to
+prod"). Contents: D5 feature registry (all new features off), D8 folder sweep, D6 DAV
+DELETE/MOVE/COPY (sharing listener still unconfigured), D10 Diary append (off), D12 research (off),
+D7 off-site backups (off, unconfigured), D9 Kiwix (off, not deployed), D4 design lint, the bug-hunt
+fixes (transcripts no longer truncated to 40 messages, merged chat lists and revisioned transcripts,
+auth races and enumeration, approval/queued-append honesty, calibration restore notice, short-phone
+layout and touch targets) and UI polish (Lucide icons, System appearance, status pill).
+
+**D1 applied as the first step:** `MODEL_LOADER_TOKEN` generated into `config/.env`; the live override
+gives model-loader the token and only the new `models` network, web the token and `models`, llama
+`[default, models]`. The override also gained the six MCP keys and `TRUST_PROXY` the base file lacked,
+so startup now logs `mcp: nextcloud+tavily` (values were already in `.env`). Installed
+`tools/preflight` refreshed from the release (D1 boundary check + env-key drift).
+
+Flow (`/tmp/noevia-release-657d21b.sh`, kept in the operator's temp during the session): appdata
+backup `ab_20260917_033…` (web/Diary archives + configs) → overlay images (web on 503b1c5 with new
+`dist`+`server`; Diary on 503b1c5 with new `agent/`; model-loader on e4b2f73 with new `app/`; ocr
+retagged) → in-image web server tests 509/0, Diary and model-loader import checks → `.env`, override
+and preflight backups `*.bak.before-657d21b` → resolved-config preflight (mounts, D1, env keys all
+PASS) → `up -d --no-build --wait` for web, diary, ocr, model-loader, llama (llama recreated to join
+`models`; no model was loaded) → verification: Diary cannot resolve `model-loader`; model-loader 401
+without the token, 200 with it; five services healthy, zero restarts; public index and hashed
+assets 200 with the new bundle. Automatic rollback restores `.env`, override, preflight tools, the
+`current` symlink and runs `up` on 503b1c5.
+
+Rollback manually: copy the three `*.bak.before-657d21b` files back, `ln -sfn releases/503b1c5
+current`, `COWORK_VERSION=503b1c5`, then preflight `up.sh … -d --no-build --wait`.
+
+Not done by agents: no sign-in to real accounts (no credentials entered); the real Diary corpus was
+not touched. Still running and not ours: `llama-vulkan-test` (documented as kept stopped for native
+rollback) is up — see the session summary.
+
+## 2026-09-17 follow-up on 657d21b — D3 applied, Kiwix live, features on (user decisions)
+
+No image change. Each file edited was copied first (`*.bak.before-d3`, `*.bak.before-kiwix-features`,
+`.env.bak.before-internal-mcp`); started with the installed preflight `up.sh`, all services healthy.
+
+- **D3:** embedding model downloaded, `models.ini` swapped, `--models-max 2`, `EMBEDDING_MODEL`
+  renamed, Auto roles fixed. Evidence in `research-known-good-settings.md` § D3 applied.
+- **D9 Kiwix:** `wikipedia_en_all_nopic_2026-06.zim` (52 690 706 555 bytes, size matches the
+  mirror) in `/mnt/disk3/kiwix`; `kiwix` service added to the live override on an internal
+  `kiwix` network shared only with web (Diary cannot resolve it); search for "Alan Turing" returns
+  results. `offline-wikipedia` added to `ENABLED_TOOLBOXES`.
+- **Features on** through override env: previews, Diary append tool, deep research, Kiwix.
+  Off-site backup stays off (no target — user chose to skip).
+- **In-app MCP server:** `MCP_INTERNAL_PORT=8022` and `noevia|http://127.0.0.1:8022/mcp|internal`
+  in `MCP_SERVERS`; `diary` and `project-docs` toolboxes enabled. Startup logs
+  `mcp: nextcloud+tavily+noevia`, 10 in-app tools; port 8022 is not published.
+- `llama-vulkan-test` stopped (container kept) at the user's request.
+
+Rollback: restore the three backups named above plus `models.ini.bak-before-d3` and
+`ui-data/auto-roles.json.bak.before-d3`, then run preflight `up`. The ZIM can be deleted freely.
+
+## Release 8e4dcd0 — 2026-09-17 (stale Auto roles)
+
+Web-only overlay from 657d21b (`deploy/examples/overlay-release.sh`), appdata backup
+`ab_20260917_040312` first. `/api/chat` answers 409 when an Auto role names a model the engine no
+longer serves; Models & routing shows which. All five core services healthy, restarts 0, Kiwix
+untouched, startup logs `mcp: nextcloud+tavily+noevia`, public bundle `index-C9EG4mc8.js`
+matches the local build.
+
+First attempt shipped an empty `dist/` (the local `/tmp/noevia-qa-dist` target had been deleted,
+so `npm run build` failed and the chained `tail` hid the exit code); the image build stopped
+before anything switched and the stray release folder was removed. The script now refuses a
+tarball without `dist/index.html` and JS assets.
+
+Rollback: `overlay-release.sh`'s automatic path, or manually point `current` at
+`releases/657d21b`, restore `.env.bak.before-8e4dcd0`, run preflight `up` for web.
+
+## 2026-09-17 outage and recovery
+
+DaServer became unreachable around 04:15 (SSH banner timeouts, Unraid UI down, later public 530).
+The user restarted it at about 08:24; all services came back healthy. Syslog lives in RAM on this host
+and was lost on reboot, so the cause is unconfirmed (hypotheses in
+`research-findings-2026-09-17.md` §5 and §7). Ruled out: the new Docker networks (`cowork_models`
+172.26.0.0/16, `cowork_kiwix` 172.27.0.0/16) don't overlap the LAN (10.69.0.0/24).
+
+Mitigation applied after boot: engine back to `--models-max 1` (override backup
+`.bak.before-models-max-1`); llama recreated, healthy, public 200. Enable the Unraid syslog mirror
+to flash or a share before trying `--models-max 2` again with a GTT cap.
+
+## Release 127b300 — 2026-09-17 (Data, Personalization, shortcuts, HIG polish)
+
+Web-only overlay from 8e4dcd0 (`overlay-release.sh`), appdata backup `ab_20260917_082843` first.
+Contents: type scale and HIG cleanups, stale-role checks, tool router (flag off), Data (export,
+import, archived chats, delete old chats), Personalization (custom instructions, response style,
+background notifications), keyboard shortcuts, shared-memory warning, glass glint, undefined-token
+lint. Result: all services healthy with 0 restarts, Kiwix up, `mcp: nextcloud+tavily+noevia`, new
+routes 401 without a session, public bundle `index-nEvEttZ0.js` matches the build,
+`glass-highlight.js` 200. Engine stays at `--models-max 1`.
+Rollback: point `current` at `releases/8e4dcd0`, restore `.env.bak.before-127b300`, preflight `up` web.
+
+## 2026-09-17 live changes on 127b300 (no release)
+
+- **Nextcloud AIO repaired.** `nextcloud-aio-apache` and `-talk` crash-looped after the nightly AIO
+  update (new mastercontainer, 4-week-old child images; supervisord pid dir missing on the tmpfs
+  `/run`), so `drive.daserver.work` returned 502 and the Diary's WebDAV storage failed. Fixed by
+  pulling `aio-apache`/`aio-talk` and running the mastercontainer's `Cron/StopContainers.php`, then
+  `Cron/StartAndUpdateContainers.php` (as `www-data`). `daily-backup.sh` is no use in this state:
+  it waits for apache forever.
+- **Nextcloud Assistant uses the native engine.** Override: `llama` joins the external
+  `nextcloud-aio` network with alias `noevia-llama` (not published on the host; copy
+  `.bak.before-nextcloud-ai`). Also connected live with `docker network connect`, so no engine
+  restart. `integration_openai`: `url=http://noevia-llama:8080/v1`, service name "noevia llama.cpp",
+  default completion model `Qwen3.5-4B-Q5_K_M`, image/speech providers off. Verified with a
+  `core:text2text` task (status successful). With `--models-max 1`, Assistant requests share the
+  one model slot with noevia chats and can evict the loaded model; the engine has no API key, so
+  anything on the `nextcloud-aio` network can use it.
+- **Deep research off.** `NOEVIA_FEATURE_DEEP_RESEARCH: "false"` (copy
+  `.bak.before-deep-research-off`), web recreated with `up.sh … --wait web`. Gate failed; see
+  `spec-deep-research.md` §8.
+- **KoboldCpp test engine: added and removed the same day.** Rejected after measurement (findings
+  §12). Service, container, provider row, binary and override backup with its block are gone; the
+  override differs from `.bak.before-koboldcpp` only by `CONTEXT_LOG`.
+- **`CONTEXT_LOG=1`** on web (copy `.bak.before-context-log`), counts only, for step 5.
+- **Model downloads (user request):** gpt-oss-20b Q4_K_M, Gemma 4 E4B and 26B-A4B QAT UD-Q4_K_XL
+  (+ mmproj), Unsloth, sha256-verified, in `/mnt/user/ai-models/<name>/`, not in `models.ini`.
+  Qwen3.6-35B-A3B IQ3_XXS/IQ4_XS were downloaded for the KoboldCpp test and deleted with it.
+
+## Release ea57c83 — 2026-09-17 afternoon (model tuning, Tune button, folder sync, account memory, router)
+
+Appdata backup `ab_20260917_130015` ("Backup created without issues") first. Web overlay from
+127b300 with `overlay-release.sh` (web, diary, ocr healthy; `RELEASE_ea57c83_COMPLETE`). The model
+manager changed, so `cowork-model-loader:ea57c83` was built as an overlay on `8e4dcd0` (new
+`/srv/app`) and only `model-loader` was recreated; the Diary still cannot resolve it (D1). Native
+engine untouched.
+
+Live config (override copy `.bak.before-embed-router`): new `embed` service (pinned llama.cpp image,
+`--device none`, nomic-embed-text-v1 Q8_0, `-c 4096 -ub 2048 --parallel 2`, 1 GiB, `default`
+network only, healthcheck `/health`); web gets `EMBEDDING_BASE_URL=http://embed:8080/v1` and
+`NOEVIA_FEATURE_TOOL_ROUTER=true`.
+
+Verified: live autoconfig recommends 32K for the 4B and 12K for the 9B (capped by measured prompt
+speed, memory estimate 262K), built-in MTP detected on both; web → embed 46 ms, 768 dims, with the 9B
+still loaded on the engine; MCP 176 tools. Not verified here (needs the user's session): the Tune
+button, Easy mode and the router in a real chat.
+
+Rollback: `current` → `releases/127b300`, restore `config/.env.bak.before-ea57c83`, copy
+`docker-compose.override.yml.bak.before-embed-router` back, preflight `up` web and model-loader with
+`cowork-model-loader:8e4dcd0` (retag as `127b300` or set `COWORK_VERSION=127b300`), and remove `embed`.
+
+## Nextcloud AIO audit — 2026-09-17 afternoon (user request: optimise)
+
+Nextcloud 34.0.4 (AIO, PHP 8.4, Postgres, Redis, Imaginary, Elasticsearch, Collabora, Talk). Measured:
+`status.php` ~10 ms on the LAN, ~100 ms through Cloudflare, login page 137 ms; Postgres cache hit
+99.95 % (`shared_buffers` 256 MB for a 405 MB database, 75 k files); APCu + Redis caching and locking,
+OPcache 256 MB with JIT, cron background jobs current (96 jobs, none stuck), preview queue empty,
+Imaginary previews, no missing indices/columns/primary keys, all apps up to date. Idle CPU: Nextcloud
+~3.5 %, Postgres ~1 %. AIO rewrites PHP-FPM, `maintenance_window_start` (from
+`NEXTCLOUD_MAINTENANCE_WINDOW`, default 100 = any time) and Postgres settings on start, so hand
+tuning there does not persist and is not needed at these numbers.
+
+Changed:
+- Removed a stale `daily_backup_running` marker (created 10:15 by the interrupted `daily-backup.sh`
+  during the apache repair); left in place it could make AIO treat the nightly backup/update as
+  already running. No backup process was running.
+- (Earlier today) apache/talk repaired; `integration_openai` pointed at the native engine.
+
+Checked and left alone: "remote address could not be determined" only appears because setup checks
+run from the CLI; Caddy trusts private ranges and the host-network Cloudflare tunnel forwards the
+client IP. AIO Borg backup runs 04:00 UTC (00:00 Eastern, ~2 min), clear of mover 03:40 and appdata
+backup 04:10 Eastern.
+
+Needs the user: `default_phone_region` (country code), outgoing email server, Talk high-performance
+backend 2.1.1 lacks `changed-users` (upstream AIO image), and whether Nextcloud Assistant should get a
+dedicated task-processing worker (AI tasks otherwise wait for the 5-minute cron); in AIO that needs
+the mastercontainer environment or a community container.
+
+## 2026-09-17 later — phone region, Assistant speed, Talk, 4B preset (user request)
+
+- **Phone region:** `default_phone_region = US`. No outgoing email server (user has none).
+- **Nextcloud Assistant speed.** AIO already runs a supervised `taskprocessing-worker` (dinit,
+  300 s timeout); tasks were picked up in under a second. The delay was the model thinking: a
+  one-sentence text task generated 1 010–1 859 hidden reasoning tokens (53–100 s). Set
+  `integration_openai llm_extra_params = {"chat_template_kwargs":{"enable_thinking":false}}`.
+  Measured end to end through Nextcloud's task queue: **2.9 s** (was 57.6 s / 100.1 s). The worker
+  caches app config for up to 300 s after a change. A host cron worker added briefly was removed
+  (duplicate of AIO's).
+- **Talk.** `aio-talk:latest` (published 2026-09-11) is already running and the mastercontainer is on
+  the newest `latest` (2026-09-16); `beta` is older. The high-performance backend 2.1.1 still lacks
+  `changed-users`; waiting on an upstream AIO image. Not pinned by hand (AIO would revert it).
+- **Qwen3.5-4B-Q5_K_M preset** (copy `models.ini.bak.before-4b-retune`): `ctx-size` 262144 → 32768
+  (Tune's capped recommendation), `cache-ram` 19968 → 4096 (a 19.5 GiB host prompt cache on a 29 GiB
+  host), `spec-type` draft-eagle3 (no draft model) → `draft-mtp` using the built-in nextn layer.
+  Verified: loads with `n_ctx_slot = 32768`, "creating MTP draft context against the target model";
+  generation 40.2 tok/s on a list (98 % accepted), 36.0 tok/s with thinking (83 %), 23.2 tok/s on
+  prose (41 %), against ~19 tok/s before. GTT 4.0 GiB, host available 16.4 GiB.
+
+## Releases c54b5a5 and 7132487 — 2026-09-17 late afternoon (auto-tune)
+
+Appdata backups `ab_20260917_133936` and `ab_20260917_142705` first; both web-only overlays.
+`cowork-model-loader` retagged to each release (its code is unchanged since ea57c83).
+
+Live changes with these releases:
+- **Auto-tune** (`/api/models/autotune`, admin) measured every served model; results and the new
+  contexts are in `research-known-good-settings.md`. Presets now carry `spec-type = draft-mtp`
+  (4B, 9B), `ubatch-size` 512/1024 and verified contexts.
+- **Model folder sync** runs on the server (20 s after start, then every 15 min): a new GGUF gets
+  safe defaults and the engine reloads, with no page visit. The three models registered by hand
+  this morning (gpt-oss-20b, Gemma 4 E4B/26B) came from the pre-fix Easy mode and carried
+  unverified 131 072 contexts and a `draft-eagle3` setting with no draft model; auto-tune and
+  calibration replaced both.
+- **Deleted at the user's request:** `gemma-4-26B-A4B-it-qat-UD-Q4_K_XL` (15 GiB, section and
+  files) — it cannot load at a usable context on this GPU.
+- **Nextcloud:** `default_phone_region = US`; Assistant thinking disabled (57–100 s → 2.9 s);
+  task types `core:audio2text`, `core:text2image` and `core:text2speech` disabled, because this
+  server has no provider for them and the Assistant otherwise offers buttons that fail to schedule.
+  Talk stays on `aio-talk:latest` (2026-09-11); no newer image exists, so its missing
+  `changed-users` feature waits for upstream.
+
+Researched, not adopted: **Qwen3.8-Flash-Next** (Qwen4-generation architecture with an n-gram table
+that can live on SSD via `--model-ngram --ngram-load-mode read`) needs ~64 GiB of RAM even with the
+table off-GPU — the smallest build is ~72 GB, ~38 GB of it the table. Revisit if a smaller Flash
+variant ships. Qwen3.8-27B is a fine-tune of 3.6 (dense); Granite 4.2 30B (IBM, official GGUF,
+Q3_K_S 12.7 GB) is the newest first-party model that fits but is dense, so slower than gpt-oss-20b.
+
+## Releases daea26f → faeb9d2 — 2026-09-17 evening (Discover judged for this server)
+
+Web overlays plus a model-loader image per release (its Python changed); appdata backups taken
+before each. `current` and `COWORK_VERSION` both point at `faeb9d2`.
+
+Discover now judges every search result against this machine (`services/model-manager/app/discover.py`):
+real file sizes and quantisations from the repo tree (cached an hour, shards folded together,
+mmproj/MTP/EAGLE/Medusa companions excluded), parameter count and mixture-of-experts from name and
+tags, publisher trust, and whether a Q4-or-better file fits the GPU budget (12.5 GB here). Ranking is
+fit → trusted publisher → popularity with a 90-day half-life. Untrusted publishers and unsuitable
+models are hidden by default with counts and one-click toggles; filters cover size, quantisation,
+parameters, architecture, vision, licence and publisher; the panel links to the same search on
+Hugging Face.
+
+Two bugs found by running it against the live hub, both fixed the same evening: repos looked
+"suitable" on the strength of a stray 10 MB GGUF with no quantisation in its name, and
+`ggml-org/gpt-oss-120b-GGUF` offered a 1.59 GB "BF16" file that is an EAGLE3 draft head.

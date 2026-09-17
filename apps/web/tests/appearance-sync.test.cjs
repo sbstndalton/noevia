@@ -5,7 +5,7 @@ function harness(){
  const calls=[];
  const react={useRef:init=>{const i=cursor++;return refs[i]||(refs[i]={current:init});},useState:init=>{const i=cursor++;if(!(i in states))states[i]=init;return [states[i],next=>states[i]=typeof next==='function'?next(states[i]):next];},useEffect:(fn,deps)=>{if(!effectDeps||deps.some((x,i)=>x!==effectDeps[i])){effect=fn;effectDeps=deps;}}};
  const exports={};
- vm.runInNewContext(code,{exports,document:{documentElement:{dataset:{theme:'dark'}}},window:{addEventListener:(_,fn)=>listener=fn,removeEventListener:()=>{}},require:name=>name==='react'?react:name==='./api'?{apiFetch:(url,init)=>new Promise(resolve=>calls.push({url,init,resolve}))}:{savedPalette:()=> 'cool',applyAppearance:value=>shown={...value},parseAppearance:value=>{if(!value||!value.theme||!value.light||!value.dark)throw Error('Invalid');return value;}}});
+ vm.runInNewContext(code,{exports,document:{documentElement:{dataset:{theme:'dark'}}},window:{addEventListener:(_,fn)=>listener=fn,removeEventListener:()=>{}},require:name=>name==='react'?react:name==='./api'?{apiFetch:(url,init)=>new Promise(resolve=>calls.push({url,init,resolve}))}:{savedPalette:()=> 'cool',resolveMode:v=>v==='system'?'dark':v,applyAppearance:value=>shown={...value},parseAppearance:value=>{if(!value||!value.theme||!value.light||!value.dark)throw Error('Invalid');return value;}}});
  const render=()=>{cursor=0;const result=exports.useAppearance();if(effect){cleanup?.();const run=effect;effect=null;cleanup=run();}return result;};
  const answer=(index,value,ok=true)=>calls[index].resolve({ok,json:async()=>value});
  return {render,calls,answer,changePalette:(mode,palette)=>listener({detail:{mode,palette}}),shown:()=>shown};
@@ -30,4 +30,10 @@ test('retry after failed save preserves pending selection while reloading profil
  const state=h.render();assert.equal(state.appearanceError,true);state.retryAppearance();h.render();
  h.answer(2,{theme:'dark',light:'sage',dark:'cool'});await settle();
  assert.equal(JSON.parse(h.calls[3].init.body).dark,'iris');
+});
+
+test('the server accepts a system appearance preference', () => {
+  const { validateAppearance } = require('../server/appearance.cjs');
+  assert.deepEqual(validateAppearance({ theme: 'system', light: 'sage', dark: 'iris' }), { theme: 'system', light: 'sage', dark: 'iris' });
+  assert.throws(() => validateAppearance({ theme: 'auto', light: 'sage', dark: 'iris' }));
 });

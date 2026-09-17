@@ -8,15 +8,22 @@ content folded in below.
 
 | File | What it is | Read it when |
 | --- | --- | --- |
-| [agent-brief.md](agent-brief.md) | Orientation, build/test, architecture reference, and the hard "do not do this" rules | **Start here** on any fresh session |
-| [deployment.md](deployment.md) | The live daserver runbook — tarball ship, three compose copies, Tailscale | Shipping a commit to production |
-| [design-system.md](design-system.md) | Polymetal palette, contrast contract, theme plumbing | Touching colour, tokens, or CSS |
-| [ui-overhaul.md](ui-overhaul.md) | The five-phase UI plan, with what shipped marked | Continuing UI work |
-| [diary.md](diary.md) | Diary requirements and as-built behaviour, including storage/sync | Touching the diary |
-| [spec-diary-smb.md](spec-diary-smb.md) | Server-local Diary and Mac SMB migration plan, concurrency gaps and acceptance checks | Planning Diary storage migration |
-| [roadmap.md](roadmap.md) | Planned work: setup wizard, thinking modes, diary zero-state, tool scaling | Planning what's next |
-| [changelog.md](changelog.md) | What was fixed and how it was verified, newest first | Checking whether something is already done |
-| [backlog.md](backlog.md) | Every open item from every source, deduplicated and ranked | Picking up loose ends |
+| [agent-brief.md](agent-brief.md) | Orientation, build/test, architecture, the hard "do not" rules | **Start here** on any fresh session |
+| [roadmap.md](roadmap.md) | The one plan: status, open work, order, testing rules | Deciding what to do next |
+| [master-prompt.md](master-prompt.md) | The one executable brief matching the roadmap | Handing work to an agent |
+| [deployment.md](deployment.md) | Live DaServer runbook; `deploy/examples/overlay-release.sh` | Shipping to production |
+| [changelog.md](changelog.md) | What was fixed and how it was verified | Checking whether something is done |
+| [design-system.md](design-system.md), [spec-ui-direction.md](spec-ui-direction.md), [ui-reference-review.md](ui-reference-review.md) | Palette, contrast, visual direction, references | Touching UI |
+| [diary.md](diary.md), [dav.md](dav.md), `spec-diary-*.md`, [spec-storage-appliance.md](spec-storage-appliance.md) | Diary and storage | Touching the Diary or storage |
+| [spec-context-projection.md](spec-context-projection.md), [spec-agent-execution.md](spec-agent-execution.md), [spec-deep-research.md](spec-deep-research.md) | Context layers/compaction/reduction; qualification, Prompt Architect, CodeHarness, durable work, execution nodes, browser; deep research | Context, agent-execution or deep research work |
+| [research-remote-access.md](research-remote-access.md) | Headscale vs NetBird vs Tailscale recommendation | Changing remote access |
+| [research-master-container.md](research-master-container.md) | Docker socket threat model and master-container recommendation | Changing container lifecycle or the model manager |
+| [research-known-good-settings.md](research-known-good-settings.md) | Hardware, live presets vs measured context, provisional limits | Changing model presets |
+| other `spec-*.md` | Design specs (reasoning effort, tool routing, models, documents, MTP, skills, backend) | Working in that area |
+
+On 2026-09-16 the roadmap audit, backlog, continuation checkpoint, Codex handoffs, live
+and settings audits, UI-overhaul plan, Freebuff report and all master prompts were merged
+into `roadmap.md` and `master-prompt.md`; originals are in git history.
 
 Repo-root docs are unchanged and remain authoritative for their subjects:
 `README.md` (quick start), `DEPLOY.md` + `cowork.setup.json` (generic
@@ -26,10 +33,10 @@ agent-executable deploy), `SECURITY.md` (trust model).
 
 | Source | Fate |
 | --- | --- |
-| `MASTER-PROMPT-noevia-continuation-2026-09-08.md` | Split: orientation/architecture → `agent-brief.md`; runbook → `deployment.md`; open work → `backlog.md` |
-| `MASTER-PROMPT-noevia-ui-implementation-2026-09-08.md` | Split: palette → `design-system.md`; phases → `ui-overhaul.md`; rules → `agent-brief.md`; backlog → `backlog.md` |
+| `MASTER-PROMPT-noevia-continuation-2026-09-08.md` | Split: orientation/architecture → `agent-brief.md`; runbook → `deployment.md`; open work → `roadmap.md` |
+| `MASTER-PROMPT-noevia-ui-implementation-2026-09-08.md` | Split: palette → `design-system.md`; phases → `roadmap.md`; rules → `agent-brief.md`; backlog → `roadmap.md` |
 | `noevia-design-system.md` | **Superseded** — its palette was stale (see the conflict note in `design-system.md`) |
-| `ui-shell-preview.md` | Folded into `agent-brief.md` (placeholder surfaces) and `ui-overhaul.md` |
+| `ui-shell-preview.md` | Folded into `agent-brief.md` (placeholder surfaces) and `roadmap.md` |
 | `diary-master-prompt.md` | Folded into `diary.md` as "Requirements" |
 | `diary-workspace.md` | Folded into `diary.md` as "As built" |
 | `spec-reasoning-effort.md` | Folded into `roadmap.md` as the thinking-modes appendix |

@@ -101,3 +101,86 @@ volume-identity test (15-test dedicated suite passes), three existing skips and
 two dependency warnings. Real web+Diary HTTP verifies create/list/child-write,
 missing parent, duplicate resource, opt-in denial and credential revocation using
 only disposable state. Candidate image/rollout checks remain pending.
+
+
+## Storage contract for rename, delete, copy and locks — proposal, 2026-09-17
+
+Status (2026-09-17, D6): **DELETE, MOVE and COPY implemented; no LOCK.** Companion:
+`services/diary/agent/workspace_ops.py` via `POST /api/workspace-ops` (`stat`/`delete`/`move`/`copy`);
+web: `apps/web/server/dav-ops.cjs`, wired into `dav.cjs` only when the companion call is provided.
+`OPTIONS` sends `DAV: 1`. Protected set confirmed and extended with `AI Memory/**` (DAV only; the
+in-app Trash rule is unchanged). Deviations: replacing a *folder* destination is refused (409 —
+delete it first); a destination precondition is read from a tagged `If: <dest> (["etag"])`
+header; COPY needs no source `If-Match` (non-destructive); the interoperability matrix below has
+not been run yet, so `DAV: 1` ships ahead of it by decision D6.
+
+Original status: **contract only; no destructive or locking method is implemented.** It fixes the
+rules that DELETE, MOVE, COPY and LOCK must obey before any of them ships, so each can be
+built and tested against one definition. The protected-path set below reuses the rule the app
+already enforces for Trash (`workspace_trash.allowed`); widening or narrowing it is the user's
+decision recorded at the end.
+
+### Invariants (all methods)
+
+1. **One write path.** Every mutation goes through the tenant companion's guarded file API
+   (journal, ETag check, dirty-index processing). The web service never touches the corpus
+   directly and never mounts it.
+2. **Tenant root only.** Source and destination are normalised with the existing `safe_path`
+   rules; `..`, absolute paths, dot-segments, encoded separators and hidden prefixes
+   (`.noevia-trash/`, other dot-folders) are refused with 403.
+3. **Protected paths.** Diary capture files under `Entries/**`, month files matching the
+   configured month-file template, and the Diary index (`INDEX.md` or configured name) can
+   never be deleted, moved, overwritten by COPY or MOVE, or locked by a client. Attempts return
+   **403** with a plain-text reason. Versioned PUT edits to them stay allowed, matching the
+   in-app Markdown editor and the Claude Diary bridge, which use the same guarded file API.
+4. **Conditional by default.** Destructive methods require `If-Match` with the current strong
+   ETag of the source (and of an existing destination when overwriting). Missing precondition →
+   **428**; stale → **412**. Folders use a folder version derived from their listing.
+5. **Reversible delete.** DELETE is a move into app Trash with a recovery capsule, exactly like
+   the in-app action; it is refused (**409**) where Trash is unavailable (non-managed storage),
+   rather than falling back to a hard delete.
+6. **No partial trees.** Folder DELETE/MOVE/COPY are all-or-nothing within the companion
+   transaction and bounded (≤ 500 entries, ≤ 50 MiB copied). Over the bound → **507** without
+   changes. `Depth: infinity` is accepted only for these bounded folder operations, never for
+   PROPFIND.
+7. **Uncertain outcomes are explicit.** If the companion times out after accepting a mutation,
+   the endpoint returns **503** with `Retry-After` and the journal id is audited; a retry with
+   the same `If-Match` then yields either success or 412, never a second effect.
+8. **Index and retrieval stay consistent.** Moves and deletes enqueue dirty-index work for both
+   old and new paths in the same transaction as the file change.
+9. **Audit.** Credential id, method, source, destination, byte count and result; never contents.
+
+### Method rules
+
+| Method | Semantics | Success | Notable refusals |
+|---|---|---|---|
+| DELETE file | Move to Trash with capsule | 204 | 403 protected, 409 no Trash, 412/428 precondition |
+| DELETE folder | Trash every child, then the folder, one transaction | 204 | 403 if any descendant is protected, 507 over bound |
+| MOVE | Rename within tenant root; `Overwrite: F` default; `T` only with destination `If-Match` | 201 new / 204 replaced | 403 protected source or destination, 409 missing parent, 412 destination exists with `Overwrite: F` |
+| COPY | Bounded copy; new ETags; never onto protected paths | 201 / 204 | 403, 409, 412, 507 |
+| LOCK / UNLOCK | Advisory, short-lived (≤ 15 min, refreshable) exclusive write locks stored by the companion; writes by other credentials without the lock token get 423 | 200 / 204 | 403 protected paths, 423 already locked |
+| PROPPATCH | Still unsupported (405) — no dead properties are stored | — | — |
+
+`DAV:` compliance header: advertise `1` only after DELETE/MOVE/COPY pass the interoperability
+matrix below; add `2` only if LOCK ships and passes it too. Until then `OPTIONS` keeps the
+current `Allow` list and no `DAV:` class.
+
+### Interoperability matrix (must pass before advertising)
+
+`litmus` basic, copymove and (for class 2) locks suites; rclone webdav (sync, move, delete);
+macOS Finder (mount, create, rename, delete, Finder's lock/`._` sidecar behaviour); Windows
+Explorer and WinSCP; iOS Files through a WebDAV-capable client; Obsidian with a WebDAV sync
+plugin. Each run uses a disposable managed tenant copied from `diary-test`, records the client
+version and every refused request, and confirms protected paths stayed byte-identical.
+
+### Build order
+
+1. Companion API: move-to-trash and rename with the invariants above and unit tests
+   (protected paths, preconditions, bounds, uncertain outcome replay).
+2. DAV DELETE and MOVE on top, with real-HTTP tests; then COPY.
+3. Interop matrix for class 1; advertise `DAV: 1`.
+4. LOCK/UNLOCK only if a client in the matrix needs it to write reliably.
+
+### Decision (D6, 2026-09-17)
+
+Protected set confirmed — capture files, month files, the index — plus `AI Memory/**`.

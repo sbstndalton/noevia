@@ -1,7 +1,8 @@
 # noevia — agent brief
 
 Read this top to bottom before touching anything. It assumes no prior context.
-State verified at commit `8a78172`, 2026-09-09.
+State verified at commit `8a78172`, 2026-09-09; later sections were added without a full
+re-audit, so verify against code before relying on any detail. Current plan: `roadmap.md`.
 
 ## What noevia is
 
@@ -66,6 +67,45 @@ deployment.
 
 ## Architecture reference
 
+### Context layers
+
+Three views of one conversation, not three stores: the **authoritative record** (what
+happened, including complete tool results), the **model-facing projection** (the bounded
+request: system text, optional summary, protected recent messages, reduced tool results,
+schemas), and the **human presentation**. Projections are derived and regenerable; the
+record is never rewritten to make a request fit. Deterministic steps (preflight, reduction)
+come before any summarizer call, a summary commits only after the rebuilt request validates,
+and tool-call groups are atomic. See [spec-context-projection.md](spec-context-projection.md).
+Agent-execution boundaries (Prompt Architect, harnesses, durable jobs, execution nodes,
+browser) are in [spec-agent-execution.md](spec-agent-execution.md).
+
+### Settings shape
+
+**General** is profile, presentation preferences and a capabilities report —
+`src/components/GeneralSettings.tsx`, built from one `Row` (what the setting is
+on the left, the control on the right). Chat font, density and motion live in
+`src/preferences.ts` under `noevia:` keys, are applied as `data-*` attributes
+on `<html>` by `public/theme.js` **before paint** for the same reason the theme
+is, and are per-device on purpose; only appearance follows the account.
+
+Capabilities there are **reported, not toggled**: each one is either operator
+configuration (tools, retrieval) or has its own screen (the Diary), so a second
+switch would be a second source of truth. There is deliberately no control for
+write approvals.
+
+**Models & routing** is one interface, not tabs — `models/ModelsSettings.tsx`.
+Search, `Your models` against `Discover` (the Hugging Face download flow), and
+a detail view per model carrying its `models.ini` settings and autoconfig.
+Routing (what Auto resolves to) is the first section; Hardware, Benchmarks and
+the prompt library are collapsed panels on the same page. The chat box's panel
+(`ModelPopup.tsx`) is only Auto-or-a-model plus the toolboxes, with a link
+here; everything else it used to hold now lives on this page.
+
+Usage & activity reports tokens and replies. **Cost estimation was removed** —
+a self-hosted box running local GGUFs has no provider bill, and the old
+estimate excluded hardware and electricity, which is most of the real cost.
+A test asserts the summary never grows a money figure again.
+
 ### Sources
 
 A project holds four kinds of source, and they are not interchangeable:
@@ -96,7 +136,8 @@ from storage, not just from the project.
 
 ### Tools
 
-- `MCP_SERVERS` takes `id|url|auth` entries. `auth` is `nextcloud` (forward the
+- `MCP_SERVERS` takes `id|url|auth` entries. `auth` is `internal` (noevia's own
+  in-process server — see below), `nextcloud` (forward the
   user's Nextcloud app password), `bearer:ENV_NAME` (a service token read from
   that env var), or `none`. **Omitting or misspelling it yields `none`** — a
   server never inherits a credential by accident.
@@ -110,6 +151,40 @@ from storage, not just from the project.
   `toolTokenBudgetFor(model)`, the latter from *measured* prefill rate against the
   live endpoint (`tokens ≈ 240 + chars/3.6`, error table in `index.cjs`). Dropped
   tools are reported, never silently withheld.
+
+### noevia's own MCP server
+
+`MCP_INTERNAL_PORT` (default `0`, nothing binds) starts a SECOND listener on
+`127.0.0.1` inside the web process — `server/mcp-internal.cjs` for the
+transport and tokens, `server/mcp-internal-tools.cjs` for what the tools do.
+It offers two boxes, `diary` (three reads) and `project-docs` (three reads,
+three gated writes), so a small model reaches the Diary and project files
+through the same MCP path it already uses for Nextcloud and Tavily.
+
+Four things about it are load-bearing:
+
+- **Never publish the port.** It answers to a capability token, not a session
+  cookie. It is deliberately absent from `ports:` in both compose files and a
+  qa assertion keeps it that way.
+- **`internal` is accepted only for a loopback IP LITERAL.** A name — including
+  `localhost` — can be made to resolve elsewhere. A non-loopback entry is
+  dropped, never downgraded to `none`.
+- **The token decides whose data is touched.** `mcpInternalAuth()` mints a
+  30-second HMAC token carrying `uid`/`pid` from `requestScope`, and the server
+  establishes the request scope FROM that token via `runAs`. Without that step
+  the handlers would inherit whatever scope happened to be on the event loop,
+  which is a cross-tenant read; there is a test for it. No tool schema has a
+  user, tenant or project field, so a prompt-injected argument has nothing to
+  aim at.
+- **`w:1` only after approval.** The gate in `index.cjs` is unchanged; the
+  internal server additionally keeps its own write set and refuses a write
+  presented with `w:0`, so a tool wrongly listed under a box's `reads` fails
+  closed rather than writing unreviewed.
+
+The Diary box is **read-only by default**. With `features.diaryMcpWrite` (D10, off) it
+adds `diary_append`, which appends one approved note to *today* through the sidecar's
+`/api/entries/append` (journaled, idempotent by request id). Nothing can edit or delete an
+existing entry through MCP; `/api/chat` stays out of bounds.
 
 **The approval gate is a security control, not decoration.** Every write tool
 blocks the chat until a human answers. Arguments are shown in full and
@@ -137,11 +212,12 @@ Without a `vision` role, images go to the answering model if a cached probe says
 it can read them. **A model that cannot read images answers 400 for the whole
 request**, which is why the probe exists. Probes are scoped to endpoint,
 credentials and model, expire, and now distinguish a missing projector from an
-unsupported model — see `backlog.md` for the outstanding Qwen mmproj work.
+unsupported model — see `roadmap.md` for the outstanding Qwen mmproj work.
 
 ### Placeholder surfaces
 
-`Scheduled`, `Plugins` and `Explore` (`Sidebar.tsx`) route to `PreviewPanel`. The
+`Scheduled`, `Plugins` and `Explore` (`Sidebar.tsx`) route to `PreviewPanel`; they and the Code
+switch are hidden unless the `previews` feature is on (`server/features.cjs`, D5). The
 Coding workspace renders `Interface preview · no execution` — separate navigation,
 empty project/task areas, an activity grid, a draft composer, a collapsible
 workspace panel. It does not read repositories, run commands, call a coding model,

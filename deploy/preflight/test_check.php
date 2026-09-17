@@ -22,7 +22,49 @@ try {
     verify(count(validateMounts(['services'=>['web'=>['volumes'=>['/boot:/data']]]])) > 0, 'Unresolved mount accepted');
     verify(validateMounts(['services'=>['web'=>['volumes'=>[['type'=>'volume','source'=>'web-state']]]]]) === [], 'Managed volume rejected');
     verify(count(validateMounts(['services'=>[], 'volumes'=>['state'=>['driver_opts'=>['device'=>'/boot']]]])) > 0, 'Driver bind bypass accepted');
-    echo "PASS: direct/parent paths, symlink aliases, missing descendants, loops, read-only and managed volumes.\n";
+    // ---- env-key drift (advisory) ----
+    $expected = "$root/keys.txt";
+    file_put_contents($expected, "MCP_SERVERS\nTAVILY_API_KEY\nUI_PORT\n");
+    $withAll = ['services'=>['web'=>['environment'=>['MCP_SERVERS'=>'', 'TAVILY_API_KEY'=>'', 'UI_PORT'=>'8021']]]];
+    verify(envKeyDrift($withAll, $expected) === [], 'Complete env set reported as drift');
+    $missing = ['services'=>['web'=>['environment'=>['UI_PORT'=>'8021']]]];
+    $drift = envKeyDrift($missing, $expected);
+    verify(count($drift) === 1, 'Missing env keys not reported');
+    verify(str_contains($drift[0], 'MCP_SERVERS') && str_contains($drift[0], 'TAVILY_API_KEY'), 'Drift message does not name the missing keys');
+    // Values must never appear, only names.
+    verify(!str_contains($drift[0], '8021'), 'Drift message leaked a value');
+    $listForm = ['services'=>['web'=>['environment'=>['MCP_SERVERS=x', 'TAVILY_API_KEY=y', 'UI_PORT=8021']]]];
+    verify(envKeyDrift($listForm, $expected) === [], 'List-form environment not understood');
+    verify(envKeyDrift($withAll, "$root/absent.txt") === [], 'Absent expectation file treated as drift');
+    verify(count(envKeyDrift(['services'=>['diary'=>[]]], $expected)) === 1, 'Missing web service not reported');
+    unlink($expected);
+
+    // ---- model-loader boundary (blocking) ----
+    $tok = str_repeat('a', 64);
+    $good = ['services'=>[
+        'model-loader'=>['environment'=>['MODEL_LOADER_TOKEN'=>$tok], 'networks'=>['models'=>null]],
+        'web'=>['environment'=>['MODEL_LOADER_TOKEN'=>$tok], 'networks'=>['default'=>null, 'models'=>null]],
+        'diary'=>['networks'=>['default'=>null]]]];
+    verify(modelLoaderBoundary($good) === [], 'Isolated, token-gated model-loader rejected');
+    verify(modelLoaderBoundary(['services'=>['web'=>[]]]) === [], 'Config without model-loader rejected');
+    $unset = $good; $unset['services']['model-loader']['environment'] = [];
+    verify(count(modelLoaderBoundary($unset)) > 0, 'Unset token accepted');
+    $short = $good; $short['services']['model-loader']['environment']['MODEL_LOADER_TOKEN'] = 'abc';
+    verify(count(modelLoaderBoundary($short)) > 0, 'Short token accepted');
+    $webless = $good; $webless['services']['web']['environment'] = [];
+    verify(count(modelLoaderBoundary($webless)) > 0, 'Web without token accepted');
+    $sharedNet = $good; $sharedNet['services']['diary']['networks'] = ['default'=>null, 'models'=>null];
+    $msg = modelLoaderBoundary($sharedNet);
+    verify(count($msg) === 1 && str_contains($msg[0], 'models'), 'Diary on the models network accepted');
+    verify(!str_contains(implode('', modelLoaderBoundary($webless)), $tok), 'Boundary message leaked the token');
+    $defaults = $good; unset($defaults['services']['model-loader']['networks'], $defaults['services']['diary']['networks']);
+    verify(count(modelLoaderBoundary($defaults)) > 0, 'Both on the implicit default network accepted');
+    $hostMode = $good; $hostMode['services']['diary']['network_mode'] = 'host';
+    verify(count(modelLoaderBoundary($hostMode)) > 0, 'Diary host networking accepted');
+    $listEnv = $good; $listEnv['services']['model-loader']['environment'] = ["MODEL_LOADER_TOKEN=$tok"];
+    verify(modelLoaderBoundary($listEnv) === [], 'List-form token not understood');
+
+    echo "PASS: model-loader boundary; direct/parent paths, symlink aliases, missing descendants, loops, read-only and managed volumes; env-key drift.\n";
 } finally {
     foreach (['alias','relative','loop'] as $name) unlink("$root/$name");
     rmdir("$root/boot"); rmdir("$root/appdata"); rmdir($root);

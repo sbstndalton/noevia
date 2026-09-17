@@ -643,7 +643,7 @@ live rechecks; 266 web tests, typecheck/build, 157 diary tests (3 skipped), and
 vector retrieval and isolated diary capture were exercised. Synthetic accounts,
 corpora and the QA Nextcloud folder were removed. No real diary prompts/corpus
 changes. Backups `.bak.before-cfc3a05` and `.bak.before-4ec8269` and previous
-releases retained. [Coverage and remaining concerns](live-audit-2026-09-10.md).
+releases retained. [Coverage and remaining concerns](roadmap.md).
 
 Composer model placement: `dc325d5` deployed to all services, replacing `4ec8269`.
 Removed the chat-header model selector and placed it beside Send inside the text
@@ -680,11 +680,48 @@ bare status code, and owner avatars, which noevia's Download tab never renders, 
 longer fail the search. Changing Sort by re-runs the search, and the empty state
 distinguishes "nothing matched your search" from "the browse list came back empty".
 
-New: a Layout control in Settings → General (Automatic / Phone / Desktop), backed by
-`public/layout-mode.js` and user-agent detection.
+New: a Layout control (Automatic / Phone / Desktop) backed by `public/layout-mode.js` and
+user-agent detection. It sits in Settings → Appearance.
 
 Verified locally: `npm run typecheck` and `npm run build` clean; web tests unchanged from
 this checkout's baseline (274 pass, 45 pre-existing environment failures, identical before
 and after); model-manager Python tests 19 passed, including 8 new ones covering the search
 query, both fallbacks and the error messages. The hub itself was not reachable from the
 development environment, so the search changes are verified against a mocked hub only.
+
+## Merged main (PR #1) into the model-tuning branch — 2026-09-17
+
+Four files conflicted, all of them touched by both PR #1 and Discover. Decisions:
+
+- **`noevia.css`** — PR #1's surfaces win: `--bg-surface` on `--border-subtle`,
+  `--radius-panel` for panels, 14px for rows, tiles, results and tables,
+  `--radius-control` for fields, and the shared glass block with its reduced-transparency
+  fallback. Its pixel sizes are re-expressed as this branch's type-scale roles, which is
+  the same value in every rule the two sides both set, and the 550 weights it carried over
+  are normalised to 600 — both are `lint:design` rules rather than a look. Each side's
+  appended block is kept whole; PR #1's shared material goes last, as its comment assumes.
+- **`api.py`** — Discover's endpoint wins, with one correction. It caught
+  `httpx.HTTPStatusError`/`httpx.HTTPError`, which `search_models` no longer raises; taken
+  verbatim, every rate-limited or unreachable hub would have become an unhandled 500
+  instead of a readable error, and silently, because the types simply stop lining up. It
+  now catches `hf.HfSearchError`, and the avatar lookup is guarded again. Both are pinned
+  by new tests in `test_api.py`; the first fails against the unmerged endpoint.
+- **`DownloadTab.tsx`** — Discover wins outright. Its header search box, sort control and
+  filters supersede PR #1's local ones, and its `[sort]` effect already re-runs the search,
+  so that fix is retired. Carried across: the query is trimmed, a new search collapses an
+  expanded repository (the sort and filter paths did this, pressing Enter did not), a
+  malformed body can no longer crash the list, the caption reads the term the results were
+  actually fetched for rather than the 400ms-behind search box, and a hub error offers a
+  retry.
+- **`SettingsShell.tsx`** — this branch's settings restructure wins; the `general` section
+  PR #1 mounted the layout control in no longer exists. `LayoutModeControl` is now
+  `LayoutModeChoice`, a Layout row in `AppearanceSettings` next to chat font and density.
+
+`hf.py` never conflicted — this branch does not touch it, so PR #1's search fix applies to
+Discover unchanged. Dropping `full=true` costs Discover nothing either: it already fetches
+repo trees itself, because the hub's search response carries no file sizes.
+
+Verified: typecheck, build and `lint:design` clean; web tests 473 pass / 57 fail, identical
+to this branch's head before the merge (the failures are this environment's missing native
+dependencies); model-manager pytest 48 passed, up from 38 + PR #1's 8, plus the 2 new ones
+above.

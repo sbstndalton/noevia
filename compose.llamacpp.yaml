@@ -17,6 +17,8 @@ services:
       LLAMA_CACHE: /cache
     mem_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
     memswap_limit: ${LLAMACPP_MEMORY_LIMIT:-14g}
+    # Default for web and Diary inference; models so the model manager can reach it.
+    networks: [default, models]
     # No published ports; model administration stays on the Compose network.
   # Model manager (Model Loader by scratchhax, MIT, folded into services/model-manager):
   # downloads, the models.ini editor, autoconfig, telemetry, benchmarks and backend
@@ -29,18 +31,25 @@ services:
     restart: unless-stopped
     environment:
       MODELS_DIR: /models
+      MODELS_HOST_PATH: ${LLAMACPP_MODELS_DIR}
       MODELS_INI_PATH: /config/models.ini
       DATA_DIR: /data
       LLAMA_CONTAINERS: ${MODEL_LOADER_LLAMA_CONTAINERS:-}
       GPU_VRAM: ${MODEL_LOADER_GPU_VRAM:-}
       HOST_RAM_RESERVE_GB: ${MODEL_LOADER_HOST_RAM_RESERVE_GB:-8}
+      # Required: this service holds the Docker socket; only web knows this secret.
+      MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN:?Set a random MODEL_LOADER_TOKEN (e.g. openssl rand -hex 32)}
     volumes:
       - ${LLAMACPP_MODELS_DIR}:/models
       - ${LLAMACPP_CONFIG_DIR}:/config
       - ${MODEL_LOADER_DATA_DIR:?Set a writable Model Loader data directory}:/data
       - /var/run/docker.sock:/var/run/docker.sock
     mem_limit: 512m
+    # Not on the default network: the Diary sidecar must not reach a Docker-socket holder.
+    networks: [models]
+
   web:
+    networks: [models]
     environment:
       INFERENCE_BASE_URL: http://llama:8080/v1
       MODEL_MANAGER_KIND: llamacpp
@@ -54,6 +63,7 @@ services:
       # Calibration stops a step when host available memory falls below this.
       LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB: ${LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB:-4}
       MODEL_LOADER_URL: http://model-loader:8090
+      MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN}
     volumes:
       - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config
       - ${LLAMACPP_MODELS_DIR}:/models:ro
@@ -65,3 +75,7 @@ services:
       LLM_EMBED_MODEL: ${LLAMACPP_EMBED_MODEL}
       LLM_AUX_BASE_URL: http://llama:8080/v1
       LLM_AUX_MODEL: ${LLAMACPP_AUX_MODEL:?Set an installed native auxiliary identity}
+
+networks:
+  # Web, the engine and the model manager only. The Diary sidecar is not attached.
+  models: {}
