@@ -71,8 +71,10 @@ mobile composer and tap targets).
 - **Open** — Easy mode by default (auto-tune context against real VRAM, MTP type, KV-cache
   quant) with an Advanced toggle for every `models.ini` field.
 - **Open** — Parity audit against Model Loader, run with its own UI still up; port gaps.
-- **Open** — After a download, write safe defaults automatically: 8k context, MTP when the
-  model ships a draft head, the model's own template and sampling defaults.
+- **Shipped** — A finished download registers itself once via model-manager
+  `POST /sections/{name}/safe-defaults`: context capped at 8k, `draft-mtp` only with a draft
+  head beside the file, `jinja` for the GGUF template, no sampler keys. Never overwrites an
+  existing section; the preset reload never unloads, and a loaded model deferring it is shown.
 - **Shipped** — A project or chat whose model is no longer installed shows "No model
   selected" (only when the local catalogue was read successfully; other providers exempt).
 - **Open** — Choose where downloads go (Unraid shares such as `ai-models`).
@@ -213,7 +215,7 @@ research mode (I) are measure-first, then build.
    ([spec §3–4](spec-context-projection.md)). Placed first because it is a verified bug —
    a compaction that shrinks but doesn't fit is saved before the fit check — and it is small.
 1. **Shipped.** Live stats, settings ✕.
-2. Deleted model state, safe defaults after download.
+2. **Shipped.** Deleted model state, safe defaults after download.
 3. Full-page model manager with Easy/Advanced and the parity audit.
 4. Mobile drawer, search button, brightness and banding.
 5. Live log tab, tool-call menu, settings sub-pages.
