@@ -82,7 +82,7 @@ mobile composer and tap targets).
   (identity), Security (passkeys, sessions, sign-out, app passwords), Appearance, Capabilities,
   Diary & storage, Your connections, Usage & activity, Planned features. Personalization and
   Notifications stay under Planned until built. **Keyboard shortcuts shipped 2026-09-17** (⌘/Ctrl+K
-  search, ⌘/Ctrl+⇧O new chat, ⌘/Ctrl+, Settings, ⌘/Ctrl+/ list; `components/shortcuts/`, `qa/shortcuts.cjs`). **Personalization → Custom instructions shipped** (per-user, 4000 chars, added to every non-Diary chat, project instructions win; `account-instructions.cjs`, `qa/personalization.cjs`). **Data → Export conversations shipped 2026-09-17**
+  search, ⌘/Ctrl+⇧O new chat, ⌘/Ctrl+, Settings, ⌘/Ctrl+/ list; `components/shortcuts/`, `qa/shortcuts.cjs`). **Personalization → Custom instructions shipped** (per-user, 4000 chars, added to every non-Diary chat, project instructions win; `account-instructions.cjs`, `qa/personalization.cjs`), response style, and opt-in background notifications (reply finished / approval needed, content-free, per device; `components/notifications/`, `qa/notifications.cjs`). **Data → Export conversations shipped 2026-09-17**
   (ZIP of Markdown per chat + conversations.json, no reasoning text; `routes/export.cjs`,
   `qa/data-export.cjs`), and **Import conversations** (export ZIP or JSON; adds only, skips chats
   already present, restores deleted ones under new ids, creates missing projects;
