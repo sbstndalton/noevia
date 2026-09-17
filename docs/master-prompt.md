@@ -111,9 +111,9 @@ over Tailscale use `root@100.70.173.74`.
 
 ## Carry-over — keep visible
 
-- Production serves **no models**: `models.ini` is empty and the GGUFs were removed from
-  `/mnt/user/ai-models` (only `Ornith-1.5-9B-Q5_K_M` remains, unregistered). Earlier notes
-  record emptying `models.ini` as the user's choice. Re-downloading is the user's call.
+- *Corrected 2026-09-17:* `models.ini` holds three presets (Qwen3.5-4B-Q5_K_M, gemma-4-E2B,
+  Ornith-1.5-9B) and their GGUFs are on disk again; none loaded. The D3 proposal is in
+  `research-known-good-settings.md`.
 - The live Compose Manager file
   (`/boot/config/plugins/compose.manager/projects/Cowork/docker-compose.yml`) lacks the six
   MCP keys, so startup logs `mcp: disabled`. The user edits that file.

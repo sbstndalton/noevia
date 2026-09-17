@@ -431,7 +431,11 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   stylesheets clean in `npm test`. Recommendation: keep the local script; re-run Impeccable
   occasionally on a URL scan of the local spin-up, not as a dependency. No post-edit hook: the
   script runs in <0.1 s inside `npm test` already.
-- [ ] 10. D3 preset diff doc
+- [x] 10. **D3** — preset diff and go-steps in `research-known-good-settings.md` § D3 (4B capped at
+  24 576, 9B at 16 384, `spec-type` removed, gemma E2B out of the served set, nomic embed added).
+  Found while preparing it: the live `models.ini` has three presets and the GGUFs are back on disk,
+  so the "no models served" carry-over is stale; the engine runs `--models-max 1`, which would
+  make embeddings evict the chat model. Not applied.
 
 ## Testing rules
 

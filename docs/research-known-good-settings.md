@@ -54,3 +54,93 @@ with; `parallel 1` (a single slot) is assumed throughout.
 4. Confirm the Vulkan device from the engine log and record it in `deployment.md`.
 
 Record results here with date, build and preset hash (the evidence identity).
+
+## D3 preset proposal — prepared 2026-09-17, not applied
+
+Decision D3: serve a small qualified set — one ~4B general model, one ~9B capped at its verified
+context, and `nomic-embed-text-v1` for retrieval — and drop `spec-type draft-eagle3` where no draft
+model exists. **Downloading and editing the live `models.ini` wait for the user's go.**
+
+Live state read on 2026-09-17 (read-only; this corrects the brief's "no models served"): the
+engine (`--models-preset /config/models.ini --models-max 1`) lists three presets, all unloaded;
+`/mnt/user/ai-models` holds Ornith-1.5-9B-Q5_K_M (6.6 GB + 0.9 GB projector), Qwen3.5-4B-Q5_K_M
+(3.2 GB + projectors), Qwen3.5-4B-Q8_0 (4.6 GB, unregistered), gemma-4-E2B_q4_0-it (3.3 GB + 1.0 GB
+projector) and an `OsaurusAI` folder (18 GB, not GGUF presets). No embedding model is present.
+
+Choices: the 4B is Qwen3.5-4B-Q5_K_M (registered, smaller than Q8_0, has a projector); the 9B is
+Ornith-1.5-9B-Q5_K_M; gemma-4-E2B leaves the served set (its files stay on disk). Context caps are
+the provisional baseline above until Measure context runs in a maintenance window (D2).
+
+```diff
+--- models.ini (live, 2026-09-16 00:03)
++++ models.ini (proposed)
+ version = 1
+
+ [Qwen3.5-4B-Q5_K_M]
+ model = /models/Qwen3.5-4B-Q5_K_M/Qwen3.5-4B-Q5_K_M.gguf
+-ctx-size = 262144
++ctx-size = 24576
+ ngl = 999
+ flash-attn = on
+ cache-type-k = q8_0
+ cache-type-v = q8_0
+ parallel = 1
+ jinja = true
+ split-mode = layer
+ mmproj = /models/Qwen3.5-4B-Q5_K_M/mmproj-BF16.gguf
+-spec-type = draft-eagle3
+ reasoning = auto
+
+-[gemma-4-E2B_q4_0-it]
+-model = /models/gemma-4-E2B_q4_0-it/gemma-4-E2B_q4_0-it.gguf
+-ctx-size = 131072
+-ngl = 999
+-flash-attn = on
+-cache-type-k = q8_0
+-cache-type-v = q8_0
+-parallel = 1
+-jinja = true
+-split-mode = layer
+-mmproj = /models/gemma-4-E2B_q4_0-it/gemma-4-E2B-it-mmproj.gguf
+-spec-type = draft-eagle3
+-reasoning = auto
+-
+ [Ornith-1.5-9B-Q5_K_M]
+ model = /models/Ornith-1.5-9B-Q5_K_M/Ornith-1.5-9B-Q5_K_M.gguf
+-ctx-size = 262144
++ctx-size = 16384
+ ngl = 999
+ flash-attn = on
+ cache-type-k = q8_0
+ cache-type-v = q8_0
+ parallel = 1
+ jinja = true
+ split-mode = layer
+ mmproj = /models/Ornith-1.5-9B-Q5_K_M/mmproj-Ornith-1.5-9B-BF16.gguf
+-spec-type = draft-eagle3
+ reasoning = auto
+ reasoning-format = deepseek
+ reasoning-budget-message = Final Answer
++
++[nomic-embed-text-v1]
++model = /models/nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf
++embedding = true
++pooling = mean
++ctx-size = 2048
++ngl = 999
++parallel = 1
+```
+
+Steps when the user says go (in a maintenance window, `docs/deployment.md` backup first):
+
+1. Download the embedding GGUF into `/mnt/user/ai-models/nomic-embed-text-v1/` (Q8_0, ~140 MB) with
+   the model manager's Discover flow, checking the file name matches the preset.
+2. Apply the diff with Settings → Models → Raw file, or edit the file; the engine keeps the previous
+   file as `models.ini.bak-*`. Presets reload without unloading a running model.
+3. **Engine flag:** the live engine runs `--models-max 1`, so loading the embedding model evicts the
+   chat model on every retrieval. Raise it to `--models-max 2` in the live Compose file (a user edit)
+   or retrieval will thrash; the embedding model needs ~0.3 GB.
+4. Run Measure context for both chat models (120 s budget, one at a time) and replace the
+   provisional caps with the verified sizes; record evidence here.
+5. Set Auto routing: Fast = Qwen3.5-4B-Q5_K_M, Smart = Ornith-1.5-9B-Q5_K_M; set
+   `EMBEDDING_MODEL=nomic-embed-text-v1`.
