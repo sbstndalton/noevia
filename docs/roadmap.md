@@ -81,7 +81,8 @@ mobile composer and tap targets).
   identity was duplicated under "Profile & security". Personal settings are now Profile
   (identity), Security (passkeys, sessions, sign-out, app passwords), Appearance, Capabilities,
   Diary & storage, Your connections, Usage & activity, Planned features. Personalization and
-  Notifications stay under Planned until built. **Data → Export conversations shipped 2026-09-17**
+  Notifications stay under Planned until built. **Keyboard shortcuts shipped 2026-09-17** (⌘/Ctrl+K
+  search, ⌘/Ctrl+⇧O new chat, ⌘/Ctrl+, Settings, ⌘/Ctrl+/ list; `components/shortcuts/`, `qa/shortcuts.cjs`). **Data → Export conversations shipped 2026-09-17**
   (ZIP of Markdown per chat + conversations.json, no reasoning text; `routes/export.cjs`,
   `qa/data-export.cjs`), and **Import conversations** (export ZIP or JSON; adds only, skips chats
   already present, restores deleted ones under new ids, creates missing projects;
