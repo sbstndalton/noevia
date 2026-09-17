@@ -176,7 +176,12 @@ mobile composer and tap targets).
 
 ### G. Telemetry and logs
 - **Shipped** — Footer tokens/s updates the moment each round's SSE `usage` event arrives instead of waiting on the 2.5s poll. A single long round still can't tick mid-generation: llama.cpp reports the rate only when a request finishes.
-- **Open** — Admin-only tab streaming the llama.cpp log live.
+- **Shipped** — Engine log (model manager → Hardware → Logs): "Follow live" polls the tail
+  every 2 s (paused when the tab is hidden), stays pinned to the newest line, pauses when you
+  scroll up with "Jump to latest", keeps a 1,000-line window, filters by text/level. The model
+  manager scrubs secret-shaped strings (auth headers, bearer/HF/sk-/GitHub/AWS/JWT tokens,
+  secret-named key=values, URL credentials) before filtering or returning lines; members get
+  403. Polling rather than SSE: no per-viewer Docker stream through the JSON proxy.
 
 ### I. Deep research mode
 - **Research, then build** — Gemini Deep Research / NotebookLM-style cited reports as a
