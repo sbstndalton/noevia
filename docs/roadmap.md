@@ -512,6 +512,12 @@ deploy 5, experiments 5.
   the model's context with no summary (and the compaction prefix shifted every turn) · offer up to
   1000 messages to the projection (compaction's own bound) and raise `/api/chat` body limit to match ·
   `qa/chat-context.cjs` (long chat reaches the model).
+- 2026-09-17 · pass 14 (b, auth) · One-time secrets were not single-use under concurrency: the
+  invitation, first-run setup code and recovery link were checked before the asynchronous Argon2 hash
+  and consumed after it without a guarded update, so two simultaneous submissions created two
+  accounts from one invite (including admin invites), two administrators from one setup code, or
+  two password resets from one link · consume inside the transaction with `… AND used_at IS NULL` /
+  delete-if-matches and treat a lost race as used · `server/auth-races.test.cjs`.
 
 ## Testing rules
 
