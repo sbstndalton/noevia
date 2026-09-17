@@ -200,3 +200,29 @@ comparison in the spec stays the gate.
 Sources: [llama.cpp #19818](https://github.com/ggml-org/llama.cpp/issues/19818),
 [vLLM on ROCm (AMD docs)](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/vllm.html),
 [AMD GPUs notes (llm-tracker)](https://llm-tracker.info/howto/AMD-GPUs).
+
+## 9. Should Unsloth GGUFs be the preferred download source? (reference list)
+
+**Findings.**
+- Unsloth now publishes "Dynamic 3.0" GGUFs (names like `UD-Q4_K_XL`). They choose quant types per
+  layer and calibrate the importance matrix on a larger mixed dataset (chat, agentic coding,
+  multilingual). They claim better KL divergence, 5-shot MMLU and Aider Polyglot than other quants of
+  the same size, and compatibility with llama.cpp.
+- Those benchmarks are **vendor-published**. They are measured on the vendor's models and hardware,
+  and they compare quants of the same base model, not models against each other.
+- This deployment already used one (`gemma-4-E2B-it-GGUF-UD-Q4_K_XL` was a stale Auto role, §1),
+  so the naming works with presets and safe defaults.
+
+**Recommendation.**
+- Offer Unsloth repositories in Discover like any other source, and show the quant name as it is.
+  Do not rank them first automatically.
+- When choosing between two quants of one model at similar size, prefer the one that passes this
+  deployment's own evidence rows. Those rows are tool-call accuracy, context measurement and MTP
+  acceptance, all already scoped per artifact.
+- A cheap local check is worth adding to benchmarks: perplexity/KLD on a fixed text between two
+  quants of the same model. It uses `llama-perplexity` with a reference logits file made from the
+  larger quant, since BF16 does not fit this host.
+
+Sources: [Unsloth Dynamic 3.0 GGUFs](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs),
+[Unsloth Dynamic v2.0 announcement](https://unsloth.ai/blog/dynamic-v2),
+[Qwen3.5 GGUF benchmarks (Unsloth)](https://unsloth.ai/docs/models/qwen3.5/gguf-benchmarks).
