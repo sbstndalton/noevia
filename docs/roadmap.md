@@ -174,7 +174,16 @@ mobile composer and tap targets).
 
 ### F. Diary and storage
 - **Open** — Diary views inherit every main-interface change (shared components).
-- **Open** — Entry load latency: serve the app-hosted copy first, then push to WebDAV.
+- **Shipped (read path confirmed)** — Diary reads go browser → `/api/diary/today` →
+  sidecar `/api/day` → the tenant's corpus backend. "App-hosted copy first, WebDAV after" is
+  already managed mode (`managed_storage.py`: SQLite primary, debounced append-only WebDAV
+  backup outbox); fresh tenants default to it and legacy tenants move with "Copy verified files
+  & use app storage". The remaining latency was legacy WebDAV tenants on the daily layout:
+  a month view fetched every day file one at a time (up to 31 round trips). The WebDAV backend
+  now declares `concurrent_reads = 6` and those reads run together, in order, with the same
+  partial-failure behaviour (synthetic 20×50 ms month: ~1 s → under ⅓). Month listing
+  (`list_months`) is still sequential PROPFINDs; measure on the SMB/WebDAV pilot before
+  changing it.
 - **Open** — WebDAV as a storage plugin, not Nextcloud-only.
 - **Open** — Mac SMB authenticated pilot, then the real Diary cutover
   ([spec](spec-diary-smb.md)).
