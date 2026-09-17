@@ -490,6 +490,12 @@ deploy 5, experiments 5.
   changed until a restart (and turning them off left the tools live) · restart-wired features keep
   answering with the running value and the page says "Restart the server to apply" ·
   `features.test.cjs`, `qa/features.cjs`.
+- 2026-09-17 · pass 9 (c) · No new confirmed bug: DAV move/delete enqueue old and new paths; the
+  outbox marks them dirty and retrieval already refuses dirty documents until reindexed.
+- 2026-09-17 · pass 10 (d, calibration) · When a calibration was interrupted or failed after
+  `models.ini` changed, the original profile was (correctly) not overwritten, but nothing told the
+  admin that the calibration's context size might still be in the profile · `restored: false` and an
+  explicit error sentence in both paths · `llamacpp-calibration.test.cjs`.
 
 ## Testing rules
 
