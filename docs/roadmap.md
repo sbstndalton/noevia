@@ -555,6 +555,9 @@ deploy 5, experiments 5.
   transcript, then the reply's final save wrote it back to disk — a deleted conversation persisted
   (hidden from the sidebar) · history saves for tombstoned chats answer 410 ·
   `chat-lists-routes.test.cjs`.
+- 2026-09-17 · pass 25 (a, privacy) · Same race for context state: a reply finishing after its chat was
+  deleted re-saved the chat's context file (which can hold a conversation summary) · removed at the end
+  of the request when the chat is tombstoned · `qa/chat-context.cjs`.
 
 ## Testing rules
 
