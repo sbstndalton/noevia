@@ -73,7 +73,27 @@ mobile composer and tap targets).
   machine" runs autoconfig's VRAM-fit estimate and "Use and save" writes it through the
   revision-checked save; plain MTP and KV-cache choices. Advanced keeps every `models.ini`
   field. Measured verification stays with native calibration.
-- **Open** — Parity audit against Model Loader, run with its own UI still up; port gaps.
+- **Shipped** — Parity audit against Model Loader (2026-09-16). Its own HTMX UI was run
+  locally from `services/model-manager` on a synthetic models folder (no Docker socket, so
+  container pages were empty; the live `cowork-model-loader-1` was not touched) and compared
+  with noevia's model manager page and the model-manager JSON API.
+
+  | Model Loader feature | noevia | Outcome |
+  |---|---|---|
+  | HF search (sort), repo files, fit estimates, download by URL, companion mmproj | Discover | Parity |
+  | Parallel chunked downloads, cancel, clear, HF token + test | Discover | Parity (chunk bars; no per-chunk speed sparklines — not ported, low value) |
+  | `models.ini` editor with tooltips, show CLI, rename, delete, revision-safe saves | Model detail (Advanced) | Parity |
+  | Raw `models.ini` and rolling backups | — | **Ported**: "Raw file & backups" (read-only; restore stays an operator task) |
+  | Models directory disk free/used | — | **Ported**: shown on Your models |
+  | Autoconfig: sessions, presets, fine-tune, spec profiles, vision, measured throughput, config history | Autoconfig panel | Parity |
+  | Benchmarks, sweeps, output, badges incl. clear | Benchmarks | Parity |
+  | Check for updates, delete model | Your models | Parity |
+  | Bulk delete | — | Not ported: rare and destructive; single delete with confirmation kept |
+  | Backend dashboard, logs + filter, restart, test prompt, failure diagnosis | Hardware | Parity (live-following log is G2) |
+  | Prompt library | Prompt library | Parity |
+  | Command palette (Cmd/Ctrl-K) | — | Not ported: app-wide concern, not model-specific |
+  | OpenWebUI sync, per-connection visibility, dead-id cleanup, capability sync | — | N/A: noevia is the client; no OpenWebUI |
+  | "Serves on" per backend, add another backend | — | N/A: one native engine; revisit with multi-backend |
 - **Shipped** — A finished download registers itself once via model-manager
   `POST /sections/{name}/safe-defaults`: context capped at 8k, `draft-mtp` only with a draft
   head beside the file, `jinja` for the GGUF template, no sampler keys. Never overwrites an
@@ -219,7 +239,7 @@ research mode (I) are measure-first, then build.
    a compaction that shrinks but doesn't fit is saved before the fit check — and it is small.
 1. **Shipped.** Live stats, settings ✕.
 2. **Shipped.** Deleted model state, safe defaults after download.
-3. Full-page model manager with Easy/Advanced and the parity audit.
+3. **Shipped.** Full-page model manager with Easy/Advanced and the parity audit.
 4. Mobile drawer, search button, brightness and banding.
 5. Live log tab, tool-call menu, settings sub-pages.
 6. Modes and projects.
