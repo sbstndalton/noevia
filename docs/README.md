@@ -16,6 +16,7 @@ content folded in below.
 | [design-system.md](design-system.md), [spec-ui-direction.md](spec-ui-direction.md), [ui-reference-review.md](ui-reference-review.md) | Palette, contrast, visual direction, references | Touching UI |
 | [diary.md](diary.md), [dav.md](dav.md), `spec-diary-*.md`, [spec-storage-appliance.md](spec-storage-appliance.md) | Diary and storage | Touching the Diary or storage |
 | [spec-context-projection.md](spec-context-projection.md), [spec-agent-execution.md](spec-agent-execution.md), [spec-deep-research.md](spec-deep-research.md) | Context layers/compaction/reduction; qualification, Prompt Architect, CodeHarness, durable work, execution nodes, browser; deep research | Context, agent-execution or deep research work |
+| [research-remote-access.md](research-remote-access.md) | Headscale vs NetBird vs Tailscale recommendation | Changing remote access |
 | other `spec-*.md` | Design specs (reasoning effort, tool routing, models, documents, MTP, skills, backend) | Working in that area |
 
 On 2026-09-16 the roadmap audit, backlog, continuation checkpoint, Codex handoffs, live

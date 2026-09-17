@@ -259,7 +259,7 @@ mobile composer and tap targets).
   `tavily_research`, on a local fixture site). Build waits for R6. Decisions listed in §10.
 
 ### H. Platform
-- **Research** — Headscale vs NetBird to replace a slow Tailscale.
+- **Researched 2026-09-17** — Headscale vs NetBird ([research-remote-access.md](research-remote-access.md)): don't migrate yet; neither changes the data path, the recorded slowness was WAN loss, DaServer's NAT allows direct paths. Measure with `tailscale ping`/`iperf3`/`mtr` from a remote client; if self-hosting is still wanted, Headscale.
 - **Research** — AIO-style master container managing the stack.
 - **Later** — Mac-native app as both client and optional trusted **execution node** (local
   files, terminal, repositories, browser, notifications): server orchestrates, node executes
