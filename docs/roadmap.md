@@ -217,11 +217,17 @@ mobile composer and tap targets).
   ([spec](spec-diary-smb.md)).
 - **Open** — DAV rename/delete/locking and client interoperability need a storage contract
   first ([dav.md](dav.md), [spec-storage-appliance.md](spec-storage-appliance.md)).
-- **Open** — Managed volume default for fresh installs and a resolved `/boot` path guard,
-  without moving existing bindings.
+- **Shipped (verified 2026-09-17)** — Fresh-install managed volumes and the `/boot` guard were
+  already in place: `deploy/init-managed.sh` selects `web-data`/`diary-data` only for new
+  installs and refuses existing state (tests pass), and the preflight check rejects writable
+  `/boot` binds after resolving symlinks, loops, parents and volume driver options (PHP test
+  passed on DaServer in a temp dir). Existing `COWORK_STATE_DIR` binds keep their meaning.
 - **Open** — Verify the scoped Claude Diary bridge with synthetic data; compare Diary
   logging behaviour with the Claude Cowork reference.
-- **Open** — Include the Diary corpus in backups after migration.
+- **Partly verified (2026-09-17)** — Diary corpus in backups: the latest nightly archive
+  (`ab_20260916_151428`, `cowork-diary-1.tar.gz`) contains app-managed Diary storage
+  (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
+  moves to the SMB/dedicated root, since that path is not mounted yet.
 - **Decision** — Off-site backup destination and budget.
 - **Decision** — Empty-folder cleanup after project deletion (kept today to avoid racing
   uploads).
