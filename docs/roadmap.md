@@ -535,6 +535,12 @@ deploy 5, experiments 5.
 - 2026-09-17 · pass 18 (f) · No new confirmed bug: keyboard focus rings visible on the first 30 tab
   stops (375/1440, light/dark); no animation runs under `prefers-reduced-motion: reduce` in chat,
   settings, projects and Diary. The earlier Settings "double highlight" was the test pointer hovering.
+- 2026-09-17 · pass 19 (a, chat lists) · Free-chat and project-chat lists were saved by replacing the
+  whole list with the browser's copy, so a second tab/device — or the same tab sending in a new chat
+  before the previous save refreshed its state — silently removed chats from the sidebar (their
+  transcripts stayed on disk, unreachable) · server merges by id, deletions only via DELETE with
+  tombstones so stale lists cannot resurrect them, list cap 200 → 1000 ·
+  `server/chat-lists-routes.test.cjs`, `server/chat-lists.cjs`.
 
 ## Testing rules
 
