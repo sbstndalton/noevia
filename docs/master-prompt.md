@@ -2,8 +2,8 @@
 
 You are working on **noevia**, a self-hosted, local-first workspace for project-aware chat,
 tools and a private Diary. The repository is `noevia-application/` inside the project folder
-"AI frontend thing" (GitHub `sbstndalton/noevia`, branch `claude/compaction-correctness-fix-ltyu9p`, based on
-`feat/direct-llamacpp`). The live release is **`127b300`** on DaServer (branch commits after it are not deployed) (see `docs/deployment.md`,
+"AI frontend thing" (GitHub `sbstndalton/noevia`, branch `main`; the model-tuning and model-manager branches were
+merged as PR #2 and PR #1). The live release is **`ca5d2f6`**, built from `main` (see `docs/deployment.md`,
 and `docs/roadmap.md` → "Where things stand" for what is live, off, broken and waiting on the
 user). Confirm runtime state before assuming anything is live.
 

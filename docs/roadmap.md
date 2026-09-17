@@ -10,11 +10,12 @@ stays in the `spec-*.md` files linked below. The executable brief is
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
 **Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
 
-## Where things stand — 2026-09-17, afternoon
+## Where things stand — 2026-09-17, night
 
-Branch `claude/compaction-correctness-fix-ltyu9p` (GitHub `sbstndalton/noevia`), last release
-**`127b300`** live on DaServer (`https://cowork.daserver.work`, see `deployment.md`). Branch commits
-since then are **not deployed**: account memory, `EMBEDDING_BASE_URL`, QA and experiment harnesses.
+`main` (GitHub `sbstndalton/noevia`), release **`ca5d2f6`** live on DaServer
+(`https://cowork.daserver.work`, see `deployment.md`). PR #1 and PR #2 are merged, so everything
+built on the model-tuning branch — auto-tune, evidence-based context caps, model folder sync,
+server-judged Discover, tool routing, CPU embeddings, account memory — is deployed and verified.
 
 ### Live and verified in production
 - Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), Kiwix.
