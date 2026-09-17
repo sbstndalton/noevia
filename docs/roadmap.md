@@ -78,17 +78,22 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   offers "Show all publishers (N)" instead of only explaining itself (`03658d3`). Auto-tune's
   resumable state: an expired partial silently restarted from scratch; the job reports `resumed`
   and expired partials are deleted (`241af38`).
-- **`main` is ahead of the live release.** `ca5d2f6` is still what runs on DaServer, verified
-  2026-09-17 night (`current` symlink, `COWORK_VERSION` in the host `.env`, `docker ps`, and the
-  public bundle byte-identical to a local build of `ca5d2f6`). Everything from the CodeHarness build
-  below is on `main` and **not deployed**; Code mode is off by default in any case.
+- **Release `1fe3f1b` is live** (deployed 2026-09-17 night from `ca5d2f6`, web-only overlay,
+  appdata backup `ab_20260917_192134` first). All five services healthy, engine untouched, public
+  bundle byte-identical to the local build. Code mode ships **off** with no `CODE_*` environment
+  set. D1 needed no operator steps — it was already applied in `657d21b`, and the preflight passes
+  live; the earlier "blocked until the operator steps are applied" note was stale.
 - Glass banding on real devices: the user's check (D13). `llama-vulkan-test` is stopped, kept.
 
 ### Needs the user
-Enable the Unraid syslog mirror · approve `--fit on --fit-target 1024` · decide on an engine API key
-shared by noevia and the Nextcloud Assistant · SMB pilot share (D11) · off-site backup target (D7) ·
-deep research when they return to it · Talk's `changed-users` waits on an upstream AIO image · the
-glass banding check on real devices (D13).
+**Enable the Unraid syslog mirror** (agreed 2026-09-17, not yet done — Settings → Syslog Server →
+"Mirror syslog to flash" or a share; without it the next outage loses its evidence exactly as the
+last one did) · a maintenance window to confirm the Tasks-box hints and finish the Prompt Architect
+repeats (the user will say when) · a real end-to-end CodeHarness run against OpenCode before
+`features.codeHarness` goes on · `--fit on --fit-target 1024` after the syslog mirror · an engine
+API key shared by noevia and the Nextcloud Assistant · SMB pilot share (D11) · off-site backup
+target (D7) · deep research when they return to it · Talk's `changed-users` waits on an upstream
+AIO image · the glass banding check on real devices (D13).
 
 Deploying, spending, model weights on DaServer and live Compose/preset edits stay the user's call.
 

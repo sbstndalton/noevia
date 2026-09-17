@@ -538,13 +538,13 @@ llama.cpp Vulkan; vLLM only after the §8 gates.
 
 ## Current phase — run on what is deployed, then build
 
-`ca5d2f6` is live on DaServer and **`main` is ahead of it**: the CodeHarness build (step 5) is
-committed and unreleased. Confirmed 2026-09-17 night: `current` → `releases/ca5d2f6`,
-`COWORK_VERSION=ca5d2f6` (it lives in the host `.env` at
-`/mnt/docker/appdata/cowork/config/.env`, **not** as a container env var), the four `cowork-*`
-containers healthy on `:ca5d2f6` images, and the served bundle byte-identical to a local build of
-`ca5d2f6`. Status detail in `roadmap.md` → "Where things stand". Work in this order, one commit or
-more per step, with tests and screenshots as usual.
+Release **`1fe3f1b`** is live on DaServer (deployed 2026-09-17 night from `ca5d2f6`, web-only
+overlay). Confirmed at deploy: `current` → `releases/1fe3f1b`, `COWORK_VERSION=1fe3f1b` (it lives in
+the host `.env` at `/mnt/docker/appdata/cowork/config/.env`, **not** as a container env var), five
+services healthy with restarts 0, the native engine container id unchanged, and the public bundle
+byte-identical to a local build. D1 is satisfied live and its preflight passes. Status detail in
+`roadmap.md` → "Where things stand". Work in this order, one commit or more per step, with tests and
+screenshots as usual.
 
 1. **First, confirm the deployed state yourself**, as above. Docs go stale within a day on this box.
 2. **Context efficiency (step 5 of R1) — not ready yet.** `CONTEXT_LOG=1` has been on in production

@@ -956,6 +956,36 @@ No image change. Each file edited was copied first (`*.bak.before-d3`, `*.bak.be
 Rollback: restore the three backups named above plus `models.ini.bak-before-d3` and
 `ui-data/auto-roles.json.bak.before-d3`, then run preflight `up`. The ZIM can be deleted freely.
 
+## Release 1fe3f1b — 2026-09-17 night (CodeHarness, tool hints, two live bug fixes)
+
+Web-only overlay from `ca5d2f6` (`deploy/examples/overlay-release.sh`), appdata backup
+`ab_20260917_192134` first (both `cowork-web-1.tar.gz` and `cowork-diary-1.tar.gz` present).
+All five core services healthy, restarts 0, the native engine container untouched (the script
+asserts its container id is unchanged), Kiwix untouched. Startup logs `mcp:
+nextcloud+tavily+noevia`, 176 tools across 3 servers, 24 curated boxes — unchanged by the
+`mcp-boxes.cjs` extraction. Public bundle `index-BIcLu4wO.js`, sha256 matching the local build
+byte for byte.
+
+**D1 needed no operator steps: it was already applied.** The roadmap said the live resolved
+config was blocked by the new preflight until the token and network were set up; running
+`check.php` against the live `docker compose config` returned three PASSes, including
+"model-loader is token-gated and unreachable from the Diary sidecar", and at runtime the Diary
+container still cannot resolve `model-loader`. That was done with `657d21b`; the note was stale
+and is corrected.
+
+What this ships to production: the models-settings hit targets that were under 40px on the live
+release itself, auto-tune's "resume" no longer restarting silently after its 7-day TTL, the
+Tasks-box tool hints, Discover's empty state offering "Show all publishers", and the whole
+CodeHarness build — **off**, with no `CODE_*` environment set, so it is unreachable.
+
+Deployed with the engine idle (no `/v1` requests in the preceding 10 minutes) and outside the
+mover (03:40) and backup (04:10) windows.
+
+Rollback: `overlay-release.sh`'s automatic path (it rolls back on a failed health wait or if the
+Diary can resolve model-loader), or manually point `current` and `COWORK_VERSION` back at
+`ca5d2f6` — `config/.env.bak.before-1fe3f1b` holds the previous value and every `cowork-*:ca5d2f6`
+image is still on disk — then re-run the preflight `up` for web, diary and ocr.
+
 ## Release 8e4dcd0 — 2026-09-17 (stale Auto roles)
 
 Web-only overlay from 657d21b (`deploy/examples/overlay-release.sh`), appdata backup
