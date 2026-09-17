@@ -129,7 +129,7 @@ GPU allocations on unified-memory hosts (proposed, not built).
 | 2 | Configuration-scoped qualification | First wave shipped; D3 evidence added |
 | 3 | Impeccable/design lint | Adopted; type-scale and weight rules added today |
 | 4 | Prompt Architect | Benchmark designed, not run (needs server) |
-| 5 | CodeHarness / ACP | Contract v0 written; spike not started |
+| 5 | CodeHarness / ACP | Researched (§11): ACP confirmed; gate via client fs/terminal + sandbox; spike plan |
 | 6 | Durable jobs | Built |
 | 7 | ExecutionNode / BrowserExecutor | Researched (§10): network-layer allowlist; direct Playwright first |
 | 8 | Known-good settings | D3 caps verified; larger caps unprobed |
@@ -262,3 +262,49 @@ free?
 
 Sources: [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp),
 [Playwright MCP security practices (QASkills)](https://qaskills.sh/blog/playwright-mcp-security-best-practices-2026).
+
+## 11. CodeHarness over ACP: confirmed, and where noevia's gate actually applies (priority 5)
+
+**Question.** The roadmap chose ACP (Agent Client Protocol) as the adapter protocol for external
+coding agents. Is that still sound, and can noevia's approval gate cover what those agents do?
+
+**Findings (agentclientprotocol.com, v1 spec).**
+- **Adoption is broad.** Native ACP: Gemini CLI, GitHub Copilot, Cursor, Cline, Goose, OpenCode,
+  OpenHands, Qwen Code, Junie, Kimi CLI, Hermes Agent, Docker cagent and others. Through adapters:
+  Claude Agent (Zed's SDK adapter), Codex CLI and Pi. Every harness named in the roadmap is covered.
+- **Transport** is JSON-RPC over stdio for local agents. HTTP/WebSocket for remote agents is still
+  an RFD, not stable.
+- **Tool reporting** is `session/update` with `tool_call` / `tool_call_update`. Kinds are `read`,
+  `edit`, `delete`, `move`, `search`, `execute`, `think`, `fetch`, `other`. Statuses are
+  `pending`, `in_progress`, `completed`, `failed`.
+- **Permission** is `session/request_permission` with options `allow_once`, `allow_always`,
+  `reject_once`, `reject_always`. The client replies `selected` with an option id, or `cancelled`.
+- **The agent decides when to ask.** An agent that edits files or runs commands with its own
+  process can do so without ever calling `request_permission`. The client can only observe it
+  afterwards through `tool_call` updates. The exception is when the client provides the
+  capability (`fs/read_text_file`, `fs/write_text_file`, `terminal/*`) and the agent uses the
+  client's version. Those calls pass through noevia and can be gated.
+
+**Implications for the CodeHarness contract (spec §3).**
+1. **Mapping to noevia's approval card.** `allow_once` → Approve; `allow_always` → Allow for this
+   chat (scoped to the session, never persisted account-wide); `reject_once` → Deny;
+   `reject_always` → Deny and stop asking. `cancelled` is sent when the user stops the job.
+2. **Kind → risk.** `read`, `search`, `think` count as reads. `fetch` counts as network egress and
+   follows the BrowserExecutor allowlist (§10). `edit`, `delete`, `move`, `execute` count as writes.
+   `other` counts as a write (fail closed).
+3. **Enforcement cannot rely on the agent's courtesy.** Advertise the client `fs` and `terminal`
+   capabilities so file and shell work goes through noevia. Also run every harness in a sandbox
+   whose only writable mount is the task worktree, with no credentials and egress through the
+   proxy. The sandbox is the boundary; permission prompts are the user experience on top.
+   This is the spec's "OS-level enforcement" note, now with a concrete reason.
+4. **Location.** Stdio means the harness runs next to its client. Put the ACP client on the
+   execution node (DaServer container or the future Mac node) and relay job events to the web app
+   over the existing jobs primitive. Don't wait for remote ACP.
+5. **Spike order.** Start with a native agent that can use the local OpenAI-compatible endpoint
+   (OpenCode or Qwen Code) against the served 4B/9B models. Claude and Codex through adapters need
+   their official sign-in and billing; that is the user's decision.
+
+Sources: [ACP introduction](https://agentclientprotocol.com/overview/introduction),
+[ACP agents](https://agentclientprotocol.com/get-started/agents.md),
+[ACP v1 tool calls and permissions](https://agentclientprotocol.com/protocol/v1/tool-calls.md),
+[ACP streamable HTTP/WebSocket RFD](https://agentclientprotocol.com/rfds/streamable-http-websocket-transport.md).
