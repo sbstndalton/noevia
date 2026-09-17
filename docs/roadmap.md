@@ -500,6 +500,13 @@ deploy 5, experiments 5.
   written as "No source had relevant information" — a false claim about questions never searched —
   and the report was not marked partial · "Not researched: the web-call budget was used up", partial
   flag and researched count · `research-runner.test.cjs`.
+- 2026-09-17 · pass 13 (a, chat history) · **Data loss:** `POST /api/chats/:id/history` kept only the
+  last 40 messages (the model replay cap), so every save of a chat longer than 20 exchanges deleted
+  its oldest turns for good; saves over 1 MB (long reasoning or tool output) were refused with 413 and
+  the client ignored the failure · stored transcript cap 5000 messages / 32 MB, separate from the
+  40-message model replay; oversize answers with a readable message ·
+  `server/chat-history-routes.test.cjs`. Suspected, not fixed: two devices saving the same chat
+  overwrite each other (last writer wins; no version check) — needs a merge design.
 
 ## Testing rules
 
