@@ -49,6 +49,74 @@ Context observations carry a configuration fingerprint and are rechecked live
   harness doesn't qualify another; architect-assisted results don't qualify direct prompting.
 - Reuse the existing fingerprint approach in `chat-context.cjs` rather than inventing another.
 
+### Design — 2026-09-17 (not built)
+
+**Record** (append-only JSON lines in the deployment's state, `evidence/evidence.jsonl`; a
+derived `current` view per `(category, identityHash)`):
+
+```json
+{ "id": "ev_…", "category": "context_capacity", "result": "passed" | "failed" | "reported",
+  "value": { "ctx": 32768 }, "identity": { … }, "identityHash": "sha256…",
+  "suite": { "name": "native-calibration", "version": 3 }, "source": "calibration" | "probe" |
+  "benchmark" | "provider-metadata" | "observation", "at": 1760000000000,
+  "limitations": ["single slot", "prompt budget 120 s"], "tenantScope": "deployment" }
+```
+
+**Identity** (only fields that change behaviour; each producer fills what it can know):
+
+| Field | Native llama.cpp source | Other providers |
+|---|---|---|
+| `backend` | `llamacpp` + router `build_info` | provider kind |
+| `endpoint` | sha256 of router origin (never credentials) | sha256 of `baseUrl` origin |
+| `model` | preset section name | model id |
+| `artifact` | GGUF size + mtime + sha256 of first and last 1 MiB (cheap); full sha256 when a background job has it | unavailable → field omitted, state capped at `reported` |
+| `projector` | same fingerprint of `mmproj` file, or `null` | `null` |
+| `preset` | sha256 of the section's normalised key/values (sorted, excluding comments) | request options hash |
+| `context` | `ctx-size`, `parallel`, KV cache types | requested max context |
+| `mtp` | `spec-type`, draft artifact fingerprint, draft knobs | `null` |
+| `harness`, `preparation` | coding/architect runs only | same |
+
+`identityHash = sha256(JSON of the identity with keys sorted)`, reusing `chat-context.cjs`'s
+`fingerprint`.
+
+**States** are derived on read, never stored as mutable flags:
+
+| Derived state | Rule |
+|---|---|
+| `verified for this configuration` | newest record for the category has `result: passed` and its `identityHash` equals the live identity |
+| `failed` | newest matching record has `result: failed` |
+| `stale` | a passed/failed record exists for the model but no record matches the live identity |
+| `reported` | only provider-/metadata-sourced records (e.g. trained context, labels) |
+| `unverified` | no records, but the category applies to this model |
+| `unavailable` | the live identity cannot be computed (engine down, file missing) |
+
+Scope is literal: a `context_capacity` pass at 32 768 records `value.ctx`; asking about 131 072
+yields `unverified`, not a pass.
+
+**Producers** (first wave, existing code): native calibration → `context_capacity`; vision probe
+→ `vision` (successful probe is `passed`, projector error is `failed`); MTP counters →
+`mtp_acceptance` (`reported`, value = rate); model-manager benchmark runs → `throughput`
+(`reported`, per prompt suite) and user badges stay separate opinions, not evidence; chat
+context allocation observations → `context_allocation` (`passed`). Imported calibration history
+without artifact/preset identity becomes `stale` with limitation "recorded before identity
+tracking".
+
+**Consumers:** model manager detail shows one row per category with state, value, date,
+suite and limitations; chat model panel shows only `verified`/`failed` badges; Auto routing and
+model guidance may read states but never convert them into a score.
+
+**API:** `GET /api/models/evidence?model=` (members read, derived view); producers write
+server-side only. Admin `POST /api/models/evidence/recheck` recomputes live identity (cheap
+fingerprint) for all models. No endpoint accepts client-supplied evidence.
+
+**Tests:** identity hash stability and sensitivity (each field flips the hash); derived-state
+table cases; literal scope (32k ≠ 131k); preset reorder does not change the hash, value change
+does; artifact fingerprint changes on file replacement with the same name; no credential or
+raw URL in records; import of legacy calibration history yields `stale`.
+
+**Build order:** identity + fingerprints → store and derived view → calibration and vision
+producers → model manager rows → remaining producers.
+
 ---
 
 ## 2. PromptArchitect (frontier-assisted preparation)

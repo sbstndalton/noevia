@@ -130,7 +130,7 @@ mobile composer and tap targets).
   appears (test `test_hugging_face_cache_layout_never_surfaces_hex_names`). The live native
   router lists three plain ids, and the web layer already drops bare 32–40 hex ids. Reopen with
   a screenshot if it recurs.
-- **Open, design first** — Configuration-scoped qualification evidence: states (reported,
+- **Designed 2026-09-17, build next** — Configuration-scoped qualification evidence (record, identity table, derived states, producers, API, tests in [spec §1](spec-agent-execution.md)): states (reported,
   unverified, verified for this configuration, failed, stale, unavailable) tied to an identity
   tuple (backend, model, artifact, projector, runtime, context, MTP profile, harness, prompt
   preparation, suite, date); changes mark evidence stale. No universal score. Today calibration
