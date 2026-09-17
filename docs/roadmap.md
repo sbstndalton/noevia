@@ -188,7 +188,7 @@ mobile composer and tap targets).
   Manifest fields (`examples`, `autoLoad`, `requires`) get added with that wiring.
 - **Open** — Write access to the Diary from the in-app MCP server needs a sidecar append
   endpoint; the box is read-only by design until the user decides.
-- **Decided (D9: Kiwix-serve module, off by default)** — Optional offline Wikipedia needs a chosen service.
+- **Built on branch (D9)** — Kiwix-serve module, off by default; not deployed.
 
 ### F. Diary and storage
 - **Shipped (audit + last composer fork)** — Diary already reuses the composer actions, model
@@ -413,7 +413,12 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   add the Diary data mount to include the corpus). Deviation: Node AES-256-GCM instead of
   age/libsodium (no new dependency). Tests: `offsite-backup.test.cjs`, `offsite-service.test.cjs`,
   `qa/offsite-backup.cjs` (fake S3).
-- [ ] 8. D9 Kiwix module
+- [x] 8. **D9** — `server/kiwix.cjs` read-only built-in box `offline-wikipedia` (`wikipedia_search`,
+  `wikipedia_read` with offset paging; only `/content/...` paths from this server; content labelled as
+  reference) when `features.kiwix` and `KIWIX_URL` are set. Compose: `deploy/examples/kiwix.override.yml`
+  (profile `kiwix`, `ghcr.io/kiwix/kiwix-serve:3.7.0`, read-only, cap_drop ALL, internal network,
+  no ports). Verified 2026-09-17 against a real kiwix-serve 3.7.0 on DaServer with a 26 MB test ZIM
+  in a temporary container (removed with its image and files). Not deployed.
 - [ ] 9. D4 design lint
 - [ ] 10. D3 preset diff doc
 
