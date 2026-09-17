@@ -1,0 +1,468 @@
+{
+ "date": "2026-09-17T15:10:56.883Z",
+ "engines": [
+  {
+   "name": "llamacpp",
+   "base": "http://llama:8080/v1",
+   "model": "Qwen3.5-4B-Q5_K_M"
+  },
+  {
+   "name": "koboldcpp",
+   "base": "http://koboldcpp:5001/v1",
+   "model": "koboldcpp/Qwen3.5-4B-Q5_K_M"
+  }
+ ],
+ "repeats": 3,
+ "sizes": [
+  2000,
+  15000
+ ],
+ "summary": {
+  "llamacpp": {
+   "speed": {
+    "2000": {
+     "runs": 3,
+     "medianWallMs": 6300,
+     "medianPromptTps": 513.6,
+     "medianGenTps": 18.3,
+     "promptTokens": 1870
+    },
+    "15000": {
+     "runs": 3,
+     "medianWallMs": 27265,
+     "medianPromptTps": 534.8,
+     "medianGenTps": 17.3,
+     "promptTokens": 13691
+    }
+   },
+   "tools": "3/3",
+   "reasoning": {
+    "engine": "llamacpp",
+    "test": "reasoning",
+    "status": 200,
+    "separated": true,
+    "thinkTagsInContent": false,
+    "correct": true,
+    "ms": 21524
+   },
+   "vision": {
+    "engine": "llamacpp",
+    "test": "vision",
+    "status": 200,
+    "answer": "Red",
+    "ok": true,
+    "ms": 1346,
+    "error": null
+   },
+   "streaming": {
+    "engine": "llamacpp",
+    "test": "streaming",
+    "status": 200,
+    "firstTokenMs": 641,
+    "contentChunks": 30,
+    "doneMarker": true,
+    "usageChunk": true,
+    "text": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10."
+   },
+   "embeddings": {
+    "engine": "llamacpp",
+    "test": "embeddings",
+    "status": 200,
+    "vectors": 2,
+    "dims": 768,
+    "ms": 818,
+    "error": null
+   }
+  },
+  "koboldcpp": {
+   "speed": {
+    "2000": {
+     "runs": 3,
+     "medianWallMs": 5423,
+     "medianPromptTps": 527.1,
+     "medianGenTps": 14.9,
+     "promptTokens": 1870
+    },
+    "15000": {
+     "runs": 3,
+     "medianWallMs": 28570,
+     "medianPromptTps": 513.9,
+     "medianGenTps": 13.9,
+     "promptTokens": 13691
+    }
+   },
+   "tools": "3/3",
+   "reasoning": {
+    "engine": "koboldcpp",
+    "test": "reasoning",
+    "status": 200,
+    "separated": true,
+    "thinkTagsInContent": false,
+    "correct": true,
+    "ms": 23137
+   },
+   "vision": {
+    "engine": "koboldcpp",
+    "test": "vision",
+    "status": 200,
+    "answer": "Red",
+    "ok": true,
+    "ms": 998,
+    "error": null
+   },
+   "streaming": {
+    "engine": "koboldcpp",
+    "test": "streaming",
+    "status": 200,
+    "firstTokenMs": 426,
+    "contentChunks": 19,
+    "doneMarker": true,
+    "usageChunk": true,
+    "text": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10."
+   },
+   "embeddings": {
+    "engine": "koboldcpp",
+    "test": "embeddings",
+    "status": 200,
+    "vectors": 2,
+    "dims": 768,
+    "ms": 25,
+    "error": null
+   }
+  }
+ },
+ "rows": [
+  {
+   "engine": "llamacpp",
+   "test": "warmup",
+   "status": 200,
+   "ms": 1128
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "warmup",
+   "status": 200,
+   "ms": 419
+  },
+  {
+   "engine": "llamacpp",
+   "test": "speed",
+   "size": 2000,
+   "rep": 1,
+   "status": 200,
+   "wallMs": 5029,
+   "promptTokens": 1870,
+   "completionTokens": 22,
+   "promptTps": 515.1,
+   "genTps": 18.5,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "speed",
+   "size": 2000,
+   "rep": 1,
+   "status": 200,
+   "wallMs": 5324,
+   "promptTokens": 1870,
+   "completionTokens": 22,
+   "promptTps": 496.3,
+   "genTps": 14.7,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "llamacpp",
+   "test": "speed",
+   "size": 15000,
+   "rep": 1,
+   "status": 200,
+   "wallMs": 27443,
+   "promptTokens": 13691,
+   "completionTokens": 22,
+   "promptTps": 533.3,
+   "genTps": 16.2,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "speed",
+   "size": 15000,
+   "rep": 1,
+   "status": 200,
+   "wallMs": 28704,
+   "promptTokens": 13691,
+   "completionTokens": 22,
+   "promptTps": 512.5,
+   "genTps": 13.5,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "speed",
+   "size": 2000,
+   "rep": 2,
+   "status": 200,
+   "wallMs": 5459,
+   "promptTokens": 1870,
+   "completionTokens": 22,
+   "promptTps": 527.4,
+   "genTps": 14.9,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "llamacpp",
+   "test": "speed",
+   "size": 2000,
+   "rep": 2,
+   "status": 200,
+   "wallMs": 6315,
+   "promptTokens": 1870,
+   "completionTokens": 22,
+   "promptTps": 513.6,
+   "genTps": 18.3,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "speed",
+   "size": 15000,
+   "rep": 2,
+   "status": 200,
+   "wallMs": 28570,
+   "promptTokens": 13691,
+   "completionTokens": 22,
+   "promptTps": 513.9,
+   "genTps": 14,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "llamacpp",
+   "test": "speed",
+   "size": 15000,
+   "rep": 2,
+   "status": 200,
+   "wallMs": 27136,
+   "promptTokens": 13691,
+   "completionTokens": 22,
+   "promptTps": 537.7,
+   "genTps": 17.3,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "llamacpp",
+   "test": "speed",
+   "size": 2000,
+   "rep": 3,
+   "status": 200,
+   "wallMs": 6300,
+   "promptTokens": 1870,
+   "completionTokens": 22,
+   "promptTps": 511.3,
+   "genTps": 18.3,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "speed",
+   "size": 2000,
+   "rep": 3,
+   "status": 200,
+   "wallMs": 5423,
+   "promptTokens": 1870,
+   "completionTokens": 22,
+   "promptTps": 527.1,
+   "genTps": 14.9,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "llamacpp",
+   "test": "speed",
+   "size": 15000,
+   "rep": 3,
+   "status": 200,
+   "wallMs": 27265,
+   "promptTokens": 13691,
+   "completionTokens": 22,
+   "promptTps": 534.8,
+   "genTps": 17.3,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "speed",
+   "size": 15000,
+   "rep": 3,
+   "status": 200,
+   "wallMs": 28498,
+   "promptTokens": 13691,
+   "completionTokens": 22,
+   "promptTps": 516.1,
+   "genTps": 13.9,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "engine": "llamacpp",
+   "test": "tools",
+   "q": "What is the weather in Oslo in celsius?",
+   "status": 200,
+   "name": "get_weather",
+   "args": {
+    "city": "Oslo",
+    "unit": "celsius"
+   },
+   "ok": true,
+   "finish": "tool_calls",
+   "ms": 4848
+  },
+  {
+   "engine": "llamacpp",
+   "test": "tools",
+   "q": "Add a task \"buy tomato seeds\" due 2026-10-01.",
+   "status": 200,
+   "name": "add_task",
+   "args": {
+    "title": "buy tomato seeds",
+    "due": "2026-10-01"
+   },
+   "ok": true,
+   "finish": "tool_calls",
+   "ms": 3170
+  },
+  {
+   "engine": "llamacpp",
+   "test": "tools",
+   "q": "Say hello. Do not use any tool.",
+   "status": 200,
+   "name": null,
+   "args": null,
+   "ok": true,
+   "finish": "stop",
+   "ms": 1091
+  },
+  {
+   "engine": "llamacpp",
+   "test": "reasoning",
+   "status": 200,
+   "separated": true,
+   "thinkTagsInContent": false,
+   "correct": true,
+   "ms": 21524
+  },
+  {
+   "engine": "llamacpp",
+   "test": "vision",
+   "status": 200,
+   "answer": "Red",
+   "ok": true,
+   "ms": 1346,
+   "error": null
+  },
+  {
+   "engine": "llamacpp",
+   "test": "streaming",
+   "status": 200,
+   "firstTokenMs": 641,
+   "contentChunks": 30,
+   "doneMarker": true,
+   "usageChunk": true,
+   "text": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10."
+  },
+  {
+   "engine": "llamacpp",
+   "test": "embeddings",
+   "status": 200,
+   "vectors": 2,
+   "dims": 768,
+   "ms": 818,
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "tools",
+   "q": "What is the weather in Oslo in celsius?",
+   "status": 200,
+   "name": "get_weather",
+   "args": {
+    "city": "Oslo",
+    "unit": "celsius"
+   },
+   "ok": true,
+   "finish": "tool_calls",
+   "ms": 3851
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "tools",
+   "q": "Add a task \"buy tomato seeds\" due 2026-10-01.",
+   "status": 200,
+   "name": "add_task",
+   "args": {
+    "title": "buy tomato seeds",
+    "due": "2026-10-01"
+   },
+   "ok": true,
+   "finish": "tool_calls",
+   "ms": 3428
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "tools",
+   "q": "Say hello. Do not use any tool.",
+   "status": 200,
+   "name": null,
+   "args": null,
+   "ok": true,
+   "finish": "stop",
+   "ms": 1200
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "reasoning",
+   "status": 200,
+   "separated": true,
+   "thinkTagsInContent": false,
+   "correct": true,
+   "ms": 23137
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "vision",
+   "status": 200,
+   "answer": "Red",
+   "ok": true,
+   "ms": 998,
+   "error": null
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "streaming",
+   "status": 200,
+   "firstTokenMs": 426,
+   "contentChunks": 19,
+   "doneMarker": true,
+   "usageChunk": true,
+   "text": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10."
+  },
+  {
+   "engine": "koboldcpp",
+   "test": "embeddings",
+   "status": 200,
+   "vectors": 2,
+   "dims": 768,
+   "ms": 25,
+   "error": null
+  }
+ ]
+}
