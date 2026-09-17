@@ -70,6 +70,14 @@ mobile composer and tap targets).
 - **Decided (D5: hide behind an off-by-default flag)** — Scheduled, Plugins, Explore and Coding are preview surfaces: keep them as
   labelled previews, or hide them until built.
 
+8. **Research, then apply — UI polish from the user (2026-09-17).** The interface still reads as
+   AI-generated. Study Apple's Human Interface Guidelines
+   (https://developer.apple.com/design/human-interface-guidelines) and the skill collections
+   `justinwetch/HIGAgentSkills` and `aka-kika/akakika-skills` as references (patterns and checklists,
+   not dependencies); use open-source icon sets (license-compatible, vendored as SVG paths, no CDN)
+   and design tooling; apply to the shell, chat, projects, settings and Diary within the agreed
+   layout (`spec-ui-direction.md`), with the usual 375/768/1440 light/dark screenshots.
+
 ### B. Settings structure
 - **Shipped (first split)** — General held profile, preferences and capabilities, and profile
   identity was duplicated under "Profile & security". Personal settings are now Profile
