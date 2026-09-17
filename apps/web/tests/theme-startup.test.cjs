@@ -4,14 +4,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const code = fs.readFileSync(path.join(__dirname, '../public/theme.js'), 'utf8');
-for (const [name, read, expected] of [
-  ['saved light preference', () => 'light', 'light'],
-  ['new installation', () => null, 'dark'],
-  ['unavailable browser storage', () => { throw new Error('Storage blocked'); }, 'dark'],
+for (const [name, read, expected, systemLight] of [
+  ['saved light preference', () => 'light', 'light', false],
+  ['new installation on a dark system', () => null, 'dark', false],
+  ['new installation on a light system', () => null, 'light', true],
+  ['saved system preference on a light system', (k) => (k === 'cowork-theme' ? 'system' : null), 'light', true],
+  ['saved dark preference on a light system', (k) => (k === 'cowork-theme' ? 'dark' : null), 'dark', true],
+  ['unavailable browser storage', () => { throw new Error('Storage blocked'); }, 'dark', false],
 ]) {
   test(`theme is ready before React with ${name}`, () => {
     const attributes = {};
     vm.runInNewContext(code, {
+      matchMedia: (query) => ({ matches: query.includes('light') ? systemLight : !systemLight }),
       localStorage: { getItem: read },
       document: {
         documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
