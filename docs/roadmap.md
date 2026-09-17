@@ -130,7 +130,7 @@ mobile composer and tap targets).
   appears (test `test_hugging_face_cache_layout_never_surfaces_hex_names`). The live native
   router lists three plain ids, and the web layer already drops bare 32–40 hex ids. Reopen with
   a screenshot if it recurs.
-- **Designed 2026-09-17, build next** — Configuration-scoped qualification evidence (record, identity table, derived states, producers, API, tests in [spec §1](spec-agent-execution.md)): states (reported,
+- **First wave shipped 2026-09-17** — Configuration-scoped qualification evidence (design in [spec §1](spec-agent-execution.md)): `server/evidence.cjs` (identity hash, cheap artifact fingerprints, append-only store, derived states); the native manager computes live identity (build, endpoint hash, preset hash, model/projector/draft fingerprints, context, MTP); native calibration and the vision probe record evidence; `GET /api/models/evidence`; model details show verified/failed/stale/unverified/unavailable rows. Still to add: MTP and benchmark producers, admin recheck endpoint: states (reported,
   unverified, verified for this configuration, failed, stale, unavailable) tied to an identity
   tuple (backend, model, artifact, projector, runtime, context, MTP profile, harness, prompt
   preparation, suite, date); changes mark evidence stale. No universal score. Today calibration
