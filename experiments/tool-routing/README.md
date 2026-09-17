@@ -104,3 +104,19 @@ Decision: the gate holds (completion well above baseline, latency better). **Ena
 deployed); on 127b300 every routed message would evict the chat model under `--models-max 1`.
 Follow-ups: rank-then-fit (take boxes by score until the budget, instead of top-3 then budget), and
 check the four boxes that still miss.
+
+### Re-measured with best-first ordering (c36eee5) — 2026-09-17
+
+Same setup, router module patched in a copy of the live server code. The router now returns boxes
+by score, so the token budget is spent on the best match first.
+
+| Mode | Needed box reached the model | First tool call from the right box | No tool call | Median wall | Median input tokens | Router cost |
+|---|---|---|---|---|---|---|
+| baseline | 8/26 | 6/26 | 16 | 14.3 s | 2 261 | — |
+| router (before fix) | 16/26 | 15/26 | 9 | 13.4 s | 3 748 | 17 ms |
+| router (best first) | **26/26** | **21/26** | 3 | **10.8 s** | 2 934 | 18 ms |
+
+Only Tasks still misses: its box reaches the model every time, but the 4B does not call a task tool
+for "add a task" / "overdue tasks" (a tool description or model issue, not routing). Rows in
+`qwen35-4b-nextcloud-production-shape-best-first-2026-09-17.json`. The gate holds clearly; enable
+after deploying this branch with a CPU embedder and `EMBEDDING_BASE_URL`.
