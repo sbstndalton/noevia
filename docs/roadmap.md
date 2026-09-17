@@ -217,8 +217,12 @@ mobile composer and tap targets).
   403. Polling rather than SSE: no per-viewer Docker stream through the JSON proxy.
 
 ### I. Deep research mode
-- **Research, then build** — Gemini Deep Research / NotebookLM-style cited reports as a
-  background job, grounded in selected sources.
+- **Spec written** ([spec-deep-research.md](spec-deep-research.md)) — cited reports as a
+  background job on the durable-work primitive: optional editable plan, per-sub-question
+  gather with deterministic reduction, bounded map-reduce synthesis, deterministic citation
+  check, report + sources saved via `uploads.ingest`. Why a plan step is permitted here despite
+  the chat planner result, and the measurement gate (chat+web vs pipeline with/without plan vs
+  `tavily_research`, on a local fixture site). Build waits for R6. Decisions listed in §10.
 
 ### H. Platform
 - **Research** — Headscale vs NetBird to replace a slow Tailscale.
