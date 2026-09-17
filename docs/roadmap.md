@@ -569,6 +569,29 @@ deploy 5, experiments 5.
 - 2026-09-17 · pass 35 (e, research) · Running the same research question twice on one day overwrote
   the first report and its sources file · numbered names when either file exists ·
   `research-service.test.cjs`.
+- 2026-09-17 · pass 36 (f) · No new confirmed bug.
+- 2026-09-17 · rotation 7 (passes 37–42) · **No new confirmed bug in any area** — stop condition met.
+  Checked with a different technique: randomized fuzzing of `dav-ops` destination/If parsing,
+  chat-list merge, plan sanitizing, search-result parsing, report names and backup retention (20k +
+  5k cases, no crash or invariant break); a property fuzz of sidecar `workspace_ops` (300 corpora ×
+  25 random delete/move/copy steps, 1,634 successful operations) found no protected-file change, no
+  mutation by a refused operation and no content lost outside Trash; CSRF ordering of the new admin
+  routes; full-suite re-run green.
+
+**Bug hunt summary (2026-09-17, 7 rotations, 42 passes).** Fixed per area — a (chat/approvals/history):
+6 (stale approval cards after Stop, history truncated to 40 messages, >1 MB histories refused,
+context dropped past 40 messages, stale chat lists erasing chats, deleted chats resurrected by late
+saves ×2) plus one hardening (same-tick double send); b (auth/admin): 3 (sign-in username timing +
+password spraying, one-time secrets reusable under races, restart-wired feature toggles pretending to
+be live); c (Diary): 1 (append claimed success while only queued); d (calibration): 1 (unrestored
+profile not reported); e (research/projects): 2 (budget-skipped questions reported as "no relevant
+source", same-day reports overwritten); f (UI): 2 (short-phone composer hidden, sub-44 px touch
+targets); plus `jobs.recover()` ignoring store kinds and the skewed close icon found during the
+build. **Suspected, not proven/fixed:** passkey options reveal whether a username has passkeys;
+two devices saving the same chat transcript still last-writer-wins; MTP evidence file grows slowly
+and is re-read per reply. **Needs the user:** applying D1's operator steps before the next deploy
+(the new preflight blocks the live config until then); D3 preset diff and `--models-max 2`; SMB pilot
+and cutover; an off-site provider and budget; a live-credit research measurement.
 
 ## Testing rules
 
