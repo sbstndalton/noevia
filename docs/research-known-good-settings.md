@@ -225,3 +225,27 @@ Project RAG after the `EMBEDDING_MODEL` rename: production has **no** project in
 Indexes store only the vector dimension, not the model; a model change with a different dimension
 would be caught by the query-length check, one with the same dimension would not. Add a model
 stamp before switching embedding models.
+
+## Measured auto-tune results — 2026-09-17 (release c54b5a5 onwards)
+
+`/api/models/autotune` (module `server/llamacpp-autotune.cjs`) on the live engine, llama.cpp b10920,
+`--models-max 1`, chat paused per run. Generation is the geometric mean of three workloads (list,
+prose, code) at temperature 0 with thinking off; a profile counts only if it drafts and reproduces
+the "off" answer on the list workload. Context is then verified by the existing calibration
+(fill within 120 s and recall the start marker).
+
+| Model | Speculative decoding | Generation | Micro-batch | Prompt | Context |
+|---|---|---|---|---|---|
+| Qwen3.5-4B-Q5_K_M | **draft-mtp** (built-in nextn) | **31.1** vs 18.7 tok/s (+66 %) | 512 | 496 tok/s | **49 152** (was 262 144 unverified) |
+| Ornith-1.5-9B-Q5_K_M | **draft-mtp** | **20.2** vs 11.1 tok/s (+82 %) | 512 | 294 tok/s | **32 768** (was 262 144 unverified) |
+| gpt-oss-20b-Q4_K_M | off (no MTP head) | 26.0 tok/s | 1024 | 559 tok/s | **49 152** (was 131 072 unverified) |
+| gemma-4-E4B-it-qat-UD-Q4_K_XL | off (no MTP head) | 23.5 tok/s | 512 | 557 tok/s | **49 152** (was 131 072 unverified) |
+| gemma-4-26B-A4B-it-qat-UD-Q4_K_XL | — | did not load at its saved 131 072 context | — | — | deleted at the user's request (15 GiB) |
+
+Per workload the best profile differed: deep drafts (`n-max 8`) won on lists, shallow drafts
+(`n-max 2, p-min 0.6`) on prose, engine defaults on code — the per-mode mapping in
+`autoconfig.MODE_SPEC_PROFILE` should be measured per model rather than assumed. `ngram-simple`
+never drafted anything on these prompts (no literal repeats) and always lost.
+
+The lookup table (`ui-data/native-tuning-table.json`) keys results by architecture, quantisation and
+hardware (`29GiB b10920-eafe15a5e`), orders the next run's candidates and proposes extensions.

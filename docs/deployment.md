@@ -1089,3 +1089,31 @@ the mastercontainer environment or a community container.
   Verified: loads with `n_ctx_slot = 32768`, "creating MTP draft context against the target model";
   generation 40.2 tok/s on a list (98 % accepted), 36.0 tok/s with thinking (83 %), 23.2 tok/s on
   prose (41 %), against ~19 tok/s before. GTT 4.0 GiB, host available 16.4 GiB.
+
+## Releases c54b5a5 and 7132487 — 2026-09-17 late afternoon (auto-tune)
+
+Appdata backups `ab_20260917_133936` and `ab_20260917_142705` first; both web-only overlays.
+`cowork-model-loader` retagged to each release (its code is unchanged since ea57c83).
+
+Live changes with these releases:
+- **Auto-tune** (`/api/models/autotune`, admin) measured every served model; results and the new
+  contexts are in `research-known-good-settings.md`. Presets now carry `spec-type = draft-mtp`
+  (4B, 9B), `ubatch-size` 512/1024 and verified contexts.
+- **Model folder sync** runs on the server (20 s after start, then every 15 min): a new GGUF gets
+  safe defaults and the engine reloads, with no page visit. The three models registered by hand
+  this morning (gpt-oss-20b, Gemma 4 E4B/26B) came from the pre-fix Easy mode and carried
+  unverified 131 072 contexts and a `draft-eagle3` setting with no draft model; auto-tune and
+  calibration replaced both.
+- **Deleted at the user's request:** `gemma-4-26B-A4B-it-qat-UD-Q4_K_XL` (15 GiB, section and
+  files) — it cannot load at a usable context on this GPU.
+- **Nextcloud:** `default_phone_region = US`; Assistant thinking disabled (57–100 s → 2.9 s);
+  task types `core:audio2text`, `core:text2image` and `core:text2speech` disabled, because this
+  server has no provider for them and the Assistant otherwise offers buttons that fail to schedule.
+  Talk stays on `aio-talk:latest` (2026-09-11); no newer image exists, so its missing
+  `changed-users` feature waits for upstream.
+
+Researched, not adopted: **Qwen3.8-Flash-Next** (Qwen4-generation architecture with an n-gram table
+that can live on SSD via `--model-ngram --ngram-load-mode read`) needs ~64 GiB of RAM even with the
+table off-GPU — the smallest build is ~72 GB, ~38 GB of it the table. Revisit if a smaller Flash
+variant ships. Qwen3.8-27B is a fine-tune of 3.6 (dense); Granite 4.2 30B (IBM, official GGUF,
+Q3_K_S 12.7 GB) is the newest first-party model that fits but is dense, so slower than gpt-oss-20b.
