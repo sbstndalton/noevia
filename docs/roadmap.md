@@ -10,65 +10,59 @@ stays in the `spec-*.md` files linked below. The executable brief is
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
 **Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
 
-## Where things stand — end of 2026-09-17
+## Where things stand — 2026-09-17, afternoon
 
 Branch `claude/compaction-correctness-fix-ltyu9p` (GitHub `sbstndalton/noevia`), last release
-**`127b300`** live on DaServer (`https://cowork.daserver.work`, see `deployment.md`).
+**`127b300`** live on DaServer (`https://cowork.daserver.work`, see `deployment.md`). Branch commits
+since then are **not deployed**: account memory, `EMBEDDING_BASE_URL`, QA and experiment harnesses.
 
 ### Live and verified in production
-- Services: web, Diary, OCR, model-loader (token + `models` network, D1), native llama.cpp
-  (`--models-max 1`), Kiwix (`wikipedia_en_all_nopic_2026-06`, internal network). All healthy
-  after the 08:24 reboot.
-- Models (D3): Qwen3.5-4B-Q5_K_M (ctx 24 576, 22.7k-token prompt in 46 s), Ornith-1.5-9B-Q5_K_M
-  (16 384, 15.1k in 50 s), nomic-embed-text-v1 (768 dims). Auto roles: Fast 4B, Smart 9B, Vision 4B.
-- MCP: Nextcloud, Tavily, in-app server (loopback 8022; diary + project-docs boxes, 10 tools).
-- Features on through env: previews, Diary append tool, deep research (admin), offline Wikipedia.
-- New in 127b300: Settings → Data (export ZIP, import, archived chats with Restore, delete old
-  chats), Settings → Personalization (custom instructions, response style, background
-  notifications), keyboard shortcuts (⌘/Ctrl K, ⇧O, comma, slash), HIG type scale and
-  cleanups, plain-language tool rows, stale Auto-role 409 and alert, shared-memory (GTT)
-  warning on the Hardware tab, glass pointer glint.
+- Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), Kiwix, and
+  **KoboldCpp v1.121** (`cowork-koboldcpp-1`, test engine, same models folder, 4B + CPU nomic,
+  shared provider "KoboldCpp (test)" at `http://koboldcpp:5001/v1`).
+- Models change over time at the user's discretion; don't treat a new or missing preset as a finding.
+- MCP: Nextcloud (160 tools), Tavily, in-app server (10 tools).
+- Features on through env: previews, Diary append tool, offline Wikipedia. **Deep research is off**
+  (gate failed, parked until the user returns to it).
+- **Nextcloud AIO repaired** (apache/talk crash-loop after the nightly update; this broke Diary
+  storage with a 502) and **Nextcloud Assistant runs on the native engine** (`integration_openai` →
+  `http://noevia-llama:8080/v1`, verified with a text task).
 
-### Implemented, off or not yet proven
-- **Tool router** (`features.toolRouter`, off): gate passed on synthetic fixtures (14/14, 9.7 s vs
-  10.6 s, −23 % input tokens). Not measured on real Nextcloud boxes. With `--models-max 1` every
-  routed message loads the embedding model and evicts the chat model, so leave it off until
-  memory allows two models.
-- **Deep research** is on for admins, but the spec §8 gate never finished (run cut off by the
-  outage). Harness is ready: 12 questions + 4 project + 2 adversarial, variants A/B/C.
-- **Off-site backups** (D7): built, no target configured.
-- **DAV ops** (D6): built; the sharing listener is still unconfigured.
-- **Diary append** (D10): live, tested on synthetic corpora only (by rule), never against the real
-  Diary.
-- **Kiwix tool**: search verified from the web container, not yet used in a real model chat.
-- **Vision role** on the 4B: configured, no image test on the new presets.
+### Measured today (current phase)
+- **Step 1, APU memory:** GTT is already kernel-capped at 14.85 GiB (half of RAM) plus 2 GiB VRAM.
+  4B = 3.1 GiB GTT + 1.9 GiB VRAM; embedding 0.3 GiB. Proposal: keep the cap, add `--fit on
+  --fit-target 1024`, syslog mirror first. [research-known-good-settings.md](research-known-good-settings.md)
+- **Step 2, retrieval swap:** a RAG turn under `--models-max 1` adds ~4.6 s of swapping and drops the
+  prompt cache; a CPU nomic answers a query in ~30 ms. `EMBEDDING_BASE_URL` built (branch). Production
+  has no RAG indexes, so the embedding rename left nothing stale.
+- **Step 3, deep research gate:** failed on the 9B (citation validity 0.65–0.68 vs ≥ 0.95, B no
+  better than A on facts). Feature off. [spec-deep-research.md §8](spec-deep-research.md)
+- **Step 4, tool router in production shape:** gate holds on the real Nextcloud boxes (needed box
+  reaches the model 16/26 vs 8/26, 13.4 s vs 15.1 s). Enable only with a CPU embedder, after deploying
+  `EMBEDDING_BASE_URL`. [experiments/tool-routing/README.md](../experiments/tool-routing/README.md)
+- **Step 6 harness:** prompt-preparation benchmark (P0–P3, 18 fixtures) written and tested offline,
+  not yet run on the models.
+- **Step 7:** account-wide memory built (branch); Diary append verified end to end through the UI on a
+  diary-test copy. Kobold vs llama.cpp comparison: running (results go to research-findings §12).
 
 ### Broken or risky right now
-- **Outage cause unknown.** DaServer went unresponsive around 04:15 (SSH banner timeouts, Unraid
-  UI down, later Cloudflare 530) after `--models-max 2`, a 52 GB ZIM download and an appdata
-  backup. Syslog is in RAM and was lost. Docker network overlap ruled out. Leading hypothesis:
-  unified-memory GTT allocations outside the container limit (findings §5, §7). Do not return to
-  `--models-max 2` before a GTT cap / `--fit` and a measured peak.
-- **Retrieval evicts chat** under `--models-max 1` (embedding and chat model swap on RAG turns).
-- **`EMBEDDING_MODEL` renamed** (`nomic-embed-text-v1-GGUF` → `nomic-embed-text-v1`). Project RAG
-  indexes built before today may be stale or empty; reindexing is unverified.
-- Glass banding on real devices: still the user's check (D13).
-- `llama-vulkan-test` container stopped and kept for rollback (user's request).
-- QA runner false alarms: `qa/nav.cjs` (helper) and `qa/workspace-preview.cjs` (manual preview
-  server) are not suites; `qa/native-live.cjs` needs the GPU window and leaves a server on 31329
-  if it crashes.
-
-### Research written today
-`research-findings-2026-09-17.md` §1–11: D3 caps, tool routing, deep-research status, HIG audit,
-outage, APU memory bounds (GTT, `--fit`), backend portability (stay on llama.cpp Vulkan), Unsloth
-GGUFs, BrowserExecutor boundary (egress proxy), ACP for CodeHarness plus the local spike
-(`experiments/acp-spike`: OpenCode writes silently by default; with `ask`, writes go through
-client fs, but approved shell commands run in the agent's own process).
+- **Outage cause unknown** (04:15–08:24). Mover 03:40 and appdata backup 04:10 precede it; syslog
+  mirror still off. Leading guess moved from engine GTT to RAM-backed paths during the ZIM download
+  or backup staging (engine alone can't exceed ~16.9 GiB). Unproven.
+- **Two engines share one GPU.** KoboldCpp keeps a 4B loaded permanently next to llama.cpp; with both
+  4Bs loaded host `available` was 10.8 GiB. Fine, but no room for the 9B in both at once.
+- **Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the loaded
+  model mid-conversation (it broke the deep-research run today). The engine has no API key on the
+  `nextcloud-aio` network.
+- **Tool router baseline is weak today:** with many Nextcloud boxes selected, the 5 000-token budget
+  sends only the first box or two.
+- Glass banding on real devices: the user's check (D13). `llama-vulkan-test` stopped, kept.
 
 ### Needs the user
-Enable the Unraid syslog mirror · GTT cap decision · SMB pilot share and credentials (D11) · an
-off-site target and budget (D7) · live-credit research run · a maintenance window for larger
-context probes · sign-in/billing for Claude or Codex harness adapters.
+Enable the Unraid syslog mirror · approve `--fit on --fit-target 1024` · deploy the branch (for
+`EMBEDDING_BASE_URL` + CPU embedder, then `features.toolRouter`) · decide on an engine API key shared
+by noevia and Nextcloud · SMB pilot share (D11) · off-site target (D7) · deep research when they return
+to it · KoboldCpp keep/replace decision after the comparison.
 
 ## Shipped (do not rebuild)
 

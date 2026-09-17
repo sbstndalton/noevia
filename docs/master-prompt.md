@@ -3,7 +3,7 @@
 You are working on **noevia**, a self-hosted, local-first workspace for project-aware chat,
 tools and a private Diary. The repository is `noevia-application/` inside the project folder
 "AI frontend thing" (GitHub `sbstndalton/noevia`, branch `claude/compaction-correctness-fix-ltyu9p`, based on
-`feat/direct-llamacpp`). The live release is **`127b300`** on DaServer (see `docs/deployment.md`,
+`feat/direct-llamacpp`). The live release is **`127b300`** on DaServer (branch commits after it are not deployed) (see `docs/deployment.md`,
 and `docs/roadmap.md` → "Where things stand" for what is live, off, broken and waiting on the
 user). Confirm runtime state before assuming anything is live.
 
@@ -531,39 +531,38 @@ llama.cpp Vulkan; vLLM only after the §8 gates.
 
 ## Current phase — stabilise, measure on the server, then build
 
-The decisions build (D1–D13) is done; see the roadmap. Work in this order, one commit or more
-per step, with tests and screenshots as usual.
+The decisions build (D1–D13) is done. Status on 2026-09-17 afternoon in `roadmap.md` → "Where things
+stand". Work in this order, one commit or more per step, with tests and screenshots as usual.
 
-1. **Outage follow-up (needs the user for host settings).** Check the syslog mirror is on. With
-   only the 4B loaded, then 4B plus embedding, record `free -m` and
-   `/sys/class/drm/card*/device/mem_info_gtt_{used,total}`. Propose a GTT cap and
-   `--fit on --fit-target` to the user, with numbers. Record the results in
-   `research-known-good-settings.md`.
-2. **Embedding versus chat eviction.** Measure a RAG turn's latency with `--models-max 1`. If the
-   swap is the cost, pick a fix (a CPU-only embedding sidecar, or a second slot once §1 is safe) and
-   measure it. Verify project RAG after the `EMBEDDING_MODEL` rename, and add a reindex path if
-   indexes are stale.
-3. **Deep research gate (§8).** Run `experiments/deep-research/run.cjs` (A/B/C) on the 9B from
-   inside the web container, outside backup windows, detached with `nohup` and output to a file.
-   Write the results into the spec and decide on the plan step. If the gate fails, turn the
-   feature back off and say so.
-4. **Tool router in production shape.** Measure with the real Nextcloud boxes against the served
-   models. Enable `features.toolRouter` only if the gate holds there and memory allows the
-   embedding model to stay loaded.
-5. **Context efficiency (research priority 1).** Turn on `CONTEXT_LOG=1` for a week of normal use
-   (counts only), then write reducers for the repeats the logs show.
-6. **Prompt Architect benchmark** (spec §2) on the local models.
-7. **Product:** account-wide memory preferences (Personalization); Kiwix and vision checked in real
-   chats; Diary append checked end to end on the test corpus through the UI.
-8. **CodeHarness spike on the server (D14):** OpenCode over ACP in a sandbox container with a
-   worktree-only mount, no credentials and proxied egress, against the local models. Approvals map
-   to noevia's card as in findings §11.
-9. **SMB pilot (D11)** once the user provides the share, on a copy only.
-10. **Bug hunt**, below, after steps 1–8.
+1. **Done — outage follow-up.** Measured (GTT cap 14.85 GiB exists; peaks recorded). Waiting on the
+   user: syslog mirror, `--fit` flags.
+2. **Done — embedding versus chat eviction.** Swap costs ~4.6 s; `EMBEDDING_BASE_URL` built; no stale
+   RAG indexes. To finish after a deploy: run a CPU nomic service and point web at it.
+3. **Parked — deep research.** Gate failed on the 9B; feature off. The user will pick it up later with
+   another agent. Don't work on it unless asked.
+4. **Done (measured), enable after deploy — tool router.** Gate holds on real Nextcloud boxes. Next:
+   rank-then-fit selection, the four boxes still missed, then enable with the CPU embedder.
+5. **Context efficiency.** Turn on `CONTEXT_LOG=1` in the live web env (counts only) for a week, then
+   write reducers for what `context-log.cjs report()` shows repeating.
+6. **Prompt Architect benchmark.** Harness ready (`experiments/prompt-preparation`, runs from the
+   Diary container); run P0/P1/P2 on the served models with the engine otherwise idle.
+7. **Product:** account memory built; Diary append verified. Still: Kiwix and vision checked in
+   real chats (needs a signed-in user; ask the user to do it or to provide a synthetic test account
+   on production).
+8. **KoboldCpp vs llama.cpp (user request).** KoboldCpp runs beside the native engine on the same
+   models; finish the comparison (speed at 2k/15k, memory, tools, reasoning, vision, embeddings,
+   streaming, then the 9B), record it in `research-findings-2026-09-17.md` §12, and revisit D18 with
+   the numbers. Never run benchmarks while Nextcloud Assistant or chats are active if avoidable.
+9. **CodeHarness spike on the server (D14):** OpenCode over ACP in a sandbox container.
+10. **SMB pilot (D11)** once the user provides the share.
+11. **Bug hunt**, below.
 
-Still the user's: deploying, spending money or credits, downloading model weights, editing
-live Compose or preset files beyond what a step above says was approved, host settings (GTT,
-syslog), and anything touching the real Diary corpus.
+Measurement hygiene learned today: one model slot is shared by noevia chats, Nextcloud Assistant and
+any test, so a concurrent request evicts the model under test. Check `docker logs cowork-llama-1`
+for recent requests before starting, and don't run two engine tests at once.
+
+Still the user's: deploying, spending money or credits, host settings (GTT, syslog), and anything
+touching the real Diary corpus. Model files change at the user's discretion.
 
 ## Bug hunt (after the current phase)
 
