@@ -454,7 +454,6 @@ deploy 5, experiments 5.
   `qa/duplicate-send.cjs`.
 - 2026-09-17 · pass 1 (a) · Considered, not a bug: "Allow for this chat" keyed by `userId:-` when a
   request has no chatId — the browser always sends one and only the same user can omit it.
-
 - 2026-09-17 · pass 2 (b, auth) · Password sign-in skipped Argon2 for unknown usernames (0.09 ms vs
   12.5 ms), so response time revealed which accounts exist; and the limiter keyed on address+username
   let one address spray passwords across any number of usernames · always verify against a lazily
@@ -463,6 +462,12 @@ deploy 5, experiments 5.
   credential ids of a known username and an empty list for an unknown one (enumeration). Returning
   an empty list for everyone would break sign-in with non-discoverable passkeys
   (`residentKey: 'preferred'`); needs a product decision on discoverable-only passkeys.
+- 2026-09-17 · pass 3 (c, Diary/storage) · The D10 append endpoint answered 200 "Added a note" when
+  storage refused the write and the journal only queued it · 202 `queued: true` unless the document
+  carries the new marker; the tool says the note is in the write queue ·
+  `tests/test_diary_append.py::test_append_reports_queued_when_storage_refuses_the_write`,
+  `mcp-internal-tools.test.cjs`.
+
 ## Testing rules
 
 - Diary work uses a per-run **copy** of `AI frontend thing/diary-test/`. Never the folder
