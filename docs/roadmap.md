@@ -209,7 +209,7 @@ research mode (I) are measure-first, then build.
 
 ## Order
 
-0. Compaction correctness: protected-input preflight and validate-before-commit
+0. **Shipped.** Compaction correctness: protected-input preflight and validate-before-commit
    ([spec §3–4](spec-context-projection.md)). Placed first because it is a verified bug —
    a compaction that shrinks but doesn't fit is saved before the fit check — and it is small.
 1. Live stats, settings ✕.
