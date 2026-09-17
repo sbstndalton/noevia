@@ -387,7 +387,12 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   Web `server/dav-ops.cjs` (tenant-bound Destination, tagged `If` for destination, 503 +
   Retry-After on unknown outcome), folder ETags in PROPFIND, `DAV: 1`, no LOCK. Tests:
   `tests/test_workspace_ops.py` (19), `server/dav-ops.test.cjs`. Interop matrix still to run.
-- [ ] 5. D10 Diary append
+- [x] 5. **D10** — Sidecar `POST /api/entries/append` (today only, `entryTime` must be now ±15 min,
+  UUIDv4 `requestId` = xid so replays never duplicate, no headings/markers, ≤8000 chars) on
+  `log_exchange`'s journal + guarded append. Web: `diary_append` tool in
+  `mcp-internal-tools.cjs` only when `features.diaryMcpWrite`; not in `reads`, so approval is
+  always required; audited `diary.append` (xid, length). Tests: `test_diary_append.py`,
+  `mcp-internal-tools.test.cjs`, `qa/diary-append-http.cjs`.
 - [ ] 6. D12 deep research steps 4–5
 - [ ] 7. D7 backup module
 - [ ] 8. D9 Kiwix module

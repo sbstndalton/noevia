@@ -181,10 +181,10 @@ Four things about it are load-bearing:
   presented with `w:0`, so a tool wrongly listed under a box's `reads` fails
   closed rather than writing unreviewed.
 
-The Diary box is **read-only** and that is deliberate: the sidecar has no
-append endpoint (`/api/entries/edit` corrects one already-logged exchange by
-its `xid`), and `/api/chat` is the only route that creates entries, which the
-"do not send prompts to the diary" rule puts out of bounds.
+The Diary box is **read-only by default**. With `features.diaryMcpWrite` (D10, off) it
+adds `diary_append`, which appends one approved note to *today* through the sidecar's
+`/api/entries/append` (journaled, idempotent by request id). Nothing can edit or delete an
+existing entry through MCP; `/api/chat` stays out of bounds.
 
 **The approval gate is a security control, not decoration.** Every write tool
 blocks the chat until a human answers. Arguments are shown in full and
