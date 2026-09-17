@@ -80,8 +80,10 @@ mobile composer and tap targets).
 - **Shipped (first split)** — General held profile, preferences and capabilities, and profile
   identity was duplicated under "Profile & security". Personal settings are now Profile
   (identity), Security (passkeys, sessions, sign-out, app passwords), Appearance, Capabilities,
-  Diary & storage, Your connections, Usage & activity, Planned features. Personalization,
-  Notifications and Data stay under Planned until built. Still open: deeper pages at
+  Diary & storage, Your connections, Usage & activity, Planned features. Personalization and
+  Notifications stay under Planned until built. **Data → Export conversations shipped 2026-09-17**
+  (ZIP of Markdown per chat + conversations.json, no reasoning text; `routes/export.cjs`,
+  `qa/data-export.cjs`); retention and import remain planned. Still open: deeper pages at
   ChatGPT-level depth with Claude-level polish. References:
   `ui mockups/inspiration/`, [spec-ui-direction.md](spec-ui-direction.md),
   [ui-reference-review.md](ui-reference-review.md).
