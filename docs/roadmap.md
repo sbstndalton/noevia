@@ -467,6 +467,22 @@ deploy 5, experiments 5.
   carries the new marker; the tool says the note is in the write queue ·
   `tests/test_diary_append.py::test_append_reports_queued_when_storage_refuses_the_write`,
   `mcp-internal-tools.test.cjs`.
+- 2026-09-17 · pass 4 (d, model manager) · No confirmed bug: token middleware (exact health exemption,
+  constant-time compare), admin-only proxy path checks, download tracker states and evidence
+  derivation reviewed. Noted: MTP evidence appends on every ≥0.05 acceptance change, so
+  `evidence.jsonl` grows slowly and is re-read per reply — watch, not fixed.
+- 2026-09-17 · pass 5 (e, projects/uploads/research) · No confirmed bug: project config patch indexes
+  a spread copy (only affects document indexing state, which that path never touches), upload caps,
+  research budget and job scoping reviewed.
+- 2026-09-17 · pass 6 (f, UI) · With the "inference unreachable" banner on short phones (375×553,
+  568×320), a new chat opened with the composer's add/send row off-screen or under the stats footer;
+  the header's settings button also wrapped below the title at ≤640 px · greeting shrinks before the
+  composer, header stays one row, stats footer and banner compact on short viewports ·
+  `qa/short-phone-composer.cjs`.
+- 2026-09-17 · pass 6 (f) · Touch targets under 44 px on phones/tablets: composer add/send (32),
+  chat settings (32), project tabs (32 tall), project card options (30×33), Settings back (30 tall)
+  and close (32 wide), project filter (38), thinking-effort select (38), "open an empty chat" (17) ·
+  `(pointer: coarse), (max-width: 640px)` minimums · `qa/touch-targets.cjs`.
 
 ## Testing rules
 
