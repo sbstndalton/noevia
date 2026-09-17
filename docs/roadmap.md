@@ -47,7 +47,7 @@ mobile composer and tap targets).
   the viewport shrinks; one toggle; bigger targets; optimise for vertical space.
 - **Open** — Search button is hidden under the top bar at small widths.
 - **Open** — iPhone renders much brighter than Chrome on macOS; macOS shows banding.
-- **Open** — The settings ✕ differs from every other close control; use one component.
+- **Shipped** — One shared `CloseButton` for every dialog/popup close control (settings ✕ no longer differs).
 - **Open** — Short-height populated sidebar reachability (carried from the backlog).
 - **Open** — Mobile checks for Settings, Projects, Code and the setup wizard, and software
   keyboard behaviour (Freebuff covered Chat and Diary only).
@@ -142,7 +142,7 @@ mobile composer and tap targets).
   uploads).
 
 ### G. Telemetry and logs
-- **Open** — Tokens/s and stats in the footer don't update live during generation.
+- **Shipped** — Footer tokens/s updates the moment each round's SSE `usage` event arrives instead of waiting on the 2.5s poll. A single long round still can't tick mid-generation: llama.cpp reports the rate only when a request finishes.
 - **Open** — Admin-only tab streaming the llama.cpp log live.
 
 ### I. Deep research mode
@@ -212,7 +212,7 @@ research mode (I) are measure-first, then build.
 0. **Shipped.** Compaction correctness: protected-input preflight and validate-before-commit
    ([spec §3–4](spec-context-projection.md)). Placed first because it is a verified bug —
    a compaction that shrinks but doesn't fit is saved before the fit check — and it is small.
-1. Live stats, settings ✕.
+1. **Shipped.** Live stats, settings ✕.
 2. Deleted model state, safe defaults after download.
 3. Full-page model manager with Easy/Advanced and the parity audit.
 4. Mobile drawer, search button, brightness and banding.
