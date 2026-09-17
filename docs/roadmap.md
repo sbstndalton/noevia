@@ -496,6 +496,10 @@ deploy 5, experiments 5.
   `models.ini` changed, the original profile was (correctly) not overwritten, but nothing told the
   admin that the calibration's context size might still be in the profile · `restored: false` and an
   explicit error sentence in both paths · `llamacpp-calibration.test.cjs`.
+- 2026-09-17 · pass 11 (e, research) · After the web-call budget ran out, later sub-questions were
+  written as "No source had relevant information" — a false claim about questions never searched —
+  and the report was not marked partial · "Not researched: the web-call budget was used up", partial
+  flag and researched count · `research-runner.test.cjs`.
 
 ## Testing rules
 
