@@ -236,7 +236,7 @@ mobile composer and tap targets).
   (`ab_20260916_151428`, `cowork-diary-1.tar.gz`) contains app-managed Diary storage
   (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
   moves to the SMB/dedicated root, since that path is not mounted yet.
-- **Decided (D7: encrypted S3-compatible snapshots module; provider is the user's)** — Off-site backup destination and budget.
+- **Built on branch (D7)** — encrypted S3-compatible snapshots module; the provider and budget are still the user's.
 - **Shipped on branch (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion; see Current phase.
 
 ### G. Telemetry and logs
@@ -402,7 +402,17 @@ Build order from master-prompt.md § Current phase. Checked items are committed 
   Documents/Images/Text/Other subfolders. The §8 measurement gate (real model) is still unrun —
   no model is served on DaServer. Fixed on the way: `jobs.recover()` ignored `kinds`; the shared
   close icon's second stroke was half length (skewed ×).
-- [ ] 7. D7 backup module
+- [x] 7. **D7** — `server/offsite-backup.cjs` (AES-256-GCM, HMAC chunk ids, 4 MiB chunks, encrypted
+  manifests, dedupe, restore into an empty dir with per-chunk and per-file verification, retention
+  7 daily/4 weekly/6 monthly + prune, restore test), `offsite-s3.cjs` (SigV4, HTTPS-only except
+  loopback, no credentials in URLs), `offsite-service.cjs` (env config, nightly at
+  `OFFSITE_BACKUP_HOUR`, status file, consistent SQLite copies via the online backup API),
+  `routes/offsite-backup.cjs`, Settings → Off-site backups. Operator env: `OFFSITE_BACKUP_S3_ENDPOINT`,
+  `_BUCKET`, `_REGION`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY`, `_PREFIX`, `OFFSITE_BACKUP_KEY_FILE`
+  (64 hex chars, refused inside a backed-up path), `OFFSITE_BACKUP_PATHS` (default `UI_DATA_DIR`;
+  add the Diary data mount to include the corpus). Deviation: Node AES-256-GCM instead of
+  age/libsodium (no new dependency). Tests: `offsite-backup.test.cjs`, `offsite-service.test.cjs`,
+  `qa/offsite-backup.cjs` (fake S3).
 - [ ] 8. D9 Kiwix module
 - [ ] 9. D4 design lint
 - [ ] 10. D3 preset diff doc
