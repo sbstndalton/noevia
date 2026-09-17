@@ -64,8 +64,9 @@ mobile composer and tap targets).
   concern per page, ChatGPT-level depth with Claude-level polish. References:
   `ui mockups/inspiration/`, [spec-ui-direction.md](spec-ui-direction.md),
   [ui-reference-review.md](ui-reference-review.md).
-- **Open** — The model manager opens as its own full page with a back button; the settings
-  dialog keeps a simple summary.
+- **Shipped** — The model manager is its own full page (← Settings back button); Settings →
+  Models & routing shows engine status, installed/loaded models, Auto routing and "Open model
+  manager". The chat panel's "Model settings" opens the page directly.
 
 ### C. Model management
 - **Open** — Easy mode by default (auto-tune context against real VRAM, MTP type, KV-cache
