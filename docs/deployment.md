@@ -1013,3 +1013,13 @@ Rollback: point `current` at `releases/8e4dcd0`, restore `.env.bak.before-127b30
 - **Deep research off.** `NOEVIA_FEATURE_DEEP_RESEARCH: "false"` (copy
   `.bak.before-deep-research-off`), web recreated with `up.sh … --wait web`. Gate failed; see
   `spec-deep-research.md` §8.
+- **KoboldCpp test engine.** Override service `koboldcpp` (copy `.bak.before-koboldcpp`): KoboldCpp
+  v1.121 binary at `/mnt/docker/appdata/cowork/tools/koboldcpp/v1.121/` (sha256-verified), run in
+  the pinned llama.cpp Vulkan image, same models folder read-only, 4B + CPU nomic, internal
+  `default` network only, healthcheck on `:5001/api/v1/model`, no admin API. Added as shared provider
+  `koboldcpp` ("KoboldCpp (test)", `http://koboldcpp:5001/v1`) in `state/web/shared-providers.json`
+  (copy `.bak.before-koboldcpp`). Remove both to roll back.
+- **`CONTEXT_LOG=1`** on web (copy `.bak.before-context-log`), counts only, for step 5.
+- **Model downloads (user request):** gpt-oss-20b Q4_K_M, Gemma 4 E4B and 26B-A4B QAT UD-Q4_K_XL
+  (+ mmproj), Qwen3.6-35B-A3B UD-IQ3_XXS and UD-IQ4_XS (+ mmproj), Unsloth, sha256-verified, into
+  `/mnt/user/ai-models/<name>/`. Not added to `models.ini`.

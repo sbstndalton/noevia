@@ -317,3 +317,38 @@ Sources: [ACP introduction](https://agentclientprotocol.com/overview/introductio
 [ACP agents](https://agentclientprotocol.com/get-started/agents.md),
 [ACP v1 tool calls and permissions](https://agentclientprotocol.com/protocol/v1/tool-calls.md),
 [ACP streamable HTTP/WebSocket RFD](https://agentclientprotocol.com/rfds/streamable-http-websocket-transport.md).
+
+## 12. KoboldCpp vs native llama.cpp on DaServer (user request)
+
+**Setup.** KoboldCpp v1.121 (`koboldcpp-linux-x64-nocuda`, sha256 `5939cb13…`, AGPL-3.0) inside the
+pinned llama.cpp Vulkan image (for its RADV drivers), same read-only `/mnt/user/ai-models`, same
+GGUF, context and `q8_0` KV cache; flash attention on in both. Harness:
+`experiments/backend-portability/kobold-vs-llamacpp.cjs`, run from the web container; prompts with a
+fresh nonce so neither engine reuses a prompt cache; engines alternated per repeat. For the 9B the
+engines ran one after the other, never both loaded.
+
+**Dense models (3 repeats, medians).**
+
+| Model | Engine | Prompt tok/s at ~1.9k / ~13k | Generation tok/s at ~1.9k / ~13k | First streamed token |
+|---|---|---|---|---|
+| Qwen3.5-4B Q5_K_M | llama.cpp | 514 / 535 | **18.3 / 17.3** | 641 ms |
+| | KoboldCpp | 527 / 514 | 14.9 / 13.9 | 426 ms |
+| Ornith-1.5-9B Q5_K_M | llama.cpp | 307 / 322 | **10.7 / 10.4** | 754 ms |
+| | KoboldCpp | 304 / 297 | 8.8 / 6.3 | 435 ms |
+
+**API features noevia uses: parity.** Tool calls 3/3 on both (correct names and JSON arguments,
+no call when none is wanted), reasoning separated into `reasoning_content`, vision (projector)
+correct, SSE streaming with `[DONE]` and a usage chunk, 768-dim embeddings. KoboldCpp serves
+embeddings from a CPU model beside the chat model (25 ms, no swap); the llama.cpp router swaps the
+chat model out (450–820 ms plus the lost prompt cache).
+
+**Reading.** Prompt processing is the same library and performs the same. Generation is 18–19 %
+slower on KoboldCpp at short context and 40 % slower on the 9B at 13k tokens. KoboldCpp *feels*
+faster because its first token arrives sooner and retrieval doesn't evict the chat model. The
+second of those is available on llama.cpp too (`EMBEDDING_BASE_URL` + CPU nomic).
+What KoboldCpp lacks for noevia: the router (several models by name, load/unload API), which the
+model manager, Auto roles and calibration are built on; each instance serves one chat model.
+
+**MoE round (requested):** gpt-oss-20b, Gemma 4 E4B and 26B-A4B (QAT), Qwen3.6-35B-A3B IQ3_XXS
+(fits the GPU) and IQ4_XS (expert offload: `--n-cpu-moe`/`--moecpu` and `--fit`/`--autofit`).
+Results below when the run completes.
