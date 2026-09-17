@@ -558,6 +558,17 @@ deploy 5, experiments 5.
 - 2026-09-17 · pass 25 (a, privacy) · Same race for context state: a reply finishing after its chat was
   deleted re-saved the chat's context file (which can hold a conversation summary) · removed at the end
   of the request when the chat is tombstoned · `qa/chat-context.cjs`.
+- 2026-09-17 · passes 26–30 (b–f) · No new confirmed bugs. Checked: per-user tombstones and context
+  routes stay in the tenant's workspace (b); queued append retries dedupe by marker (c); evidence
+  appends are whole-line (d); sidecar ZIP imports land only in `Imports/<new name>` with conflict
+  checks (e); full suite re-run after rotation 5 — every `qa/*.cjs`, pytest diary/model-manager,
+  deploy and experiments green (f and all).
+- 2026-09-17 · pass 31 (a) · No new confirmed bug (reload mid-stream aborts server-side as designed).
+- 2026-09-17 · pass 32–34 (b–d) · No new confirmed bugs (re-checked the pass-19/25 tombstone paths for
+  cross-tenant access, queued append retries, evidence line atomicity).
+- 2026-09-17 · pass 35 (e, research) · Running the same research question twice on one day overwrote
+  the first report and its sources file · numbered names when either file exists ·
+  `research-service.test.cjs`.
 
 ## Testing rules
 
