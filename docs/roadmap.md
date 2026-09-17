@@ -62,15 +62,15 @@ mobile composer and tap targets).
   sign-in screens did not follow the visible viewport, so focused fields could sit behind the
   keyboard; the phone Settings dialog stayed vertically centred while shrinking, hiding its
   lower half; both now fit the visible viewport.
-- **Research** — Deterministic design-rule check: run Impeccable (`detect --json`, plain CSS
+- **Shipped (D4)** — Deterministic design-rule check: run Impeccable (`detect --json`, plain CSS
   supported) once against `apps/web/src`, triage findings against existing tests, mobile QA
   and screenshots, then adopt as a dev-only check, borrow selected rules, or reject. Also
   assess a lightweight post-edit scan for agent-driven UI work. Complements screenshot
   review; never replaces it. No app dependency.
-- **Decided (D5: hide behind an off-by-default flag)** — Scheduled, Plugins, Explore and Coding are preview surfaces: keep them as
+- **Shipped (D5: hidden behind `features.previews`)** — Scheduled, Plugins, Explore and Coding are preview surfaces: keep them as
   labelled previews, or hide them until built.
 
-8. **Research, then apply — UI polish from the user (2026-09-17).** The interface still reads as
+8. **Shipped, first pass (2026-09-17) — UI polish from the user.** Applied: vendored Lucide icons with one distinct symbol per concept; System appearance by default (HIG dark-mode guidance); calmer status pill replacing the monospace stats bar; plain-language composer controls; shared empty states; sentence-case disclosures; inspector icon actions; aligned Diary breadcrumb; phone title sizes. Iterate on real-device feedback. Original request: The interface still reads as
    AI-generated. Study Apple's Human Interface Guidelines
    (https://developer.apple.com/design/human-interface-guidelines) and the skill collections
    `justinwetch/HIGAgentSkills` and `aka-kika/akakika-skills` as references (patterns and checklists,
