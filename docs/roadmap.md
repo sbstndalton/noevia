@@ -12,7 +12,7 @@ Status words: **Shipped** = deployed and verified · **Open** = to build ·
 
 ## Where things stand — 2026-09-16
 
-- Last recorded live release **`503b1c5`** on DaServer (`https://cowork.daserver.work`; see
+- Last recorded live release **`657d21b`** (2026-09-17, D1 applied; previously `503b1c5`) on DaServer (`https://cowork.daserver.work`; see
   `deployment.md`, not re-verified since), five containers healthy, native llama.cpp
   (`cowork-llama-1`) as the only inference backend.
 - **No models are served.** `models.ini` was emptied and the GGUF weights removed from

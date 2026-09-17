@@ -899,3 +899,37 @@ the Mac was off the LAN. Rollback `a48a8c4` with `.env.bak.before-503b1c5`.
 
 Open on the live host: no models served (models.ini empty, GGUFs removed); the live
 Compose Manager file lacks the MCP keys (`mcp: disabled`).
+
+## Release 657d21b — 2026-09-17 (decisions build, bug hunt, UI first pass, D1 applied)
+
+Production **657d21b** replaces 503b1c5, deployed on the user's instruction ("you can deploy to
+prod"). Contents: D5 feature registry (all new features off), D8 folder sweep, D6 DAV
+DELETE/MOVE/COPY (sharing listener still unconfigured), D10 Diary append (off), D12 research (off),
+D7 off-site backups (off, unconfigured), D9 Kiwix (off, not deployed), D4 design lint, the bug-hunt
+fixes (transcripts no longer truncated to 40 messages, merged chat lists and revisioned transcripts,
+auth races and enumeration, approval/queued-append honesty, calibration restore notice, short-phone
+layout and touch targets) and UI polish (Lucide icons, System appearance, status pill).
+
+**D1 applied as the first step:** `MODEL_LOADER_TOKEN` generated into `config/.env`; the live override
+gives model-loader the token and only the new `models` network, web the token and `models`, llama
+`[default, models]`. The override also gained the six MCP keys and `TRUST_PROXY` the base file lacked,
+so startup now logs `mcp: nextcloud+tavily` (values were already in `.env`). Installed
+`tools/preflight` refreshed from the release (D1 boundary check + env-key drift).
+
+Flow (`/tmp/noevia-release-657d21b.sh`, kept in the operator's temp during the session): appdata
+backup `ab_20260917_033…` (web/Diary archives + configs) → overlay images (web on 503b1c5 with new
+`dist`+`server`; Diary on 503b1c5 with new `agent/`; model-loader on e4b2f73 with new `app/`; ocr
+retagged) → in-image web server tests 509/0, Diary and model-loader import checks → `.env`, override
+and preflight backups `*.bak.before-657d21b` → resolved-config preflight (mounts, D1, env keys all
+PASS) → `up -d --no-build --wait` for web, diary, ocr, model-loader, llama (llama recreated to join
+`models`; no model was loaded) → verification: Diary cannot resolve `model-loader`; model-loader 401
+without the token, 200 with it; five services healthy, zero restarts; public index and hashed
+assets 200 with the new bundle. Automatic rollback restores `.env`, override, preflight tools, the
+`current` symlink and runs `up` on 503b1c5.
+
+Rollback manually: copy the three `*.bak.before-657d21b` files back, `ln -sfn releases/503b1c5
+current`, `COWORK_VERSION=503b1c5`, then preflight `up.sh … -d --no-build --wait`.
+
+Not done by agents: no sign-in to real accounts (no credentials entered); the real Diary corpus was
+not touched. Still running and not ours: `llama-vulkan-test` (documented as kept stopped for native
+rollback) is up — see the session summary.
