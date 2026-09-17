@@ -257,6 +257,15 @@ mobile composer and tap targets).
   check, report + sources saved via `uploads.ingest`. Why a plan step is permitted here despite
   the chat planner result, and the measurement gate (chat+web vs pipeline with/without plan vs
   `tavily_research`, on a local fixture site). Build waits for R6. Decisions listed in §10.
+- **Shipped 2026-09-17 (build steps 2–3, not user-reachable)** — `server/research-sources.cjs`
+  (source registry, deterministic boilerplate strip / heading-aware chunking / capped excerpts,
+  citation verifier with no model call) and `server/research-runner.cjs` (variant B on the jobs
+  primitive: web-call and time budgets, untrusted-source framing, window preflight, checkpoints,
+  cancel), with unit tests. Offline fixture site + measurement script in
+  `experiments/deep-research/` (seed set; verified with a stub model only). Finding: citation
+  checks can't catch faithfully quoted injected text — adversarial resistance is measured, not
+  verified. **Next needs the user:** a sandbox model run, Tavily wiring/budget, members, and
+  where reports are saved (§10).
 
 ### H. Platform
 - **Researched 2026-09-17** — Headscale vs NetBird ([research-remote-access.md](research-remote-access.md)): don't migrate yet; neither changes the data path, the recorded slowness was WAN loss, DaServer's NAT allows direct paths. Measure with `tailscale ping`/`iperf3`/`mtr` from a remote client; if self-hosting is still wanted, Headscale.
