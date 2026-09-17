@@ -244,7 +244,7 @@ Ranked. Each ends in a written recommendation in `docs/` with measurements from 
 deployment's models. Can run alongside the build order.
 
 **Near-term**
-1. **Context efficiency: scripts before tokens** ([spec](spec-context-projection.md)).
+1. **Context efficiency: scripts before tokens** ([spec](spec-context-projection.md)). Measurement log shipped 2026-09-16 (`CONTEXT_LOG=1`, counts and tool names only); collecting data and reducers still to do.
    Measure tool/context consumption first; then trim deterministic waste with tool-aware
    reducers (full results kept authoritative); collapse recurring sequences into task-shaped
    tools; handle mechanical work without the model; summarize only where still needed. Script only
@@ -299,7 +299,7 @@ research mode (I) are measure-first, then build.
 5. **Shipped.** Live log tab, tool-call menu, settings sub-pages (first split).
 6. **Shipped (D1).** Modes and projects; the shared context layer (D2) waits for a second mode.
 7. **Shipped.** Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
-8. Task-conditional tool loading (measured) and the deep research spec.
+8. **Spec written / prepared.** Task-conditional tool loading (router + benchmark ready, not measured) and the deep research spec.
 9. Research priorities in ranked order; context-efficiency logging can start alongside the
    build items.
 

@@ -137,3 +137,17 @@ order) is one unit.
 A second token estimator; rewriting canonical history; persisting hidden reasoning; changing
 the three-round tool limit or approval behaviour; model-driven tool search (measured slower,
 `spec-tool-routing-research.md`).
+
+
+## R1 measurement log (added 2026-09-16)
+
+Opt-in with `CONTEXT_LOG=1`. Each chat round appends one JSON line to the tenant's
+`context-log.jsonl` (mode 0600, rotated at 2 MiB to `.1`): estimated tokens for system text,
+history, summary, each tool schema and each tool result (by tool name), the round's tool
+sequence, whether compaction ran this request, model, limit and a hashed chat id. No message
+text, arguments or results are recorded. `node apps/web/server/context-log.cjs <files>` ranks
+tools and recurring sequences by context consumed. Estimates use the same conservative
+`tokens()` as the meter (sandbox check: 429 estimated vs 269 provider prompt tokens for a
+tool-less first round), so compare them against each other, not against provider counts.
+Sandbox-verified against the native engine with a per-run `diary-test` copy; nothing collected
+from real accounts yet.
