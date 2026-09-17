@@ -143,3 +143,31 @@ sources. Rounded edge-distance refraction is adapted from dashersw/liquid-glass-
 additional live compositing reference. It does not capture private page content.
 No-WebGL, reduced-motion/transparency and contrast fallbacks keep opaque readable
 surfaces. Background animation is owned exclusively by public/glass.js.
+
+## Models & routing, and the layout mode — 2026-09-17
+
+Model management arrived with its own `mm-*` vocabulary, written against the older
+`--bg`/`--border` aliases and its own radii, so Settings → Models & routing read as a
+different product from every other settings category. It now uses the same material as
+the rest of the pane: `--bg-surface` on `--border-subtle`, `--radius-panel` for panels and
+14px for rows, tiles, results and tables, `--radius-control` for fields and tabs, 13px/1.6
+secondary prose, and the shared rim/edge shadows with the same reduced-transparency
+fallback. Its buttons follow the shell — 38px, rising to 44px below the mobile breakpoint —
+rather than pinning 44px on desktop, and `.popup-tab` no longer gets a second flat border
+drawn over the one the shell already gives it. This is presentation only; every `mm-*`
+class name, and the structure of each tab, is unchanged.
+
+`public/layout-mode.js` runs before the app and decides the size the interface is drawn at.
+The preference (`cowork-layout-mode`: `auto`, `mobile`, `desktop`) is chosen in
+Settings → General, next to Appearance. Detection prefers UA Client Hints
+(`navigator.userAgentData.mobile`) over the UA string, with a coarse-pointer and
+screen-size cross-check, and iPadOS's Mac user agent is resolved by `maxTouchPoints`.
+
+The mechanism is the viewport meta tag, because that is the one input every `max-width`
+rule in this codebase reads — there is deliberately no parallel breakpoint system.
+Forcing desktop on a phone or tablet sets a fixed 1100px viewport, so the desktop rules
+apply and the page scales down, exactly like a browser's "Request desktop site". Desktop
+browsers ignore the viewport meta, so forcing the phone layout there instead sets
+`data-layout="mobile"` on the root, which holds the app to a phone-width column and is
+mirrored by the shell, Settings and model-manager rules at the end of `noevia.css`. Other
+views still follow the real viewport width, and the control says so on screen.
