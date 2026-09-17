@@ -144,7 +144,11 @@ mobile composer and tap targets).
   candidate implementation. ([spec §6](spec-agent-execution.md))
 
 ### E. Tools
-- **Open** — Tool-call menu under the thinking box in every mode, including Diary.
+- **Shipped** — Tool calls render as one collapsible list under the thinking block in chat,
+  projects and Diary: a line per call with state, name and one-line result; each expands to
+  pretty-printed arguments and the result (kept up to 4,000 chars, stored with history).
+  Open while calls run, collapsed after. Approvals stay outside the fold with full arguments.
+  Replies saved in the old "name ✓" format still display.
 - **Open, measure first** — Task-conditional tool loading: a pre-turn embedding router picks
   toolboxes for the task from the manifest, loads them for the session, and adds no
   discovery round. A tool-search/unlock variant was already measured slower on these
