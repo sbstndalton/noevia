@@ -18,7 +18,8 @@ user request → (optional) Prompt Architect → durable job → mode → (optio
 | Deep Research | Optional architect for planning if measured → durable job → search/read → cited report artifact. |
 
 Upstream revisions read (source, via GitHub API; nothing cloned or installed):
-Row-Bot `e5803e3`, DeepSeek Harness `0d1f500`, Browser Use `d8110c5`, Impeccable `f2c7051`.
+Row-Bot `e5803e3`, DeepSeek Harness `0d1f500`, Browser Use `d8110c5`, Impeccable `f2c7051`;
+cua `8cb8f6d`, Swiftlet `909c042`, flash-moe `3601d41`.
 "(not verified in source)" marks claims taken only from docs or signatures.
 
 ---
