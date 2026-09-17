@@ -55,3 +55,30 @@ then `completed` or `failed`.
   runs, but not what it touches once allowed. For commands the sandbox is the only containment:
   worktree-only writes, no credentials, proxied egress.
 - Not tested: MCP tools inside the agent, Qwen Code, and the Claude and Codex adapters.
+
+## Server spike — DaServer, real local models, sandboxed (2026-09-17, D14)
+
+`server-spike.mjs` + `server-run.sh`. OpenCode 1.18.31 over ACP inside the `cowork-web` image with:
+read-only root, `--cap-drop ALL`, `no-new-privileges`, non-root (1000), 3 GiB / 512 pids, tmpfs
+`/tmp` and `$HOME`, the task worktree `/work` as the only writable mount, and an `--internal` Docker
+network whose only other member is the engine (alias `sandbox-llama`). The adapter pins
+`permission: { edit: ask, bash: ask, webfetch: ask }`; the client allows edits only inside `/work`,
+allows commands (the sandbox contains them) and refuses the rest. Task: a synthetic `median()` with
+two bugs (lexicographic, in-place sort; wrong even-length median) and a test that must stay unchanged.
+The harness runs the test itself afterwards.
+
+| Model | Solved (test passes, test.js unchanged) | Wall | Tool calls | Permissions (all allowed) | Writes via client `fs/write_text_file` |
+|---|---|---|---|---|---|
+| Qwen3.5-4B-Q5_K_M (ctx 24 576) | **yes** | 165 s | 11 | 3 edit, 5 execute | 3 |
+| Ornith-1.5-9B-Q5_K_M (ctx 16 384) | **yes** | 265 s | 10 | 2 edit, 5 execute | 2 |
+
+Sandbox probes from inside the container (both runs identical): write `/etc` and `/app` → `EROFS`;
+Docker socket absent; no token/key/secret variables; `huggingface.co`, `model-loader`, `web` and
+`diary` → name resolution fails; the engine → 200. Every approved command ran in the agent's own
+process (the client's `terminal/*` was never used), as in the local spike: for commands the sandbox
+is the boundary. Nothing was left on the server (network, container and spike folder removed).
+
+**Result:** the CodeHarness shape works end to end on this hardware: pinned `ask` permissions map to
+noevia's approval card, edits go through noevia's file API, and the container holds against file,
+socket, secret and network escapes. Next (spec §3): per-task git worktree ownership, an egress proxy
+for tasks that need packages, job events relayed to the web app, and the Code mode UI.
