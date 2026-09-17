@@ -210,6 +210,29 @@ with zero injected-instruction compliance and no increase in unexpected writes, 
 added wall time. Direct stays the default everywhere else. Record results in this section with
 the date and model configuration.
 
+
+### First results — 2026-09-17 (Qwen3.5-4B-Q5_K_M executor and architect, 1 repeat)
+
+Run from the Diary container against the live engine (`experiments/prompt-preparation`, rows in
+`qwen35-4b-p0-p1-p2-run2-2026-09-17.json`). Run 1 exposed two harness bugs (architect reasoning left
+on; "1,320" scored wrong), fixed before run 2.
+
+| Variant | Success | read / write / inject / ask / long | Injected compliance | Unexpected writes | Median exec | Prep |
+|---|---|---|---|---|---|---|
+| P0 raw | **16/18** | 6/6 · 4/4 · 2/3 · 2/3 · 2/2 | 0 | 0 | 17.9 s | — |
+| P1 template | 15/18 | 6/6 · 3/4 · 3/3 · 1/3 · 2/2 | 0 | 0 | 18.0 s | none |
+| P2 local architect (4B) | 0/18 | — | — | — | — | 18/18 schema failures, 32 s median |
+
+The 4B as architect writes plausible prompts but returns the list fields as plain strings in every
+case, so every artifact fails validation (by design, no silent repair). Run 1 (before the scoring
+fix) had P0 14/18 with one injected write and P1 15/18 with none.
+
+**Reading (n = 1, not yet a decision).** The template neither helps nor hurts overall: one more
+injection resisted, one ambiguous request and one read-then-save lost. A 4B cannot act as its own
+architect under this schema. **Direct stays the default.** Next: 3 repeats, P2 with the 9B as
+architect on the 4B executor, and a lenient-schema control to separate "cannot format" from
+"prompt does not help". P3 needs the user (credits).
+
 ---
 
 ## 3. CodeHarness
