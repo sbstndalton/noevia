@@ -71,9 +71,15 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   loaded model mid-conversation. Its thinking is disabled (2.9 s answers), but the collision remains.
   The engine has no API key on the `nextcloud-aio` network.
 - **Deployed but only exercised by me:** the tool router (the 4B does not call the Tasks box —
-  suspect the tool description), Discover (a broad one-word query under the trusted default can show
-  nothing, because the hub's top 30 are community fine-tunes) and auto-tune's resumable state
-  (partials expire after 7 days).
+  suspect the tool description; needs a model run, so it waits for a D2 maintenance window) and
+  Discover (a broad one-word query under the trusted default can show nothing, because the hub's top
+  30 are community fine-tunes). **Auto-tune's resumable state is closed** (2026-09-17): an expired
+  partial silently restarted from scratch; the job now reports `resumed` and expired partials are
+  deleted (`241af38`).
+- **`main` is ahead of the live release.** `ca5d2f6` is still what runs on DaServer, verified
+  2026-09-17 night (`current` symlink, `COWORK_VERSION` in the host `.env`, `docker ps`, and the
+  public bundle byte-identical to a local build of `ca5d2f6`). Everything from the CodeHarness build
+  below is on `main` and **not deployed**; Code mode is off by default in any case.
 - Glass banding on real devices: the user's check (D13). `llama-vulkan-test` is stopped, kept.
 
 ### Needs the user
@@ -224,7 +230,20 @@ mobile composer and tap targets).
 - **Blocked on a second working mode** — Optional shared context layer across a project's
   modes (per project, per mode, off by default). Nothing can share context until Cowork or
   Code exists, so no flag is stored yet; design it with that mode.
-- **Design before Code build; ACP evaluated 2026-09-17 → adopt** — `CodeHarness` (contract v0 mapping ACP kinds/permissions to noevia approvals, OS-level enforcement note, spike plan in [spec §3](spec-agent-execution.md)): noevia-owned contract that external harnesses
+- **Built 2026-09-17 (on `main`, not deployed; `features.codeHarness`, off)** — `CodeHarness`, six
+  modules, spec §3's "next" complete: `code-actions.cjs` (ACP tool call → noevia's action classes,
+  fail-closed, compound commands take their worst part, refusals never downgrade to an allow),
+  `code-workspace.cjs` (per-task git worktree, one writer per repository+branch, realpath
+  containment including for files that do not exist yet), `code-egress.cjs` (D15: per-task domain
+  allowlist at the proxy, check-then-connect to the same address, 80/443 only, credentials stripped),
+  `code-harness.cjs` (the session: approvals, "allow for this task" scoped to one action class and
+  never to a delete or push, containment re-checked at write time, job events), `code-acp.cjs`
+  (hand-written JSON-RPC over stdio, no SDK, cancellation wired before the handshake, process-group
+  kill), `code-service.cjs` + `routes/code.cjs` (admin-only, `CODE_REPOS` is the only way a
+  repository becomes reachable, one task per project), and the Code tab UI
+  (`src/components/code/`, `qa/code-mode.cjs`). Still to do: the `_meta` fields for evidence
+  identity (§1), Harness/Prompt-preparation selectors, `Auto` harness, and a real end-to-end run
+  against OpenCode on the server. Original item: noevia-owned contract that external harnesses
   (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
   preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
   every harness action classified through noevia's approval gate; one writer per workspace
@@ -426,6 +445,7 @@ research mode (I) are measure-first, then build.
 6. **Shipped (D1).** Modes and projects; the shared context layer (D2) waits for a second mode.
 7. **Shipped.** Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
 8. **Spec written / prepared.** Task-conditional tool loading (router + benchmark ready, not measured) and the deep research spec.
+8b. **Built 2026-09-17.** CodeHarness (D3 §3): worktrees, egress proxy, ACP client, job events, Code mode UI — behind `features.codeHarness`, off, not deployed.
 9. Research priorities in ranked order; context-efficiency logging can start alongside the
    build items.
 
@@ -713,4 +733,30 @@ and cutover; an off-site provider and budget; a live-credit research measurement
   token budget before the best match · best first · c36eee5 (needed box 16/26 → 26/26 live)
 - 2026-09-17 · f · ConfigureTab crashed (blank page) on a sections response without arrays, now
   reachable from chat through Tune · validated · ba10351
+
+#### Session of 2026-09-17 (night) — CodeHarness build
+
+- 2026-09-17 · d/f · **The QA baseline was not green on the live release.** `qa/models-settings.cjs`
+  fails at `ca5d2f6`, verified in a worktree at that commit: the model manager's `.mm-root` rule
+  keeps its tab row on a phone instead of switching to a select, so tabs and buttons shipped at 38px
+  at every width · floor raised to 40px, and 44px on touch screens, for `.mm-tabs-row button`,
+  `.mm-select select`, `.modal-btn`, `.popup-tab` · `qa/models-settings.cjs` · 241af38
+- 2026-09-17 · d · Auto-tune's "resume" silently restarted from scratch once the saved partial passed
+  its 7-day TTL, and expired partials were left in the state file forever · the job reports `resumed`,
+  the page says everything is being measured again, expired partials are deleted ·
+  `llamacpp-autotune.test.cjs` · 241af38
+- 2026-09-17 · self-review · A waiting approval's id was derived from the map size and the clock, so
+  two raised in the same millisecond collided and the overwritten one hung until its timeout with
+  nobody able to answer it · random id · `code-service.test.cjs` · 99fa187
+- 2026-09-17 · found by their own tests during the build, fixed before shipping: a `stuck` worktree
+  stopped blocking new claims on its branch (`code-workspace.cjs`); the ACP client wired cancellation
+  *after* the handshake, so an agent that never answered `initialize` could not be stopped
+  (`code-acp.cjs`); the harness's file handlers checked containment and then returned without reading
+  or writing anything (`code-harness.cjs`); `qa/code-mode.cjs` photographed the composer six times
+  because the cards sit in the project's own scroll area.
+- 2026-09-17 · noted, not a bug · The Nextcloud sync client evicted 86 tracked files mid-session
+  (whole `src/components/icons/`, `models/`, `server/routes/` directories). Restored with
+  `git checkout`. This is the documented hazard behind the `node_modules`/`dist` symlinks; worth
+  knowing that it hits tracked source too, and that a sudden wave of "cannot find module" errors
+  means eviction, not a code change.
 

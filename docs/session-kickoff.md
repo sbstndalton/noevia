@@ -16,7 +16,7 @@ decisions D1–D20 and the steps under "Current phase", in order.
 
 Starting state: branch `main`; release `ca5d2f6` is live on DaServer (deployed 2026-09-17 night,
 PR #1 and PR #2 merged). Confirm that yourself before assuming it — check `current`,
-`COWORK_VERSION`, `docker ps` and the public bundle hash. Where the docs and the code or the box
+`COWORK_VERSION` (in the host `.env`, not a container env var), `docker ps` and the public bundle hash. Where the docs and the code or the box
 disagree, believe the code and the box, and fix the doc.
 
 Work through the current-phase steps in order. Commit and push after each, with `npm test`,

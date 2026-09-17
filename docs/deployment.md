@@ -17,6 +17,7 @@ ssh root@100.70.173.74 "readlink -f /mnt/docker/appdata/cowork/current; \
 `changelog.md` says DaServer ran `0f8a9c1`; that was true on 2026-09-08 and was
 already stale by the next day.
 
+
 ## Reaching the host
 
 SSH as root. Off-site use Tailscale at `100.70.173.74`; on the home LAN use
@@ -1164,3 +1165,20 @@ top 30 for that word are community fine-tunes — the "everyone" toggle widens i
 Rollback: `overlay-release.sh`'s automatic path, or point `current` and `COWORK_VERSION` back at
 `faeb9d2` (`config/.env.bak.before-ca5d2f6`) and re-run the preflight `up` for web, diary, ocr and
 model-loader.
+
+## Code mode (optional, off)
+
+`features.codeHarness` is off by default and the routes 404 without it. Two operator settings turn
+it into something that can run, and both are deliberate:
+
+- `CODE_REPOS=name|/abs/path,other|/abs/path` — the **only** repositories a task can ever open.
+  Entries that are relative, missing or not a git repository are dropped at startup. Without this,
+  nothing can start; a task cannot name a host path.
+- `CODE_HARNESS_COMMAND` (and optional `CODE_HARNESS_ARGS`) — the ACP agent to run, for example
+  `opencode` with `acp`. Unset, a task fails with "No coding harness is configured on this server."
+
+The harness is a subprocess of the web container, so enabling it there puts an agent inside that
+container. The spike (`experiments/acp-spike`) ran it instead in a separate, read-only,
+capability-less container with only the engine reachable, and that remains the shape to deploy;
+decide that before setting `CODE_HARNESS_COMMAND` on the live box. Egress for a task goes through
+the built-in proxy (D15) and is refused unless the task was granted the domain.

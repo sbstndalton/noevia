@@ -538,38 +538,55 @@ llama.cpp Vulkan; vLLM only after the §8 gates.
 
 ## Current phase — run on what is deployed, then build
 
-The decisions build (D1–D13) is done, and `main` is live on DaServer as **`ca5d2f6`** (PR #1 and
-PR #2 merged, deployed 2026-09-17 night). Everything measured on the old branch — auto-tune,
-evidence-based context caps, model folder sync, server-judged Discover, tool routing, CPU
-embeddings, account memory — is in production. Status detail in `roadmap.md` → "Where things
-stand". Work in this order, one commit or more per step, with tests and screenshots as usual.
+`ca5d2f6` is live on DaServer and **`main` is ahead of it**: the CodeHarness build (step 5) is
+committed and unreleased. Confirmed 2026-09-17 night: `current` → `releases/ca5d2f6`,
+`COWORK_VERSION=ca5d2f6` (it lives in the host `.env` at
+`/mnt/docker/appdata/cowork/config/.env`, **not** as a container env var), the four `cowork-*`
+containers healthy on `:ca5d2f6` images, and the served bundle byte-identical to a local build of
+`ca5d2f6`. Status detail in `roadmap.md` → "Where things stand". Work in this order, one commit or
+more per step, with tests and screenshots as usual.
 
-1. **First, confirm the deployed state yourself.** `readlink -f /mnt/docker/appdata/cowork/current`,
-   `COWORK_VERSION`, `docker ps`, and the public bundle hash against a local build. Docs go stale
-   within a day on this box.
-2. **Context efficiency (step 5, in progress).** `CONTEXT_LOG=1` has been on in production since
-   2026-09-17 11:20. From about 2026-09-24, read `context-log.cjs report()` per user directory and
-   write deterministic reducers for whatever repeats. This is the next real piece of work.
-3. **Verify the deployed features in real use.** The tool router, CPU embeddings and Discover are
-   live but have only been exercised by me. Watch for: the 4B not calling the Tasks box (tool
-   description wording), Discover returning nothing for broad single-word queries under the trusted
-   default, and auto-tune's saved partial state expiring after 7 days.
+1. **First, confirm the deployed state yourself**, as above. Docs go stale within a day on this box.
+2. **Context efficiency (step 5 of R1) — not ready yet.** `CONTEXT_LOG=1` has been on in production
+   since 2026-09-17 11:20, and on 2026-09-17 night the log held **8 rounds** for one user. Read
+   `context-log.cjs report()` per user directory from about 2026-09-24 and write deterministic
+   reducers for what repeats. Don't start reducers on this sample.
+3. **Verify the deployed features in real use.** Auto-tune's resumable state is **done** (it
+   silently restarted from scratch after 7 days; fixed). The two left both need a model:
+   the 4B not calling the Tasks box (suspect the tool description) and Discover returning nothing
+   for broad single-word queries. Both are engine runs, so they belong in a **D2 maintenance window
+   the user starts**, one model at a time — not in an ordinary session.
 4. **Prompt Architect benchmark (step 6, started).** 4B run 2: P0 16/18, P1 15/18, P2 0/18 (schema).
-   Next: 3 repeats, the 9B as architect for the 4B, and a lenient-schema control. Direct stays the
-   default until evidence says otherwise.
-5. **CodeHarness build (step 9, spike done).** The ACP spike solved a real bug on both models in a
-   locked-down container (`experiments/acp-spike/README.md`). Next is spec §3 build work: worktrees,
-   egress proxy (D15), job events, Code mode UI.
+   Next: 3 repeats, the 9B as architect for the 4B, and a lenient-schema control. Also a D2 window.
+   Direct stays the default until evidence says otherwise.
+5. **CodeHarness build — the spec §3 "next" list is done** (2026-09-17, on `main`, not deployed,
+   `features.codeHarness` off): per-task git worktrees with realpath containment, the D15 egress
+   proxy, a hand-written ACP client, job events, and the Code mode UI. Six server modules plus
+   `src/components/code/` and `qa/code-mode.cjs`; see `spec-agent-execution.md` §3 "As built".
+   **What is left:** the `_meta` fields the spec asks for (token usage, model, harness version,
+   worktree/branch, terminal exit codes) so coding evidence gets an identity (§1); the Harness and
+   Prompt-preparation selectors; `Auto` harness once evidence exists; and **a real end-to-end run
+   against OpenCode**, which needs `CODE_HARNESS_COMMAND` and a registered `CODE_REPOS` on a machine
+   with a harness installed — the user's call, and best done in the sandboxed container the spike
+   used rather than beside the web app.
 6. **SMB pilot (D11)** once the user provides the share.
-7. **Bug hunt**, below. The baseline is green; the three full rotations have not been run.
+7. **Bug hunt**, below. The baseline was **not** green: `qa/models-settings.cjs` failed on the live
+   release itself (38px hit targets) and is fixed on `main`. Re-establish the baseline before
+   trusting it, and don't assume a previous session's "green" survived.
 8. **Parked — deep research.** The gate failed on the 9B and the feature is off. The user will pick
    it up separately. Don't work on it unless asked.
 9. **Closed.** Outage follow-up measurement, embedding/chat eviction, the tool-router gate, the
-   KoboldCpp comparison (rejected, removed) and the CodeHarness spike are all done; don't redo them.
+   KoboldCpp comparison (rejected, removed), the CodeHarness spike and auto-tune resume are all done;
+   don't redo them.
 
 Measurement hygiene: one model slot is shared by noevia chats, the Nextcloud Assistant and any test,
 so a concurrent request evicts the model under test. Check `docker logs cowork-llama-1` for recent
 requests before starting, and never run two engine tests at once.
+
+Working on this repository: the Nextcloud sync client evicts tracked source files, not only
+`node_modules` and `dist`. A sudden wave of "cannot find module" from files you did not touch is
+eviction — check `git status` for a block of ` D` lines and restore with `git checkout -- .` before
+believing you broke something.
 
 Still the user's: deploying, spending money or credits, host settings (GTT, syslog), model weights on
 DaServer, live Compose and preset edits, and anything touching the real Diary corpus.

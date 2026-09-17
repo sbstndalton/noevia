@@ -328,6 +328,31 @@ per step.
 (adapter) on a throwaway repository in a container, recording every `kind`/permission request
 against the mapping above; then contract v1 from what they actually send.
 
+### As built — 2026-09-17 (on `main`, `features.codeHarness`, off, not deployed)
+
+Contract v0 above is implemented as six server modules, each with its own tests, plus the UI.
+Nothing here replaces the sandbox: the container, the worktree and the proxy are the boundary,
+and ACP events remain evidence of intent.
+
+| Module | What it owns |
+|---|---|
+| `server/code-actions.cjs` | ACP tool call → noevia action class + whether a human must answer. Pure, no I/O. Unknown `kind`, unreadable command, missing permission option: all fail closed. A compound command takes its worst part (`$(…)`, `sudo`, `FOO=1` prefixes included). A refusal never downgrades to an allow. |
+| `server/code-workspace.cjs` | Per-task git worktree on its own branch; one writer per repository+branch (a `stuck` or `interrupted` claim keeps blocking); realpath containment, judging a not-yet-existing path by its nearest existing ancestor. |
+| `server/code-egress.cjs` | D15. Per-task token + domain allowlist; the host asked for *and* the resolved address are both checked, and the connection goes to that same address (no rebind); ports 80/443; `Proxy-Authorization` stripped; refusals logged against the task, tokens never logged. |
+| `server/code-harness.cjs` | The session. Classify → allow / refuse outright / ask, with full arguments. "Allow for this task" is scoped to the job and one action class, in memory, and is never offered for a delete or a `git push`. Containment re-checked at write time. Job events on the §4 primitive. Workspace released and grant revoked however the task ends. |
+| `server/code-acp.cjs` | Hand-written JSON-RPC 2.0 over the agent's stdio — no SDK, as `mcp.cjs` is. Cancellation wired *before* the handshake (an agent that never answers `initialize` has no session to cancel), handshake timeout, SIGTERM to the process group then SIGKILL. The agent inherits no ambient environment; `HOME` is the worktree; `mcpServers: []`. |
+| `server/code-service.cjs` + `routes/code.cjs` | Admin-only, 404 unless the flag is on. `CODE_REPOS=name\|/abs/path` is the only way a repository becomes reachable — a task can never name a host path, and the browser learns a name, never a location. One task per project. Approvals in memory: unanswered times out as a refusal, cancelling refuses whatever was waiting, a restart re-asks. |
+
+UI: `src/components/code/` as a project tab, `qa/code-mode.cjs` at 375/768/1440 in both themes.
+
+**Not yet done from this section.** The `_meta` gaps (token usage and cost per turn, model/provider
+actually used, harness version, worktree/branch, terminal exit codes per step) are still unfilled, so
+coding evidence has no identity tuple yet (§1). The Harness and Prompt-preparation selectors and an
+`Auto` harness are not built. And **contract v1 still needs a real run**: everything above is tested
+against a scripted fake agent (`server/fixtures/fake-acp-agent.cjs`), which proves the rules but not
+what OpenCode and Claude Code actually send. That run needs `CODE_HARNESS_COMMAND` on a machine with
+a harness installed, and belongs in the sandboxed container the spike used.
+
 ---
 
 ## 4. Durable work
