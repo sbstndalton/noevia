@@ -68,8 +68,12 @@ mobile composer and tap targets).
   labelled previews, or hide them until built.
 
 ### B. Settings structure
-- **Open** — More side-panel sub-pages (Profile, Personalization, Appearance, Data…), one
-  concern per page, ChatGPT-level depth with Claude-level polish. References:
+- **Shipped (first split)** — General held profile, preferences and capabilities, and profile
+  identity was duplicated under "Profile & security". Personal settings are now Profile
+  (identity), Security (passkeys, sessions, sign-out, app passwords), Appearance, Capabilities,
+  Diary & storage, Your connections, Usage & activity, Planned features. Personalization,
+  Notifications and Data stay under Planned until built. Still open: deeper pages at
+  ChatGPT-level depth with Claude-level polish. References:
   `ui mockups/inspiration/`, [spec-ui-direction.md](spec-ui-direction.md),
   [ui-reference-review.md](ui-reference-review.md).
 - **Shipped** — The model manager is its own full page (← Settings back button); Settings →
@@ -258,7 +262,7 @@ research mode (I) are measure-first, then build.
 2. **Shipped.** Deleted model state, safe defaults after download.
 3. **Shipped.** Full-page model manager with Easy/Advanced and the parity audit.
 4. **Shipped.** Mobile drawer, search button, brightness and banding (on-device check pending).
-5. Live log tab, tool-call menu, settings sub-pages.
+5. **Shipped.** Live log tab, tool-call menu, settings sub-pages (first split).
 6. Modes and projects.
 7. Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
 8. Task-conditional tool loading (measured) and the deep research spec.
