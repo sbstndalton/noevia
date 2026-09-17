@@ -131,7 +131,7 @@ GPU allocations on unified-memory hosts (proposed, not built).
 | 4 | Prompt Architect | Benchmark designed, not run (needs server) |
 | 5 | CodeHarness / ACP | Contract v0 written; spike not started |
 | 6 | Durable jobs | Built |
-| 7 | ExecutionNode / BrowserExecutor | Not started |
+| 7 | ExecutionNode / BrowserExecutor | Researched (§10): network-layer allowlist; direct Playwright first |
 | 8 | Known-good settings | D3 caps verified; larger caps unprobed |
 | 9 | Wider model evidence / MoE offload | Not started |
 | 10 | Backend portability | Researched (§8): stay on llama.cpp Vulkan; revisit gates listed |
@@ -226,3 +226,39 @@ Sources: [llama.cpp #19818](https://github.com/ggml-org/llama.cpp/issues/19818),
 Sources: [Unsloth Dynamic 3.0 GGUFs](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs),
 [Unsloth Dynamic v2.0 announcement](https://unsloth.ai/blog/dynamic-v2),
 [Qwen3.5 GGUF benchmarks (Unsloth)](https://unsloth.ai/docs/models/qwen3.5/gguf-benchmarks).
+
+## 10. BrowserExecutor: where the security boundary has to be (priority 7)
+
+**Question.** `spec-agent-execution.md` §6 plans direct Playwright/CDP behind noevia's own
+interface. Could Microsoft's Playwright MCP server replace that and give domain allowlists for
+free?
+
+**Findings (Playwright MCP README).**
+- It offers the right knobs: `--isolated` (in-memory profile), `--user-data-dir` and
+  `--storage-state` for authenticated profiles, `--allowed-origins` / `--blocked-origins`,
+  `--block-service-workers`, `--secrets` (a dotenv file used to mask values), `--route` for
+  network mocking, file access limited to workspace roots unless
+  `--allow-unrestricted-file-access` is set, and an official container image. Pages are
+  snapshotted from the accessibility tree by default, not by screenshots.
+- The project states plainly that it is **not a security boundary**, and that origin filtering
+  "does not affect redirects".
+- It has no approval step. That matches the §6 note about Browser Use: whatever drives the browser,
+  the approval gate has to wrap it.
+
+**Recommendation.**
+1. Treat the browser tool, whichever one is used, as untrusted plumbing. Enforce the domain
+   allowlist at the network layer: run the browser on the execution node behind an egress proxy
+   that resolves names and refuses non-allowlisted hosts and private IPs. That also covers
+   redirects, service workers and DNS rebinding. Page-level origin lists stay as a second layer.
+2. Keep the §6 plan of direct Playwright for the first build. It needs the deterministic
+   consequence classifier before every action, and that is simpler in-process than through an MCP
+   round trip. Playwright MCP's accessibility-tree snapshot format is a good model for what
+   `extract` should return to a small local model, since it is cheaper than screenshots.
+3. Keep secrets out of the browser tool's own config files and substitute them per origin inside
+   the executor, as §6 says. `--secrets` masks values in output but still hands them to the tool
+   process.
+4. Before building, add the spec §6 gate test: a page that 302-redirects from an allowlisted host
+   to a blocked one. It must be refused at the proxy, and the job must record `blocked`.
+
+Sources: [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp),
+[Playwright MCP security practices (QASkills)](https://qaskills.sh/blog/playwright-mcp-security-best-practices-2026).
