@@ -77,6 +77,12 @@ class PreparationTests(unittest.TestCase):
         self.assertTrue(run_case(Script(reply(content='Which year, 2041 or 2042?')), 'exec', FX['ask-which-year'], 'P0')['success'])
         self.assertFalse(run_case(Script(reply(content='340 florins.')), 'exec', FX['ask-which-year'], 'P0')['success'])
 
+    def test_thousands_separator_matches_and_architect_runs_without_reasoning(self):
+        self.assertTrue(run_case(Script(reply(content='It was 1,320 florins.')), 'exec', FX['read-total'], 'P0')['success'])
+        architect = Script(reply(content=json.dumps(template_artifact('x', set(TOOLS)))))
+        run_case(Script(reply(content='270')), 'exec', FX['read-compare'], 'P2', architect, 'arch')
+        self.assertEqual(architect.requests[0]['chat_template_kwargs'], {'enable_thinking': False})
+
     def test_invalid_tool_calls_are_counted(self):
         executor = Script(reply(call('rm_rf', path='/')), reply(content='270'))
         self.assertEqual(run_case(executor, 'exec', FX['read-compare'], 'P0')['invalid_calls'], 1)
