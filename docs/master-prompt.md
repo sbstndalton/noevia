@@ -551,28 +551,32 @@ more per step, with tests and screenshots as usual.
    since 2026-09-17 11:20, and on 2026-09-17 night the log held **8 rounds** for one user. Read
    `context-log.cjs report()` per user directory from about 2026-09-24 and write deterministic
    reducers for what repeats. Don't start reducers on this sample.
-3. **Verify the deployed features in real use.** Auto-tune's resumable state is **done** (it
-   silently restarted from scratch after 7 days; fixed). The two left both need a model:
-   the 4B not calling the Tasks box (suspect the tool description) and Discover returning nothing
-   for broad single-word queries. Both are engine runs, so they belong in a **D2 maintenance window
-   the user starts**, one model at a time — not in an ordinary session.
+3. **Verify the deployed features in real use — the code side is done, the confirmation is not.**
+   All three watch items have been addressed: auto-tune's silent restart is fixed; Discover's empty
+   state now offers "Show all publishers"; and the Tasks box the 4B ignores now carries
+   plain-language hints, because every tool in it is named `nc_calendar_*`. That last one is a
+   hypothesis with a mechanism — **confirming it needs a model run**, which under D2 belongs in a
+   maintenance window the user starts, one model at a time. Don't do it in an ordinary session.
 4. **Prompt Architect benchmark (step 6, started).** 4B run 2: P0 16/18, P1 15/18, P2 0/18 (schema).
    Next: 3 repeats, the 9B as architect for the 4B, and a lenient-schema control. Also a D2 window.
-   Direct stays the default until evidence says otherwise.
-5. **CodeHarness build — the spec §3 "next" list is done** (2026-09-17, on `main`, not deployed,
-   `features.codeHarness` off): per-task git worktrees with realpath containment, the D15 egress
-   proxy, a hand-written ACP client, job events, and the Code mode UI. Six server modules plus
-   `src/components/code/` and `qa/code-mode.cjs`; see `spec-agent-execution.md` §3 "As built".
-   **What is left:** the `_meta` fields the spec asks for (token usage, model, harness version,
-   worktree/branch, terminal exit codes) so coding evidence gets an identity (§1); the Harness and
-   Prompt-preparation selectors; `Auto` harness once evidence exists; and **a real end-to-end run
-   against OpenCode**, which needs `CODE_HARNESS_COMMAND` and a registered `CODE_REPOS` on a machine
-   with a harness installed — the user's call, and best done in the sandboxed container the spike
-   used rather than beside the web app.
+   Direct stays the default, and the UI now says why the architect modes are not on offer.
+5. **CodeHarness — built, and not deployed.** Spec §3's "next" list is complete, and so are its
+   `_meta` and selector gaps: worktrees with realpath containment, the D15 egress proxy, a
+   hand-written ACP client, job events, the Code mode UI, the `code-sandbox` container, the §1
+   identity tuple, and the Harness / Prompt-preparation selectors. See `spec-agent-execution.md`
+   §3 "As built".
+   **What is left, and it is the important part:** every rule is tested against a scripted fake
+   agent (`server/fixtures/fake-acp-agent.cjs`). That proves the rules; it does not prove what
+   OpenCode and Claude Code actually send. Contract v1 needs a real run — `CODE_HARNESS_ENDPOINT`
+   pointed at the sandbox, a registered `CODE_REPOS`, and the user's go-ahead. An `Auto` harness
+   waits for evidence that does not exist yet.
 6. **SMB pilot (D11)** once the user provides the share.
-7. **Bug hunt**, below. The baseline was **not** green: `qa/models-settings.cjs` failed on the live
-   release itself (38px hit targets) and is fixed on `main`. Re-establish the baseline before
-   trusting it, and don't assume a previous session's "green" survived.
+7. **Bug hunt**, below. Baseline as of 2026-09-17 night: npm test 795, typecheck, build,
+   lint:design, and **all 59 QA suites green** — after fixing `qa/models-settings.cjs`, which was
+   failing on the live release itself (38px hit targets). Two suites (`managed-diary`,
+   `restore-http`) print a JSON result whose `"result":"PASS"` a naive `grep '^PASS'` misreads;
+   they are not failures. Re-establish the baseline yourself rather than trusting a previous
+   session's "green".
 8. **Parked — deep research.** The gate failed on the 9B and the feature is off. The user will pick
    it up separately. Don't work on it unless asked.
 9. **Closed.** Outage follow-up measurement, embedding/chat eviction, the tool-router gate, the

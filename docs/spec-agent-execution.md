@@ -345,13 +345,19 @@ and ACP events remain evidence of intent.
 
 UI: `src/components/code/` as a project tab, `qa/code-mode.cjs` at 375/768/1440 in both themes.
 
-**Not yet done from this section.** The `_meta` gaps (token usage and cost per turn, model/provider
-actually used, harness version, worktree/branch, terminal exit codes per step) are still unfilled, so
-coding evidence has no identity tuple yet (§1). The Harness and Prompt-preparation selectors and an
-`Auto` harness are not built. And **contract v1 still needs a real run**: everything above is tested
-against a scripted fake agent (`server/fixtures/fake-acp-agent.cjs`), which proves the rules but not
-what OpenCode and Claude Code actually send. That run needs `CODE_HARNESS_COMMAND` on a machine with
-a harness installed, and belongs in the sandboxed container the spike used.
+Added the same day:
+
+| Module | What it owns |
+|---|---|
+| `services/code-sandbox/` + `code-acp.cjs`'s socket channel | The harness runs in its own container, reached over an internal socket — never as a child of the web process (which holds noevia's state and credentials), and never through the Docker socket (`research-master-container.md`'s highest-severity finding). One noevia line starts a session; everything after is ACP byte for byte. The supervisor constrains `cwd` to its root after realpath, allowlists the environment, and treats the connection as the agent's lifetime. |
+| `server/code-meta.cjs` | Token usage, harness name and version, ACP protocol version and per-command exit codes, read defensively from a free-form `_meta` — and, where absent, **named as absent** rather than defaulted. Plus `codingIdentity`: the §1 tuple (harness, version, model, provider, protocol, capability set, prompt preparation, sandbox-or-spawn), so a result is scoped to what changes its meaning. |
+| Harness / Prompt-preparation selectors | One harness per deployment reads as a stated fact rather than a one-option dropdown. Prompt preparation offers Direct; Local and Frontier are listed, disabled, each carrying its measured reason, and the server refuses them rather than downgrading silently. **No `Auto`** — §2 permits one only once paired fixtures prove a benefit. |
+
+**Not yet done from this section.** An `Auto` harness waits on evidence that does not exist. And
+**contract v1 still needs a real run**: everything above is tested against a scripted fake agent
+(`server/fixtures/fake-acp-agent.cjs`), which proves the rules but not what OpenCode and Claude Code
+actually send — the `_meta` reader in particular is guesswork about shapes nobody has observed. That
+run needs `CODE_HARNESS_ENDPOINT` pointed at the sandbox container and a registered repository.
 
 ---
 

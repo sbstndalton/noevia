@@ -70,12 +70,14 @@ Everything below was measured on the branch during 2026-09-17 and went live with
 - **The Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the
   loaded model mid-conversation. Its thinking is disabled (2.9 s answers), but the collision remains.
   The engine has no API key on the `nextcloud-aio` network.
-- **Deployed but only exercised by me:** the tool router (the 4B does not call the Tasks box —
-  suspect the tool description; needs a model run, so it waits for a D2 maintenance window) and
-  Discover (a broad one-word query under the trusted default can show nothing, because the hub's top
-  30 are community fine-tunes). **Auto-tune's resumable state is closed** (2026-09-17): an expired
-  partial silently restarted from scratch; the job now reports `resumed` and expired partials are
-  deleted (`241af38`).
+- **Deployed but only exercised by me — all three now addressed in code, none yet confirmed live.**
+  The 4B not calling the Tasks box: every tool in it is named `nc_calendar_*` and described in
+  calendar words, so `tool-hints.cjs` adds a plain-language sentence per tool and the box leads with
+  "Tasks, to-dos, reminders" (`a9a3ff4`) — a hypothesis with a mechanism; confirming it needs a
+  model run in a D2 window. Discover showing nothing for a one-word query: the empty state now
+  offers "Show all publishers (N)" instead of only explaining itself (`03658d3`). Auto-tune's
+  resumable state: an expired partial silently restarted from scratch; the job reports `resumed`
+  and expired partials are deleted (`241af38`).
 - **`main` is ahead of the live release.** `ca5d2f6` is still what runs on DaServer, verified
   2026-09-17 night (`current` symlink, `COWORK_VERSION` in the host `.env`, `docker ps`, and the
   public bundle byte-identical to a local build of `ca5d2f6`). Everything from the CodeHarness build
@@ -230,8 +232,8 @@ mobile composer and tap targets).
 - **Blocked on a second working mode** — Optional shared context layer across a project's
   modes (per project, per mode, off by default). Nothing can share context until Cowork or
   Code exists, so no flag is stored yet; design it with that mode.
-- **Built 2026-09-17 (on `main`, not deployed; `features.codeHarness`, off)** — `CodeHarness`, six
-  modules, spec §3's "next" complete: `code-actions.cjs` (ACP tool call → noevia's action classes,
+- **Built 2026-09-17 (on `main`, not deployed; `features.codeHarness`, off)** — `CodeHarness`, nine
+  modules, spec §3's "next" list complete **and its `_meta`/selector gaps closed**: `code-actions.cjs` (ACP tool call → noevia's action classes,
   fail-closed, compound commands take their worst part, refusals never downgrade to an allow),
   `code-workspace.cjs` (per-task git worktree, one writer per repository+branch, realpath
   containment including for files that do not exist yet), `code-egress.cjs` (D15: per-task domain
@@ -241,9 +243,16 @@ mobile composer and tap targets).
   (hand-written JSON-RPC over stdio, no SDK, cancellation wired before the handshake, process-group
   kill), `code-service.cjs` + `routes/code.cjs` (admin-only, `CODE_REPOS` is the only way a
   repository becomes reachable, one task per project), and the Code tab UI
-  (`src/components/code/`, `qa/code-mode.cjs`). Still to do: the `_meta` fields for evidence
-  identity (§1), Harness/Prompt-preparation selectors, `Auto` harness, and a real end-to-end run
-  against OpenCode on the server. Original item: noevia-owned contract that external harnesses
+  (`src/components/code/`, `qa/code-mode.cjs`). Added the same day: `code-sandbox` — the harness
+  runs in its own container reached over an internal socket, never as a child of the web process
+  and never through the Docker socket (`services/code-sandbox/`,
+  `deploy/examples/code-sandbox.override.yml`); `code-meta.cjs` — token usage, harness version,
+  exit codes and the §1 identity tuple, read defensively and **naming what the harness did not
+  report** rather than defaulting it; and the Harness / Prompt-preparation selectors, with no
+  `Auto` (§2 permits one only after evidence) and the unavailable modes carrying their measured
+  reason. Still to do: `Auto` harness once evidence exists, and **a real end-to-end run against
+  OpenCode** — every rule is tested against a scripted fake agent, which proves the rules but not
+  what a real harness sends. Original item: noevia-owned contract that external harnesses
   (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
   preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
   every harness action classified through noevia's approval gate; one writer per workspace
@@ -445,7 +454,9 @@ research mode (I) are measure-first, then build.
 6. **Shipped (D1).** Modes and projects; the shared context layer (D2) waits for a second mode.
 7. **Shipped.** Diary latency, inheritance and WebDAV plugin; SMB cutover when the user is ready.
 8. **Spec written / prepared.** Task-conditional tool loading (router + benchmark ready, not measured) and the deep research spec.
-8b. **Built 2026-09-17.** CodeHarness (D3 §3): worktrees, egress proxy, ACP client, job events, Code mode UI — behind `features.codeHarness`, off, not deployed.
+8b. **Built 2026-09-17.** CodeHarness (spec §3): worktrees, egress proxy, ACP client, job events,
+   Code mode UI, the sandbox container, `_meta`/evidence identity and the harness selectors — all
+   behind `features.codeHarness`, off, not deployed.
 9. Research priorities in ranked order; context-efficiency logging can start alongside the
    build items.
 
@@ -754,6 +765,29 @@ and cutover; an off-site provider and budget; a live-credit research measurement
   (`code-acp.cjs`); the harness's file handlers checked containment and then returned without reading
   or writing anything (`code-harness.cjs`); `qa/code-mode.cjs` photographed the composer six times
   because the cards sit in the project's own scroll area.
+- 2026-09-17 · baseline (corrected) · After the `models-settings` fix, **all 59 QA suites pass**
+  (`managed-diary` and `restore-http` print a JSON result whose `"result":"PASS"` a naive
+  `grep '^PASS'` misreads — worth knowing before calling them failures). npm test 795, typecheck,
+  build, lint:design green.
+- 2026-09-17 · pass A (new code, self-review) · **A failed task could keep its egress token and its
+  branch for good.** `createSession` and the first checkpoint sat outside the `try`, and that
+  checkpoint writes to disk, so an ordinary failure (full volume, read-only mount) skipped the
+  `finally`: the proxy grant stayed live and every later task on that branch was refused as
+  "already writes" · whole body inside the try · `code-harness.test.cjs` · 46f179f
+- 2026-09-17 · pass A (egress) · **A client hanging up mid-check crashed the web process.** The
+  egress verdict does a DNS lookup, and nothing listened for `error` on the client socket during
+  it; an `error` with no listener is an uncaught exception, and the proxy runs inside the web
+  process. Killing a task's container — which is what cancelling does — sends a reset. Handlers
+  are attached before anything awaits · `code-egress.test.cjs` · 46f179f. Note: a clean
+  `destroy()` did not reproduce it; only `resetAndDestroy()` did.
+- 2026-09-17 · pass B (fuzzing) · 25,000 randomized cases through the CodeHarness parsers and
+  policy, asserting invariants (no unknown action, nothing but a read waved through, a refusal
+  never answered with an allow) · one crash: `summarize({ agent: null })`, because a parameter
+  default only fills in `undefined` · every field coerced · `code-meta.test.cjs` · 073f1f9
+- 2026-09-17 · pass B (MCP) · No bug, but a gap: the loop binding curated boxes to what servers
+  offer had no direct test, and it carries the property that **a box binds only its own server's
+  tools**. Extracted to `mcp-boxes.cjs` and covered against a fixture where a second server offers
+  the same tool name · 476e11d
 - 2026-09-17 · noted, not a bug · The Nextcloud sync client evicted 86 tracked files mid-session
   (whole `src/components/icons/`, `models/`, `server/routes/` directories). Restored with
   `git checkout`. This is the documented hazard behind the `node_modules`/`dist` symlinks; worth
