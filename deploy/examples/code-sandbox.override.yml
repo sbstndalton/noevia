@@ -1,0 +1,67 @@
+# Code mode's sandbox (spec-agent-execution §3, D14/D15). Not deployed; the user's call.
+#
+# Enabling Code mode without this runs the coding agent as a child of the web process — inside
+# the container that holds noevia's state, sessions and credentials. This override moves it into
+# a container of its own with nothing worth stealing and no way out except the egress proxy.
+#
+#   docker compose -f docker-compose.yml -f code-sandbox.override.yml --profile code up -d
+#
+# The web container then needs, in its own environment:
+#   NOEVIA_FEATURE_CODE_HARNESS=true
+#   CODE_HARNESS_ENDPOINT=code-sandbox:8030      # NOT CODE_HARNESS_COMMAND: that spawns locally
+#   CODE_REPOS=noevia|/workspaces/repos/noevia   # repositories, named, absolute, git
+#
+# One constraint worth stating plainly: the worktree path noevia creates must be the same path
+# inside the sandbox, because noevia sends it and the supervisor resolves it. Hence the same
+# volume at the same mount point in both containers.
+services:
+  code-sandbox:
+    profiles: ["code"]
+    build:
+      context: ../../services/code-sandbox
+      args:
+        HARNESS_PACKAGE: opencode-ai
+        HARNESS_VERSION: "1.18.31"
+    image: cowork-code-sandbox:${COWORK_VERSION:-local}
+    restart: unless-stopped
+    # Everything here is the boundary the ACP spike proved holds: read-only root, no
+    # capabilities, no privilege escalation, an unprivileged user, and bounded memory and pids
+    # so a runaway build cannot take the box down with it.
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    user: "1000:1000"
+    pids_limit: 512
+    mem_limit: 3g
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+      - /home/node:size=512m,mode=0700
+    volumes:
+      # The only writable, persistent thing it can see: the task worktrees. Same path both
+      # sides. Repositories live under it so a task can be given one without widening this.
+      - code-workspaces:/workspaces
+    networks:
+      # No default network: the sandbox can reach the egress proxy and nothing else on the box.
+      # It cannot resolve, let alone reach, web, diary, model-loader or the engine.
+      - code
+    environment:
+      WORKSPACE_ROOT: /workspaces
+      CODE_HARNESS_COMMAND: opencode
+      CODE_HARNESS_ARGS: acp
+      PORT: "8030"
+    # No `ports:`. Publishing this would let anything that reaches the host start a coding
+    # agent, and there is no authentication here by design — reachability IS the control.
+    expose:
+      - "8030"
+
+  web:
+    networks:
+      - default
+      - code
+
+networks:
+  code:
+    internal: true
+
+volumes:
+  code-workspaces:

@@ -1174,11 +1174,21 @@ it into something that can run, and both are deliberate:
 - `CODE_REPOS=name|/abs/path,other|/abs/path` — the **only** repositories a task can ever open.
   Entries that are relative, missing or not a git repository are dropped at startup. Without this,
   nothing can start; a task cannot name a host path.
-- `CODE_HARNESS_COMMAND` (and optional `CODE_HARNESS_ARGS`) — the ACP agent to run, for example
-  `opencode` with `acp`. Unset, a task fails with "No coding harness is configured on this server."
+- **`CODE_HARNESS_ENDPOINT=code-sandbox:8030`** — the sandbox container to run the agent in.
+  This is the one to use here. `deploy/examples/code-sandbox.override.yml` + the `code` profile
+  bring up `services/code-sandbox`: read-only root, `cap_drop: ALL`, no-new-privileges, uid 1000,
+  tmpfs `/tmp` and `$HOME`, bounded memory and pids, one volume for the task worktrees, an
+  internal network whose only other member is the egress proxy, and no published port.
+- `CODE_HARNESS_COMMAND` (and optional `CODE_HARNESS_ARGS`) — the alternative: run the agent as a
+  child of the web process. **Don't, on this box.** It puts a coding agent inside the container
+  that holds noevia's state, sessions and credentials. It is there for a workstation.
+  `CODE_HARNESS_ENDPOINT` wins when both are set, so a stale variable cannot quietly downgrade a
+  deployment that has a sandbox.
 
-The harness is a subprocess of the web container, so enabling it there puts an agent inside that
-container. The spike (`experiments/acp-spike`) ran it instead in a separate, read-only,
-capability-less container with only the engine reachable, and that remains the shape to deploy;
-decide that before setting `CODE_HARNESS_COMMAND` on the live box. Egress for a task goes through
-the built-in proxy (D15) and is refused unless the task was granted the domain.
+With neither, a task fails with "No coding harness is configured on this server."
+
+The worktree path noevia creates must be the same path inside the sandbox — it sends the path and
+the supervisor resolves it — so the volume is mounted at the same point in both containers. Egress
+for a task goes through the built-in proxy (D15) and is refused unless the task was granted the
+domain. The harness version is pinned as a build argument; an agent that updates itself is an
+unreviewed supply-chain change in the one container allowed to run arbitrary commands.
