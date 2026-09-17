@@ -249,3 +249,19 @@ never drafted anything on these prompts (no literal repeats) and always lost.
 
 The lookup table (`ui-data/native-tuning-table.json`) keys results by architecture, quantisation and
 hardware (`29GiB b10920-eafe15a5e`), orders the next run's candidates and proposes extensions.
+
+### Model policy and what fits this host (2026-09-17)
+
+- **Floor:** measured usable context > 16K, quantisation Q4 or better under 100B params (D19).
+- **Shape:** mixture-of-experts beats dense at equal file size here (D20).
+- **Consequence:** Qwen3.6-35B-A3B fits only at IQ3 (13.2 GB; its Q4 builds start at 17.7 GB, past
+  the ~16.9 GiB GPU ceiling), so it is out under D19 and was not re-downloaded.
+- **Qwen3.8-Flash-Next** (Qwen4-generation, n-gram table): out. Smallest build ~72 GB, ~38 GB of it
+  the table; Unsloth's guide states 75 GB RAM minimum even at 1-bit, and MTP needs their fork
+  (`danielhanchen/llama.cpp`, branch `qwen4exp/mtp`). SSD offload of the table is discussed upstream
+  but is not in that guide; treat it as unproven. Revisit if a smaller Flash variant ships.
+- **Qwen3.8-27B** is a fine-tune of 3.6 and dense; **Granite 4.2 30B** (IBM, official GGUF, Q3_K_S
+  12.7 GB) is the newest first-party model that fits by size but is dense and below Q4.
+- **Current set:** Qwen3.5-4B-Q5_K_M, Ornith-1.5-9B-Q5_K_M, gpt-oss-20b-Q4_K_M,
+  gemma-4-E4B-it-qat-UD-Q4_K_XL, gemma-4-E2B_q4_0-it, Qwen3.5-4B-Q8_0, nomic-embed-text-v1 — all
+  Q4 or better with verified contexts of 32K–49K.

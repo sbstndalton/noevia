@@ -521,6 +521,13 @@ Still the user's, whatever the decisions say: deploying, spending money or credi
 downloading model weights to DaServer, editing live Compose/preset files, and anything
 touching the real Diary corpus.
 
+**Decisions added 2026-09-17 (models, by the user).** D19: don't serve a model whose *measured*
+usable context is at or below 16K — tool definitions and results leave too little room — and don't
+use a quantisation below Q4 for models under 100B. Both are warnings on the tuning page
+(`autoconfig.quality_warnings`), never silent refusals; the user may still choose one. D20: prefer
+mixture-of-experts models at this size, since a dense model of the same file size generates far
+slower on this APU (measured: gpt-oss-20b 26 tok/s at 11.6 GB).
+
 **Decisions added 2026-09-17 (later).** D14: coding harnesses run only with a permission config
 the adapter pins (`ask` for edit, bash and fetch) plus an OS sandbox. ACP prompts are the user
 experience, not the boundary (`experiments/acp-spike`). D15: browser automation enforces
