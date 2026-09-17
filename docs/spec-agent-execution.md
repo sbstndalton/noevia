@@ -390,6 +390,47 @@ actions.
   `local model runtime` capability; Metal-only, irrelevant to DaServer. README numbers
   (e.g. 35B 4-bit in ~2.6 GB on M5) are unverified.
 
+
+### Pairing and capability design — 2026-09-17 (not built)
+
+**Pairing.** An admin (or the user, for their own device) creates a one-time pairing code in
+Settings (10 minutes, single use). The node app generates an Ed25519 key pair locally, shows
+the key fingerprint, and sends `{code, nodeName, publicKey, platform, appVersion}` to
+`POST /api/nodes/pair`. The server stores the public key against the user (tenant-owned node);
+the user confirms the fingerprint in noevia. No shared secrets travel after pairing: the node
+opens an outbound WebSocket to the server and authenticates each connection by signing a
+server nonce. Revocation deletes the key and drops the connection.
+
+**Capability manifest** (sent on connect, never trusted beyond what the user granted):
+
+```json
+{ "node": "mac-studio", "appVersion": "0.1.0",
+  "offers": [{ "capability": "filesystem.read", "roots": ["~/Projects"] },
+             { "capability": "terminal", "shell": "zsh" },
+             { "capability": "browser", "engine": "chromium", "profiles": ["task-isolated"] },
+             { "capability": "local_model_runtime", "endpoint": "loopback" }] }
+```
+
+The user grants a subset per node (and per root). The server intersects offer × grant × job
+capability set (§4) for every request; a node refusing or lacking a capability fails closed.
+
+**Action flow.** Job step → server builds a signed action request `{jobId, actionId, capability,
+arguments, approvalId?}` → node verifies the server signature, checks the grant locally, runs it,
+and streams `started / output / completed | failed | uncertain` back → events appended to the job.
+Consequential actions (writes outside a task workspace, sending, deleting, network egress beyond
+the job's domains, desktop automation) require an approval id issued by noevia's approval card
+before the node will execute them; the node re-checks that the approval matches the exact
+arguments hash.
+
+**Node safety defaults.** Task workspaces under a node-owned directory; no credential stores
+exposed; desktop automation and host-driver control off until separately granted with a
+visible indicator while active; every action attributed to node and job; local audit log on
+the node mirrored to the job.
+
+**Tests before shipping:** pairing code expiry/reuse, fingerprint mismatch, replayed nonce,
+revoked key, capability not granted, argument-hash mismatch on approved action, uncertain
+completion after disconnect.
+
 ---
 
 ## 6. BrowserExecutor
@@ -419,6 +460,37 @@ A future Cowork capability, preferably on an execution node. Not wired into Chat
 - **Evaluation notes:** Python ≥3.11, direct CDP (`cdp-use`), heavy pinned dependencies,
   PostHog telemetry (`browser_use/telemetry/`) must be disabled, needs a local Chrome. Suited
   to a desktop node; not for the web container.
+
+
+### Executor interface — 2026-09-17 (not built)
+
+Runs as a node capability (`browser`), inside a job:
+
+```ts
+interface BrowserExecutor {
+  open(task: { jobId: string; profile: 'isolated' | { named: string }; allowedDomains: string[]; downloadsDir: string }): Promise<SessionId>;
+  act(session: SessionId, action: BrowserAction): Promise<ActionResult>; // navigate, click, type, select, upload, extract, screenshot
+  close(session: SessionId): Promise<void>;
+}
+type ActionResult = { status: 'done' | 'blocked' | 'needs_approval' | 'uncertain'; origin: string; evidence?: { screenshot?: string; text?: string } };
+```
+
+**Consequence classifier (deterministic, before every act):** `needs_approval` when the action
+submits a form (click on `type=submit`, Enter in a form, `form.submit`), targets elements whose
+accessible name or text matches send/pay/buy/order/delete/remove/publish/post/confirm/save
+settings (localised lists), uploads a file, or navigates cross-origin with POST. Model output can
+request an action but never mark it safe. The approval card shows origin, element description,
+typed values with secrets masked and a screenshot.
+
+**Secrets:** the model sees `{{secret:name}}`; the executor substitutes only when the current
+origin matches the secret's domain list, and never returns substituted values in evidence.
+
+**Uncertain outcomes:** a connection loss or timeout after a submit/pay action records
+`tool.uncertain` on the job; the step is not retried and the user is asked to check.
+
+**Implementation choice:** start with direct Playwright/CDP on the node for the classifier and
+audit control; evaluate Browser Use behind the same interface only with its telemetry disabled
+and its agent loop wrapped by this classifier.
 
 ---
 
