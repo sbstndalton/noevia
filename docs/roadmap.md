@@ -133,8 +133,7 @@ mobile composer and tap targets).
 - **First wave shipped 2026-09-17** — Configuration-scoped qualification evidence (design in [spec §1](spec-agent-execution.md)): `server/evidence.cjs` (identity hash, cheap artifact fingerprints, append-only store, derived states); the native manager computes live identity (build, endpoint hash, preset hash, model/projector/draft fingerprints, context, MTP); native calibration and the vision probe record evidence; `GET /api/models/evidence`; model details show verified/failed/stale/unverified/unavailable rows. MTP acceptance (from chat replies) and throughput (median of warm requests from a benchmark run of the saved preset, recorded when a run finished within 30 min is viewed) producers shipped 2026-09-17. Admin recheck (`POST /api/models/evidence/recheck`, image input; context stays with Measure context) shipped 2026-09-17. Design: states (reported,
   unverified, verified for this configuration, failed, stale, unavailable) tied to an identity
   tuple (backend, model, artifact, projector, runtime, context, MTP profile, harness, prompt
-  preparation, suite, date); changes mark evidence stale. No universal score. Today calibration
-  history lacks artifact/preset identity and invalidation.
+  preparation, suite, date); changes mark evidence stale. No universal score.
   ([spec §1](spec-agent-execution.md))
 - **Baseline written 2026-09-17, measurements need scheduling** — Known-good settings ([research-known-good-settings.md](research-known-good-settings.md)): live presets ask 131K–262K context while the only calibrations verified 16K (9B) and 24K (E4B); all presets set `draft-eagle3` without a draft model. Provisional limits and a measurement plan; production presets untouched.
 - **Research** — Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU; and
@@ -319,7 +318,7 @@ deployment's models. Can run alongside the build order.
 11. Headscale vs NetBird to replace a slow Tailscale.
 12. AIO-style master container managing the stack.
 
-**References to evaluate (added 2026-09-17, not yet reviewed)**
+**References (added 2026-09-17; reviewed in [research-references.md](research-references.md): borrow ideas only, no dependencies)**
 
 - [Ramps](https://www.ramps.studio/) — free tool that generates perceptually even OKLCH colour
   scales and WCAG-checked semantic tokens from one brand colour. Question: could it inform or
