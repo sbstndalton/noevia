@@ -215,8 +215,12 @@ mobile composer and tap targets).
   local WebDAV server. No Nextcloud-only copy remains in the storage UI.
 - **Open** — Mac SMB authenticated pilot, then the real Diary cutover
   ([spec](spec-diary-smb.md)).
-- **Open** — DAV rename/delete/locking and client interoperability need a storage contract
-  first ([dav.md](dav.md), [spec-storage-appliance.md](spec-storage-appliance.md)).
+- **Contract written, build waits on a decision** — DAV rename/delete/copy/locks:
+  [dav.md § Storage contract](dav.md) fixes invariants (single guarded write path, tenant root,
+  protected capture/month/index paths reusing the Trash rule, If-Match required, DELETE =
+  Trash, bounded all-or-nothing folder ops, explicit uncertain outcomes), per-method status
+  codes, when to advertise `DAV: 1`/`2`, and the client interoperability matrix. Decision:
+  confirm the protected set (optionally add `AI Memory/**`).
 - **Shipped (verified 2026-09-17)** — Fresh-install managed volumes and the `/boot` guard were
   already in place: `deploy/init-managed.sh` selects `web-data`/`diary-data` only for new
   installs and refuses existing state (tests pass), and the preflight check rejects writable
