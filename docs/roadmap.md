@@ -590,6 +590,12 @@ targets); plus `jobs.recover()` ignoring store kinds and the skewed close icon f
 build. **Suspected, then fixed after the hunt:** passkey options revealed whether a username exists (now padded with stable decoy ids, `auth-enumeration.test.cjs`); two devices saving the same chat transcript were last-writer-wins (now revisioned saves with 409 + client merge, `chat-history-routes.test.cjs`, `tests/transcript-merge.test.cjs`, `qa/two-device-history.cjs`). The MTP evidence log growth is bounded too (compaction keeps the newest 50 records per model/category/identity past 1 MB, `evidence.test.cjs`). Nothing remains suspected. **Needs the user:** applying D1's operator steps before the next deploy
 (the new preflight blocks the live config until then); D3 preset diff and `--models-max 2`; SMB pilot
 and cutover; an off-site provider and budget; a live-credit research measurement.
+- 2026-09-17 · follow-up to pass 2 (b) · Found while preparing the deploy: the per-address limit
+  counted every sign-in, and behind the Cloudflare tunnel (TRUST_PROXY off) the whole household
+  shares one socket address, so 30 ordinary sign-ins in 15 minutes would have locked everyone out ·
+  only attempts on non-existent usernames count toward the address block; once blocked, all attempts
+  from it get the same 429 (no enumeration signal) · `auth-enumeration.test.cjs` (8 members × 4
+  sign-ins from one address).
 
 ## Testing rules
 
