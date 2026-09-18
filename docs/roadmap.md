@@ -141,7 +141,17 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   first fold in the user's review of `ab2720a`, then:
   3. **Primitives beyond Settings** — menus, context menus, modals as aero overlays (phone:
      bottom sheets), confirm dialogs, cards, banners, empty states, chat bubbles and tool-call
-     list (approval card restyled, never simplified).
+     list (approval card restyled, never simplified). **Built, not yet deployed**:
+     `styles/overlays.css` (loads after `primitives.css`, before `materials.css`) carries the
+     whole release; components only gained classes (`overlay` on the context menu, account
+     popover and composer panel; `aero dialog-sheet` on every `<dialog>` or its panel;
+     `surface` on project, month and model cards). Phone dialogs are bottom sheets with a
+     grabber that follow the *visible* viewport, so the software keyboard shortens them
+     instead of hiding their lower half. Context menus gained a complete symbol column, and
+     the sort menu's `✓ ` label prefix became a checked `menuitemradio`; the tool-call list's
+     `✓`/`⃠` became drawn Lucide icons (`arrow-down` added to the vendored subset). The
+     approval card is restyled on the warning role with 44px decisions on every device, its
+     three actions and its full unclamped arguments unchanged.
   4. **Customize backends** — Nextcloud connector, custom MCP server by URL (per account, same
      Allow / Ask / Block page), then Skills, then the Plugins marketplace.
   5. **Projects and chats** — the sample's project screen: header, composer context chips,
