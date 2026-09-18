@@ -1,3 +1,9 @@
+### 2026-09-18 — Composer focus, iOS keyboard, phone Settings (d995cd9)
+
+No square focus ring in the composer; the app follows the iOS keyboard; legacy narrow phone
+Settings rules removed. Rollback 7326ac0.
+
+
 ### 2026-09-18 — Visual pass (7326ac0)
 
 Legibility sweep across sizes, materials and themes with real device user agents; fixed the

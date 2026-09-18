@@ -1553,3 +1553,15 @@ project and chat rows started their titles 3–11 px apart (one shared geometry 
 target kept); a heading's options sat 6 px high. Verified live at 375 px: Settings list 375 px
 wide, 15 px labels; composer fits. Rollback `4c151be` with `.env.bak.before-7326ac0`.
 
+## Release d995cd9 — 2026-09-18 (composer focus, iOS keyboard, phone Settings list)
+
+Latest application rollout: **`d995cd9`**, replacing `7326ac0`. Backup `ab_20260918_183012`
+first (clean, gzip-verified); `RELEASE_d995cd9_COMPLETE`, five services healthy, restarts=0.
+The composer's text area no longer draws the global `!important` focus ring as a square inside
+the rounded composer (the composer shows a soft rounded ring). On iOS the app now follows
+`visualViewport.offsetTop` as well as its height (`public/viewport.js`), so an open keyboard
+no longer leaves a blank band. `shell.css` carried a second copy of the old 155 px phone
+Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`, so a phone
+may run the previous copy for up to four hours. Rollback `7326ac0` with
+`.env.bak.before-d995cd9`.
+
