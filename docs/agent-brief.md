@@ -152,6 +152,12 @@ from storage, not just from the project.
   live endpoint (`tokens ≈ 240 + chars/3.6`, error table in `index.cjs`). Dropped
   tools are reported, never silently withheld.
 
+- **Connectors (2026-09-18):** the `gdrive` box is account-level, not a project choice: it joins
+  every chat of an account whose own Drive is connected (`drive-accounts.cjs`; the admin's backup
+  token doubles as theirs) and never appears in the toolbox picker. `tool-policy.cjs` holds
+  per-account allow/ask/block for any tool; the chat gate reads it per call, `block` also drops
+  the tool from the offered list, and a write is never `allow` (the gate still asks).
+
 ### noevia's own MCP server
 
 `MCP_INTERNAL_PORT` (default `0`, nothing binds) starts a SECOND listener on

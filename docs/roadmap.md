@@ -126,8 +126,18 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   1. **Foundation** — one noevia palette (light/dark) on M3 roles, spacing/radius/type/motion/
      elevation/surface tokens; `public/glass.js` replaced; the whole app switches at once. Two or
      three sample screens (settings, a project, connectors) shown to the user before rollout.
-  2. **Shell** — grouped sidebar, contextual right-panel system, phone drawers/sheets.
-  3. **Primitives** — settings rows, Allow/Ask/Block control, cards, menus, modals, GlassControl.
+  2. **Shell + Primitives + Connectors** (merged at the user's request after testing release 1,
+     2026-09-18; built, not yet deployed) — the samples as the app: sidebar and workspace as framed
+     panes; Settings slides in and replaces the workspace (phone: list → page, rising sheet);
+     floating phone drawer; context panel as a surface; composer pane with glass send/model;
+     one look for every button, field, select, switch and row (`styles/primitives.css`,
+     `styles/shell-v2.css`). **Connectors** (Settings → Customize): Google Drive per account
+     with seven chat tools (`gdrive-tools.cjs`, `gdrive-files.cjs`, `drive-accounts.cjs`) and
+     per-tool Allow / Ask / Block (`tool-policy.cjs`, enforced in the chat gate; blocked tools are
+     not offered; writes can never be Allow). The admin's backup connection doubles as their
+     Drive, with an Offsite backups switch on the page. Nextcloud and custom MCP by URL are listed
+     as coming later. QA: `qa/connectors.cjs`, `qa/drive-tools-live.cjs`.
+  3. **Primitives (rest)** — cards, menus, modals, GlassControl beyond Settings.
   4. **Customize with backends** — Connectors first (Google Drive incl. backups, Nextcloud,
      custom MCP by URL, per-tool permissions), then Skills, then Plugins marketplace.
   5. **Projects and chats** — cards, context panels, composer context chips.
