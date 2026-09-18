@@ -7,7 +7,7 @@ const code = fs.readFileSync(path.join(__dirname, '../public/lens.js'), 'utf8');
 
 // Runs public/lens.js against a minimal fake DOM.
 function load({ chromium = true, calm = false, nodes = [] } = {}) {
-  const attributes = {}, frames = [], observed = [], observers = [];
+  const attributes = { 'data-material': 'liquid' }, frames = [], observed = [], observers = [];
   let mutate, mediaChange;
   const media = { matches: calm, addEventListener: (_, f) => { mediaChange = f; } };
   const context = {

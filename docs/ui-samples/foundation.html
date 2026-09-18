@@ -263,7 +263,7 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
         </div>
       </div></div>
       <h2>Material</h2>
-      <div class="group surface"><div class="row"><div class="row-text"><span class="row-label">Material</span><span class="row-desc">Liquid glass bends what is behind it. Glassmorphism is frosted without bending. Soft shapes everything with shadow instead of glass.</span></div><div class="glass-seg" role="radiogroup" aria-label="Material" data-material-choice><button role="radio" aria-checked="true" data-value="liquid">Liquid glass</button><button role="radio" aria-checked="false" data-value="glass">Glassmorphism</button><button role="radio" aria-checked="false" data-value="soft">Soft</button></div></div></div>
+      <div class="group surface"><div class="row"><div class="row-text"><span class="row-label">Material</span><span class="row-desc">Liquid glass bends what is behind it. Glassmorphism is frosted without bending. Soft shapes everything with shadow instead of glass.</span></div><div class="glass-seg" role="radiogroup" aria-label="Material" data-material-choice><button role="radio" aria-checked="true" data-value="soft">Soft</button><button role="radio" aria-checked="false" data-value="liquid">Liquid glass</button><button role="radio" aria-checked="false" data-value="glass">Glassmorphism</button><button role="radio" aria-checked="false" data-value="material">Material 3</button></div></div></div>
       <h2>Reading and motion</h2>
       <div class="group surface">
         <div class="row"><div class="row-text"><span class="row-label">Chat font</span><span class="row-desc">The typeface for messages. The rest of the interface keeps the system font.</span></div><span class="select">Sans (default) {{chevron-down}}</span></div>
@@ -387,7 +387,7 @@ const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = ['settings', 'project', 'connectors', 'modal'].includes(params.get('screen')) ? params.get('screen') : 'settings';
 document.documentElement.dataset.theme = theme;
-document.documentElement.dataset.material = ['liquid', 'glass', 'soft'].includes(params.get('material')) ? params.get('material') : 'liquid';
+document.documentElement.dataset.material = ['soft', 'liquid', 'glass', 'material'].includes(params.get('material')) ? params.get('material') : 'soft';
 document.querySelector('.side').innerHTML = fill(document.querySelector('.side').innerHTML);
 document.querySelector('.topbar').innerHTML = fill(document.querySelector('.topbar').innerHTML);
 document.querySelectorAll('[data-drawer]').forEach((el) => el.addEventListener('click', () => document.body.classList.toggle('drawer-open')));
