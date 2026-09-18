@@ -137,7 +137,11 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
 .perm-head .select { margin-left: auto; }
 .tool { display: flex; align-items: center; padding: 10px var(--space-5); border-top: 1px solid var(--border-subtle); font-size: var(--text-callout); }
 .tool > span:first-child { flex: 1; }
-.tri { display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--md-surface-container-highest) 60%, transparent); }
+.tri.glass-seg > button { min-height: 26px; padding: 3px 9px; }
+.tri.glass-seg > button.allow[aria-checked='true'] { color: var(--status-connected); }
+.tri.glass-seg > button.ask[aria-checked='true'] { color: var(--status-approval); }
+.tri.glass-seg > button.block[aria-checked='true'] { color: var(--status-danger); }
+.tri-old { display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--md-surface-container-highest) 60%, transparent); }
 .tri button { width: 30px; height: 26px; border-radius: var(--radius-sm); display: grid; place-items: center; border: 1px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .tri button svg.i { width: 15px; height: 15px; }
 .tri button.glass { color: var(--text-primary); }
@@ -151,7 +155,7 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
 <div class="app">
   <aside class="side pane" aria-label="noevia">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span>noevia<span class="spacer"></span><button class="icon-btn" aria-label="Search">{{search}}</button><button class="icon-btn" aria-label="Collapse sidebar">{{panel-left}}</button></div>
-    <button class="new-btn glass glass-lens">{{square-pen}} New chat</button>
+    <button class="new-btn glass glass-lens is-press">{{square-pen}} New chat</button>
     <nav class="nav" aria-label="Primary">
       <a href="#" data-nav="projects">{{folder}} Projects</a>
       <a href="#">{{layout-grid}} Outputs</a>
@@ -206,9 +210,9 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
       <h2>Reading and motion</h2>
       <div class="group surface">
         <div class="row"><div class="row-text"><span class="row-label">Chat font</span><span class="row-desc">The typeface for messages. The rest of the interface keeps the system font.</span></div><span class="select">Sans (default) {{chevron-down}}</span></div>
-        <div class="row"><div class="row-text"><span class="row-label">Density</span><span class="row-desc">Compact tightens spacing without shrinking anything you tap.</span></div><div class="seg" role="radiogroup"><button class="glass glass-lens" aria-pressed="true">Comfortable</button><button>Compact</button></div></div>
-        <div class="row"><div class="row-text"><span class="row-label">Motion</span><span class="row-desc">Reduced keeps state changes and drops movement, in streaming replies too.</span></div><div class="seg"><button class="glass glass-lens" aria-pressed="true">System</button><button>Reduced</button></div></div>
-        <div class="row"><div class="row-text"><span class="row-label">Translucent sidebar</span><span class="row-desc">Panes let a little of the canvas through. Off is fully opaque.</span></div><span class="switch on" role="switch" aria-checked="true"></span></div>
+        <div class="row"><div class="row-text"><span class="row-label">Density</span><span class="row-desc">Compact tightens spacing without shrinking anything you tap.</span></div><div class="glass-seg" role="radiogroup" aria-label="Density"><button role="radio" aria-checked="true">Comfortable</button><button role="radio" aria-checked="false">Compact</button></div></div>
+        <div class="row"><div class="row-text"><span class="row-label">Motion</span><span class="row-desc">Reduced keeps state changes and drops movement, in streaming replies too.</span></div><div class="glass-seg" role="radiogroup" aria-label="Motion"><button role="radio" aria-checked="true">System</button><button role="radio" aria-checked="false">Reduced</button></div></div>
+        <div class="row"><div class="row-text"><span class="row-label">Translucent sidebar</span><span class="row-desc">Panes let a little of the canvas through. Off is fully opaque.</span></div><button class="glass-switch" role="switch" aria-checked="true" aria-label="Toggle"><span class="knob glass glass-lens"></span></button></div>
       </div>
       <h2>Voice</h2>
       <div class="group surface"><div class="row voice-row"><div class="row-text"><span class="row-label">Voice conversations</span><span class="row-desc">Not available yet. Talking to noevia is planned; nothing here records audio.</span></div><span class="badge count">Coming later</span></div></div>
@@ -229,12 +233,12 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
         <div class="ph">Ask about HomeLab, or describe a task…</div>
         <div class="composer-bar">
           <button class="icon-btn" aria-label="Add files">{{plus}}</button>
-          <div class="seg"><button>Chat</button><button class="glass glass-lens" aria-pressed="true">Cowork</button></div>
+          <div class="glass-seg" role="radiogroup" aria-label="Mode"><button role="radio" aria-checked="false">Chat</button><button role="radio" aria-checked="true">Cowork</button></div>
           <span class="grow"></span>
-          <button class="pill glass glass-lens"><span class="swatch"></span>Auto · Qwen3.5-4B {{chevron-down}}</button>
+          <button class="pill glass glass-lens is-press"><span class="swatch"></span>Auto · Qwen3.5-4B {{chevron-down}}</button>
           <button class="pill" style="color:var(--text-secondary)">Thinking: Low {{chevron-down}}</button>
           <button class="icon-btn" aria-label="Voice — not available yet" aria-disabled="true" style="opacity:.5">{{mic-off}}</button>
-          <button class="send glass glass-lens is-primary" aria-label="Send">{{arrow-up}}</button>
+          <button class="send glass glass-lens is-primary is-press" aria-label="Send">{{arrow-up}}</button>
         </div>
       </div>
       <div class="chips"><span class="chip">{{folder}} ai-agentic-folder</span><span class="chip">{{hard-drive}} Local</span></div>
@@ -261,6 +265,16 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
   </div>
 </template>
 
+<template id="modal">
+  <div data-under="project"></div>
+  <div class="scrim is-entering" style="position:fixed;inset:0;z-index:5"></div>
+  <div class="aero is-entering" role="dialog" aria-label="Settings" style="position:fixed;z-index:6;inset:56px 110px;display:grid;grid-template-columns:232px 1fr">
+    <nav class="settings-nav" aria-label="Settings" style="border-right:1px solid var(--pane-edge)" data-copy="settings-nav"></nav>
+    <div class="settings-body aero-content" data-copy="settings-body" style="position:relative"></div>
+    <button class="icon-btn" aria-label="Close settings" style="position:absolute;top:14px;right:14px;z-index:2">{{x}}</button>
+  </div>
+</template>
+
 <template id="connectors">
   <div class="settings pane">
     <nav class="settings-nav" aria-label="Settings">
@@ -283,7 +297,7 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
       </div>
       <p class="lede" style="margin-top:var(--space-4)">Lets noevia search, read and upload files in your Drive. It only sees files it created or that you open with it (Google's drive.file access).</p>
       <div class="group surface backup">
-        <div class="row"><div class="row-text"><span class="row-label">Offsite backups</span><span class="row-desc">Encrypted backups upload to the <em>noevia-offsite</em> folder. Last upload today 04:12, 1.8 GB.</span></div><span class="switch on" role="switch" aria-checked="true"></span></div>
+        <div class="row"><div class="row-text"><span class="row-label">Offsite backups</span><span class="row-desc">Encrypted backups upload to the <em>noevia-offsite</em> folder. Last upload today 04:12, 1.8 GB.</span></div><button class="glass-switch" role="switch" aria-checked="true" aria-label="Toggle"><span class="knob glass glass-lens"></span></button></div>
       </div>
       <h2>Prompt suggestions</h2>
       <div class="suggest"><span class="chip">Catch up on shared docs {{arrow-right}}</span><span class="chip">Find last month's invoices {{arrow-right}}</span><span class="chip">Summarise a folder {{arrow-right}}</span></div>
@@ -314,17 +328,35 @@ const svg = (name) => name === 'gdrive'
 const fill = (html) => html.replace(/\{\{([a-z0-9-]+)\}\}/g, (_, n) => svg(n));
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
-const screen = ['settings', 'project', 'connectors'].includes(params.get('screen')) ? params.get('screen') : 'settings';
+const screen = ['settings', 'project', 'connectors', 'modal'].includes(params.get('screen')) ? params.get('screen') : 'settings';
 document.documentElement.dataset.theme = theme;
 document.querySelector('.side').innerHTML = fill(document.querySelector('.side').innerHTML);
-document.getElementById('main').innerHTML = fill(document.getElementById(screen).innerHTML);
-document.querySelector(`[data-nav="${{ settings: 'x', project: 'homelab', connectors: 'x' }[screen]}"]`)?.setAttribute('aria-current', 'page');
+const main = document.getElementById('main');
+main.innerHTML = fill(document.getElementById(screen).innerHTML);
+if (screen === 'modal') {
+  const under = main.querySelector('[data-under]');
+  under.outerHTML = fill(document.getElementById('project').innerHTML);
+  const tmp = document.createElement('div'); tmp.innerHTML = fill(document.getElementById('settings').innerHTML);
+  main.querySelector('[data-copy="settings-nav"]').innerHTML = tmp.querySelector('.settings-nav').innerHTML;
+  main.querySelector('[data-copy="settings-body"]').innerHTML = tmp.querySelector('.settings-body').innerHTML;
+}
+document.querySelector(`[data-nav="${{ settings: 'x', project: 'homelab', connectors: 'x', modal: 'homelab' }[screen]}"]`)?.setAttribute('aria-current', 'page');
 document.querySelectorAll('[data-tile]').forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.tile === theme)));
 document.querySelectorAll('.tri').forEach((tri) => {
+  tri.className = 'glass-seg tri';
   tri.setAttribute('role', 'radiogroup');
   tri.innerHTML = [['allow', 'check', 'Always allow'], ['ask', 'hand', 'Needs approval'], ['block', 'ban', 'Blocked']].map(([s, icon, label]) =>
-    `<button class="${s}${tri.dataset.state === s ? ' glass' : ''}" role="radio" aria-checked="${tri.dataset.state === s}" aria-label="${label}" title="${label}">${svg(icon)}</button>`).join('');
+    `<button class="${s}" role="radio" aria-checked="${tri.dataset.state === s}" aria-label="${label}" title="${label}">${svg(icon)}</button>`).join('');
 });
+// Segmented controls: one glass thumb per group that slides to the checked option.
+document.querySelectorAll('.glass-seg').forEach((seg) => {
+  const thumb = document.createElement('span'); thumb.className = 'glass-thumb glass glass-lens'; seg.append(thumb);
+  const place = () => { const on = seg.querySelector('[aria-checked="true"]'); seg.style.setProperty('--thumb-w', on.offsetWidth + 'px'); seg.style.setProperty('--thumb-x', on.offsetLeft + 'px'); };
+  seg.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b))); seg.classList.add('is-moving'); clearTimeout(seg._t); seg._t = setTimeout(() => seg.classList.remove('is-moving'), 380); place(); }));
+  requestAnimationFrame(place);
+});
+document.querySelectorAll('.glass-switch').forEach((sw) => sw.addEventListener('click', () => sw.setAttribute('aria-checked', String(sw.getAttribute('aria-checked') !== 'true'))));
+document.querySelectorAll('[data-tile]').forEach((t) => t.addEventListener('click', () => { document.documentElement.dataset.theme = t.dataset.tile; document.querySelectorAll('[data-tile]').forEach((x) => x.setAttribute('aria-pressed', String(x === t))); }));
 </script>
 <script src="../../apps/web/public/lens.js"></script>
 </body>
