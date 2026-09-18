@@ -1,3 +1,12 @@
+### 2026-09-18 — UI overhaul release 3 and phone-review fixes
+
+Deployed d11cfac over ab2720a as a web-only overlay (no dependency changes). 861 web tests,
+typecheck, design lint and a fresh build passed first; appdata backup ab_20260918_112354.
+Five services healthy, zero restarts, native engine untouched. Live browser QA was partial
+(write-approval card, phone width, themes and accents still owed). No real Diary corpus used.
+Rollback ab2720a with .env.bak.before-d11cfac; see deployment.md.
+
+
 ## 2026-09-14 — Qualified direct native inference in production
 
 ### 2026-09-14 — Markdown date/tag filters

@@ -1346,3 +1346,22 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `apps/web` (web app only); it was replaced with the full tree before this release. Always run
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
+
+## Release d11cfac — 2026-09-18 (UI overhaul release 3 plus phone-review fixes)
+
+Latest application rollout: **`d11cfac`**, replacing `ab2720a`. Carries release 3 (`4e32b22`:
+menus, dialogs/bottom sheets, confirm dialogs, cards, banners, empty states, chat bubbles, the
+tool-call list and write-approval card) and the fixes from the phone review of `ab2720a`.
+No dependency changes. Local gate: 861/861 tests, typecheck and design lint clean, fresh build
+into an emptied `/tmp/noevia-qa-dist`. Appdata backup `ab_20260918_112354` first (log clean;
+web, Diary and extra-files archives gzip-verified; web and Diary restarted healthy). Web-only
+overlay `ab2720a → d11cfac` over Tailscale (`RELEASE_d11cfac_COMPLETE`; web, diary, ocr, llama
+and model-loader healthy with restarts=0; engine untouched; model-loader still `ca5d2f6`).
+`noevia.daserver.work` serves `index-Bzvm1y5j.js`, matching the local build.
+**Browser verification was partial:** the authenticated desktop session loaded the new shell
+(Customize/Explore gone from the sidebar, the new model popup and tool list). No model was
+loaded, so the first synthetic message failed with "no model selected". The live write-approval
+card, phone width, light/dark and accent repaint were **not** checked; they are still owed. A
+synthetic chat "QA deploy check: use the drive_create_file…" was left in Recent chats (it ran
+no tools) and should be deleted. `cowork.daserver.work` did not resolve through Tailscale DNS
+at the time. Rollback: `ab2720a` and `.env.bak.before-d11cfac`.
