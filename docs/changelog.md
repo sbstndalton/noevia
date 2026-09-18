@@ -1,3 +1,9 @@
+### 2026-09-18 — Sidebar as one scrolling plane (4ea3282, 95eacd6)
+
+Like ChatGPT: one scrolling rail, Diary and Plugins with the top destinations, flat
+Projects/Pinned/Recent lists, only the account pinned, every chat listed. Rollback 4ea3282.
+
+
 ### 2026-09-18 — Material 3 and phone fixes (265c650, 6930549)
 
 The Material material is now Material 3 component by component; touch fields are 16px

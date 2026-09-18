@@ -1435,3 +1435,16 @@ no dependency changes. Public site serves `index-pxDeVw0P.css`.
 Roboto loaded, list rows visible; material restored to Liquid glass, Dark, Warm.
 Rollback: `265c650` with `.env.bak.before-6930549` (then `e777259`).
 
+## Releases 4ea3282 and 95eacd6 — 2026-09-18 (sidebar as one plane, like ChatGPT)
+
+Latest application rollout: **`95eacd6`**, replacing `4ea3282`, which replaced `6930549`.
+Backups `ab_20260918_133651` and `ab_20260918_134540` first (clean, gzip-verified); both
+overlays `RELEASE_<sha>_COMPLETE`, five services healthy, restarts=0, engine untouched.
+User review ("the whole sidebar needs to be a single scrollable plane", with ChatGPT as the
+reference): the independently scrolling lists are gone at every width; the rail scrolls as
+one surface; Diary and Plugins moved up with Projects into the top destinations; Projects,
+Pinned and Recent chats are flat labelled lists (no tree line); only the account row stays
+pinned; Recent chats no longer stops at twelve. Verified live: no nested scrollers, all 10
+recent chats present, Diary in the top group. Rollback `4ea3282` with
+`.env.bak.before-95eacd6` (then `6930549`).
+
