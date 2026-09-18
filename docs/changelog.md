@@ -1,3 +1,9 @@
+### 2026-09-18 — Sidebar header and phone drawer like Claude's (4c151be)
+
+Small Chat/Code switch beside the logo; full-width phone drawer with search on top; the
+drawer closes when you switch mode. Rollback 5cd033b.
+
+
 ### 2026-09-18 — Diary in the bottom bar, sliding Chat/Code, project colours (5cd033b)
 
 Diary beside Search; liquid-glass Chat/Code thumb; phone Code drawer works; project colours

@@ -1528,3 +1528,15 @@ everywhere, and the chat breadcrumb/greeting carry the project icon. Also fixes 
 row layout 5a0e026 had spread apart. Verified live: footer = account, Diary, Search; thumb
 present; sidebar project icons red and blue. Rollback `5a0e026` with `.env.bak.before-5cd033b`.
 
+## Release 4c151be — 2026-09-18 (sidebar header and phone drawer like Claude's)
+
+Latest application rollout: **`4c151be`**, replacing `5cd033b`. Backup `ab_20260918_172155`
+first (clean, gzip-verified); `RELEASE_4c151be_COMPLETE`, five services healthy, restarts=0.
+Claude's sidebar was measured at desktop and phone width. The Chat/Code switch is a small
+icon-only track (70×28, 34×26 segments) at the end of the header row after the logo, keeping
+the liquid-glass thumb; it stacks under the expand button on the collapsed rail. The phone
+drawer is full width with the search field under its header, and switching Chat/Code closes
+it in both directions. `sidebar-reachability` closes the full-width drawer from its header
+(no backdrop to tap) and `mobile-viewport` uses the drawer's search field on phones.
+Verified live: switch 70×28 in the header. Rollback `5cd033b` with `.env.bak.before-4c151be`.
+
