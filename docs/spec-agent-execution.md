@@ -538,6 +538,34 @@ completion after disconnect.
 
 ---
 
+### Offline Diary on the Mac node (D22, 2026-09-18)
+
+A requirement from the user, for when the Mac app is built — not before. It replaces the retired
+idea of keeping the Diary as plain files on a Mac share.
+
+**What it must do.** Pull the latest Diary from the server; keep working with no connection at
+all — reading, writing, and talking to a *local* model with local tools and MCP servers; sync
+back when the connection returns. The server stays the source of truth.
+
+**What already exists to build it on.** The Diary's writes are journaled and idempotent by request
+id (a replayed append never duplicates — D10), managed storage already keeps an outbox of pending
+writes, and chat transcripts already use revisioned saves with a 409 and a client-side merge for
+two devices writing one chat. An offline replica is the same problem with a longer gap.
+
+**What is genuinely hard, and needs designing rather than assuming:**
+
+- **Conflicts.** The server and the Mac can both change the same day while apart. Appends merge
+  cleanly by request id; *edits* to the same entry do not. Decide per kind of change, and never
+  resolve a conflict by silently discarding either side.
+- **Authorization while offline.** The app must work without asking the server whether it may,
+  so it holds a credential for the Diary on the device. That credential needs to be revocable the
+  moment the Mac is lost, and the local copy encrypted at rest (FileVault is not enough on its own
+  for a shared machine).
+- **The local model.** A small model on the Mac, not the server's; the approval gate, "untrusted
+  data, never instructions" and the Diary's rule that its structure is written by code apply
+  exactly as they do on the server. No component inherits more trust for running locally.
+- **Tenant isolation.** A replica holds one user's Diary and nothing else.
+
 ## 6. BrowserExecutor
 
 A future Cowork capability, preferably on an execution node. Not wired into Chat.

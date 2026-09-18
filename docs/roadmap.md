@@ -353,8 +353,10 @@ mobile composer and tap targets).
   sidecar treat `webdav` and `nextcloud` identically apart from Nextcloud's login flow, managed
   backups accept either, and `storage-client.test.cjs` / `restore-http.cjs` exercise it against a
   local WebDAV server. No Nextcloud-only copy remains in the storage UI.
-- **Open** — Mac SMB authenticated pilot, then the real Diary cutover
-  ([spec](spec-diary-smb.md)).
+- **Retired 2026-09-18 (D22)** — Mac SMB pilot and the Diary cutover. The user decided plain
+  files on a Mac share are not the move; the Diary stays app-owned on the server. (The SMB spec
+  itself had already said so on 2026-09-14; this entry had not caught up.) What replaces it is an
+  offline Diary replica in the Mac app — see H.
 - **Contract written; decided (D6: add `AI Memory/**`, build without LOCK)** — DAV rename/delete/copy/locks:
   [dav.md § Storage contract](dav.md) fixes invariants (single guarded write path, tenant root,
   protected capture/month/index paths reusing the Trash rule, If-Match required, DELETE =
@@ -377,7 +379,10 @@ mobile composer and tap targets).
   (`ab_20260916_151428`, `cowork-diary-1.tar.gz`) contains app-managed Diary storage
   (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
   moves to the SMB/dedicated root, since that path is not mounted yet.
-- **Built on branch (D7)** — encrypted S3-compatible snapshots module; the provider and budget are still the user's.
+- **Built (D7); destination chosen 2026-09-18 (D23): Google Drive.** Encrypted, content-addressed
+  snapshots written to a folder (`offsite-dir.cjs`) and mirrored to Drive by the host's rclone
+  (`deploy/offsite/`), so the Google credential never enters noevia. Waiting on the user's one-time
+  Google sign-in; see `deploy/offsite/README.md`.
 - **Shipped on branch (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion; see Current phase.
 
 ### G. Telemetry and logs
@@ -413,7 +418,10 @@ mobile composer and tap targets).
   files, terminal, repositories, browser, notifications): server orchestrates, node executes
   advertised capabilities after explicit pairing; never blanket control of the Mac. Idea: Swiftlet
   as an optional local runtime for that node.
-  ([spec §5](spec-agent-execution.md))
+  **Requirement (D22, 2026-09-18): an offline Diary.** The app pulls the latest Diary from the
+  server, keeps working with no connection — read, write, and a local model with local tools and
+  MCP servers — and syncs back on reconnect. Built with the Mac app, not before.
+  ([spec §5](spec-agent-execution.md), "Offline Diary")
 
 ## Research priorities
 

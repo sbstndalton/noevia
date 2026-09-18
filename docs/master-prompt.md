@@ -513,7 +513,7 @@ Don't grow `index.cjs`: when you touch a route block there, extract it.
 | D8 | Empty folders after project deletion | **Clean up**, but only via a guarded sweep: after the delete commits, remove the project's directory only if it's empty and still inside the tenant root (realpath check), idempotent, and logged. Never recursive delete of non-empty dirs. | Fixes clutter without racing uploads. |
 | D9 | Offline Wikipedia | **Kiwix-serve (ZIM)** as an optional Compose profile, read-only, on an internal network, exposed to chat as a read tool module. Off by default, not deployed until the user asks. | Mature, offline, no API keys, read-only. |
 | D10 | Diary writes through the in-app MCP | **Append-only**, through a new sidecar append endpoint that reuses the journaled write path. Each call needs the normal approval. Never edit or delete historical entries through MCP. Off by default (`features.diaryMcpWrite`). | Keeps the corpus's integrity guarantees; approvals stay mandatory. |
-| D11 | SMB pilot and Diary cutover | **Pilot yes, cutover no** until the pilot passes the spec's checks on a copy. The cutover is a user-run step with a verified backup and rollback. | Irreversible data moves need evidence and an owner. |
+| D11 | SMB pilot and Diary cutover | **Superseded 2026-09-18 by D22** — no SMB Diary; an offline replica comes with the Mac app instead. (Was: pilot yes, cutover no.) | The user decided plain files on a Mac share were not the move. |
 | D12 | Deep research | Admin-only at first (`features.deepResearch`, off); members later by admin toggle. Default budget: 12 web calls, 10 min, 5 sources per sub-question. Reports saved to `Research/<date> <slug>.md` + `.sources.json` in the project via `uploads.ingest`. Measurement uses a sandbox model only. **No live-credit run without the user.** | Bounded cost, auditable output, measure before exposing. |
 | D13 | Glass effect device check | Stays the user's check on real devices; don't change `glass.js` further without their report. | Only real displays show the bug. |
 
@@ -527,6 +527,19 @@ use a quantisation below Q4 for models under 100B. Both are warnings on the tuni
 (`autoconfig.quality_warnings`), never silent refusals; the user may still choose one. D20: prefer
 mixture-of-experts models at this size, since a dense model of the same file size generates far
 slower on this APU (measured: gpt-oss-20b 26 tok/s at 11.6 GB).
+
+**Decisions added 2026-09-18 (by the user).** D21: **one model loaded at a time** in the main
+engine (`--models-max 1`). The only exception is a tiny router or tool-calling model, and it runs as
+its own small server outside the main engine — the way `cowork-embed-1` serves embeddings on CPU —
+never as a second engine slot: the slot count is a number, not a size, so `--models-max 2` would
+admit two large models just as readily. Measured 2026-09-17: one model already holds 1971 of
+2048 MiB of VRAM, so a second cannot fit anyway. D22: **no Mac-share (SMB) Diary**; it stays
+app-owned on the server. When the Mac native app is built it carries an **offline Diary replica**:
+pull the latest Diary from the server, keep working with no connection — reading, writing, and a
+local model with local tools and MCP servers — and sync back on reconnect. Not before the Mac app
+(spec-agent-execution §5, "Offline Diary"). Supersedes D11. D23: **off-site backups go to Google
+Drive** through a folder that the host's rclone mirrors (`deploy/offsite/`), so the Google
+credential never enters noevia and is scoped to `drive.file`.
 
 **Decisions added 2026-09-17 (later).** D14: coding harnesses run only with a permission config
 the adapter pins (`ask` for edit, bash and fetch) plus an OS sandbox. ACP prompts are the user
@@ -571,7 +584,8 @@ screenshots as usual.
    permissions); runs against Claude Code and Codex. Separately, the 4B did not actually fix the
    fixture in those runs — a model/prompt question for a measurement window, not a contract one.
    `features.codeHarness` is still off and nothing is wired into the live Compose project.
-6. **SMB pilot (D11)** once the user provides the share.
+6. **SMB pilot — retired (D22).** No Diary on a Mac share. The offline Diary arrives with the Mac
+   app, not before.
 7. **Bug hunt**, below. Baseline as of 2026-09-17 night: npm test 795, typecheck, build,
    lint:design, and **all 59 QA suites green** — after fixing `qa/models-settings.cjs`, which was
    failing on the live release itself (38px hit targets). Two suites (`managed-diary`,
