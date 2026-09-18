@@ -1298,3 +1298,22 @@ the supervisor resolves it — so the volume is mounted at the same point in bot
 for a task goes through the built-in proxy (D15) and is refused unless the task was granted the
 domain. The harness version is pinned as a build argument; an agent that updates itself is an
 unreviewed supply-chain change in the one container allowed to run arbitrary commands.
+
+## Release f0ea80b — 2026-09-18 early morning (noevia.daserver.work, Google Drive in-app)
+
+Appdata backup `ab_20260918_040536` first. Web-only overlay `27c07b9 → f0ea80b`
+(`overlay-release.sh`, `RELEASE_f0ea80b_COMPLETE`, all five services healthy, engine untouched).
+
+- **Address:** Cloudflare `unraid-tunnel` gained `noevia.daserver.work → http://10.69.0.130:8021`;
+  `cowork.daserver.work` stays routed (it must: it serves `/.well-known/webauthn`, which keeps
+  passkeys made under that name working at the new address). noevia's address was switched
+  with the Settings → Web address code path (`auth.changeOrigin`), so `public_origin_admin` in
+  the settings table now wins over `PUBLIC_ORIGIN` in `.env`; `passkey_rp_id` = `cowork.daserver.work`.
+- **Google Drive (D24):** `GOOGLE_OAUTH_CLIENT_ID/SECRET` added to `config/.env` (backup
+  `.env.bak.before-google-oauth`) and wired in the live `docker-compose.override.yml` (backup
+  `.bak.before-google-oauth`); `OFFSITE_BACKUP_MIRROR` removed. Google Cloud project `noevia`:
+  Drive API on, OAuth client "noevia device sign-in" (TVs and Limited Input), scopes
+  `drive.file openid email` (non-sensitive), home `/about`, privacy `/privacy`, **In production**.
+- **Still to do:** an admin clicks Connect Google Drive in Settings → Backups; after the first
+  in-app copy succeeds, remove the host rclone cron (`/boot/config/plugins/dynamix/*.cron`
+  entry for `rclone-sync.sh`, then `update_cron`) and the old rclone-made `noevia-offsite` folder.
