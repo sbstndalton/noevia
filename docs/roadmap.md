@@ -133,10 +133,11 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   5. **Projects and chats** — cards, context panels, composer context chips.
   6. **Activity/usage** — only from real usage data.
   7. **Impeccable critique pass** and fixes.
-  Open questions for the user: what a plugin is in noevia; which repositories feed the
-  marketplace (Claude-compatible `SKILL.md` suggested); desktop-first or equal phone quality;
-  which listed settings to skip for a self-hosted web app (Billing, Voice, Browser, Computer use
-  were removed earlier; Finder actions belong to the Mac app). Palettes: start from one.
+  **Decided 2026-09-18** (recorded at the top of the brief): plugins are bundles of skills,
+  connectors and commands; marketplace sources are Claude-compatible repos, any GitHub repo
+  added by URL, own/imported skills, and a curated noevia list; desktop first with a phone
+  polish pass after; skip Billing, Browser/Computer use, Desktop app/Extensions/Reveal in
+  Finder; Voice shown as not yet available; one palette to start.
 - Previously: **release `1fe3f1b`** (deployed 2026-09-17 night from `ca5d2f6`, web-only overlay,
   appdata backup `ab_20260917_192134` first). All five services healthy, engine untouched, public
   bundle byte-identical to the local build. Code mode ships **off** with no `CODE_*` environment

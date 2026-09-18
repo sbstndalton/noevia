@@ -21,6 +21,24 @@ Do not discard the screenshot-derived architecture just because the external vis
 
 **The current noevia visual design is not a reference. Preserve its functionality, data flows and tests; replace its visual language entirely.**
 
+## noevia decisions (user, 2026-09-18) — these override anything below that conflicts
+
+- **Plugins are bundles**, as in Claude: an installable package of skills, connectors and
+  commands (e.g. an "Engineering" plugin). Not server-side code extensions.
+- **Marketplace sources, all four:** Claude-compatible repositories (`SKILL.md` skills and the
+  Claude plugin format, so existing collections work unchanged); any GitHub repository the user
+  adds by URL; the user's own skills created or imported in noevia (file or folder); and a small
+  curated noevia starter list.
+- **Desktop first.** Design and polish for desktop; every screen must still work well on a
+  phone (drawer, sheets, single column, 44px targets), with a dedicated phone polish pass after.
+- **Skip for this self-hosted web app:** Billing / plan; Browser and Computer use; Desktop app,
+  Extensions and Reveal in Finder (these belong to the future Mac app). **Voice stays** in the
+  architecture but is not built yet: show it as unavailable per §25, never as a working control.
+- **Connectors** include Google Drive (its backup setting lives on the connector), Nextcloud and
+  custom MCP servers added by URL.
+- **Palettes:** start from one noevia palette (light and dark); the old five palettes are not a
+  reference.
+
 ---
 
 # 1. Required Local UI Reference Material
