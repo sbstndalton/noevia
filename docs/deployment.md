@@ -1448,3 +1448,16 @@ pinned; Recent chats no longer stops at twelve. Verified live: no nested scrolle
 recent chats present, Diary in the top group. Rollback `4ea3282` with
 `.env.bak.before-95eacd6` (then `6930549`).
 
+## Release 4152d15 — 2026-09-18 (Settings and sidebar organised like ChatGPT)
+
+Latest application rollout: **`4152d15`**, replacing `95eacd6`. Backup `ab_20260918_141325`
+first (clean, gzip-verified); `RELEASE_4152d15_COMPLETE`, five services healthy, restarts=0.
+Sidebar sections now follow ChatGPT's order: Pinned, Projects, Recent chats (no destinations
+added). Settings was reorganised after reading all 17 sections of ChatGPT's settings: one
+flat list without group headings, General first and Account last, using only pages noevia
+has — General (was Appearance), Personalization, Capabilities, Connectors, AI providers,
+Usage (was Usage & activity), Data controls (was Data), Diary & storage, Security and login
+(was Security), Account (was Profile); admin pages stay under Server. Section ids are
+unchanged. QA suites follow the new labels; `data-export` fails identically on the previous
+build (pre-existing). Rollback `95eacd6` with `.env.bak.before-4152d15`.
+

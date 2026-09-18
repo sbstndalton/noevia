@@ -1,3 +1,9 @@
+### 2026-09-18 — Settings and sidebar organised like ChatGPT (4152d15)
+
+Sidebar order Pinned, Projects, Recent chats. Settings is one flat list: General, …,
+Security and login, Account; renamed pages, same content. Rollback 95eacd6.
+
+
 ### 2026-09-18 — Sidebar as one scrolling plane (4ea3282, 95eacd6)
 
 Like ChatGPT: one scrolling rail, Diary and Plugins with the top destinations, flat
