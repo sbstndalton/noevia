@@ -20,3 +20,5 @@ __pycache__/
 # Atomic fresh-install environment staging.
 .env.fresh.*
 qa-shots/
+local-test/
+.claude/
