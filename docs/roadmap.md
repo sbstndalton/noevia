@@ -98,12 +98,22 @@ Everything below was measured on the branch during 2026-09-17 and went live with
 - **Release `877947c` is live** (2026-09-18, from `1fe3f1b`, appdata backup first; see
   `deployment.md`). **Off-site backups are running** to an encrypted local store, restore-tested
   with the Diary included; the Google Drive mirror waits only on the user's one sign-in.
-- **Shipped (2026-09-18)** — Google Drive connect in the setup wizard and Settings → Backups:
-  an admin-only wizard step (shown only when off-site backups use a mirrored folder) with
-  copyable key and sign-in commands and a Check connection button; noevia still never holds
-  the Google token (D23). Settings regrouped into Account, Preferences, Connections, Server and
-  Coming later; "Off-site backups" → "Backups", "Your connections" → "AI providers". QA:
-  `qa/wizard-backup.cjs`, `qa/offsite-mirror.cjs`.
+- **Shipped (2026-09-18, D24 replaces D23)** — Google Drive backups run entirely in noevia's
+  backend: one **Connect Google Drive** button (setup wizard and Settings → Backups) starts
+  Google's device sign-in, the backend polls for approval and uploads the encrypted store to a
+  `noevia-offsite` folder itself (`server/gdrive.cjs`), with the rclone script's safety rules
+  (refuse a wiped store, upload then prune, 500-delete cap, size mismatch = corruption). Refresh
+  token sealed with a key derived from the backup key; never reaches the browser; Disconnect
+  revokes. Recovery key downloads from the page. Needs `GOOGLE_OAUTH_CLIENT_ID/SECRET` (a
+  "TVs and Limited Input devices" OAuth client, scope `drive.file`) — **waiting on the user's
+  Google Cloud registration**. Host rclone + cron retire once the new path has copied live.
+  Settings regrouped: Account, Preferences, Connections, Server, Coming later. QA:
+  `qa/google-drive.cjs`, `qa/wizard-backup.cjs`, `server/gdrive.test.cjs` (fake Google).
+- **Next (user, 2026-09-18)** — **Customize** section like Claude's (mockups in
+  `ui mockups/inspiration/claude-settings-customize-2026-09-18/`): **Connectors** (Google Drive,
+  Nextcloud, MCP servers, add custom by URL, per-tool allow / ask / block), **Skills** and
+  **Plugins** as a marketplace (add a repository, browse, install, import or create your own).
+  Google Drive backup moves under its connector.
 - Previously: **release `1fe3f1b`** (deployed 2026-09-17 night from `ca5d2f6`, web-only overlay,
   appdata backup `ab_20260917_192134` first). All five services healthy, engine untouched, public
   bundle byte-identical to the local build. Code mode ships **off** with no `CODE_*` environment
