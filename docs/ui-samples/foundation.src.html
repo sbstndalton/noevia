@@ -149,10 +149,65 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
 .tri button.glass.ask { color: var(--status-approval); }
 .tri button.glass.block { color: var(--status-danger); }
 .sample-note { position: fixed; right: 14px; bottom: 12px; font-size: var(--text-caption2); color: var(--text-secondary); opacity: .8; }
+
+/* ── Phone (≤700px): drawer sidebar, single column, sheets, 44px targets ── */
+.topbar { display: none; }
+@media (max-width: 700px) {
+  body { font-size: var(--text-body); }
+  .app { grid-template-columns: 1fr; padding: 0; gap: 0; height: 100dvh; }
+  .topbar { display: flex; align-items: center; gap: var(--space-2); position: sticky; top: 0; z-index: 3; padding: calc(env(safe-area-inset-top) + 6px) var(--space-2) 6px; border-radius: 0; border-width: 0 0 1px; }
+  .topbar .title { flex: 1; font-weight: 600; font-size: var(--text-headline); text-align: center; }
+  .icon-btn { width: 44px; height: 44px; }
+  .side { position: fixed; z-index: 9; inset: 8px auto 8px 8px; width: min(84vw, 320px); transform: translateX(calc(-100% - 16px)); transition: transform var(--duration-slow) var(--ease-spring); }
+  body.drawer-open .side { transform: none; }
+  .drawer-scrim { position: fixed; inset: 0; z-index: 8; opacity: 0; pointer-events: none; transition: opacity var(--duration-base) var(--ease-standard); }
+  body.drawer-open .drawer-scrim { opacity: 1; pointer-events: auto; }
+  .nav a { min-height: 44px; }
+  .main { border-radius: 0; }
+  .crumbs { padding: var(--space-3) var(--space-4) 0; }
+  /* Project: context panel stacks below as collapsible sections; outputs scroll sideways. */
+  .project { grid-template-columns: 1fr; gap: var(--space-6); padding: var(--space-3) var(--space-4) 120px; }
+  .p-head h1 { font-size: var(--text-title2); }
+  .context { position: static; }
+  .outputs { grid-template-columns: repeat(3, 72%); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; }
+  .output { scroll-snap-align: start; }
+  .composer { position: fixed; z-index: 4; left: 8px; right: 8px; bottom: calc(env(safe-area-inset-bottom) + 8px); }
+  .composer .ph { min-height: 28px; }
+  .composer-bar .pill:not(.glass) { display: none; }
+  .p-head + .composer + .chips { margin-top: 0; }
+  /* Settings: the list is its own screen; a row opens its page. */
+  .settings { grid-template-columns: 1fr; border-radius: 0; border-width: 0; }
+  .settings-nav { border-right: 0; }
+  .settings[data-view='detail'] .settings-nav, .settings:not([data-view='detail']) .settings-body { display: none; }
+  .settings-body { padding: var(--space-4) var(--space-4) var(--space-12); }
+  .row { flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4); }
+  .row-text { flex-basis: 100%; }
+  .theme-tiles { width: 100%; } .tile { flex: 1; width: auto; }
+  .glass-seg > button { min-height: 38px; padding-inline: 16px; }
+  .tool { padding: 8px var(--space-4); }
+  .conn-head { flex-wrap: wrap; } .conn-head .actions { margin-left: 0; width: 100%; }
+  .perm-head { flex-wrap: wrap; } .perm-head .select { margin-left: 0; }
+  /* Settings popup becomes a bottom sheet with a grabber. */
+  .aero[role='dialog'] { inset: 44px 0 0 0 !important; grid-template-columns: 1fr !important; border-radius: var(--radius-2xl) var(--radius-2xl) 0 0; }
+  .aero[role='dialog'] .settings-nav { display: none; }
+  .aero[role='dialog']::after { content: ''; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: var(--md-outline); opacity: .6; }
+  @keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+  .aero[role='dialog'].is-entering { animation: sheet-in var(--duration-slow) var(--ease-out) both; }
+  .project > div { min-width: 0; }
+  .composer-bar { gap: var(--space-1); }
+  .composer-bar .pill.glass { min-height: 44px; min-width: 0; max-width: 42vw; white-space: nowrap; }
+  .composer-bar .pill.glass .pill-text { overflow: hidden; text-overflow: ellipsis; }
+  .composer-bar [aria-label^='Voice'] { display: none; }
+  .send { width: 44px; height: 44px; }
+  .row:has(.glass-switch) .row-text { flex-basis: 0; }
+  .sample-note { display: none; }
+}
 </style>
 </head>
 <body>
 <div class="app">
+  <header class="topbar pane"><button class="icon-btn" aria-label="Open navigation" data-drawer>{{panel-left}}</button><span class="title" id="topbar-title">noevia</span><button class="icon-btn" aria-label="New chat">{{square-pen}}</button></header>
+  <div class="drawer-scrim scrim" data-drawer></div>
   <aside class="side pane" aria-label="noevia">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span>noevia<span class="spacer"></span><button class="icon-btn" aria-label="Search">{{search}}</button><button class="icon-btn" aria-label="Collapse sidebar">{{panel-left}}</button></div>
     <button class="new-btn glass glass-lens is-press">{{square-pen}} New chat</button>
@@ -207,6 +262,8 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
           <button class="tile dark" data-tile="dark"><span class="prev"><i></i><i></i></span>Dark</button>
         </div>
       </div></div>
+      <h2>Material</h2>
+      <div class="group surface"><div class="row"><div class="row-text"><span class="row-label">Material</span><span class="row-desc">Liquid glass bends what is behind it. Glassmorphism is frosted without bending. Soft shapes everything with shadow instead of glass.</span></div><div class="glass-seg" role="radiogroup" aria-label="Material" data-material-choice><button role="radio" aria-checked="true" data-value="liquid">Liquid glass</button><button role="radio" aria-checked="false" data-value="glass">Glassmorphism</button><button role="radio" aria-checked="false" data-value="soft">Soft</button></div></div></div>
       <h2>Reading and motion</h2>
       <div class="group surface">
         <div class="row"><div class="row-text"><span class="row-label">Chat font</span><span class="row-desc">The typeface for messages. The rest of the interface keeps the system font.</span></div><span class="select">Sans (default) {{chevron-down}}</span></div>
@@ -235,7 +292,7 @@ h2 { margin: var(--space-10) 0 var(--space-3); font-size: var(--text-headline); 
           <button class="icon-btn" aria-label="Add files">{{plus}}</button>
           <div class="glass-seg" role="radiogroup" aria-label="Mode"><button role="radio" aria-checked="false">Chat</button><button role="radio" aria-checked="true">Cowork</button></div>
           <span class="grow"></span>
-          <button class="pill glass glass-lens is-press"><span class="swatch"></span>Auto · Qwen3.5-4B {{chevron-down}}</button>
+          <button class="pill glass glass-lens is-press"><span class="swatch"></span><span class="pill-text">Auto · Qwen3.5-4B</span> {{chevron-down}}</button>
           <button class="pill" style="color:var(--text-secondary)">Thinking: Low {{chevron-down}}</button>
           <button class="icon-btn" aria-label="Voice — not available yet" aria-disabled="true" style="opacity:.5">{{mic-off}}</button>
           <button class="send glass glass-lens is-primary is-press" aria-label="Send">{{arrow-up}}</button>
@@ -330,7 +387,10 @@ const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = ['settings', 'project', 'connectors', 'modal'].includes(params.get('screen')) ? params.get('screen') : 'settings';
 document.documentElement.dataset.theme = theme;
+document.documentElement.dataset.material = ['liquid', 'glass', 'soft'].includes(params.get('material')) ? params.get('material') : 'liquid';
 document.querySelector('.side').innerHTML = fill(document.querySelector('.side').innerHTML);
+document.querySelector('.topbar').innerHTML = fill(document.querySelector('.topbar').innerHTML);
+document.querySelectorAll('[data-drawer]').forEach((el) => el.addEventListener('click', () => document.body.classList.toggle('drawer-open')));
 const main = document.getElementById('main');
 main.innerHTML = fill(document.getElementById(screen).innerHTML);
 if (screen === 'modal') {
@@ -355,9 +415,19 @@ document.querySelectorAll('.glass-seg').forEach((seg) => {
   seg.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b))); seg.classList.add('is-moving'); clearTimeout(seg._t); seg._t = setTimeout(() => seg.classList.remove('is-moving'), 380); place(); }));
   requestAnimationFrame(place);
 });
+document.getElementById('topbar-title').textContent = { settings: 'Settings', project: 'HomeLab', connectors: 'Google Drive', modal: 'HomeLab' }[screen];
+// Phone settings: the list is one screen, the page another (?view=detail opens the page).
+document.querySelectorAll('.settings').forEach((st) => {
+  if (params.get('view') === 'detail') st.dataset.view = 'detail';
+  st.querySelectorAll('.settings-nav a').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); st.dataset.view = 'detail'; }));
+});
+document.querySelectorAll('[data-material-choice]').forEach((seg) => {
+  seg.querySelectorAll('button').forEach((b) => { b.setAttribute('aria-checked', String(b.dataset.value === document.documentElement.dataset.material)); b.addEventListener('click', () => { document.documentElement.dataset.material = b.dataset.value; }); });
+});
 document.querySelectorAll('.glass-switch').forEach((sw) => sw.addEventListener('click', () => sw.setAttribute('aria-checked', String(sw.getAttribute('aria-checked') !== 'true'))));
 document.querySelectorAll('[data-tile]').forEach((t) => t.addEventListener('click', () => { document.documentElement.dataset.theme = t.dataset.tile; document.querySelectorAll('[data-tile]').forEach((x) => x.setAttribute('aria-pressed', String(x === t))); }));
 </script>
 <script src="../../apps/web/public/lens.js"></script>
+<script src="../../apps/web/public/glass-highlight.js"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@ const code = fs.readFileSync(path.join(__dirname, '../public/lens.js'), 'utf8');
 
 // Runs public/lens.js against a minimal fake DOM.
 function load({ chromium = true, calm = false, nodes = [] } = {}) {
-  const attributes = {}, frames = [], observed = [];
+  const attributes = {}, frames = [], observed = [], observers = [];
   let mutate, mediaChange;
   const media = { matches: calm, addEventListener: (_, f) => { mediaChange = f; } };
   const context = {
@@ -16,16 +16,16 @@ function load({ chromium = true, calm = false, nodes = [] } = {}) {
     getComputedStyle: () => ({ borderTopLeftRadius: '12px' }),
     requestAnimationFrame: (f) => frames.push(f),
     ResizeObserver: class { observe(n) { observed.push(n); } },
-    MutationObserver: class { constructor(f) { mutate = f; } observe() {} },
+    MutationObserver: class { constructor(f) { this.f = f; mutate = mutate || f; observers.push(f); } observe() {} },
     module: { exports: {} },
     document: {
-      documentElement: { setAttribute: (k, v) => { attributes[k] = v; }, removeAttribute: (k) => { delete attributes[k]; } },
+      documentElement: { getAttribute: (k) => attributes[k] ?? null, setAttribute: (k, v) => { attributes[k] = v; }, removeAttribute: (k) => { delete attributes[k]; } },
       body: {},
       querySelectorAll: () => nodes,
     },
   };
   vm.runInNewContext(code, context);
-  return { attributes, observed, media, exports: context.module.exports, change: () => mediaChange(), mutate: () => { mutate(); frames.splice(0).forEach((f) => f()); } };
+  return { lensWhen: (m) => { attributes['data-material'] = m; observers.forEach((o) => o([])); return attributes['data-lens']; }, attributes, observed, media, exports: context.module.exports, change: () => mediaChange(), mutate: () => { observers.at(-1)(); frames.splice(0).forEach((f) => f()); } };
 }
 const control = (width = 120, height = 36) => {
   const props = {};
@@ -56,6 +56,14 @@ test('reduced transparency or motion turns the lens off and back on', () => {
   f.media.matches = false; f.change();
   assert.equal(f.attributes['data-lens'], 'svg');
   assert.ok(a.props['--lens']);
+});
+
+test('lens is only active in the liquid material', () => {
+  const a = control();
+  const f = load({ nodes: [a] });
+  assert.equal(f.attributes['data-lens'], 'svg');
+  assert.equal(f.lensWhen('soft'), undefined);
+  assert.equal(f.lensWhen('liquid'), 'svg');
 });
 
 test('filters are cached by size and radius, and zero-size nodes are skipped', () => {

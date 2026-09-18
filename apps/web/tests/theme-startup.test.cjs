@@ -51,10 +51,10 @@ test('theme-color matches the generated surface role in both modes', () => {
 // after React mounts they would flash the previous setting, which is the whole
 // reason this file exists.
 for (const [name, stored, expected] of [
-  ['saved preferences', { 'noevia:chat-font': 'serif', 'noevia:density': 'compact', 'noevia:motion': 'reduced' },
-    { 'data-chat-font': 'serif', 'data-density': 'compact', 'data-motion': 'reduced' }],
+  ['saved preferences', { 'noevia:chat-font': 'serif', 'noevia:density': 'compact', 'noevia:motion': 'reduced', 'noevia:material': 'soft' },
+    { 'data-chat-font': 'serif', 'data-density': 'compact', 'data-motion': 'reduced', 'data-material': 'soft' }],
   ['a new installation', {},
-    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system' }],
+    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system', 'data-material': 'liquid' }],
   ['values that are not offered', { 'noevia:chat-font': 'comic', 'noevia:density': '../../etc', 'noevia:motion': '1' },
     { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system' }],
 ]) {
