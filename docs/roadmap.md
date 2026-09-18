@@ -98,6 +98,12 @@ Everything below was measured on the branch during 2026-09-17 and went live with
 - **Release `877947c` is live** (2026-09-18, from `1fe3f1b`, appdata backup first; see
   `deployment.md`). **Off-site backups are running** to an encrypted local store, restore-tested
   with the Diary included; the Google Drive mirror waits only on the user's one sign-in.
+- **Shipped (2026-09-18)** — Google Drive connect in the setup wizard and Settings → Backups:
+  an admin-only wizard step (shown only when off-site backups use a mirrored folder) with
+  copyable key and sign-in commands and a Check connection button; noevia still never holds
+  the Google token (D23). Settings regrouped into Account, Preferences, Connections, Server and
+  Coming later; "Off-site backups" → "Backups", "Your connections" → "AI providers". QA:
+  `qa/wizard-backup.cjs`, `qa/offsite-mirror.cjs`.
 - Previously: **release `1fe3f1b`** (deployed 2026-09-17 night from `ca5d2f6`, web-only overlay,
   appdata backup `ab_20260917_192134` first). All five services healthy, engine untouched, public
   bundle byte-identical to the local build. Code mode ships **off** with no `CODE_*` environment

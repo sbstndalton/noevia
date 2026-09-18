@@ -34,6 +34,11 @@ don't put it in a note that syncs to the same account.
 
 ## 2. Connect Google Drive (once)
 
+Easiest: the setup wizard (admin, when off-site backups are on) and **Settings → Backups** show
+these same commands with a Copy button and a **Check connection** button. Set
+`OFFSITE_BACKUP_SSH_HOST=daserver` in noevia's environment so the commands use your SSH alias;
+without it they use `root@<the address in your browser>`.
+
 Done on 2026-09-18. To redo it (a new Google account, or a revoked token), run this **on your
 Mac**, in a terminal that is *not* an SSH tunnel to the server — an open `ssh -L 53682:…` holds
 the very port Google sends you back to, and the sign-in then fails with "No code returned":
