@@ -1381,3 +1381,35 @@ thumbnails both draw in the current theme; the selected-theme ring stays purple 
 accent; (6) Settings → Profile row labels start at inconsistent indents on a phone. **Still owed:**
 the live write-approval card (a permission check blocked the synthetic write test) and a
 real touch device for the 16px-field check.
+
+## Releases 3d20de0, a2a1c8e, e777259 — 2026-09-18 (phone review fixes of d11cfac)
+
+Three web-only overlays in a row, each after a clean backup (`ab_20260918_122108`,
+`ab_20260918_123033`, `ab_20260918_123652`; logs clean, all archives gzip-verified) and
+with no dependency changes. Every one ended `RELEASE_<sha>_COMPLETE` with web, diary, ocr,
+llama and model-loader healthy, restarts=0, engine untouched.
+
+Latest application rollout: **`e777259`**, replacing `a2a1c8e` (which replaced `3d20de0`,
+which replaced `d11cfac`). Public site serves `index-s66ywTmP.js` / `index-DTbLz5or.css`.
+- **3d20de0:** the phone drawer opened from Diary is the full sidebar (the legacy rail rules
+  now apply only to the closed sidebar); the sticky footer is measured, not assumed 60px, and
+  owns the drawer's bottom inset, so Diary/Plugins are never under it and no rows show below
+  it; row menus render into `<body>` and are placed before paint (no clipping, no offset, no
+  scroll reset); theme previews show their own theme and the selected ring follows the
+  accent; stacked Settings rows share one left edge.
+- **a2a1c8e:** before its first reading the inference strip shows the model with a neutral
+  dot instead of a red "Inference offline" (the poll waits while the page is hidden).
+- **e777259:** on a desktop each sidebar list keeps its heading in view while it scrolls.
+`qa/phone-drawer-settings.cjs` covers all of it. Gate each time: 861/861 tests, typecheck,
+design lint, fresh build; `sidebar-reachability`, `mobile-viewport`, `mobile-approvals`,
+`tool-calls`, `appearance-system`, `general-settings`, `touch-targets` and
+`short-phone-composer` pass. `mobile-surfaces` and `live-stats` fail identically on the
+unchanged `d11cfac` build (pre-existing: they look for a pre-release-3 flow and the old
+"Inference details" region). Verified live in Chrome at 500 px and 1360 px: the drawer from
+chat and from Diary, a row menu, Profile alignment, Appearance previews/ring/accents, the
+strip, independent desktop lists with sticky headings. The escape-key "bug" noted earlier
+was an artefact of the browser extension's key events; Escape closes the sheet. Appearance
+was restored to Dark + Warm. **Still owed:** the live write-approval card (a permission
+check blocks a synthetic Nextcloud write) and a real touch device for 16px fields.
+Rollback: `a2a1c8e` with `.env.bak.before-e777259` (further back: `3d20de0`, `d11cfac`).
+

@@ -1,3 +1,12 @@
+### 2026-09-18 — Phone review fixes (3d20de0, a2a1c8e, e777259)
+
+Three guarded web-only overlays over d11cfac, each after a verified appdata backup.
+The phone drawer is whole from any view, Diary/Plugins are never under the footer,
+row menus are no longer clipped, theme previews and the selected ring are correct,
+Settings rows align, the strip no longer reports a false outage at start, and desktop
+list headings stay in view. Five services healthy after each. Rollback a2a1c8e.
+
+
 ### 2026-09-18 — UI overhaul release 3 and phone-review fixes
 
 Deployed d11cfac over ab2720a as a web-only overlay (no dependency changes). 861 web tests,
