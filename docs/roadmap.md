@@ -95,7 +95,10 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   offers "Show all publishers (N)" instead of only explaining itself (`03658d3`). Auto-tune's
   resumable state: an expired partial silently restarted from scratch; the job reports `resumed`
   and expired partials are deleted (`241af38`).
-- **Release `1fe3f1b` is live** (deployed 2026-09-17 night from `ca5d2f6`, web-only overlay,
+- **Release `877947c` is live** (2026-09-18, from `1fe3f1b`, appdata backup first; see
+  `deployment.md`). **Off-site backups are running** to an encrypted local store, restore-tested
+  with the Diary included; the Google Drive mirror waits only on the user's one sign-in.
+- Previously: **release `1fe3f1b`** (deployed 2026-09-17 night from `ca5d2f6`, web-only overlay,
   appdata backup `ab_20260917_192134` first). All five services healthy, engine untouched, public
   bundle byte-identical to the local build. Code mode ships **off** with no `CODE_*` environment
   set. D1 needed no operator steps — it was already applied in `657d21b`, and the preflight passes
@@ -379,10 +382,11 @@ mobile composer and tap targets).
   (`ab_20260916_151428`, `cowork-diary-1.tar.gz`) contains app-managed Diary storage
   (`users/<id>/managed-diary.db`) and the per-user corpus folder. Re-check once the real Diary
   moves to the SMB/dedicated root, since that path is not mounted yet.
-- **Built (D7); destination chosen 2026-09-18 (D23): Google Drive.** Encrypted, content-addressed
-  snapshots written to a folder (`offsite-dir.cjs`) and mirrored to Drive by the host's rclone
-  (`deploy/offsite/`), so the Google credential never enters noevia. Waiting on the user's one-time
-  Google sign-in; see `deploy/offsite/README.md`.
+- **Live 2026-09-18 (D7, D23: Google Drive).** Encrypted, content-addressed snapshots written
+  nightly to a folder (`offsite-dir.cjs`) and mirrored to Drive by the host's rclone
+  (`deploy/offsite/`), so the Google credential never enters noevia. First snapshot restored in
+  full with the Diary, all 12 databases passing `integrity_check`. **Waiting only on the user's
+  one-time Google sign-in**, and on them keeping a copy of the key off the server.
 - **Shipped on branch (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion; see Current phase.
 
 ### G. Telemetry and logs

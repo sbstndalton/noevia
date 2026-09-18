@@ -551,8 +551,9 @@ llama.cpp Vulkan; vLLM only after the §8 gates.
 
 ## Current phase — run on what is deployed, then build
 
-Release **`1fe3f1b`** is live on DaServer (deployed 2026-09-17 night from `ca5d2f6`, web-only
-overlay). Confirmed at deploy: `current` → `releases/1fe3f1b`, `COWORK_VERSION=1fe3f1b` (it lives in
+Release **`877947c`** is live on DaServer (deployed 2026-09-18 from `1fe3f1b`, web-only
+overlay), with off-site backups on (D23). Confirmed at deploy: `current` → `releases/877947c`,
+`COWORK_VERSION=877947c` (it lives in
 the host `.env` at `/mnt/docker/appdata/cowork/config/.env`, **not** as a container env var), five
 services healthy with restarts 0, the native engine container id unchanged, and the public bundle
 byte-identical to a local build. D1 is satisfied live and its preflight passes. Status detail in

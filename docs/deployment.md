@@ -956,6 +956,45 @@ No image change. Each file edited was copied first (`*.bak.before-d3`, `*.bak.be
 Rollback: restore the three backups named above plus `models.ini.bak-before-d3` and
 `ui-data/auto-roles.json.bak.before-d3`, then run preflight `up`. The ZIM can be deleted freely.
 
+## Release 877947c and off-site backups — 2026-09-18 (early hours)
+
+Web-only overlay from `1fe3f1b`, appdata backup `ab_20260918_004552` first (both noevia archives
+present, log ends DONE). Five services healthy, restarts 0, engine container unchanged, public
+entry bundle `index-DqIOe8vm.js` byte-identical to the local build. Carries the Code mode work (still
+off), the folder backup target, and D21–D23. The Auto-routing repair of the night before lives in
+state, not the release, and survived it.
+
+**Off-site backups are on** (D23), except the Google half, which needs the user's one sign-in.
+
+| Piece | Where |
+|---|---|
+| Encrypted store (noevia writes it, 02:00 nightly) | host `/mnt/user/noevia-backups/offsite` → web `/offsite` |
+| Key (64 hex, generated on the box, never printed) | host `/mnt/docker/appdata/cowork/config/offsite-backup.key` → web `/run/offsite/backup.key:ro` |
+| Diary data, so the corpus is included | host `state/diary` → web `/backup-src/diary:ro` — web **cannot write it** (verified) |
+| Mirror to Google Drive, 02:45 nightly | `/mnt/docker/appdata/cowork/tools/offsite/rclone-sync.sh`, cron in `/boot/config/plugins/dynamix/noevia-offsite.cron` (Unraid loads it into `/etc/cron.d/root`; `crontab -l` does not show it) |
+| rclone config (empty until the user signs in) | `/boot/config/rclone/rclone.conf` |
+
+Live override changes, backed up as `docker-compose.override.yml.bak.before-offsite-drive`: the six
+`OFFSITE_*`/feature variables and three mounts on `web`. `docker compose config` valid and the
+preflight passed (all three checks) before web was recreated through `up.sh`.
+
+Verified: the first real snapshot (139 files, 19 MB) was sealed in a second and the restore test
+passed; a full restore into a scratch directory brought back all 12 SQLite databases — `cowork.db`,
+the project databases and `managed-diary.db` among them — and every one passed `integrity_check`.
+**No plaintext on disk:** none of the 124 objects contains a string known to be backed up (a model
+name from `auto-roles.json`), the SQLite header, or `CREATE TABLE`.
+
+Until the user signs rclone in, the nightly mirror logs `FAIL no rclone config` and exits 2 — by
+design, and harmless. Steps for the user: `deploy/offsite/README.md`.
+
+Rollback: restore the override backup and recreate web; for the code, point `current` and
+`COWORK_VERSION` back at `1fe3f1b` (`config/.env.bak.before-877947c`).
+
+One operational lesson from this deploy: waiting for the appdata backup with
+`pgrep -f "[a]ppdata.backup/scripts/backup.php"` hung for ten minutes after the backup had finished,
+because the same SSH command line also contained the *unbracketed* path (inside the `setsid`
+argument). The bracket trick only stops a pattern matching itself. Wait on a log marker or a PID.
+
 ## Syslog mirror enabled — 2026-09-17 night (host setting, at the user's request)
 
 The outage of 2026-09-17 (04:15–08:24) lost its evidence because the box's own syslog is on
