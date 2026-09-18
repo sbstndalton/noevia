@@ -121,7 +121,7 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   reference; preserve functionality, data flows and tests, replace the visual language
   entirely*). Architecture from `ui mockups/inspiration/` (merged descriptions + screenshots);
   look from Apple HIG, Material 3 roles with Ramps Studio character, Aero/UniFi structural panes,
-  selective Liquid Glass, Impeccable as skill and final critique. **Release 1 in review (2026-09-18)** on branch `ui-overhaul/foundation`: palette generator `apps/web/scripts/palette.cjs`, M3 role tokens, `materials.css`, `public/lens.js` (replaces `glass.js`), palette picker removed, Impeccable installed at `.claude/skills/impeccable` with `PRODUCT.md`; samples in `docs/ui-samples/` awaiting the user's OK. Planned releases,
+  selective Liquid Glass, Impeccable as skill and final critique. **Release 1 deployed 2026-09-18 as `35ed364`** (Soft default, four materials in Settings → Appearance, `SegmentedControl`): palette generator `apps/web/scripts/palette.cjs`, M3 role tokens, `materials.css`, `public/lens.js` (replaces `glass.js`), palette picker removed, Impeccable installed at `.claude/skills/impeccable` with `PRODUCT.md`; samples in `docs/ui-samples/`. Release 2 (Shell) next. Planned releases,
   each deployed and click-tested:
   1. **Foundation** — one noevia palette (light/dark) on M3 roles, spacing/radius/type/motion/
      elevation/surface tokens; `public/glass.js` replaced; the whole app switches at once. Two or

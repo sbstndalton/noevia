@@ -1325,3 +1325,12 @@ services healthy. **3d1470d:** passkeys store their own `rp_id`; the live passke
 `cowork.daserver.work`; new passkeys are made for `noevia.daserver.work` (setup had asked for the
 old RP ID and browsers refused it). **5f3f73c:** the Diary storage form explains locked fields and
 offers Try again after 10 s.
+
+## Release 35ed364 — 2026-09-18 (UI overhaul release 1: Foundation)
+
+Appdata backup `ab_20260918_060944` first (no errors). Web-only overlay `385f04a → 35ed364`
+(`overlay-release.sh`, `RELEASE_35ed364_COMPLETE`; web, diary, ocr, llama and model-loader
+healthy with restarts=0; engine container ID unchanged). Public site serves `index-TGNR7wbl.js`
+and `/lens.js`. Ships the noevia M3 palette, `tokens.css`/`materials.css`, `lens.js` in place of
+`glass.js`, `SegmentedControl`, and the four materials in Settings → Appearance (Soft default).
+Rollback: release `385f04a` and `.env.bak.before-35ed364`.
