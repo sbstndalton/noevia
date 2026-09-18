@@ -70,9 +70,23 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   original outage's log is still gone; `/var/log/syslog` starts at the reboot that ended it. Leading guess moved from
   engine GTT to RAM-backed paths during the ZIM download or backup staging (the engine alone cannot
   exceed ~16.9 GiB). Unproven — keep `--models-max 1`.
+- **FIXED 2026-09-17 night — Auto routing was pointing at models the engine does not serve.**
+  Live `auto-roles.json` named `gemma-4-E2B-it-GGUF-UD-Q4_K_XL` / `Gemma-4-E4B-it-GGUF`; the engine
+  serves `gemma-4-E2B_q4_0-it` / `gemma-4-E4B-it-qat-UD-Q4_K_XL` and four others. **Every
+  Auto-routed message would have failed.** It showed no errors only because nobody had chatted
+  that day. Cause: the D3 session edited `/mnt/docker/appdata/cowork/ui-data/auto-roles.json`,
+  which **is mounted into nothing** — the live path is
+  `/mnt/docker/appdata/cowork/state/web/auto-roles.json`. That dead directory's
+  `.bak.before-d3` still holds the stale values, which is how it was traced. Repaired to
+  Qwen3.5-4B (fast, vision) and Ornith-1.5-9B (smart), both confirmed served, web restarted
+  because roles are cached at workspace load, and a real completion verified.
+  **Lesson for the next session: `state/web/` is live; `ui-data/` is abandoned.** Check the mount
+  before believing an edit landed.
 - **The Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the
-  loaded model mid-conversation. Its thinking is disabled (2.9 s answers), but the collision remains.
-  The engine has no API key on the `nextcloud-aio` network.
+  loaded model mid-conversation. Its thinking is disabled (2.9 s answers). **Much reduced
+  2026-09-17 night:** the Assistant asks for `Qwen3.5-4B-Q5_K_M`, and noevia's fast and vision
+  roles are now that same model, so the common path no longer evicts anything. Only a `smart`
+  (9B) message still swaps. The engine has no API key on the `nextcloud-aio` network.
 - **Deployed but only exercised by me — all three now addressed in code, none yet confirmed live.**
   The 4B not calling the Tasks box: every tool in it is named `nc_calendar_*` and described in
   calendar words, so `tool-hints.cjs` adds a plain-language sentence per tool and the box leads with
@@ -221,6 +235,11 @@ mobile composer and tap targets).
   tuple (backend, model, artifact, projector, runtime, context, MTP profile, harness, prompt
   preparation, suite, date); changes mark evidence stale. No universal score.
   ([spec §1](spec-agent-execution.md))
+- **Not applied live, contrary to the D3 note** — the box runs `--models-max 1` with the 4B at
+  ctx 49152 and the 9B at 32768, not the planned 24576/16384. The roadmap's "Applied live
+  2026-09-17 with `--models-max 2`, caps verified" is at best half true: `--models-max` went back
+  to 1 in the outage response, and the preset caps are not what D3 proposed. Verify against the
+  engine's own `/v1/models` args before acting on that entry.
 - **Baseline written 2026-09-17, measurements need scheduling** — Known-good settings ([research-known-good-settings.md](research-known-good-settings.md)): live presets ask 131K–262K context while the only calibrations verified 16K (9B) and 24K (E4B); all presets set `draft-eagle3` without a draft model. Provisional limits and a measurement plan; production presets untouched.
 - **Research** — Wider model evidence: accuracy, reasoning budgets, MTP, multi-GPU; and
   applying the qualified Gemma 131k / Qwen 262k profiles beyond their exact configuration.
