@@ -1,3 +1,9 @@
+### 2026-09-18 — Account menu and Search like Claude (91a89ba)
+
+Light/dark in the account menu, Search beside the account, account menu unclipped from
+the rail, clean rail Chat/Code, no blank page entering Code. Rollback 94909d3.
+
+
 ### 2026-09-18 — Collapsed sidebar like ChatGPT's (94909d3)
 
 Icon-only rail with the avatar at the bottom, remembered per device, expands from its

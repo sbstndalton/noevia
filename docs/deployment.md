@@ -1473,3 +1473,17 @@ icons with the avatar at the bottom (M3: navigation rail with the FAB), remember
 live: no leaks, icons only, state stored; left expanded. Rollback `4152d15` with
 `.env.bak.before-94909d3`.
 
+## Release 91a89ba — 2026-09-18 (account menu and Search like Claude; rail and Code fixes)
+
+Latest application rollout: **`91a89ba`**, replacing `94909d3`. Backup `ab_20260918_145036`
+first (clean, gzip-verified); `RELEASE_91a89ba_COMPLETE`, five services healthy, restarts=0.
+Claude's account menu and bottom bar, and Claude's and ChatGPT's Settings, were inspected in
+the browser (DOM and computed styles). Light/dark moved from the sidebar head into the
+account menu (Chat and Code); Search sits beside the account. The account menu renders into
+`<body>` (it was clipped to icons in the collapsed rail) and opens beside the avatar there.
+The rail's Chat/Code switch is two stacked icon buttons. Entering Code no longer blanks the
+page while the lazy chunk loads (50 blank frames → 0 with an 800 ms chunk). Verified live:
+head holds only Collapse; footer is account + Search. Nextcloud had deleted tracked files
+under `.claude/skills/impeccable/` again; restored from git, not committed as deletions.
+Rollback `94909d3` with `.env.bak.before-91a89ba`.
+
