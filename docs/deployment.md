@@ -1317,3 +1317,11 @@ Appdata backup `ab_20260918_040536` first. Web-only overlay `27c07b9 → f0ea80b
 - **Still to do:** an admin clicks Connect Google Drive in Settings → Backups; after the first
   in-app copy succeeds, remove the host rclone cron (`/boot/config/plugins/dynamix/*.cron`
   entry for `rclone-sync.sh`, then `update_cron`) and the old rclone-made `noevia-offsite` folder.
+
+## Releases 3d1470d and 5f3f73c — 2026-09-18 morning (passkey fix, storage form)
+
+Appdata backups `ab_20260918_043305` and `ab_20260918_043756` first; web-only overlays, all
+services healthy. **3d1470d:** passkeys store their own `rp_id`; the live passkey was migrated to
+`cowork.daserver.work`; new passkeys are made for `noevia.daserver.work` (setup had asked for the
+old RP ID and browsers refused it). **5f3f73c:** the Diary storage form explains locked fields and
+offers Try again after 10 s.
