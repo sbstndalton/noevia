@@ -1365,3 +1365,19 @@ card, phone width, light/dark and accent repaint were **not** checked; they are 
 synthetic chat "QA deploy check: use the drive_create_file…" was left in Recent chats (it ran
 no tools) and should be deleted. `cowork.daserver.work` did not resolve through Tailscale DNS
 at the time. Rollback: `ab2720a` and `.env.bak.before-d11cfac`.
+
+Phone-width follow-up (same day, Chrome window at 500 px, the narrowest it allows; not touch
+emulation). Works: Settings is a full-width list opening full-screen pages with a back arrow;
+reload returns to the open view; the phone composer is pinned to the bottom and the inference
+strip is one line; the confirm dialog and model picker are bottom sheets with a grabber and name
+the right item; the accent palettes repaint live and survive a reload (stored per theme); light
+and dark both apply. The synthetic QA chat was deleted. **Defects found:** (1) the phone drawer
+opened from the Diary view renders the collapsed icon rail (no labels, no lists) inside the full
+drawer; (2) from a chat, the drawer scrolls as one block and the Diary/Plugins pane is clipped
+under the MCP line before scrolling; the three lists do not scroll independently at this size;
+(3) a row's "⋯" menu opens clipped at the drawer edge (icons only), away from its row, and resets
+the drawer scroll; (4) Escape does not close the model bottom sheet; (5) the Light and Dark theme
+thumbnails both draw in the current theme; the selected-theme ring stays purple whatever the
+accent; (6) Settings → Profile row labels start at inconsistent indents on a phone. **Still owed:**
+the live write-approval card (a permission check blocked the synthetic write test) and a
+real touch device for the 16px-field check.
