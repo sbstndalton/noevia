@@ -385,8 +385,9 @@ mobile composer and tap targets).
 - **Live 2026-09-18 (D7, D23: Google Drive).** Encrypted, content-addressed snapshots written
   nightly to a folder (`offsite-dir.cjs`) and mirrored to Drive by the host's rclone
   (`deploy/offsite/`), so the Google credential never enters noevia. First snapshot restored in
-  full with the Diary, all 12 databases passing `integrity_check`. **Waiting only on the user's
-  one-time Google sign-in**, and on them keeping a copy of the key off the server.
+  full with the Diary, all 12 databases passing `integrity_check`. **Google Drive connected
+  2026-09-18:** 124/124 objects on Drive, `rclone check` 0 differences; the key is in the user's
+  password manager.
 - **Shipped on branch (D8: guarded empty-only sweep)** — Empty-folder cleanup after project deletion; see Current phase.
 
 ### G. Telemetry and logs

@@ -11,8 +11,8 @@ noevia, and the file names are random hashes. On Drive you will see a folder cal
 **noevia never holds your Google password or token.** Only rclone on the server does, and it is
 limited to `drive.file`: it can see the files it created itself and nothing else in your Drive.
 
-Status on 2026-09-18: everything is set up and running except the one step that needs you — signing
-rclone in to Google, once.
+Status: **live since 2026-09-18.** The first copy put all 124 objects on Drive and `rclone check`
+found 0 differences. Settings → Off-site backups shows the mirror's state.
 
 ---
 
@@ -34,41 +34,26 @@ don't put it in a note that syncs to the same account.
 
 ## 2. Connect Google Drive (once)
 
-The server has no browser, so this borrows your Mac's. Open a terminal on your Mac and connect to
-the server with a tunnel:
+Done on 2026-09-18. To redo it (a new Google account, or a revoked token), run this **on your
+Mac**, in a terminal that is *not* an SSH tunnel to the server — an open `ssh -L 53682:…` holds
+the very port Google sends you back to, and the sign-in then fails with "No code returned":
 
 ```bash
-ssh -L 53682:127.0.0.1:53682 daserver
+brew install rclone
 ```
-
-Then, **in that same window** (you are now on the server):
 
 ```bash
-RCLONE_CONFIG=/boot/config/rclone/rclone.conf rclone config
+F=$(mktemp); rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ" >"$F"; TOKEN=$(python3 -c "import sys,json,base64;t=open(sys.argv[1]).read();b=t.split('--->')[-1].split('<---')[0].strip();d=None if b.startswith('{') else json.loads(base64.urlsafe_b64decode(b+'='*(-len(b)%4)));tok=b if d is None else d.get('token',d);tok=tok if isinstance(tok,str) else json.dumps(tok);json.loads(tok)['access_token'];print(tok)" "$F" 2>/dev/null); if [ -n "$TOKEN" ]; then ssh daserver "export RCLONE_CONFIG=/boot/config/rclone/rclone.conf; rclone config update gdrive token '$TOKEN' config_refresh_token=false --non-interactive >/dev/null && bash /mnt/docker/appdata/cowork/tools/offsite/rclone-sync.sh"; else echo "Could not read the token."; fi; rm -f "$F"; unset TOKEN F
 ```
 
-Answer the questions like this:
+Your browser opens; sign in and click Allow. The token goes straight from your Mac to the
+server's rclone config — it is never shown on screen or saved in shell history — and the first copy
+runs. (The server needs a `gdrive` remote to update; create an empty one first with
+`RCLONE_CONFIG=/boot/config/rclone/rclone.conf rclone config create gdrive drive scope=drive.file --non-interactive`.)
 
-| rclone asks | You answer |
-|---|---|
-| New remote? | `n` |
-| name | `gdrive` — exactly this; the nightly script looks for it |
-| Storage | `drive` (Google Drive) |
-| client_id / client_secret | press Enter (leave blank) |
-| scope | the one that says **"Access to files created by rclone only"** (`drive.file`) — not full access |
-| service_account_file | press Enter |
-| Edit advanced config? | `n` |
-| Use web browser to automatically authenticate? | `y` |
-
-rclone prints a link starting with `http://127.0.0.1:53682/`. **Open it in your Mac's browser**,
-sign in to the Google account you want the backups in, and allow access. The tunnel carries the
-answer back to the server. Then:
-
-| rclone asks | You answer |
-|---|---|
-| Configure this as a Shared Drive? | `n` |
-| Keep this remote? | `y` |
-| (menu) | `q` to quit |
+Two details that cost time the first time: the scope argument is base64 **without** `=` padding
+(rclone rejects it otherwise), and `rclone authorize` hands the token back base64-wrapped rather
+than as plain JSON, which the one-liner above unwraps.
 
 ## 3. Check it works
 
