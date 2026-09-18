@@ -262,9 +262,12 @@ mobile composer and tap targets).
   override staged but *not* wired into the Compose Manager project. Staging found three real gaps,
   now fixed — worktrees must sit on the shared volume at an identical path, a workspace must be
   handed to the harness uid, and a handed-over worktree **cannot commit**, so a separate harness
-  user now gets `git clone --shared` with the branch fetched back on release. Still to do: `Auto`
-  harness once evidence exists, and **a real end-to-end run against OpenCode** — every rule is
-  tested against a scripted fake agent, which proves the rules but not what a real harness sends. Original item: noevia-owned contract that external harnesses
+  user now gets `git clone --shared` with the branch fetched back on release. **Contract v1 run against real OpenCode 1.18.31 on 2026-09-17** (spec §3 "Contract v1"): the
+  mapping holds — classification, the approval card with a real diff, containment, `test.js`
+  untouched — and four defects surfaced that only a real harness could show, the worst being that
+  git's "dubious ownership" check made `release()` strand **every task's work** in its clone. All
+  four fixed. Still to do: `Auto` harness once evidence exists, the adapter owning the harness
+  config file, and runs against Claude Code and Codex. Original item: noevia-owned contract that external harnesses
   (Codex, Claude Code, DeepSeek Harness, OpenCode, Hermes) adapt to; Harness and Prompt
   preparation dropdowns beside Model; coding evidence scoped to model × harness × architect;
   every harness action classified through noevia's approval gate; one writer per workspace

@@ -1,0 +1,178 @@
+{
+  "startedAt": "2026-09-18T03:16:11.680Z",
+  "finishedAt": "2026-09-18T03:18:25.912Z",
+  "model": "Qwen3.5-4B-Q5_K_M",
+  "status": "completed",
+  "harness": {
+    "name": "OpenCode",
+    "version": "1.18.31",
+    "protocolVersion": 1
+  },
+  "updateKinds": {
+    "available_commands_update": 1,
+    "agent_thought_chunk": 85,
+    "tool_call": 3,
+    "tool_call_update": 6,
+    "agent_message_chunk": 59,
+    "usage_update": 1
+  },
+  "rawUsageUpdate": [
+    {
+      "sessionUpdate": "usage_update",
+      "used": 8044,
+      "size": 24576,
+      "cost": {
+        "amount": 0,
+        "currency": "USD"
+      }
+    }
+  ],
+  "toolCalls": [
+    {
+      "kind": "read",
+      "status": "pending",
+      "title": "read",
+      "metaKeys": null,
+      "contentTypes": null,
+      "rawInputKeys": []
+    },
+    {
+      "kind": "read",
+      "status": "in_progress",
+      "title": "read",
+      "metaKeys": null,
+      "contentTypes": null,
+      "rawInputKeys": [
+        "filePath"
+      ]
+    },
+    {
+      "kind": null,
+      "status": "completed",
+      "title": "median.js",
+      "metaKeys": null,
+      "contentTypes": [
+        "content"
+      ],
+      "rawInputKeys": null
+    },
+    {
+      "kind": "read",
+      "status": "pending",
+      "title": "read",
+      "metaKeys": null,
+      "contentTypes": null,
+      "rawInputKeys": []
+    },
+    {
+      "kind": "read",
+      "status": "in_progress",
+      "title": "read",
+      "metaKeys": null,
+      "contentTypes": null,
+      "rawInputKeys": [
+        "filePath"
+      ]
+    },
+    {
+      "kind": null,
+      "status": "completed",
+      "title": "test.js",
+      "metaKeys": null,
+      "contentTypes": [
+        "content"
+      ],
+      "rawInputKeys": null
+    },
+    {
+      "kind": "edit",
+      "status": "pending",
+      "title": "edit",
+      "metaKeys": null,
+      "contentTypes": null,
+      "rawInputKeys": []
+    },
+    {
+      "kind": "edit",
+      "status": "in_progress",
+      "title": "edit",
+      "metaKeys": null,
+      "contentTypes": null,
+      "rawInputKeys": [
+        "filePath",
+        "oldString",
+        "newString"
+      ]
+    },
+    {
+      "kind": "edit",
+      "status": "failed",
+      "title": "edit",
+      "metaKeys": null,
+      "contentTypes": [
+        "content"
+      ],
+      "rawInputKeys": [
+        "filePath",
+        "oldString",
+        "newString"
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "action": "edit_file",
+      "kind": "edit",
+      "title": "/workspaces/trees/7d4302d3-e1e2-4a85-8ab7-1145e680a025/median.js",
+      "command": "",
+      "paths": [
+        "/workspaces/trees/7d4302d3-e1e2-4a85-8ab7-1145e680a025/median.js"
+      ],
+      "reason": "",
+      "hasDiff": true,
+      "argumentKeys": [
+        "filepath",
+        "diff"
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "action": "edit_file",
+      "decision": "approve"
+    }
+  ],
+  "clientFsCalls": 0,
+  "meta": {
+    "harness": "OpenCode",
+    "harnessVersion": "1.18.31",
+    "protocolVersion": 1,
+    "usage": null,
+    "context": {
+      "used": 8044,
+      "size": 24576,
+      "percent": 33
+    },
+    "commands": 0,
+    "failedCommands": 0,
+    "exitCodes": [],
+    "messageChunks": 59,
+    "limitations": [
+      "The harness did not report token usage.",
+      "No command exit codes were reported."
+    ]
+  },
+  "result": {
+    "tools": 3,
+    "approvals": 1,
+    "allowed": 1,
+    "refused": 0,
+    "denied": 0
+  },
+  "branch": "noevia/task-7d4302d3-e1e2-4a85-8ab7-1145e680a025",
+  "branchLog": "b6e9719 scratch fixture: median() with two deliberate bugs",
+  "branchDiff": "",
+  "testBefore": "fails: Command failed: node test.js",
+  "testAfter": "fails: Command failed: node test.js",
+  "testUnchanged": true
+}

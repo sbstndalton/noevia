@@ -353,11 +353,38 @@ Added the same day:
 | `server/code-meta.cjs` | Token usage, harness name and version, ACP protocol version and per-command exit codes, read defensively from a free-form `_meta` — and, where absent, **named as absent** rather than defaulted. Plus `codingIdentity`: the §1 tuple (harness, version, model, provider, protocol, capability set, prompt preparation, sandbox-or-spawn), so a result is scoped to what changes its meaning. |
 | Harness / Prompt-preparation selectors | One harness per deployment reads as a stated fact rather than a one-option dropdown. Prompt preparation offers Direct; Local and Frontier are listed, disabled, each carrying its measured reason, and the server refuses them rather than downgrading silently. **No `Auto`** — §2 permits one only once paired fixtures prove a benefit. |
 
-**Not yet done from this section.** An `Auto` harness waits on evidence that does not exist. And
-**contract v1 still needs a real run**: everything above is tested against a scripted fake agent
-(`server/fixtures/fake-acp-agent.cjs`), which proves the rules but not what OpenCode and Claude Code
-actually send — the `_meta` reader in particular is guesswork about shapes nobody has observed. That
-run needs `CODE_HARNESS_ENDPOINT` pointed at the sandbox container and a registered repository.
+### Contract v1 — run against real OpenCode, 2026-09-17
+
+Driven through noevia's own modules, unmodified, in the sandbox container against the engine
+(Qwen3.5-4B-Q5_K_M, the `scratch` fixture). Driver and evidence:
+`experiments/acp-spike/contract-v1.mjs`, `contract-v1-opencode-2026-09-17.json`.
+
+**The mapping holds.** The agent identified itself (`OpenCode` 1.18.31, protocol 1). Its three
+tool calls classified correctly — two `read` (no approval) and one `edit`, which stopped at the
+approval card carrying the real absolute path, a diff, and `filepath`/`diff` arguments. Nothing
+reached outside the workspace; `test.js` was untouched, as the task required.
+
+**Four things only a real run could tell us**, all now fixed:
+
+| Found | Consequence | Fix |
+|---|---|---|
+| git refuses to read a repository owned by another user ("dubious ownership"), and that check ignores `-c safe.directory` and `GIT_CONFIG_*` by design | `release()`'s fetch failed, so **every task's work was stranded in its clone** | hand the clone back to noevia's uid before fetching |
+| OpenCode reports nothing on the prompt result's `_meta` | token usage always absent | read the stream |
+| its `usage_update` carries `{used, size, cost}` — **context occupancy, not tokens spent** | reporting `used` as input tokens would have been a plausible-looking lie | `readContext` records it as its own measurement; the token-usage limitation stands |
+| streaming text arrives in many chunks (548 thought, 50 message, in one run) | `turns: 50` overstated the work | counted and named as `messageChunks` |
+
+Also confirmed: OpenCode is configured by `opencode.json` in its working directory — ACP carries
+nothing that pins permissions, so the adapter must write that file, and `_meta` cannot substitute.
+It did **not** use the client's `fs/write_text_file` even with `edit: ask` pinned; it asked, then
+wrote in its own process. The sandbox is what contains that, exactly as §3 says.
+
+**Not a noevia finding, but true:** the 4B did not solve the task in these runs — its
+string-replace edit failed to match. The spike solved the same fixture on the same model, so this
+is a model/prompt question for a measurement window, not a contract one.
+
+**Not yet done from this section.** An `Auto` harness waits on evidence that does not exist, and
+the adapter should own writing the harness config (the driver does it today). Claude Code and
+Codex have still never been run.
 
 ---
 
