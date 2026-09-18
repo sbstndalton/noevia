@@ -1,3 +1,9 @@
+### 2026-09-18 — Collapsed sidebar like ChatGPT's (94909d3)
+
+Icon-only rail with the avatar at the bottom, remembered per device, expands from its
+empty space. Rollback 4152d15.
+
+
 ### 2026-09-18 — Settings and sidebar organised like ChatGPT (4152d15)
 
 Sidebar order Pinned, Projects, Recent chats. Settings is one flat list: General, …,

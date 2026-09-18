@@ -1461,3 +1461,15 @@ Usage (was Usage & activity), Data controls (was Data), Diary & storage, Securit
 unchanged. QA suites follow the new labels; `data-export` fails identically on the previous
 build (pre-existing). Rollback `95eacd6` with `.env.bak.before-4152d15`.
 
+## Release 94909d3 — 2026-09-18 (collapsed sidebar like ChatGPT's)
+
+Latest application rollout: **`94909d3`**, replacing `4152d15`. Backup `ab_20260918_142829`
+first (clean, gzip-verified); `RELEASE_94909d3_COMPLETE`, five services healthy, restarts=0.
+ChatGPT's collapse was studied live (DOM and computed CSS: a separate 52px rail of 36px icon
+buttons over an inert, hidden 260px panel; state remembered; empty rail expands it). noevia's
+collapsed rail had leaked headings, rows and the MCP line; it is now one column of equal
+icons with the avatar at the bottom (M3: navigation rail with the FAB), remembered per device
+(`noevia:sidebar-collapsed`), and its empty space expands it. No buttons were added. Verified
+live: no leaks, icons only, state stored; left expanded. Rollback `4152d15` with
+`.env.bak.before-94909d3`.
+
