@@ -121,13 +121,13 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   reference; preserve functionality, data flows and tests, replace the visual language
   entirely*). Architecture from `ui mockups/inspiration/` (merged descriptions + screenshots);
   look from Apple HIG, Material 3 roles with Ramps Studio character, Aero/UniFi structural panes,
-  selective Liquid Glass, Impeccable as skill and final critique. **Release 1 deployed 2026-09-18 as `35ed364`** (Soft default, four materials in Settings → Appearance, `SegmentedControl`): palette generator `apps/web/scripts/palette.cjs`, M3 role tokens, `materials.css`, `public/lens.js` (replaces `glass.js`), palette picker removed, Impeccable installed at `.claude/skills/impeccable` with `PRODUCT.md`; samples in `docs/ui-samples/`. Release 2 (Shell) next. Planned releases,
+  selective Liquid Glass, Impeccable as skill and final critique. **Release 1 deployed 2026-09-18 as `35ed364`** (Soft default, four materials in Settings → Appearance, `SegmentedControl`): palette generator `apps/web/scripts/palette.cjs`, M3 role tokens, `materials.css`, `public/lens.js` (replaces `glass.js`), palette picker removed, Impeccable installed at `.claude/skills/impeccable` with `PRODUCT.md`; samples in `docs/ui-samples/`. Release 2 deployed as `ab2720a`. Planned releases,
   each deployed and click-tested:
   1. **Foundation** — one noevia palette (light/dark) on M3 roles, spacing/radius/type/motion/
      elevation/surface tokens; `public/glass.js` replaced; the whole app switches at once. Two or
      three sample screens (settings, a project, connectors) shown to the user before rollout.
   2. **Shell + Primitives + Connectors** (merged at the user's request after testing release 1,
-     2026-09-18; built, not yet deployed) — the samples as the app: sidebar and workspace as framed
+     2026-09-18; deployed 2026-09-18 as `ab2720a`) — the samples as the app: sidebar and workspace as framed
      panes; Settings slides in and replaces the workspace (phone: list → page, rising sheet);
      floating phone drawer; context panel as a surface; composer pane with glass send/model;
      one look for every button, field, select, switch and row (`styles/primitives.css`,
@@ -137,12 +137,17 @@ Everything below was measured on the branch during 2026-09-17 and went live with
      not offered; writes can never be Allow). The admin's backup connection doubles as their
      Drive, with an Offsite backups switch on the page. Nextcloud and custom MCP by URL are listed
      as coming later. QA: `qa/connectors.cjs`, `qa/drive-tools-live.cjs`.
-  3. **Primitives (rest)** — cards, menus, modals, GlassControl beyond Settings.
-  4. **Customize with backends** — Connectors first (Google Drive incl. backups, Nextcloud,
-     custom MCP by URL, per-tool permissions), then Skills, then Plugins marketplace.
-  5. **Projects and chats** — cards, context panels, composer context chips.
+  **Phase 2 (from 2026-09-18, brief: [ui-overhaul-phase2-prompt.md](ui-overhaul-phase2-prompt.md)):**
+  first fold in the user's review of `ab2720a`, then:
+  3. **Primitives beyond Settings** — menus, context menus, modals as aero overlays (phone:
+     bottom sheets), confirm dialogs, cards, banners, empty states, chat bubbles and tool-call
+     list (approval card restyled, never simplified).
+  4. **Customize backends** — Nextcloud connector, custom MCP server by URL (per account, same
+     Allow / Ask / Block page), then Skills, then the Plugins marketplace.
+  5. **Projects and chats** — the sample's project screen: header, composer context chips,
+     outputs, recent chats, context panel sections.
   6. **Activity/usage** — only from real usage data.
-  7. **Impeccable critique pass** and fixes.
+  7. **Impeccable critique pass and phone polish pass.**
   **Decided 2026-09-18** (recorded at the top of the brief): plugins are bundles of skills,
   connectors and commands; marketplace sources are Claude-compatible repos, any GitHub repo
   added by URL, own/imported skills, and a curated noevia list; desktop first with a phone

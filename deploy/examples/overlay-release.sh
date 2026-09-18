@@ -11,7 +11,8 @@
 #   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` (keep the folder: dist symlinks to it) then `npm run build` in apps/web
 #      (a stale build dir ships dead bundles), then from apps/web:
 #      COPYFILE_DISABLE=1 tar -h --no-xattrs -czf app-$NEW.tar.gz dist server
-#      (-h: dist is a symlink locally), and `git archive --format=tar.gz -o src-$NEW.tar.gz $NEW`.
+#      (-h: dist is a symlink locally), and FROM THE REPO ROOT `git archive --format=tar.gz -o src-$NEW.tar.gz $NEW`
+#      (run in apps/web it archives only apps/web, and the release folder cannot rebuild).
 #   2. scp both to /tmp on the server.
 #   3. Take the appdata backup:
 #      php /usr/local/emhttp/plugins/appdata.backup/scripts/backup.php

@@ -1334,3 +1334,15 @@ healthy with restarts=0; engine container ID unchanged). Public site serves `ind
 and `/lens.js`. Ships the noevia M3 palette, `tokens.css`/`materials.css`, `lens.js` in place of
 `glass.js`, `SegmentedControl`, and the four materials in Settings → Appearance (Soft default).
 Rollback: release `385f04a` and `.env.bak.before-35ed364`.
+
+## Release ab2720a — 2026-09-18 (UI overhaul release 2: shell, primitives, Connectors)
+
+Appdata backup `ab_20260918_092222` first. Web-only overlay `35ed364 → ab2720a`
+(`RELEASE_ab2720a_COMPLETE`; all five services healthy, restarts=0, engine untouched). Public site
+serves `index-CGLJNnWj.js`; `/api/connectors` answers. Ships in-app Settings, the pane shell,
+shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (the new
+`tool_policies` table is created on start; per-user tokens go to `google-drive-users/`).
+**Correction:** release folder `35ed364` had been extracted from a `git archive` run inside
+`apps/web` (web app only); it was replaced with the full tree before this release. Always run
+`git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
+`.env.bak.before-ab2720a`.
