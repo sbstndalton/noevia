@@ -1,3 +1,9 @@
+### 2026-09-18 — Icon centring scoped; row options beside the title (5a0e026)
+
+Only icon-only buttons centre their icon; sidebar row options no longer cover the title.
+Rollback 350050e.
+
+
 ### 2026-09-18 — Composer like Claude's, SVG icons (350050e)
 
 Centred SVG + with a files-and-tools menu (no duplicate model entry), Thinking as a menu of

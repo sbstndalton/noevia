@@ -1503,3 +1503,15 @@ of 21 views at desktop and phone width finds no glyph icons and no off-centre ic
 offset 0/0, Thinking is a button, no glyph buttons. Rollback `91a89ba` with
 `.env.bak.before-350050e`.
 
+## Release 5a0e026 — 2026-09-18 (icon centring scoped; row options beside the title)
+
+Latest application rollout: **`5a0e026`**, replacing `350050e`. Backup `ab_20260918_163539`
+first (clean, gzip-verified); `RELEASE_5a0e026_COMPLETE`, five services healthy, restarts=0.
+The 350050e rule centring "an SVG that is the only child element" also caught icon + text
+buttons (CSS cannot see text nodes); only labelled icon-only buttons centre now, icon + text
+keep the icon at the start, vertically centred. Sidebar row options were drawn over the
+title on a transparent background; as in ChatGPT (inspected) they are in the row's flow,
+shown on hover/focus, and the title fades out before them; one hover highlight per row.
+Verified live: options static and hidden until hover, no icon+text button centred.
+Rollback `350050e` with `.env.bak.before-5a0e026`.
+
