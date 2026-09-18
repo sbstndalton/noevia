@@ -10,12 +10,20 @@ stays in the `spec-*.md` files linked below. The executable brief is
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
 **Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
 
-## Where things stand — 2026-09-17, night (post-deploy)
+## Where things stand — 2026-09-18, morning
 
-`main` (GitHub `sbstndalton/noevia`), release **`ca5d2f6`** live on DaServer
-(`https://cowork.daserver.work`, see `deployment.md`). PR #1 and PR #2 are merged, so everything
-built on the model-tuning branch — auto-tune, evidence-based context caps, model folder sync,
-server-judged Discover, tool routing, CPU embeddings, account memory — is deployed and verified.
+`main` (GitHub `sbstndalton/noevia`), release **`f0ea80b`** live on DaServer at
+**`https://noevia.daserver.work`** (cowork.daserver.work stays routed: it serves
+`/.well-known/webauthn` so passkeys made under that name keep working). See `deployment.md`.
+
+**New on 2026-09-18 (all live in `f0ea80b`):** Settings regrouped (Account, Preferences,
+Connections, Server, Coming later); Settings → Web address (rename with a reachability check,
+earlier addresses stay valid for sign-in, passkeys via WebAuthn related origins); Google Drive
+backups done by noevia's backend (device sign-in, one button in the wizard and Settings →
+Backups, auto-opened Google tab, recovery-key download); public `/about` and `/privacy`; Google
+Cloud app `noevia` **in production** (drive.file, non-sensitive); wizard palette sits with
+light/dark and no longer flips light to dark. **Pending:** the admin's first Connect on the live
+site, then retire the host rclone cron (`/boot/config/plugins/dynamix/noevia-offsite.cron`).
 
 ### Live and verified in production
 - Services: web, Diary, OCR, model-loader (D1), native llama.cpp (`--models-max 1`), the CPU
@@ -95,18 +103,17 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   offers "Show all publishers (N)" instead of only explaining itself (`03658d3`). Auto-tune's
   resumable state: an expired partial silently restarted from scratch; the job reports `resumed`
   and expired partials are deleted (`241af38`).
-- **Release `877947c` is live** (2026-09-18, from `1fe3f1b`, appdata backup first; see
-  `deployment.md`). **Off-site backups are running** to an encrypted local store, restore-tested
-  with the Diary included; the Google Drive mirror waits only on the user's one sign-in.
+- Previously: **release `877947c`** (2026-09-18 night): off-site backups to an encrypted local
+  store, restore-tested with the Diary included, mirrored by host rclone (D23, being retired).
 - **Shipped (2026-09-18, D24 replaces D23)** — Google Drive backups run entirely in noevia's
   backend: one **Connect Google Drive** button (setup wizard and Settings → Backups) starts
   Google's device sign-in, the backend polls for approval and uploads the encrypted store to a
   `noevia-offsite` folder itself (`server/gdrive.cjs`), with the rclone script's safety rules
   (refuse a wiped store, upload then prune, 500-delete cap, size mismatch = corruption). Refresh
   token sealed with a key derived from the backup key; never reaches the browser; Disconnect
-  revokes. Recovery key downloads from the page. Needs `GOOGLE_OAUTH_CLIENT_ID/SECRET` (a
-  "TVs and Limited Input devices" OAuth client, scope `drive.file`) — **waiting on the user's
-  Google Cloud registration**. Host rclone + cron retire once the new path has copied live.
+  revokes. Recovery key downloads from the page. Uses `GOOGLE_OAUTH_CLIENT_ID/SECRET` (a
+  "TVs and Limited Input devices" OAuth client in Google Cloud project `noevia`, scope
+  `drive.file`, published). Host rclone + cron retire once the new path has copied live.
   Settings regrouped: Account, Preferences, Connections, Server, Coming later. QA:
   `qa/google-drive.cjs`, `qa/wizard-backup.cjs`, `server/gdrive.test.cjs` (fake Google).
 - **Next (user, 2026-09-18)** — **Customize** section like Claude's (mockups in
@@ -125,8 +132,8 @@ Everything below was measured on the branch during 2026-09-17 and went live with
 a maintenance window to confirm the Tasks-box hints and finish the Prompt Architect
 repeats (the user will say when) · a real end-to-end CodeHarness run against OpenCode before
 `features.codeHarness` goes on · `--fit on --fit-target 1024` after the syslog mirror · an engine
-API key shared by noevia and the Nextcloud Assistant · SMB pilot share (D11) · off-site backup
-target (D7) · deep research when they return to it · Talk's `changed-users` waits on an upstream
+API key shared by noevia and the Nextcloud Assistant · the first live Connect Google Drive · the
+Customize/UI overhaul brief · deep research when they return to it · Talk's `changed-users` waits on an upstream
 AIO image · the glass banding check on real devices (D13).
 
 Deploying, spending, model weights on DaServer and live Compose/preset edits stay the user's call.
