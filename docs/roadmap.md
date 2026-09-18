@@ -64,7 +64,10 @@ Everything below was measured on the branch during 2026-09-17 and went live with
 
 ### Broken or risky right now
 - **Outage cause unknown** (2026-09-17, 04:15–08:24). Mover 03:40 and the appdata backup 04:10
-  precede it; the syslog mirror is still off, and syslog lives in RAM. Leading guess moved from
+  precede it. **The syslog mirror is now on** (2026-09-17 night): the box's own syslog is written
+  to `/boot/logs/syslog`, bounded at 10 MB × 4, so a repeat leaves evidence. Note that "Local
+  syslog server: Enabled" did *not* do this — that only receives syslog from other devices. The
+  original outage's log is still gone; `/var/log/syslog` starts at the reboot that ended it. Leading guess moved from
   engine GTT to RAM-backed paths during the ZIM download or backup staging (the engine alone cannot
   exceed ~16.9 GiB). Unproven — keep `--models-max 1`.
 - **The Nextcloud Assistant shares the single llama.cpp slot** with noevia chats and can evict the
@@ -86,9 +89,7 @@ Everything below was measured on the branch during 2026-09-17 and went live with
 - Glass banding on real devices: the user's check (D13). `llama-vulkan-test` is stopped, kept.
 
 ### Needs the user
-**Enable the Unraid syslog mirror** (agreed 2026-09-17, not yet done — Settings → Syslog Server →
-"Mirror syslog to flash" or a share; without it the next outage loses its evidence exactly as the
-last one did) · a maintenance window to confirm the Tasks-box hints and finish the Prompt Architect
+a maintenance window to confirm the Tasks-box hints and finish the Prompt Architect
 repeats (the user will say when) · a real end-to-end CodeHarness run against OpenCode before
 `features.codeHarness` goes on · `--fit on --fit-target 1024` after the syslog mirror · an engine
 API key shared by noevia and the Nextcloud Assistant · SMB pilot share (D11) · off-site backup

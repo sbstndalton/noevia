@@ -956,6 +956,43 @@ No image change. Each file edited was copied first (`*.bak.before-d3`, `*.bak.be
 Rollback: restore the three backups named above plus `models.ini.bak-before-d3` and
 `ui-data/auto-roles.json.bak.before-d3`, then run preflight `up`. The ZIM can be deleted freely.
 
+## Syslog mirror enabled — 2026-09-17 night (host setting, at the user's request)
+
+The outage of 2026-09-17 (04:15–08:24) lost its evidence because the box's own syslog is on
+tmpfs. It still was: `/var/log/syslog` is a 128 MB tmpfs and began at `Sep 17 08:25:26 ... Linux
+version`, i.e. the reboot that ended the outage.
+
+**"Local syslog server: Enabled" does not fix this**, which is easy to misread. That setting
+makes Unraid *receive* syslog from other devices over UDP 514 and write it to
+`server_folder` (here `/mnt/user/Nextcloud-backup`); `rsyslog.conf` binds it to the `remote`
+ruleset. The box's own messages go through the `local` ruleset to `/var/log/syslog` — RAM. The
+share held no syslog file at all.
+
+Changed in `/boot/config/rsyslog.cfg` and applied with the same script the GUI uses
+(`/usr/local/emhttp/plugins/dynamix/scripts/rsyslog_config`):
+
+| Setting | Was | Now |
+|---|---|---|
+| `syslog_flash` (Mirror syslog to boot drive) | `""` (No) | `"1"` (Yes) → `/boot/logs/syslog` |
+| `log_rotation` | `""` (Disabled) | `"1"` |
+| `log_size` / `log_files` | `1M` / `1` | `10M` / `4` |
+
+`syslog_shutdown` is left alone: its values are **inverted** in the page (`""` = Yes), so it was
+already on.
+
+**Unraid never rotates the flash copy.** `rsyslog_config` writes a logrotate rule for
+`$server_folder/*.log` only, so `/boot/logs/syslog` would grow for as long as the mirror is on —
+worst in exactly the situation it exists for, a box logging hard while something fails. Added
+`/boot/config/logrotate-syslog-flash.conf` (10 MB × 4, compressed, HUP on rotate ≈ a week at this
+machine's ~6 MB/day, capped near 50 MB) and three lines in `/boot/config/go` to restore it into
+`/etc/logrotate.d/` each boot, since that directory is in RAM. Flash is 29 GB with 27 GB free.
+
+Verified: a `logger` message appears in `/boot/logs/syslog` seconds later; `logrotate -d` parses
+the rule; `bash -n` accepts the modified `go`. Backups: `rsyslog.cfg.bak.before-syslog-mirror`,
+`go.bak.before-syslog-mirror`.
+
+To undo: restore both backups and re-run `rsyslog_config`.
+
 ## Release 1fe3f1b — 2026-09-17 night (CodeHarness, tool hints, two live bug fixes)
 
 Web-only overlay from `ca5d2f6` (`deploy/examples/overlay-release.sh`), appdata backup
