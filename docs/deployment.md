@@ -1413,3 +1413,25 @@ was restored to Dark + Warm. **Still owed:** the live write-approval card (a per
 check blocks a synthetic Nextcloud write) and a real touch device for 16px fields.
 Rollback: `a2a1c8e` with `.env.bak.before-e777259` (further back: `3d20de0`, `d11cfac`).
 
+## Releases 265c650 and 6930549 — 2026-09-18 (Material 3, more phone fixes)
+
+Latest application rollout: **`6930549`**, replacing `265c650`, which replaced `e777259`.
+Backups `ab_20260918_130856` and `ab_20260918_131641` first (clean, gzip-verified); both
+overlays ended `RELEASE_<sha>_COMPLETE`, five services healthy, restarts=0, engine untouched,
+no dependency changes. Public site serves `index-pxDeVw0P.css`.
+- **Material 3** ("doesn't actually look like material3"): `styles/material3.css`, scoped to
+  `[data-material='material']`, gives each component its M3 counterpart (navigation drawer
+  with pill destinations, extended FAB, search-bar composer, filled icon send, assist chips,
+  M3 menus, elevated cards, outlined fields, primary tabs, dialogs/bottom sheets, segmented
+  buttons with the check, elevation and state layers, Roboto). It fixes the sticky list
+  headings and drawer footer showing as bands in that material. Roboto rides the existing
+  Google Fonts request (CSP already allows it) and downloads only when used.
+- **Phone:** fields on touch are 16px everywhere (iOS zoom was back on Security, Data,
+  Appearance, Diary & storage); the Material track scrolls at 320px with the choice in view
+  and a thumb that follows label changes; theme previews and accents each fit one row;
+  Projects counts active projects and its filter spans the row.
+- **6930549:** on a short desktop no sidebar list collapses to its heading (seen live in M3).
+`qa/live-stats.cjs` updated to the release-3 strip and passes. Verified live: M3 with
+Roboto loaded, list rows visible; material restored to Liquid glass, Dark, Warm.
+Rollback: `265c650` with `.env.bak.before-6930549` (then `e777259`).
+

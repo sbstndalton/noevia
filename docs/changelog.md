@@ -1,3 +1,11 @@
+### 2026-09-18 — Material 3 and phone fixes (265c650, 6930549)
+
+The Material material is now Material 3 component by component; touch fields are 16px
+everywhere; narrow Appearance controls fit; Projects counts active projects; sidebar lists
+never collapse to their heading. Two guarded overlays after verified backups; five
+services healthy. Rollback 265c650.
+
+
 ### 2026-09-18 — Phone review fixes (3d20de0, a2a1c8e, e777259)
 
 Three guarded web-only overlays over d11cfac, each after a verified appdata backup.
