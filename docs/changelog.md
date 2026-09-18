@@ -1,3 +1,9 @@
+### 2026-09-18 — Composer like Claude's, SVG icons (350050e)
+
+Centred SVG + with a files-and-tools menu (no duplicate model entry), Thinking as a menu of
+levels, Code keeps a closed sidebar, every icon an SVG and centred. Rollback 91a89ba.
+
+
 ### 2026-09-18 — Account menu and Search like Claude (91a89ba)
 
 Light/dark in the account menu, Search beside the account, account menu unclipped from

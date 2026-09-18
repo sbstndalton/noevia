@@ -1487,3 +1487,19 @@ head holds only Collapse; footer is account + Search. Nextcloud had deleted trac
 under `.claude/skills/impeccable/` again; restored from git, not committed as deletions.
 Rollback `94909d3` with `.env.bak.before-91a89ba`.
 
+## Release 350050e — 2026-09-18 (composer like Claude's, SVG icons, Code keeps sidebar state)
+
+Latest application rollout: **`350050e`**, replacing `91a89ba`. Backup `ab_20260918_155238`
+first (clean, gzip-verified); `RELEASE_350050e_COMPLETE`, five services healthy, restarts=0.
+Claude's composer (+ menu, model/effort control) was inspected in the DOM. The + is a
+centred SVG in a liquid-glass circle; its menu is Add files or photos, then tools ticked when
+on — the duplicate Model and routing entry is gone. Thinking is a glass pill opening an aero
+menu (Auto, Low, Standard, High with descriptions and a check); Settings keeps the select.
+The Code sidebar collapses and shares `noevia:sidebar-collapsed`, so a closed sidebar stays
+closed across Chat and Code. All text-glyph icons became Lucide SVGs (paperclip, brain,
+wrench added from Iconify's Lucide set); icon-only buttons centre a block SVG. A DOM audit
+of 21 views at desktop and phone width finds no glyph icons and no off-centre icon buttons.
+`qa/reasoning.cjs` and `qa/touch-targets.cjs` follow the new control. Verified live: + SVG
+offset 0/0, Thinking is a button, no glyph buttons. Rollback `91a89ba` with
+`.env.bak.before-350050e`.
+
