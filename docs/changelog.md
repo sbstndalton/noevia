@@ -1,3 +1,9 @@
+### 2026-09-18 — Visual pass (7326ac0)
+
+Legibility sweep across sizes, materials and themes with real device user agents; fixed the
+phone composer row, phone Settings width, sidebar row alignment. Rollback 4c151be.
+
+
 ### 2026-09-18 — Sidebar header and phone drawer like Claude's (4c151be)
 
 Small Chat/Code switch beside the logo; full-width phone drawer with search on top; the

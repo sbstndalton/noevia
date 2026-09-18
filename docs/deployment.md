@@ -1540,3 +1540,16 @@ it in both directions. `sidebar-reachability` closes the full-width drawer from 
 (no backdrop to tap) and `mobile-viewport` uses the drawer's search field on phones.
 Verified live: switch 70×28 in the header. Rollback `5cd033b` with `.env.bak.before-4c151be`.
 
+## Release 7326ac0 — 2026-09-18 (visual pass: legibility sweep and fixes)
+
+Latest application rollout: **`7326ac0`**, replacing `4c151be`. Backup `ab_20260918_180551`
+first (clean, gzip-verified); `RELEASE_7326ac0_COMPLETE`, five services healthy, restarts=0.
+A legibility sweep of every main view at 375/390/768/1280 px × four materials × light/dark,
+with real iPhone/iPad user agents (they get `data-layout="mobile"`), measured text size and
+pixel-sampled contrast against HIG thresholds: no remaining failures. Fixed: the composer row
+spilled its send button at 375 px (fixed 32 px columns vs 44 px touch buttons); phone Settings
+on real iPhones was pinned to a 155 px column of 11 px labels by leftover two-column rules;
+project and chat rows started their titles 3–11 px apart (one shared geometry now, 44 px touch
+target kept); a heading's options sat 6 px high. Verified live at 375 px: Settings list 375 px
+wide, 15 px labels; composer fits. Rollback `4c151be` with `.env.bak.before-7326ac0`.
+
