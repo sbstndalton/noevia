@@ -21,4 +21,5 @@ __pycache__/
 .env.fresh.*
 qa-shots/
 local-test/
-.claude/
+.claude/*
+!.claude/skills/

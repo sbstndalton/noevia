@@ -32,3 +32,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## nikdelvin/liquid-glass (MIT)
+
+`apps/web/public/lens.js` adapts the displacement-map technique from
+https://github.com/nikdelvin/liquid-glass, Copyright (c) 2025 Nikita Stadnik, MIT.
+Full text: `apps/web/public/liquid-glass-LICENSE.txt`.
+
+## Impeccable (Apache-2.0)
+
+`.claude/skills/impeccable/` is the Impeccable agent skill v4.3.1 from
+https://github.com/pbakaus/impeccable, Apache License 2.0 (`.claude/skills/impeccable/LICENSE`).
+Development tooling only; not part of the shipped image.

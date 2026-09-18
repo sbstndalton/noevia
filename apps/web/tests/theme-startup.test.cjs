@@ -23,11 +23,11 @@ for (const [name, read, expected, systemLight] of [
       },
     });
     assert.equal(attributes['data-theme'], expected);
-    assert.equal(attributes.content, expected === 'light' ? '#f7f9fc' : '#1c1d20');
+    assert.equal(attributes.content, expected === 'light' ? '#f9f9ff' : '#151519');
   });
 }
 
-for (const palette of ['warm', 'cool', 'neutral', 'invalid']) test(`restores ${palette} palette before first paint`, () => {
+for (const palette of ['warm', 'sage', 'iris', 'invalid']) test(`a stored ${palette} palette no longer changes the one noevia palette`, () => {
   const attributes = {};
   vm.runInNewContext(code, {
     localStorage: { getItem: key => key === 'cowork-theme' ? 'light' : palette },
@@ -37,15 +37,14 @@ for (const palette of ['warm', 'cool', 'neutral', 'invalid']) test(`restores ${p
     },
   });
   assert.equal(attributes['data-theme'], 'light');
-  assert.equal(attributes['data-palette'], palette === 'invalid' ? 'cool' : palette);
-  assert.equal(attributes.content, {warm:'#fbf7f0',cool:'#f7f9fc',neutral:'#fafafa',invalid:'#f7f9fc'}[palette]);
+  assert.equal(attributes['data-palette'], 'noevia');
+  assert.equal(attributes.content, '#f9f9ff');
 });
 
-for(const mode of ['light','dark'])test(`independent ${mode} palette restores before React`,()=>{
- const attributes={}; const storage={'cowork-theme':mode,'cowork-palette':'warm','cowork-palette-light':'sage','cowork-palette-dark':'iris'};
- vm.runInNewContext(code,{localStorage:{getItem:key=>storage[key]},document:{documentElement:{setAttribute:(k,v)=>attributes[k]=v},querySelector:()=>({setAttribute:(k,v)=>attributes[k]=v})}});
- assert.equal(attributes['data-palette'],mode==='light'?'sage':'iris');
- assert.equal(attributes.content,mode==='light'?'#f4f8f5':'#22202b');
+test('theme-color matches the generated surface role in both modes', () => {
+  const { roles } = require('../scripts/palette.cjs');
+  assert.match(code, new RegExp(roles('light').surface));
+  assert.match(code, new RegExp(roles('dark').surface));
 });
 
 // Presentation preferences restore in the same pass as the theme. Applied
