@@ -1,3 +1,9 @@
+### 2026-09-18 — Diary in the bottom bar, sliding Chat/Code, project colours (5cd033b)
+
+Diary beside Search; liquid-glass Chat/Code thumb; phone Code drawer works; project colours
+everywhere. Rollback 5a0e026.
+
+
 ### 2026-09-18 — Icon centring scoped; row options beside the title (5a0e026)
 
 Only icon-only buttons centre their icon; sidebar row options no longer cover the title.

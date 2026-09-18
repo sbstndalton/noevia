@@ -1515,3 +1515,16 @@ shown on hover/focus, and the title fades out before them; one hover highlight p
 Verified live: options static and hidden until hover, no icon+text button centred.
 Rollback `350050e` with `.env.bak.before-5a0e026`.
 
+## Release 5cd033b — 2026-09-18 (Diary in the bottom bar; sliding Chat/Code; phone Code drawer; project colours)
+
+Latest application rollout: **`5cd033b`**, replacing `5a0e026`. Backup `ab_20260918_170210`
+first (clean, gzip-verified); `RELEASE_5cd033b_COMPLETE`, five services healthy, restarts=0.
+Diary moved to the bottom bar beside Search (above the avatar on the collapsed rail). The
+Chat/Code switch (`ModeSwitch.tsx`) has the liquid-glass thumb and slides both ways across the
+sidebar swap. On phones the Code sidebar's toggle opens/closes a drawer (it only flipped the
+desktop collapse before), and the chat drawer toggle clears the notch. Project colours were
+forced grey/black with `!important` in the sidebar and on cards; the chosen colour now shows
+everywhere, and the chat breadcrumb/greeting carry the project icon. Also fixes the project
+row layout 5a0e026 had spread apart. Verified live: footer = account, Diary, Search; thumb
+present; sidebar project icons red and blue. Rollback `5a0e026` with `.env.bak.before-5cd033b`.
+
