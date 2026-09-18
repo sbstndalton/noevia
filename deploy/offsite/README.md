@@ -57,15 +57,14 @@ than as plain JSON, which the one-liner above unwraps.
 
 ## 3. Check it works
 
-Still on the server:
+Run a copy by hand at any time:
 
 ```bash
-bash /mnt/docker/appdata/cowork/tools/offsite/rclone-sync.sh
+ssh daserver bash /mnt/docker/appdata/cowork/tools/offsite/rclone-sync.sh
 ```
 
-It should end with `OK mirrored N snapshots to gdrive:noevia-offsite`, and a `noevia-offsite`
-folder should appear in your Google Drive. From then on it runs by itself every night. Type `exit`
-to close the tunnel.
+It should end with `OK mirrored N snapshots to gdrive:noevia-offsite`. It also runs by itself every
+night, and Settings → Off-site backups shows whether the last one worked.
 
 What it said, every night, is kept in `/mnt/user/noevia-backups/offsite-sync.log`.
 
