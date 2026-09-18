@@ -378,9 +378,33 @@ nothing that pins permissions, so the adapter must write that file, and `_meta` 
 It did **not** use the client's `fs/write_text_file` even with `edit: ask` pinned; it asked, then
 wrote in its own process. The sandbox is what contains that, exactly as §3 says.
 
-**Not a noevia finding, but true:** the 4B did not solve the task in these runs — its
-string-replace edit failed to match. The spike solved the same fixture on the same model, so this
-is a model/prompt question for a measurement window, not a contract one.
+### Contract v1, second pass — the whole loop works, 2026-09-18
+
+The first pass's "the 4B could not fix it" reading was **wrong**, and the reason is the most
+important finding of the exercise: **noevia's approvals never reached the harness.**
+
+ACP nests the permission outcome — `{ outcome: { outcome: 'selected', optionId } }`. noevia sent
+the inner object, and OpenCode read that as `The user rejected permission to use this specific
+tool call`. So every approval became a refusal: the card appeared, the human said yes, the agent
+was told no. Fail-safe, invisible to every unit test (the fake agent had been written to match the
+same wrong assumption), and it made Code mode incapable of doing anything at all. Three more
+defects followed from actually watching a real run:
+
+| Found | Consequence | Fix |
+|---|---|---|
+| ACP nests the permission outcome | **every approval read as a refusal** | wrap it in the transport; the fake agent now reads it the way OpenCode does |
+| harnesses edit and do not commit | uncommitted work was deleted with the clone | noevia commits what is left, in its own name, clearly labelled |
+| `HOME` pointed into the workspace | OpenCode's cache, sqlite database and a nested git repo were committed onto the task branch | a state directory beside the workspace, plus `info/exclude` for harnesses that write into cwd anyway |
+| the shared state parent was created 0700 root-owned | the agent died with `EACCES` before doing anything, and `mkdir` will not fix an existing directory's mode | create it traversable and `chmod` it every claim, so an older volume self-heals |
+
+**Verified outcome** (`contract-v1-opencode-9b-solved-2026-09-18.json`): Ornith-1.5-9B, 46 s, two
+approvals (edit then execute), the edit carried out through noevia's own `fs/write_text_file`,
+**only `median.js` changed**, and the repository's own test prints `ok` on the task branch. Both
+deliberate bugs fixed correctly — a copied array, a numeric comparator, and the mean of the middle
+two.
+
+So: the contract holds, the containment holds, the work comes back, and a 9B on this hardware can
+do a real if small coding task in under a minute.
 
 **Not yet done from this section.** An `Auto` harness waits on evidence that does not exist, and
 the adapter should own writing the harness config (the driver does it today). Claude Code and

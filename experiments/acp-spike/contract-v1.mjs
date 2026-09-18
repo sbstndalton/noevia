@@ -134,6 +134,10 @@ const started = await harness.start({
           // What the `_meta` reader is actually looking at, in the real thing.
           metaKeys: update._meta && typeof update._meta === 'object' ? Object.keys(update._meta) : null,
           contentTypes: Array.isArray(update.content) ? [...new Set(update.content.map((c) => c?.type))] : null,
+          // When an edit fails, the reason is in the content — that is the whole question.
+          contentText: Array.isArray(update.content)
+            ? update.content.map((c) => (typeof c?.text === 'string' ? c.text : c?.content?.text || '')).join(' ').slice(0, 600) || null
+            : null,
           rawInputKeys: update.rawInput && typeof update.rawInput === 'object' ? Object.keys(update.rawInput) : null,
         });
       }

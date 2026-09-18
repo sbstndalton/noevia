@@ -281,7 +281,15 @@ mobile composer and tap targets).
   override staged but *not* wired into the Compose Manager project. Staging found three real gaps,
   now fixed — worktrees must sit on the shared volume at an identical path, a workspace must be
   handed to the harness uid, and a handed-over worktree **cannot commit**, so a separate harness
-  user now gets `git clone --shared` with the branch fetched back on release. **Contract v1 run against real OpenCode 1.18.31 on 2026-09-17** (spec §3 "Contract v1"): the
+  user now gets `git clone --shared` with the branch fetched back on release. **Contract v1 complete, 2026-09-18: the whole loop works.** Ornith-1.5-9B fixed the fixture in
+  46 s — two approvals, the edit through noevia's file API, only the intended file changed, and the
+  repository's own test passing on the task branch. Getting there found that **noevia's approvals
+  never reached the harness at all**: ACP nests the permission outcome and noevia sent it
+  unwrapped, so OpenCode read every approval as "the user rejected permission". Fail-safe, and
+  invisible because the fake agent shared the same wrong assumption. Three more: uncommitted work
+  was deleted with the clone, `HOME` inside the workspace got the harness's cache and database
+  committed onto the branch, and the shared state directory was created unenterable. All fixed and
+  covered. Earlier note, kept for the record: **first pass against real OpenCode 1.18.31 on 2026-09-17** (spec §3 "Contract v1"): the
   mapping holds — classification, the approval card with a real diff, containment, `test.js`
   untouched — and four defects surfaced that only a real harness could show, the worst being that
   git's "dubious ownership" check made `release()` strand **every task's work** in its clone. All
