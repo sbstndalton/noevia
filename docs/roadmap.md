@@ -138,7 +138,22 @@ Everything below was measured on the branch during 2026-09-17 and went live with
      Drive, with an Offsite backups switch on the page. Nextcloud and custom MCP by URL are listed
      as coming later. QA: `qa/connectors.cjs`, `qa/drive-tools-live.cjs`.
   **Phase 2 (from 2026-09-18, brief: [ui-overhaul-phase2-prompt.md](ui-overhaul-phase2-prompt.md)):**
-  first fold in the user's review of `ab2720a`, then:
+  **User review of `ab2720a` — folded in, not yet deployed.** Eleven items from a desktop and
+  phone pass. Fields are 16px on touch devices so iOS stops zooming on focus (`styles/phone.css`);
+  a reload returns to where you were, Settings page included (`src/last-view.ts`, per device,
+  guarded by account id); the phone chat pins the composer to the bottom edge and greets you at
+  the top instead of centring the column; the inference strip is one tappable line on a phone and
+  one always-open horizontal row on a desktop (`StatsBar`); the sidebar is a fixed top group,
+  three independently scrolling lists (Projects first, then Pinned, then Recent chats) and a fixed
+  pane holding Diary — on a phone the whole rail scrolls with Diary and the account row stuck to
+  the bottom edge; Customize and Explore left the sidebar (Customize is Settings → Customize),
+  Plugins stayed; Settings goes single-pane below 820px rather than 700px, because Safari widens
+  the layout viewport when anything overflows and their phone was sitting just above the old
+  breakpoint; the five accent palettes are back (Iris, Warm, Cool, Neutral, Sage) generated from
+  `scripts/palette.cjs`, applied before paint, with the contrast suite now measuring all five in
+  both modes; and Auto routing gained an optional **Code** role that the classifier can choose
+  (a fenced block or a diff skips straight to it), falling back to Smart when no code model is
+  set. This reverses the earlier "one palette" decision at the user's request. Then:
   3. **Primitives beyond Settings** — menus, context menus, modals as aero overlays (phone:
      bottom sheets), confirm dialogs, cards, banners, empty states, chat bubbles and tool-call
      list (approval card restyled, never simplified). **Built, not yet deployed**:

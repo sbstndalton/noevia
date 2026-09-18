@@ -11,12 +11,17 @@ function luminance(hex) {
 }
 function contrast(a, b) { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); }
 
-/** Custom properties as the browser resolves them for one mode (top-level rules, file order; @media skipped). */
-function tokens(mode) {
+/** Custom properties as the browser resolves them for one mode and accent palette
+ *  (top-level rules, file order; @media skipped). A palette block is two selector
+ *  classes, so it lands after the defaults exactly as the browser would apply it. */
+function tokens(mode, accent = 'iris') {
   const top = css.replace(/@media[^{]*\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, '');
   const applies = (selector) => selector.split(',').map(s => s.trim()).some(s =>
     s === ':root' ? true
       : s === `[data-theme='${mode}']` || s === `:root[data-theme='${mode}']` ? true
+      : s === `[data-palette='${accent}']:not([data-theme='light'])` ? mode === 'dark'
+      : s === `[data-palette='${accent}'][data-theme='light']` ? mode === 'light'
+      : /^\[data-palette=/.test(s) ? false
       : s === ":root:not([data-theme='light'])" ? mode === 'dark' : false);
   const values = {};
   for (const [, selector, body] of top.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
@@ -37,14 +42,14 @@ test('tokens.css carries exactly the palette the generator prints', () => {
   assert.equal(css.slice(css.indexOf(BEGIN) + BEGIN.length, css.indexOf(END)).trim(), palette.block().trim(), 'run node scripts/palette.cjs --write');
 });
 
-for (const mode of ['dark', 'light']) test(`${mode}: text, status, actions and controls meet contrast on every ground`, () => {
-  const t = tokens(mode);
+for (const mode of ['dark', 'light']) for (const accent of palette.PALETTE_NAMES) test(`${mode} · ${accent}: text, status, actions and controls meet contrast on every ground`, () => {
+  const t = tokens(mode, accent);
   for (const ground of ['bg-canvas', 'bg-surface', 'bg-chrome', 'bg-app', 'bg-surface-hover']) {
     assert.match(t[ground], /^#[\da-f]{6}$/i, `${mode} ${ground} resolves to a colour`);
     assert.ok(contrast(t['text-primary'], t[ground]) >= 7, `${mode} text-primary/${ground}: ${contrast(t['text-primary'], t[ground]).toFixed(2)}`);
     for (const fg of ['text-secondary', 'accent-text', 'good', 'status-danger', 'status-warning', 'status-remote', 'status-inference', 'status-local']) {
       const ratio = contrast(t[fg], t[ground]);
-      assert.ok(ratio >= 4.5, `${mode} ${fg}/${ground}: ${ratio.toFixed(2)}`);
+      assert.ok(ratio >= 4.5, `${mode} ${accent} ${fg}/${ground}: ${ratio.toFixed(2)}`);
     }
     for (const fg of ['focus-ring', 'control-border', 'status-offline']) assert.ok(contrast(t[fg], t[ground]) >= 3, `${mode} ${fg}/${ground}`);
   }
@@ -56,10 +61,12 @@ for (const mode of ['dark', 'light']) test(`${mode}: text, status, actions and c
     ['md-on-tertiary-container', 'md-tertiary-container', 7], ['md-inverse-on-surface', 'md-inverse-surface', 7],
   ]) {
     const ratio = contrast(t[fg], t[bg]);
-    assert.ok(ratio >= min, `${mode} ${fg}/${bg}: ${ratio.toFixed(2)}`);
+    assert.ok(ratio >= min, `${mode} ${accent} ${fg}/${bg}: ${ratio.toFixed(2)}`);
   }
 });
 
-test('every Material 3 role exists in both modes', () => {
-  for (const mode of ['dark', 'light']) for (const role of Object.keys(palette.ROLES[mode])) assert.match(tokens(mode)[`md-${role}`], /^#[\da-f]{6}$/i, `${mode} --md-${role}`);
+test('every Material 3 role exists in both modes, for every accent palette', () => {
+  for (const mode of ['dark', 'light']) for (const accent of palette.PALETTE_NAMES) for (const role of Object.keys(palette.ROLES[mode])) {
+    assert.match(tokens(mode, accent)[`md-${role}`], /^#[\da-f]{6}$/i, `${mode} ${accent} --md-${role}`);
+  }
 });

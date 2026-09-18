@@ -27,18 +27,47 @@ for (const [name, read, expected, systemLight] of [
   });
 }
 
-for (const palette of ['warm', 'sage', 'iris', 'invalid']) test(`a stored ${palette} palette no longer changes the one noevia palette`, () => {
+// Accent palettes were restored at the user's request (2026-09-18): the saved one is
+// applied before paint, like the theme, so there is no flash of the wrong accent.
+for (const [stored, expected] of [['warm', 'warm'], ['sage', 'sage'], ['iris', 'iris'], ['cool', 'cool'], ['neutral', 'neutral'], ['invalid', 'iris'], [null, 'iris']]) {
+  test(`a stored ${stored ?? 'missing'} palette resolves to ${expected} before paint`, () => {
+    const attributes = {};
+    vm.runInNewContext(code, {
+      localStorage: { getItem: key => key === 'cowork-theme' ? 'light' : stored },
+      document: {
+        documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
+        querySelector: () => ({ setAttribute: (key, value) => { attributes[key] = value; } }),
+      },
+    });
+    assert.equal(attributes['data-theme'], 'light');
+    assert.equal(attributes['data-palette'], expected);
+    assert.equal(attributes.content, '#f9f9ff');
+  });
+}
+
+test('the per-mode palette key wins over the shared one', () => {
   const attributes = {};
   vm.runInNewContext(code, {
-    localStorage: { getItem: key => key === 'cowork-theme' ? 'light' : palette },
+    localStorage: { getItem: key => key === 'cowork-theme' ? 'light' : key === 'cowork-palette-light' ? 'sage' : 'warm' },
     document: {
       documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
       querySelector: () => ({ setAttribute: (key, value) => { attributes[key] = value; } }),
     },
   });
-  assert.equal(attributes['data-theme'], 'light');
-  assert.equal(attributes['data-palette'], 'noevia');
-  assert.equal(attributes.content, '#f9f9ff');
+  assert.equal(attributes['data-palette'], 'sage');
+});
+
+test('unavailable storage still resolves an accent', () => {
+  const attributes = {};
+  vm.runInNewContext(code, {
+    matchMedia: () => ({ matches: false }),
+    localStorage: { getItem: () => { throw new Error('Storage blocked'); } },
+    document: {
+      documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
+      querySelector: () => ({ setAttribute: (key, value) => { attributes[key] = value; } }),
+    },
+  });
+  assert.equal(attributes['data-palette'], 'iris');
 });
 
 test('theme-color matches the generated surface role in both modes', () => {
