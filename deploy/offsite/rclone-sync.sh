@@ -32,6 +32,16 @@ DRY=()
 
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG"; }
 
+# What noevia's Off-site backups page shows. Written into the store folder (noevia mounts it) as a
+# dot file, which the mirror excludes and noevia's store ignores. Only a state and a sentence: no
+# paths beyond the remote's name, and never anything from the rclone config.
+status() {
+  [ -d "$LOCAL" ] || return 0
+  local msg=${2//\\/\\\\}; msg=${msg//\"/\\\"}
+  printf '{"state":"%s","at":%s,"remote":"%s","message":"%s"}\n' "$1" "$(date +%s)000" "$REMOTE" "$msg" \
+    > "$LOCAL/.mirror-status.json.tmp" && mv "$LOCAL/.mirror-status.json.tmp" "$LOCAL/.mirror-status.json"
+}
+
 # Keep the log bounded; it lives on disk, not in RAM, so it survives the outage it may explain.
 if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || stat -f %z "$LOG")" -gt 1048576 ]; then
   tail -c 262144 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
@@ -42,17 +52,17 @@ exec 9>"${LOG}.lock"
 if ! flock -n 9; then log "SKIP another sync is still running"; exit 0; fi
 
 command -v rclone >/dev/null || { log "FAIL rclone is not installed"; exit 2; }
-[ -f "$RCLONE_CONFIG" ] || { log "FAIL no rclone config at $RCLONE_CONFIG (run: rclone config — see deploy/offsite/README.md)"; exit 2; }
+[ -f "$RCLONE_CONFIG" ] || { log "FAIL no rclone config at $RCLONE_CONFIG (run: rclone config — see deploy/offsite/README.md)"; status not-connected "Google Drive is not connected yet."; exit 2; }
 remote_name=${REMOTE%%:*}
 rclone listremotes 2>/dev/null | grep -qx "${remote_name}:" \
-  || { log "FAIL rclone has no remote named ${remote_name}: (see deploy/offsite/README.md)"; exit 2; }
+  || { log "FAIL rclone has no remote named ${remote_name}: (see deploy/offsite/README.md)"; status not-connected "Google Drive is not connected yet."; exit 2; }
 
 # Rule 1: is this a healthy store? A real one has its encrypted `config` object and at least
 # one snapshot. Anything else is a folder that was never initialised, was wiped, or is not
 # mounted — and must not be mirrored.
-if [ ! -f "$LOCAL/config" ]; then log "REFUSE $LOCAL has no config object: not a noevia store, or wiped"; exit 3; fi
+if [ ! -f "$LOCAL/config" ]; then log "REFUSE $LOCAL has no config object: not a noevia store, or wiped"; status refused "The local backup folder looks empty, so nothing was copied (this protects the copy on Drive)."; exit 3; fi
 snapshots=$(find "$LOCAL/snapshots" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')
-if [ "${snapshots:-0}" -lt 1 ]; then log "REFUSE $LOCAL has no snapshots yet"; exit 3; fi
+if [ "${snapshots:-0}" -lt 1 ]; then log "REFUSE $LOCAL has no snapshots yet"; status waiting "Waiting for the first backup before copying."; exit 3; fi
 
 common=(--exclude '.tmp-*' --exclude '.*' --transfers 4 --checkers 8 --retries 5 --low-level-retries 10 --stats-one-line -v)
 
@@ -62,14 +72,15 @@ common=(--exclude '.tmp-*' --exclude '.*' --transfers 4 --checkers 8 --retries 5
 # backup resets timestamps on identical files, and without it every later sync would refuse.
 log "COPY $LOCAL -> $REMOTE (${snapshots} snapshots locally)"
 if ! rclone copy "$LOCAL" "$REMOTE" --immutable --checksum "${common[@]}" "${DRY[@]}" >>"$LOG" 2>&1; then
-  log "FAIL copy did not complete; nothing was pruned"; exit 4
+  log "FAIL copy did not complete; nothing was pruned"; status failed "The copy to Drive did not finish. See offsite-sync.log on the server."; exit 4
 fi
 
 # Rule 2b: capped prune. Only reached after a complete copy, so the remote is never left with
 # fewer snapshots than the local side.
 log "PRUNE remote objects that noevia's retention removed (at most $MAX_DELETE)"
 if ! rclone sync "$LOCAL" "$REMOTE" --max-delete "$MAX_DELETE" --checksum "${common[@]}" "${DRY[@]}" >>"$LOG" 2>&1; then
-  log "FAIL prune stopped (over the delete cap, or an error); the remote keeps everything it had"; exit 5
+  log "FAIL prune stopped (over the delete cap, or an error); the remote keeps everything it had"; status failed "Copied, but cleaning up old copies on Drive stopped. See offsite-sync.log."; exit 5
 fi
 
 log "OK mirrored ${snapshots} snapshots to $REMOTE"
+status ok "Copied ${snapshots} snapshots."

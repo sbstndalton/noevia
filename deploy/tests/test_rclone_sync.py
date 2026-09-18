@@ -52,10 +52,25 @@ class RcloneSyncTests(unittest.TestCase):
     def remote_files(self):
         return sorted(str(p.relative_to(self.remote)) for p in self.remote.rglob('*') if p.is_file())
 
+    def mirror_state(self):
+        import json
+        return json.loads((self.local / '.mirror-status.json').read_text())['state']
+
     def test_missing_config_or_remote_is_a_setup_error(self):
         self.healthy_store()
         self.assertEqual(self.run_sync(conf=self.tmp / 'absent.conf'), 2)
+        self.assertEqual(self.mirror_state(), 'not-connected', 'the settings page must say so')
         self.assertEqual(self.run_sync(remote_name='nope'), 2)
+        self.assertEqual(self.mirror_state(), 'not-connected')
+
+    def test_success_and_failure_are_reported_to_the_page(self):
+        self.healthy_store()
+        self.assertEqual(self.run_sync(), 0)
+        self.assertEqual(self.mirror_state(), 'ok')
+        self.assertNotIn('.mirror-status.json', ' '.join(self.remote_files()), 'the status file never goes to Drive')
+        (self.local / 'data/ab/chunk1').write_text('CORRUPT')
+        self.assertEqual(self.run_sync(), 4)
+        self.assertEqual(self.mirror_state(), 'failed')
 
     def test_a_store_that_was_never_set_up_is_refused(self):
         self.assertEqual(self.run_sync(), 3)
