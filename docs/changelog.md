@@ -1,3 +1,8 @@
+### 2026-09-19 — Re-fit after zoom (363171c)
+
+The page re-stretches after zooming in and back out on iOS. Rollback c71a30d.
+
+
 ### 2026-09-19 — Tall screens: full layout from 520px, pages grow, greeting centred (c71a30d)
 
 A zoomed-out phone keeps the sidebar from 520px wide; short pages grow up to 125% on phones and
