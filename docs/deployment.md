@@ -1565,6 +1565,15 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release f87b157 — 2026-09-19 (shared Chat/Code sidebar; Plugins page)
+
+Latest application rollout: **`f87b157`**, replacing `027bd00`. Backup `ab_20260919_015611`
+first (gzip-verified); `RELEASE_f87b157_COMPLETE`, five services healthy, restarts=0; web image
+8 layers. New authenticated route `GET /api/plugins/directory` fetches only
+registry.modelcontextprotocol.io and api.github.com (anthropics/skills), read-only, cached 1h.
+Rollback: repoint `current` to `releases/027bd00`, restore `.env.bak.before-f87b157`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 027bd00 — 2026-09-18 (iOS keyboard fix; web image flattened; layer check)
 
 Latest application rollout: **`027bd00`**, replacing `d995cd9`. Backup `ab_20260918_224023`

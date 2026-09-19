@@ -1,3 +1,11 @@
+### 2026-09-19 — One sidebar for Chat and Code; Plugins page (f87b157)
+
+Code mode reuses the chat sidebar (current look, switch in the header, aligned rail, shared
+collapse). Closing Settings keeps you in Code. New chat floats over the list; the collapsed
+rail names items on hover; Chat/Code eases in. Google Drive moved from Settings to Plugins,
+which also browses the MCP registry and Anthropic's skills. Rollback 027bd00.
+
+
 ### 2026-09-18 — iOS keyboard fix; web image flattened (027bd00)
 
 The keyboard no longer pushes the page up on iOS. The web image had hit Docker's 127-layer
