@@ -38,12 +38,13 @@ rm -rf "$work/server/node_modules" "$work/server/ui-data"
 # (release 96371d5 failed with "max depth exceeded" on 2026-09-18). Past 100 layers, build the
 # release on a flattened copy of OLD instead: one layer with the same files, and the same
 # settings (env, workdir, ports, user, entrypoint, cmd, health check) read back from the image.
+# ($base is the appdata directory above, so the image lives in $web_image.)
 # OLD's own image and tag are untouched, so rollback to OLD is unaffected.
-base="cowork-web:$OLD"
-layers=$(docker image inspect "$base" --format '{{len .RootFS.Layers}}')
+web_image="cowork-web:$OLD"
+layers=$(docker image inspect "$web_image" --format '{{len .RootFS.Layers}}')
 if [ "$layers" -gt 100 ]; then
   flat="$(mktemp -d)"
-  docker image inspect "$base" --format '{{json .Config}}' | jq -r --arg src "$base" '
+  docker image inspect "$web_image" --format '{{json .Config}}' | jq -r --arg src "$web_image" '
     "FROM scratch", "COPY --from=\($src) / /",
     ((.Env // [])[] | (split("=") as $kv | "ENV \($kv[0])=\($kv[1:] | join("=") | @json)")),
     (if (.WorkingDir // "") != "" then "WORKDIR \(.WorkingDir)" else empty end),
@@ -60,14 +61,14 @@ if [ "$layers" -gt 100 ]; then
   rm -rf "$flat"
   # The flattened copy must carry the same settings as the original before anything uses it.
   for field in .Config.Env .Config.WorkingDir .Config.ExposedPorts .Config.User .Config.Entrypoint .Config.Cmd .Config.Healthcheck; do
-    [ "$(docker image inspect "$base" --format "{{json $field}}")" = "$(docker image inspect "cowork-web:$OLD-flat" --format "{{json $field}}")" ] \
+    [ "$(docker image inspect "$web_image" --format "{{json $field}}")" = "$(docker image inspect "cowork-web:$OLD-flat" --format "{{json $field}}")" ] \
       || { echo "flattened image differs in $field; not deploying" >&2; exit 1; }
   done
-  echo "flattened $base ($layers layers) to cowork-web:$OLD-flat ($(docker image inspect "cowork-web:$OLD-flat" --format '{{len .RootFS.Layers}}') layers)"
-  base="cowork-web:$OLD-flat"
+  echo "flattened $web_image ($layers layers) to cowork-web:$OLD-flat ($(docker image inspect "cowork-web:$OLD-flat" --format '{{len .RootFS.Layers}}') layers)"
+  web_image="cowork-web:$OLD-flat"
 fi
 cat > "$work/Dockerfile" <<DOCKER
-FROM $base
+FROM $web_image
 RUN find /app/server -maxdepth 1 -type f -delete && rm -rf /app/server/fixtures /app/dist
 COPY dist /app/dist
 COPY server /app/server
