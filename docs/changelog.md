@@ -1,3 +1,9 @@
+### 2026-09-19 — Tall screens: full layout from 520px, pages grow, greeting centred (c71a30d)
+
+A zoomed-out phone keeps the sidebar from 520px wide; short pages grow up to 125% on phones and
+tablets; the empty chat greeting sits mid-height. Rollback 70631b0.
+
+
 ### 2026-09-19 — Shrink-to-fit for slightly-too-tall pages and menus (70631b0)
 
 Pages and menus that overflow by a little are scaled just enough to fit (never below 82%);

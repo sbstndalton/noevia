@@ -1565,6 +1565,13 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release c71a30d — 2026-09-19 (tall screens)
+
+Latest application rollout: **`c71a30d`**, replacing `70631b0`. Backup `ab_20260919_023204`
+first (gzip-verified); `RELEASE_c71a30d_COMPLETE`, five services healthy, restarts=0.
+Rollback: repoint `current` to `releases/70631b0`, restore `.env.bak.before-c71a30d`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 70631b0 — 2026-09-19 (shrink-to-fit)
 
 Latest application rollout: **`70631b0`**, replacing `f87b157`. Backup `ab_20260919_021208`
