@@ -1565,6 +1565,12 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release 957e972 — 2026-09-19 (Tune button size)
+
+Latest application rollout: **`957e972`**, replacing `ba95afa`. Backup taken first (gzip-verified).
+Rollback: repoint `current` to `releases/ba95afa`, restore `.env.bak.before-957e972`, run preflight
+`up.sh … web diary ocr`.
+
 ## Release ba95afa — 2026-09-19 (two-model engine; routing live)
 
 Latest application rollout: **`ba95afa`**, replacing `41cb2aa`. Backup `ab_20260919_094048`

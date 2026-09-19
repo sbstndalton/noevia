@@ -1,3 +1,8 @@
+### 2026-09-19 — Model picker Tune button back to 44px (957e972)
+
+A later generic button rule had shrunk it to 30px. Rollback ba95afa.
+
+
 ### 2026-09-19 — Engine holds the embedding model beside the chat model (ba95afa)
 
 llama `--models-max 2` (live override edited, backup kept); before a chat model is used, other
