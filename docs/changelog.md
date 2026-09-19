@@ -1,3 +1,17 @@
+### 2026-09-19 — Hand-registered apps for MCP sign-in (3f3ff1e)
+
+Sign-in services without self-registration: the admin registers an app with the shown return
+address and enters its client ID (and secret). Stored encrypted; replacing it signs everyone
+out. Rollback c173952.
+
+
+### 2026-09-19 — Per-account OAuth sign-in for directory MCP servers (c173952)
+
+Servers that ask for OAuth are added through a sign-in tab; each account signs in for itself
+from Plugins → Connected and only then is offered the server's tools. PKCE, resource
+indicator, refresh; tokens encrypted per account. Rollback e4fc0d3.
+
+
 ### 2026-09-19 — Sign-in keys for directory MCP servers (e4fc0d3)
 
 Hosted servers that need a key can be added: checked before saving, stored encrypted, never

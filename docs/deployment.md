@@ -1565,6 +1565,25 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release 3f3ff1e — 2026-09-19 (hand-registered OAuth apps)
+
+Latest application rollout: **`3f3ff1e`**, replacing `c173952`. Backup `ab_20260919_151325`
+first (gzip-verified); `RELEASE_3f3ff1e_COMPLETE`, five services healthy, restarts=0; no
+`NOEVIA_QA_*` variables live. Server tests 752/752, QA 74/74.
+Rollback: repoint `current` to `releases/c173952`, restore `.env.bak.before-3f3ff1e`, run
+preflight `up.sh … web diary ocr`. Hand-registered apps stay stored; the older code only
+re-registers automatically, so such servers wait for sign-in until this release is back.
+
+## Release c173952 — 2026-09-19 (per-account MCP OAuth)
+
+Rollout **`c173952`**, replacing `e4fc0d3`. Backup `ab_20260919_145226` first; five services
+healthy. Server tests 751/751, QA 74/74 (mobile-populated passed on a rerun after a transient
+page-load timeout). New tables `mcp_oauth_clients` and `mcp_oauth_tokens` and column
+`directory_mcp_servers.oauth` in the auth database, encrypted with the credential key.
+Return address for sign-in services: `https://noevia.daserver.work/api/mcp-oauth/callback`
+(follows Settings → Web address; a hand-registered app must be updated if that changes).
+Rollback: repoint `current` to `releases/e4fc0d3`, restore `.env.bak.before-c173952`.
+
 ## Release e4fc0d3 — 2026-09-19 (MCP directory sign-in keys)
 
 Latest application rollout: **`e4fc0d3`**, replacing `6330ea8`. Backup `ab_20260919_142400` first
