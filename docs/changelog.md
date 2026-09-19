@@ -1,3 +1,10 @@
+### 2026-09-19 — Sign-in keys for directory MCP servers (e4fc0d3)
+
+Hosted servers that need a key can be added: checked before saving, stored encrypted, never
+returned, sent only to that server in its declared headers; changeable; admins only. Rollback
+6330ea8.
+
+
 ### 2026-09-19 — Skills auto-load; skills and MCP servers from the directory; long model names (6330ea8)
 
 A message matching one enabled skill gets its reviewed instructions. Plugins → Skills adds a

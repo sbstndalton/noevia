@@ -1565,6 +1565,17 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release e4fc0d3 — 2026-09-19 (MCP directory sign-in keys)
+
+Latest application rollout: **`e4fc0d3`**, replacing `6330ea8`. Backup `ab_20260919_142400` first
+(gzip-verified); `RELEASE_e4fc0d3_COMPLETE`, five services healthy, restarts=0; no `NOEVIA_QA_*`
+variables in the live container. Server tests 748/748, QA 74/74. Adds column
+`directory_mcp_servers.headers_enc` (encrypted with the credential key in the data
+directory, so that key file must stay in backups).
+Rollback: repoint `current` to `releases/6330ea8`, restore `.env.bak.before-e4fc0d3`, run preflight
+`up.sh … web diary ocr`. The older code ignores the new column; keyed servers then fail
+discovery until this release is back.
+
 ## Release 6330ea8 — 2026-09-19 (skills auto-load, directory installs, model names)
 
 Latest application rollout: **`6330ea8`**, replacing `a163543`. Backup `ab_20260919_135940` first
