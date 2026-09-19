@@ -1565,6 +1565,15 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release 06f9402 — 2026-09-19 (models page)
+
+Latest application rollout: **`06f9402`**, replacing `d459867`. Backup `ab_20260919_162840`
+first (gzip-verified); `RELEASE_06f9402_COMPLETE`, five services healthy, restarts=0. Server
+tests 753/753, QA 74/74. The web server now caches the model-loader's `GET models` scan
+(in memory, refreshed in the background, cleared by any model change).
+Rollback: repoint `current` to `releases/d459867`, restore `.env.bak.before-06f9402`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release d459867 — 2026-09-19 (Diary from Code; model panel)
 
 Latest application rollout: **`d459867`**, replacing `da5dfa9`. Backup `ab_20260919_160053`

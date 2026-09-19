@@ -1,3 +1,9 @@
+### 2026-09-19 — Models page: faster, cards side by side, one toolbar (06f9402)
+
+The list shows at once while file details load; the folder scan is cached server-side.
+Cards up to three per row; tabs, search and filters on one line. Rollback d459867.
+
+
 ### 2026-09-19 — Diary from Code; model and tools panel reworked (d459867)
 
 Diary opens from Code mode. The model panel spreads model and tools side by side on wide
