@@ -1,3 +1,12 @@
+### 2026-09-19 — Skills auto-load; skills and MCP servers from the directory; long model names (6330ea8)
+
+A message matching one enabled skill gets its reviewed instructions. Plugins → Skills adds a
+published SKILL.md to a project (arrives needing review). Admins can add hosted MCP servers
+from the registry: own toolbox, no credentials, every tool asks, removable. Model names keep
+their start and quantization ending; the model list filters. Nine QA suites updated; all 74
+pass. Rollback a163543.
+
+
 ### 2026-09-19 — Settings no longer reopens on a quick reload (a163543)
 
 Closing Settings forgets it as the reload target at once. qa/mtp and qa/google-drive pass again.

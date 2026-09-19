@@ -1565,6 +1565,18 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release 6330ea8 — 2026-09-19 (skills auto-load, directory installs, model names)
+
+Latest application rollout: **`6330ea8`**, replacing `a163543`. Backup `ab_20260919_135940` first
+(gzip-verified); `RELEASE_6330ea8_COMPLETE`, five services healthy, restarts=0. Server tests
+747/747 and QA 74/74 before release. Live container: no `NOEVIA_QA_*` variables (the loopback
+and registry switches exist for QA only); registry.modelcontextprotocol.io and
+raw.githubusercontent.com reachable. New table `directory_mcp_servers` in the auth database
+holds admin-added servers.
+Rollback: repoint `current` to `releases/a163543`, restore `.env.bak.before-6330ea8`, run preflight
+`up.sh … web diary ocr`. Directory servers added after this release stay in the table but are
+ignored by the older code.
+
 ## Release a163543 — 2026-09-19 (Settings reload fix)
 
 Latest application rollout: **`a163543`**, replacing `957e972`. Backup taken first (gzip-verified).
