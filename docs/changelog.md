@@ -1,3 +1,9 @@
+### 2026-09-19 — Settings no longer reopens on a quick reload (a163543)
+
+Closing Settings forgets it as the reload target at once. qa/mtp and qa/google-drive pass again.
+Rollback 957e972.
+
+
 ### 2026-09-19 — Model picker Tune button back to 44px (957e972)
 
 A later generic button rule had shrunk it to 30px. Rollback ba95afa.
