@@ -1,3 +1,10 @@
+### 2026-09-19 — Engine holds the embedding model beside the chat model (ba95afa)
+
+llama `--models-max 2` (live override edited, backup kept); before a chat model is used, other
+chat models are unloaded and the embedding model stays. Tool routing (already on via
+NOEVIA_FEATURE_TOOL_ROUTER=true) no longer evicts the chat model. Rollback 41cb2aa.
+
+
 ### 2026-09-19 — Tool routing: "Using:" line and ask-for-more (41cb2aa)
 
 When routing narrows a message's toolboxes the reply says which, and the model can ask once for

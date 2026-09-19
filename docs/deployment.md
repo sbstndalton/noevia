@@ -1565,6 +1565,18 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release ba95afa — 2026-09-19 (two-model engine; routing live)
+
+Latest application rollout: **`ba95afa`**, replacing `41cb2aa`. Backup `ab_20260919_094048`
+first (gzip-verified); `RELEASE_ba95afa_COMPLETE`, five services healthy, restarts=0.
+Live `docker-compose.override.yml` now runs llama with `--models-max 2` (previous file kept as
+`docker-compose.override.yml.bak.<timestamp>`). Measured with synthetic prompts: Ornith 9B +
+nomic-embed loaded together, GTT 7.4 of 15.6 GB; embedding 0.6 s cold / 8 ms warm; the chat
+model stayed loaded. Switching to Qwen3.5-4B unloaded the 9B and kept nomic. Tool routing was
+already enabled by `NOEVIA_FEATURE_TOOL_ROUTER=true` in `.env`.
+Rollback: restore the override backup and recreate llama; repoint `current` to
+`releases/41cb2aa`, restore `.env.bak.before-ba95afa`, run preflight `up.sh … web diary ocr`.
+
 ## Release 41cb2aa — 2026-09-19 (tool routing scope and more_tools; routing still off)
 
 Latest application rollout: **`41cb2aa`**, replacing `363171c`. Backup `ab_20260919_032607`
