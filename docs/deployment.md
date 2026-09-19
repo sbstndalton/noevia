@@ -1565,6 +1565,23 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release d459867 — 2026-09-19 (Diary from Code; model panel)
+
+Latest application rollout: **`d459867`**, replacing `da5dfa9`. Backup `ab_20260919_160053`
+first (gzip-verified); `RELEASE_d459867_COMPLETE`, five services healthy, restarts=0. Server
+tests 753/753, QA 74/74. Front end only.
+Rollback: repoint `current` to `releases/da5dfa9`, restore `.env.bak.before-d459867`, run
+preflight `up.sh … web diary ocr`.
+
+## Release da5dfa9 — 2026-09-19 (per-account MCP keys)
+
+Rollout **`da5dfa9`**, replacing `3f3ff1e`. Backup `ab_20260919_153642` first; five services
+healthy; no `NOEVIA_QA_*` variables live. Server tests 753/753, QA 74/74. New table
+`directory_mcp_user_keys` and columns `directory_mcp_servers.personal` / `declared_json`
+(auth database; keys encrypted with the credential key).
+Rollback: repoint `current` to `releases/3f3ff1e`, restore `.env.bak.before-da5dfa9`. The older
+code does not know personal servers; they wait for a key until this release is back.
+
 ## Release 3f3ff1e — 2026-09-19 (hand-registered OAuth apps)
 
 Latest application rollout: **`3f3ff1e`**, replacing `c173952`. Backup `ab_20260919_151325`

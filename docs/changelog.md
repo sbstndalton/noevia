@@ -1,3 +1,16 @@
+### 2026-09-19 — Diary from Code; model and tools panel reworked (d459867)
+
+Diary opens from Code mode. The model panel spreads model and tools side by side on wide
+screens, with a segmented Auto/Manual switch, one-line model rows, compact tools and a budget
+meter, on an opaque surface. Rollback da5dfa9.
+
+
+### 2026-09-19 — Per-account API keys for directory MCP servers (da5dfa9)
+
+Admins choose 'Each person uses their own key' or 'Everyone uses this key'; each account adds
+its own key in Plugins → Connected and only then gets the server's tools. Rollback 3f3ff1e.
+
+
 ### 2026-09-19 — Hand-registered apps for MCP sign-in (3f3ff1e)
 
 Sign-in services without self-registration: the admin registers an app with the shown return
