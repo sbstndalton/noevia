@@ -1565,6 +1565,16 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release 41cb2aa — 2026-09-19 (tool routing scope and more_tools; routing still off)
+
+Latest application rollout: **`41cb2aa`**, replacing `363171c`. Backup `ab_20260919_032607`
+first (gzip-verified); `RELEASE_41cb2aa_COMPLETE`, five services healthy, restarts=0.
+Before turning on Settings → Features → Tool routing: the llama service runs `--models-max 1`,
+so `nomic-embed-text-v1` would unload the chat model per message. Raise it to 2 (the 2026-09-17
+router measurement used 2) or point `EMBEDDING_BASE_URL` at a separate embedding server first.
+Rollback: repoint `current` to `releases/363171c`, restore `.env.bak.before-41cb2aa`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 363171c — 2026-09-19 (re-fit after zoom)
 
 Latest application rollout: **`363171c`**, replacing `c71a30d`. Backup `ab_20260919_025713`

@@ -1,3 +1,11 @@
+### 2026-09-19 — Tool routing: "Using:" line and ask-for-more (41cb2aa)
+
+When routing narrows a message's toolboxes the reply says which, and the model can ask once for
+the rest of the project's tools. Routing stays off: the live engine holds one model
+(`--models-max 1`), so the embedding model would evict the chat model on every message.
+Rollback 363171c.
+
+
 ### 2026-09-19 — Re-fit after zoom (363171c)
 
 The page re-stretches after zooming in and back out on iOS. Rollback c71a30d.
