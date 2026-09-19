@@ -1565,3 +1565,26 @@ Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`
 may run the previous copy for up to four hours. Rollback `7326ac0` with
 `.env.bak.before-d995cd9`.
 
+## Release 027bd00 — 2026-09-18 (iOS keyboard fix; web image flattened; layer check)
+
+Latest application rollout: **`027bd00`**, replacing `d995cd9`. Backup `ab_20260918_224023`
+first (clean, gzip-verified); `RELEASE_027bd00_COMPLETE`, five services healthy, restarts=0.
+- **iOS keyboard:** on phones and tablets the app shell is `position: fixed` to the visible
+  viewport and the document cannot scroll, so iOS has nothing to push up; `viewport.js` resets
+  any document scroll on focus/blur and keeps following `visualViewport` height and offset.
+  `viewport.js` and `fonts.js` are version-stamped (`?v=2`) in `index.html` so phones do not wait
+  out the 4-hour cache.
+- **Layer limit:** release `96371d5` failed with "max depth exceeded" — `cowork-web:d995cd9` had
+  127 layers, Docker's maximum, from a day of overlays each building on the last. Nothing live
+  changed. `overlay-release.sh` now flattens OLD when it has more than 100 layers: it builds
+  `cowork-web:<OLD>-flat` (FROM scratch + COPY of OLD's filesystem, settings regenerated with
+  `jq`), checks env/workdir/ports/user/entrypoint/cmd/healthcheck field by field against OLD,
+  and builds the release on it. OLD's image and tag are untouched (rollback unaffected:
+  `d995cd9` is still 127 layers). Result: `cowork-web:027bd00` has 5 layers.
+- A first attempt (`d06a1bd`) stopped after the flatten because the new block reused `$base`
+  (the appdata directory); it failed before the symlink, `.env` or containers changed. Fixed in
+  `027bd00`; the leftover release directory, env backup and image tags were removed.
+- Housekeeping for later: 52 `cowork-web:*` image tags are kept on the host; old ones can be
+  pruned once rollback targets are agreed.
+Rollback `d995cd9` with `.env.bak.before-027bd00`.
+

@@ -1,3 +1,9 @@
+### 2026-09-18 — iOS keyboard fix; web image flattened (027bd00)
+
+The keyboard no longer pushes the page up on iOS. The web image had hit Docker's 127-layer
+limit; overlay-release.sh now flattens it automatically past 100 layers. Rollback d995cd9.
+
+
 ### 2026-09-18 — Composer focus, iOS keyboard, phone Settings (d995cd9)
 
 No square focus ring in the composer; the app follows the iOS keyboard; legacy narrow phone
