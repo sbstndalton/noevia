@@ -1,3 +1,9 @@
+### 2026-09-19 — Shrink-to-fit for slightly-too-tall pages and menus (70631b0)
+
+Pages and menus that overflow by a little are scaled just enough to fit (never below 82%);
+long lists keep their size and scroll. Rollback f87b157.
+
+
 ### 2026-09-19 — One sidebar for Chat and Code; Plugins page (f87b157)
 
 Code mode reuses the chat sidebar (current look, switch in the header, aligned rail, shared
