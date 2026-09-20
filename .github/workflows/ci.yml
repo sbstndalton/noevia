@@ -53,6 +53,23 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
 
+  docling-tests:
+    name: Docling extraction contract
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/docling
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # No Docling install: extract.py keeps every Docling import inside a
+      # function precisely so this contract is testable without the 669 MB of
+      # models. These tests existed but nothing ran them until now.
+      - run: pip install pytest
+      - run: python -m pytest -q
+
   docker-build:
     name: Docker images build
     runs-on: ubuntu-latest
