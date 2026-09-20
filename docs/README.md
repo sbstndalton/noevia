@@ -10,6 +10,7 @@ content folded in below.
 | --- | --- | --- |
 | [agent-brief.md](agent-brief.md) | Orientation, build/test, architecture, the hard "do not" rules | **Start here** on any fresh session |
 | [roadmap.md](roadmap.md) | The one plan: status, open work, order, testing rules | Deciding what to do next |
+| [sources.md](sources.md) | Every outside repo, product and document used, and whether it ships | Checking what something is built on, or adding a new source |
 | [master-prompt.md](master-prompt.md) | The one executable brief matching the roadmap | Handing work to an agent |
 | [session-kickoff.md](session-kickoff.md) | The short prompt to paste when starting a session | Starting a new agent session |
 | [deployment.md](deployment.md) | Live DaServer runbook; `deploy/examples/overlay-release.sh` | Shipping to production |

@@ -6,6 +6,8 @@ and settings audits, the UI-overhaul plan, the Freebuff report and every master 
 Their dated evidence is in git history and [changelog.md](changelog.md); design detail
 stays in the `spec-*.md` files linked below. The executable brief is
 [master-prompt.md](master-prompt.md).
+Every outside repository, product and document the project has used — and whether any of it
+ships — is listed in [sources.md](sources.md).
 
 Status words: **Shipped** = deployed and verified · **Open** = to build ·
 **Research** = ends in a written recommendation · **Decision** = waiting on the user · **Decided** = settled 2026-09-17 by delegation (table in master-prompt.md § Decisions).
@@ -515,6 +517,8 @@ mobile composer and tap targets).
   ([spec §5](spec-agent-execution.md), "Offline Diary")
 
 ## Research priorities
+
+The sources these draw on are catalogued in [sources.md](sources.md).
 
 Ranked. Each ends in a written recommendation in `docs/` with measurements from this
 deployment's models. Can run alongside the build order.
