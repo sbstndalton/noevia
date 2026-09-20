@@ -19,9 +19,14 @@ Read `AGENTS.md` and `docs/agent-brief.md` first; its "What NOT to do" and
 
 | Commit | What it is | Verified? |
 |---|---|---|
+| `2f854e1` | Tool-result compaction (`tool-result-reduce.cjs`) + `tools/repo-index` MCP server | Tests only — **changes what the model sees on every tool call** |
 | `b459208` | Six defect fixes: `internalCallProject` tenant-isolation reentrancy, non-UTF-8 text silently zeroed, MCP session leak, SSE request/response confusion, missing embedder timeout, context-ladder drift | Tests only |
 | `3826578` | `rag.test.cjs` — 26 tests, mutation-checked | Tests only |
 | `5ba71c5` | Opt-in Docling backend: `services/docling/`, `apps/web/server/docling.cjs`, `compose.docling.yaml` | **Docling itself never executed** |
+| `274c1b8`, `f6f80ab` | This brief, and the `deploy-noevia` skill | Docs and tooling; no runtime effect |
+
+Confirm this table against `git log --oneline origin/main..HEAD` rather than trusting it
+— an earlier version of it omitted `2f854e1` entirely.
 
 ## Order of work — stop at the first failure and record it
 
@@ -104,6 +109,11 @@ this needs a real authenticated browser session.
   confirm it is accepted, or that a 405 is handled without surfacing an error.
 - Upload a Latin-1 `.txt` and confirm it now reads with the windows-1252 caveat rather
   than arriving empty.
+- **Tool-result compaction** (`2f854e1`): a Nextcloud listing large enough to exceed the
+  8,000-character cap should come back to the model as a header row plus tab-separated
+  rows, with a line saying how many records were kept. The chip the user sees must still
+  show the raw output. This is on every tool call, so it is the highest-traffic change on
+  the branch and the one most worth watching in a real conversation.
 
 The scripts in `apps/web/qa/` are **not** for this. They stand up a disposable server on
 `localhost:31237` and their header says *"Never points at production."* Run them locally

@@ -20,18 +20,28 @@ rediscovered:
 Do this before planning anything. It decides everything downstream, and it costs
 seconds.
 
+Check the tool exists before checking the route — **most sandboxes have no `ssh` binary
+at all**, and `ssh: No such file or directory` reads like a broken command rather than
+the answer it actually is. It is a complete answer: no ssh, no deploy from here.
+
 ```sh
-# Can this session reach the host at all?
-timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=5 root@100.70.173.74 'echo reachable' 2>&1 | tail -1
+command -v ssh || echo "no ssh binary — this session cannot deploy; go to Step 2"
+timeout 5 nc -z 100.70.173.74 22 && echo "port 22 open" || echo "no route to the host"
+timeout 10 curl -sS -o /dev/null -w '%{http_code}\n' https://cowork.daserver.work/ 2>&1 | tail -1
 ```
+
+Read the three together. `curl: (56) CONNECT tunnel failed, response 403` is the egress
+proxy refusing, not the host being down. And note `100.64.0.0/10` is in `no_proxy`, so
+Tailscale traffic goes **direct** — the proxy will never carry it, and a dead direct
+route stays dead however the proxy is configured.
 
 Tailscale is `100.70.173.74`. The `daserver` alias and `10.69.0.130` only resolve on the
 home LAN — off-site, Tailscale reports that peers advertise routes but `--accept-routes`
-is false, which is why the LAN address stays dead. One SSH failure is not proof the host
-is down; the route from sandboxed environments has been transiently flaky. Retry once
-before concluding.
+is false, which is why the LAN address stays dead. One failure is not proof the host is
+down; the route from sandboxed environments has been transiently flaky, so retry once
+before concluding. A missing binary needs no retry.
 
-If SSH works, go to **Step 3**. If it does not, go to **Step 2**.
+If you can reach the host, go to **Step 3**. If not, go to **Step 2**.
 
 ## Step 2 — Hand off to a machine that can
 
@@ -39,15 +49,24 @@ Do not try to work around the network. Do not ask the user to paste command outp
 and forth for a multi-step deploy — that is how a 20-minute job becomes an hour and how
 steps get silently skipped.
 
+**Does a handoff already exist?**
+
+Check `docs/handoff-*.md` first. A previous session may have written one, and a second
+brief for the same work is worse than none — the receiving agent then has to guess which
+is current. If one covers this work, read it, confirm it is still accurate, and point at
+it rather than writing another.
+
 **Is another agent already reachable?**
 
-Call `ListAgents`. Sessions on the user's Mac appear as `bridge` sessions once Claude
-Code is running there with Remote Control connected. If one is listed, `SendMessage` it
-and point it at the handoff document you are about to write.
+Call `ListAgents` if you have it. Sessions on the user's Mac appear as `bridge` sessions
+once Claude Code is running there with Remote Control connected; `SendMessage` one and
+point it at the handoff document. Subagents typically do **not** have `ListAgents` — if
+it is not in your toolset, say so rather than guessing at who is out there, and leave the
+messaging to the main session or the user.
 
-If nothing is listed, say so plainly and tell the user what to start — do not spawn a
-cloud session as a substitute. A new cloud session lands in the *same* environment as
-this one, with the same proxy and the same missing route. It cannot help.
+Either way, do not spawn a cloud session as a substitute. A new cloud session lands in
+the *same* environment as this one, with the same proxy and the same missing route. It
+cannot help, and it looks like progress.
 
 **Write the handoff into the repo, not just into a message.**
 
