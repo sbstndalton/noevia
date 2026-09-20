@@ -1,6 +1,6 @@
 # Security model
 
-This document describes how Cowork protects itself and its users, what is
+This document describes how noevia protects itself and its users, what is
 trusted and why, and what an operator must do before exposing the deployment
 beyond a trusted machine. The design goal is that a self-hosted deployment on
 a home server or small VPS is safe by default, and that every deviation from

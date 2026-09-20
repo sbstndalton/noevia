@@ -1,11 +1,46 @@
+<img src="apps/web/public/icon.svg" alt="" width="44" height="44" align="left">
+
 # noevia
 
-noevia is a self-hosted workspace for project-aware chat and durable diary capture. It is a monorepo with two independently testable applications:
+**A self-hosted workspace for project-aware chat, connected tools, and a diary that stays
+plain Markdown.** It runs on your own hardware against your own models: nothing leaves the
+box unless you connect something that makes it leave.
 
-- `apps/web` — React interface and Node API proxy
-- `services/diary` — FastAPI diary pipeline with retrieval and crash-safe logging
+## What it does
 
-The core requires only an OpenAI-compatible inference API. Local-folder corpus storage is the default; WebDAV and S3-compatible object storage (MinIO, B2, and other self-hosted buckets) are optional adapters, and Lemonade model management is likewise optional.
+- **Projects and chat** — projects carry instructions, files and memory; every chat inherits
+  them. Files are indexed for retrieval, and each project picks its own model, or lets **Auto**
+  choose one per message (fast, smart, vision and code roles).
+- **Tools, with an approval gate** — toolboxes come from MCP servers and from noevia's own
+  built-ins. A read can run on its own; **every write shows you its arguments and waits**. There
+  is no global "never ask".
+- **Plugins** — browse the public MCP registry and published skills, add a server from the
+  registry or by URL, and give it a shared key, your own key, or an OAuth sign-in. Each server
+  becomes a toolbox a project has to choose.
+- **Skills** — a project's reviewed `SKILL.md` files; the one that matches a message is loaded
+  for it.
+- **Diary** — a separate space whose corpus is Markdown files you can open anywhere, with
+  retrieval, crash-safe logging and optional WebDAV or S3 storage.
+- **Model management** — install, tune, measure and route local models from inside the app.
+- **Code mode** — a coding workspace behind a feature flag, still being built.
+- **Accounts** — administrators and members with separate data, passkeys or passwords,
+  invitations and recovery links, and encrypted credentials.
+
+## Layout
+
+| Path | What it is |
+| --- | --- |
+| `apps/web` | React interface and the Node API proxy that fronts everything |
+| `services/diary` | FastAPI diary pipeline: retrieval, crash-safe logging, corpus writes |
+| `services/ocr` | OCR sidecar for scanned documents |
+| `services/docling` | Optional layout and table extraction |
+| `services/model-manager` | Model files, downloads and presets |
+| `services/code-sandbox` | The sandbox Code mode runs tasks in |
+| `deploy/` | Compose examples, preflight checks, backup and release helpers |
+| `docs/` | The roadmap, specs, runbook and [sources](docs/sources.md) |
+
+The core needs only an OpenAI-compatible inference API. Everything else — the diary, OCR,
+document extraction, model management, MCP servers — is optional and off until you configure it.
 
 ## Quick start
 
@@ -20,8 +55,8 @@ confirms that address as the canonical origin and collects the inference
 endpoint, models, and everything else in the browser.
 
 Pre-configuring is still supported if you prefer it, and is still the only way
-to set things the wizard does not cover (S3/WebDAV diary storage, Lemonade
-model management, `TRUST_PROXY`):
+to set things the wizard does not cover (S3/WebDAV diary storage, model
+management, `TRUST_PROXY`):
 
 ```sh
 cp .env.example .env
@@ -79,7 +114,11 @@ The daily layout stores entries as
 `DIARY_MONTH_FILE_TEMPLATE` when connecting an older single-file-per-month
 corpus.
 
-Provider-specific model discovery, loading, downloads, and statistics are disabled by default. Enable the Lemonade adapter with `MODEL_MANAGER_KIND=lemonade` and `MODEL_MANAGER_BASE_URL`; see `deploy/examples/lemonade-webdav.compose.yaml`.
+Model discovery, loading, downloads and statistics are off by default (`MODEL_MANAGER_KIND=none`).
+Set `MODEL_MANAGER_KIND=llamacpp` with `MODEL_MANAGER_BASE_URL` to manage a llama.cpp engine
+directly — the shape this project runs in production, where noevia writes `models.ini` presets,
+loads and unloads models and measures them. `MODEL_MANAGER_KIND=lemonade` is the older adapter,
+kept for existing deployments (`deploy/examples/lemonade-webdav.compose.yaml`).
 
 Administrators can connect WebDAV or S3-compatible storage from Settings; members can connect origins approved in `MEMBER_OUTBOUND_ORIGINS`. Credentials are encrypted per account. Connected files can be imported into project knowledge. Diary questions receive thoughtful replies in the diary conversation, without a separate Insights feature.
 
@@ -107,6 +146,17 @@ Keep the Compose Manager project metadata on the Unraid boot device, application
 state under appdata, and source releases separate from both. This lets the UI
 start, stop, rebuild, and autostart the stack without coupling durable state to a
 source checkout.
+
+## Documentation
+
+| Document | For |
+| --- | --- |
+| [`DEPLOY.md`](DEPLOY.md) | A first deployment, step by step |
+| [`docs/deployment.md`](docs/deployment.md) | The live Unraid runbook and every release to date |
+| [`docs/roadmap.md`](docs/roadmap.md) | What is shipped, what is open, and in what order |
+| [`docs/sources.md`](docs/sources.md) | Every outside source used, and where each idea came from |
+| [`SECURITY.md`](SECURITY.md) | The security model and what an operator must do |
+| [`AGENTS.md`](AGENTS.md) | House rules for agents working in this repo |
 
 ## Data safety
 
