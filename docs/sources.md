@@ -1,7 +1,9 @@
 # Sources
 
 Every outside repository, product and document this project has leaned on, and what it was used
-for. Gathered 2026-09-20 from the docs, specs, research notes and the code itself.
+for — including what was read and rejected. Gathered 2026-09-20 from the docs, specs, research
+notes, the code, and the session transcripts (which is where anything we only looked at in
+conversation lives).
 
 Three kinds of entry, kept apart on purpose:
 
@@ -52,7 +54,7 @@ Three kinds of entry, kept apart on purpose:
 | --- | --- | --- |
 | [Docling](https://github.com/docling-project/docling) and [ds4sd/docling-models](https://huggingface.co/api/models/ds4sd/docling-models) | Runs here (opt-in) | The layout/table extraction sidecar (`services/docling`, `server/docling.cjs`), layout + TableFormer only |
 | [OCRmyPDF](https://ocrmypdf.readthedocs.io/en/stable/cookbook.html) ([advanced](https://ocrmypdf.readthedocs.io/en/stable/advanced.html)) and [Tesseract](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html) | Runs here | The OCR sidecar and its quality settings |
-| [unpdf](https://www.npmjs.com/package/unpdf) | Vendored (dependency) | Text extraction from PDFs in the web server |
+| [unpdf](https://github.com/unjs/unpdf) | Vendored (dependency) | Text extraction from PDFs in the web server |
 | [Nextcloud](https://docs.nextcloud.com/server/latest/admin_manual/configuration_files/external_storage_configuration_gui.html) ([reverse proxy](https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/reverse_proxy_configuration.html), [macOS VFS](https://docs.nextcloud.com/server/stable/user_manual/en/desktop/macosvfs.html)), [nextcloud/notify_push](https://github.com/nextcloud/notify_push) | Runs here | Diary storage over WebDAV, the AIO deployment beside noevia, and live-update research |
 | [RFC 4918 (WebDAV)](https://www.rfc-editor.org/info/rfc4918/) | Read | The DAV contract for rename, delete, copy and locks ([docs/dav.md](dav.md)) |
 | [Samba SMB2 leases](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#SMB2LEASES), [SQLite over a network](https://www.sqlite.org/useovernet.html) | Read | The SMB pilot and why the Diary index stays local ([spec](spec-diary-smb.md)) |
@@ -81,6 +83,83 @@ Three kinds of entry, kept apart on purpose:
 | [Headscale](https://headscale.net) and [NetBird](https://netbird.io) | Read | Remote-access alternatives; [research](research-remote-access.md) says don't migrate |
 | [Unraid](https://docs.unraid.net) Compose Manager and the appdata backup plugin | Runs here | How noevia is deployed and backed up |
 | [canirun.ai](https://github.com/midudev/canirun.ai) ([models](https://github.com/midudev/canirun.ai/blob/main/packages/models/src/index.ts), [compatibility](https://github.com/midudev/canirun.ai/blob/main/packages/compatibility/src/index.ts)) | Read | Fit estimates: how someone else judges whether a model runs on given hardware |
+
+## Web search and offline reference
+
+| Source | Kind | Used for |
+| --- | --- | --- |
+| [Tavily](https://docs.tavily.com/) (`mcp.tavily.com`) | Runs here | The web-search and web-crawl toolboxes, and the search step in deep research |
+| [Kiwix ZIM downloads](https://download.kiwix.org/zim/wikipedia/) | Runs here | `wikipedia_en_all_nopic_2026-06` behind the offline Wikipedia toolbox |
+
+## Looked at, not adopted
+
+Gathered from the session transcripts, so the record includes what was read and rejected. None
+of this ships; each line says what it was weighed for.
+
+**Other ways to serve models** — [ollama/ollama](https://github.com/ollama/ollama),
+[vllm-project/vllm](https://github.com/vllm-project/vllm),
+[LostRuins/koboldcpp](https://github.com/LostRuins/koboldcpp),
+[mostlygeek/llama-swap](https://github.com/mostlygeek/llama-swap),
+[danveloper/flash-moe](https://github.com/danveloper/flash-moe),
+[RaymondHuang210129/llama.cpp-adaptive-kv-streaming](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming),
+[ROCm/ROCm](https://github.com/ROCm/ROCm), and the Lemonade forks. Weighed while deciding to run
+llama.cpp directly and how to schedule one GPU; [vLLM vs Ollama](https://tech-insider.org/vllm-vs-ollama-2026/)
+and the local-inference write-ups on dev.to
+([Gemma 4 on a Ryzen mini PC](https://dev.to/hrodrig/21-toks-gemma-4-on-a-ryzen-mini-pc-llamacpp-vulkan-and-the-messy-truth-about-local-chat-m82),
+[Lemonade v10.3](https://dev.to/arshtechpro/lemonade-v103-run-local-llms-image-gen-and-speech-on-your-own-gpu-for-free-29ob),
+[Windows vs Linux VRAM limits](https://dev.to/lanternproton/windows-vs-linux-for-local-ai-my-radeon-890m-has-96gb-of-ram-but-windows-only-lets-me-use-35gb-39ln))
+came from the same reading.
+
+**Hardware comparisons** — [NotebookCheck GPU pages](https://www.notebookcheck.net/Radeon-780M-vs-Radeon-890M_11564_12524.247598.0.html)
+for the iGPU generations, and r/LocalLLM, r/IntelArc and r/AI_Agents threads on VRAM, vision
+models and [how many tools a model can be given](https://www.reddit.com/r/AI_Agents/comments/1lwxh4r/what_is_the_maximum_number_of_tools_that_can_be/) —
+that last one informed the tool-routing work.
+
+**Agent harnesses and protocols** — [zed-industries/claude-agent-acp](https://github.com/zed-industries/claude-agent-acp),
+[agentclientprotocol/codex-acp](https://github.com/agentclientprotocol/codex-acp),
+[svkozak/pi-acp](https://github.com/svkozak/pi-acp),
+[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness),
+[mufasadb/ai-lego-bricks](https://github.com/mufasadb/ai-lego-bricks),
+[omnigent-ai/omnigent](https://github.com/omnigent-ai/omnigent). Read while choosing ACP and
+OpenCode for Code mode.
+
+**Browser and computer use** — [browser-use/browser-use](https://github.com/browser-use/browser-use),
+[trycua/cua](https://github.com/trycua/cua),
+[Angeluis001/playwright-mcp](https://github.com/Angeluis001/playwright-mcp) and the
+[qaskills.sh Playwright MCP guides](https://qaskills.sh/blog/playwright-mcp-security-best-practices-2026).
+Recorded as a later capability, not built.
+
+**Skills and agent writing** — [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills),
+[anthropics/claude-code](https://github.com/anthropics/claude-code),
+[Red Hat: MCP servers vs skills](https://www.redhat.com/en/topics/ai/what-is-model-context-protocol-mcp)
+([article](https://developers.redhat.com/articles/2026/01/08/building-effective-ai-agents-mcp),
+[OpenCode piece](https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces)),
+[agentskills.io best practices](https://agentskills.io/skill-creation/best-practices). Shaped
+skill auto-loading and the split between skills and MCP servers.
+
+**Nextcloud and identity** — [nextcloud/all-in-one](https://github.com/nextcloud/all-in-one),
+[Rello/nextcloud-dynamic-mcp-server](https://github.com/Rello/nextcloud-dynamic-mcp-server),
+and the Jellyfin SSO projects
+([9p4](https://github.com/9p4/jellyfin-plugin-sso),
+[registration portal](https://github.com/DevJernejTDO/Jellyfin-Registration-Portal),
+[SSO UI](https://github.com/gergogyulai/jellyfin-sso-ui)) — single sign-on across the box, not
+pursued.
+
+**Front-end odds and ends** — [vercel/satori](https://github.com/vercel/satori),
+[snapdom](https://github.com/zumerlab/snapdom), [resvg-js](https://github.com/yisibl/resvg-js)
+(server-side rendering of images, not needed);
+[Impeccable's own gallery](https://impeccable.style) for the design-rule work;
+[this StackOverflow thread](https://stackoverflow.com/questions/38619762/how-to-prevent-ios-keyboard-from-pushing-the-view-off-screen-with-css-or-js)
+for the iOS keyboard fix, which did ship.
+
+**Products whose interfaces were studied** — ChatGPT and Claude's own apps (sidebar behaviour,
+settings structure, the collapsed rail, the model and thinking menus), opened in the browser
+during the UI passes at the user's request. Patterns only.
+
+**Also seen** — [CodebuffAI/freebuff](https://github.com/CodebuffAI/freebuff) and its forks (the
+report that prompted an audit), [leonickson1/Swiftlet](https://github.com/leonickson1/Swiftlet)
+and [trycua/cua](https://github.com/trycua/cua) (noted as ideas to explore),
+[siddsachar/row-bot](https://github.com/siddsachar/row-bot), [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd).
 
 ## Where the longer write-ups live
 
