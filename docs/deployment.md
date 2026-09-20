@@ -1440,3 +1440,16 @@ is also **not deployed**: `compose.docling.yaml` is an overlay the Compose Manag
 read, so the service and `DOCLING_BASE_URL` still have to be hand-merged into all three
 compose copies. Nothing live depends on Docling today; `DOCLING_BASE_URL` is unset, so
 `documents.cjs` keeps its pdf.js path.
+
+## Release aad6216 — 2026-09-20 (compaction cap fix)
+
+`.env.bak.20260920*` first; same full release flow. `bb78a1a → aad6216`, carrying the
+compaction cap fix from `72e1520` and the doc corrections above.
+
+Candidate verified before the flip by running the fix inside the candidate image: the same
+400-record listing reduced to 7,937 characters against the 8,000 cap (was 8,037). All seven
+containers healthy, restarts=0, 175 MCP tools across 3 servers, public site 200. Re-checked
+against the *running* container after the flip: 7,976 ≤ 8,000, note reads
+`[showing 103 of 400 records; 297 omitted to fit…]`.
+
+Rollback: `bb78a1a`, then `06f9402`.
