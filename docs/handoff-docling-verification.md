@@ -3,11 +3,19 @@
 For an agent running **on the Mac** — the only machine that can reach all three of
 Docker + the internet, `daserver` over SSH, and the live instance in a browser.
 
-The work on `claude/ai-repos-token-optimization-xasjfx` was written in a sandboxed
-cloud environment whose egress proxy blocks HuggingFace and cannot reach the Unraid
-host. So the Docling sidecar **has never run**, and none of the three commits have been
-checked against real data. `docs/agent-brief.md` is explicit that automated tests are
-not sufficient evidence here — it records tests twice passing obviously broken code.
+This work is **merged to `main`** (`2824484`, fast-forwarded from `607de69`). It was
+written in a sandboxed cloud environment whose egress proxy blocks HuggingFace and
+cannot reach the Unraid host, so the Docling sidecar **has never run** and none of it
+has been checked against real data. `docs/agent-brief.md` is explicit that automated
+tests are not sufficient evidence here — it records tests twice passing obviously broken
+code.
+
+Work on `main`. The branch `claude/ai-repos-token-optimization-xasjfx` is identical to
+it and can be ignored or deleted.
+
+DaServer is still running `ab2720a` and is now seven commits behind `main` — it was
+already behind before this work started, so deploying brings more than these commits
+with it. Check what is actually live rather than trusting this paragraph.
 
 Scope agreed with the owner: **verify, fix and deploy**, including the live-instance
 checks with a real write.
@@ -90,7 +98,7 @@ cd ../.. && make compose-check
 docker compose -f compose.yaml -f compose.docling.yaml config --quiet
 ```
 
-Push to `claude/ai-repos-token-optimization-xasjfx`. Do not open a PR.
+Push to `main`. It is already the merge target and the branch is identical to it.
 
 ### 3. Live-instance checks — before deploying anything
 
