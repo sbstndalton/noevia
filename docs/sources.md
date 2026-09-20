@@ -5,6 +5,10 @@ for — including what was read and rejected. Gathered 2026-09-20 from the docs,
 notes, the code, and the session transcripts (which is where anything we only looked at in
 conversation lives).
 
+It has two halves: **what we read** (the tables below), and **what came of it** — the ideas
+section near the end, which records where each feature's idea came from and what happened to the
+ones we dropped.
+
 Three kinds of entry, kept apart on purpose:
 
 - **Runs here** — code or a service that is part of the deployment.
@@ -161,6 +165,58 @@ report that prompted an audit), [leonickson1/Swiftlet](https://github.com/leonic
 and [trycua/cua](https://github.com/trycua/cua) (noted as ideas to explore),
 [siddsachar/row-bot](https://github.com/siddsachar/row-bot), [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd).
 
+## Ideas, and where each came from
+
+The sources above are what we read; this is what came out of them. Each row is an idea, its
+origin, and what happened to it. Read at source means someone read the actual code at a pinned
+commit, not the README.
+
+### Shipped
+
+| Idea | Came from | Where it lives now |
+| --- | --- | --- |
+| One authoritative transcript, with a separate model-facing projection; a preflight before any summariser call; validate the compaction before saving it | [Row-Bot](https://github.com/siddsachar/row-bot) read at source (`e5803e3`), compared against noevia's own code | [spec-context-projection.md](spec-context-projection.md); `chat-context.cjs` |
+| Tool calls as atomic groups with explicit interrupted states, and never fabricating a missing result | Row-Bot `_collect_agent_complete_input` and its cleanup rules | `tool-exchange.cjs`, the approval gate |
+| Deterministic reducers that shrink tool results while the complete result stays authoritative | Row-Bot's token thresholds | `tool-result-reduce.cjs` |
+| Provider-neutral content blocks and token accounting | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) read at source (`0d1f500`) | [spec-agent-execution.md](spec-agent-execution.md); the harness selectors |
+| Run records and restart recovery: keep runs that can resume, clear locks, resume rather than restart | Row-Bot `agent_runs.py` | Code mode's job events |
+| Whatever drives a browser or a computer, **noevia's approval gate wraps it** — because the reference had no approve-before-act step | [Browser Use](https://github.com/browser-use/browser-use) read at source (`d8110c5`) | The rule in [spec-agent-execution.md](spec-agent-execution.md) §6; every write still asks |
+| A deterministic design-rule check over the UI, borrowed selectively rather than adopted whole | [Impeccable](https://github.com/pbakaus/impeccable) read at source (`f2c7051`) | D4 in the roadmap; run against `apps/web/src` |
+| Skills and MCP servers are complementary, and a skill should load only when the message matches it | [Red Hat's MCP-versus-skills article](https://developers.redhat.com/articles/2026/01/08/building-effective-ai-agents-mcp) and [agentskills.io](https://agentskills.io/skill-creation/best-practices) | Skill auto-loading (`chat-skill-routing.cjs`); Plugins splits the two |
+| Small models pick badly from long tool lists, so send only the matching toolboxes | [r/AI_Agents on how many tools a model can take](https://www.reddit.com/r/AI_Agents/comments/1lwxh4r/what_is_the_maximum_number_of_tools_that_can_be/), then measured here | The tool router; "Using: …" on each reply |
+| Fit estimates: judge whether a model runs on this hardware before downloading it | [canirun.ai](https://github.com/midudev/canirun.ai) | Discover's fit and trust badges |
+| Safe defaults written for a model the moment it finishes downloading | [model-loader](https://github.com/scratchhax/model-loader)'s own flow, then the parity audit | `POST /sections/{name}/safe-defaults` |
+| The sidebar as one scrolling plane; a collapsed rail that names things on hover; New chat floating over the list; settings as one flat list | ChatGPT and Claude's apps, opened side by side at the user's request | The shared Chat/Code sidebar |
+| Pin the app to the visible viewport so the iOS keyboard cannot push it off screen | [This StackOverflow thread](https://stackoverflow.com/questions/38619762/how-to-prevent-ios-keyboard-from-pushing-the-view-off-screen-with-css-or-js), sent by the user | `public/viewport.js`, the fixed shell |
+| Liquid glass as a material for things you can touch, aero for overlays, ramps for colour | [Apple HIG](https://developer.apple.com/design/human-interface-guidelines), [Material 3](https://m3.material.io), [Ramps Studio](https://www.ramps.studio/), the liquid-glass roundups | The four materials in Settings → Appearance; `public/glass.js` is noevia's own |
+| A diary that is plain Markdown files you can open anywhere | [Moodiary](https://docs.moodiary.net/guide/) as a shape to beat | The Diary workspace |
+| An offline encyclopaedia the model can read with no internet | [Kiwix](https://kiwix.org) | The offline Wikipedia toolbox (D9) |
+| Browse and install published skills and MCP servers from inside the app | The [MCP registry](https://registry.modelcontextprotocol.io) and [anthropics/skills](https://github.com/anthropics/skills) | The Plugins page |
+| An external audit is worth acting on even when its report is wrong in places | The Freebuff report (2026-09-14) | `qa/markdown-fidelity.cjs`, `qa/mobile-audit.cjs`, and the fixes behind them |
+
+### Parked — written down, not built
+
+| Idea | Came from | Why it is waiting |
+| --- | --- | --- |
+| Computer use in a sandboxed desktop, with the approval gate owning every action | [trycua/cua](https://github.com/trycua/cua) read at source (`8cb8f6d`, MIT) | Take parts, not the platform: it couples toward a hosted product, and its telemetry is on by default. A VM boundary looks like the right shape if it is ever built |
+| A Mac node running models locally, streaming experts from SSD | [leonickson1/Swiftlet](https://github.com/leonickson1/Swiftlet) read at source (`909c042`, Apache-2.0) | Metal-only, so irrelevant to DaServer; a candidate if the Mac ever becomes a trusted node |
+| Cheaper mixture-of-experts serving | [danveloper/flash-moe](https://github.com/danveloper/flash-moe) read at source (`3601d41`) | Noted as an idea to explore; nothing measured here yet |
+| A browser capability noevia owns end to end | Browser Use, playwright-mcp and the Playwright MCP security guides | Recorded as later work; the approval rule above is the part that already applies |
+| Single sign-on across the box | [nextcloud/all-in-one](https://github.com/nextcloud/all-in-one) and the Jellyfin SSO projects | Not pursued; noevia keeps its own accounts and passkeys |
+| A Mac-native client | Jan.ai as a reference for the client only | Later; it must never imply unrestricted control of the Mac |
+
+### Tried and rejected
+
+| Idea | Came from | Why not |
+| --- | --- | --- |
+| Move serving to vLLM | [vLLM](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/), [ROCm](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/vllm.html), [llm-tracker](https://llm-tracker.info/howto/AMD-GPUs) | Measured against llama.cpp on this hardware; no silent migration ([spec](spec-backend-portability.md)) |
+| One "master container" like Nextcloud AIO | [research-master-container.md](research-master-container.md) | Don't build; Compose Manager already does the job |
+| Swap Tailscale for Headscale or NetBird | [research-remote-access.md](research-remote-access.md) | Neither changes the data path; not worth the migration |
+| Serve the Diary corpus over SMB from the Mac | [Samba leases](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#SMB2LEASES), [SQLite over a network](https://www.sqlite.org/useovernet.html) | Retired 2026-09-18 (D22); plain files and WebDAV won |
+| Keep mirroring backups with host rclone | [rclone](https://rclone.org) | Replaced by noevia's own Google Drive upload, so the whole flow is in one place |
+| Bulk model delete, and a command palette in the model manager | The model-loader parity audit | Rare and destructive; and a palette is an app-wide concern, not a model one |
+| Vendor an agent framework, or adopt an external harness as noevia's API | Every harness read above | Kept as references and adapters, never as the architecture ([roadmap](roadmap.md#explicitly-not-doing)) |
+
 ## Where the longer write-ups live
 
 [research-findings-2026-09-17.md](research-findings-2026-09-17.md) ·
@@ -174,3 +230,8 @@ and [trycua/cua](https://github.com/trycua/cua) (noted as ideas to explore),
 
 Adding a source: put it in the table it belongs to, say plainly what it was used for, and mark
 whether anything of it ships. A link with no purpose beside it is not a source, it is a bookmark.
+
+Adding an idea: say where it came from and what happened to it. An idea that was dropped is worth
+more here than one that shipped — the shipped one is visible in the app, the dropped one is only
+visible here, and without it the next person re-reads the same source and re-reaches the same
+dead end.
