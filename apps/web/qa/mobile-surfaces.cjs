@@ -16,7 +16,8 @@ const origin='http://localhost:31261',web=path.resolve(__dirname,'..'),shots=pro
   const keyboard=async h=>{await page.evaluate(h=>{sessionStorage.setItem('qa-vv-h',String(h));window.__keyboard(h);},h);await page.waitForTimeout(120);};
   const fits=async label=>assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${label}: horizontal overflow`);
   // Reachable = on screen within the visible (keyboard-reduced) viewport, 44px tall, not covered.
-  const reach=async(locator,label,h=667)=>{await locator.evaluate(el=>el.scrollIntoView({block:"nearest"}));await page.waitForTimeout(60);const p=await locator.evaluate((el,h)=>{const r=el.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+Math.min(r.height/2,20);const hit=document.elementFromPoint(x,y);return {ok:r.height>=36&&r.y>=0&&r.y+Math.min(r.height,40)<=h&&x<=innerWidth&&(el===hit||el.contains(hit)),r:[r.x,r.y,r.width,r.height].map(Math.round)};},h);assert.ok(p.ok,`${label} not reachable ${JSON.stringify(p.r)}`);};
+  const reach=async(locator,label,h=667)=>{await locator.evaluate(el=>el.scrollIntoView({block:"nearest"}));let p;for(let t=0;t<20;t++){await page.waitForTimeout(60);p=await locator.evaluate((el,h)=>{const r=el.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+Math.min(r.height/2,20);const hit=document.elementFromPoint(x,y);return {ok:r.height>=36&&r.y>=0&&r.y+Math.min(r.height,40)<=h&&x<=innerWidth&&(el===hit||el.contains(hit)),r:[r.x,r.y,r.width,r.height].map(Math.round)};},h);if(p.ok)break;} // dialogs animate in; settle before judging
+  assert.ok(p.ok,`${label} not reachable ${JSON.stringify(p.r)}`);};
 
   // ── Setup wizard ──
   await page.goto(origin);
@@ -37,14 +38,20 @@ const origin='http://localhost:31261',web=path.resolve(__dirname,'..'),shots=pro
    if(!(await next.count())){await page.screenshot({path:`${shots}/noevia-mobile-wizard-stuck.png`});break;}
    await reach(next,`wizard step ${step} next`);await next.click();await page.waitForTimeout(300);
   }
-  await page.goto(origin);await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();
+  await page.goto(origin);
+  // A new account lands in Settings, and a reload now returns there; close it to reach the chat.
+  const openSettings=page.getByRole('region',{name:'Settings'});
+  // Settings is a lazy chunk: wait for whichever screen arrives first, not just the one already there.
+  await openSettings.or(page.getByRole('textbox',{name:'Message',exact:true})).first().waitFor();
+  if(await openSettings.isVisible().catch(()=>false)){await page.keyboard.press('Escape');await openSettings.waitFor({state:'detached'});}
+  await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();
 
   // ── Settings with the keyboard open ──
   await page.getByRole('button',{name:'Open navigation',exact:true}).click();
   await page.waitForTimeout(400);await page.screenshot({path:`${shots}/noevia-mobile-before-account.png`});await page.getByRole('button',{name:/Account menu for/}).click();await page.locator('.account-popover').getByRole('button',{name:'Settings',exact:true}).click();
   const settings=page.getByRole('region',{name:'Settings'});await settings.waitFor();
   // Phones open Settings on its list; Profile is one tap in.
-  await settings.getByRole('button',{name:'Profile',exact:true}).click();
+  await settings.getByRole('button',{name:'Account',exact:true}).click();
   const name=settings.getByLabel('Display name');await name.focus();await keyboard(360);
   await reach(name,'Settings display name (keyboard)',360);await reach(settings.getByRole('button',{name:'Save',exact:true}),'Settings save (keyboard)',360);
   await page.screenshot({path:`${shots}/noevia-mobile-settings-keyboard.png`});
@@ -65,14 +72,22 @@ const origin='http://localhost:31261',web=path.resolve(__dirname,'..'),shots=pro
   // ── Code preview, portrait and landscape ──
   for(const [w,h] of [[375,667],[667,375]]){
    await page.setViewportSize({width:w,height:h});await keyboard(h);
-   await page.goto(origin);await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();
-   if(w<=600)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+   await page.goto(origin);
+   // A reload returns to the project created above, so ask for a chat explicitly.
+   if(w<520)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+   if(!(await page.getByRole('textbox',{name:'Message',exact:true}).isVisible().catch(()=>false))){
+    await page.locator('.sidebar').getByRole('button',{name:'New chat',exact:true}).click();
+    if(w<520)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+   }
+   await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();
    await page.locator('.sidebar').getByRole('button',{name:'Code',exact:true}).click();
    await page.locator('.coding-main').waitFor();await fits(`code ${w}x${h}`);
-   const back=page.locator('.coding-sidebar').getByRole('button',{name:'Chat',exact:true});
-   await reach(back,`Code → Chat ${w}x${h}`,h);
    await reach(page.locator('.coding-main textarea'),`Code task box ${w}x${h}`,h);
    await page.screenshot({path:`${shots}/noevia-mobile-code-${w}x${h}.png`});
+   // Code shares the chat sidebar (2026-09-19): on a phone its Chat switch is in the drawer.
+   if(w<520)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+   const back=page.locator('.sidebar').getByRole('button',{name:'Chat',exact:true});
+   await reach(back,`Code → Chat ${w}x${h}`,h);
    await back.click();await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();
   }
   assert.deepEqual(errors,[]);

@@ -1,4 +1,5 @@
 import { titleAfterSend } from './chat-title';
+import { ShellIcon } from './components/ShellIcon';
 import { sourceRefresher } from './source-refresh';
 import { sourceRefreshIssues } from './source-status';
 import { useAppearance } from './useAppearance';
@@ -9,7 +10,7 @@ import { notifyIfAway } from './components/notifications/notify';
 import { useModelsChanged } from './models-changed';
 import { modelChoiceLabel } from './model-guidance';
 import { TOOL_RESULT_LIMIT } from './components/ToolCalls';
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import {
   createProject,
@@ -46,6 +47,7 @@ import { ProjectView } from './components/ProjectView';
 import { Coding, Diary, ModelManager, Projects, Settings, prefetchViewsWhenIdle } from './lazy-views';
 import type { SettingsSection } from './components/SettingsShell';
 import { FeaturePreview } from './components/PreviewPanel';
+import { PluginsView } from './components/plugins/PluginsView';
 import { useFeatureFlags } from './components/features/useFeatureFlags';
 import { Sidebar } from './components/Sidebar';
 import { EditProjectModal } from './components/EditProjectModal';
@@ -53,11 +55,13 @@ import { Inspector } from './components/Inspector';
 import { StatsBar } from './components/StatsBar';
 import { settleToolCalls } from './tool-call-state';
 import { mergeTranscripts } from './transcript-merge';
+import { readLastPlace, writeLastPlace, clearLastPlace } from './last-view';
 
 type View =
   | { kind: 'diary' }
   | { kind: 'preview'; title: string }
   | { kind: 'projects' }
+  | { kind: 'plugins' }
   | { kind: 'models'; model?: string }
   | { kind: 'project'; id: string }
   | { kind: 'chat'; chatId: string; projectId?: string | null };
@@ -68,20 +72,47 @@ function uid(): string {
 
 export default function App(): JSX.Element {
   const {theme,preference,setTheme,setPreference,appearanceStatus,appearanceError,retryAppearance} = useAppearance();
-  const [settingsSection,setSettingsSection] = useState<SettingsSection>('general');
+  const [settingsSection,setSettingsSection] = useState<string>(() => readLastPlace()?.settings ?? 'general');
   // Each open is a fresh Settings: reopening while the last one is still animating out replaces it.
   const [settingsKey, setSettingsKey] = useState(0);
-  const openSettings = (section: SettingsSection = 'general') => { setSettingsSection(section); setSettingsKey((k) => k + 1); setAppMode('chat'); setSettingsOpen(true); };
+  const openSettings = (section: SettingsSection = 'general') => {
+    // Connecting services moved to Plugins (user review, 2026-09-19); old links land there.
+    if (section === 'connectors') { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'plugins' }); return; }
+    setSettingsSection(section); setSettingsKey((k) => k + 1); setSettingsOpen(true); };
   // `model` opens that model's tuning view directly; without it, the model list.
   const openModelManager = (model?: string) => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'models', model }); };
   useEffect(() => { const open = (e: Event) => { const model = (e as CustomEvent<{ model?: string }>).detail?.model; setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'models', model }); }; window.addEventListener('noevia:open-model-settings', open); return () => window.removeEventListener('noevia:open-model-settings', open); }, []);
-  const [settingsOpen, setSettingsOpen] = useState(() => { const fresh = !!sessionStorage.getItem('cowork-new-account'); sessionStorage.removeItem('cowork-new-account'); return fresh; });
+  const [settingsOpen, setSettingsOpen] = useState(() => { const fresh = !!sessionStorage.getItem('cowork-new-account'); sessionStorage.removeItem('cowork-new-account'); return fresh || !!readLastPlace()?.settings; });
   const [appMode, setAppMode] = useState<'chat'|'code'>('chat');
+  // The Code page is chosen in the shared sidebar, so it lives here rather than in the workspace.
+  const [codePage, setCodePage] = useState('New task');
+  // Chat ⇄ Code plays a short entrance on the page, as Claude does, instead of cutting in one frame.
+  const appMain = useRef<HTMLDivElement>(null);
+  const firstMode = useRef(true);
+  useEffect(() => {
+    if (firstMode.current) { firstMode.current = false; return; }
+    const el = appMain.current;
+    if (!el) return;
+    el.classList.remove('mode-enter'); void el.offsetWidth; el.classList.add('mode-enter');
+    const done = () => el.classList.remove('mode-enter');
+    el.addEventListener('animationend', done, { once: true });
+    return () => el.removeEventListener('animationend', done);
+  }, [appMode]);
+  // The Code workspace is a lazy chunk. Hiding the chat the moment Code was chosen left a
+  // blank page until the chunk resolved (user review, 2026-09-18), so the chat stays on
+  // screen until the Code workspace has mounted, and the two swap before paint.
+  const [codeShown, setCodeShown] = useState(false);
+  useEffect(() => { if (appMode !== 'code') setCodeShown(false); }, [appMode]);
   const featureFlags = useFeatureFlags();
   const showPreviews = featureFlags.previews === true;
   // Turning previews off while in Code must not leave both workspaces hidden.
   useEffect(() => { if (!showPreviews && appMode === 'code') setAppMode('chat'); }, [showPreviews, appMode]);
-  const [view, setView] = useState<View>(() => ({ kind: 'chat', chatId: `c-${uid()}`, projectId: null }));
+  // Reload lands where you left off, not on a new chat. `restored` is kept so the
+  // workspace load below can drop a reference to something that no longer exists.
+  const restored = useRef(readLastPlace());
+  const [view, setView] = useState<View>(() => restored.current?.view ?? { kind: 'chat', chatId: `c-${uid()}`, projectId: null });
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [freeChats, setFreeChats] = useState<ChatMeta[]>([]);
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({});
@@ -153,6 +184,7 @@ export default function App(): JSX.Element {
       .then((w) => {
         setProjects((w.projects || []).map((p) => ({ ...p, ...pendingPatches.current[p.id] })));
         setFreeChats(Array.isArray(w.freeChats) ? w.freeChats : []);
+        setWorkspaceLoaded(true);
       })
       .catch(() => undefined);
   }, []);
@@ -189,7 +221,18 @@ export default function App(): JSX.Element {
   useEffect(() => {
     refreshProjects();
     refreshModels();
-    fetchProfile().then((profile) => setDiaryEnabled(profile.user.diaryEnabled)).catch(() => undefined);
+    fetchProfile().then((profile) => {
+      setDiaryEnabled(profile.user.diaryEnabled);
+      setAccountId(profile.user.id);
+      // A different account on this browser starts on its own fresh chat rather
+      // than on a reference it cannot load.
+      if (restored.current && restored.current.user && restored.current.user !== profile.user.id) {
+        restored.current = null;
+        clearLastPlace();
+        setSettingsOpen(false);
+        setView({ kind: 'chat', chatId: `c-${uid()}`, projectId: null });
+      }
+    }).catch(() => undefined);
     fetchHealth()
       .then(setHealth)
       .catch(() => setHealth({ inferenceUp: false, diaryUp: null }));
@@ -203,6 +246,26 @@ export default function App(): JSX.Element {
   }, [refreshModels, refreshProjects]);
 
   useEffect(() => prefetchViewsWhenIdle(), []);
+
+  // Remember where you are, so a reload returns here. `preview` is skipped: an
+  // unbuilt surface is not somewhere to come back to.
+  useEffect(() => {
+    if (view.kind === 'preview') return;
+    writeLastPlace({ user: accountId, view, settings: settingsOpen ? settingsSection : null });
+  }, [view, settingsOpen, settingsSection, accountId]);
+
+  // A restored project or project chat that no longer exists (deleted on another
+  // device, or archived) would otherwise render an empty shell with no way back.
+  useEffect(() => {
+    const place = restored.current;
+    if (!place || !workspaceLoaded) return;
+    restored.current = null;
+    const projectExists = (id: string) => projects.some((p) => p.id === id);
+    const stale =
+      (place.view.kind === 'project' && !projectExists(place.view.id)) ||
+      (place.view.kind === 'chat' && !!place.view.projectId && !projectExists(place.view.projectId));
+    if (stale) setView({ kind: 'chat', chatId: `c-${uid()}`, projectId: null });
+  }, [workspaceLoaded, projects]);
 
   // Live engine stats — the bottom bar refreshes in near-real-time while the
   // tab is visible; a background tab stops polling and catches up on return.
@@ -408,6 +471,10 @@ export default function App(): JSX.Element {
               ...prev,
               [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId ? { ...m, senderLabel: `Assistant · Auto (${ev.route})` } : m)),
             }));
+          } else if (ev.type === 'skills_scope') {
+            setMessagesByChat(prev => ({ ...prev, [chatId]: (prev[chatId] ?? []).map(m => m.id === replyId ? { ...m, skillScope: ev.text || undefined } : m) }));
+          } else if (ev.type === 'tools_scope') {
+            setMessagesByChat(prev => ({ ...prev, [chatId]: (prev[chatId] ?? []).map(m => m.id === replyId ? { ...m, toolScope: ev.text || undefined } : m) }));
           } else if (ev.type === 'status' && ev.text) {
             setMessagesByChat(prev => ({ ...prev, [chatId]: (prev[chatId] ?? []).map(m => m.id === replyId ? { ...m, processingStatus: ev.text } : m) }));
           } else if (ev.type === 'warning' && ev.text) {
@@ -809,9 +876,14 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <div className="regular-workspace" style={{display:appMode==='chat'||!showPreviews?'contents':'none'}}>
+      <div className="regular-workspace" style={{display:'contents'}}>
       <Sidebar
+        mode={appMode==='code'&&showPreviews?'code':'chat'}
+        codePage={codePage}
+        onCodePage={setCodePage}
         onEnterCode={() => setAppMode('code')}
+        onEnterChat={() => setAppMode('chat')}
+        onOpenPlugins={() => { setAppMode('chat'); setView({ kind: 'plugins' }); }}
         onPreview={(title) => setView({kind:'preview',title})}
         showPreviews={showPreviews}
         projects={projects}
@@ -830,7 +902,8 @@ export default function App(): JSX.Element {
         onPatchProject={handlePatchProject}
         onEditProject={setEditingProjectId}
         onDeleteProject={handleDeleteProject}
-        onOpenDiary={() => setView({ kind: 'diary' })}
+        // Diary is its own space: from Code it switches back to the chat shell and opens it (user review, 2026-09-19).
+        onOpenDiary={() => { setAppMode('chat'); setView({ kind: 'diary' }); }}
         diaryEnabled={diaryEnabled}
         onOpenSettings={openSettings}
         health={health}
@@ -839,7 +912,10 @@ export default function App(): JSX.Element {
       />
 
       <div className={`app-stack pane${settingsOpen ? ' has-settings' : ''}`}>
-      <div className="app-main">
+      <div className="app-main" ref={appMain}>
+      {appMode === 'code' && showPreviews && <Suspense fallback={null}><div className="code-mount" style={{display:codeShown?'contents':'none'}}><Coding.View page={codePage} onStartChat={startFreeChatWith} projects={projects} onProjectsChanged={refreshProjects}/><MountedSignal onMounted={() => setCodeShown(true)}/></div></Suspense>}
+      <div className="chat-views" style={{display:appMode==='code'&&showPreviews&&codeShown?'none':'contents'}}>
+      {view.kind === 'plugins' && <PluginsView onStartChat={startFreeChatWith} projects={projects} onProjectsChanged={refreshProjects}/>}
 
       {view.kind === 'preview' && showPreviews && <FeaturePreview title={view.title}/> }
       {view.kind === 'models' && (
@@ -911,6 +987,7 @@ export default function App(): JSX.Element {
           onOpenModelSettings={(model?: string) => { setPopupOpen(false); openModelManager(model); }}
         />
       )}
+      </div>
 
       </div>
       {settingsOpen && (
@@ -918,8 +995,10 @@ export default function App(): JSX.Element {
         <Settings.View
           key={settingsKey}
           initialSection={settingsSection}
+          onSection={setSettingsSection}
           appearanceStatus={appearanceStatus} appearanceError={appearanceError} retryAppearance={retryAppearance}
           onClose={() => setSettingsOpen(false)}
+          onClosing={() => { if (view.kind !== 'preview') writeLastPlace({ user: accountId, view, settings: null }); }}
           onStartChat={startFreeChatWith}
           theme={theme}
           onTheme={setTheme}
@@ -940,8 +1019,8 @@ export default function App(): JSX.Element {
         />
         </Suspense>
       )}
-      <StatsBar stats={stats} />
-      {view.kind === 'chat' && activeProject && (
+      <StatsBar stats={stats} modelLabel={modelChoiceLabel(activeProject, modelsLoaded && !modelsError ? models : null)} />
+      {view.kind === 'chat' && activeProject && appMode === 'chat' && (
         <Inspector
           project={activeProject ?? null}
           models={models}
@@ -965,14 +1044,19 @@ export default function App(): JSX.Element {
       {projectError && (
         <div className="save-error" role="alert">
           <span>{projectError}</span>
-          <button onClick={() => setProjectError(null)} aria-label="Dismiss">✕</button>
+          <button onClick={() => setProjectError(null)} aria-label="Dismiss"><ShellIcon name="close" size={16}/></button>
         </div>
       )}
 
       </div>
       {shortcutsOpen && <ShortcutsDialog apple={appleKeys} onClose={() => setShortcutsOpen(false)} />}
-      {appMode === 'code' && showPreviews && <Suspense fallback={null}><Coding.View onExit={() => setAppMode('chat')} onSettings={() => openSettings()} theme={theme} onToggleTheme={() => setTheme(t=>t==='light'?'dark':'light')}/></Suspense>}
 
     </div>
   );
+}
+
+/** Tells its parent, before paint, that the lazy view beside it has mounted. */
+function MountedSignal({ onMounted }: { onMounted: () => void }): null {
+  useLayoutEffect(() => { onMounted(); }, [onMounted]);
+  return null;
 }

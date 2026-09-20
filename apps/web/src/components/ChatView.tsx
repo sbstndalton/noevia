@@ -1,6 +1,7 @@
 import { ChatContext } from './ChatContext';
 import { useChatScroll } from '../useChatScroll';
 import { ReasoningControl } from './ReasoningControl';
+import { ProjectIcon } from './ProjectIdentity';
 import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { Message, MessageStats, Project, InstalledModel } from '../types';
@@ -167,6 +168,7 @@ export function ChatView({
               <>
                 <button className="crumb-back" onClick={onBack} title={`Back to ${projectName}`}>
                   <ChevronLeft />
+                  {project && <ProjectIcon project={project} size={15}/>}
                   <span>{projectName}</span>
                 </button>
                 <span className="crumb-sep">/</span>
@@ -192,7 +194,7 @@ export function ChatView({
       <div className="transcript" ref={scrollRef} onScroll={onScroll}>
         {messages.length === 0 && (
           <div className="empty-state">
-            <h2>{projectName ? `Let’s work on ${projectName}` : 'What’s on your mind?'}</h2>
+            <h2>{projectName ? <>Let’s work on {project && <ProjectIcon project={project} size={26}/>}{projectName}</> : 'What’s on your mind?'}</h2>
             <p>
               {projectName
                 ? `Your project’s files and instructions are ready.`
@@ -213,6 +215,7 @@ export function ChatView({
                 <div className="assistant-card">
                   {m.reasoningMode && m.reasoningMode !== 'off' && <small className="reasoning-result">Effort: {m.reasoningEffort} · {m.reasoningMode === 'real' ? 'provider parameter' : 'best-effort hint'}</small>}
                   {m.warning && <p className="msg-warning" role="status">{m.warning}</p>}
+                  {(m.toolScope || m.skillScope) && <small className="tool-scope" title="What noevia gave the model for this reply">{m.toolScope && <>Using: {m.toolScope}</>}{m.toolScope && m.skillScope && ' · '}{m.skillScope && <>Skill: {m.skillScope}</>}</small>}
                   {m.reasoning ? <ThinkingBlock text={m.reasoning} live={!!thinkingLive && !m.content} /> : null}
                   {m.toolCalls && m.toolCalls.length > 0 ? <ToolCalls calls={m.toolCalls} /> : null}
                   {m.content ? (

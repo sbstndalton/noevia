@@ -1,0 +1,644 @@
+/* Phone behaviour that belongs to no single component (user review of `ab2720a`,
+   2026-09-18). Loads after overlays.css, before materials.css. */
+
+/* ── No zoom on focus ──────────────────────────────────────────────────────
+   Safari on iOS zooms the page whenever a focused field's text is under 16px,
+   and then leaves the viewport scaled. Every field on a touch device gets the
+   input size; nothing else about the type scale changes, and the desktop
+   sizes are untouched. */
+@media (pointer: coarse) {
+  /* !important because this is a platform rule, not a style: component rules that set a
+     smaller size on a select or a named field are more specific, and each one of them
+     brought the zoom back (found live: Security, Data, Appearance, Diary & storage). */
+  input, textarea, select,
+  .modal-input, .settings-search input, .composer-input,
+  .settings-detail :is(input, textarea, select) {
+    font-size: var(--text-input) !important;
+  }
+  /* A field that is only ever read (a code display, a copy box) keeps its size:
+     it is not focusable for editing, so it cannot trigger the zoom. */
+  input[readonly]:not([type='text']), input[type='range'], input[type='checkbox'], input[type='radio'], input[type='color'] {
+    font-size: inherit !important;
+  }
+}
+
+/* ── The inference strip under the composer ────────────────────────────────
+   A phone gets one line — status, model, speed — and taps to see the rest. A
+   desktop has the width, so the whole thing is always open and reads across
+   the row instead of stacking into a panel. */
+.stats-disclosure.is-wide {
+  flex-direction: row; align-items: center; flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 clamp(12px, 2vw, 24px) max(8px, env(safe-area-inset-bottom));
+  padding: 0;
+}
+.stats-disclosure.is-wide .stats-bar-static {
+  margin: 0; min-height: 0; padding: 0; border: 0; background: none; cursor: default;
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+}
+.stats-disclosure.is-wide .stats-details {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4);
+  width: auto; flex: 1; min-width: 0;
+  margin: 0; padding: 0; border: 0; background: none; border-radius: 0;
+}
+.stats-disclosure.is-wide .stats-details > div { display: inline-flex; align-items: baseline; gap: 6px; }
+.stats-disclosure.is-wide .stats-details dt { margin: 0; }
+.stats-disclosure.is-wide .stats-details dt::after { content: ''; }
+.stats-disclosure.is-wide .stats-details .stats-mtp { flex-basis: 100%; }
+.stats-disclosure.is-wide .stats-details .stats-mtp progress { display: inline-block; width: 120px; margin: 0 0 0 6px; }
+/* A separator between the pairs costs no height and stops the row reading as one sentence. */
+.stats-disclosure.is-wide > * + * { position: relative; }
+.stats-disclosure.is-wide .stats-details > div + div::before {
+  content: '·'; margin-right: var(--space-2); color: var(--md-outline);
+}
+
+@media (max-width: 700px) {
+  /* The collapsed line is the whole strip: one row, hugging the composer. */
+  .stats-disclosure { align-items: stretch; margin: 0 12px max(6px, env(safe-area-inset-bottom)); gap: 4px; }
+  .stats-disclosure .stats-bar { justify-content: flex-start; min-height: 40px; }
+  .stats-disclosure .stats-bar > svg { margin-left: auto; }
+  .stats-disclosure .stats-details { width: 100%; }
+}
+
+/* ── The phone chat surface ────────────────────────────────────────────────
+   The composer sits on the bottom edge and the transcript scrolls behind it,
+   instead of the whole column being centred with the prompt stranded in the
+   middle of the screen. */
+@media (max-width: 700px) {
+  .app .chat-workspace { display: flex; flex-direction: column; min-height: 0; }
+  .app .chat-workspace > .transcript { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--space-4); }
+  .app .chat-workspace > .composer { flex: none; padding: 6px 10px 0; }
+  .app .chat-workspace .composer-hint { display: none; }
+  /* An empty chat greets you at the top of the column, not in the middle of it. */
+  .app .chat-workspace.is-empty > .transcript { flex: 1; margin-top: 0; justify-content: flex-start; padding-top: var(--space-6); }
+  .app .chat-workspace.is-empty .empty-state { flex-grow: 0; padding: var(--space-6) 0 0; }
+  .app .chat-workspace.is-empty .empty-state h2 { font-size: var(--text-title1); }
+  .app .chat-workspace.is-empty > .composer { margin-bottom: 0; padding-top: 6px; }
+  .app .chat-workspace .composer-inner.pane { padding: 10px 10px 8px; }
+}
+
+/* ── The sidebar is one scrolling plane, like ChatGPT's (user review, 2026-09-18) ──
+   Top destinations (New chat, Projects, Diary, Plugins), then Projects, Pinned and
+   Recent chats as flat labelled lists, all in one surface that scrolls together. Only
+   the account row stays pinned to the bottom edge. No nested scrollers, no tree lines. */
+.app .sidebar.pane { overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scroll-padding-bottom: calc(var(--side-foot-h) + 16px); }
+.app .sidebar.pane > * { flex-shrink: 0; }
+.app .sidebar.pane .sidebar-history { display: flex; flex-direction: column; gap: 0; flex: none; overflow: visible; margin-bottom: var(--space-3); }
+.app .sidebar.pane .sidebar-history .side-scroll { overflow: visible; max-height: none; }
+/* The gap above a list heading belongs to its row, so a heading's options button lines up
+   with its label (it sat 6px high when the margin was on the label alone). */
+.app .sidebar.pane .sidebar-history .side-scroll > .section-label:first-child { margin-top: var(--space-4); }
+.app .sidebar.pane .sidebar-history .side-scroll > .sidebar-section-head:first-child { margin-top: var(--space-4); display: flex; align-items: center; }
+.app .sidebar.pane .sidebar-history .side-scroll > .sidebar-section-head:first-child .section-label { margin-top: 0; margin-bottom: 0; }
+/* Recent chats are a flat list like the others: no indent, no tree line. */
+.app .sidebar.pane .recent-children { margin-left: 0; padding-left: 0; border-left: 0; }
+/* The account row holds the bottom edge; short content leaves it at the bottom too. */
+.app .sidebar.pane { --side-foot-h: 60px; }
+.app .sidebar.pane .side-footer {
+  position: sticky; bottom: 0; z-index: 1; margin-top: auto;
+  min-height: 60px; padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--pane-fill); backdrop-filter: blur(var(--pane-blur)); -webkit-backdrop-filter: blur(var(--pane-blur));
+}
+/* The footer owns the rail's bottom inset, so nothing scrolls past underneath it. */
+.app .sidebar.pane:not(.coding-sidebar):not(.is-collapsed) { padding-bottom: 0; }
+.app .sidebar.pane:not(.coding-sidebar):not(.is-collapsed) .side-footer { padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom)); }
+.app .sidebar.pane.is-expanded .side-footer { padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom)); }
+[data-material='soft'] .app .sidebar.pane .side-footer { background: var(--bg-app); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* ── The accent palettes (Settings → General) ───────────────────────────
+   Each tile carries its own `data-palette`, so the swatch is drawn by the very
+   tokens that palette would apply — a preview, not an approximation. */
+.accent-choice { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.accent-tile {
+  display: flex; flex-direction: column; gap: 6px; width: 84px; padding: 0;
+  border: 0; background: none; color: var(--text-secondary);
+  font: inherit; font-size: var(--text-footnote); text-align: left; cursor: pointer;
+}
+.accent-tile.is-active { color: var(--text-primary); font-weight: 500; }
+.accent-swatch {
+  display: grid; grid-template-columns: repeat(3, 1fr); height: 40px; overflow: hidden;
+  border-radius: var(--radius-md); outline: 1px solid var(--border-strong);
+}
+.accent-tile.is-active .accent-swatch { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+.accent-swatch i:nth-child(1) { background: var(--md-primary); }
+.accent-swatch i:nth-child(2) { background: var(--md-tertiary); }
+.accent-swatch i:nth-child(3) { background: var(--md-surface-container-highest); }
+.accent-tile:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; border-radius: var(--radius-sm); }
+@media (pointer: coarse) { .accent-tile { width: auto; flex: 1 1 84px; } .accent-swatch { height: 44px; } }
+
+/* A short screen has no room to reserve two rows at the bottom: the sticky panes would
+   sit on top of the list they are meant to sit below. There, everything scrolls. */
+@media (max-height: 600px) {
+  .app .sidebar.pane .side-footer { position: static; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+[data-short-viewport] .app .sidebar.pane .side-footer { position: static; backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* ── Collapsed rail, like ChatGPT's (user review, 2026-09-18) ───────────────
+   One column of equal icon buttons: expand, the Chat/Code switch, New chat, Search,
+   Projects, Diary, Plugins, Pinned — and the avatar at the bottom. No lists, headings
+   or status text; the plane rules above must not bring them back. */
+@media (min-width: 520px) {
+  .app .sidebar.pane.is-collapsed { width: 60px; min-width: 60px; padding: var(--space-3) 0; align-items: center; overflow: hidden; gap: 4px; }
+  .app .sidebar.pane.is-collapsed :is(.sidebar-history, .section-label, .side-hint, .mcp-row, .side-logo, .shell-search) { display: none; }
+  .app .sidebar.pane.is-collapsed .shell-sidebar-head { padding: 0 0 var(--space-2); justify-content: center; }
+  .app .sidebar.pane.is-collapsed .side-head-actions { display: flex; }
+  .app .sidebar.pane.is-collapsed .side-head-actions > :not(.side-expand) { display: none; }
+  .app .sidebar.pane.is-collapsed :is(.side-nav, .rail-tools) { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+  .app .sidebar.pane.is-collapsed .rail-tools { order: 3; }
+  .app .sidebar.pane.is-collapsed .side-nav { order: 4; }
+  .app .sidebar.pane.is-collapsed .side-footer { order: 10; }
+  .app .sidebar.pane.is-collapsed .shell-sidebar-head { order: 0; }
+  .app .sidebar.pane.is-collapsed .app-mode-switch { order: 1; }
+  .app .sidebar.pane.is-collapsed .side-new { order: 2; }
+  /* Every icon button is the same 40px square, centred. */
+  .app .sidebar.pane.is-collapsed :is(.side-expand, .rail-tools .shell-icon-button, .side-nav .nav-item, .new-chat-btn.glass) {
+    width: 40px; height: 40px; min-height: 40px; padding: 0; margin: 0; justify-content: center; border-radius: var(--radius-md);
+  }
+  /* Chat/Code in the rail: two stacked icon buttons like the rest, the chosen one tinted —
+     no track, whose raised pill was wider than the rail and spilled over its edge. */
+  .app .sidebar.pane.is-collapsed .app-mode-switch { display: flex; flex-direction: column; gap: 4px; width: 40px; padding: 0; margin: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
+  .app .sidebar.pane.is-collapsed .app-mode-switch button { width: 40px; height: 40px; min-height: 40px; padding: 0; justify-content: center; border: 0; border-radius: var(--radius-md); background: transparent; box-shadow: none; }
+  .app .sidebar.pane.is-collapsed .app-mode-switch button.is-selected { background: var(--nav-active); color: var(--text-primary); }
+  .app .sidebar.pane.is-collapsed .app-mode-switch .glass-thumb { display: none; }
+  .app .sidebar.pane.is-collapsed .side-footer { position: static; margin-top: auto; min-height: 0; width: 100%; border-top: 0; padding: var(--space-2) 0 0; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; display: flex; justify-content: center; }
+  .app .sidebar.pane.is-collapsed .account-trigger { width: 40px; height: 40px; padding: 0; justify-content: center; }
+}
+/* The empty rail expands on click (Sidebar.tsx); the cursor says so, as in ChatGPT. */
+@media (min-width: 520px) { .app .sidebar.pane.is-collapsed { cursor: e-resize; } .app .sidebar.pane.is-collapsed :is(button, a) { cursor: pointer; } }
+
+/* ── Account row with Search beside it, as in Claude (user review, 2026-09-18) ── */
+.app .sidebar.pane .side-footer-row { display: flex; align-items: center; gap: var(--space-1); width: 100%; }
+.app .sidebar.pane .side-footer-row .account-area { flex: 1; min-width: 0; }
+.app .sidebar.pane .side-footer-row .side-footer-search { flex: none; width: 36px; height: 36px; border-radius: var(--radius-sm); color: var(--text-secondary); background: transparent; }
+.app .sidebar.pane .side-footer-row .side-footer-search:hover { background: var(--nav-hover); color: var(--text-primary); }
+@media (pointer: coarse) { .app .sidebar.pane .side-footer-row .side-footer-search { width: 44px; height: 44px; } }
+/* The collapsed rail keeps its own Search at the top; the footer holds only the avatar. */
+@media (min-width: 520px) { .app .sidebar.pane.is-collapsed .side-footer-search { display: none; } .app .sidebar.pane.is-collapsed .side-footer-row { justify-content: center; } .app .sidebar.pane.is-collapsed .side-footer-row .account-area { flex: none; } }
+
+/* ── Composer controls (user review with Claude open, 2026-09-18) ────────────
+   Clickable things are liquid glass (the + joins the send button); the menus they open are
+   small aero overlays (.overlay). Icon-only controls are square with the SVG centred on a
+   grid, never a text glyph sitting on a baseline. */
+.composer-add.glass { display: inline-grid; place-items: center; width: 36px; height: 36px; min-width: 36px; padding: 0; border-radius: 50%; line-height: 0; color: var(--text-secondary); }
+.composer-add.glass > svg { display: block; }
+@media (pointer: coarse) { .composer-add.glass { width: 44px; height: 44px; min-width: 44px; } }
+.composer-actions-panel { padding: 6px; }
+.composer-actions-panel .composer-menu-row {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) 18px; align-items: center; column-gap: 10px;
+  width: 100%; min-height: 36px; padding: 6px 10px; border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--text-primary); font: inherit; font-size: var(--text-callout); text-align: left; cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.composer-actions-panel .composer-menu-row > svg { color: var(--text-secondary); }
+.composer-actions-panel .composer-menu-row small { display: block; margin-top: 1px; font-size: var(--text-caption); color: var(--text-secondary); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-actions-panel .composer-menu-row:hover:not(:disabled), .composer-actions-panel .composer-menu-row:focus-visible { background: var(--nav-hover); outline: none; }
+.composer-actions-panel .composer-menu-row:disabled { opacity: .45; cursor: default; }
+.composer-actions-panel .composer-menu-check { display: grid; place-items: center; color: var(--md-primary); }
+.composer-actions-panel .composer-menu-divider { height: 1px; margin: 6px 10px; background: var(--border-subtle); }
+.composer-actions-panel .composer-menu-label { padding: 6px 10px 2px; font-size: var(--text-caption); font-weight: 500; color: var(--text-secondary); }
+.composer-actions-panel .composer-menu-note { margin: 4px 10px 6px; font-size: var(--text-caption); color: var(--text-secondary); line-height: 1.45; }
+@media (pointer: coarse) { .composer-actions-panel .composer-menu-row { min-height: 44px; } }
+/* Thinking: a glass pill matching the model pill beside it — the setting, then its level muted. */
+.reasoning-control.is-menu { flex-direction: row; align-items: center; }
+.app .reasoning-pill.glass {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 4px 10px 4px 12px;
+  border-radius: var(--radius-pill); color: var(--text-primary); font: inherit; font-size: var(--text-footnote); white-space: nowrap; line-height: 1;
+}
+.app .reasoning-pill .reasoning-pill-value { color: var(--text-secondary); }
+.app .reasoning-pill > svg { display: block; color: var(--text-secondary); transition: transform var(--duration-fast) var(--ease-standard); }
+.app .reasoning-pill[aria-expanded='true'] > svg { transform: rotate(180deg); }
+@media (pointer: coarse) { .app .reasoning-pill.glass { min-height: 44px; } }
+/* Two-line menu rows (label + what it is for), a check on the right: Claude's model menu. */
+.ctx-menu.has-descriptions { min-width: 260px; max-width: 300px; }
+.ctx-menu.has-descriptions .ctx-item { display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; column-gap: 12px; min-height: 48px; padding: 7px 10px; }
+.ctx-menu.has-descriptions .ctx-item-text { display: block; font-size: var(--text-callout); color: var(--text-primary); }
+.ctx-menu.has-descriptions .ctx-item-text small { display: block; margin-top: 2px; font-size: var(--text-caption); color: var(--text-secondary); line-height: 1.35; }
+.ctx-menu.has-descriptions .ctx-item-check { display: grid; place-items: center; color: var(--md-primary); }
+.ctx-menu.has-descriptions .ctx-item[aria-checked='true'] { background: var(--nav-hover); }
+
+/* Code workspace sidebar: the same collapse as chat's, sharing its remembered state. */
+.coding-sidebar .shell-sidebar-head { display: flex; align-items: center; gap: var(--space-2); }
+.coding-sidebar .shell-sidebar-head .side-expand { margin-left: auto; flex: none; }
+@media (min-width: 520px) {
+  .coding-sidebar.is-collapsed { width: 60px; min-width: 60px; padding: var(--space-3) 0; align-items: center; overflow: hidden; gap: 4px; cursor: e-resize; }
+  .coding-sidebar.is-collapsed :is(button, a) { cursor: pointer; }
+  .coding-sidebar.is-collapsed :is(.shell-sidebar-head strong, .preview-badge, .coding-projects, .coding-recents, .nav-item > span, .account-name, .account-trigger > svg) { display: none; }
+  .coding-sidebar.is-collapsed .shell-sidebar-head { justify-content: center; padding: 0 0 var(--space-2); }
+  .coding-sidebar.is-collapsed .shell-sidebar-head .side-expand { margin: 0; }
+  .coding-sidebar.is-collapsed nav { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+  .coding-sidebar.is-collapsed :is(.side-expand, .nav-item) { width: 40px; height: 40px; min-height: 40px; padding: 0; justify-content: center; border-radius: var(--radius-md); }
+  .coding-sidebar.is-collapsed .app-mode-switch { display: flex; flex-direction: column; gap: 4px; width: 40px; padding: 0; margin: 0; border: 0; background: none; box-shadow: none; }
+  .coding-sidebar.is-collapsed .app-mode-switch button { width: 40px; height: 40px; min-height: 40px; padding: 0; justify-content: center; border: 0; border-radius: var(--radius-md); background: transparent; box-shadow: none; font-size: 0; }
+  .coding-sidebar.is-collapsed .app-mode-switch button.is-selected { background: var(--nav-active); }
+  .coding-sidebar.is-collapsed .account-area { margin-top: auto; display: flex; justify-content: center; }
+  .coding-sidebar.is-collapsed .account-trigger { width: 40px; height: 40px; padding: 0; justify-content: center; }
+}
+
+/* ── Icons in controls (user review, 2026-09-18: "some of them aren't centred") ──────
+   An inline SVG sits on the text baseline and gains descender space below it, which put
+   icon-only buttons 1–2px high and icons beside text off their line. Icon-only buttons
+   centre a block SVG with no line box; icons beside text centre on it. Flex and grid
+   controls, which already centre their children, are unaffected. */
+/* Only true icon-only buttons are centred: CSS cannot see text nodes, so "the SVG is the
+   only child element" also matched icon + text buttons and pushed their icon to the middle
+   (user review, 2026-09-18). Icon-only buttons carry an aria-label; icon + text buttons keep
+   their icon at the start and only centre it vertically on the text. */
+:is(button, summary, [role='button']) > svg { flex-shrink: 0; vertical-align: middle; }
+:is(button, [role='button'])[aria-label]:has(> svg:only-child) { line-height: 0; }
+:is(button, [role='button'])[aria-label] > svg:only-child { display: block; margin: auto; }
+.coding-composer-footer button { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Row options on hover, like ChatGPT's (user review, 2026-09-18) ────────────
+   The options were laid over the end of the title on a transparent background, so the
+   title showed through them. They are now in the row's own flow: hidden until the row is
+   hovered or focused, then the title makes room and ends in an ellipsis. Touch screens,
+   which have no hover, always show them (noevia.css). */
+@media (hover: hover) {
+  .app .sidebar.pane :is(.proj-row, .chat-row) .row-actions { position: static; display: none; opacity: 1; background: none; pointer-events: auto; flex: none; }
+  .app .sidebar.pane :is(.proj-row, .chat-row):is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .row-actions { display: flex; }
+  .app .sidebar.pane :is(.proj-row, .chat-row) > :is(button, .nav-item, .project-disclosure, .nested-chat-title):not(.row-action):not(.project-expand) { min-width: 0; flex: 1 1 auto; }
+  .app .sidebar.pane .proj-row > .project-expand { flex: none; }
+}
+/* One hover highlight per row (the row's), not a second, darker one on the title alone. */
+.app .sidebar.pane :is(.proj-row, .chat-row) :is(.nav-item, .project-disclosure, .nested-chat-title):hover { background: transparent; }
+
+/* Code sidebar on a phone: an icon rail whose toggle opens it as a drawer over the page. */
+@media (max-width: 519px) {
+  .coding-sidebar.is-open {
+    position: fixed; z-index: 40; inset: calc(8px + env(safe-area-inset-top)) auto calc(8px + env(safe-area-inset-bottom)) 8px;
+    width: min(84vw, 320px); padding: var(--space-3); border-radius: var(--radius-2xl); box-shadow: var(--shadow-4);
+    background: var(--pane-fill); backdrop-filter: blur(var(--pane-blur)); -webkit-backdrop-filter: blur(var(--pane-blur));
+    overflow-y: auto; animation: drawer-in var(--duration-slow) var(--ease-out) both;
+  }
+  .coding-sidebar.is-open :is(.shell-sidebar-head > strong, .shell-sidebar-head > .preview-badge, .coding-projects, .coding-recents, .account-name) { display: revert; }
+  .coding-sidebar.is-open .nav-item > span { display: inline; }
+  .coding-sidebar.is-open .nav-item { justify-content: flex-start; padding: 10px 12px; min-height: 44px; }
+  .coding-sidebar.is-open .app-mode-switch { flex-direction: row; }
+  .coding-sidebar.is-open .app-mode-switch button { font-size: var(--text-caption); }
+  .coding-drawer-backdrop { display: block; position: fixed; inset: 0; z-index: 39; }
+}
+/* The chat drawer's toggle clears the notch/status bar: the page uses viewport-fit=cover. */
+@media (max-width: 519px) { .nav-drawer-toggle { top: calc(8px + env(safe-area-inset-top)); left: calc(8px + env(safe-area-inset-left)); } }
+
+/* Diary in the bottom bar, beside Search (user review, 2026-09-18): the same quiet 36px icon
+   button, tinted while the Diary is open. On the collapsed rail it sits above the avatar. */
+.app .sidebar.pane .side-footer-row .side-footer-diary { flex: none; width: 36px; height: 36px; border-radius: var(--radius-sm); color: var(--text-secondary); background: transparent; }
+.app .sidebar.pane .side-footer-row .side-footer-diary:hover { background: var(--nav-hover); color: var(--text-primary); }
+.app .sidebar.pane .side-footer-row .side-footer-diary.is-active { background: var(--nav-active); color: var(--text-primary); }
+@media (pointer: coarse) { .app .sidebar.pane .side-footer-row .side-footer-diary { width: 44px; height: 44px; } }
+@media (min-width: 520px) {
+  .app .sidebar.pane.is-collapsed .side-footer-row { flex-direction: column-reverse; gap: 6px; }
+  .app .sidebar.pane.is-collapsed .side-footer-diary { width: 40px; height: 40px; border-radius: var(--radius-md); }
+}
+
+/* ── Chat ⇄ Code: the liquid-glass thumb (ModeSwitch.tsx) ──────────────────────
+   The same thumb as the segmented controls (materials.css .glass-seg): it slides on the
+   spring curve and refracts (the SVG lens) while it travels. The selected button no longer
+   draws its own pill; the thumb is the pill. */
+.app-mode-switch.has-thumb { position: relative; isolation: isolate; }
+.app-mode-switch.has-thumb > .glass-thumb {
+  position: absolute; z-index: 0; left: 0; top: 0; width: var(--thumb-w, 0); height: var(--thumb-h, 0);
+  transform: translate(var(--thumb-x, 0), var(--thumb-y, 0)); border-radius: var(--radius-pill); pointer-events: none;
+  --glass-fill: color-mix(in srgb, var(--md-surface-container-lowest) 55%, transparent); --glass-tint: transparent;
+  backdrop-filter: saturate(1.5) brightness(1.06); -webkit-backdrop-filter: saturate(1.5) brightness(1.06);
+  transition: transform var(--duration-slow) var(--ease-spring), width var(--duration-slow) var(--ease-spring), height var(--duration-slow) var(--ease-spring), scale var(--duration-fast) var(--ease-spring);
+}
+.app-mode-switch.has-thumb.is-settling > .glass-thumb { transition: none; }
+html[data-lens='svg'] .app-mode-switch.has-thumb.is-moving > .glass-thumb, html[data-lens='svg'] .app-mode-switch.has-thumb:active > .glass-thumb { backdrop-filter: var(--lens, none) saturate(1.8) brightness(1.06); }
+.app-mode-switch.has-thumb:active > .glass-thumb { scale: 1.06 1.12; }
+.app-mode-switch.has-thumb > button { position: relative; z-index: 1; }
+.app-mode-switch.has-thumb > button.is-selected { background: transparent; box-shadow: none; }
+[data-material='glass'] .app-mode-switch.has-thumb > .glass-thumb { --glass-fill: color-mix(in srgb, var(--md-surface-container-lowest) 16%, transparent); border: 1px solid rgba(255, 255, 255, .22); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); }
+[data-material='soft'] .app-mode-switch.has-thumb > .glass-thumb { background: var(--bg-app); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: -3px -3px 7px var(--soft-hi), 3px 3px 7px var(--soft-lo); }
+/* M3 segmented buttons do not slide: the tonal fill stays on the selected segment. */
+[data-material='material'] .app-mode-switch.has-thumb > .glass-thumb { display: none; }
+[data-material='material'] .app-mode-switch.has-thumb > button.is-selected { background: var(--md-secondary-container); }
+@media (prefers-reduced-motion: reduce) { .app-mode-switch.has-thumb > .glass-thumb { transition: none; } }
+html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transition: none; }
+@media (min-width: 520px) { .coding-sidebar.is-collapsed .app-mode-switch .glass-thumb { display: none; } }
+/* A project's own icon and colour wherever it is named (user review, 2026-09-18). */
+.crumb-back .project-icon { flex: none; }
+.chat-workspace h2 .project-icon { display: inline-block; vertical-align: -0.12em; margin: 0 .22em 0 .12em; }
+
+/* ── Header row like Claude's (user review, 2026-09-18) ─────────────────────────
+   [collapse or close] logo ········ [Chat|Code]. The mode switch is a small icon-only track
+   (28px, 1px inset, 34×26 segments) at the end of the row, keeping the liquid-glass thumb. */
+:is(.app .sidebar.pane, .coding-sidebar) .shell-sidebar-head { display: flex; align-items: center; gap: var(--space-2); }
+:is(.app .sidebar.pane, .coding-sidebar) .shell-sidebar-head .side-head-actions { order: -1; margin: 0; }
+.coding-sidebar .shell-sidebar-head .side-expand { order: -1; margin: 0; }
+.shell-sidebar-head > .app-mode-switch.is-compact { margin: 0 0 0 auto; }
+.app-mode-switch.is-compact {
+  display: inline-flex; flex-direction: row; flex: none; gap: 0; height: 28px; padding: 1px; margin: 0;
+  border: 0; border-radius: 7px; background: color-mix(in srgb, var(--text-primary) 6%, transparent); box-shadow: none;
+}
+.app-mode-switch.is-compact > button {
+  display: grid; place-items: center; width: 34px; height: 26px; min-height: 26px; padding: 0; border: 0; border-radius: 5px;
+  background: transparent; box-shadow: none; color: var(--text-secondary); font-size: 0;
+}
+.app-mode-switch.is-compact > button.is-selected { color: var(--text-primary); }
+.app-mode-switch.is-compact > .glass-thumb { border-radius: 5px; }
+[data-material='material'] .app-mode-switch.is-compact { border: 1px solid var(--md-outline); border-radius: 999px; padding: 0; background: transparent; }
+[data-material='material'] .app-mode-switch.is-compact > button { border-radius: 0; height: 26px; }
+@media (pointer: coarse) { .app-mode-switch.is-compact { height: 40px; } .app-mode-switch.is-compact > button { width: 44px; height: 36px; } }
+/* Collapsed rail: the header stacks, and the switch runs down under the expand button. */
+@media (min-width: 520px) {
+  :is(.app .sidebar.pane, .coding-sidebar).is-collapsed .shell-sidebar-head { flex-direction: column; gap: 6px; }
+  :is(.app .sidebar.pane, .coding-sidebar).is-collapsed .shell-sidebar-head > .app-mode-switch.is-compact { margin: 0; flex-direction: column; height: auto; width: 36px; }
+  :is(.app .sidebar.pane, .coding-sidebar).is-collapsed .app-mode-switch.is-compact > button { width: 34px; height: 30px; min-height: 30px; }
+}
+/* Phone: the drawer is the full width of the screen, as Claude's is, with the search field
+   under the header instead of the Search icon in the bottom bar. */
+@media (max-width: 519px) {
+  .app .sidebar.pane:not(.coding-sidebar).is-expanded, .coding-sidebar.is-open {
+    inset: 0 auto 0 0; width: 100vw; height: var(--drawer-height, 100dvh); border-radius: 0; border: 0;
+    padding: calc(env(safe-area-inset-top) + var(--space-2)) calc(env(safe-area-inset-right) + var(--space-3)) 0 calc(env(safe-area-inset-left) + var(--space-3));
+  }
+  [data-material='material'] .app .sidebar.pane:not(.coding-sidebar).is-expanded { border-radius: 0; }
+  .app .sidebar.pane .side-footer-search { display: none; }
+  .app .sidebar.pane.is-expanded .shell-search { width: 100%; min-height: 44px; margin: var(--space-2) 0; }
+}
+@media (min-width: 520px) { :is(.app .sidebar.pane, .coding-sidebar).is-collapsed .shell-sidebar-head .app-mode-switch.is-compact > button { display: grid; } }
+
+/* Composer row at phone width (visual pass, 2026-09-18): the end columns were a fixed 32px
+   while touch sizing makes the + and send buttons 44px, so send spilled past the edge at 375px.
+   Columns size to their buttons; on a narrow phone Thinking shows only its level. */
+.composer-inner.chat-composer-inner { grid-template-columns: auto minmax(0, 1fr) auto; }
+.chat-composer-inner:has(> .reasoning-control) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.chat-composer-inner > .composer-model { min-width: 0; max-width: 100%; }
+@media (max-width: 430px) {
+  .composer-inner.chat-composer-inner { column-gap: 6px; }
+  .app .reasoning-pill > span:first-child { display: none; }
+  .app .reasoning-pill.glass { padding-inline: 10px 8px; }
+}
+
+/* ── One row geometry for projects and chats (visual pass, 2026-09-18) ─────────
+   Project rows put their icon in its own button, chat rows inside the title button; each had
+   its own padding, so names started 3–11px apart. Both now use the same inset, an 18px icon
+   and the same gap, so every title in the sidebar starts on one line. */
+.app .sidebar.pane { --row-inset: 10px; --row-gap: 10px; }
+[data-material='material'] .app .sidebar.pane { --row-inset: 16px; --row-gap: 12px; }
+.app .sidebar.pane .chat-row > .nav-item { padding-left: var(--row-inset); gap: var(--row-gap); }
+.app .sidebar.pane :is(.chat-row, .proj-row) svg:first-child:not(.row-action svg) { width: 18px; height: 18px; }
+.app .sidebar.pane .proj-row > .project-expand { margin: 0; padding: 0 0 0 var(--row-inset); width: calc(var(--row-inset) + 18px); min-width: 0; justify-content: flex-start; background: none; }
+.app .sidebar.pane .proj-row > .project-disclosure { padding-left: var(--row-gap); }
+[data-material='material'] .app .sidebar.pane .proj-row .project-expand { margin-left: 0; }
+[data-material='material'] .app .sidebar.pane .proj-row .project-disclosure { padding-left: var(--row-gap); }
+/* On touch the project icon button keeps a full 44px target; chat rows add the same extra space
+   after their icon, so every title still starts on one line. */
+@media (pointer: coarse) {
+  .app .sidebar.pane .proj-row > .project-expand { width: 44px; min-width: 44px; }
+  .app .sidebar.pane .chat-row > .nav-item { gap: calc(44px - var(--row-inset) - 18px + var(--row-gap)); }
+}
+.app .sidebar.pane .proj-row > .project-expand > svg { margin: 0; }
+
+/* ── The composer shows focus, not the text area inside it (user review, 2026-09-18) ──
+   Text fields always match :focus-visible, so the global focus outline drew a square ring
+   inside the rounded composer. The composer itself takes a soft accent ring instead. */
+/* !important: noevia.css sets the global :focus-visible ring with !important. */
+.app :is(.composer-inner, .coding-composer) :is(.composer-input, textarea):is(:focus, :focus-visible) { outline: none !important; box-shadow: none; }
+.composer-inner.pane:has(:is(.composer-input, textarea):focus-visible) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary) 45%, transparent), var(--shadow-2); }
+.coding-composer:has(textarea:focus-visible) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary) 45%, transparent); }
+
+/* ── Software keyboard (user review, 2026-09-18) ────────────────────────────────
+   When a field is focused iOS shrinks the visible viewport and also scrolls the page up by
+   visualViewport.offsetTop. The app already shrank to the visible height; it now also moves
+   down by that offset (viewport.js), so it covers exactly what is visible instead of sliding
+   half off the top and leaving a blank band where the keyboard is. */
+/* The shell is fixed to the visible viewport and the document itself cannot scroll, so iOS
+   has nothing to push up when the keyboard opens (the approach reported to hold on current
+   iOS; see stackoverflow.com/q/38619762). viewport.js keeps the height and offset in step.
+   Only on phones and tablets: a desktop's phone-layout preview frames the app in the page. */
+:root:not([data-device='desktop']), :root:not([data-device='desktop']) body { overflow: hidden; overscroll-behavior: none; }
+:root:not([data-device='desktop']) .app { position: fixed; left: 0; right: 0; top: var(--visible-viewport-top, 0px); height: var(--visible-viewport-height, 100dvh); }
+
+/* ── One sidebar for Chat and Code (user review, 2026-09-19) ─────────────────
+   New chat (New task in Code) floats over the list as it scrolls, as in ChatGPT: the
+   list slides underneath it on the same material as the account row at the bottom. */
+.app .sidebar.pane .side-new {
+  position: sticky; top: calc(-1 * var(--space-3)); z-index: 2;
+  margin-top: calc(-1 * var(--space-1)); padding-top: var(--space-1);
+  background: var(--pane-fill); backdrop-filter: blur(var(--pane-blur)); -webkit-backdrop-filter: blur(var(--pane-blur));
+  box-shadow: calc(-1 * var(--space-4)) 0 0 var(--pane-fill), var(--space-4) 0 0 var(--pane-fill);
+}
+.app .sidebar.pane .side-new .new-chat-btn.glass { width: 100%; }
+[data-material='soft'] .app .sidebar.pane .side-new { background: var(--bg-app); box-shadow: calc(-1 * var(--space-4)) 0 0 var(--bg-app), var(--space-4) 0 0 var(--bg-app); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.app .sidebar.pane.is-collapsed .side-new { position: static; margin: 0; padding: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; display: flex; justify-content: center; width: 100%; }
+.app .sidebar.pane.is-collapsed .side-new .new-chat-btn.glass { width: 40px; }
+[data-material='material'] .app .sidebar.pane.is-collapsed .side-new .new-chat-btn.glass { width: 56px; }
+.app .sidebar.pane .coding-history .side-hint { margin: 0; padding: 2px 2px 0; color: var(--text-secondary); font-size: var(--text-footnote); line-height: 1.4; }
+
+/* Collapsed rail: the name of whatever is under the pointer, beside it (ChatGPT). */
+.rail-tip {
+  position: fixed; z-index: 60; transform: translateY(-50%); pointer-events: none;
+  padding: 5px 9px; border-radius: var(--radius-sm); max-width: 260px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--text-primary); color: var(--bg-app);
+  font-size: var(--text-footnote); font-weight: 500; line-height: 1.3;
+  box-shadow: var(--shadow-pop); animation: rail-tip-in 120ms var(--ease-out) both;
+}
+@keyframes rail-tip-in { from { opacity: 0; transform: translate(-3px, -50%); } }
+
+/* Chat ⇄ Code: the page eases in rather than cutting in one frame (Claude does this). */
+.app-stack:not(.has-settings) > .app-main.mode-enter { animation: mode-enter 240ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@keyframes mode-enter { from { opacity: 0; transform: translateY(4px); } }
+@keyframes mode-fade { from { opacity: 0; } }
+/* Reduced motion keeps a gentle cross-fade rather than cutting. */
+@media (prefers-reduced-motion: reduce) { .app-stack:not(.has-settings) > .app-main.mode-enter { animation: mode-fade 160ms ease both; } .rail-tip { animation: none; } }
+:root[data-motion='reduced'] .app-stack:not(.has-settings) > .app-main.mode-enter { animation: mode-fade 160ms ease both; }
+:root[data-motion='reduced'] .rail-tip { animation: none; }
+/* Moving from one rail item to the next swaps the name instantly, as native tooltips do. */
+.rail-tip.is-warm { animation: none; }
+/* A soft edge where the list slides under New chat, not a hard cut. */
+.app .sidebar.pane:not(.is-collapsed) .side-new::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 10px; pointer-events: none; background: linear-gradient(var(--pane-fill), transparent); }
+[data-material='soft'] .app .sidebar.pane:not(.is-collapsed) .side-new::after { background: linear-gradient(var(--bg-app), transparent); }
+
+/* The Code page now sits in the shared shell, beside the shared sidebar. */
+.app-main > .code-mount .coding-workspace, .app-main .coding-workspace { flex: 1; min-height: 0; height: auto; }
+
+/* ── Plugins ── */
+.plugins-view { overflow-y: auto; }
+.plugins-page { width: min(760px, 100%); margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); display: flex; flex-direction: column; gap: var(--space-4); box-sizing: border-box; }
+.plugins-head h1 { margin: 0 0 var(--space-1); font-size: var(--text-title1); }
+.plugins-head p { margin: 0 0 var(--space-4); color: var(--text-secondary); }
+.plugins-note { margin: 0; color: var(--text-secondary); font-size: var(--text-footnote); line-height: 1.45; }
+.plugins-search { margin: 0; }
+.plugin-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: var(--space-3); }
+.plugin-card { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); min-width: 0; }
+.plugin-card-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--nav-hover); color: var(--text-secondary); }
+.plugin-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.plugin-card-text b { font-weight: 600; overflow-wrap: anywhere; }
+.plugin-card-text small { color: var(--text-secondary); font-size: var(--text-footnote); line-height: 1.4; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.plugin-card-text .plugin-publisher { -webkit-line-clamp: 1; }
+.plugin-card-link { flex: none; align-self: center; }
+@media (pointer: coarse) { .plugin-card-link { min-height: 44px; display: inline-flex; align-items: center; } }
+.coding-content .plugins-page { padding-top: 0; }
+/* Phone: the drawer toggle floats over each page's first row; Code and Plugins leave it room. */
+@media (max-width: 519px) {
+  .app .coding-header { padding-left: 64px; padding-right: 12px; height: 60px; }
+  .app .coding-header .preview-badge { display: none; }
+  .app .coding-content { padding: 16px 16px 20px; }
+  .main.plugins-view .plugins-page { padding-top: 64px; }
+}
+
+/* Tall phone screens (a zoomed-out phone, a tablet in portrait): the empty chat's greeting sits
+   in the middle of the free height rather than leaving a band of nothing under it. */
+@media (min-height: 760px) {
+  :root:not([data-device='desktop']) .app .chat-workspace.is-empty > .transcript { justify-content: center; padding-top: 0; }
+  :root:not([data-device='desktop']) .app .chat-workspace.is-empty .empty-state { flex-grow: 0; }
+}
+@media (min-height: 760px) { .app .coding-content, .main.plugins-view { justify-content: safe center; } }
+/* "Using: Drive, Tasks": which toolboxes the router offered for this reply. */
+.tool-scope { display: block; margin: 0 0 4px; color: var(--text-tertiary, var(--text-secondary)); font-size: var(--text-caption, 12px); }
+
+/* Long model names keep their start and their size/quantization ending; the middle gives way. */
+.mid-trunc { display: inline-flex; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; }
+.mid-trunc-head { flex: 0 1 auto; min-width: 1.5em; overflow: hidden; text-overflow: ellipsis; }
+.mid-trunc-tail { flex: none; }
+.model-pill .mid-trunc.model-pill-label { overflow: hidden; }
+.model-name.mid-trunc { display: inline-flex; }
+.mp-model-search { margin: 0 0 var(--space-2); }
+.mp-model-search input { width: 100%; }
+/* Calibration start/cancel are consequential actions: keep them 44px, not the generic 30px tab. */
+.native-calibration .popup-tab { min-height: 44px; }
+.mp-model .model-quant, .mp-model .model-role { white-space: nowrap; flex: none; }
+.mp-model-search input { border: 0; outline: none; background: transparent; box-shadow: none; padding: 0; min-height: 0; }
+.mp-model-search:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.mp-model-search input:focus, .mp-model-search input:focus-visible { outline: none !important; box-shadow: none !important; }
+.plugin-card-actions { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; align-self: center; }
+.plugin-add { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 260px; }
+.plugin-add select { min-width: 0; max-width: 100%; flex: 1 1 140px; }
+.plugin-add small { flex-basis: 100%; text-align: right; color: var(--text-secondary); }
+.plugin-add .plugin-add-error { color: var(--status-danger); }
+@media (max-width: 519px) { .plugin-card { flex-wrap: wrap; } .plugin-card-actions { flex-basis: 100%; align-items: stretch; } .plugin-add { max-width: none; justify-content: stretch; } }
+.plugin-key-form { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.plugin-key-form label { display: flex; flex-direction: column; gap: 3px; }
+.plugin-key-form label > span { font-weight: 600; font-size: var(--text-footnote); }
+.plugin-key-form label > small, .plugin-key-note { color: var(--text-secondary); font-size: var(--text-caption, 12px); text-align: left !important; }
+.plugin-key-form input { min-height: 36px; padding: 6px 10px; border: 1px solid var(--control-border); border-radius: var(--radius-control, 8px); background: var(--bg-surface); color: var(--text-primary); font: inherit; }
+.plugin-key-actions { display: flex; gap: 6px; justify-content: flex-end; }
+@media (pointer: coarse) { .plugin-key-form input { min-height: 44px; font-size: 16px; } }
+.plugin-card:has(.plugin-key-form) { flex-wrap: wrap; }
+.plugin-card:has(.plugin-key-form) .plugin-card-actions { flex-basis: 100%; align-items: stretch; }
+.plugin-card:has(.plugin-key-form) .plugin-add { max-width: none; }
+/* A card's name keeps room: its actions and notes shrink and wrap instead of crushing the text. */
+.plugin-grid { align-items: start; }
+.plugin-card { flex-wrap: wrap; }
+.plugin-card-text { flex: 1 1 180px; }
+.plugin-card-actions { flex: 0 1 auto; max-width: 100%; }
+.plugin-card-actions .plugin-add small { max-width: 220px; }
+.plugin-card-actions .plugin-key-form small { max-width: none; }
+.sign-in-servers { margin-top: var(--space-6); display: flex; flex-direction: column; gap: var(--space-2); }
+.sign-in-servers h2 { margin: 0; font-size: var(--text-title3, 18px); }
+.plugin-copy { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.plugin-copy code { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--nav-hover); font-size: var(--text-footnote); }
+.plugin-card-actions .plugin-add small[role] { text-align: left; }
+.plugin-key-mode { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.plugin-key-mode legend { font-weight: 600; font-size: var(--text-footnote); margin-bottom: 2px; }
+.plugin-key-mode label { flex-direction: row !important; align-items: baseline; gap: 6px !important; font-size: var(--text-footnote); }
+.plugin-key-mode small { color: var(--text-secondary); }
+
+/* ── Model and tools panel (user review, 2026-09-19: "clunky", "all vertical") ──
+   One column on a phone; on wider screens the model and its tools sit side by side, each
+   scrolling on its own, so the panel uses the width instead of growing tall. */
+.mp-panel { width: min(920px, 100%); display: flex; flex-direction: column; max-height: calc(var(--visible-viewport-height, 100dvh) - 48px); }
+.mp-head { flex: none; padding: 14px 16px; }
+.mp-head h2 { display: flex; flex-direction: column; gap: 1px; font-size: var(--text-headline, 17px); }
+.mp-head h2 small { font-size: var(--text-caption, 12px); font-weight: 500; color: var(--text-secondary); letter-spacing: .01em; }
+.mp-head .mp-settings { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.mp-body { padding: 0; flex: 1; min-height: 0; overflow: hidden; }
+.mp-grid { display: grid; grid-template-columns: 1fr; min-height: 0; height: 100%; overflow-y: auto; }
+.mp-col { display: flex; flex-direction: column; gap: 10px; padding: 16px; min-width: 0; }
+.mp-col-title { margin: 0; font-size: var(--text-footnote); font-weight: 650; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); }
+.mp-col-tools { border-top: 1px solid var(--border-subtle); }
+@media (min-width: 720px) {
+  .mp-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); overflow: hidden; }
+  .mp-col { overflow-y: auto; max-height: min(640px, calc(var(--visible-viewport-height, 100dvh) - 140px)); }
+  .mp-col-tools { border-top: 0; border-left: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--bg-sidebar, var(--bg)) 55%, transparent); }
+}
+
+/* Auto | Manual as one segmented switch, the hint under the chosen side. */
+.mp-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 3px; border-radius: 12px; background: var(--nav-hover); }
+.mp-mode-btn { border: 0 !important; border-radius: 9px !important; background: transparent; box-shadow: none !important; align-items: center !important; text-align: center; padding: 8px 10px; }
+.mp-mode-btn[aria-pressed="true"] { background: var(--bg-surface, var(--bg)) !important; box-shadow: var(--shadow-1) !important; }
+.mp-mode-btn span { font-size: var(--text-caption2, 11px); }
+
+/* Model rows: one line each, the choice marked with a check, Tune as an icon. */
+.mp-model-area { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.mp-models { max-height: none; gap: 4px; }
+.mp-model-item { align-items: center; gap: 4px; }
+.mp-model.model-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid transparent; background: transparent; }
+.mp-model.model-row:hover:not(:disabled) { background: var(--nav-hover); }
+.mp-model.model-row[aria-pressed="true"] { background: var(--accent-2-soft, var(--nav-active)); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.mp-model .model-name-group { align-items: baseline; gap: 8px; }
+.mp-model .model-role { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-caption, 12px); color: var(--text-secondary); }
+.mp-model[aria-pressed="true"] .model-role { color: var(--accent-ink, var(--accent)); font-weight: 600; }
+.mp-model-item .mp-tune { width: 44px; height: 44px; min-height: 44px; flex: none; border-radius: 10px; color: var(--text-secondary); }
+
+/* Tools: compact rows and a budget meter. */
+.mp-budget { height: 6px; border-radius: 999px; background: var(--nav-hover); overflow: hidden; }
+.mp-budget > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 200ms var(--ease-out); }
+.mp-budget.is-over > span { background: var(--danger, #c0392b); }
+.mp-tool-list { display: flex; flex-direction: column; gap: 2px; }
+.mp-tool { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.mp-tool:hover { background: var(--nav-hover); }
+.mp-tool input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); }
+.mp-tool-desc { display: block; margin-top: 2px; color: var(--text-secondary); font-size: var(--text-caption, 12px); line-height: 1.4; }
+@media (pointer: coarse) { .mp-tool { min-height: 44px; } }
+/* Legibility first: the model panel is nearly opaque, with the page only hinted through blur. */
+.mp-panel.aero, .app .mp-panel.aero { background: color-mix(in srgb, var(--bg-app) 96%, transparent) !important; backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2); }
+.mp-head { background: transparent; }
+@media (prefers-reduced-transparency: reduce) { .mp-panel.aero, .app .mp-panel.aero { background: var(--bg-app) !important; backdrop-filter: none; -webkit-backdrop-filter: none; } }
+/* No toolboxes: one column, and a narrower panel. */
+.mp-panel:not(:has(.mp-col-tools)) { width: min(560px, 100%); }
+@media (min-width: 720px) { .mp-grid:not(:has(.mp-col-tools)) { grid-template-columns: minmax(0, 1fr); } }
+/* The chosen mode reads clearly in both themes: same accent tint as the chosen model. */
+.mp-mode-btn[aria-pressed="true"] { background: var(--accent-2-soft, var(--nav-active)) !important; color: var(--text-primary); }
+.mp-mode-btn[aria-pressed="true"] strong { color: var(--accent-ink, var(--text-primary)); }
+
+/* ── Models page: cards side by side (user review, 2026-09-19) ──
+   Up to three per row, two when narrower, one on a phone; a card with its details open takes
+   the whole row so its facts have room. */
+.model-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(max(280px, calc((100% - 2 * var(--space-3)) / 3)), 1fr)); align-items: start; }
+.model-grid > .model-card.is-open { grid-column: 1 / -1; }
+.model-grid > .model-card { min-width: 0; height: 100%; box-sizing: border-box; }
+.model-card-head { align-items: center; }
+.model-card-name { min-width: 0; flex: 1; font-size: var(--text-callout); }
+.model-card-name .mid-trunc { max-width: 100%; }
+.model-card-meta { gap: 2px 10px; }
+.model-card-actions { margin-top: auto; gap: 6px; }
+.model-card-actions > button { min-height: 36px; padding: 6px 12px; }
+.model-card-actions > button:first-child { background: var(--accent-2-soft, var(--nav-active)); border-color: transparent; font-weight: 600; }
+.model-card-actions > .model-card-danger { margin-left: auto; border-color: transparent; background: transparent; color: var(--danger, #c0392b); }
+@media (pointer: coarse) { .model-card-actions > button { min-height: 44px; } }
+.model-card .mtp-control, .model-card > .mm-row { font-size: var(--text-footnote); }
+/* The page's summary line and its one action share a row. */
+.mm-library-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.mm-library-bar .mm-note { margin: 0; }
+.mm-scanning { color: var(--text-tertiary, var(--text-secondary)); }
+/* Models page toolbar: tabs, search and filters on one line, wrapping cleanly when narrow. */
+.mm-toolbar-one { display: flex !important; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-3); }
+.mm-toolbar-one .mm-tabs-row { display: flex !important; flex: none; border-bottom: 0 !important; padding: 3px !important; border-radius: 12px; background: var(--nav-hover); gap: 2px; }
+.mm-toolbar-one .mm-tabs-row button { min-height: 34px; padding: 6px 14px; border-radius: 9px; }
+.mm-toolbar-one .mm-tabs-row button.is-active { background: var(--bg-app); box-shadow: var(--shadow-1); }
+.mm-toolbar-one .mm-tabs-select { display: none !important; }
+.mm-search-inline { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 40px; border: 1px solid var(--control-border); border-radius: 12px; background: var(--bg-app); color: var(--text-secondary); }
+.mm-search-inline input { flex: 1; min-width: 0; border: 0 !important; outline: none; background: transparent; box-shadow: none !important; padding: 0 !important; min-height: 38px; font: inherit; color: var(--text-primary); }
+.mm-search-inline:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.mm-search-inline input:focus-visible { outline: none !important; }
+.mm-toolbar-one .mm-tabs-controls { display: flex; gap: 6px; flex: none; }
+.mm-toolbar-one .mm-select select { min-height: 40px; width: auto !important; padding: 6px 30px 6px 12px; font-size: var(--text-footnote); }
+@media (max-width: 719px) {
+  .mm-toolbar-one .mm-search-inline { flex-basis: 100%; order: -1; }
+  .mm-toolbar-one .mm-tabs-controls { flex: 1; justify-content: flex-end; }
+  .mm-toolbar-one .mm-select { min-width: 0; }
+  .mm-toolbar-one .mm-select select { max-width: 100%; }
+}
+@media (pointer: coarse) { .mm-search-inline, .mm-toolbar-one .mm-select select, .mm-toolbar-one .mm-tabs-row button { min-height: 44px; } .mm-search-inline input { font-size: 16px; } }
+@media (max-width: 519px) {
+  .mm-toolbar-one .mm-tabs-row { flex: 1 1 100%; display: grid !important; grid-template-columns: 1fr 1fr; }
+  .mm-toolbar-one .mm-tabs-controls { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .mm-toolbar-one .mm-select, .mm-toolbar-one .mm-select select { width: 100% !important; }
+}
+/* Every control on the models page is at least 40px tall (44px on touch). */
+.mm-toolbar-one .mm-tabs-row button, .model-card-actions > button, .mm-library-bar .btn { min-height: 40px; }

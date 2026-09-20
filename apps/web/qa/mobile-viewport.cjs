@@ -32,7 +32,7 @@ const {createFixture}=require('./diary-fixture.cjs');
    assert.ok(await settings.evaluate(el=>el.scrollWidth<=el.clientWidth),'Settings must not overflow horizontally');
    if(width<700){
      // Phones show the list, then each page with a back arrow and a close button.
-     for(const section of ['Profile','Security','Appearance','Personalization','Capabilities','Connectors','Diary & storage','AI providers','Usage & activity','Data','Planned features']){
+     for(const section of ['Account','Security and login','General','Personalization','Capabilities','Diary & storage','AI providers','Usage','Data controls','Planned features']){
        await settings.getByRole('button',{name:section,exact:true}).click();
        await reachable(settings.getByRole('button',{name:'Close settings'}),height);
        assert.ok(await settings.evaluate(el=>el.scrollWidth<=el.clientWidth),`Settings ${section} must fit`);
@@ -42,10 +42,11 @@ const {createFixture}=require('./diary-fixture.cjs');
    }
    await page.keyboard.press('Escape');
    // Below 600px navigation lives in the drawer; everything else is in the sidebar.
-   const nav=async()=>{if(width<=600){await page.getByRole('button',{name:'Open navigation',exact:true}).click();await page.getByRole('dialog',{name:'Navigation'}).waitFor();await page.waitForFunction(()=>!document.getAnimations().some(a=>a.playState==='running'&&a.effect?.getTiming().iterations!==Infinity));}}; // the drawer slides in
+   const nav=async()=>{if(width<520){await page.getByRole('button',{name:'Open navigation',exact:true}).click();await page.getByRole('dialog',{name:'Navigation'}).waitFor();await page.waitForFunction(()=>!document.getAnimations().some(a=>a.playState==='running'&&a.effect?.getTiming().iterations!==Infinity));}}; // the drawer slides in
    await nav();
-   await reachable(page.getByRole('button',{name:'Search projects and chats',exact:true}).first(),height);
-   if(width<=600)await page.keyboard.press('Escape');
+   // On a phone search is the field under the drawer's header (like Claude's); elsewhere a button.
+   await reachable(width<520?page.getByRole('textbox',{name:'Search projects and chats',exact:true}):page.getByRole('button',{name:'Search projects and chats',exact:true}).first(),height);
+   if(width<520)await page.keyboard.press('Escape');
    await nav();
    await page.getByRole('button',{name:'Diary',exact:true}).click();
    const diary=page.locator('#diary-draft');await diary.waitFor();await reachable(diary,height);

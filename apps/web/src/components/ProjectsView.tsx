@@ -38,7 +38,9 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'active' | 'archived'>('active');
   const archivedCount = projects.filter((p) => p.archived).length;
-  const chatCount = projects.reduce((n, p) => n + p.chats.length, 0);
+  // The headline describes "Your projects"; archived ones are counted on their own tab.
+  const activeProjects = projects.filter((p) => !p.archived);
+  const chatCount = activeProjects.reduce((n, p) => n + p.chats.length, 0);
   const visibleProjects = projects
     .filter((p) => (tab === 'archived' ? p.archived : !p.archived))
     .filter((p) => `${p.name} ${p.goal || ''}`.toLowerCase().includes(query.trim().toLowerCase()))
@@ -52,7 +54,7 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
           <p className="projects-hero-sub">
             {projects.length === 0
               ? 'Keep related chats and files together.'
-              : `${projects.length} ${projects.length === 1 ? 'project' : 'projects'} · ${chatCount} ${chatCount === 1 ? 'chat' : 'chats'}`}
+              : `${activeProjects.length} ${activeProjects.length === 1 ? 'project' : 'projects'} · ${chatCount} ${chatCount === 1 ? 'chat' : 'chats'}`}
           </p></div>
           {/* With no projects the empty state carries the one primary action. */}
           {projects.length > 0 && <button className="btn btn-primary" onClick={() => setCreating(true)}><PlusIcon /><span>New project</span></button>}
@@ -92,7 +94,7 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
             {visibleProjects              .map((p) => (
               <div
                 key={p.id}
-                className="project-card"
+                className="project-card surface"
                 onClick={() => onOpenProject(p.id)}
                 role="button"
                 tabIndex={0}
@@ -196,7 +198,7 @@ function CreateProjectModal({
 
   return (
     <dialog ref={dialog} className="modal-overlay native-modal" aria-label="Create a project" onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card aero dialog-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>Create a project</h2>
           <CloseButton onClick={onClose}/>
@@ -254,7 +256,7 @@ function CreateProjectModal({
                   className="modal-file-x"
                   onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
                 >
-                  ✕
+                  <ShellIcon name="close" size={16}/>
                 </button>
               </span>
             ))}

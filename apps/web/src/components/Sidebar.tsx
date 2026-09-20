@@ -4,6 +4,7 @@ import { ProjectIcon } from './ProjectIdentity';
 import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { AccountMenu } from './AccountMenu';
+import { ModeSwitch } from './ModeSwitch';
 import { ContextMenu, ConfirmDialog } from './ContextMenu';
 import type { MenuItem } from './ContextMenu';
 import { fetchToolboxes, fetchProfile } from '../api';
@@ -15,13 +16,19 @@ import { Logo } from './Icons';
 interface SidebarProps {
   projects: Project[];
   chats: ChatMeta[];
-  activeView: 'diary' | 'settings' | 'projects' | 'project' | 'chat' | 'preview' | 'models';
+  activeView: 'diary' | 'settings' | 'projects' | 'project' | 'chat' | 'preview' | 'models' | 'plugins';
+  /** Code mode reuses this sidebar with the coding destinations in place of the chat lists. */
+  mode?: 'chat' | 'code';
+  codePage?: string;
+  onCodePage?: (page: string) => void;
+  onEnterChat?: () => void;
+  onOpenPlugins: () => void;
   activeProjectId: string | null;
   activeChatId: string | null;
   onNewChat: () => void;
   onNewProjectChat: (projectId: string) => void;
   onEnterCode: () => void;
-  onPreview: (title: string) => void;
+  onPreview?: (title: string) => void;
   /** features.previews: show the unbuilt Scheduled/Plugins/Explore and Code surfaces. */
   showPreviews?: boolean;
   onOpenProjects: () => void;
@@ -57,7 +64,11 @@ export function Sidebar({
   onNewChat,
   onNewProjectChat,
   onEnterCode,
-  onPreview,
+  mode = 'chat',
+  codePage = 'New task',
+  onCodePage,
+  onEnterChat,
+  onOpenPlugins,
   showPreviews = false,
   onOpenProjects,
   onOpenProject,
@@ -88,7 +99,9 @@ export function Sidebar({
     return ()=>{active=false;};
   },[]);
   useEffect(()=>{if(orderKey)try{localStorage.setItem(orderKey,JSON.stringify(order));}catch{/* Keep working without persistence. */}},[order,orderKey]);
-  const [collapsed, setCollapsed] = useState(false);
+  // Remembered on this device, as ChatGPT does: a reload keeps the rail collapsed.
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('noevia:sidebar-collapsed') === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('noevia:sidebar-collapsed', collapsed ? '1' : '0'); } catch { /* per-device convenience only */ } }, [collapsed]);
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
   const [openProjects, setOpenProjects] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
@@ -98,12 +111,25 @@ export function Sidebar({
   // toggle; `expanded` is that drawer. Focus is trapped while it is open and
   // handed back to the toggle when it closes.
   const [expanded, setExpanded] = useState(false);
-  const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 600px)').matches);
+  const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 519px)').matches);
   const drawer = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
+  const footer = useRef<HTMLDivElement>(null);
+  // On a phone Diary sticks exactly one footer above the bottom edge. The footer's height
+  // depends on what it holds (the MCP line, the account row), so measure it, not assume it.
   useEffect(() => {
-    const query = window.matchMedia('(max-width: 600px)');
+    const el = footer.current, side = drawer.current;
+    if (!el || !side || typeof ResizeObserver === 'undefined') return;
+    // A closed drawer is display:none and measures 0; keep the last real height instead.
+    const sync = () => { const h = Math.ceil(el.getBoundingClientRect().height); if (h > 0) side.style.setProperty('--side-foot-h', `${h}px`); };
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    sync();
+    return () => observer.disconnect();
+  }, [expanded]);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 519px)');
     const change = () => { setMobile(query.matches); if (!query.matches) setExpanded(false); };
     query.addEventListener('change', change);
     return () => query.removeEventListener('change', change);
@@ -129,7 +155,20 @@ export function Sidebar({
   }, [expanded, mobile]);
   // Any navigation, including views opened from outside the sidebar (Settings →
   // model manager), closes the drawer so it never covers what just opened.
-  useEffect(() => { setExpanded(false); }, [activeView, activeChatId, activeProjectId]);
+  useEffect(() => { setExpanded(false); }, [activeView, activeChatId, activeProjectId, mode, codePage]);
+  // A collapsed desktop rail names what is under the pointer, as ChatGPT's does: projects,
+  // chats and destinations alike. One tooltip for the whole rail, placed beside the row.
+  const [tip, setTip] = useState<{ text: string; x: number; y: number; warm?: boolean } | null>(null);
+  useEffect(() => { if (!collapsed || mobile) setTip(null); }, [collapsed, mobile]);
+  const showTip = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!collapsed || mobile) return;
+    const el = (e.target as HTMLElement).closest<HTMLElement>('button, a');
+    if (!el || !drawer.current?.contains(el)) { setTip(null); return; }
+    const text = el.dataset.tip || el.getAttribute('aria-label') || el.title || el.textContent?.trim() || '';
+    if (!text) { setTip(null); return; }
+    const r = el.getBoundingClientRect();
+    setTip(prev => ({ text, x: r.right + 10, y: r.top + r.height / 2, warm: !!prev }));
+  };
   const openSettings = (section?: 'general' | 'usage' | 'connectors') => { setExpanded(false); onOpenSettings(section); };
   const trapDrawer = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!mobile || !expanded) return;
@@ -145,6 +184,7 @@ export function Sidebar({
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   };
   const [query, setQuery] = useState('');
+  const code = mode === 'code';
   // One menu model for both entity types, opened from a right-click or the
   // hamburger. Destructive choices route through `confirm` rather than an
   // inline two-step arm, so the subject is named before anything happens.
@@ -165,6 +205,7 @@ export function Sidebar({
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openHover = (id: string, el: HTMLElement) => {
+    if (collapsed) return;
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => {
       const r = el.getBoundingClientRect();
@@ -209,7 +250,7 @@ export function Sidebar({
     const index=peers.findIndex(x=>x.id===p.id);
     return [-1,1].flatMap(direction=>{
       const neighbor=peers[index+direction];
-      return neighbor ? [{label:direction<0?'Move up':'Move down',onSelect:()=>setOrder(prev=>({...prev,order:moveProject(sortedProjects.map(x=>x.id),p.id,neighbor.id)}))}] : [];
+      return neighbor ? [{label:direction<0?'Move up':'Move down',icon:<ShellIcon name={direction<0?'arrow-up':'arrow-down'}/>,onSelect:()=>setOrder(prev=>({...prev,order:moveProject(sortedProjects.map(x=>x.id),p.id,neighbor.id)}))}] : [];
     });
   };
 
@@ -220,6 +261,7 @@ export function Sidebar({
     { icon:<ShellIcon name="pin"/>, separator:true, label: p.pinned ? 'Unpin' : 'Pin', onSelect: () => onPatchProject(p.id, { pinned: !p.pinned }) },
     {
       label: 'Archive',
+      icon:<ShellIcon name="archive"/>,
       onSelect: () =>
         setConfirm({
           title: `Archive ${p.name}?`,
@@ -230,6 +272,7 @@ export function Sidebar({
     },
     {
       label: 'Delete project',
+      icon:<ShellIcon name="trash"/>,
       danger: true,
       onSelect: () =>
         setConfirm({
@@ -243,14 +286,16 @@ export function Sidebar({
   ];
 
   const chatMenu = (c: ChatMeta): MenuItem[] => [
-    { label: c.pinned ? 'Unpin' : 'Pin', onSelect: () => onPatchChat(c.projectId ?? null, c.id, { pinned: !c.pinned }) },
-    { label: 'Rename', onSelect: () => startRename(c.id, c.title || '', menu?.source) },
+    { label: c.pinned ? 'Unpin' : 'Pin', icon:<ShellIcon name="pin"/>, onSelect: () => onPatchChat(c.projectId ?? null, c.id, { pinned: !c.pinned }) },
+    { label: 'Rename', icon:<ShellIcon name="edit"/>, onSelect: () => startRename(c.id, c.title || '', menu?.source) },
     {
       label: 'Archive',
+      icon:<ShellIcon name="archive"/>,
       onSelect: () => onPatchChat(c.projectId ?? null, c.id, { archived: true }),
     },
     {
       label: 'Delete chat',
+      icon:<ShellIcon name="trash"/>,
       danger: true,
       onSelect: () =>
         setConfirm({
@@ -294,6 +339,7 @@ export function Sidebar({
                     className="nav-item"
                     onClick={() => onOpenChat(c.id, c.projectId ?? null)}
                     title={c.title}
+                    data-tip={c.title || 'New chat'}
                   >
                     <ShellIcon name={c.pinned ? 'pin' : 'chat'} size={17}/>
                     <SidebarLabel text={c.title || 'New chat'}/>
@@ -315,23 +361,36 @@ export function Sidebar({
       aria-modal={mobile && expanded ? true : undefined}
       aria-label={mobile && expanded ? 'Navigation' : undefined}
       onKeyDown={trapDrawer}
+      onMouseOver={showTip}
+      onMouseLeave={() => setTip(null)}
+      data-mode={mode}
       className={`sidebar pane${activeView === 'diary' ? ' diary-sidebar' : ''}${expanded ? ' is-expanded' : ''}${collapsed ? ' is-collapsed' : ''}`}
       onClick={(e) => {
         // Any navigation collapses the rail again, so the overlay never
         // stays over the thing it just navigated to.
         if (expanded && (e.target as HTMLElement).closest('.nav-item')) setExpanded(false);
+        // As in ChatGPT, the empty part of the collapsed rail is itself the expand target.
+        if (collapsed && !mobile && !(e.target as HTMLElement).closest('button, a, input')) setCollapsed(false);
       }}
     >
-      <div className="shell-sidebar-head"><div className="side-logo"><Logo/><span>noevia</span></div><div className="side-head-actions"><button className="shell-icon-button side-expand" aria-label={mobile ? 'Close navigation' : collapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={mobile ? expanded : !collapsed} onClick={() => {if(mobile)setExpanded(false);else setCollapsed(!collapsed);}}><ShellIcon name={mobile ? "close" : "panel"}/></button><button className="shell-icon-button" aria-label={theme==='dark'?'Switch to light mode':'Switch to dark mode'} title={theme==='dark'?'Light mode':'Dark mode'} onClick={onToggleTheme}><ShellIcon name={theme==="dark"?"sun":"moon"}/></button><button className="shell-icon-button" aria-label="Search projects and chats" aria-expanded={searching} onClick={()=>{setCollapsed(false);setExpanded(true);setSearching(!searching);if(searching)setQuery('');}}><ShellIcon name="search"/></button></div></div>
-      {showPreviews && <div className="app-mode-switch" aria-label="Workspace mode"><button className="is-selected" aria-pressed="true"><ShellIcon name="chat"/>Chat</button><button onClick={onEnterCode} aria-pressed="false"><ShellIcon name="code"/>Code</button></div>}
-      {searching&&<input className="shell-search" autoFocus aria-label="Search projects and chats" placeholder="Search projects and chats…" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){setSearching(false);setQuery('');}}}/>}
+      <div className="shell-sidebar-head"><div className="side-logo"><Logo/><span>noevia</span></div><div className="side-head-actions"><button className="shell-icon-button side-expand" aria-label={mobile ? 'Close navigation' : collapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={mobile ? expanded : !collapsed} onClick={() => {if(mobile)setExpanded(false);else setCollapsed(!collapsed);}}><ShellIcon name={mobile ? "close" : "panel"}/></button></div>{/* Like Claude's: a small icon-only Chat/Code switch at the end of the header row. Switching
+          closes the phone drawer, so the new mode is what you see. */}{showPreviews && <ModeSwitch compact mode={mode} onCode={() => { setExpanded(false); onEnterCode(); }} onChat={() => { setExpanded(false); onEnterChat?.(); }}/>}</div>
+      {/* On a phone the drawer always shows the search field under its header, as Claude's does. */}{(searching || (mobile && expanded))&&<input className="shell-search" autoFocus={searching} aria-label="Search projects and chats" placeholder="Search projects and chats…" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){setSearching(false);setQuery('');}}}/>}
 
-      <button className="new-chat-btn glass glass-lens" onClick={()=>{onNewChat();setExpanded(false);}} title="New chat">
+      {/* Floats over the list as it scrolls, as ChatGPT's New chat does. */}
+      <div className="side-new">
+      <button className="new-chat-btn glass glass-lens" onClick={()=>{if(code)onCodePage?.('New task');else onNewChat();setExpanded(false);}} title={code?'New task':'New chat'} data-tip={code?'New task':'New chat'}>
         <ShellIcon name="compose" size={17}/>
-        <span>New chat</span>
+        <span>{code?'New task':'New chat'}</span>
       </button>
+      </div>
 
-      <nav className="side-nav" aria-label="Primary">
+      {code ? <nav className="side-nav" aria-label="Coding navigation">
+        {[['Pull requests','git'],['Scheduled','clock'],['Plugins','plugins'],['Explore','explore']].map(([label,icon])=><button key={label} className={`nav-item${codePage===label?' is-active':''}`} aria-label={label} aria-current={codePage===label?'page':undefined} onClick={()=>onCodePage?.(label)}>
+          <ShellIcon name={icon} size={17}/>
+          <span className="nav-name">{label}</span>
+        </button>)}
+      </nav> : <nav className="side-nav" aria-label="Primary">
         <button
           className={`nav-item${activeView === 'projects' ? ' is-active' : ''}`}
           aria-label="Projects"
@@ -341,34 +400,28 @@ export function Sidebar({
           <ShellIcon name="folder" size={17}/>
           <span className="nav-name">Projects</span>
         </button>
-        {/* The diary is its own space, not another project. */}
-        {diaryEnabled && <button
-          className={`nav-item${activeView === 'diary' ? ' is-active' : ''}`}
-          aria-label="Diary"
-          aria-current={activeView === 'diary' ? 'page' : undefined}
-          onClick={onOpenDiary}
-        >
-          <ShellIcon name="diary" size={17}/>
-          <span className="nav-name">Diary</span>
-        </button>}
-        <button className="nav-item" aria-label="Customize" onClick={() => openSettings('connectors')}>
-          <ShellIcon name="connectors" size={17}/>
-          <span className="nav-name">Customize</span>
+        {/* Plugins stays with the destinations. Diary is a permanent space, so it lives in the
+            bottom bar beside Search: always one tap away, never in the way (user review). */}
+        <button className={`nav-item${activeView === 'plugins' ? ' is-active' : ''}`} aria-label="Plugins" aria-current={activeView === 'plugins' ? 'page' : undefined} onClick={onOpenPlugins}>
+          <ShellIcon name="plugins" size={17}/>
+          <span className="nav-name">Plugins</span>
         </button>
-      </nav>
+      </nav>}
 
-      {showPreviews && <nav className="shell-extra-nav" aria-label="Explore noevia">{[['Scheduled','clock'],['Plugins','plugins'],['Explore','explore']].map(([label,icon])=><button className="nav-item" key={label} onClick={()=>onPreview(label)}><ShellIcon name={icon}/><span className="nav-name">{label}</span></button>)}</nav>}
       <div className="rail-tools"><button className="shell-icon-button" aria-label="Search projects and chats" onClick={()=>{setCollapsed(false);setExpanded(true);setSearching(true);}}><ShellIcon name="search"/></button><button className="shell-icon-button" aria-label="Show pinned items" onClick={()=>{setCollapsed(false);setExpanded(true);setClosedGroups(g=>({...g,Pinned:false}));}}><ShellIcon name="pin"/></button></div>
-      <div className="sidebar-history">
+      {code ? <div className="sidebar-history coding-history">
+        <div className="spaces side-scroll"><div className="sidebar-section-head"><span className="section-label">Coding projects</span></div><p className="side-hint">No coding projects connected. Connecting a repository is coming in a future update.</p></div>
+        <div className="spaces side-scroll"><div className="sidebar-section-head"><span className="section-label">Tasks</span></div><p className="side-hint">Your coding tasks will appear here.</p></div>
+      </div> : <div className="sidebar-history">
       {['Pinned','Projects'].map(group => {
         const entries = visibleProjects.filter(p=>group==='Pinned'?p.pinned:!p.pinned);
         if(group==='Pinned' && !entries.length && !visibleChats.some(c=>c.pinned))return null;
-        return <div className="spaces" key={group}>
+        return <div className={`spaces side-scroll side-scroll-${group.toLowerCase()}`} key={group}>
           <div className="sidebar-section-head"><button className="section-label section-toggle" aria-label={`${group} section`} aria-expanded={!closedGroups[group]} onClick={()=>setClosedGroups(g=>({...g,[group]:!g[group]}))}>{group}</button>{group==='Projects' && <button className="row-action section-options" aria-label="Project ordering" aria-haspopup="menu" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setSorting({x:r.left,y:r.bottom+4});}}><ShellIcon name="more" size={20}/></button>}</div>
           {group==='Pinned' && (!closedGroups[group] || query) && visibleChats.filter(c=>c.pinned).map(renderChat)}
           {(!closedGroups[group] || query) && entries.map(p=><div className="project-branch" key={p.id}>
             <div className={`proj-row${activeProjectId===p.id && activeView!=='projects'?' is-active':''}`} onContextMenu={e=>{e.preventDefault();setMenu({kind:'project',id:p.id,projectId:null,at:{x:e.clientX,y:e.clientY}});}}>
-              {renamingId===p.id ? <input className="proj-rename-input" aria-label="Project name" value={renameDraft} autoFocus onFocus={e=>e.currentTarget.select()} onChange={e=>setRenameDraft(e.target.value)} onBlur={()=>commitRename(null,false)} onKeyDown={e=>{if(e.key==='Enter')commitRename(null,false);if(e.key==='Escape')setRenamingId(null);}}/> : <><button className="project-expand" aria-label={`${openProjects[p.id]?'Collapse':'Expand'} chats in ${p.name}`} aria-expanded={!!openProjects[p.id]} onClick={()=>{closeHover();setOpenProjects(prev=>({...prev,[p.id]:!prev[p.id]}));}}><ProjectIcon project={p} size={18}/></button><button className="project-disclosure" aria-label={`Open ${p.name}`} onMouseEnter={e=>openHover(p.id,e.currentTarget)} onMouseLeave={closeHover} onClick={()=>{closeHover();setOpenProjects(prev=>({...prev,[p.id]:true}));onOpenProject(p.id);setExpanded(false);}}><SidebarLabel text={p.name}/></button></>}
+              {renamingId===p.id ? <input className="proj-rename-input" aria-label="Project name" value={renameDraft} autoFocus onFocus={e=>e.currentTarget.select()} onChange={e=>setRenameDraft(e.target.value)} onBlur={()=>commitRename(null,false)} onKeyDown={e=>{if(e.key==='Enter')commitRename(null,false);if(e.key==='Escape')setRenamingId(null);}}/> : <><button className="project-expand" data-tip={p.name} aria-label={`${openProjects[p.id]?'Collapse':'Expand'} chats in ${p.name}`} aria-expanded={!!openProjects[p.id]} onClick={()=>{closeHover();setOpenProjects(prev=>({...prev,[p.id]:!prev[p.id]}));}}><ProjectIcon project={p} size={18}/></button><button className="project-disclosure" aria-label={`Open ${p.name}`} onMouseEnter={e=>openHover(p.id,e.currentTarget)} onMouseLeave={closeHover} onClick={()=>{closeHover();setOpenProjects(prev=>({...prev,[p.id]:true}));onOpenProject(p.id);setExpanded(false);}}><SidebarLabel text={p.name}/></button></>}
 
               <div className="row-actions">
                 <button className="row-action" aria-label={`Options for ${p.name}`} aria-haspopup="menu" onClick={e=>{closeHover();const r=e.currentTarget.getBoundingClientRect();setMenu({kind:'project',id:p.id,projectId:null,at:{x:r.left,y:r.bottom+4}});}}><ShellIcon name="more" size={22}/></button>
@@ -390,18 +443,17 @@ export function Sidebar({
       {visibleChats.some(c=>!c.pinned) && (
         <>
           <div className="divider" />
-          <div className="spaces">
+          <div className="spaces side-scroll side-scroll-chats">
             <button className="section-label section-toggle" aria-expanded={!closedGroups.Chats} onClick={()=>setClosedGroups(g=>({...g,Chats:!g.Chats}))}>Recent chats</button>
-            {(!closedGroups.Chats || query) && <div className="recent-children">{visibleChats.filter(c=>!c.pinned).slice(0,12).map(renderChat)}</div>}
+            {(!closedGroups.Chats || query) && <div className="recent-children">{visibleChats.filter(c=>!c.pinned).map(renderChat)}</div>}
 
           </div>
         </>
       )}
 
-      </div>
+      </div>}
 
-      <div className="divider" />
-
+      {tip && <div className={`rail-tip${tip.warm ? ' is-warm' : ''}`} role="tooltip" style={{ top: tip.y, left: tip.x }}>{tip.text}</div>}
       {hover && (() => {
         const p = projects.find((x) => x.id === hover.id);
         if (!p) return null;
@@ -418,8 +470,8 @@ export function Sidebar({
         );
       })()}
       {sorting && <ContextMenu at={sorting} onClose={()=>setSorting(null)} items={[
-        {label:`${order.sort==='recent'?'✓ ':''}Last used`,onSelect:()=>setOrder(prev=>({...prev,sort:'recent'}))},
-        {label:`${order.sort==='manual'?'✓ ':''}Manual order`,onSelect:()=>setOrder(prev=>({...prev,sort:'manual',order:prev.order.length ? prev.order : sortedProjects.map(p=>p.id)}))},
+        {label:'Last used',selected:order.sort==='recent',onSelect:()=>setOrder(prev=>({...prev,sort:'recent'}))},
+        {label:'Manual order',selected:order.sort==='manual',onSelect:()=>setOrder(prev=>({...prev,sort:'manual',order:prev.order.length ? prev.order : sortedProjects.map(p=>p.id)}))},
       ]}/>}
       {menu && (
         <ContextMenu
@@ -443,7 +495,7 @@ export function Sidebar({
         />
       )}
 
-      <div className="side-footer">{mcp?.configured && (() => {
+      <div className="side-footer" ref={footer}>{mcp?.configured && (() => {
         // With several servers, one being down is a partial outage, not an
         // outage — say which, rather than reporting the whole integration dead.
         const servers = mcp.servers ?? [];
@@ -464,7 +516,7 @@ export function Sidebar({
             <span className="status-text">{label}</span>
           </div>
         );
-      })()}{/* Inference status lives in the workspace status pill and the chat banner; one place is enough. */}<AccountMenu onSettings={openSettings}/></div>
+      })()}{/* Inference status lives in the workspace status pill and the chat banner; one place is enough. */}<div className="side-footer-row"><AccountMenu onSettings={openSettings} theme={theme} onToggleTheme={onToggleTheme}/>{diaryEnabled && <button className={`shell-icon-button side-footer-diary${activeView === 'diary' ? ' is-active' : ''}`} aria-label="Diary" title="Diary" aria-current={activeView === 'diary' ? 'page' : undefined} onClick={() => { onOpenDiary(); setExpanded(false); }}><ShellIcon name="diary"/></button>}{/* Search sits beside the account, as in Claude. */}<button className="shell-icon-button side-footer-search" aria-label="Search projects and chats" aria-expanded={searching} onClick={()=>{setCollapsed(false);setExpanded(true);setSearching(!searching);if(searching)setQuery('');}}><ShellIcon name="search"/></button></div></div>
     </div>
   </>);
 }

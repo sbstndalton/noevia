@@ -290,9 +290,9 @@ export function fetchToolboxes(): Promise<{ toolboxes: Toolbox[]; mcp: McpStatus
   return getJson('/api/toolboxes');
 }
 
-export interface AutoRoles { fast: string; smart: string; vision?: string }
+export interface AutoRoles { fast: string; smart: string; vision?: string; code?: string }
 
-export function fetchAutoRoles(): Promise<{ configured: boolean; roles: AutoRoles | null; missing?: { role: 'fast' | 'smart' | 'vision'; model: string }[] }> {
+export function fetchAutoRoles(): Promise<{ configured: boolean; roles: AutoRoles | null; missing?: { role: 'fast' | 'smart' | 'vision' | 'code'; model: string }[] }> {
   return getJson('/api/auto-roles');
 }
 
@@ -475,7 +475,9 @@ export async function* streamChat(
   decision?: string;
   reasoning?: string;
   reasoningEffort?: string;
-  route?: string; // 'fast' | 'smart' when Auto routing picked the model (step 12)
+  route?: string;
+  // 'skills_scope' uses `text`: the skills auto-loaded for this reply.
+  // 'tools_scope' uses `text`: the toolboxes offered for this reply ('' when not narrowed). // 'fast' | 'smart' when Auto routing picked the model (step 12)
   // 'usage' event: provider-reported totals for the finished reply.
   promptTokens?: number;
   completionTokens?: number;

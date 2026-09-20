@@ -16,7 +16,7 @@ input:not([type=checkbox]):not([type=radio]), textarea, select { border-color:va
 .auth-mark { font-size:var(--text-title3); }.side-logo { letter-spacing:-.6px; }
 .noevia-inspector { position:absolute; inset:0 0 0 auto; width:min(320px,86vw); z-index:20; padding:0; background:var(--bg-surface); border-left:1px solid var(--border); box-shadow:var(--shadow-pop); overflow:auto; font-size:var(--text-footnote); }
 
-@media(max-width:600px) {
+@media(max-width: 519px) {
   .sidebar:not(.coding-sidebar) { width:60px; min-width:60px; padding:12px 6px; }
   .sidebar:not(.coding-sidebar).is-expanded { position:absolute; inset:0 auto 0 0; z-index:30; width:min(272px,82vw); min-width:0; padding:18px 12px 10px; box-shadow:var(--shadow-pop); }
   .sidebar:not(.coding-sidebar) .side-logo { padding:4px; }
@@ -30,7 +30,6 @@ input:not([type=checkbox]):not([type=radio]), textarea, select { border-color:va
   .sidebar:not(.coding-sidebar):not(.is-expanded) .account-trigger { justify-content:center; padding:6px 0; }
   .settings-scroll { padding:20px 14px; }.projects-head { flex-wrap:wrap; gap:12px; }.projects-head h1 { font-size:var(--text-title3); }
   .inspector-toggle { position:absolute; top:10px; right:10px; z-index:21; margin:0; }
-  .app-main .projects-head { padding-right:32px; }
   .noevia-inspector { max-width:calc(100vw - 60px); }
 }
 
@@ -58,7 +57,7 @@ input:not([type=checkbox]):not([type=radio]), textarea, select { border-color:va
 /* A phone needs the full width for connection and storage forms. Keep every
    settings category available through a native selector above the content. */
 .mobile-settings-section { display: none; }
-@media (max-width: 600px) {
+@media (max-width: 519px) {
   .settings-shell { flex-direction: column; }
   .settings-navigation { width: 100%; flex-shrink: 0; padding: 10px 14px; border-right: 0; border-bottom: 1px solid var(--border); }
   .settings-navigation .settings-back { margin: 0 0 8px; }
@@ -73,13 +72,13 @@ input:not([type=checkbox]):not([type=radio]), textarea, select { border-color:va
 .native-modal::backdrop { background: transparent; }
 
 .msg-warning { color: var(--text-secondary); border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface); padding: 8px 12px; font-size: var(--text-footnote); line-height: 1.5; }
-@media (max-width: 600px) {
+@media (max-width: 519px) {
   .settings-detail .model-name-group { flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; }
   .settings-detail .model-name { max-width: 100%; }
   .settings-detail .model-quant { overflow-wrap: anywhere; }
 }
 
-@media (max-width: 600px) { .diary-sidebar .shell-sidebar-head .side-expand { display: inline-flex; } }
+@media (max-width: 519px) { .diary-sidebar .shell-sidebar-head .side-expand { display: inline-flex; } }
 
 /* Workspace refresh: quiet navigation, a continuous canvas, and a single
    control scale. Keep these shared rules here, after component styles. */
@@ -252,7 +251,7 @@ button:disabled { opacity: .5; cursor: default; }
   .project-rail { width: 100%; border-left: 0; border-top: 1px solid var(--border); padding: 20px; }
   .settings-shell { width: 100%; height: 100dvh; border-radius: 0; }
 }
-@media (max-width: 600px) {
+@media (max-width: 519px) {
   .app-main { margin: 0; }
   .sidebar:not(.coding-sidebar) { padding-top: 12px; }
   .projects-workspace .settings-scroll { padding: 0 20px; }
@@ -297,16 +296,17 @@ button:disabled { opacity: .5; cursor: default; }
 .msg[data-role='user'] .msg-user-row { max-width: 100%; background: var(--bg-surface-hover); border-radius: 18px; }
 .assistant-card .msg-meta { border: 0; font-family: var(--font-ui); margin-top: 8px; }
 @media (max-width: 900px) { .project-rail { display: flex; } }
-@media (max-width: 600px) {
+@media (max-width: 519px) {
   .sidebar:not(.is-expanded):not(.coding-sidebar) .sidebar-history { display: none; }
   .sidebar:not(.is-expanded):not(.coding-sidebar) .side-diary { margin-top: auto; }
 }
 
 /* design-lint: allow side-tab — the thick left edge draws a miniature sidebar */
-.theme-swatch { background: var(--bg-app); border-left-color: var(--bg-chrome); }
-.theme-swatch i { background: var(--text-secondary); }
-.theme-swatch.dark { background: var(--bg-app); border-left-color: var(--bg-chrome); }
-.theme-swatch.dark i { background: var(--text-secondary); }
+/* Each swatch carries data-theme, so the raw --md-* roles resolve to the theme it
+   previews. The semantic tokens (--bg-app…) are resolved once on :root and would
+   paint both swatches in whichever theme is active. */
+.theme-swatch, .theme-swatch.dark { background: var(--md-surface); border-left-color: var(--md-surface-container-low); }
+.theme-swatch i, .theme-swatch.dark i { background: var(--md-on-surface-variant); }
 /* design-lint: allow side-tab — miniature sidebar at phone size */
 
 /* Status lamps use brighter colors than readable success/error text. */
@@ -356,7 +356,7 @@ button:disabled { opacity: .5; cursor: default; }
 @keyframes menu-enter { from {opacity:0;transform:translateY(-3px)} to {opacity:1;transform:translateY(0)} }
 .rail-tools { display:none; }
 .sidebar .side-expand { display:inline-flex; }
-@media(min-width:601px) {
+@media(min-width: 520px) {
   .sidebar.is-collapsed { width:60px; min-width:60px; padding:14px 7px; }
   .sidebar.is-collapsed .side-logo, .sidebar.is-collapsed .shell-sidebar-head button:not(.side-expand), .sidebar.is-collapsed .sidebar-history, .sidebar.is-collapsed .status-row, .sidebar.is-collapsed .account-name, .sidebar.is-collapsed .account-trigger > svg { display:none; }
   .sidebar.is-collapsed .nav-name, .sidebar.is-collapsed .new-chat-btn span { display:none; }
@@ -366,7 +366,7 @@ button:disabled { opacity: .5; cursor: default; }
   .sidebar.is-collapsed .side-diary { margin-top:auto; }
   .sidebar.is-collapsed .rail-tools { display:grid; justify-content:center; }
 }
-@media(max-width:600px) { .sidebar:not(.is-expanded) .rail-tools { display:grid; justify-content:center; } }
+@media(max-width: 519px) { .sidebar:not(.is-expanded) .rail-tools { display:grid; justify-content:center; } }
 @media(hover:none) { .project-card-options { opacity:1; } }
 .settings-detail .settings-stat-row { padding:18px 0; border-top:1px solid var(--border); }
 .settings-detail .model-row { padding:14px 0; border-radius:0; border-bottom:1px solid var(--border); }
@@ -455,7 +455,7 @@ dialog.folder-picker::backdrop { background:rgba(0,0,0,.4); backdrop-filter:blur
 /* Source extraction state belongs to the source row, not the navigation. */
 .source-status { display: block; white-space: normal; overflow-wrap: anywhere; font-size: var(--text-caption); line-height: 1.4; margin-top: 0.25rem; }
 .source-name > span { min-width: 0; white-space: normal; }
-@media (max-width: 600px) {
+@media (max-width: 519px) {
   .source-list li { flex-wrap: wrap; }
   .source-list .source-name { flex-basis: 100%; }
 }
@@ -505,7 +505,7 @@ dialog.folder-picker::backdrop { background:rgba(0,0,0,.4); backdrop-filter:blur
 .chat-composer-inner > .reasoning-control { grid-column: 3; grid-row: 2; align-self: center; }
 .chat-composer-inner:has(> .reasoning-control) > .send-btn { grid-column: 4; }
 .reasoning-result { display: block; color: var(--text-secondary); margin: 6px 0; }
-@media(max-width:600px) { .chat-composer-inner > .reasoning-control select { max-width: 80px; } }
+@media(max-width: 519px) { .chat-composer-inner > .reasoning-control select { max-width: 80px; } }
 .reasoning-control .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* Diary conversation and composer have independent layout; only content scrolls. */
@@ -561,7 +561,7 @@ dialog.folder-picker::backdrop { background:rgba(0,0,0,.4); backdrop-filter:blur
 .model-variant-row > .model-name-group { flex-direction:column; align-items:flex-start; gap:6px; }
 .model-variant-row .model-quant { margin-left:0; }
 .model-variant-row .model-name { white-space:normal; overflow-wrap:anywhere; }
-@media(max-width:600px) { .model-variant-row { flex-wrap:wrap; } .model-variant-row > .model-name-group { flex-basis:100%; } .model-variant-row > button { margin-left:auto; } }
+@media(max-width: 519px) { .model-variant-row { flex-wrap:wrap; } .model-variant-row > .model-name-group { flex-basis:100%; } .model-variant-row > button { margin-left:auto; } }
 
 .usage-rate-row { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 12px; border: 1px solid var(--border); margin-block: 16px; padding: 14px; min-width: 0; }
 .usage-rate-row label { min-width: 0; }
@@ -602,9 +602,10 @@ dialog.folder-picker::backdrop { background:rgba(0,0,0,.4); backdrop-filter:blur
 .app-mode-switch { background:none;border:0;padding:0; }
 .app-mode-switch button { border-radius:5px;box-shadow:none; }
 .app-mode-switch button.is-selected { box-shadow:none; }
-.sidebar .project-icon { color:var(--text-secondary)!important; }
-.project-card .project-icon { color:var(--text-primary)!important; }
-.project-card:hover .project-icon { color:var(--accent-text)!important; }
+/* Fallbacks for a project without a colour; a chosen colour (inline on the icon) always wins,
+   in the sidebar and on cards too (user review, 2026-09-18). */
+.sidebar .project-icon { color:var(--text-secondary); }
+.project-card .project-icon { color:var(--text-primary); }
 /* Writing gets its own typographic voice, in the existing reading column. */
 .diary-landing h1 { font-family:Georgia,'Times New Roman',serif;font-size:var(--text-display);line-height:1.18;font-weight:400;letter-spacing:-1.2px; }
 .diary-intro { font-size:var(--text-callout);line-height:1.7; }
@@ -1198,7 +1199,7 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 
 .diary-workspace-search form { display:grid; gap:12px; margin-block:12px; }
 .diary-workspace-search button { min-height:44px; }
-@media(max-width:600px) { .diary-workspace-filter input { font-size:var(--text-input); min-width:0; } }
+@media(max-width: 519px) { .diary-workspace-filter input { font-size:var(--text-input); min-width:0; } }
 
 .diary-workspace-export { overflow-wrap: anywhere; }
 .diary-workspace-export .modal-btn { min-height: 44px; max-width: 100%; white-space: normal; }
@@ -1239,7 +1240,7 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
   .sidebar .proj-row:hover .project-disclosure, .sidebar .proj-row:has(:focus-visible) .project-disclosure { padding-right: 7px; }
   .sidebar-section-head .section-options { opacity: 1; }
 }
-@media (max-width: 600px) {
+@media (max-width: 519px) {
   .sidebar:not(.coding-sidebar).is-expanded { background: var(--bg-chrome); }
 }
 
@@ -1460,7 +1461,8 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 .mp-model[aria-pressed="true"] { border-color: var(--accent); }
 .mp-model-item { display: flex; align-items: stretch; gap: 6px; }
 .mp-model-item .mp-model { flex: 1; min-width: 0; }
-.mp-tune { flex: none; min-height: 44px; align-self: center; }
+/* Scoped to the row so the later generic .popup-tab (30px, primitives.css) cannot shrink it. */
+.mp-model-item .mp-tune { flex: none; min-height: 44px; align-self: center; }
 
 .mp-tool { display: flex; align-items: flex-start; gap: 8px; font-size: var(--text-caption); cursor: pointer; min-height: 44px; }
 .mp-tool > span { flex: 1; min-width: 0; }
@@ -1598,7 +1600,7 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 /* Mobile navigation drawer. Below 600px the sidebar leaves the layout entirely
    (no icon rail) and opens full-height from a single toggle. */
 .nav-drawer-toggle, .nav-drawer-backdrop { display: none; }
-@media (max-width: 600px) {
+@media (max-width: 519px) {
   .nav-drawer-toggle { display: inline-flex; position: absolute; top: 8px; left: 8px; z-index: 25; width: 44px; height: 44px; align-items: center; justify-content: center; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
   .sidebar:not(.coding-sidebar):not(.is-expanded) { display: none; }
   .sidebar:not(.coding-sidebar).is-expanded {
@@ -1624,7 +1626,7 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
    (vertical space matters in landscape) and drop the wordmark, keeping the mark. */
 .sidebar:not(.coding-sidebar):not(.is-collapsed) .shell-sidebar-head { min-width: 0; }
 .sidebar:not(.coding-sidebar):not(.is-collapsed) .side-head-actions { display: flex; flex-shrink: 0; }
-@media (min-width: 601px) and (max-width: 767px), (min-width: 601px) and (max-width: 1100px) and (pointer: coarse) {
+@media (min-width: 520px) and (max-width: 767px), (min-width: 520px) and (max-width: 1100px) and (pointer: coarse) {
   .sidebar:not(.coding-sidebar):not(.is-collapsed) .side-logo span { display: none; }
 }
 
@@ -1801,7 +1803,7 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 .personal-style-label { font-size: var(--text-callout); font-weight: 600; }
 .personal-style-hint { font-size: var(--text-caption); color: var(--text-secondary); }
 .mm-easy-measure > summary, .mm-easy-autotune > summary { flex-wrap: wrap; }
-@media (max-width: 600px) { .mm-easy-measure > summary small, .mm-easy-autotune > summary small { flex-basis: 100%; padding-left: calc(1em + 8px); } }
+@media (max-width: 519px) { .mm-easy-measure > summary small, .mm-easy-autotune > summary small { flex-basis: 100%; padding-left: calc(1em + 8px); } }
 .mm-autotune { display: flex; flex-direction: column; gap: 10px; }
 .mm-progress { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-caption); color: var(--text-secondary); }
 .mm-progress progress { width: 100%; height: 8px; accent-color: var(--accent); }
@@ -1849,9 +1851,10 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
   width: min(100%, 430px); border-inline: 1px solid var(--border-subtle); overflow: hidden;
 }
 :root[data-layout="mobile"] .settings-shell { width: 100%; height: 100%; border-radius: 0; border: 0; }
-:root[data-layout="mobile"] .settings-navigation { width: 155px; padding: 10px 7px; border-right: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; }
-:root[data-layout="mobile"] .settings-navigation nav button { font-size: var(--text-caption2); gap: 6px; padding: 9px 6px; }
-:root[data-layout="mobile"] .settings-navigation nav button svg { display: none; }
+/* Settings on a phone is single-pane (a full-width list opening full-screen pages). These
+   rules drew the old two-column phone layout — a 155px column of 11px labels without icons —
+   and pinned the list narrow on real phones (visual pass, 2026-09-18). */
+:root[data-layout="mobile"] .settings-navigation { width: 100%; border-right: 0; border-radius: 0; }
 :root[data-layout="mobile"] .settings-detail > header { padding: 12px 16px; border-radius: 0; }
 :root[data-layout="mobile"] .settings-detail-scroll { padding: 22px 16px; }
 :root[data-layout="mobile"] .settings-detail .settings-title h1 { font-size: var(--text-title1); }

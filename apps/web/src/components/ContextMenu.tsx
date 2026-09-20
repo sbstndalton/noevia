@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { JSX, ReactNode } from 'react';
+import { ShellIcon } from './ShellIcon';
 
 export interface MenuItem {
   label: string;
@@ -8,20 +10,31 @@ export interface MenuItem {
   danger?: boolean;
   separator?: boolean;
   icon?: ReactNode;
+  /** A choice in a set of choices: rendered as a checked menu item, not as a label prefix. */
+  selected?: boolean;
+  /** A second, muted line under the label (Claude's model menu: name, then what it is for). */
+  description?: string;
 }
 
 /** A menu anchored to a viewport point. Position is fixed because the sidebar
- *  lists are overflow-y:auto and would clip an absolutely-positioned dropdown.
+ *  lists are overflow-y:auto and would clip an absolutely-positioned dropdown,
+ *  and it renders into <body>: the phone drawer's transform and backdrop-filter
+ *  make it the containing block for fixed children, which offset and clipped it.
  *  Opened from either a right-click or a hamburger button — both callers hand
  *  us a point, so there is one implementation rather than two. */
 export function ContextMenu({
   at,
   items,
   onClose,
+  placement = 'below',
+  label,
 }: {
   at: { x: number; y: number };
   items: MenuItem[];
   onClose: () => void;
+  /** 'above' opens upward from `at` (a composer control near the bottom of the screen). */
+  placement?: 'below' | 'above';
+  label?: string;
 }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(at);
@@ -29,17 +42,18 @@ export function ContextMenu({
 
   // Flip back inside the viewport rather than letting the menu run off the
   // edge — a right-click near the bottom right is the normal case, not an edge
-  // case.
-  useEffect(() => {
+  // case. Before paint, so the unclamped position never flashes.
+  useLayoutEffect(() => {
     const place = () => {
       const el = ref.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
       const viewport = window.visualViewport;
       const height = viewport && viewport.scale === 1 ? viewport.height : window.innerHeight;
+      const y = placement === 'above' ? at.y - r.height - 6 : at.y;
       setPos({
         x: Math.max(8, Math.min(at.x, window.innerWidth - r.width - 8)),
-        y: Math.max(8, Math.min(at.y, height - r.height - 8)),
+        y: Math.max(8, Math.min(y, height - r.height - 8)),
       });
     };
     place();
@@ -49,7 +63,7 @@ export function ContextMenu({
       window.removeEventListener('resize', place);
       window.visualViewport?.removeEventListener('resize', place);
     };
-  }, [at.x, at.y]);
+  }, [at.x, at.y, placement]);
 
   useEffect(() => {
     const down = (e: PointerEvent) => {
@@ -78,19 +92,25 @@ export function ContextMenu({
     ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, []);
 
-  return (
-    <div className="ctx-menu" role="menu" ref={ref} style={{ top: pos.y, left: pos.x }}>
+  return createPortal(
+    <div className={`ctx-menu overlay${items.some((it) => it.description) ? ' has-descriptions' : ''}`} role="menu" aria-label={label} ref={ref} style={{ top: pos.y, left: pos.x, visibility: pos === at && placement === 'above' ? 'hidden' : undefined }}>
       {items.map((it, i) => (
         <button
           key={i}
-          role="menuitem"
+          role={it.selected === undefined ? 'menuitem' : 'menuitemradio'}
+          aria-checked={it.selected === undefined ? undefined : it.selected}
           className={`ctx-item${it.danger ? ' is-danger' : ''}${it.separator ? ' has-separator' : ''}`}
           onClick={() => { onClose(); it.onSelect(); }}
         >
-          {it.icon}<span>{it.label}</span>
+          {/* Every row keeps the symbol column, so labels line up whether or not this
+              particular item has one. */}
+          {it.description
+            ? <><span className="ctx-item-text">{it.label}<small>{it.description}</small></span><span className="ctx-item-check" aria-hidden="true">{it.selected && <ShellIcon name="check"/>}</span></>
+            : <>{it.icon ?? (it.selected ? <ShellIcon name="check"/> : <span className="ctx-item-gap" aria-hidden="true"/>)}<span>{it.label}</span></>}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -123,7 +143,7 @@ export function ConfirmDialog({
   }, []);
   return (
     <dialog
-      className="confirm-dialog"
+      className="confirm-dialog aero dialog-sheet"
       ref={ref}
       aria-label={title}
       onCancel={(e) => { e.preventDefault(); onCancel(); }}

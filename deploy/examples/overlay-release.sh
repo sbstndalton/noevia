@@ -34,8 +34,41 @@ tar -xzf "/tmp/app-$NEW.tar.gz" -C "$work"
 rm -rf "$work/server/node_modules" "$work/server/ui-data"
 # A failed local build leaves dist empty or missing; never ship that.
 [ -f "$work/dist/index.html" ] && ls "$work"/dist/assets/*.js >/dev/null 2>&1 || { echo "app-$NEW.tar.gz has no built dist/; rebuild locally" >&2; exit 1; }
+# Each overlay adds layers on top of the previous image, and Docker refuses to build past 127
+# (release 96371d5 failed with "max depth exceeded" on 2026-09-18). Past 100 layers, build the
+# release on a flattened copy of OLD instead: one layer with the same files, and the same
+# settings (env, workdir, ports, user, entrypoint, cmd, health check) read back from the image.
+# ($base is the appdata directory above, so the image lives in $web_image.)
+# OLD's own image and tag are untouched, so rollback to OLD is unaffected.
+web_image="cowork-web:$OLD"
+layers=$(docker image inspect "$web_image" --format '{{len .RootFS.Layers}}')
+if [ "$layers" -gt 100 ]; then
+  flat="$(mktemp -d)"
+  docker image inspect "$web_image" --format '{{json .Config}}' | jq -r --arg src "$web_image" '
+    "FROM scratch", "COPY --from=\($src) / /",
+    ((.Env // [])[] | (split("=") as $kv | "ENV \($kv[0])=\($kv[1:] | join("=") | @json)")),
+    (if (.WorkingDir // "") != "" then "WORKDIR \(.WorkingDir)" else empty end),
+    ((.ExposedPorts // {}) | keys[] | "EXPOSE \(.)"),
+    (if (.User // "") != "" then "USER \(.User)" else empty end),
+    (if .Entrypoint then "ENTRYPOINT \(.Entrypoint | tojson)" else empty end),
+    (if .Cmd then "CMD \(.Cmd | tojson)" else empty end),
+    (if .Healthcheck and .Healthcheck.Test[0] == "CMD-SHELL" then
+      "HEALTHCHECK --interval=\(.Healthcheck.Interval / 1e9 | floor)s --timeout=\(.Healthcheck.Timeout / 1e9 | floor)s --start-period=\(.Healthcheck.StartPeriod / 1e9 | floor)s --retries=\(.Healthcheck.Retries) CMD \(.Healthcheck.Test[1])"
+     elif .Healthcheck and .Healthcheck.Test[0] == "CMD" then
+      "HEALTHCHECK --interval=\(.Healthcheck.Interval / 1e9 | floor)s --timeout=\(.Healthcheck.Timeout / 1e9 | floor)s --start-period=\(.Healthcheck.StartPeriod / 1e9 | floor)s --retries=\(.Healthcheck.Retries) CMD \(.Healthcheck.Test[1:] | tojson)"
+     else empty end)' > "$flat/Dockerfile"
+  docker build -q -t "cowork-web:$OLD-flat" "$flat" >/dev/null
+  rm -rf "$flat"
+  # The flattened copy must carry the same settings as the original before anything uses it.
+  for field in .Config.Env .Config.WorkingDir .Config.ExposedPorts .Config.User .Config.Entrypoint .Config.Cmd .Config.Healthcheck; do
+    [ "$(docker image inspect "$web_image" --format "{{json $field}}")" = "$(docker image inspect "cowork-web:$OLD-flat" --format "{{json $field}}")" ] \
+      || { echo "flattened image differs in $field; not deploying" >&2; exit 1; }
+  done
+  echo "flattened $web_image ($layers layers) to cowork-web:$OLD-flat ($(docker image inspect "cowork-web:$OLD-flat" --format '{{len .RootFS.Layers}}') layers)"
+  web_image="cowork-web:$OLD-flat"
+fi
 cat > "$work/Dockerfile" <<DOCKER
-FROM cowork-web:$OLD
+FROM $web_image
 RUN find /app/server -maxdepth 1 -type f -delete && rm -rf /app/server/fixtures /app/dist
 COPY dist /app/dist
 COPY server /app/server

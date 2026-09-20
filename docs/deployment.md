@@ -1453,3 +1453,377 @@ against the *running* container after the flip: 7,976 ≤ 8,000, note reads
 `[showing 103 of 400 records; 297 omitted to fit…]`.
 
 Rollback: `bb78a1a`, then `06f9402`.
+
+## Release d11cfac — 2026-09-18 (UI overhaul release 3 plus phone-review fixes)
+
+Latest application rollout: **`d11cfac`**, replacing `ab2720a`. Carries release 3 (`4e32b22`:
+menus, dialogs/bottom sheets, confirm dialogs, cards, banners, empty states, chat bubbles, the
+tool-call list and write-approval card) and the fixes from the phone review of `ab2720a`.
+No dependency changes. Local gate: 861/861 tests, typecheck and design lint clean, fresh build
+into an emptied `/tmp/noevia-qa-dist`. Appdata backup `ab_20260918_112354` first (log clean;
+web, Diary and extra-files archives gzip-verified; web and Diary restarted healthy). Web-only
+overlay `ab2720a → d11cfac` over Tailscale (`RELEASE_d11cfac_COMPLETE`; web, diary, ocr, llama
+and model-loader healthy with restarts=0; engine untouched; model-loader still `ca5d2f6`).
+`noevia.daserver.work` serves `index-Bzvm1y5j.js`, matching the local build.
+**Browser verification was partial:** the authenticated desktop session loaded the new shell
+(Customize/Explore gone from the sidebar, the new model popup and tool list). No model was
+loaded, so the first synthetic message failed with "no model selected". The live write-approval
+card, phone width, light/dark and accent repaint were **not** checked; they are still owed. A
+synthetic chat "QA deploy check: use the drive_create_file…" was left in Recent chats (it ran
+no tools) and should be deleted. `cowork.daserver.work` did not resolve through Tailscale DNS
+at the time. Rollback: `ab2720a` and `.env.bak.before-d11cfac`.
+
+Phone-width follow-up (same day, Chrome window at 500 px, the narrowest it allows; not touch
+emulation). Works: Settings is a full-width list opening full-screen pages with a back arrow;
+reload returns to the open view; the phone composer is pinned to the bottom and the inference
+strip is one line; the confirm dialog and model picker are bottom sheets with a grabber and name
+the right item; the accent palettes repaint live and survive a reload (stored per theme); light
+and dark both apply. The synthetic QA chat was deleted. **Defects found:** (1) the phone drawer
+opened from the Diary view renders the collapsed icon rail (no labels, no lists) inside the full
+drawer; (2) from a chat, the drawer scrolls as one block and the Diary/Plugins pane is clipped
+under the MCP line before scrolling; the three lists do not scroll independently at this size;
+(3) a row's "⋯" menu opens clipped at the drawer edge (icons only), away from its row, and resets
+the drawer scroll; (4) Escape does not close the model bottom sheet; (5) the Light and Dark theme
+thumbnails both draw in the current theme; the selected-theme ring stays purple whatever the
+accent; (6) Settings → Profile row labels start at inconsistent indents on a phone. **Still owed:**
+the live write-approval card (a permission check blocked the synthetic write test) and a
+real touch device for the 16px-field check.
+
+## Releases 3d20de0, a2a1c8e, e777259 — 2026-09-18 (phone review fixes of d11cfac)
+
+Three web-only overlays in a row, each after a clean backup (`ab_20260918_122108`,
+`ab_20260918_123033`, `ab_20260918_123652`; logs clean, all archives gzip-verified) and
+with no dependency changes. Every one ended `RELEASE_<sha>_COMPLETE` with web, diary, ocr,
+llama and model-loader healthy, restarts=0, engine untouched.
+
+Latest application rollout: **`e777259`**, replacing `a2a1c8e` (which replaced `3d20de0`,
+which replaced `d11cfac`). Public site serves `index-s66ywTmP.js` / `index-DTbLz5or.css`.
+- **3d20de0:** the phone drawer opened from Diary is the full sidebar (the legacy rail rules
+  now apply only to the closed sidebar); the sticky footer is measured, not assumed 60px, and
+  owns the drawer's bottom inset, so Diary/Plugins are never under it and no rows show below
+  it; row menus render into `<body>` and are placed before paint (no clipping, no offset, no
+  scroll reset); theme previews show their own theme and the selected ring follows the
+  accent; stacked Settings rows share one left edge.
+- **a2a1c8e:** before its first reading the inference strip shows the model with a neutral
+  dot instead of a red "Inference offline" (the poll waits while the page is hidden).
+- **e777259:** on a desktop each sidebar list keeps its heading in view while it scrolls.
+`qa/phone-drawer-settings.cjs` covers all of it. Gate each time: 861/861 tests, typecheck,
+design lint, fresh build; `sidebar-reachability`, `mobile-viewport`, `mobile-approvals`,
+`tool-calls`, `appearance-system`, `general-settings`, `touch-targets` and
+`short-phone-composer` pass. `mobile-surfaces` and `live-stats` fail identically on the
+unchanged `d11cfac` build (pre-existing: they look for a pre-release-3 flow and the old
+"Inference details" region). Verified live in Chrome at 500 px and 1360 px: the drawer from
+chat and from Diary, a row menu, Profile alignment, Appearance previews/ring/accents, the
+strip, independent desktop lists with sticky headings. The escape-key "bug" noted earlier
+was an artefact of the browser extension's key events; Escape closes the sheet. Appearance
+was restored to Dark + Warm. **Still owed:** the live write-approval card (a permission
+check blocks a synthetic Nextcloud write) and a real touch device for 16px fields.
+Rollback: `a2a1c8e` with `.env.bak.before-e777259` (further back: `3d20de0`, `d11cfac`).
+
+## Releases 265c650 and 6930549 — 2026-09-18 (Material 3, more phone fixes)
+
+Latest application rollout: **`6930549`**, replacing `265c650`, which replaced `e777259`.
+Backups `ab_20260918_130856` and `ab_20260918_131641` first (clean, gzip-verified); both
+overlays ended `RELEASE_<sha>_COMPLETE`, five services healthy, restarts=0, engine untouched,
+no dependency changes. Public site serves `index-pxDeVw0P.css`.
+- **Material 3** ("doesn't actually look like material3"): `styles/material3.css`, scoped to
+  `[data-material='material']`, gives each component its M3 counterpart (navigation drawer
+  with pill destinations, extended FAB, search-bar composer, filled icon send, assist chips,
+  M3 menus, elevated cards, outlined fields, primary tabs, dialogs/bottom sheets, segmented
+  buttons with the check, elevation and state layers, Roboto). It fixes the sticky list
+  headings and drawer footer showing as bands in that material. Roboto rides the existing
+  Google Fonts request (CSP already allows it) and downloads only when used.
+- **Phone:** fields on touch are 16px everywhere (iOS zoom was back on Security, Data,
+  Appearance, Diary & storage); the Material track scrolls at 320px with the choice in view
+  and a thumb that follows label changes; theme previews and accents each fit one row;
+  Projects counts active projects and its filter spans the row.
+- **6930549:** on a short desktop no sidebar list collapses to its heading (seen live in M3).
+`qa/live-stats.cjs` updated to the release-3 strip and passes. Verified live: M3 with
+Roboto loaded, list rows visible; material restored to Liquid glass, Dark, Warm.
+Rollback: `265c650` with `.env.bak.before-6930549` (then `e777259`).
+
+## Releases 4ea3282 and 95eacd6 — 2026-09-18 (sidebar as one plane, like ChatGPT)
+
+Latest application rollout: **`95eacd6`**, replacing `4ea3282`, which replaced `6930549`.
+Backups `ab_20260918_133651` and `ab_20260918_134540` first (clean, gzip-verified); both
+overlays `RELEASE_<sha>_COMPLETE`, five services healthy, restarts=0, engine untouched.
+User review ("the whole sidebar needs to be a single scrollable plane", with ChatGPT as the
+reference): the independently scrolling lists are gone at every width; the rail scrolls as
+one surface; Diary and Plugins moved up with Projects into the top destinations; Projects,
+Pinned and Recent chats are flat labelled lists (no tree line); only the account row stays
+pinned; Recent chats no longer stops at twelve. Verified live: no nested scrollers, all 10
+recent chats present, Diary in the top group. Rollback `4ea3282` with
+`.env.bak.before-95eacd6` (then `6930549`).
+
+## Release 4152d15 — 2026-09-18 (Settings and sidebar organised like ChatGPT)
+
+Latest application rollout: **`4152d15`**, replacing `95eacd6`. Backup `ab_20260918_141325`
+first (clean, gzip-verified); `RELEASE_4152d15_COMPLETE`, five services healthy, restarts=0.
+Sidebar sections now follow ChatGPT's order: Pinned, Projects, Recent chats (no destinations
+added). Settings was reorganised after reading all 17 sections of ChatGPT's settings: one
+flat list without group headings, General first and Account last, using only pages noevia
+has — General (was Appearance), Personalization, Capabilities, Connectors, AI providers,
+Usage (was Usage & activity), Data controls (was Data), Diary & storage, Security and login
+(was Security), Account (was Profile); admin pages stay under Server. Section ids are
+unchanged. QA suites follow the new labels; `data-export` fails identically on the previous
+build (pre-existing). Rollback `95eacd6` with `.env.bak.before-4152d15`.
+
+## Release 94909d3 — 2026-09-18 (collapsed sidebar like ChatGPT's)
+
+Latest application rollout: **`94909d3`**, replacing `4152d15`. Backup `ab_20260918_142829`
+first (clean, gzip-verified); `RELEASE_94909d3_COMPLETE`, five services healthy, restarts=0.
+ChatGPT's collapse was studied live (DOM and computed CSS: a separate 52px rail of 36px icon
+buttons over an inert, hidden 260px panel; state remembered; empty rail expands it). noevia's
+collapsed rail had leaked headings, rows and the MCP line; it is now one column of equal
+icons with the avatar at the bottom (M3: navigation rail with the FAB), remembered per device
+(`noevia:sidebar-collapsed`), and its empty space expands it. No buttons were added. Verified
+live: no leaks, icons only, state stored; left expanded. Rollback `4152d15` with
+`.env.bak.before-94909d3`.
+
+## Release 91a89ba — 2026-09-18 (account menu and Search like Claude; rail and Code fixes)
+
+Latest application rollout: **`91a89ba`**, replacing `94909d3`. Backup `ab_20260918_145036`
+first (clean, gzip-verified); `RELEASE_91a89ba_COMPLETE`, five services healthy, restarts=0.
+Claude's account menu and bottom bar, and Claude's and ChatGPT's Settings, were inspected in
+the browser (DOM and computed styles). Light/dark moved from the sidebar head into the
+account menu (Chat and Code); Search sits beside the account. The account menu renders into
+`<body>` (it was clipped to icons in the collapsed rail) and opens beside the avatar there.
+The rail's Chat/Code switch is two stacked icon buttons. Entering Code no longer blanks the
+page while the lazy chunk loads (50 blank frames → 0 with an 800 ms chunk). Verified live:
+head holds only Collapse; footer is account + Search. Nextcloud had deleted tracked files
+under `.claude/skills/impeccable/` again; restored from git, not committed as deletions.
+Rollback `94909d3` with `.env.bak.before-91a89ba`.
+
+## Release 350050e — 2026-09-18 (composer like Claude's, SVG icons, Code keeps sidebar state)
+
+Latest application rollout: **`350050e`**, replacing `91a89ba`. Backup `ab_20260918_155238`
+first (clean, gzip-verified); `RELEASE_350050e_COMPLETE`, five services healthy, restarts=0.
+Claude's composer (+ menu, model/effort control) was inspected in the DOM. The + is a
+centred SVG in a liquid-glass circle; its menu is Add files or photos, then tools ticked when
+on — the duplicate Model and routing entry is gone. Thinking is a glass pill opening an aero
+menu (Auto, Low, Standard, High with descriptions and a check); Settings keeps the select.
+The Code sidebar collapses and shares `noevia:sidebar-collapsed`, so a closed sidebar stays
+closed across Chat and Code. All text-glyph icons became Lucide SVGs (paperclip, brain,
+wrench added from Iconify's Lucide set); icon-only buttons centre a block SVG. A DOM audit
+of 21 views at desktop and phone width finds no glyph icons and no off-centre icon buttons.
+`qa/reasoning.cjs` and `qa/touch-targets.cjs` follow the new control. Verified live: + SVG
+offset 0/0, Thinking is a button, no glyph buttons. Rollback `91a89ba` with
+`.env.bak.before-350050e`.
+
+## Release 5a0e026 — 2026-09-18 (icon centring scoped; row options beside the title)
+
+Latest application rollout: **`5a0e026`**, replacing `350050e`. Backup `ab_20260918_163539`
+first (clean, gzip-verified); `RELEASE_5a0e026_COMPLETE`, five services healthy, restarts=0.
+The 350050e rule centring "an SVG that is the only child element" also caught icon + text
+buttons (CSS cannot see text nodes); only labelled icon-only buttons centre now, icon + text
+keep the icon at the start, vertically centred. Sidebar row options were drawn over the
+title on a transparent background; as in ChatGPT (inspected) they are in the row's flow,
+shown on hover/focus, and the title fades out before them; one hover highlight per row.
+Verified live: options static and hidden until hover, no icon+text button centred.
+Rollback `350050e` with `.env.bak.before-5a0e026`.
+
+## Release 5cd033b — 2026-09-18 (Diary in the bottom bar; sliding Chat/Code; phone Code drawer; project colours)
+
+Latest application rollout: **`5cd033b`**, replacing `5a0e026`. Backup `ab_20260918_170210`
+first (clean, gzip-verified); `RELEASE_5cd033b_COMPLETE`, five services healthy, restarts=0.
+Diary moved to the bottom bar beside Search (above the avatar on the collapsed rail). The
+Chat/Code switch (`ModeSwitch.tsx`) has the liquid-glass thumb and slides both ways across the
+sidebar swap. On phones the Code sidebar's toggle opens/closes a drawer (it only flipped the
+desktop collapse before), and the chat drawer toggle clears the notch. Project colours were
+forced grey/black with `!important` in the sidebar and on cards; the chosen colour now shows
+everywhere, and the chat breadcrumb/greeting carry the project icon. Also fixes the project
+row layout 5a0e026 had spread apart. Verified live: footer = account, Diary, Search; thumb
+present; sidebar project icons red and blue. Rollback `5a0e026` with `.env.bak.before-5cd033b`.
+
+## Release 4c151be — 2026-09-18 (sidebar header and phone drawer like Claude's)
+
+Latest application rollout: **`4c151be`**, replacing `5cd033b`. Backup `ab_20260918_172155`
+first (clean, gzip-verified); `RELEASE_4c151be_COMPLETE`, five services healthy, restarts=0.
+Claude's sidebar was measured at desktop and phone width. The Chat/Code switch is a small
+icon-only track (70×28, 34×26 segments) at the end of the header row after the logo, keeping
+the liquid-glass thumb; it stacks under the expand button on the collapsed rail. The phone
+drawer is full width with the search field under its header, and switching Chat/Code closes
+it in both directions. `sidebar-reachability` closes the full-width drawer from its header
+(no backdrop to tap) and `mobile-viewport` uses the drawer's search field on phones.
+Verified live: switch 70×28 in the header. Rollback `5cd033b` with `.env.bak.before-4c151be`.
+
+## Release 7326ac0 — 2026-09-18 (visual pass: legibility sweep and fixes)
+
+Latest application rollout: **`7326ac0`**, replacing `4c151be`. Backup `ab_20260918_180551`
+first (clean, gzip-verified); `RELEASE_7326ac0_COMPLETE`, five services healthy, restarts=0.
+A legibility sweep of every main view at 375/390/768/1280 px × four materials × light/dark,
+with real iPhone/iPad user agents (they get `data-layout="mobile"`), measured text size and
+pixel-sampled contrast against HIG thresholds: no remaining failures. Fixed: the composer row
+spilled its send button at 375 px (fixed 32 px columns vs 44 px touch buttons); phone Settings
+on real iPhones was pinned to a 155 px column of 11 px labels by leftover two-column rules;
+project and chat rows started their titles 3–11 px apart (one shared geometry now, 44 px touch
+target kept); a heading's options sat 6 px high. Verified live at 375 px: Settings list 375 px
+wide, 15 px labels; composer fits. Rollback `4c151be` with `.env.bak.before-7326ac0`.
+
+## Release d995cd9 — 2026-09-18 (composer focus, iOS keyboard, phone Settings list)
+
+Latest application rollout: **`d995cd9`**, replacing `7326ac0`. Backup `ab_20260918_183012`
+first (clean, gzip-verified); `RELEASE_d995cd9_COMPLETE`, five services healthy, restarts=0.
+The composer's text area no longer draws the global `!important` focus ring as a square inside
+the rounded composer (the composer shows a soft rounded ring). On iOS the app now follows
+`visualViewport.offsetTop` as well as its height (`public/viewport.js`), so an open keyboard
+no longer leaves a blank band. `shell.css` carried a second copy of the old 155 px phone
+Settings list rules; removed. Note: `viewport.js` is served with `max-age=14400`, so a phone
+may run the previous copy for up to four hours. Rollback `7326ac0` with
+`.env.bak.before-d995cd9`.
+
+## Release 06f9402 — 2026-09-19 (models page)
+
+Latest application rollout: **`06f9402`**, replacing `d459867`. Backup `ab_20260919_162840`
+first (gzip-verified); `RELEASE_06f9402_COMPLETE`, five services healthy, restarts=0. Server
+tests 753/753, QA 74/74. The web server now caches the model-loader's `GET models` scan
+(in memory, refreshed in the background, cleared by any model change).
+Rollback: repoint `current` to `releases/d459867`, restore `.env.bak.before-06f9402`, run
+preflight `up.sh … web diary ocr`.
+
+## Release d459867 — 2026-09-19 (Diary from Code; model panel)
+
+Latest application rollout: **`d459867`**, replacing `da5dfa9`. Backup `ab_20260919_160053`
+first (gzip-verified); `RELEASE_d459867_COMPLETE`, five services healthy, restarts=0. Server
+tests 753/753, QA 74/74. Front end only.
+Rollback: repoint `current` to `releases/da5dfa9`, restore `.env.bak.before-d459867`, run
+preflight `up.sh … web diary ocr`.
+
+## Release da5dfa9 — 2026-09-19 (per-account MCP keys)
+
+Rollout **`da5dfa9`**, replacing `3f3ff1e`. Backup `ab_20260919_153642` first; five services
+healthy; no `NOEVIA_QA_*` variables live. Server tests 753/753, QA 74/74. New table
+`directory_mcp_user_keys` and columns `directory_mcp_servers.personal` / `declared_json`
+(auth database; keys encrypted with the credential key).
+Rollback: repoint `current` to `releases/3f3ff1e`, restore `.env.bak.before-da5dfa9`. The older
+code does not know personal servers; they wait for a key until this release is back.
+
+## Release 3f3ff1e — 2026-09-19 (hand-registered OAuth apps)
+
+Latest application rollout: **`3f3ff1e`**, replacing `c173952`. Backup `ab_20260919_151325`
+first (gzip-verified); `RELEASE_3f3ff1e_COMPLETE`, five services healthy, restarts=0; no
+`NOEVIA_QA_*` variables live. Server tests 752/752, QA 74/74.
+Rollback: repoint `current` to `releases/c173952`, restore `.env.bak.before-3f3ff1e`, run
+preflight `up.sh … web diary ocr`. Hand-registered apps stay stored; the older code only
+re-registers automatically, so such servers wait for sign-in until this release is back.
+
+## Release c173952 — 2026-09-19 (per-account MCP OAuth)
+
+Rollout **`c173952`**, replacing `e4fc0d3`. Backup `ab_20260919_145226` first; five services
+healthy. Server tests 751/751, QA 74/74 (mobile-populated passed on a rerun after a transient
+page-load timeout). New tables `mcp_oauth_clients` and `mcp_oauth_tokens` and column
+`directory_mcp_servers.oauth` in the auth database, encrypted with the credential key.
+Return address for sign-in services: `https://noevia.daserver.work/api/mcp-oauth/callback`
+(follows Settings → Web address; a hand-registered app must be updated if that changes).
+Rollback: repoint `current` to `releases/e4fc0d3`, restore `.env.bak.before-c173952`.
+
+## Release e4fc0d3 — 2026-09-19 (MCP directory sign-in keys)
+
+Latest application rollout: **`e4fc0d3`**, replacing `6330ea8`. Backup `ab_20260919_142400` first
+(gzip-verified); `RELEASE_e4fc0d3_COMPLETE`, five services healthy, restarts=0; no `NOEVIA_QA_*`
+variables in the live container. Server tests 748/748, QA 74/74. Adds column
+`directory_mcp_servers.headers_enc` (encrypted with the credential key in the data
+directory, so that key file must stay in backups).
+Rollback: repoint `current` to `releases/6330ea8`, restore `.env.bak.before-e4fc0d3`, run preflight
+`up.sh … web diary ocr`. The older code ignores the new column; keyed servers then fail
+discovery until this release is back.
+
+## Release 6330ea8 — 2026-09-19 (skills auto-load, directory installs, model names)
+
+Latest application rollout: **`6330ea8`**, replacing `a163543`. Backup `ab_20260919_135940` first
+(gzip-verified); `RELEASE_6330ea8_COMPLETE`, five services healthy, restarts=0. Server tests
+747/747 and QA 74/74 before release. Live container: no `NOEVIA_QA_*` variables (the loopback
+and registry switches exist for QA only); registry.modelcontextprotocol.io and
+raw.githubusercontent.com reachable. New table `directory_mcp_servers` in the auth database
+holds admin-added servers.
+Rollback: repoint `current` to `releases/a163543`, restore `.env.bak.before-6330ea8`, run preflight
+`up.sh … web diary ocr`. Directory servers added after this release stay in the table but are
+ignored by the older code.
+
+## Release a163543 — 2026-09-19 (Settings reload fix)
+
+Latest application rollout: **`a163543`**, replacing `957e972`. Backup taken first (gzip-verified).
+Rollback: repoint `current` to `releases/957e972`, restore `.env.bak.before-a163543`, run preflight
+`up.sh … web diary ocr`.
+
+## Release 957e972 — 2026-09-19 (Tune button size)
+
+Latest application rollout: **`957e972`**, replacing `ba95afa`. Backup taken first (gzip-verified).
+Rollback: repoint `current` to `releases/ba95afa`, restore `.env.bak.before-957e972`, run preflight
+`up.sh … web diary ocr`.
+
+## Release ba95afa — 2026-09-19 (two-model engine; routing live)
+
+Latest application rollout: **`ba95afa`**, replacing `41cb2aa`. Backup `ab_20260919_094048`
+first (gzip-verified); `RELEASE_ba95afa_COMPLETE`, five services healthy, restarts=0.
+Live `docker-compose.override.yml` now runs llama with `--models-max 2` (previous file kept as
+`docker-compose.override.yml.bak.<timestamp>`). Measured with synthetic prompts: Ornith 9B +
+nomic-embed loaded together, GTT 7.4 of 15.6 GB; embedding 0.6 s cold / 8 ms warm; the chat
+model stayed loaded. Switching to Qwen3.5-4B unloaded the 9B and kept nomic. Tool routing was
+already enabled by `NOEVIA_FEATURE_TOOL_ROUTER=true` in `.env`.
+Rollback: restore the override backup and recreate llama; repoint `current` to
+`releases/41cb2aa`, restore `.env.bak.before-ba95afa`, run preflight `up.sh … web diary ocr`.
+
+## Release 41cb2aa — 2026-09-19 (tool routing scope and more_tools; routing still off)
+
+Latest application rollout: **`41cb2aa`**, replacing `363171c`. Backup `ab_20260919_032607`
+first (gzip-verified); `RELEASE_41cb2aa_COMPLETE`, five services healthy, restarts=0.
+Before turning on Settings → Features → Tool routing: the llama service runs `--models-max 1`,
+so `nomic-embed-text-v1` would unload the chat model per message. Raise it to 2 (the 2026-09-17
+router measurement used 2) or point `EMBEDDING_BASE_URL` at a separate embedding server first.
+Rollback: repoint `current` to `releases/363171c`, restore `.env.bak.before-41cb2aa`, run
+preflight `up.sh … web diary ocr`.
+
+## Release 363171c — 2026-09-19 (re-fit after zoom)
+
+Latest application rollout: **`363171c`**, replacing `c71a30d`. Backup `ab_20260919_025713`
+first (gzip-verified); `RELEASE_363171c_COMPLETE`, services healthy. `viewport.js?v=3`.
+Rollback: repoint `current` to `releases/c71a30d`, restore `.env.bak.before-363171c`, run
+preflight `up.sh … web diary ocr`.
+
+## Release c71a30d — 2026-09-19 (tall screens)
+
+Latest application rollout: **`c71a30d`**, replacing `70631b0`. Backup `ab_20260919_023204`
+first (gzip-verified); `RELEASE_c71a30d_COMPLETE`, five services healthy, restarts=0.
+Rollback: repoint `current` to `releases/70631b0`, restore `.env.bak.before-c71a30d`, run
+preflight `up.sh … web diary ocr`.
+
+## Release 70631b0 — 2026-09-19 (shrink-to-fit)
+
+Latest application rollout: **`70631b0`**, replacing `f87b157`. Backup `ab_20260919_021208`
+first (gzip-verified); `RELEASE_70631b0_COMPLETE`, five services healthy, restarts=0.
+Rollback: repoint `current` to `releases/f87b157`, restore `.env.bak.before-70631b0`, run
+preflight `up.sh … web diary ocr`.
+
+## Release f87b157 — 2026-09-19 (shared Chat/Code sidebar; Plugins page)
+
+Latest application rollout: **`f87b157`**, replacing `027bd00`. Backup `ab_20260919_015611`
+first (gzip-verified); `RELEASE_f87b157_COMPLETE`, five services healthy, restarts=0; web image
+8 layers. New authenticated route `GET /api/plugins/directory` fetches only
+registry.modelcontextprotocol.io and api.github.com (anthropics/skills), read-only, cached 1h.
+Rollback: repoint `current` to `releases/027bd00`, restore `.env.bak.before-f87b157`, run
+preflight `up.sh … web diary ocr`.
+
+## Release 027bd00 — 2026-09-18 (iOS keyboard fix; web image flattened; layer check)
+
+Latest application rollout: **`027bd00`**, replacing `d995cd9`. Backup `ab_20260918_224023`
+first (clean, gzip-verified); `RELEASE_027bd00_COMPLETE`, five services healthy, restarts=0.
+- **iOS keyboard:** on phones and tablets the app shell is `position: fixed` to the visible
+  viewport and the document cannot scroll, so iOS has nothing to push up; `viewport.js` resets
+  any document scroll on focus/blur and keeps following `visualViewport` height and offset.
+  `viewport.js` and `fonts.js` are version-stamped (`?v=2`) in `index.html` so phones do not wait
+  out the 4-hour cache.
+- **Layer limit:** release `96371d5` failed with "max depth exceeded" — `cowork-web:d995cd9` had
+  127 layers, Docker's maximum, from a day of overlays each building on the last. Nothing live
+  changed. `overlay-release.sh` now flattens OLD when it has more than 100 layers: it builds
+  `cowork-web:<OLD>-flat` (FROM scratch + COPY of OLD's filesystem, settings regenerated with
+  `jq`), checks env/workdir/ports/user/entrypoint/cmd/healthcheck field by field against OLD,
+  and builds the release on it. OLD's image and tag are untouched (rollback unaffected:
+  `d995cd9` is still 127 layers). Result: `cowork-web:027bd00` has 5 layers.
+- A first attempt (`d06a1bd`) stopped after the flatten because the new block reused `$base`
+  (the appdata directory); it failed before the symlink, `.env` or containers changed. Fixed in
+  `027bd00`; the leftover release directory, env backup and image tags were removed.
+- Housekeeping for later: 52 `cowork-web:*` image tags are kept on the host; old ones can be
+  pruned once rollback targets are agreed.
+Rollback `d995cd9` with `.env.bak.before-027bd00`.
+

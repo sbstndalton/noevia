@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ShellIcon } from './ShellIcon';
 import type { JSX } from 'react';
 import { browseStorage, createStorageFolder } from '../api';
 import type { StorageEntry } from '../api';
@@ -57,9 +58,9 @@ export function FolderPicker({
   const up = () => setPath(path.split('/').slice(0, -1).join('/'));
 
   return (
-    <dialog ref={dialog} className="folder-picker" aria-label="Choose a folder" onCancel={e=>{e.preventDefault();onClose();}}>
+    <dialog ref={dialog} className="folder-picker aero dialog-sheet" aria-label="Choose a folder" onCancel={e=>{e.preventDefault();onClose();}}>
       <header>
-        <button className="btn btn-ghost btn-sm" onClick={up} disabled={!path}>↑ Up</button>
+        <button className="btn btn-ghost btn-sm" onClick={up} disabled={!path}><ShellIcon name="arrow-up" size={16}/>Up</button>
         <code>{path ? `/${path}` : '/ (all files)'}</code>
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
       </header>

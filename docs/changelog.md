@@ -1,3 +1,195 @@
+### 2026-09-19 — Models page: faster, cards side by side, one toolbar (06f9402)
+
+The list shows at once while file details load; the folder scan is cached server-side.
+Cards up to three per row; tabs, search and filters on one line. Rollback d459867.
+
+
+### 2026-09-19 — Diary from Code; model and tools panel reworked (d459867)
+
+Diary opens from Code mode. The model panel spreads model and tools side by side on wide
+screens, with a segmented Auto/Manual switch, one-line model rows, compact tools and a budget
+meter, on an opaque surface. Rollback da5dfa9.
+
+
+### 2026-09-19 — Per-account API keys for directory MCP servers (da5dfa9)
+
+Admins choose 'Each person uses their own key' or 'Everyone uses this key'; each account adds
+its own key in Plugins → Connected and only then gets the server's tools. Rollback 3f3ff1e.
+
+
+### 2026-09-19 — Hand-registered apps for MCP sign-in (3f3ff1e)
+
+Sign-in services without self-registration: the admin registers an app with the shown return
+address and enters its client ID (and secret). Stored encrypted; replacing it signs everyone
+out. Rollback c173952.
+
+
+### 2026-09-19 — Per-account OAuth sign-in for directory MCP servers (c173952)
+
+Servers that ask for OAuth are added through a sign-in tab; each account signs in for itself
+from Plugins → Connected and only then is offered the server's tools. PKCE, resource
+indicator, refresh; tokens encrypted per account. Rollback e4fc0d3.
+
+
+### 2026-09-19 — Sign-in keys for directory MCP servers (e4fc0d3)
+
+Hosted servers that need a key can be added: checked before saving, stored encrypted, never
+returned, sent only to that server in its declared headers; changeable; admins only. Rollback
+6330ea8.
+
+
+### 2026-09-19 — Skills auto-load; skills and MCP servers from the directory; long model names (6330ea8)
+
+A message matching one enabled skill gets its reviewed instructions. Plugins → Skills adds a
+published SKILL.md to a project (arrives needing review). Admins can add hosted MCP servers
+from the registry: own toolbox, no credentials, every tool asks, removable. Model names keep
+their start and quantization ending; the model list filters. Nine QA suites updated; all 74
+pass. Rollback a163543.
+
+
+### 2026-09-19 — Settings no longer reopens on a quick reload (a163543)
+
+Closing Settings forgets it as the reload target at once. qa/mtp and qa/google-drive pass again.
+Rollback 957e972.
+
+
+### 2026-09-19 — Model picker Tune button back to 44px (957e972)
+
+A later generic button rule had shrunk it to 30px. Rollback ba95afa.
+
+
+### 2026-09-19 — Engine holds the embedding model beside the chat model (ba95afa)
+
+llama `--models-max 2` (live override edited, backup kept); before a chat model is used, other
+chat models are unloaded and the embedding model stays. Tool routing (already on via
+NOEVIA_FEATURE_TOOL_ROUTER=true) no longer evicts the chat model. Rollback 41cb2aa.
+
+
+### 2026-09-19 — Tool routing: "Using:" line and ask-for-more (41cb2aa)
+
+When routing narrows a message's toolboxes the reply says which, and the model can ask once for
+the rest of the project's tools. Routing stays off: the live engine holds one model
+(`--models-max 1`), so the embedding model would evict the chat model on every message.
+Rollback 363171c.
+
+
+### 2026-09-19 — Re-fit after zoom (363171c)
+
+The page re-stretches after zooming in and back out on iOS. Rollback c71a30d.
+
+
+### 2026-09-19 — Tall screens: full layout from 520px, pages grow, greeting centred (c71a30d)
+
+A zoomed-out phone keeps the sidebar from 520px wide; short pages grow up to 125% on phones and
+tablets; the empty chat greeting sits mid-height. Rollback 70631b0.
+
+
+### 2026-09-19 — Shrink-to-fit for slightly-too-tall pages and menus (70631b0)
+
+Pages and menus that overflow by a little are scaled just enough to fit (never below 82%);
+long lists keep their size and scroll. Rollback f87b157.
+
+
+### 2026-09-19 — One sidebar for Chat and Code; Plugins page (f87b157)
+
+Code mode reuses the chat sidebar (current look, switch in the header, aligned rail, shared
+collapse). Closing Settings keeps you in Code. New chat floats over the list; the collapsed
+rail names items on hover; Chat/Code eases in. Google Drive moved from Settings to Plugins,
+which also browses the MCP registry and Anthropic's skills. Rollback 027bd00.
+
+
+### 2026-09-18 — iOS keyboard fix; web image flattened (027bd00)
+
+The keyboard no longer pushes the page up on iOS. The web image had hit Docker's 127-layer
+limit; overlay-release.sh now flattens it automatically past 100 layers. Rollback d995cd9.
+
+
+### 2026-09-18 — Composer focus, iOS keyboard, phone Settings (d995cd9)
+
+No square focus ring in the composer; the app follows the iOS keyboard; legacy narrow phone
+Settings rules removed. Rollback 7326ac0.
+
+
+### 2026-09-18 — Visual pass (7326ac0)
+
+Legibility sweep across sizes, materials and themes with real device user agents; fixed the
+phone composer row, phone Settings width, sidebar row alignment. Rollback 4c151be.
+
+
+### 2026-09-18 — Sidebar header and phone drawer like Claude's (4c151be)
+
+Small Chat/Code switch beside the logo; full-width phone drawer with search on top; the
+drawer closes when you switch mode. Rollback 5cd033b.
+
+
+### 2026-09-18 — Diary in the bottom bar, sliding Chat/Code, project colours (5cd033b)
+
+Diary beside Search; liquid-glass Chat/Code thumb; phone Code drawer works; project colours
+everywhere. Rollback 5a0e026.
+
+
+### 2026-09-18 — Icon centring scoped; row options beside the title (5a0e026)
+
+Only icon-only buttons centre their icon; sidebar row options no longer cover the title.
+Rollback 350050e.
+
+
+### 2026-09-18 — Composer like Claude's, SVG icons (350050e)
+
+Centred SVG + with a files-and-tools menu (no duplicate model entry), Thinking as a menu of
+levels, Code keeps a closed sidebar, every icon an SVG and centred. Rollback 91a89ba.
+
+
+### 2026-09-18 — Account menu and Search like Claude (91a89ba)
+
+Light/dark in the account menu, Search beside the account, account menu unclipped from
+the rail, clean rail Chat/Code, no blank page entering Code. Rollback 94909d3.
+
+
+### 2026-09-18 — Collapsed sidebar like ChatGPT's (94909d3)
+
+Icon-only rail with the avatar at the bottom, remembered per device, expands from its
+empty space. Rollback 4152d15.
+
+
+### 2026-09-18 — Settings and sidebar organised like ChatGPT (4152d15)
+
+Sidebar order Pinned, Projects, Recent chats. Settings is one flat list: General, …,
+Security and login, Account; renamed pages, same content. Rollback 95eacd6.
+
+
+### 2026-09-18 — Sidebar as one scrolling plane (4ea3282, 95eacd6)
+
+Like ChatGPT: one scrolling rail, Diary and Plugins with the top destinations, flat
+Projects/Pinned/Recent lists, only the account pinned, every chat listed. Rollback 4ea3282.
+
+
+### 2026-09-18 — Material 3 and phone fixes (265c650, 6930549)
+
+The Material material is now Material 3 component by component; touch fields are 16px
+everywhere; narrow Appearance controls fit; Projects counts active projects; sidebar lists
+never collapse to their heading. Two guarded overlays after verified backups; five
+services healthy. Rollback 265c650.
+
+
+### 2026-09-18 — Phone review fixes (3d20de0, a2a1c8e, e777259)
+
+Three guarded web-only overlays over d11cfac, each after a verified appdata backup.
+The phone drawer is whole from any view, Diary/Plugins are never under the footer,
+row menus are no longer clipped, theme previews and the selected ring are correct,
+Settings rows align, the strip no longer reports a false outage at start, and desktop
+list headings stay in view. Five services healthy after each. Rollback a2a1c8e.
+
+
+### 2026-09-18 — UI overhaul release 3 and phone-review fixes
+
+Deployed d11cfac over ab2720a as a web-only overlay (no dependency changes). 861 web tests,
+typecheck, design lint and a fresh build passed first; appdata backup ab_20260918_112354.
+Five services healthy, zero restarts, native engine untouched. Live browser QA was partial
+(write-approval card, phone width, themes and accents still owed). No real Diary corpus used.
+Rollback ab2720a with .env.bak.before-d11cfac; see deployment.md.
+
+
 ## 2026-09-14 — Qualified direct native inference in production
 
 ### 2026-09-14 — Markdown date/tag filters
