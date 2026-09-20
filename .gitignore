@@ -23,3 +23,6 @@ qa-shots/
 local-test/
 .claude/*
 !.claude/skills/
+# The permission allowlist is shared on purpose: every session here runs the
+# same test/typecheck/build commands, and prompting for them each time is noise.
+!.claude/settings.json
