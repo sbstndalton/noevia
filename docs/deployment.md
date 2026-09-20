@@ -26,7 +26,8 @@ at `10.69.0.130`, which only resolves on the home LAN — Tailscale reports "pee
 are advertising routes but `--accept-routes` is false", which is why the LAN
 address stays unreachable off-site.
 
-Public URL is `https://cowork.daserver.work` via a Cloudflare tunnel (the hostname
+Public URL is `https://noevia.daserver.work` via a Cloudflare tunnel (as of 2026-09-20
+`cowork.daserver.work` is NXDOMAIN; the hostname
 kept its old name after the rebrand, deliberately).
 
 ## Layout on the box
@@ -1346,3 +1347,96 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `apps/web` (web app only); it was replaced with the full tree before this release. Always run
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
+
+## Release bb78a1a — 2026-09-20 (Docling verified and fixed; ten commits of backlog)
+
+`.env.bak.20260920040626` first. Full release flow (tarball → `releases/bb78a1a` → build →
+verify candidate → flip `current` → preflight `up.sh`), **not** the Compose Manager GUI.
+Live went `06f9402 → bb78a1a`, which is ten commits: tool-result compaction, the six-defect
+audit fix, the `rag.cjs` pin, the Docling backend, and the work below. Rollback target is
+`06f9402`, still in `releases/`.
+
+Candidate verified before the symlink flip: `docling.cjs` carried
+`docling-2.129-…-v2` and `AbortSignal.timeout(3900000)`, `tool-result-reduce.cjs` was
+present, and the server require-graph loaded. All seven containers came up healthy,
+restarts=0; MCP discovered 175 tools across 3 servers.
+
+### Corrections to the runbook and the handoff brief
+
+- **The public hostname is `https://noevia.daserver.work`.** `PUBLIC_ORIGIN` on the box says
+  so and it answers 200. `cowork.daserver.work` is **NXDOMAIN** — it does not resolve at
+  all. The handoff brief asserted the exact opposite ("NOT noevia.daserver.work"). The
+  2026-09-18 passkey entry above explains why: new passkeys were moved to the noevia name.
+- **The box reaches HuggingFace fine** — a ranged fetch of a real Docling model file
+  returned 206 at ~10 MB/s. The "build on the Mac and ship a saved image" fallback is not
+  needed.
+- **This Mac has no Docker at all** (no binary, no socket, no Desktop/OrbStack/colima) and
+  no Tesseract. The handoff assumed it was the one machine with Docker. All Docling
+  verification was therefore done on DaServer, which is the better venue anyway: it is the
+  hardware the numbers have to describe.
+- **The live release was `06f9402`, not `ab2720a`** as the handoff stated.
+
+### Docling, measured on this hardware
+
+Built and run for the first time. Three defects, none in `_convert`/`_pages_from`, which
+the brief predicted would be the likely breakage and which were substantially right:
+
+1. **The image did not build.** `docling-tools models download` with no arguments resolves
+   its whole default set including the PP-OCR/rapidocr recognizers; rapidocr is not
+   installed, so it raised `ImportError`. Fixed by naming `layout tableformer` — which is
+   also all this pipeline uses, and is **669 MB, not the ~1.6 GB** assumed throughout.
+2. **TableFormer could not initialise** — `docling_ibm_models` imports `cv2` and no extra
+   pulled in OpenCV, so the table feature this service exists for raised
+   `ModuleNotFoundError`. Fixed with `opencv-python-headless`.
+3. **Large documents were OOM-killed.** `PAGE_CAP` truncated output while Docling still
+   converted every page: a 334-page PDF was SIGKILLed (exit 137) at the 4 GB limit after
+   520 s. `_convert` now passes `page_range=(1, PAGE_CAP)`.
+
+Measured (2 CPUs, CPU-only torch), under the exact production constraints — `read_only`,
+non-root 65534, `cap_drop: ALL`, tmpfs, memory limit:
+
+| document | rate | peak RSS |
+|---|---|---|
+| 334-page book, native text | 1.9 s/page | 4.19 GB |
+| 4-page scanned, OCR | 3.4 s/page | 1.96 GB |
+| 3-page table-heavy PDF | 10.9 s/page | 1.78 GB |
+| 3-sheet .xlsx | 0.9 s/sheet | 0.39 GB |
+
+**TableFormer, not OCR, is the cost driver** — a 5.7x spread across page kinds. The
+README's "~3.1 s/page" was Docling's benchmark box.
+
+`DOCLING_MEM_LIMIT` 4g → **6g**: 4g is the limit that killed it, and peak was 4.19 GB after
+the page_range fix (4.79 GB before). Memory is steady across pages, not a leak.
+
+The `page_range` fix on the same 334-page document: **630 s → 460 s (−27%)**, peak
+**4787 MB → 4185 MB**, with byte-identical output (481,437 characters, blank=15,
+native=285) and `300 of 334` still reported, so `truncatedPages` stays honest.
+
+Quality, checked by eye rather than by exit code: tables survive as Markdown pipe tables,
+reading order is correct, `.xlsx` gives one page per sheet with Unicode (CJK, umlauts,
+symbols) intact, and OCR on a printed scan recovered 7,771 of 7,906 ground-truth
+characters (~98%).
+
+The client timeout was 610 s while claiming to survive a 300-page scan; that worst case is
+300 × 10.9 s ≈ 55 min, so it covered under a fifth of it. Raised to 65 min.
+
+### Tool-result compaction (2f854e1), checked against the running container
+
+Works as specified: a 400-record Nextcloud-shaped listing went from 74,337 characters to a
+header row plus tab-separated rows, with empty columns named and dropped and a count of
+what was kept.
+
+It did, however, **exceed its own cap** — 8,037 characters against 8,000 — because the
+fitting loop measured `legend + body` while the emitted text is `legend + note + body`, and
+the note exists only when records are dropped, which is the branch the loop guards. Fixed
+in `72e1520` with a regression test; **that fix is not in `bb78a1a`** and ships next.
+
+### Not done
+
+The browser-based live checks (write-approval card and its three buttons, declining, "Allow
+for this chat" scoping, the Latin-1 `.txt` upload, and the MCP session `DELETE`) were **not
+performed** — they need an authenticated session and the night ran out. The Docling sidecar
+is also **not deployed**: `compose.docling.yaml` is an overlay the Compose Manager cannot
+read, so the service and `DOCLING_BASE_URL` still have to be hand-merged into all three
+compose copies. Nothing live depends on Docling today; `DOCLING_BASE_URL` is unset, so
+`documents.cjs` keeps its pdf.js path.

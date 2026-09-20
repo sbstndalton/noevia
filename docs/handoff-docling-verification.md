@@ -103,8 +103,11 @@ Push to `main`. It is already the merge target and the branch is identical to it
 ### 3. Live-instance checks — before deploying anything
 
 These verify the commits already pushed and are independent of Docling. The public URL
-is **`https://cowork.daserver.work`** — the hostname kept its old name after the
-rebrand, deliberately. `LEGACY_AUTH_COMPAT=false`, so there is no bearer-token path:
+is **`https://noevia.daserver.work`**. (This brief originally said
+`cowork.daserver.work` and said it was deliberate. That is wrong: verified
+2026-09-20, `cowork.daserver.work` is NXDOMAIN on both 1.1.1.1 and 8.8.8.8,
+`PUBLIC_ORIGIN` on the box is the noevia name, and it serves
+`/.well-known/webauthn`.) `LEGACY_AUTH_COMPAT=false`, so there is no bearer-token path:
 this needs a real authenticated browser session.
 
 - A real chat with a Nextcloud toolbox enabled: one chip per tool **call**, named, with

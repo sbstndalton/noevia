@@ -27,7 +27,7 @@ the answer it actually is. It is a complete answer: no ssh, no deploy from here.
 ```sh
 command -v ssh || echo "no ssh binary — this session cannot deploy; go to Step 2"
 timeout 5 nc -z 100.70.173.74 22 && echo "port 22 open" || echo "no route to the host"
-timeout 10 curl -sS -o /dev/null -w '%{http_code}\n' https://cowork.daserver.work/ 2>&1 | tail -1
+timeout 10 curl -sS -o /dev/null -w '%{http_code}\n' https://noevia.daserver.work/ 2>&1 | tail -1
 ```
 
 Read the three together. `curl: (56) CONNECT tunnel failed, response 403` is the egress
@@ -120,9 +120,15 @@ The short version, with the full sequence in that reference:
 
 This is the step the repo actually cares about, and it cannot be done from a test suite.
 
-The public URL is **`https://cowork.daserver.work`**. The hostname kept its old name
-after the rebrand, deliberately — `noevia.daserver.work` does not exist, and assuming it
-does wastes a debugging cycle.
+The public URL is **`https://noevia.daserver.work`**. Verified 2026-09-20:
+`PUBLIC_ORIGIN` on the box is the noevia name, it answers 200, and it serves
+`/.well-known/webauthn`. **`cowork.daserver.work` is NXDOMAIN** on 1.1.1.1 and
+8.8.8.8 — a health check against it returns 000, which reads like an outage and
+is not one. Earlier notes here said the reverse — that the old `cowork` name was
+kept deliberately and the noevia name did not exist. That was true once (both
+were routed while passkeys migrated, see the 2026-09-18 entry in
+`docs/deployment.md`) and is no longer. Check `PUBLIC_ORIGIN` on the box rather
+than trusting either claim.
 
 `LEGACY_AUTH_COMPAT=false` on live, so there is no bearer-token path. Verification needs
 a real authenticated browser session.
