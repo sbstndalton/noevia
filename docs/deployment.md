@@ -1348,6 +1348,14 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release 8b458e9 — 2026-09-20 (routing panel spacing)
+
+Latest application rollout: **`8b458e9`**, replacing `b8d78a9`. Backup `ab_20260920_111426`
+first (gzip-verified); `RELEASE_8b458e9_COMPLETE`, five services healthy, restarts=0. Front
+end only; 74 QA suites pass.
+Rollback: repoint `current` to `releases/b8d78a9`, restore `.env.bak.before-8b458e9`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release b8d78a9 — 2026-09-20 (branches merged)
 
 Latest application rollout: **`b8d78a9`**, replacing `aad6216`. Backup `ab_20260920_085445`

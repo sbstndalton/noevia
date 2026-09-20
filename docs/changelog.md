@@ -1,3 +1,9 @@
+### 2026-09-20 — Routing panel spacing and width (8b458e9)
+
+The four Auto role pickers sit two to a row; Default thinking effort is separated from the
+save button; disclosure rows and panels share one spacing scale. Rollback b8d78a9.
+
+
 ### 2026-09-20 — The UI and MCP branch is merged into main (b8d78a9)
 
 An overnight deploy of main had replaced the 2026-09-19 UI and MCP work, which was only on
