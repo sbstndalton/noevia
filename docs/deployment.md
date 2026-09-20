@@ -1348,6 +1348,15 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release 06f5aa4 — 2026-09-20 (MCP server by URL)
+
+Latest application rollout: **`06f5aa4`**, replacing `8b458e9`. Backup `ab_20260920_155556`
+first (gzip-verified); `RELEASE_06f5aa4_COMPLETE`, five services healthy, restarts=0. Server
+tests 823/823, QA 74/74. No schema change: a server added by URL is a directory row whose
+`registry_name` is `url:<address>`.
+Rollback: repoint `current` to `releases/8b458e9`, restore `.env.bak.before-06f5aa4`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 8b458e9 — 2026-09-20 (routing panel spacing)
 
 Latest application rollout: **`8b458e9`**, replacing `b8d78a9`. Backup `ab_20260920_111426`

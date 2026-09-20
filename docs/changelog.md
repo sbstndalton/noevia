@@ -1,3 +1,9 @@
+### 2026-09-20 — Add an MCP server by URL (06f5aa4)
+
+Admins can add a server that is not in the registry, with an optional sign-in header (shared
+or per account) or OAuth. Same checks as a directory server. Rollback 8b458e9.
+
+
 ### 2026-09-20 — Routing panel spacing and width (8b458e9)
 
 The four Auto role pickers sit two to a row; Default thinking effort is separated from the
