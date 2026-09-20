@@ -1348,6 +1348,15 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release d99c066 — 2026-09-20 (README and icons)
+
+Latest application rollout: **`d99c066`**, replacing `06f5aa4`. Backup `ab_20260920_184309`
+first (gzip-verified); `RELEASE_d99c066_COMPLETE`, five services healthy, restarts=0. Server
+tests 823/823, QA 74/74. Live check: `/icon.svg`, `/apple-touch-icon.png` and
+`/manifest.webmanifest` all serve with the right content types.
+Rollback: repoint `current` to `releases/06f5aa4`, restore `.env.bak.before-d99c066`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 06f5aa4 — 2026-09-20 (MCP server by URL)
 
 Latest application rollout: **`06f5aa4`**, replacing `8b458e9`. Backup `ab_20260920_155556`

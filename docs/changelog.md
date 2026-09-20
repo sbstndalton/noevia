@@ -1,3 +1,10 @@
+### 2026-09-20 — README, icon set, last Cowork prose (d99c066)
+
+The logo's two squares now read as depth in light mode; adds a favicon, Apple touch icon,
+maskable icons and a web manifest (none existed). README describes what noevia does today.
+Rollback 06f5aa4.
+
+
 ### 2026-09-20 — Add an MCP server by URL (06f5aa4)
 
 Admins can add a server that is not in the registry, with an optional sign-in header (shared
