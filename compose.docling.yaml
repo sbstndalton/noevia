@@ -3,7 +3,7 @@
 #   docker compose -f compose.yaml -f compose.docling.yaml up -d
 #
 # Opt-in on purpose. The base stack keeps the pdf.js extractor, which needs no
-# extra container; this one holds ~1.6 GB of layout and table models resident
+# extra container; this one holds 669 MB of layout and table models resident
 # and only earns that when you want tables, reading order and the Office
 # formats. `DOCLING_BASE_URL` is the only switch: with it unset, documents.cjs
 # does not change behaviour at all.
@@ -19,11 +19,18 @@ services:
     image: cowork-docling:${COWORK_VERSION:-dev}
     restart: unless-stopped
     read_only: true
-    # Roughly 1.6 GB of models plus the torch runtime and one page of working
-    # set. Measure with services/docling/selftest.py on your own documents and
-    # tighten this; a limit that is too low shows up as the container being
-    # killed mid-conversion, which looks like a retryable worker failure.
-    mem_limit: ${DOCLING_MEM_LIMIT:-4g}
+    # MEASURED on DaServer, not guessed. 4g was the original guess and it is
+    # not enough: a 334-page PDF was OOM-killed (SIGKILL, exit 137) at 4g after
+    # 520 s — exactly the "looks like a retryable worker failure" mode warned
+    # about below. Observed peaks, 2 CPUs, CPU-only torch:
+    #   3-page table-heavy PDF   1.78 GB
+    #   4-page scanned PDF       1.96 GB
+    #   334-page PDF             4.79 GB   (steady, not a leak)
+    # extract.py now bounds conversion to PAGE_CAP pages, which bounds this
+    # too. 6g leaves headroom above the measured ceiling while staying clear of
+    # llama.cpp's 14g on a 29 GB host. Re-measure with selftest.py if you raise
+    # PAGE_CAP or enable charts.
+    mem_limit: ${DOCLING_MEM_LIMIT:-6g}
     cpus: ${DOCLING_CPUS:-2.0}
     pids_limit: 128
     cap_drop: [ALL]
