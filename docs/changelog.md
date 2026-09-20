@@ -1,3 +1,11 @@
+### 2026-09-20 — The UI and MCP branch is merged into main (b8d78a9)
+
+An overnight deploy of main had replaced the 2026-09-19 UI and MCP work, which was only on
+`claude/blissful-brown-v86y3o`. Merged (two conflicts: appended tool-routing tests and
+release notes, both kept) and deployed together with Docling and tool-result compaction.
+823 server tests, 74 QA suites. Rollback aad6216.
+
+
 ### 2026-09-19 — Models page: faster, cards side by side, one toolbar (06f9402)
 
 The list shows at once while file details load; the folder scan is cached server-side.

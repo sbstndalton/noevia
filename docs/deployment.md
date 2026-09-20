@@ -1348,6 +1348,25 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release b8d78a9 — 2026-09-20 (branches merged)
+
+Latest application rollout: **`b8d78a9`**, replacing `aad6216`. Backup `ab_20260920_085445`
+first (gzip-verified); `RELEASE_b8d78a9_COMPLETE`, five services healthy, restarts=0.
+
+**Why:** the 2026-09-20 04:12 deploy of `main` (`aad6216`) dropped the 2026-09-19 UI and MCP
+work, which lived only on `claude/blissful-brown-v86y3o` and had last been live as `06f9402`.
+Nothing was lost — the branch was pushed — but the live app went back to a build without the
+shared Chat/Code sidebar, Plugins, skills, the MCP directory, shrink-to-fit or the reworked
+model panel and models page. **Deploy from `main` only, and merge feature branches first.**
+
+Merge conflicts were confined to two files: both branches had appended tool-routing tests and
+release notes; both sides were kept. `chat-tool-routing.cjs` keeps main's embedder timeout and
+the branch's `narrowed` flag. `server/index.cjs` merged automatically and was checked by hand
+for both sides' wiring. Verified in the live container: `docling.cjs`, `tool-result-reduce.cjs`,
+`mcp-oauth.cjs`, `directory-mcp.cjs` and `chat-skill-routing.cjs` all present.
+Rollback: repoint `current` to `releases/aad6216`, restore `.env.bak.before-b8d78a9`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release bb78a1a — 2026-09-20 (Docling verified and fixed; ten commits of backlog)
 
 `.env.bak.20260920040626` first. Full release flow (tarball → `releases/bb78a1a` → build →
