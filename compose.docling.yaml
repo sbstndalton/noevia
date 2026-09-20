@@ -1,0 +1,48 @@
+# Docling extraction sidecar — an OVERLAY, not part of the base stack.
+#
+#   docker compose -f compose.yaml -f compose.docling.yaml up -d
+#
+# Opt-in on purpose. The base stack keeps the pdf.js extractor, which needs no
+# extra container; this one holds ~1.6 GB of layout and table models resident
+# and only earns that when you want tables, reading order and the Office
+# formats. `DOCLING_BASE_URL` is the only switch: with it unset, documents.cjs
+# does not change behaviour at all.
+#
+# It runs CPU-only by design. No device is mapped, so it cannot contend with
+# llama.cpp for VRAM no matter how busy it gets — which is the whole reason
+# this can run concurrently with inference.
+
+services:
+  docling:
+    build:
+      context: ./services/docling
+    image: cowork-docling:${COWORK_VERSION:-dev}
+    restart: unless-stopped
+    read_only: true
+    # Roughly 1.6 GB of models plus the torch runtime and one page of working
+    # set. Measure with services/docling/selftest.py on your own documents and
+    # tighten this; a limit that is too low shows up as the container being
+    # killed mid-conversion, which looks like a retryable worker failure.
+    mem_limit: ${DOCLING_MEM_LIMIT:-4g}
+    cpus: ${DOCLING_CPUS:-2.0}
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      # Never reach out at runtime: the models are baked into the image at
+      # build time, so a conversion cannot stall on a download and the
+      # container works on a host with no outbound access.
+      HF_HUB_OFFLINE: "1"
+      HF_HOME: /tmp/hf
+      DOCLING_ARTIFACTS_PATH: /opt/docling-models
+      OMP_NUM_THREADS: ${DOCLING_THREADS:-2}
+    tmpfs:
+      - /tmp:size=1073741824,mode=1777
+    networks: [ocr]
+
+  web:
+    environment:
+      DOCLING_BASE_URL: http://docling:8031
+    depends_on:
+      docling:
+        condition: service_healthy
