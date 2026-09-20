@@ -32,6 +32,10 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # Dev tooling for agents working on this repo. No install step, but it
+      # imports apps/web/server/tool-result-reduce.cjs, so it must not drift.
+      - run: node --test tools/repo-index/*.test.cjs
+        working-directory: .
 
   python-tests:
     name: Diary test suite

@@ -1,12 +1,16 @@
-.PHONY: test test-web test-diary build compose-check
+.PHONY: test test-web test-diary test-tools build compose-check
 
-test: test-web test-diary
+test: test-web test-diary test-tools
 
 test-web:
 	cd apps/web && npm test && npm run typecheck
 
 test-diary:
 	cd services/diary && pytest -q
+
+# Dev tooling (tools/repo-index). Plain node, no install step.
+test-tools:
+	node --test tools/repo-index/*.test.cjs
 
 build:
 	cd apps/web && npm run build
