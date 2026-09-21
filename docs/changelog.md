@@ -1,4 +1,4 @@
-### 2026-09-21 — Typing [[ offers the files you could mean (SHA)
+### 2026-09-21 — Typing [[ offers the files you could mean (71f1ab0)
 
 The Markdown editor suggests the files in the folder as soon as you type `[[`, inserts the
 shortest name that is unambiguous and closes the brackets for you. Arrow keys choose, Enter or
