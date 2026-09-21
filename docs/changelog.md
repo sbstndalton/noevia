@@ -1,3 +1,12 @@
+### 2026-09-21 — Nextcloud is a connector of its own (14e7dc3)
+
+Plugins → Connected lists Nextcloud beside Google Drive. It reuses the connection set under
+Settings → Diary & storage, says plainly when that connection is missing, not configured on
+this server, or at an address outside `MCP_NEXTCLOUD_ORIGINS`, lists the toolboxes it offers,
+and carries the same per-tool permissions as Drive — writes can never be “Always allow”.
+Rollback 76865e1.
+
+
 ### 2026-09-21 — Routing split; Projects tab (76865e1)
 
 Routing keeps the Auto roles; thinking effort is its own panel; per-project routing is its own

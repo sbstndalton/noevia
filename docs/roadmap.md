@@ -169,14 +169,17 @@ Everything below was measured on the branch during 2026-09-17 and went live with
      `✓`/`⃠` became drawn Lucide icons (`arrow-down` added to the vendored subset). The
      approval card is restyled on the warning role with 44px decisions on every device, its
      three actions and its full unclamped arguments unchanged.
-  4. **Customize backends** — **Shipped 2026-09-19/20** except the Nextcloud connector: Plugins
+  4. **Customize backends** — **Shipped 2026-09-19/21**: Plugins
      (its own page) browses the public MCP registry and Anthropic's skills; a skill is added to a
      project needing review; an administrator adds a hosted MCP server from the registry **or by
      URL**, with a shared key, a per-account key, or per-account OAuth (dynamic registration, or
      an app registered by hand). Each server becomes its own toolbox a project must choose, gets
      no user credentials, and every one of its tools asks before it runs. Skills whose
-     description matches a message are loaded for that message. **Left: the Nextcloud connector**
-     (its tools already ship through the operator's MCP server) and a curated marketplace list.
+     description matches a message are loaded for that message. Nextcloud is a connector of its
+     own (**2026-09-21**): it reuses the connection set under Settings → Diary & storage, says
+     plainly when that connection is missing or its address is not on `MCP_NEXTCLOUD_ORIGINS`,
+     lists the toolboxes it offers, and carries the same per-tool permissions as Drive — writes
+     can never be “Always allow”. **Left: a curated marketplace list.**
   5. **Projects and chats** — the sample's project screen: header, composer context chips,
      outputs, recent chats, context panel sections.
   6. **Activity/usage** — only from real usage data.
