@@ -1,4 +1,4 @@
-### 2026-09-21 — Usage: peak hour, favourite model, tool calls (SHA)
+### 2026-09-21 — Usage: peak hour, favourite model, tool calls (b126eb6)
 
 The usage file gained two counters: replies by hour of the local clock, and one count per tool
 call recorded where the call runs. Usage shows a peak hour on a readable clock, the busiest
