@@ -5,13 +5,10 @@ noevia Diary through its existing versioned companion API. It is not a public
 unauthenticated MCP URL. The plugin requires Python 3 and outbound HTTPS to noevia.
 Keep approval enabled for `diary_write`; no noevia write-approval policy is changed.
 
-After deployment, an administrator can mint a dedicated revocable credential:
-
-```sh
-# Redirect output into a private file OUTSIDE the repository and synced folders.
-ssh root@10.69.0.130 'docker exec cowork-web-1 node server/diary-connector-admin.cjs create USERNAME "Claude Diary"' > /private/plugin/connection.json
-chmod 600 /private/plugin/connection.json
-```
+A connection is made in noevia itself: Settings → Diary & storage → Connected apps.
+Name it (for example "Claude Diary"), copy the credential JSON once, and save it as
+`connection.json` in a private folder OUTSIDE the repository and synced folders
+(`chmod 600`). The same screen revokes it in one click.
 
 Place the private connection.json beside server.py in an installed copy of this
 plugin. Never commit it or distribute a credential-bearing plugin to another user.

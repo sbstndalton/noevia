@@ -17,12 +17,12 @@ content folded in below.
 | [deployment.md](deployment.md) | Live DaServer runbook; `deploy/examples/overlay-release.sh` | Shipping to production |
 | [changelog.md](changelog.md) | What was fixed and how it was verified | Checking whether something is done |
 | [design-system.md](design-system.md), [spec-ui-direction.md](spec-ui-direction.md), [ui-reference-review.md](ui-reference-review.md) | Palette, contrast, visual direction, references | Touching UI |
-| [diary.md](diary.md), [dav.md](dav.md), `spec-diary-*.md`, [spec-storage-appliance.md](spec-storage-appliance.md) | Diary and storage | Touching the Diary or storage |
+| [diary.md](diary.md), [dav.md](dav.md), [spec-diary-markdown-workspace.md](spec-diary-markdown-workspace.md), [spec-diary-recovery.md](spec-diary-recovery.md), [spec-diary-shared-editing.md](spec-diary-shared-editing.md), [spec-diary-smb.md](spec-diary-smb.md), [spec-managed-diary.md](spec-managed-diary.md), [spec-storage-appliance.md](spec-storage-appliance.md) | Diary and storage | Touching the Diary or storage |
 | [spec-context-projection.md](spec-context-projection.md), [spec-agent-execution.md](spec-agent-execution.md), [spec-deep-research.md](spec-deep-research.md) | Context layers/compaction/reduction; qualification, Prompt Architect, CodeHarness, durable work, execution nodes, browser; deep research | Context, agent-execution or deep research work |
 | [research-remote-access.md](research-remote-access.md) | Headscale vs NetBird vs Tailscale recommendation | Changing remote access |
 | [research-master-container.md](research-master-container.md) | Docker socket threat model and master-container recommendation | Changing container lifecycle or the model manager |
 | [research-known-good-settings.md](research-known-good-settings.md) | Hardware, live presets vs measured context, provisional limits | Changing model presets |
-| other `spec-*.md` | Design specs (reasoning effort, tool routing, models, documents, MTP, skills, backend) | Working in that area |
+| [spec-reasoning-effort.md](spec-reasoning-effort.md), [spec-tool-routing-research.md](spec-tool-routing-research.md), [spec-model-guidance.md](spec-model-guidance.md), [spec-document-understanding.md](spec-document-understanding.md), [spec-mtp-artifacts.md](spec-mtp-artifacts.md), [spec-instruction-skills.md](spec-instruction-skills.md), [spec-backend-portability.md](spec-backend-portability.md), [spec-direct-llamacpp.md](spec-direct-llamacpp.md) | Design specs: reasoning effort, tool routing, model guidance, documents, MTP, skills, backend | Working in that area |
 
 On 2026-09-21 the roadmap and master prompt were rewritten short and current; their earlier
 versions are the two `*-history.md` files. On 2026-09-16 the roadmap audit, backlog, continuation checkpoint, Codex handoffs, live
