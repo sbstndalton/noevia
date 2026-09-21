@@ -1,4 +1,4 @@
-### 2026-09-21 — Unlinked mentions (SHA)
+### 2026-09-21 — Unlinked mentions (780b8c7)
 
 "Find links to this file" also lists the notes that name it in prose without linking it — whole
 words, case-insensitive, never inside code or properties. They are shown, not rewritten: turning
