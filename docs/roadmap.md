@@ -187,7 +187,11 @@ Everything below was measured on the branch during 2026-09-17 and went live with
      research reports, each with its sources file — above the recent chats; the context panel
      gained Context (model, thinking, toolboxes, folders, outputs) and lists Scheduled as not
      yet available. On phones the header stacks instead of squeezing the title.
-  6. **Activity/usage** — only from real usage data.
+  6. **Activity/usage** — **Shipped 2026-09-21**, still only from real usage data: the server
+     now also records replies by hour of the local clock and counts each tool call where it
+     runs, so Usage shows a peak hour, the favourite model and a per-tool call list beside the
+     token totals, heatmap and streaks. Files written before these counters existed read as
+     empty, and an account with nothing recorded says so instead of showing a figure.
   7. **Impeccable critique pass and phone polish pass.**
   **Decided 2026-09-18** (recorded at the top of the brief): plugins are bundles of skills,
   connectors and commands; marketplace sources are Claude-compatible repos, any GitHub repo

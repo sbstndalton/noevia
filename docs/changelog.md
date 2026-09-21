@@ -1,3 +1,11 @@
+### 2026-09-21 — Usage: peak hour, favourite model, tool calls (SHA)
+
+The usage file gained two counters: replies by hour of the local clock, and one count per tool
+call recorded where the call runs. Usage shows a peak hour on a readable clock, the busiest
+model and a per-tool list. Older files read as empty rather than needing a migration, and an
+account with nothing recorded says so. Rollback 05cc153.
+
+
 ### 2026-09-21 — The project screen (05cc153)
 
 Header actions, context chips above the composer, an Outputs row for the documents noevia made
