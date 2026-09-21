@@ -1,4 +1,4 @@
-### 2026-09-21 — Nextcloud is a connector of its own (14e7dc3)
+### 2026-09-21 — Nextcloud is a connector of its own (5379771)
 
 Plugins → Connected lists Nextcloud beside Google Drive. It reuses the connection set under
 Settings → Diary & storage, says plainly when that connection is missing, not configured on
