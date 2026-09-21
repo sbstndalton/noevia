@@ -1,5 +1,15 @@
 ### 2026-09-21 — Default model mode setting (release c53713b, deployed)
 
+### 2026-09-21 — First durable-chat slice (local, disabled, undeployed)
+
+Added an optional chat recorder using the existing tenant job journal, with fsynced hash chains,
+canonical tool results separate from context projections, stable turn identity, approval history
+and persisted retry limits. Mocked replacement generation preserves completed tool results;
+ambiguous execution requires review and cannot replay. No production wiring or switching.
+See [implementation scope and exact verification](research/system-one/15-durable-chat-slice.md).
+Focused durability/regression tests: 45 passed. Final web suite: 1162 passed; typecheck, build
+and design lint passed. No live provider, Diary, engine, downloads or deployment involved.
+
 ### 2026-09-21 — Adapter cutoff and conditional bounds (local, undeployed)
 
 Applied the reviewed continuation patch at its exact d6e7081 base. Independent run budget

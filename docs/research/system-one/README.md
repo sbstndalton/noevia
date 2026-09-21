@@ -8,6 +8,9 @@ it (doc 9).
 Current implementation follow-up: [adapter cutoff and conditional bounds](14-adapter-cutoff-and-bounds.md)
 (local source verified; not deployed). Historical research status below predates implementation.
 
+Current durability follow-up: [first internal durable-chat slice](15-durable-chat-slice.md)
+(disabled by default; synthetic verification only).
+
 ## Deliverables
 
 | # | Document |

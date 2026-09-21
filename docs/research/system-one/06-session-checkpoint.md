@@ -4,6 +4,10 @@
 is noevia's. A model is a disposable worker that can be killed, swapped (doc 12) or replaced
 between steps without losing the task.
 
+Implementation note: [the first internal slice](15-durable-chat-slice.md) reuses jobs.cjs,
+keeps restored approvals non-authorizing, and fails closed on journal corruption rather than
+rolling back across potentially uncertain side effects. Remaining sections are the broader draft.
+
 ## 6.1 Gap today (from doc 1)
 
 - A **chat turn** lives only in `chat.cjs` locals until the browser saves the transcript after the

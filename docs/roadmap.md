@@ -112,6 +112,13 @@ directory · skills auto-loading · tool routing · the Models page (tabs, routi
 benchmarks) · UI overhaul releases 1–4 (materials, primitives, Plugins page) · web address
 rename with passkey continuity · Kiwix offline Wikipedia.
 
+## Local source work — not deployed
+
+2026-09-21: user-authorized continuation applied adapter cutoff/bounds fixes, then prioritized
+the [first durable-chat slice](research/system-one/15-durable-chat-slice.md). It is an internal
+dependency-injection seam, default off and unwired in production. No automatic model switching
+or tool replay. The live release and System-One candidate decision remain unchanged.
+
 ## Next — in order
 
 Each builds on the one before or is ordered by value. Work top-down; record any reordering here.
