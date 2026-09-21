@@ -2076,3 +2076,12 @@ healthy, zero restarts. Retain `2ce73df` for rollback (and restore the two backu
 Overlay `9611580` → `dbfbd92` after appdata backup `ab_20260921_135931` (all archives `gzip -t`
 clean); no compose changes. 1,101/1,101 unit tests, typecheck clean, `qa/project-modes` green.
 Web healthy, zero restarts; site 200; egress still answers 407 without a token. Retain `9611580`.
+
+## Release 42540fb — 2026-09-21 (WebDAV writes without If-Match; web only)
+
+Overlay `dbfbd92` → `42540fb` after appdata backup `ab_20260921_140938` (all archives `gzip -t`
+clean); no compose changes. 1,102/1,102 web tests, 312 Diary tests, typecheck clean,
+`qa/dav-interop.cjs` 18/18. The Diary image was only retagged, as usual, **not rebuilt**: the
+companion's new `preserve` op is not live. DAV sharing is off (`COWORK_DAV_PORT=0`), so nothing
+calls it; before turning sharing on, rebuild the Diary image from this release. All containers
+healthy, zero restarts; site 200; egress 407 without a token. Retain `dbfbd92`.

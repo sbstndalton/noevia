@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-21
 
-- **Live:** release **`dbfbd92`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`42540fb`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (nine containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**. Sidecar image tags are pinned
@@ -26,6 +26,12 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-21 — Ordinary WebDAV clients can write (release `42540fb`, web only)
+- Your decision: relax If-Match, keeping a version. DELETE/MOVE use the current version; a PUT
+  over a file first keeps its bytes in Trash (restores beside it). Protected files still need
+  If-Match. `qa/dav-interop.cjs`: rclone 18/18 against the real companion on a throwaway tenant.
+  DAV sharing stays off live; the Diary image is not rebuilt (`preserve` ships with it later).
 
 ### 2026-09-21 — Shared context across Chat and Code (release `dbfbd92`, deployed)
 - Project settings → Shared context, shown when a project is in both Chat and Code; both off by
