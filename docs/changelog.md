@@ -1,5 +1,14 @@
 ### 2026-09-21 — Default model mode setting (release c53713b, deployed)
 
+### 2026-09-21 — Broader continuation verification (local, undeployed)
+
+Added separate-process SIGKILL tests for durable generation and ambiguous tool execution.
+Verified 1164 web tests, 64 decision/experiment tests, four synthetic real-HTTP suites,
+typecheck/build/design lint, and targeted browser tool/approval/responsive checks.
+Read-only live checks found Diary disabled for the account and a Nextcloud viewer registration
+console error; no file-preview failure reproduced. See [exact scope and results](verification-2026-09-21-continuation.md).
+No production changes, model inference or personal data operations.
+
 ### 2026-09-21 — First durable-chat slice (local, disabled, undeployed)
 
 Added an optional chat recorder using the existing tenant job journal, with fsynced hash chains,
