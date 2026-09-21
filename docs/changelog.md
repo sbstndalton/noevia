@@ -1,4 +1,4 @@
-### 2026-09-21 — Obsidian-style [[links]] in the Diary (SHA)
+### 2026-09-21 — Obsidian-style [[links]] in the Diary (f72c2a6)
 
 A vault written in Obsidian is full of `[[wiki links]]`, and noevia rendered every one as
 literal text and found none of them when asked what links to a file. They now render as links,
