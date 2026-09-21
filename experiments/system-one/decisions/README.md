@@ -2,7 +2,7 @@
 
 > **Status 2026-09-21: paused and audited** ([doc 13 §13.10](../../../docs/research/system-one/13-model-classes-and-system-one-candidates.md)).
 > - The saved Gemma run used readout **v1**, which had known defects, so its numbers are provisional.
-> - `run.cjs` now uses readout v2, which has never been run.
+> - `run.cjs` now uses readout v3 (exact / bounded / invalid; diagnostics saved per decision) and decision state v2 (residency-aware). Neither has been run against a model.
 > - **No run on any host without per-run approval.**
 > - Families whose labels come from structured fields are compliance tests (question A), not evidence about a generic model's wider value.
 > - The injection family is one attack template.
@@ -18,13 +18,16 @@ class-A reranker is untouched. Design notes are in
 
 | File | What it is |
 |---|---|
-| `state.cjs` | **Decision state v1** (`noevia.decision-state/1`): the compact, provider-neutral input. It holds one decision's facts plus a reference to noevia's canonical task state. Deterministic extraction; no model call. |
+| `state.cjs` | **Decision state v2** (`extractV2`, residency-aware; see doc 13 §13.11), plus the unchanged **v1** (`noevia.decision-state/1`): the compact, provider-neutral input. It holds one decision's facts plus a reference to noevia's canonical task state. Deterministic extraction; no model call. |
 | `scenarios.cjs` | The pilot set: 594 synthetic decisions in 9 families × 5 template families, split **by template** (train t0–t2, calibration t3, test t4). Labels are sets of acceptable actions. |
 | `baselines.cjs` | **B0**: an *approximation* of today's behaviour. It uses the real `auto-router` heuristics for model choice, and simplified rules elsewhere (choose once, retry, finish, never abstain). Its accuracy is **not** noevia's measured task success. **B1**: a plain rule over the structured fields. |
 | `residency.cjs` | Residency feasibility v2: `coexist`, `after_swap`, `no_fit` or `unknown`, from measured footprints and a host profile. Unit-tested. |
+| `harness.cjs` | One decision through `decide()`, appended to the results file with its readout diagnostics, whether it succeeds or fails. |
+| `smoke-report.cjs` | The readout smoke-test report: readout classes, rejections, label mass, residual and consistency checks. **No accuracy.** |
+| `test-fixtures/fake-llama-server.cjs` | A mock HTTP server for the runner tests. No model. |
 | `pipeline.cjs` | The policy-wrapped pipeline over saved results: raw choice, gate rejections, abstention, fallback (B0 or B1), final outcome. |
 | `run.cjs` | Runs a backend as an **isolated worker**: a `llama-server` subprocess with bounded threads, context and slots. Every decision goes through production `decide()` with a deadline, cancellation (AbortSignal) and B0 as the fallback. It records cold start, peak RSS, latency and truncation. |
-| `analyze.cjs` | Per-family accuracy (Wilson 95%), raw vs calibrated ECE, abstention, coverage, false acceptance, and cost. |
+| `analyze.cjs` | (v1 rows) Per-family accuracy (Wilson 95%), raw vs calibrated ECE, abstention, coverage, false acceptance, and cost. |
 | `results/` | Raw JSONL per run, plus `summary.md`. |
 
 ```bash

@@ -1,92 +1,108 @@
 #!/usr/bin/env node
 'use strict';
-// Pilot runner for generic System-One backends (docs/research/system-one/13 §13.9).
-// Offline, synthetic, local assets only. Each model backend runs as an ISOLATED worker: a
-// llama-server subprocess this runner starts (bounded threads, context and slots) and stops.
-// Decisions go through the production decide() layer (deadline, cancellation, validation) with
-// the current deterministic behaviour (B0) as the fallback.
+// Pilot runner for generic System-One backends (docs/research/system-one/13 §13.9–13.11).
 //
-// NO RUN WITHOUT PER-RUN APPROVAL (host, model/config, cases, CPU/GPU, peak memory, concurrency,
-// max duration/stop conditions, impact on other apps). Smoke test (--limit 10) first.
-// Readout contract v2 (equal-bias, backends.cjs). Results before commit e906624+1 used v1
-// (top-50 + invented floor) and are kept unchanged in results/ as *-v1 evidence.
+// NO RUN WITHOUT PER-RUN APPROVAL: host, model/config, cases, CPU/GPU, peak memory, concurrency,
+// hard wall-clock limit, stop conditions, impact on other apps. Smoke test first.
 //
-//   node experiments/system-one/decisions/run.cjs --model ~/noevia-models/gemma-4-E2B_q4_0-it.gguf \
-//     [--label gemma-4-E2B] [--render compact|full] [--ngl 99] [--threads 4] [--splits calib,test] [--limit N]
-//   node experiments/system-one/decisions/run.cjs --baselines        (B0/B1 only, no model)
+// One isolated worker: a llama-server subprocess started and always stopped by this runner
+// (normal end, error, startup failure, timeout, SIGINT/SIGTERM). Every decision goes through
+// production decide() with a per-decision deadline and B0 as the fallback, and is appended to the
+// results file as it completes, together with its readout diagnostics (harness.cjs).
+// Readout contract v3 (backends.cjs). Saved v1 results were made with the old readout and the v1
+// state; `--state-version 1` rebuilds exactly that decision set.
+//
+//   node run.cjs --model <gguf> --label <name> [--state-version 2] [--splits calib] [--limit 10]
+//     [--ngl 99] [--threads 4] [--ctx 8192] [--deadline 30000] [--max-minutes 10] [--max-invalid 5]
+//   node run.cjs --baselines [--state-version 1|2]
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
 const { spawn, execFileSync, spawnSync } = require('node:child_process');
 const web = path.resolve(__dirname, '../../../apps/web/server');
-const { createDecisions } = require(path.join(web, 'decision/index.cjs'));
 const { llamaLogitBackend } = require(path.join(web, 'decision/backends.cjs'));
 const { build } = require('./scenarios.cjs');
-const { renderCompact, renderFull } = require('./state.cjs');
+const { renderCompact, renderFull, renderCompactV2 } = require('./state.cjs');
 const { b0, b1 } = require('./baselines.cjs');
+const { createHarness } = require('./harness.cjs');
 
 const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d; };
 const flag = (n) => process.argv.includes(`--${n}`);
 const MODEL = arg('model', null), LABEL = arg('label', MODEL ? path.basename(MODEL, '.gguf') : 'baselines');
-const RENDER = arg('render', 'compact'), NGL = arg('ngl', '99'), THREADS = arg('threads', '4');
+const V = Number(arg('state-version', '2')), RENDER = arg('render', 'compact');
+const NGL = arg('ngl', '99'), THREADS = arg('threads', '4'), CTX = arg('ctx', '8192');
 const SPLITS = arg('splits', 'calib,test').split(','), LIMIT = Number(arg('limit', '0'));
 const PORT = Number(arg('port', '18095')), DEADLINE = Number(arg('deadline', '30000'));
-const OUT = path.join(__dirname, 'results');
+const MAX_MIN = Number(arg('max-minutes', '10')), MAX_INVALID = Number(arg('max-invalid', '5'));
+// LLAMA_SERVER_BIN: tests point this at a mock server script (.cjs, run with node); default is the real binary.
+const BIN = process.env.LLAMA_SERVER_BIN || 'llama-server';
+const binCmd = (args) => (BIN.endsWith('.cjs') ? [process.execPath, [BIN, ...args]] : [BIN, args]);
+const OUT = process.env.DECISION_RESULTS_DIR || path.join(__dirname, 'results'); // tests redirect this
 
 const rssMB = (pid) => { try { return Number(execFileSync('ps', ['-o', 'rss=', '-p', String(pid)]).toString().trim()) / 1024; } catch { return null; } };
+const render = (x) => (RENDER === 'full' ? renderFull(x.canonical) : V === 2 ? renderCompactV2(x.state) : renderCompact(x.state));
 
-async function startWorker() {
-  const log = path.join(os.tmpdir(), `decision-worker-${PORT}.log`);
+let child = null, interrupted = null;
+function stopWorker() { if (child && child.exitCode == null) { try { child.kill('SIGTERM'); } catch {} setTimeout(() => { try { if (child.exitCode == null) child.kill('SIGKILL'); } catch {} }, 3000).unref(); } }
+// On a signal: stop the worker now, let the loop record the in-flight decision and the end record,
+// and force-exit after 5 s whatever happens.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { interrupted = `signal ${sig}`; stopWorker(); process.exitCode = 130; setTimeout(() => process.exit(130), 5000).unref(); });
+process.on('exit', stopWorker);
+
+async function startWorker(log) {
   const out = fs.openSync(log, 'w');
   const t0 = Date.now();
-  const child = spawn('llama-server', ['-m', MODEL, '--port', String(PORT), '-c', '8192', '-np', '1', '-ngl', NGL, '-t', THREADS, '--jinja', '--no-webui'], { stdio: ['ignore', out, out] });
-  for (;;) {
-    if (child.exitCode != null) throw Error(`worker exited; see ${log}`);
-    try { if ((await fetch(`http://127.0.0.1:${PORT}/health`)).ok) break; } catch {}
-    if (Date.now() - t0 > 180000) throw Error('worker did not start');
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  const coldMs = Date.now() - t0;
-  return { child, coldMs, log };
+  child = spawn(...binCmd(['-m', MODEL, '--port', String(PORT), '-c', CTX, '-np', '1', '-ngl', NGL, '-t', THREADS, '--jinja', '--no-webui']), { stdio: ['ignore', out, out] });
+  try {
+    for (;;) {
+      if (child.exitCode != null) throw Error(`worker exited during startup; see ${log}`);
+      try { if ((await fetch(`http://127.0.0.1:${PORT}/health`)).ok) break; } catch {}
+      if (Date.now() - t0 > 120000) throw Error('worker did not start within 120 s');
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  } catch (e) { stopWorker(); throw e; }
+  return Date.now() - t0;
 }
-
-function option(state) { return state.actions.map((a) => ({ id: a.id, label: a.text })); }
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  const items = build().filter((x) => SPLITS.includes(x.split)).slice(0, LIMIT || undefined);
+  const items = build(undefined, { stateVersion: V }).filter((x) => SPLITS.includes(x.split)).slice(0, LIMIT || undefined);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const rows = [];
+  const file = path.join(OUT, `${stamp}-${LABEL}-${flag('baselines') ? 'baselines' : RENDER}-s${V}${NGL === '0' ? '-cpu' : ''}.jsonl`);
   if (flag('baselines')) {
     for (const x of items) for (const [name, f] of [['B0', b0], ['B1', b1]]) {
       const sel = f(x);
-      rows.push({ id: x.id, family: x.family, split: x.split, backend: name, selected: sel, correct: x.acceptable.includes(sel), probs: null });
+      fs.appendFileSync(file, `${JSON.stringify({ id: x.id, family: x.family, split: x.split, backend: name, schema: x.state.schema, selected: sel, correct: x.acceptable.includes(sel) })}\n`);
     }
-  } else {
-    const w = await startWorker();
-    let peak = rssMB(w.child.pid) || 0;
-    const sampler = setInterval(() => { const v = rssMB(w.child.pid); if (v > peak) peak = v; }, 500);
-    let lastFailure = null; // readout-invalid / deadline reasons, from decide()'s log
-    const decisions = createDecisions({ backends: { 'llama-logit': llamaLogitBackend({ baseUrl: `http://127.0.0.1:${PORT}` }) }, chains: { 'system1.eval': ['llama-logit'] }, log: (e) => { if (e.failed) lastFailure = e.failed; } });
-    const t0 = Date.now();
-    let i = 0;
-    try {
-      for (const x of items) {
-        const stateText = RENDER === 'full' ? renderFull(x.canonical) : renderCompact(x.state);
-        const started = Date.now(); lastFailure = null;
-        const r = await decisions.decide({ kind: 'choice', purpose: 'system1.eval', question: x.question, options: option(x.state), context: { stateText },
-          fallback: { selected: b0(x), scores: {}, confidence: null }, constraints: { deadlineMs: DEADLINE } });
-        rows.push({ id: x.id, family: x.family, split: x.split, backend: `${LABEL}/${RENDER}`, selected: r.selected, correct: x.acceptable.includes(r.selected),
-          source: r.source, probs: r.metadata?.probs || null, acceptable: x.acceptable, ms: Date.now() - started,
-          promptTokens: r.metadata?.promptTokens ?? null, promptMs: r.metadata?.promptMs ?? null, readout: r.metadata?.readout ?? null, failure: lastFailure });
-        if (++i % 25 === 0) process.stderr.write(`${i}/${items.length}\n`);
-      }
-    } finally { clearInterval(sampler); w.child.kill('SIGTERM'); }
-    const wall = Date.now() - t0;
-    rows.push({ meta: true, readoutContract: 'equal-bias-v2', backend: `${LABEL}/${RENDER}`, model: MODEL, modelBytes: fs.statSync(MODEL).size, ngl: NGL, threads: THREADS,
-      coldStartMs: w.coldMs, peakRssMB: Math.round(peak), promptsTruncated: (fs.readFileSync(w.log, 'utf8').match(/truncated = 1/g) || []).length, decisions: items.length, wallMs: wall, decisionsPerSec: items.length / (wall / 1000),
-      host: `${os.cpus()[0].model} · ${Math.round(os.totalmem() / 2 ** 30)} GB`, llamaServer: (spawnSync('llama-server', ['--version'], { encoding: 'utf8' }).stderr || '').trim().split('\n')[0] });
+    console.log(file); return;
   }
-  const file = path.join(OUT, `${stamp}-${LABEL}-${flag('baselines') ? 'baselines' : RENDER}${NGL === '0' ? '-cpu' : ''}.jsonl`);
-  fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  console.log(file);
+  const log = path.join(os.tmpdir(), `decision-worker-${PORT}.log`);
+  const meta = { meta: true, readoutContract: 'equal-bias-v3', schema: `noevia.decision-state/${V}`, backend: `${LABEL}/${RENDER}`, model: MODEL, modelBytes: fs.statSync(MODEL).size,
+    ngl: NGL, threads: THREADS, ctx: CTX, deadlineMs: DEADLINE, maxMinutes: MAX_MIN, maxInvalid: MAX_INVALID, cases: items.length,
+    host: `${os.cpus()[0].model} · ${Math.round(os.totalmem() / 2 ** 30)} GB`, llamaServer: (spawnSync(...binCmd(['--version']), { encoding: 'utf8' }).stderr || '').trim().split('\n')[0] };
+  fs.appendFileSync(file, `${JSON.stringify({ ...meta, phase: 'start', at: new Date().toISOString() })}\n`);
+  let stopped = null, peak = 0, done = 0, invalidRun = 0, sampler = null;
+  const t0 = Date.now();
+  try {
+    meta.coldStartMs = await startWorker(log);
+    sampler = setInterval(() => { const v = rssMB(child.pid); if (v > peak) peak = v; }, 500);
+    const h = createHarness({ backend: llamaLogitBackend({ baseUrl: `http://127.0.0.1:${PORT}` }), file });
+    for (const x of items) {
+      if (interrupted) { stopped = interrupted; break; }
+      if (Date.now() - t0 > MAX_MIN * 60000) { stopped = `wall-clock limit ${MAX_MIN} min`; break; }
+      if (child.exitCode != null) { stopped = 'worker exited'; break; }
+      const row = await h.decideOne({ item: x, stateText: render(x), fallback: b0(x), deadlineMs: DEADLINE, label: `${LABEL}/${RENDER}` });
+      done++;
+      if (interrupted) { stopped = interrupted; break; }
+      invalidRun = row.readout === 'invalid' ? invalidRun + 1 : 0;
+      if (invalidRun >= MAX_INVALID) { stopped = `${MAX_INVALID} invalid readouts in a row`; break; }
+    }
+  } catch (e) { stopped = interrupted || `error: ${e.message}`; }
+  finally {
+    if (sampler) clearInterval(sampler);
+    stopWorker();
+    const wall = Date.now() - t0;
+    const truncated = fs.existsSync(log) ? (fs.readFileSync(log, 'utf8').match(/truncated = 1/g) || []).length : null;
+    fs.appendFileSync(file, `${JSON.stringify({ ...meta, phase: 'end', stopped, decisions: done, wallMs: wall, peakRssMB: Math.round(peak), promptsTruncated: truncated })}\n`);
+    console.log(file, stopped ? `(stopped: ${stopped})` : '');
+  }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => { console.error(e); stopWorker(); process.exitCode = 1; });

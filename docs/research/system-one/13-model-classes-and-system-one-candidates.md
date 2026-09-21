@@ -405,6 +405,8 @@ It kept no raw top-k tokens, first token or label-to-token mapping. From it:
 
 ### Corrected scoring contract (v2, implemented and unit-tested with mocks only; never run)
 
+*Superseded by v3 in §13.11: an unobserved label no longer gets a returned 0.*
+
 `llamaLogitBackend` in `apps/web/server/decision/backends.cjs`, with tests in `logit.test.cjs`:
 
 1. **Labels:** single letters, resolved with `/tokenize`. The variants `"A"` and `" A"` are one
@@ -459,7 +461,8 @@ verifier result is an unresolved FAIL, and fallbacks pass the same gate.
   raw model's 0% remains a model-robustness finding.
 - **One global threshold (0.88, fitted on calibration) abstained on 167 of 216,** including every
   free-text decision where the raw model beat B0. What happens after abstaining decides the
-  outcome, so thresholds must be fitted per family, or per category.
+  outcome. Per-family (or per-category) thresholds are a **candidate** to evaluate later, fitted on
+  calibration data only and with enough examples per family; they are not yet shown to help.
 
 ### Which conclusions stand
 
@@ -535,3 +538,161 @@ Laya typed-decisions stays **untested**. Its exact download proposal:
 The `receptron/laya-onnx` export (@ `68f27df`) is the *base* checkpoint and is not evidence about
 typed-decisions. This proposal waits for a separately approved host and run. Laya would be
 compared on the same question-B set, through the same `decide()` interface.
+
+## 13.11 Integration pass (2026-09-21, no inference)
+
+### What was connected or corrected
+
+1. **Residency drives the experimental shortlist.**
+   - `state.cjs` gains `extractV2` / `renderCompactV2` (`noevia.decision-state/2`). It classifies
+     every non-current model with `residency.cjs`:
+     - `coexist` is shortlisted, with its load time;
+     - `after_swap` is shortlisted **only** when the session has a durable checkpoint **and**
+       switching is authorised. The entry names the model to unload, the memory freed (the
+       measured footprint, not the file size) and the estimated switch cost (load + context
+       rebuild). The rendered input shows all three;
+     - `no_fit`, `unknown` and `unavailable` go to `notExecutable`, with a reason, and never into
+       the actions.
+   - `scenarios.cjs` builds v1 (default, unchanged) or v2 (`build(seed, { stateVersion: 2 })`).
+     v2 adds a `swap_candidate` family: the measured-better model fits only after replacing the
+     current one; half the cases have switching permitted; one model has no measured footprint.
+   - `run.cjs` defaults to v2.
+   - The v1 set is **verified identical** to the saved v1 results: 756 baseline rows and 378
+     Gemma rows re-derived, 0 mismatches. The v2 footprints and host profile are **synthetic**,
+     and labelled so.
+2. **Diagnostics survive failure.**
+   - `createDecisions` takes an **opt-in** `onDiagnostic` hook. It receives
+     `error.diagnostics` on failure and `result.metadata.diagnostics` on success, for every
+     backend attempt. Production does not pass it, and the normal log line is unchanged.
+   - `llamaLogitBackend` diagnostics contain measurements only, never prompt or state text:
+     - runtime identity (`/props`: model path, build, context);
+     - label token ids and variants (supported / multi-token);
+     - both requests' returned tokens and probabilities with timings;
+     - observed / unobserved labels and variants;
+     - answer-position label mass;
+     - residual;
+     - the exact rejection reason;
+     - total time.
+   - `harness.cjs` appends each decision's row, diagnostics included, to the results file **as
+     it completes**.
+3. **The scoring contract is now precise (v3).** These four are never interchangeable:
+   - **`exact`:** every single-token variant of every permitted label was returned by the
+     equal-bias request. The ratios are the model's relative next-token preference among the
+     permitted tokens at the answer position.
+   - **`bounded`:** some permitted tokens were not returned, and the residual is
+     ≤ `maxResidual`.
+     - Observed labels carry their measured ratio.
+     - An unobserved label is **absent** from `scores`/`ratios`, with a bound of
+       `[0, residual/labelMass]`. No zero is presented as measured.
+     - The choice is accepted only if it beats every other label's upper bound.
+   - **invalid / unavailable:** thrown; `decide()` uses the fallback. Causes:
+     - answer-position check failed;
+     - multi-token label;
+     - residual over the bound;
+     - exact tie;
+     - empty result;
+     - a choice not robust to the bound.
+   - **Calibrated probability that the decision is correct:** not produced by the backend
+     (`calibrated: false`). It is fitted later, on calibration data only. `confidence` is the
+     relative readout share, **not** a probability of success.
+   - **`minLabelMass`** is a configurable **format/readout check**: is the model about to answer
+     with a label at that position? It is not a correctness or semantic-confidence threshold.
+4. **Worker lifecycle** (`run.cjs`):
+   - one worker;
+   - a startup timeout (120 s) and startup-failure cleanup;
+   - a per-decision deadline (AbortSignal);
+   - a hard wall-clock limit (`--max-minutes`, default 10);
+   - stop after N invalid readouts in a row (`--max-invalid`, default 5);
+   - SIGINT/SIGTERM/SIGHUP stop the worker, record the in-flight decision and write the end
+     record; a forced exit follows after 5 s;
+   - the `exit` handler kills the worker;
+   - start and end records carry the configuration, peak RSS and the truncation count.
+5. **Smoke report** (`smoke-report.cjs`): readout classes, rejection reasons, label mass,
+   residual, first tokens, unobserved/unsupported variants, runtime identity, label-id
+   stability, truncation and normal end. **No accuracy.**
+
+### Mocked / unit-test evidence
+
+| Suite | Tests | Covers |
+|---|---|---|
+| `apps/web/server/decision/logit.test.cjs` | 8 | the contract classes above |
+| `experiments/.../residency.test.cjs` | 5 | the four fit classes |
+| `experiments/.../state-v2.test.cjs` | 7 | shortlist behaviour and rendering |
+| `experiments/.../harness.test.cjs` | 7 | diagnostics end to end, and runner lifecycle |
+
+`logit.test.cjs`:
+- exact;
+- bounded, with an interval instead of zero;
+- a bound that could overturn the choice is rejected;
+- unsupported variant, and multi-token label refused;
+- formatting token, empty result, residual and tie throw with diagnostics;
+- no state text in diagnostics;
+- failure → `decide()` → hook with diagnostics intact;
+- no diagnostics without the hook.
+
+`state-v2.test.cjs`:
+- coexist is eligible;
+- `after_swap` is shortlisted with a durable, authorised checkpoint, with the swap and its cost
+  rendered;
+- it is unavailable without durability, without authorisation, or with no session;
+- the pinned reranker is not reclaimable;
+- unknown stays unknown, including when a resident is unmeasured;
+- `no_fit` never appears as an action anywhere in the v2 build;
+- the v2 swap family offers the swap exactly when permitted.
+
+`harness.test.cjs`:
+- a failed readout → `decide()` → saved row, with the full diagnostics and no state text;
+- a successful row keeps both requests, the class and the bounds;
+- runner lifecycle against a **mock HTTP server** (no model): a normal end; startup failure;
+  stop after invalid readouts; the wall-clock limit; SIGINT mid-run (rows kept, end record
+  written, worker gone).
+
+The whole app suite passes: 1,126.
+
+### Remaining runtime assumptions (unverified until the smoke test)
+
+1. `/tokenize` returns ids with `with_pieces`; `"A"` and `" A"` are single tokens in Gemma-4's
+   vocabulary, and distinct from each other and from other labels.
+2. With thinking disabled through `chat_template_kwargs`, the first generated position is the
+   answer: label mass ≥ 0.5.
+3. The `completion_probabilities[0].top_logprobs` / `top_probs` entries carry `id`. The code
+   matches on `id`, so if they don't, every readout is invalid, which is safe but useless.
+4. `samplers: ["temperature"]` with `temperature: 1` and `logit_bias` applies the bias before
+   `dist`, as the pinned source shows. `post_sampling_probs` then returns every biased label token
+   with p > 0.
+5. `cache_prompt` makes request 2 cheap (a prefix cache hit), and the biased request doesn't
+   change the unbiased readout of later decisions.
+6. When a per-decision deadline aborts the HTTP request, llama-server cancels that task, so it
+   does not keep the single slot busy.
+7. `/props` exposes `model_path` and `build_info` in this build.
+
+### Proposal: 10-case readout smoke test (awaiting your approval)
+
+**Question answered:** only "does this adapter correctly extract and report the intended scores
+from the pinned runtime?" It does **not** rank models, calibrate thresholds, or authorise any
+switching.
+
+| Item | Proposal |
+|---|---|
+| Host | **Your choice.** Default: the Mac, at a time you name, since the model and runtime are already there. The alternative is DaServer, which would first need a copy of the 3.2 GB model and a CPU-only llama.cpp binary |
+| Model / runtime | `~/noevia-models/gemma-4-E2B_q4_0-it.gguf` (3.12 GiB, Q4_0); Homebrew `llama-server` 0.4.1, build 10964, commit `b29c606e2` |
+| Configuration | `-c 8192 -np 1 --jinja`. Mac: `-ngl 99` (Metal) with `-t 4`. CPU alternative: `-ngl 0 -t 4` |
+| Cases | 10: the first 10 of the v2 calibration split (`--splits calib --limit 10`), state v2, compact rendering |
+| Concurrency | one worker, one slot, one request at a time |
+| Memory | about 3.9 GiB peak RSS (measured for this model and context in the v1 run on the Mac) |
+| Hard wall-clock limit | `--max-minutes 5`; per-decision deadline 30 s; worker startup limit 120 s |
+| Stop conditions | 5 invalid readouts in a row; worker exit; wall-clock limit; your Ctrl-C (cleanup tested) |
+| Expected duration | about 20–40 s of inference (≈0.7 s × 2 requests × 10, plus a 1–2 s cold start) |
+| Expected impact | Mac: the GPU and about 4 GB of memory are busy for under a minute; other apps may stutter briefly, but not for the 40 minutes of the stopped run. DaServer (CPU): 4 of 24 threads for a few minutes; live chat may slow slightly and the reranker is unaffected |
+| Output | `experiments/system-one/decisions/results/<stamp>-gemma-4-E2B-compact-s2.jsonl` (written row by row) and `node smoke-report.cjs <file>` |
+| Pass criteria | every decision has diagnostics; one runtime identity; each label letter always maps to the same ids and to one token; label mass at the answer position ≥ 0.5 in most cases; residual ≈ 0; readouts `exact` (or `bounded` with a recorded reason); no truncation; normal end |
+
+Command, for when you approve:
+`node experiments/system-one/decisions/run.cjs --model ~/noevia-models/gemma-4-E2B_q4_0-it.gguf --label gemma-4-E2B --splits calib --limit 10 --max-minutes 5`
+
+**Still in scope, not started:**
+- session durability (doc 6 M4), the prerequisite for any switching;
+- the eventual dedicated local System-One comparison (Laya typed-decisions; its download proposal
+  is in §13.10).
+
+The option-logit adapter is a baseline, not a project of its own.
