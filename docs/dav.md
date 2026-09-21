@@ -181,6 +181,17 @@ version and every refused request, and confirms protected paths stayed byte-iden
 3. Interop matrix for class 1; advertise `DAV: 1`.
 4. LOCK/UNLOCK only if a client in the matrix needs it to write reliably.
 
+### Interoperability run 1 — 2026-09-21 (rclone v1.75.1)
+
+`apps/web/qa/dav-interop.cjs`: rclone against the real web server and the real Diary companion on
+a throwaway tenant (temp folder; nothing on DaServer). **Protection holds; ordinary writes do not
+work.** PROPFIND, MKCOL and `DAV: 1` pass; deleting or moving the protected `INDEX.md` is refused
+and it stays byte-identical. Every PUT, MOVE, COPY-then-read, DELETE, sync and purge fails with
+**428**, because rclone (like Finder, Explorer and Obsidian WebDAV sync) never sends `If-Match` /
+`If-None-Match`, and invariant 4 requires them. Overwrites keep no prior version (Trash covers
+removal only), so relaxing PUT would allow silent lost updates; DELETE and MOVE are reversible.
+**Waiting on the user** to choose whether to relax invariant 4, and for which methods.
+
 ### Decision (D6, 2026-09-17)
 
 Protected set confirmed — capture files, month files, the index — plus `AI Memory/**`.
