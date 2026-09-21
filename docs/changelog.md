@@ -1,3 +1,9 @@
+### 2026-09-20 — Models page: one tab bar (a73a72d)
+
+Routing, Hardware, Benchmarks and Prompts are tabs instead of sections stacked under the model
+list. Rollback d99c066.
+
+
 ### 2026-09-20 — README, icon set, last Cowork prose (d99c066)
 
 The logo's two squares now read as depth in light mode; adds a favicon, Apple touch icon,
