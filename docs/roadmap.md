@@ -116,7 +116,7 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 Each builds on the one before or is ordered by value. Work top-down; record any reordering here.
 
-**Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype is an offline "decision layer v0 + RAG rerank".
+**Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Next: rerun the fixed multi-hop family, then watch fallback rates in the web log (`[rag] rerank`).
 
 1. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
@@ -134,9 +134,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 
 1. **Which repositories Code mode may open.** Only the throwaway `scratch` fixture is
    registered (`CODE_REPOS`); nothing real is reachable until you choose.
-2. **One model or two in the engine.** D21 says one model at a time; the engine has run
-   `--models-max 2` since 2026-09-19 so the embedding model sits beside the chat model (with a
-   separate CPU `embed` server also running). Confirm which is intended.
+2. **One model or two in the engine** — partly settled 2026-09-21: the second router slot is
+   the RAG reranker (the user's choice); embeddings run on the CPU `embed` container. The idle
+   `nomic-embed-text-v1` router preset can go once nothing else needs it.
 3. **`Ornith-1.5-9B-Q5_K_M`** was removed from `models.ini` at 00:08 on 2026-09-21 (backup
    `models.ini.bak-20260921-040852`); a restart dropped it from the served list. Restore or not.
 4. **First Connect Google Drive** on the live site, then retire the host rclone cron.
