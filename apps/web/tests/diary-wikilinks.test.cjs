@@ -58,3 +58,24 @@ test('a file full of brackets cannot make the parser run away', () => {
   const text = Array.from({ length: 900 }, (_, i) => `[[Note ${i}]]`).join('\n');
   assert.equal(markdownWikiLinks(text).length, 500);
 });
+
+test('the link being typed is recognised only while it is still open', () => {
+  const at = (text, caret) => plain(ctx.wikiLinkQueryAt(text, caret));
+  assert.deepEqual(at('See [[Mor', 9), { start: 6, query: 'Mor' });
+  assert.deepEqual(at('See [[', 6), { start: 6, query: '' });
+  assert.equal(at('See [[Morning]] then', 20), null, 'a finished link is not still being typed');
+  assert.equal(at('See [[Morning]]', 15), null);
+  assert.equal(at('no brackets here', 10), null);
+  // The line matters: a bracket on an earlier line is not this line's link.
+  assert.equal(at('[[Old\nnew line', 12), null);
+  assert.deepEqual(at('a [[b]] and [[c', 15), { start: 14, query: 'c' }, 'the one under the caret wins');
+  assert.equal(at(`[[${'x'.repeat(200)}`, 202), null, 'a runaway is not a name');
+});
+
+test('a link reads as the file’s own name, and as its path only when that is ambiguous', () => {
+  const all = ['Diary/2026-09-20.md', 'Diary/Notes/Plan.md', 'Diary/Work/Plan.md'];
+  assert.equal(ctx.wikiLinkNameFor('Diary/2026-09-20.md', 'Diary', all), '2026-09-20');
+  assert.equal(ctx.wikiLinkNameFor('Diary/Notes/Plan.md', 'Diary', all), 'Notes/Plan');
+  assert.equal(ctx.wikiLinkNameFor('Diary/Work/Plan.md', 'Diary', all), 'Work/Plan');
+  assert.equal(ctx.wikiLinkNameFor('note.md', '', ['note.md']), 'note');
+});

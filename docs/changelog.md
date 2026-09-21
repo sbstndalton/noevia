@@ -1,3 +1,11 @@
+### 2026-09-21 — Typing [[ offers the files you could mean (SHA)
+
+The Markdown editor suggests the files in the folder as soon as you type `[[`, inserts the
+shortest name that is unambiguous and closes the brackets for you. Arrow keys choose, Enter or
+click inserts, Escape leaves what you typed alone. It stays a textarea throughout — the
+suggestions are an offer beside it, not a form control.
+
+
 ### 2026-09-21 — The Docling sidecar is deployed
 
 Document extraction now uses the sidecar that was verified in September and then sat unused:
