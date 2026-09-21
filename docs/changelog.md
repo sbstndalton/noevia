@@ -1,4 +1,4 @@
-### 2026-09-21 — The Code tab, full height and honest about the network (SHA)
+### 2026-09-21 — The Code tab, full height and honest about the network (2d7ba8f)
 
 The chat composer no longer sits under the Code tab, which left the task form half the height
 with an unrelated send button below it. And because this server runs no egress proxy, "Reach the
