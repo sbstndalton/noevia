@@ -329,3 +329,209 @@ In order:
 **Production stays unchanged** throughout: the reranker (class A) stays live as it is, and no
 class-B backend is wired into chat until step 7 picks one and it passes a shadow-mode release
 (doc 4 §4.8).
+
+## 13.9 Pilot set-up (2026-09-21)
+
+The pilot lives in `experiments/system-one/decisions/`, with its own README. It has:
+- a compact decision state (`noevia.decision-state/1`);
+- 594 synthetic decisions in 9 families × 5 template families, split by template;
+- baselines B0 and B1;
+- an isolated `llama-server` worker behind `decide()`, with a deadline and cancellation.
+
+One run completed: Gemma-4-E2B, compact state, on the M2 GPU. The user stopped the rest because
+the Mac was in use.
+
+**Execution boundary, from now on:**
+- No model servers, inference, benchmarks, training or heavy builds on the Mac **or** DaServer
+  without approval for that run.
+- A run proposal states:
+  - host;
+  - model and exact configuration;
+  - number of cases;
+  - CPU/GPU use;
+  - expected peak memory;
+  - concurrency;
+  - maximum duration and stop conditions;
+  - impact on other applications.
+- A smoke test comes first.
+
+## 13.10 Audit of the pilot (2026-09-21, no new inference)
+
+### Confirmed implementation issues
+
+1. **Option-logit readout v1** (`llamaLogitBackend` as of `e906624`):
+   - it read only the top-50 next-token log-probabilities;
+   - it gave any missing option label an invented floor (min − 2) and normalised it together
+     with the observed scores;
+   - with every label missing it would still pick the first option;
+   - `lettersSeen` counted any capital letter, not the permitted labels;
+   - it did not check that the scored position was the answer position (Gemma-4 emits a
+     `<|channel>` token first unless thinking is off in the template);
+   - it had no notion of token variants.
+2. **The grammar method is not exact in the pinned runtime** (llama.cpp `b29c606e2`). The server
+   calls `common_sampler_sample(..., grammar_first=false)`. When the greedy token is already
+   valid, the grammar is never applied to the candidate list, so `post_sampling_probs` is
+   sometimes grammar-restricted and sometimes not.
+3. **Residency v1** (`state.cjs`) compared file size with currently free memory. It could not
+   express "fits only after unloading the current model". It treated file size as resident and
+   reclaimable memory, and ignored KV/context, runtime overhead, load peaks and pinned residents
+   such as the reranker.
+4. **B0 is an approximation, not noevia's measured behaviour.** Its model choice uses production's
+   `auto-router` heuristics. Everything else is simplified (choose once, retry while possible,
+   finish when told). Its aggregate is not noevia's task-success rate.
+5. **Several families are structured compliance tests.** In the model-choice families (initial,
+   keep/switch, general/specialist, unavailable), and in finish/injection where the verifier flag
+   is structured, the labels come from the same fields B1 reads. The same author wrote the rule,
+   the label and the baseline.
+6. **The injection family is one held-out attack template in 24 variants,** not a robustness
+   suite.
+
+### What the saved logs can and cannot establish
+
+The v1 run kept each option's normalised probability, `lettersSeen`, latency and prompt size.
+
+It kept no raw top-k tokens, first token or label-to-token mapping. From it:
+- **Shown:** all 378 decisions came from the model, with no fallbacks.
+- **Shown:** no row has two options with identical probability, so there is no sign of two or
+  more options sharing the invented floor score.
+- **Cannot be shown:**
+  - whether a single option per row was floored;
+  - whether the scored position was the answer position;
+  - which labels were really observed. `lettersSeen` was 17–18 per row, which carries no
+    information.
+- **Not shown either way:** whether the readout caused any failure. The injection failures put
+  0.84–0.86 on FINISH with the other options at 0.12–0.14 and ≈0.02. That pattern doesn't look
+  like a floor artefact, but it doesn't rule one out. **The v1 probabilities are provisional.**
+
+### Corrected scoring contract (v2, implemented and unit-tested with mocks only; never run)
+
+`llamaLogitBackend` in `apps/web/server/decision/backends.cjs`, with tests in `logit.test.cjs`:
+
+1. **Labels:** single letters, resolved with `/tokenize`. The variants `"A"` and `" A"` are one
+   answer, and their probabilities are **summed**. A label whose canonical form is not one token
+   is refused.
+2. **Answer-position check (unbiased request):** the permitted label variants must hold
+   ≥ `minLabelMass` (default 0.5) of the first generated position's probability. Otherwise the
+   readout is invalid, and the top token is reported.
+3. **Exact ratios (second request, served from the prompt cache):**
+   - an **equal** `logit_bias` on every label token, samplers `["temperature"]` at T=1, and
+     `post_sampling_probs`;
+   - the pinned chain is logit-bias → samplers → dist, so an equal bias keeps the ratios among
+     label tokens exact;
+   - the leftover mass on other tokens is reported and must be ≤ `maxResidual` (default 1e-3).
+4. **No invented scores:**
+   - labels are reported as observed or unobserved;
+   - an unobserved label gets probability 0, bounded by the residual;
+   - the readout counts as complete only when that bound is negligible.
+5. **Failure handling:** invalid readouts, incomplete readouts and exact ties **throw**, so
+   `decide()` logs them and uses the authorised fallback. The runner records the readout and the
+   failure reason per decision.
+6. **Not yet validated:** a smoke test on an approved host must confirm the tokenization,
+   answer-position mass and residual on the real model before any v2 numbers are trusted.
+
+### Corrected residency specification (v2, `residency.cjs`, unit-tested)
+
+- **Inputs:** a **host profile** (deployment-specific: the model-runtime cap, measured available
+  host memory, and resident models with measured footprints and a `pinned` flag), plus a
+  candidate's **measured** steady footprint at the planned context and its measured load peak.
+- **Result:** `coexist`, `after_swap`, `no_fit` or `unknown`.
+  - `after_swap` only reclaims the measured footprint of models named swappable at a safe
+    checkpoint, and never a pinned model such as the reranker.
+  - Any missing measurement gives `unknown`: no estimate from file size.
+- **Use:** a shortlist carries each candidate's fit class. A `SWITCH` action to an `after_swap`
+  candidate is offered **only** when session durability can checkpoint and resume (doc 6). Until
+  then it is shown, but not permitted.
+- **Scope:** DaServer's numbers go in its own profile, not in noevia-wide rules.
+
+### Policy-wrapped pipeline over the saved v1 run (`pipeline.cjs`, analysis only)
+
+Test split (216 decisions). Gate: a completion action is refused while the latest authoritative
+verifier result is an unresolved FAIL, and fallbacks pass the same gate.
+
+| | Raw model | Final, B0 fallback | Final, B1 fallback | B0 alone | B1 alone |
+|---|---|---|---|---|---|
+| all families | 64% | 62% | 77% | 39% | 77% |
+| misleading tool output | 0% | 100% | 100% | 0% | 100% |
+| retry vs retrieve (free text) | 79% | 54% | 54% | 54% | 54% |
+| insufficient evidence (free text) | 63% | 38% | 38% | 38% | 38% |
+
+- **The gate makes the injection outcome safe** whatever the model chose (24 of 24 rejected). The
+  raw model's 0% remains a model-robustness finding.
+- **One global threshold (0.88, fitted on calibration) abstained on 167 of 216,** including every
+  free-text decision where the raw model beat B0. What happens after abstaining decides the
+  outcome, so thresholds must be fitted per family, or per category.
+
+### Which conclusions stand
+
+| Conclusion | Status |
+|---|---|
+| The class A / B / C separation; the reranker stays as it is | Supported (design) |
+| Hard constraints, policy, approvals and verifier authority are deterministic, and a gate makes the injection outcome safe whatever the model chooses | Supported by the pipeline analysis, though the injection set is one template |
+| Selecting from explicit numbers (question A) is done well by a deterministic rule | Supported for synthetic numbers only; it says nothing about the value of a generic model elsewhere |
+| A small option-logit model helps on free-text judgements (question B) | **Provisional:** v1 readout, 24 items per family, one author, one template per family |
+| Gemma-E2B's calibration and abstention numbers | **Provisional:** v1 readout; global threshold |
+| "Laya / dedicated decision models do not help" | **Not tested.** No such conclusion |
+| Adaptive mid-task switching helps or hurts (question C) | **Not tested.** Needs session durability first |
+| Model-routing labels reflect real model quality | **No:** capability numbers are synthetic; no measured noevia outcomes exist yet |
+
+### Revised, smaller benchmark design
+
+- **Question A** (constraint enforcement, selecting from explicit numbers): the rules, eligibility,
+  residency and the gate become **unit tests**. No model runs.
+- **Question B** (interpreting ambiguous natural-language evidence and recommending a next action).
+  About 300 decisions in 5 free-text families:
+  1. failure cause → retry / retrieve more / switch to a specialist / ask;
+  2. **missing capability** named in verifier or tool text (vision, long context, code execution,
+     tool access) → which capability to route to;
+  3. evidence sufficiency → answer / ask;
+  4. completion judged from a free-text reviewer note, with **no** structured pass flag;
+  5. requirement change between phases (e.g. planning turns into coding) → keep / change model
+     class.
+- **Split for question B:**
+  - each family has 2 calibration templates and 4 **held-out test templates**, 60 decisions per
+    family (20 calibration, 40 test);
+  - wording and labels come from separate sources: the labelling rubric is fixed first, and the
+    held-out templates are written independently (by you, a second agent, or both);
+  - you review a sample of labels;
+  - multiple acceptable actions are allowed.
+- **Security set:** a separate adversarial set with at least 5 attack templates (instruction in
+  tool output, fake verifier message, fake approval, a fake capability claim to steer a model
+  switch, markup-hidden text). Reported raw and after the gate.
+- **Question-B reporting:** per family and category:
+  - raw quality;
+  - invalid readouts (v2);
+  - gate rejections;
+  - abstention with per-family thresholds;
+  - final outcome with the **B1 structured fallback** and with B0;
+  - latency and memory.
+- **Precision:** 200 test decisions give about ±7 points overall and about ±15 per family. Enough
+  for large effects only.
+- **Question C** (a whole task, including switching costs): about 8 multi-phase synthetic tasks
+  run choose-once vs checkpoint-and-switch. Measures task success, wall time including load and
+  context rebuilding, and peak memory. **Blocked on session durability** (doc 6 M4): no switching
+  experiment until noevia can checkpoint, unload, resume without repeating tool side effects, and
+  keep approvals intact.
+- **Model-routing evidence:** any routing test that uses capability numbers labels them
+  *synthetic* until real noevia outcomes exist in the capability database (doc 12).
+
+### Minimum next experiment (needs your approval of host and run)
+
+**A readout-v2 smoke test:** Gemma-4-E2B (already installed), 10 decisions from the calibration
+split, one worker, context 8192, on a host you choose. It checks four things only:
+- label tokenization;
+- answer-position label mass;
+- residual mass;
+- the invalid-readout rate.
+
+Only if those hold is the question-B pilot (about 300 decisions, one model) worth proposing.
+
+Laya typed-decisions stays **untested**. Its exact download proposal:
+- the checkpoint: `convaiinnovations/laya-typed-decisions` @ `f9ab0b2`, 843 MB safetensors plus
+  about 3.6 MB tokenizer and config;
+- the reference code: `convaiinnovations/laya` @ `1c5edc1` (`rl_common.py`, `rl_agent_api.py`);
+- Python packages: CPU `torch`, `transformers`, `safetensors`, `numpy`, in their own virtual
+  environment.
+
+The `receptron/laya-onnx` export (@ `68f27df`) is the *base* checkpoint and is not evidence about
+typed-decisions. This proposal waits for a separately approved host and run. Laya would be
+compared on the same question-B set, through the same `decide()` interface.

@@ -1,5 +1,12 @@
 # Generic System-One pilot (class B decisions)
 
+> **Status 2026-09-21: paused and audited** ([doc 13 §13.10](../../../docs/research/system-one/13-model-classes-and-system-one-candidates.md)).
+> - The saved Gemma run used readout **v1**, which had known defects, so its numbers are provisional.
+> - `run.cjs` now uses readout v2, which has never been run.
+> - **No run on any host without per-run approval.**
+> - Families whose labels come from structured fields are compliance tests (question A), not evidence about a generic model's wider value.
+> - The injection family is one attack template.
+
 **Question:** can a small local decision backend improve noevia's routing and control decisions
 without adding disproportionate memory, latency, maintenance or state-preparation overhead?
 
@@ -13,7 +20,9 @@ class-A reranker is untouched. Design notes are in
 |---|---|
 | `state.cjs` | **Decision state v1** (`noevia.decision-state/1`): the compact, provider-neutral input. It holds one decision's facts plus a reference to noevia's canonical task state. Deterministic extraction; no model call. |
 | `scenarios.cjs` | The pilot set: 594 synthetic decisions in 9 families × 5 template families, split **by template** (train t0–t2, calibration t3, test t4). Labels are sets of acceptable actions. |
-| `baselines.cjs` | **B0**: today's behaviour (the real `auto-router` heuristics, choose-once, retry, finish, never abstain). **B1**: a plain rule over the structured fields. |
+| `baselines.cjs` | **B0**: an *approximation* of today's behaviour. It uses the real `auto-router` heuristics for model choice, and simplified rules elsewhere (choose once, retry, finish, never abstain). Its accuracy is **not** noevia's measured task success. **B1**: a plain rule over the structured fields. |
+| `residency.cjs` | Residency feasibility v2: `coexist`, `after_swap`, `no_fit` or `unknown`, from measured footprints and a host profile. Unit-tested. |
+| `pipeline.cjs` | The policy-wrapped pipeline over saved results: raw choice, gate rejections, abstention, fallback (B0 or B1), final outcome. |
 | `run.cjs` | Runs a backend as an **isolated worker**: a `llama-server` subprocess with bounded threads, context and slots. Every decision goes through production `decide()` with a deadline, cancellation (AbortSignal) and B0 as the fallback. It records cold start, peak RSS, latency and truncation. |
 | `analyze.cjs` | Per-family accuracy (Wilson 95%), raw vs calibrated ECE, abstention, coverage, false acceptance, and cost. |
 | `results/` | Raw JSONL per run, plus `summary.md`. |

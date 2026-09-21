@@ -6,6 +6,11 @@
 // Decisions go through the production decide() layer (deadline, cancellation, validation) with
 // the current deterministic behaviour (B0) as the fallback.
 //
+// NO RUN WITHOUT PER-RUN APPROVAL (host, model/config, cases, CPU/GPU, peak memory, concurrency,
+// max duration/stop conditions, impact on other apps). Smoke test (--limit 10) first.
+// Readout contract v2 (equal-bias, backends.cjs). Results before commit e906624+1 used v1
+// (top-50 + invented floor) and are kept unchanged in results/ as *-v1 evidence.
+//
 //   node experiments/system-one/decisions/run.cjs --model ~/noevia-models/gemma-4-E2B_q4_0-it.gguf \
 //     [--label gemma-4-E2B] [--render compact|full] [--ngl 99] [--threads 4] [--splits calib,test] [--limit N]
 //   node experiments/system-one/decisions/run.cjs --baselines        (B0/B1 only, no model)
@@ -59,23 +64,24 @@ async function main() {
     const w = await startWorker();
     let peak = rssMB(w.child.pid) || 0;
     const sampler = setInterval(() => { const v = rssMB(w.child.pid); if (v > peak) peak = v; }, 500);
-    const decisions = createDecisions({ backends: { 'llama-logit': llamaLogitBackend({ baseUrl: `http://127.0.0.1:${PORT}` }) }, chains: { 'system1.eval': ['llama-logit'] } });
+    let lastFailure = null; // readout-invalid / deadline reasons, from decide()'s log
+    const decisions = createDecisions({ backends: { 'llama-logit': llamaLogitBackend({ baseUrl: `http://127.0.0.1:${PORT}` }) }, chains: { 'system1.eval': ['llama-logit'] }, log: (e) => { if (e.failed) lastFailure = e.failed; } });
     const t0 = Date.now();
     let i = 0;
     try {
       for (const x of items) {
         const stateText = RENDER === 'full' ? renderFull(x.canonical) : renderCompact(x.state);
-        const started = Date.now();
+        const started = Date.now(); lastFailure = null;
         const r = await decisions.decide({ kind: 'choice', purpose: 'system1.eval', question: x.question, options: option(x.state), context: { stateText },
           fallback: { selected: b0(x), scores: {}, confidence: null }, constraints: { deadlineMs: DEADLINE } });
         rows.push({ id: x.id, family: x.family, split: x.split, backend: `${LABEL}/${RENDER}`, selected: r.selected, correct: x.acceptable.includes(r.selected),
           source: r.source, probs: r.metadata?.probs || null, acceptable: x.acceptable, ms: Date.now() - started,
-          promptTokens: r.metadata?.promptTokens ?? null, promptMs: r.metadata?.promptMs ?? null, lettersSeen: r.metadata?.lettersSeen ?? null });
+          promptTokens: r.metadata?.promptTokens ?? null, promptMs: r.metadata?.promptMs ?? null, readout: r.metadata?.readout ?? null, failure: lastFailure });
         if (++i % 25 === 0) process.stderr.write(`${i}/${items.length}\n`);
       }
     } finally { clearInterval(sampler); w.child.kill('SIGTERM'); }
     const wall = Date.now() - t0;
-    rows.push({ meta: true, backend: `${LABEL}/${RENDER}`, model: MODEL, modelBytes: fs.statSync(MODEL).size, ngl: NGL, threads: THREADS,
+    rows.push({ meta: true, readoutContract: 'equal-bias-v2', backend: `${LABEL}/${RENDER}`, model: MODEL, modelBytes: fs.statSync(MODEL).size, ngl: NGL, threads: THREADS,
       coldStartMs: w.coldMs, peakRssMB: Math.round(peak), promptsTruncated: (fs.readFileSync(w.log, 'utf8').match(/truncated = 1/g) || []).length, decisions: items.length, wallMs: wall, decisionsPerSec: items.length / (wall / 1000),
       host: `${os.cpus()[0].model} · ${Math.round(os.totalmem() / 2 ** 30)} GB`, llamaServer: (spawnSync('llama-server', ['--version'], { encoding: 'utf8' }).stderr || '').trim().split('\n')[0] });
   }
