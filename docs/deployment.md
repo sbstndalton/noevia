@@ -1348,6 +1348,16 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release 5379771 — 2026-09-21 (Nextcloud connector)
+
+Latest application rollout: **`5379771`**, replacing `76865e1`. Backup `ab_20260921_014002`
+first (gzip-verified); `RELEASE_5379771_COMPLETE`, five services healthy, restarts=0. Server
+tests 827/827, QA 67/67 run (7 fixture/live-only suites skipped). Plugins → Connected lists
+Nextcloud beside Google Drive, reusing the Settings → Diary & storage connection; no new
+environment variables (`MCP_NEXTCLOUD_ORIGINS` already gates the address).
+Rollback: repoint `current` to `releases/76865e1`, restore `.env.bak.before-5379771`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 76865e1 — 2026-09-21 (routing split, Projects tab)
 
 Latest application rollout: **`76865e1`**, replacing `a73a72d`. Backup `ab_20260921_003009`
