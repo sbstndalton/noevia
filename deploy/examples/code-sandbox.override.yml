@@ -28,7 +28,9 @@ services:
       args:
         HARNESS_PACKAGE: opencode-ai
         HARNESS_VERSION: "1.18.31"
-    image: cowork-code-sandbox:${COWORK_VERSION:-local}
+    # Tagged by what it contains -- the harness and its pinned version -- not by the web
+    # release, so an application overlay does not go looking for a sandbox tag nobody built.
+    image: cowork-code-sandbox:${CODE_SANDBOX_VERSION:-local}
     restart: unless-stopped
     # Everything here is the boundary the ACP spike proved holds: read-only root, no
     # capabilities, no privilege escalation, an unprivileged user, and bounded memory and pids

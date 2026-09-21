@@ -16,7 +16,10 @@ services:
   docling:
     build:
       context: ./services/docling
-    image: cowork-docling:${COWORK_VERSION:-dev}
+    # Tagged independently of the app release. This image changes when services/docling does,
+    # which is almost never; tying it to COWORK_VERSION means every application release looks
+    # for a docling tag nobody built (which is exactly what happened on 2026-09-21).
+    image: cowork-docling:${DOCLING_VERSION:-dev}
     restart: unless-stopped
     read_only: true
     # MEASURED on DaServer, not guessed. 4g was the original guess and it is
