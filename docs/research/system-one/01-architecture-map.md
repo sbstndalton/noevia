@@ -130,8 +130,10 @@ URL + key", (c) a server-owned chat turn, and (d) a residency manager that the c
 noevia core (owns: state, retrieval, tools, permissions, orchestration, user data)
 │
 ├── Policy            auth · tenancy · toolPolicy/approvals · cloud policy & spend caps · step/budget caps   [deterministic]
-├── Decision          decide() + wrappers; backends: heuristic · llama-logit · llama-rerank · embed · laya · sidecar · jev   (doc 4)
-├── Generation        adapters: local-llamacpp · openai-compatible · anthropic · google                   (doc 7)
+├── Decision          decide() + wrappers; validation, deadline, fallback                                  (doc 4)
+│   ├── A. specialised discriminative: rag.rerank → Qwen3-Reranker (live) · embeddings                   (doc 13)
+│   └── B. generic System-One: laya | llama-logit | jev | heuristic  (unresolved)                        (doc 13)
+├── Generation (C)    adapters: local-llamacpp · openai-compatible · anthropic · google                   (doc 7)
 ├── Auth providers    none · api-key · oauth-pkce                                                        (doc 7)
 ├── Harnesses         opencode (live) · claude-code · codex (deferred)                                   (docs 7, 8)
 ├── Retrieval         rag.cjs + rerank stage

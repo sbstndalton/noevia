@@ -13,6 +13,16 @@ Continuity comes from noevia-owned state (doc 6). No hidden reasoning ever moves
 - **RQ-B.** Does adaptive switching outperform the simpler strategy of choosing one model once, at
   the start?
 
+The switching decision (`KEEP_CURRENT`, `SWITCH_LOCAL_MODEL`, `SWITCH_TO_SPECIALIST`, `RETRIEVE_MORE`, `RETRY`, `ESCALATE_REMOTE`, `FINISH`) is a **class-B** (generic System-One) decision. It is benchmarked as its own family (doc 13 §13.5), separately from RAG reranking, which is class A. Its inputs:
+- task phase;
+- the current System-Two model;
+- result quality;
+- capability-database rows;
+- latency;
+- memory pressure;
+- load/swap cost;
+- local benchmark and real success history.
+
 Neither can be answered from the literature for noevia's setup. Both are measured in doc 9
 (configurations G and H). The hypotheses and falsification criteria are in 12.9.
 

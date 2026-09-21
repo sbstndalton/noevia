@@ -99,6 +99,11 @@ of preference, chosen by capability detection rather than hard-coded:
 4. **No co-residency:** swap to decide, then swap back (5.5). Almost certainly too slow for per-step
    decisions; acceptable only for rare, high-value decisions.
 
+**Measured constraint (doc 13 §13.3):**
+- On DaServer the iGPU borrows system RAM, so options (2) and (3) draw on the same 29 GB pool; option (3) only avoids the 14 GB llama.cpp cap.
+- The second router slot is now the class-A RAG reranker.
+- Doc 13 §13.4 lists each candidate's resident footprint.
+
 Open question for the benchmark: whether (1) is good enough. If it is, the one-vs-two System-Two
 question partly dissolves, because the second slot is then worth more as the *decision* or
 *rerank* resident than as a second chat model.

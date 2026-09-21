@@ -106,6 +106,11 @@ make noevia leave the machine; it can only pick that exit when policy has alread
 | `jev` | TypeSafe API | choice, noul, score | remote; `context.cloud` must be `'allowed'`; API key; never default |
 | `disabled` | always the fallback | — | the kill switch |
 
+**Model classes (doc 13):**
+- `llama-rerank` and `embed` serve **class A** purposes: specialised discriminative models such as the live `rag.rerank`.
+- `heuristic`, `llama-logit`, `laya`, `sidecar` and `jev` are candidates for **class B**, the generic System-One decisions.
+- A class-A backend is never placed in a class-B chain just because it can emit scores.
+
 Configuration (per purpose, not global, because the best backend differs per task):
 
 ```ini

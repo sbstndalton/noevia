@@ -22,6 +22,14 @@ it (doc 9).
 | 11–12 | [Migration and rollback plans](11-migration-and-rollback.md) |
 | 13 | Recommended first prototype: §5 below |
 | + | [Adaptive capability profiling and mid-task model switching](12-adaptive-model-switching.md) |
+| + | [Model classes, and choosing the generic System-One model](13-model-classes-and-system-one-candidates.md) (correction, 2026-09-21) |
+
+**Terminology (doc 13 §13.1), used throughout:**
+- **A. Specialised discriminative model:** one narrow task, e.g. `Qwen3-Reranker` for RAG ranking (live since `67f336e`).
+- **B. Generic System-One decision model:** bounded orchestration decisions through `decide()`. Candidates: Laya, SemIf-style option-logit readout, Jev (reference); floor: heuristics. **Unresolved.**
+- **C. System-Two generative model:** Qwen, Gemma, gpt-oss.
+
+The live reranker is a class-A component. It is not the generic System One, and its gains say nothing about class B.
 
 ## 1. Executive summary
 
@@ -62,8 +70,13 @@ it (doc 9).
 |---|---|---|---|
 | 1 | What could a decision model replace? | Model-role routing (D1), toolbox narrowing (D2), skill loading (D3), the RAG cut-off (D4), the file-name tool cap (D5), the Diary skip classifier (D11); plus new decisions: output evaluation, loop control, context utility, residency, mid-task switching | High (from the code, doc 2) |
 | 2 | What stays deterministic? | Auth, tenancy, tool policy and the three approval actions, Code-mode action classes, egress/SSRF/filesystem, budgets and caps, context-fit arithmetic, schema validation, cloud policy, secrets | High |
-| 3 | Strongest local System One? | Option-logit readout on a local 4B via llama.cpp (SemIf technique) for choices; Qwen3-Reranker for ranking; Laya is the only CPU-resident option but needs fine-tuning | Medium (independent benchmark + vendor numbers; not yet measured here) |
-| 4 | Can it stay resident beside System Two? | Yes, if it *is* the resident fast model, or a 0.6–2B model on a second slot or CPU. Actual cost unmeasured | Medium; doc 5 §5.8 |
+| 3 | Strongest local System One? | *Corrected in doc 13.*
+
+- **RAG ranking (class A):** Qwen3-Reranker, measured and live.
+- **Generic decisions (class B):** unresolved. The candidates are compared on quality **and** residency.
+  - A 4B option-logit model is one candidate, not the answer.
+  - Laya (421M, fine-tuned) is the leading always-resident prior. | Medium (independent benchmark + vendor numbers; not yet measured here) |
+| 4 | Can it stay resident beside System Two? | On DaServer, CPU and iGPU share one 29 GB pool, and llama.cpp is capped at 14 GB. A dedicated 4B cannot stay beside gpt-oss-20B. Laya (≈0.5–2 GB, in process) or a 0.6–1.7B CPU logit model can (doc 13 §13.4) | Medium; doc 5 §5.8 |
 | 5 | Does it improve task quality? | Unknown | Configurations C vs A/B (doc 9) |
 | 6 | How much does RAG improve? | Unknown; reranking reliably helps in the literature and the current pipeline has no rerank stage at all | First prototype measures it |
 | 7 | How much does tool reliability improve? | Unknown; the existing embedding router already cut input tokens 23% with no loss (14/14 vs 14/14, `experiments/tool-routing`) | Doc 9 tool family |
@@ -82,6 +95,13 @@ it (doc 9).
 | 20 | Can every remote provider vanish without breaking core functions? | Yes by design: the decision floor is the heuristic and the generation floor is local (doc 7 §7.6). True of today's noevia too, apart from web search and optional connectors | High |
 | 21 | **Can noevia switch among local models mid-task, using System One and a capability database, for higher quality with the smallest suitable model per phase?** | Architecturally yes (docs 5, 6, 12); empirically unknown | Configurations H vs G |
 | 22 | **Does adaptive switching beat choosing once at the start?** | Unknown. Expected: yes on long multi-phase tasks where two models fit; no on short chats or single-slot hardware. The design falls back to choose-once when a swap will not pay | H3 in doc 12 §12.9 |
+
+### Added 2026-09-21 (doc 13)
+
+| # | Question | Answer now | How it gets settled |
+|---|---|---|---|
+| 23 | One generic System-One model for all bounded decisions, or a hybrid (specialised discriminative models for narrow tasks such as RAG reranking, plus a tiny generic decision model for orchestration)? | Hybrid, unless one class-B backend matches the reranker **on the RAG set** at lower total residency | Doc 13 §13.5, including the RAG suite run through the winning class-B backend |
+| 24 | Is the 4B option-logit approach better at system level once residency pressure and swap costs are counted? | Probably not as a *dedicated* model on DaServer; possibly yes as readout on the *already-loaded* System Two | Doc 13 §13.5 system-level run: Q4 and S2L vs Laya L1/L2 and Q06/Q17 |
 
 ## 3. Prototype order, and one change to it
 

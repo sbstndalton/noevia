@@ -116,10 +116,15 @@ How to read this for noevia:
 - Over-confident until temperature-scaled: ECE 0.466 → 0.081.
 - Accuracy collapses with many options (Banking77, 0.425).
 - A community **Node.js / ONNX Runtime** wrapper exists ([receptron/laya](https://github.com/receptron/laya)). That fits noevia's Node server with no Python sidecar.
+- **Verified directly on 2026-09-21 (doc 13 §13.2):**
+  - It has an answer/escalate act head, trained with escalate costing 0.5 and a wrong act costing 3.0.
+  - Zero-shot on held-out families it scores 0.651, but 0.362 on agent workflows.
+  - It reaches 0.947 accuracy at 50% coverage.
+  - The Node wrapper loads fp32 at about 2 GB.
 - **Role:** the only credible *permanently resident, CPU-only* decision model. It is weak
   zero-shot and needs fine-tuning on noevia's own decisions before it could be trusted.
 
-### Cross-encoder rerankers (not "System One" by name, but the right tool for RAG) [P]
+### Cross-encoder rerankers: class A (specialised discriminative), not a generic System One [P]
 - **Qwen3-Reranker-0.6B / 4B** (Apache-2.0) run on llama.cpp's `/v1/rerank` with
   `--reranking --pooling rank`.
 - Caveat: most community GGUFs produce near-zero scores. Use `ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF`
@@ -137,7 +142,7 @@ How to read this for noevia:
 |---|---|---|---|---|---|---|---|---|---|
 | Logit readout on the resident System-Two (SemIf technique) | whatever is loaded | model's | yes | as the model | **yes (`logprobs`)** | model's | yes (4B ≈ SemIf) | needs temperature fit | the technique is proven [P]; our code not written |
 | Small dedicated logit model (e.g. Qwen3-0.6B/1.7B GGUF) | 0.6–2B | Apache-2.0 | yes | yes, slow | **yes** | 32k | weaker than 4B [B: kev-0.6B 66.7] | needs fit | [—] |
-| Qwen3-Reranker-0.6B (RAG only) | 0.6B | Apache-2.0 | yes | yes | **yes (`/v1/rerank`)** | 32k | yes, for relevance | scores, not probabilities | mature |
+| Qwen3-Reranker-0.6B (**class A**: RAG only; live) | 0.6B | Apache-2.0 | yes | yes | **yes (`/v1/rerank`)** | 32k | yes, for relevance | scores, not probabilities | mature |
 | Laya | 421M | Apache-2.0 | yes | **yes (193–464 ms)** | no (ONNX) | 512 / 1k | **no (0.362)** | after temperature fit | 1 week old |
 | Kev 0.6B | 0.6B | Apache-2.0 | yes | [—] | no | [—] | partly | [B] 51 | 1 week old |
 | SemIf (as a Python sidecar) | 4B | MIT | yes | slow | browser GGUF only | model's | yes | [B] 72.6 | 1 week old |
@@ -147,6 +152,10 @@ How to read this for noevia:
 
 ## Conclusion (for review)
 
+0. **Superseded in part by doc 13.**
+   - Items 1–3 below describe *per-decision* quality.
+   - Doc 13 adds residency as a first-class metric, and separates class A (the reranker) from class B (generic decisions).
+   - The 4B option-logit approach remains one class-B candidate, not the chosen one.
 1. **The strongest local option today is not a new model; it is a technique.** Option-logit
    readout, run through the llama.cpp engine noevia already operates, on a model noevia already
    has. SemIf's numbers [V, B] suggest a 4B model gets most of Jev's quality on everyday
