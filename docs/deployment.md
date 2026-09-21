@@ -2096,3 +2096,7 @@ Retain `42540fb`.
 ## Release 67f336e — 2026-09-21 (RAG rerank)
 
 Overlay `067ac1d` → `67f336e` after appdata backup `ab_20260921_165902` (all archives `gzip -t` clean). Engine change, approved by the user: the existing `[qwen3-reranker-0.6b-q8_0]` preset set to `reranking = true`, `pooling = rank` (flash-attn/KV-quant/jinja lines dropped), with backup `models.ini.bak.before-rerank-mode`, then `cowork-llama-1` restarted (the chat model reloads on the next request). The override gains `NOEVIA_FEATURE_RAG_RERANK`, `RERANK_BASE_URL=http://llama:8080/v1`, `RERANK_MODEL`, `RAG_RERANK_POOL=12`, `RAG_RERANK_KEEP=6` and `RAG_RERANK_DEADLINE_MS=3000` (`.bak.before-67f336e` backups of both Compose files and `.env`). Synthetic rerank from inside web put the matching chunk first. All containers healthy with 0 restarts; site 200. Retain `067ac1d`. Roll back by restoring the override backup; the preset can stay because nothing loads the reranker unless the flag is on.
+
+## Release f9dc5df — 2026-09-21 (Auto routing default)
+
+Overlay `67f336e` → `f9dc5df` after appdata backup `ab_20260921_171118` (all archives `gzip -t` clean); no compose or engine changes. All containers healthy with 0 restarts; site 200. Retain `67f336e`.
