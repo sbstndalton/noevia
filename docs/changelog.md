@@ -1,3 +1,11 @@
+### 2026-09-21 — A note's properties, and the tags a vault really uses (SHA)
+
+A leading YAML block is shown as the properties it is rather than as three dashes and a list of
+keys pretending to be prose; a line the reader cannot parse is shown as written rather than
+dropped. The tag filter now also reads the `tags:` property, which is where a diary written in
+Obsidian keeps its tags — excluding it meant the filter quietly missed most of them.
+
+
 ### 2026-09-21 — Documents in folders could not be read (c237480)
 
 The Docling sidecar refuses a name that could be a path, and noevia's names are paths, so every

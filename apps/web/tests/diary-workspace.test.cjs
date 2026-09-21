@@ -135,8 +135,12 @@ test('date and whole-tag filters combine with text, inclusive dates and undated 
  const dateOnly=await searchMarkdownFolder({...options,query:'',filters:{from:'2024-03-02'}});assert.deepEqual(Array.from(dateOnly.results,r=>r.path),['2024-03-02.md']);
  for(const filters of [{from:'2024-02-30'},{from:'2024-03-02',to:'2024-03-01'},{tag:'two tags'}])await assert.rejects(searchMarkdownFolder({...options,filters}));
 });
-test('hashtag matching ignores frontmatter and closed or unclosed code fences',()=>{
+test('tag matching reads the tags property as well as prose, and never reads code',()=>{
+ // Frontmatter tags used to be excluded. A vault written in Obsidian keeps its tags there, so
+ // excluding them meant the filter quietly missed most of a real diary's tags (2026-09-21).
  const {markdownTags}=load('diary-file-search.ts');
  const text='---\ntags: [#private]\n---\n# A heading\n#Work #work/project #café #workday\n`#inline`\n~~~js\n#hidden\n~~~~\n```\n#unfinished';
- assert.deepEqual(Array.from(markdownTags(text)),['work','work/project','café','workday']);
+ assert.deepEqual(Array.from(markdownTags(text)),['private','work','work/project','café','workday']);
+ // A heading is not a tag, and neither is anything inside a fence or backticks.
+ assert.deepEqual(Array.from(markdownTags('# A heading\n`#inline`\n```\n#hidden\n```\n')),[]);
 });

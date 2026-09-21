@@ -79,3 +79,47 @@ test('a link reads as the file’s own name, and as its path only when that is a
   assert.equal(ctx.wikiLinkNameFor('Diary/Work/Plan.md', 'Diary', all), 'Work/Plan');
   assert.equal(ctx.wikiLinkNameFor('note.md', '', ['note.md']), 'note');
 });
+
+test('a note’s properties are read, and only the part that is really YAML', () => {
+  const front = plain(ctx.readFrontmatter([
+    '---',
+    'title: A quiet morning',
+    'tags: [walk, river]',
+    'people:',
+    '  - Ada',
+    '  - Grace',
+    'draft:',
+    'quoted: "with: a colon"',
+    'this line is not a pair',
+    '---',
+    '# Body',
+  ].join('\n')));
+  assert.deepEqual(front.fields, [
+    { key: 'title', values: ['A quiet morning'] },
+    { key: 'tags', values: ['walk', 'river'] },
+    { key: 'people', values: ['Ada', 'Grace'] },
+    { key: 'draft', values: [] },
+    { key: 'quoted', values: ['with: a colon'] },
+  ]);
+  assert.deepEqual(front.unparsed, ['this line is not a pair'], 'a line it cannot read is kept, not dropped');
+});
+
+test('frontmatter is only frontmatter at the very top, and never rewrites the body', () => {
+  assert.equal(ctx.readFrontmatter('# Title\n\n---\nnot: frontmatter\n---\n'), null);
+  const text = '---\na: 1\n---\n# Body\n\ntext\n';
+  const front = plain(ctx.readFrontmatter(text));
+  assert.equal(text.slice(front.bodyStart), '# Body\n\ntext\n');
+  assert.equal(ctx.readFrontmatter('no block here'), null);
+  // A block that never closes is not a block: the whole file would vanish from the preview.
+  assert.equal(ctx.readFrontmatter('---\na: 1\nstill going\n'), null);
+});
+
+test('tags written as properties are found, the way a vault actually writes them', () => {
+  const tags = (text) => plain(ctx.frontmatterTags(text));
+  assert.deepEqual(tags('---\ntags: [Walk, river]\n---\n'), ['walk', 'river']);
+  assert.deepEqual(tags('---\ntags:\n  - "#walk"\n  - river/spring\n---\n'), ['walk', 'river/spring']);
+  assert.deepEqual(tags('---\ntag: solo\n---\n'), ['solo']);
+  assert.deepEqual(tags('---\ntags: walk river\n---\n'), ['walk', 'river'], 'a plain space-separated list is common too');
+  assert.deepEqual(tags('---\ntitle: no tags here\n---\n'), []);
+  assert.deepEqual(tags('# just a heading\n'), []);
+});
