@@ -58,9 +58,12 @@ Results land in `results/` (JSONL rows plus a Markdown summary per run).
 | rerank6p12 (12 → 6) | 89% (39/44) | 89% | 2,402 | 4.1 s |
 
 Caveats and findings:
-- Two of the four multi-hop tasks were ambiguous in this run (a budget figure appeared in two
-  weeks). The corpus is fixed (unique figures, all other records identical), but multi-hop has not
-  been rerun.
+- Two of the four multi-hop tasks were ambiguous in the first run; the corpus is fixed. **Multi-hop
+  rerun on the fixed corpus** (2026-09-21, `results/2026-09-21T21-07-30-871Z-chat.md`, Gemma-4-E2B):
+  baseline 2/4, rerank 24→6 3/4, **12→6 3/4** (the shipped default), 24→3 1/4. Keeping only 3 loses
+  one of the two chunks a multi-hop answer needs, which supports the keep-6 default. `mtg-m2` still
+  fails under every rerank arm (the exact-number demotion); only 4 tasks, so treat it as direction,
+  not a rate.
 - When cosine ranks the gold chunk outside the pool (rank 29 > 24), reranking cannot recover it.
 - Reranking can **demote** a gold chunk when the question hinges on an exact number (`mtg-m2`).
 - On an unanswerable question (`E177`), reranking surfaced the near-miss E17/E117 entries, and the
