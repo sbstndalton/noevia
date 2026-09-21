@@ -9,9 +9,10 @@ content folded in below.
 | File | What it is | Read it when |
 | --- | --- | --- |
 | [agent-brief.md](agent-brief.md) | Orientation, build/test, architecture, the hard "do not" rules | **Start here** on any fresh session |
-| [roadmap.md](roadmap.md) | The one plan: status, open work, order, testing rules | Deciding what to do next |
+| [roadmap.md](roadmap.md) | The one plan: where things stand, what is done, what is next in order, what needs the user | Deciding what to do next |
 | [sources.md](sources.md) | Every outside repo, product and document used, and whether it ships | Checking what something is built on, or adding a new source |
-| [master-prompt.md](master-prompt.md) | The one executable brief matching the roadmap | Handing work to an agent |
+| [master-prompt.md](master-prompt.md) | The one executable brief: rules, testing, deploying, decisions D1–D27 | Handing work to an agent |
+| [roadmap-history.md](roadmap-history.md), [master-prompt-history.md](master-prompt-history.md), [ui-overhaul-master-prompt.md](ui-overhaul-master-prompt.md), [ui-overhaul-phase2-prompt.md](ui-overhaul-phase2-prompt.md) | Archived plans and briefs — the reasoning behind past decisions, not status | Asking *why* something was decided |
 | [session-kickoff.md](session-kickoff.md) | The short prompt to paste when starting a session | Starting a new agent session |
 | [deployment.md](deployment.md) | Live DaServer runbook; `deploy/examples/overlay-release.sh` | Shipping to production |
 | [changelog.md](changelog.md) | What was fixed and how it was verified | Checking whether something is done |
@@ -23,7 +24,8 @@ content folded in below.
 | [research-known-good-settings.md](research-known-good-settings.md) | Hardware, live presets vs measured context, provisional limits | Changing model presets |
 | other `spec-*.md` | Design specs (reasoning effort, tool routing, models, documents, MTP, skills, backend) | Working in that area |
 
-On 2026-09-16 the roadmap audit, backlog, continuation checkpoint, Codex handoffs, live
+On 2026-09-21 the roadmap and master prompt were rewritten short and current; their earlier
+versions are the two `*-history.md` files. On 2026-09-16 the roadmap audit, backlog, continuation checkpoint, Codex handoffs, live
 and settings audits, UI-overhaul plan, Freebuff report and all master prompts were merged
 into `roadmap.md` and `master-prompt.md`; originals are in git history.
 

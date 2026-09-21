@@ -215,7 +215,7 @@ commit, not the README.
 | Serve the Diary corpus over SMB from the Mac | [Samba leases](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#SMB2LEASES), [SQLite over a network](https://www.sqlite.org/useovernet.html) | Retired 2026-09-18 (D22); plain files and WebDAV won |
 | Keep mirroring backups with host rclone | [rclone](https://rclone.org) | Replaced by noevia's own Google Drive upload, so the whole flow is in one place |
 | Bulk model delete, and a command palette in the model manager | The model-loader parity audit | Rare and destructive; and a palette is an app-wide concern, not a model one |
-| Vendor an agent framework, or adopt an external harness as noevia's API | Every harness read above | Kept as references and adapters, never as the architecture ([roadmap](roadmap.md#explicitly-not-doing)) |
+| Vendor an agent framework, or adopt an external harness as noevia's API | Every harness read above | Kept as references and adapters, never as the architecture ([roadmap history](roadmap-history.md#explicitly-not-doing)) |
 
 ## Where the longer write-ups live
 
