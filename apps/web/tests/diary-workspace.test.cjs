@@ -125,6 +125,32 @@ test('backlinks resolve source-relative paths and skip images and fenced code',a
 });
 
 
+test('backlinks also report notes that name the file without linking it',async()=>{
+ // Obsidian's "unlinked mentions". Whole words only, prose only, and never the linking notes
+ // twice: a note that links is a backlink, not also a mention.
+ const {searchMarkdownFolder}=load('diary-file-search.ts');
+ const files={
+  'Garden plan.md':'# Garden plan',
+  'linked.md':'See [[Garden plan]] and also the garden plan below.',
+  'mention.md':'Today I revised the Garden Plan with Ada.',
+  'partial.md':'The Garden planning group met.',
+  'code.md':'```\nGarden plan\n```\n`Garden plan`',
+  'front.md':'---\ntitle: Garden plan\n---\nNothing here.',
+ };
+ const report=await searchMarkdownFolder({path:'',query:'Garden plan.md',kind:'backlinks',
+  list:async()=>({files:Object.keys(files).map(path=>({path,name:path,isDir:false}))}),read:async path=>({path,content:files[path],version:'v'})});
+ assert.deepEqual(Array.from(report.results,r=>r.path),['linked.md']);
+ assert.deepEqual(Array.from(report.mentions,r=>r.path),['mention.md'],'case-insensitive, whole words, prose only, not the file itself');
+ assert.match(report.mentions[0].snippet,/Garden Plan with Ada/);
+});
+test('a name too short to mean anything reports no mentions rather than every note',async()=>{
+ const {searchMarkdownFolder}=load('diary-file-search.ts');
+ const files={'ab.md':'x','other.md':'ab ab ab'};
+ const report=await searchMarkdownFolder({path:'',query:'ab.md',kind:'backlinks',
+  list:async()=>({files:Object.keys(files).map(path=>({path,name:path,isDir:false}))}),read:async path=>({path,content:files[path],version:'v'})});
+ assert.deepEqual(Array.from(report.mentions),[]);
+});
+
 test('date and whole-tag filters combine with text, inclusive dates and undated exclusion',async()=>{
  const {searchMarkdownFolder}=load('diary-file-search.ts');
  const files={'2024-02-29.md':'Target #Work','2024-03-01-note.md':'Target #work','2024-03-02.md':'Target #workday','undated.md':'Target #work','2024-02-30.md':'Target #work'};

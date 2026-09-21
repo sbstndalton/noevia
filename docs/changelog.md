@@ -1,3 +1,10 @@
+### 2026-09-21 — Unlinked mentions (SHA)
+
+"Find links to this file" also lists the notes that name it in prose without linking it — whole
+words, case-insensitive, never inside code or properties. They are shown, not rewritten: turning
+a mention into a link is an edit to someone's note, and edits here are explicit.
+
+
 ### 2026-09-21 — Auto-tune says what it is doing, as it does it (f66ecd2)
 
 A run is 5–15 minutes of a progress bar that can sit still for a minute while the engine

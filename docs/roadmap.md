@@ -222,8 +222,8 @@ The Diary is a folder of Markdown, which is what Obsidian is too — so a vault 
 should not look broken. Shipped: `[[wiki links]]` are parsed, rendered, opened and counted as
 backlinks (aliases, `#heading`, `^block`, `![[embed]]`), and typing `[[` in the editor offers
 the files in the folder, inserting the shortest name that is unambiguous. Nothing rewrites a
-file. Not done, in rough order of value: unlinked mentions, frontmatter shown as properties
-rather than raw text, templates, and a graph — which needs an index the Diary deliberately
+file. Also shipped the same day: frontmatter shown as properties, `tags:` counted by the tag filter,
+and unlinked mentions beside backlinks. Not done: templates, and a graph — which needs an index the Diary deliberately
 does not keep.
 
 ### Needs the user
