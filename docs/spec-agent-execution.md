@@ -407,8 +407,28 @@ So: the contract holds, the containment holds, the work comes back, and a 9B on 
 do a real if small coding task in under a minute.
 
 **Not yet done from this section.** An `Auto` harness waits on evidence that does not exist, and
-the adapter should own writing the harness config (the driver does it today). Claude Code and
-Codex have still never been run.
+Claude Code and Codex have still never been run.
+
+### Through the product, on the live deployment — 2026-09-21
+
+The adapter now owns the harness's configuration file (`server/code-harness-config.cjs`): the
+permission gate, one model endpoint, no self-update, no sharing — written into the task's own
+working directory before the agent exists, and handed to the user the harness runs as. A harness
+whose configuration noevia cannot pin is refused rather than run with its own defaults, and so is
+a deployment with no model or no endpoint.
+
+That closed the gap the spike left, and a task then ran end to end through `code-service.cjs`
+itself, not the spike driver: OpenCode 1.18.31 in the deployed sandbox, Qwen3.5-4B on the live
+engine, the operator's registered `scratch` repository. Four approvals (edit, command, edit,
+command), only `median.js` changed, the branch fetched back, and `node test.js` printing `ok` on
+it. `commands: 0` and no exit codes, as before: the harness runs commands in its own process, and
+the record says so rather than guessing.
+
+One more defect only a real deployment could show: on a shared volume the registered repository
+is owned by the harness user, and git refuses to read a repository owned by someone else — which
+noevia reported as "Not a git repository". It now names exactly the repositories the operator
+registered in a trust file of its own (work tree and git directory both), and reports what git
+actually said for anything else.
 
 ---
 

@@ -203,12 +203,19 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   bundle byte-identical to the local build. Code mode ships **off** with no `CODE_*` environment
   set. D1 needed no operator steps — it was already applied in `657d21b`, and the preflight passes
   live; the earlier "blocked until the operator steps are applied" note was stale.
+- **Code mode is live (2026-09-21).** The sandbox is deployed (`code` profile, its own internal
+  network with the engine as the only other member), `features.codeHarness` is on, and a real
+  task ran the whole way through noevia's own service: OpenCode 1.18.31 on Qwen3.5-4B fixed the
+  `scratch` fixture's `median()`, four approvals (two edits, two commands) were raised and
+  answered, only `median.js` changed, the work came back on the task branch and the
+  repository's own test prints `ok`. Two defects had to be fixed first — noevia never wrote the
+  harness's own configuration file (so the agent had no model endpoint and its own permission
+  defaults), and a repository owned by the harness user was reported as "Not a git repository".
 - Glass banding on real devices: the user's check (D13). `llama-vulkan-test` is stopped, kept.
 
 ### Needs the user
 a maintenance window to confirm the Tasks-box hints and finish the Prompt Architect
-repeats (the user will say when) · a real end-to-end CodeHarness run against OpenCode before
-`features.codeHarness` goes on · `--fit on --fit-target 1024` after the syslog mirror · an engine
+repeats (the user will say when) · `--fit on --fit-target 1024` after the syslog mirror · an engine
 API key shared by noevia and the Nextcloud Assistant · the first live Connect Google Drive · the
 Customize/UI overhaul brief · deep research when they return to it · Talk's `changed-users` waits on an upstream
 AIO image · the glass banding check on real devices (D13).

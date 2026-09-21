@@ -1,3 +1,12 @@
+### 2026-09-21 — Code mode runs, and is on (f57dd21)
+
+noevia writes the coding harness's own configuration file — every action class asking, one model
+endpoint, no self-update — and refuses a harness whose configuration it cannot pin. A repository
+owned by the harness user is used instead of being reported as "Not a git repository". The
+sandbox is deployed on an internal network whose only other member is the engine, and a real
+task fixed the scratch fixture end to end. Rollback 39b0970.
+
+
 ### 2026-09-21 — Usage: peak hour, favourite model, tool calls (b126eb6)
 
 The usage file gained two counters: replies by hour of the local clock, and one count per tool

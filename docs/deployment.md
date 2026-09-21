@@ -1348,6 +1348,43 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release f57dd21 — 2026-09-21 (Code mode staged, and on)
+
+Latest application rollout: **`f57dd21`**, replacing `b126eb6` (via `39b0970`). Backup
+`ab_20260921_023216` first (gzip-verified); `RELEASE_f57dd21_COMPLETE`, five services healthy,
+restarts=0. Server tests 839/839.
+
+**Code mode is now deployed and on.** What changed on the box, all backed up first
+(`docker-compose.override.yml.bak.before-code-sandbox`, `.env.bak.before-code-sandbox`):
+
+- `code-sandbox` service added to the live override from
+  `deploy/examples/code-sandbox.override.yml`, under the `code` profile, image
+  `cowork-code-sandbox:<release>` (OpenCode pinned at 1.18.31 as a build argument).
+- A `code` network, internal. Its members are web, the sandbox and **the engine** — the sandbox
+  has to reach a model, and the model manager (which holds the Docker socket) is deliberately
+  not on it. Verified from inside the sandbox: `llama:8080/health` answers, `model-loader` does
+  not resolve.
+- Volume `cowork_code-workspaces` mounted at `/workspaces` in both web and the sandbox, at the
+  same path, because noevia sends an absolute path and the supervisor resolves that same one.
+- `.env`: `NOEVIA_FEATURE_CODE_HARNESS=true`, `CODE_HARNESS_ENDPOINT=code-sandbox:8030`,
+  `CODE_REPOS=scratch|/workspaces/repos/scratch`, `CODE_WORKSPACE_ROOT=/workspaces/trees`,
+  `CODE_HARNESS_USER=1000:1000`, `CODE_ENGINE_URL=http://llama:8080/v1`.
+- Only the throwaway `scratch` fixture is registered. **Nothing real is reachable by a task**
+  until another entry is added to `CODE_REPOS`.
+
+Verified end to end through noevia's own service: OpenCode 1.18.31 on Qwen3.5-4B fixed
+`median()`, four approvals, only `median.js` changed, and `node test.js` prints `ok` on the task
+branch.
+
+Unrelated observation while staging: `models.ini` was edited at 00:08 on 2026-09-21 (backup
+`models.ini.bak-20260921-040852`) and no longer defines `Ornith-1.5-9B-Q5_K_M`; restarting the
+engine for the network change therefore dropped it from the served list. The file is the
+authority — restoring it is a models.ini edit, which is the user's call.
+
+Rollback: repoint `current` to `releases/b126eb6`, restore `.env.bak.before-code-sandbox` and
+`docker-compose.override.yml.bak.before-code-sandbox`, run preflight `up.sh … web diary ocr`
+(without `--profile code`).
+
 ## Release b126eb6 — 2026-09-21 (usage counters)
 
 Latest application rollout: **`b126eb6`**, replacing `05cc153`. Backup `ab_20260921_020810`
