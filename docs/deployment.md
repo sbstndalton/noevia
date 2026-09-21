@@ -1348,6 +1348,14 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release 05cc153 — 2026-09-21 (project screen)
+
+Latest application rollout: **`05cc153`**, replacing `5379771`. Backup `ab_20260921_015203`
+first (gzip-verified); `RELEASE_05cc153_COMPLETE`, five services healthy, restarts=0. Server
+tests 827/827; `qa/project-screen.cjs` (new) plus the 14 affected suites pass. Front end only.
+Rollback: repoint `current` to `releases/5379771`, restore `.env.bak.before-05cc153`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 5379771 — 2026-09-21 (Nextcloud connector)
 
 Latest application rollout: **`5379771`**, replacing `76865e1`. Backup `ab_20260921_014002`
