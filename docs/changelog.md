@@ -1,4 +1,4 @@
-### 2026-09-21 — "Thought for 12s" (SHA)
+### 2026-09-21 — "Thought for 12s" (bbae129)
 
 A reasoning reply now says how long the model thought — from its first thought to the first word
 of the answer, or to the tool it decided to use — measured as it streamed and kept with the chat.
