@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-21
 
-- **Live:** release **`42540fb`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`067ac1d`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (nine containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**. Sidecar image tags are pinned
@@ -26,6 +26,12 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-21 — Curated plugin starters (release `067ac1d`, deployed)
+- Plugins → MCP servers and Skills open with "Recommended by noevia": Exa, Notion, Linear,
+  Hugging Face and Cloudflare docs (first-party, hosted, all addable), and the pdf, docx, xlsx,
+  doc-coauthoring, frontend-design and skill-creator skills, each with a line on why. Resolved
+  against the live directories (5 and 6 found from DaServer); a vanished pick drops out.
 
 ### 2026-09-21 — Ordinary WebDAV clients can write (release `42540fb`, web only)
 - Your decision: relax If-Match, keeping a version. DELETE/MOVE use the current version; a PUT
@@ -116,11 +122,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    Still to run: Finder, Windows Explorer/WinSCP, iOS Files, Obsidian WebDAV sync. DAV sharing is
    off live (`COWORK_DAV_PORT=0`), and the Diary image still needs rebuilding for `preserve`
    before it is turned on.
-3. **Curated plugin list** for the Plugins page — the last piece of the Customize work.
-4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
-5. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
+3. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
+4. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
    an `Auto` harness only once there is evidence to choose between them.
-6. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
+5. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
    browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
 
 ## Needs the user — in order
@@ -138,7 +143,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 6. **An engine API key** shared by noevia and the Nextcloud Assistant.
 7. **Real-device checks:** phone polish judgement, and the glass banding check (D13).
 8. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
-6. **Deep research live run** approval (D12).
+5. **Deep research live run** approval (D12).
 
 ## Lessons worth keeping
 

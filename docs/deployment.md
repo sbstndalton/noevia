@@ -2085,3 +2085,10 @@ clean); no compose changes. 1,102/1,102 web tests, 312 Diary tests, typecheck cl
 companion's new `preserve` op is not live. DAV sharing is off (`COWORK_DAV_PORT=0`), so nothing
 calls it; before turning sharing on, rebuild the Diary image from this release. All containers
 healthy, zero restarts; site 200; egress 407 without a token. Retain `dbfbd92`.
+
+## Release 067ac1d — 2026-09-21 (curated plugin starters)
+
+Overlay `42540fb` → `067ac1d` after appdata backup `ab_20260921_141441` (all archives `gzip -t`
+clean); no compose changes. 1,103/1,103 unit tests, typecheck clean, `qa/shared-sidebar` green.
+From inside web: starters resolve 5 MCP servers and 6 skills. All containers healthy; site 200.
+Retain `42540fb`.

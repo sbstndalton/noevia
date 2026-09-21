@@ -1,3 +1,7 @@
+### 2026-09-21 — Curated plugin starters (release 067ac1d, deployed)
+
+`server/plugin-starters.json` is noevia's starter list: five first-party hosted MCP servers (Exa, Notion, Linear, Hugging Face, Cloudflare docs) and six Anthropic skills, each with a one-line reason. `GET /api/plugins/directory?starters=1` resolves them against the live registry and skills repository (cached an hour), keeps their order and drops any that vanished. The Plugins page shows them as "Recommended by noevia" above each directory until you search. Verified from DaServer: 5 servers, 6 skills. 1,103/1,103 unit tests; `qa/shared-sidebar` extended and green.
+
 ### 2026-09-21 — Ordinary WebDAV clients can write (release 42540fb, web only)
 
 rclone, Finder, Explorer and Obsidian sync send no `If-Match`, so every DAV write was refused (428). Per the user's decision, DELETE and MOVE without `If-Match` use the version read at request time (both reversible); an untagged `Overwrite: T` reads the destination's version (the replaced file goes to Trash); a PUT over an existing file first keeps its bytes in Trash through the companion's new `preserve` op — restorable beside the file as `<name> (replaced <UTC time>).md` — then writes against the version just read. Protected files still require `If-Match`. New `qa/dav-interop.cjs` runs rclone against the real web server and the real companion on a throwaway tenant: 18/18. Web released; the Diary image is not rebuilt (the live Diary stays untouched), and DAV sharing remains off live (`COWORK_DAV_PORT=0`).
