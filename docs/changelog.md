@@ -1,3 +1,10 @@
+### 2026-09-21 — The Docling sidecar is deployed
+
+Document extraction now uses the sidecar that was verified in September and then sat unused:
+reading order, table structure, and the Office, OpenDocument, HTML and image formats that were
+previously stored whole and unread. CPU-only, so it never contends with the engine for VRAM.
+
+
 ### 2026-09-21 — Obsidian-style [[links]] in the Diary (f72c2a6)
 
 A vault written in Obsidian is full of `[[wiki links]]`, and noevia rendered every one as

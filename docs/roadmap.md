@@ -213,6 +213,15 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   defaults), and a repository owned by the harness user was reported as "Not a git repository".
 - Glass banding on real devices: the user's check (D13). `llama-vulkan-test` is stopped, kept.
 
+### Obsidian compatibility (2026-09-21)
+The Diary is a folder of Markdown, which is what Obsidian is too — so a vault opened in noevia
+should not look broken. Shipped: `[[wiki links]]` are parsed, rendered, opened and counted as
+backlinks (aliases, `#heading`, `^block`, `![[embed]]`), and typing `[[` in the editor offers
+the files in the folder, inserting the shortest name that is unambiguous. Nothing rewrites a
+file. Not done, in rough order of value: unlinked mentions, frontmatter shown as properties
+rather than raw text, templates, and a graph — which needs an index the Diary deliberately
+does not keep.
+
 ### Needs the user
 a maintenance window to confirm the Tasks-box hints and finish the Prompt Architect
 repeats (the user will say when) · `--fit on --fit-target 1024` after the syslog mirror · an engine

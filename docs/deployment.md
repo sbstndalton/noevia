@@ -1348,6 +1348,28 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Docling extraction sidecar — deployed 2026-09-21 (Stage B)
+
+The sidecar verified on 2026-09-20 (`releases bb78a1a`/`aad6216`) was built but never wired in,
+because `compose.docling.yaml` is a `-f a -f b` overlay the Compose Manager cannot read. It is
+now hand-merged into the live override (backup
+`docker-compose.override.yml.bak.before-docling`), exactly as the repo file describes: CPU-only,
+no device mapped, `mem_limit` 6g, 2 CPUs, `read_only`, `cap_drop: ALL`, tmpfs `/tmp`, on the
+`ocr` network, no published port. Image `cowork-docling:f72c2a6`, rebuilt from the release
+source — byte-identical build context to the verified one, so the build was entirely cached.
+
+`DOCLING_BASE_URL=http://docling:8031` is in `.env`; with it set, `documents.cjs` uses the
+sidecar and accepts the Office, OpenDocument, HTML and image formats it reads (18 in total)
+instead of PDF alone. **Switching backends changes the extractor version, so cached text is
+re-extracted on next use — by design, because the old text came from a different pipeline.**
+
+Verified on the box: container healthy, `selftest.py` on a synthetic PDF (1 page, 7.7 s
+including the one-time model load, peak RSS 1178 MB, reading order correct), and an extraction
+driven from inside the web container returning the page text through `docling.cjs`.
+
+To turn it off: remove `DOCLING_BASE_URL` from `.env` and recreate web. The sidecar can stay
+running; unset, nothing calls it.
+
 ## Release 6eb1698 — 2026-09-21 (Diary connectors in Settings)
 
 Latest application rollout: **`6eb1698`**, replacing `f57dd21`. Backup gzip-verified first;
