@@ -1,4 +1,4 @@
-### 2026-09-21 — Auto-tune says what it is doing, as it does it (SHA)
+### 2026-09-21 — Auto-tune says what it is doing, as it does it (f66ecd2)
 
 A run is 5–15 minutes of a progress bar that can sit still for a minute while the engine
 loads, and a still screen reads as nothing happening. Auto-tune now keeps a timed, line-by-line
@@ -8,7 +8,7 @@ and why, and whether the original settings were put back after a cancel. It foll
 line while running, and folds away once the run is done. The panel now refreshes every second.
 
 
-### 2026-09-21 — A note's properties, and the tags a vault really uses (SHA)
+### 2026-09-21 — A note's properties, and the tags a vault really uses (5b0e531)
 
 A leading YAML block is shown as the properties it is rather than as three dashes and a list of
 keys pretending to be prose; a line the reader cannot parse is shown as written rather than
