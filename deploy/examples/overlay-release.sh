@@ -95,6 +95,15 @@ if ! { bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build 
   echo "ROLLED BACK to $OLD" >&2; exit 1
 fi
 [ "$(docker inspect cowork-llama-1 --format '{{.Id}}')" = "$old_native" ]
+# Sidecars that live outside the web release (Docling, the Code sandbox) are tagged by what they
+# contain, not by COWORK_VERSION, so a release does not replace them. Make sure the ones this
+# deployment defines are running -- `--no-deps` and by name, so nothing else (the model loader,
+# the engine) is recreated as a side effect.
+sidecars=$(docker compose --env-file "$config" --profile code config --services 2>/dev/null | grep -xE 'docling|code-sandbox' || true)
+if [ -n "$sidecars" ]; then
+  docker compose --env-file "$config" --profile code up -d --no-deps $sidecars >/dev/null
+  for s in $sidecars; do docker inspect "cowork-$s-1" --format "{{.Name}} {{.State.Status}}"; done
+fi
 docker inspect cowork-web-1 cowork-diary-1 cowork-ocr-1 cowork-llama-1 cowork-model-loader-1 \
   --format '{{.Name}} {{.State.Health.Status}} restarts={{.RestartCount}}'
 rm -f "/tmp/src-$NEW.tar.gz" "/tmp/app-$NEW.tar.gz"
