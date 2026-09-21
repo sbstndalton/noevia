@@ -1348,6 +1348,16 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release b126eb6 — 2026-09-21 (usage counters)
+
+Latest application rollout: **`b126eb6`**, replacing `05cc153`. Backup `ab_20260921_020810`
+first (gzip-verified); `RELEASE_b126eb6_COMPLETE`, five services healthy, restarts=0. Server
+tests 832/832; `qa/usage-view.cjs` (new), `usage-http`, `tool-calls`, `tool-scope-http`,
+`mcp-status`, `general-settings`, `project-screen` and `mobile-surfaces` pass. The usage file
+gains `hours` and `tools` per day; older files need no migration and no operator steps.
+Rollback: repoint `current` to `releases/05cc153`, restore `.env.bak.before-b126eb6`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release 05cc153 — 2026-09-21 (project screen)
 
 Latest application rollout: **`05cc153`**, replacing `5379771`. Backup `ab_20260921_015203`
