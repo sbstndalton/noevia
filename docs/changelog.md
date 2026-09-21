@@ -1,3 +1,11 @@
+### 2026-09-21 — The project screen (SHA)
+
+Header actions, context chips above the composer, an Outputs row for the documents noevia made
+in the project, labelled recent chats, and a context panel with Context and a Scheduled row
+marked not yet available. Covered by `qa/project-screen.cjs` at 1440 light and 390 dark.
+Rollback 5379771.
+
+
 ### 2026-09-21 — Nextcloud is a connector of its own (5379771)
 
 Plugins → Connected lists Nextcloud beside Google Drive. It reuses the connection set under

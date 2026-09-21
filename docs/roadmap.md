@@ -180,8 +180,13 @@ Everything below was measured on the branch during 2026-09-17 and went live with
      plainly when that connection is missing or its address is not on `MCP_NEXTCLOUD_ORIGINS`,
      lists the toolboxes it offers, and carries the same per-tool permissions as Drive — writes
      can never be “Always allow”. **Left: a curated marketplace list.**
-  5. **Projects and chats** — the sample's project screen: header, composer context chips,
-     outputs, recent chats, context panel sections.
+  5. **Projects and chats** — **Shipped 2026-09-21**: the project header carries its actions
+     (New chat, Project settings) beside the icon and goal; chips above the composer name what
+     rides along with the next message (instructions, memory, sources, linked folders) and open
+     what they count; an Outputs row lists the documents noevia made here — today only deep
+     research reports, each with its sources file — above the recent chats; the context panel
+     gained Context (model, thinking, toolboxes, folders, outputs) and lists Scheduled as not
+     yet available. On phones the header stacks instead of squeezing the title.
   6. **Activity/usage** — only from real usage data.
   7. **Impeccable critique pass and phone polish pass.**
   **Decided 2026-09-18** (recorded at the top of the brief): plugins are bundles of skills,
