@@ -1,3 +1,25 @@
+### 2026-09-21 — index.cjs in pieces, and a measurement instead of a port (wip/fable-cleanup, not yet deployed)
+
+The server's toolboxes and built-in tools, its MCP wiring and its chat loop each moved out of
+`index.cjs` into a module with injected dependencies (`toolboxes.cjs`, `mcp-wiring.cjs`,
+`chat.cjs`) and a `routes/` file, with tests that never boot the server; the tests that used
+to slice `index.cjs` as text now call the modules. Behaviour is unchanged: the approval gate,
+the per-user MCP credentials and the project a tool call acts for all travel exactly as
+before. `index.cjs` is 4,241 → 2,787 lines.
+
+Removed because nothing called them: the Hugging Face model search and the variants listing
+(server routes, front-end wrappers and their types), six helpers in `index.cjs`, a finished
+Docling handoff document. Every spec is now linked from the docs index, and the Claude Diary
+plugin README no longer points at a script that was deleted.
+
+Measured, with synthetic data: Node spends about 10 µs of CPU per streamed token; the engine
+spends 25–90 ms. Nothing is worth porting. The one slow Node path — fitting a long tool
+result to the model's budget re-rendered every surviving record on every step — is now
+linear: a 500-record listing reduces in 0.5 ms instead of 53, byte-identical. Study and
+numbers: `docs/research-language-consolidation.md`; rerun with
+`apps/web/scripts/profile-hot-paths.cjs`.
+
+
 ### 2026-09-21 — The Code tab, full height and honest about the network (2d7ba8f)
 
 The chat composer no longer sits under the Code tab, which left the task form half the height

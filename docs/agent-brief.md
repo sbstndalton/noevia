@@ -29,12 +29,20 @@ coordinated migration across the live deployment; see `deployment.md`.
   `popup.css`, `diary-tab.css`. **`noevia.css` loads LAST and overrides
   everything.** Rules added elsewhere can be silently dead. This has bitten twice.
 - `apps/web/src/App.tsx` (842 lines) — chat state, SSE consumption, theme manager.
-- `apps/web/server/index.cjs` (~4900 lines) — the request handler, tools, MCP, approvals and
-  the chat loop. **It is being taken apart, not added to**: an area that does not touch the
-  handler belongs in its own module, and its HTTP surface in `server/routes/<area>.cjs` with
-  its dependencies injected (the pattern `account`, `code`, `connectors`, `features`,
-  `research`, `usage` already follow). Moved out so far: `usage.cjs` (daily rollups),
-  `auto-router.cjs` (the Fast/Smart/Code classifier), `code-*.cjs`, `mcp*.cjs`.
+- `apps/web/server/index.cjs` (~2800 lines) — wiring and the remaining inline routes
+  (projects, sources, uploads, providers, models, Diary). **It is being taken apart, not added
+  to**: an area that does not touch the handler belongs in its own module, and its HTTP
+  surface in `server/routes/<area>.cjs` with its dependencies injected (the pattern
+  `account`, `code`, `connectors`, `features`, `research`, `usage`, `toolboxes`, `chat`
+  follow). Moved out so far: `toolboxes.cjs` (the core box, cap and budget, `resolveTools`,
+  `isWriteTool`, `executeToolCall`), `mcp-wiring.cjs` (server list, discovery, per-server
+  credentials, `executeMcpToolCall`), `chat.cjs` (`handleChat`, the streamed tool rounds),
+  `approvals.cjs`, `usage.cjs` (daily rollups), `auto-router.cjs` (the Fast/Smart/Code
+  classifier), `code-*.cjs`, `mcp*.cjs`. Each factory takes its collaborators as parameters,
+  so its test builds it with fakes; never slice `index.cjs` as text in a test again.
+  When a block moves, `node node_modules/typescript/bin/tsc --allowJs --checkJs --noEmit
+  --target es2022 --module commonjs --types node --skipLibCheck server/<file>.cjs | grep
+  TS2304` lists any identifier it left behind.
 - `apps/web/src/lazy-views.tsx` — Settings, Diary, Projects and Coding load as lazy
   chunks (prefetched when idle); import them from here, not directly, or they rejoin
   the first bundle. `server/static-files.cjs` serves the build (compression, caching).

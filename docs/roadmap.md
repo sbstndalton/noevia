@@ -19,8 +19,8 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not tied to the app release.
 - **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**.
   **Off:** deep research.
-- **Tests:** 989 server and front-end unit tests pass; the full browser QA sweep on
-  2026-09-21 was **73 of 73 green**. `diary-reading` has been timing-flaky under a full sweep
+- **Tests:** 1,024 server and front-end unit tests pass (none boots the server or touches the
+  network); the full browser QA sweep on 2026-09-21 was **73 of 73 green**. `diary-reading` has been timing-flaky under a full sweep
   before and passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
@@ -48,6 +48,18 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   panel sections. **Nextcloud** is a connector of its own.
 - **Repo:** usage accounting and the auto router moved out of `index.cjs`; dead components, the
   old Code sidebar CSS and the old Diary landing removed; design lint clean.
+- **`index.cjs` taken apart** (branch `wip/fable-cleanup`, **not yet deployed**): toolboxes and
+  the built-in tools (`toolboxes.cjs`), the MCP wiring (`mcp-wiring.cjs`), the chat loop
+  (`chat.cjs`) and the approvals gate each live in their own module with injected dependencies,
+  a `routes/` file and tests that never boot the server; 4,241 → 2,787 lines. The tests that used
+  to slice `index.cjs` as text now call the modules. Dead code removed end to end (the unused
+  Hugging Face model search and variants routes, six uncalled helpers); the finished Docling
+  handoff doc removed; every spec is now linked from `docs/README.md`.
+- **Measured, not ported.** [research-language-consolidation.md](research-language-consolidation.md):
+  Node costs ~10 µs of CPU per streamed token against the engine's 25–90 ms — 0.6 % of a
+  paced reply — so nothing is worth porting to Rust, C++ or Python. The one slow Node path
+  (`reduceToolResult`, quadratic on long listings, 53 ms) was fixed in place with parity
+  tests: 0.5 ms. Rerun with `apps/web/scripts/profile-hot-paths.cjs`.
 
 ### Before 2026-09-21 (see the history file for detail)
 Reliability fixes · PDF originals, OCR, images, DOCX · unified uploads · shared composers ·
@@ -68,9 +80,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 2. **Wire the egress proxy** (`server/code-egress.cjs` is built and tested but not mounted) so a
    Code task can be granted named domains — then re-enable "Reach the network" and
    "Install dependencies" (D15). Its own internal network, deny by default.
-3. **Keep taking `index.cjs` apart** (~4,900 lines): toolboxes and built-in tools, the MCP
-   wiring, then the chat loop — each into `server/<area>.cjs` + `server/routes/<area>.cjs` with
-   injected dependencies and tests that do not boot the server.
+3. **Merge and deploy `wip/fable-cleanup`** (the `index.cjs` split, the reducer fix, the
+   language study), then keep going on the ~2,800 lines left: the project/source/upload
+   routes, the provider registry, the models routes and the Diary routes are the remaining
+   inline areas of `handleRequestScoped`.
 4. **Shared context across a project's modes** — unblocked now that Code mode exists (per
    project, per mode, off by default).
 5. **DAV rename, delete and copy** as `server/dav-ops.cjs` per the written contract (D6: DELETE =
@@ -107,3 +120,5 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 - Sidecars are tagged by what they contain; tying them to `COWORK_VERSION` breaks the next deploy.
 - The live Compose files are separate from the repo's; edit them locally and copy them back (no
   python on the host), with a `.bak.before-<reason>` first.
+- Measure before porting: the only slow Node path was a quadratic loop, fixed in JavaScript in
+  twenty lines. A tsc `--checkJs` pass catches free identifiers when a block moves modules.

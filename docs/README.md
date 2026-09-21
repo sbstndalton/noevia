@@ -22,6 +22,7 @@ content folded in below.
 | [research-remote-access.md](research-remote-access.md) | Headscale vs NetBird vs Tailscale recommendation | Changing remote access |
 | [research-master-container.md](research-master-container.md) | Docker socket threat model and master-container recommendation | Changing container lifecycle or the model manager |
 | [research-known-good-settings.md](research-known-good-settings.md) | Hardware, live presets vs measured context, provisional limits | Changing model presets |
+| [research-language-consolidation.md](research-language-consolidation.md) | Languages in use, where a chat turn's time goes (measured), and why nothing is ported | Before proposing a rewrite or a port |
 | [spec-reasoning-effort.md](spec-reasoning-effort.md), [spec-tool-routing-research.md](spec-tool-routing-research.md), [spec-model-guidance.md](spec-model-guidance.md), [spec-document-understanding.md](spec-document-understanding.md), [spec-mtp-artifacts.md](spec-mtp-artifacts.md), [spec-instruction-skills.md](spec-instruction-skills.md), [spec-backend-portability.md](spec-backend-portability.md), [spec-direct-llamacpp.md](spec-direct-llamacpp.md) | Design specs: reasoning effort, tool routing, model guidance, documents, MTP, skills, backend | Working in that area |
 
 On 2026-09-21 the roadmap and master prompt were rewritten short and current; their earlier
