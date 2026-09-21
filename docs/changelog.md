@@ -1,3 +1,11 @@
+### 2026-09-21 — Connect an app to the Diary in Settings (SHA)
+
+Connected apps is a section of Settings → Diary & storage: name it, copy the credential once,
+revoke it in one click. It replaces `diary-connector-admin.cjs`, a script an administrator had
+to run on the server. Also removed: two components nothing rendered, and the CSS of two
+interfaces that no longer exist (the old Code sidebar and the old Diary landing).
+
+
 ### 2026-09-21 — Code mode runs, and is on (f57dd21)
 
 noevia writes the coding harness's own configuration file — every action class asking, one model
