@@ -1,3 +1,12 @@
+### 2026-09-21 — Documents in folders could not be read (c237480)
+
+The Docling sidecar refuses a name that could be a path, and noevia's names are paths, so every
+document inside a folder failed with "Document extraction unavailable (HTTP 400)" while a file
+at the root worked. noevia now sends the file name. A 400 is also named for what it is — noevia
+sending the document wrongly — and stays retryable, so the documents it broke read again on the
+next sync rather than keeping a cached failure. Rollback 71f1ab0.
+
+
 ### 2026-09-21 — Typing [[ offers the files you could mean (71f1ab0)
 
 The Markdown editor suggests the files in the folder as soon as you type `[[`, inserts the

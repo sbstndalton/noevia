@@ -1363,6 +1363,26 @@ required (`:?`) rather than defaulted, because a silent default is how this went
 either sidecar → give it a new tag and update that one variable. Backup
 `docker-compose.override.yml.bak.before-pinned-sidecars`.
 
+## Release c237480 — 2026-09-21 (documents in folders, fixed)
+
+Latest application rollout: **`c237480`** (via `db15f14`), replacing `71f1ab0`. Backup
+`ab_20260921_084539` gzip-verified first; both releases complete, services healthy. Tests
+979/979.
+
+**What went wrong, within hours of the Docling rollout above.** The worker validates
+`X-Document-Name` as a name and refuses anything containing `/` — correctly, because it must
+never treat that name as a path. noevia passes its own names, which ARE paths
+(`Documents/Important Documents/Tax Return 2024/2024 W-2.pdf`), so every document inside a
+folder failed with HTTP 400 and fell back to its previously stored text. A file at the root
+would have worked, and the synthetic verification used a bare filename — which is exactly why
+it passed.
+
+Fixed by sending the last path segment, with a test that sends a real storage path. The 400 is
+also no longer reported as an outage: it is named as noevia sending the document in a form the
+extractor refused, and deliberately left retryable, so the affected documents re-read on the
+next source sync instead of keeping a cached failure. No data was lost at any point — the
+previous readable text was retained throughout, which is what the stale-text path is for.
+
 ## Docling extraction sidecar — deployed 2026-09-21 (Stage B)
 
 The sidecar verified on 2026-09-20 (`releases bb78a1a`/`aad6216`) was built but never wired in,
