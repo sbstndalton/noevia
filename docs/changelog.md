@@ -1,3 +1,13 @@
+### 2026-09-21 — Auto-tune says what it is doing, as it does it (SHA)
+
+A run is 5–15 minutes of a progress bar that can sit still for a minute while the engine
+loads, and a still screen reads as nothing happening. Auto-tune now keeps a timed, line-by-line
+account: each test and the exact settings it writes, "still loading · 25s" while the engine
+loads, every workload's speed and draft acceptance, why a candidate was rejected, what it chose
+and why, and whether the original settings were put back after a cancel. It follows the newest
+line while running, and folds away once the run is done. The panel now refreshes every second.
+
+
 ### 2026-09-21 — A note's properties, and the tags a vault really uses (SHA)
 
 A leading YAML block is shown as the properties it is rather than as three dashes and a list of
