@@ -5,6 +5,9 @@ for this work. Written 2026-09-21 from the source at `860316b` plus primary-sour
 **No benchmark has been run yet**, so every quality claim below is a hypothesis with a plan to test
 it (doc 9).
 
+Current implementation follow-up: [adapter cutoff and conditional bounds](14-adapter-cutoff-and-bounds.md)
+(local source verified; not deployed). Historical research status below predates implementation.
+
 ## Deliverables
 
 | # | Document |

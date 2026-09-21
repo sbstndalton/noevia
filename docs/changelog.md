@@ -1,5 +1,14 @@
 ### 2026-09-21 — Default model mode setting (release c53713b, deployed)
 
+### 2026-09-21 — Adapter cutoff and conditional bounds (local, undeployed)
+
+Applied the reviewed continuation patch at its exact d6e7081 base. Independent run budget
+covers version/startup/requests; cleanup is bounded and recorded separately. Partial option
+scores now carry normalized conditional bounds and reject malformed distributions.
+Current-repository verification: focused tests 28/28; existing decision/experiment tests 36/36;
+web unit suite 1138/1138; typecheck, build and design lint pass with installed dependencies.
+Only synthetic Node workers ran. No inference, downloads, live checks or deployment.
+
 Models → Routing has a new "Default model mode" panel with an Auto/Manual choice for new projects. It is stored per workspace in `preferences.json` and replaces the browser-local setup-wizard flag; the wizard now writes this setting. "Switch existing projects to <mode>" rewrites that user's projects only. `GET/PUT /api/routing-default` takes `{ routing, applyToExisting }`. At the user's request, all 205 Manual projects in the `sebastian` workspace were switched to Auto, making 224/224 Auto; the member workspace (Ernestpov, 1 project) was switched too, at the user's request. 1,117/1,117 unit tests; `qa/models-settings` extended and green.
 
 ### 2026-09-21 — Auto routing is the default (release f9dc5df, deployed)
