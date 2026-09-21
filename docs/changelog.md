@@ -1,3 +1,12 @@
+### 2026-09-21 — A quieter chat footer (SHA)
+
+The context meter no longer takes a row above the composer to say "Calculated when you send":
+a short chat that has not been measured shows nothing, a measured one shows a single quiet line
+aligned with the composer, and a long unmeasured chat still offers compaction. It is read when
+a chat opens and when a reply finishes, instead of every three seconds for every open chat.
+"Thought for 312 words" now reads "Thought · 312 words".
+
+
 ### 2026-09-21 — Templates for new Diary files (a1ededd)
 
 A `Templates` folder at the Diary's root — Obsidian's convention — is offered when a new file is
