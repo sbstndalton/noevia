@@ -27,6 +27,20 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Done
 
+### 2026-09-21 — committed on `wip/index-split`, not yet merged or deployed
+- **`index.cjs` is wiring.** The project, source and upload routes (`projects.cjs`,
+  `routes/projects.cjs`), the provider registry (`providers.cjs`, `routes/providers.cjs`), the
+  models routes (`models.cjs`, `routes/models.cjs`), the Diary routes with the connector
+  endpoint (`diary.cjs`, `routes/diary.cjs`), sign-in/profile/admin (`routes/auth.cjs`), the
+  storage connection (`routes/storage.cjs`), tool approvals, chat lists and history, reasoning
+  settings, health and the HTTP helpers (`http.cjs`) each moved out with injected
+  dependencies and a test with fakes; the member-origin policy is `createEndpointApproved` in
+  `ssrf.cjs`. Every moved block is verbatim behind a sentinel, mounted in its original
+  order; status codes, messages, the auth and CSRF gate and the approval actions are
+  unchanged. 2,787 → 752 lines; `documents.test.cjs` no longer slices `index.cjs` as text.
+  1,092 tests pass. The Claude Diary plugin README now points at Settings → Diary & storage →
+  Connected apps for revocation.
+
 ### 2026-09-21
 - **Code mode works and is on.** noevia pins the harness's own config (every action asks, one
   model endpoint, no self-update) and refuses a harness it cannot pin; registered repositories
@@ -80,10 +94,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 2. **Wire the egress proxy** (`server/code-egress.cjs` is built and tested but not mounted) so a
    Code task can be granted named domains — then re-enable "Reach the network" and
    "Install dependencies" (D15). Its own internal network, deny by default.
-3. **Keep taking `index.cjs` apart** (split, reducer fix and
-   language study shipped in `a4e0178`); ~2,800 lines left: the project/source/upload
-   routes, the provider registry, the models routes and the Diary routes are the remaining
-   inline areas of `handleRequestScoped`.
+3. **Merge `wip/index-split` into `main` and deploy it** (nine commits; the split is
+   complete, see Done). Deploy from `main` only. After it is live, run the browser QA sweep
+   once: the route modules are byte-for-byte moves, but the sweep is the proof.
 4. **Shared context across a project's modes** — unblocked now that Code mode exists (per
    project, per mode, off by default).
 5. **DAV rename, delete and copy** as `server/dav-ops.cjs` per the written contract (D6: DELETE =

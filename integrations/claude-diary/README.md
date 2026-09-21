@@ -17,12 +17,12 @@ server.py with `NOEVIA_DIARY_CONFIG` pointing at the private connection file; do
 assume desktop config automatically enables it in Cowork. The plugin skill directs
 Diary work to the live tools instead of the synced folder.
 
-Revoke immediately if needed:
-
-```sh
-ssh root@10.69.0.130 'docker exec cowork-web-1 node server/diary-connector-admin.cjs list USERNAME'
-ssh root@10.69.0.130 'docker exec cowork-web-1 node server/diary-connector-admin.cjs revoke USERNAME CONNECTOR_ID'
-```
+Revoke immediately if needed: sign in to noevia, open Settings → Diary & storage →
+Connected apps, and click Revoke next to the connection. The credential stops working
+at once; the plugin's next call answers 401 until a new connection is made and saved.
+There is no server-side script for this any more (`server/diary-connector-admin.cjs`
+was removed); an administrator who cannot sign in as that account can disable the
+account under Settings → Users, which makes every credential it holds stop verifying.
 
 Signed-in users can also list/create/revoke their own credentials through
 `/api/profile/diary-connectors` (GET/POST) and `/api/profile/diary-connectors/ID`

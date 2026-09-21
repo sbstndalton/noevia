@@ -29,20 +29,36 @@ coordinated migration across the live deployment; see `deployment.md`.
   `popup.css`, `diary-tab.css`. **`noevia.css` loads LAST and overrides
   everything.** Rules added elsewhere can be silently dead. This has bitten twice.
 - `apps/web/src/App.tsx` (842 lines) — chat state, SSE consumption, theme manager.
-- `apps/web/server/index.cjs` (~2800 lines) — wiring and the remaining inline routes
-  (projects, sources, uploads, providers, models, Diary). **It is being taken apart, not added
-  to**: an area that does not touch the handler belongs in its own module, and its HTTP
-  surface in `server/routes/<area>.cjs` with its dependencies injected (the pattern
-  `account`, `code`, `connectors`, `features`, `research`, `usage`, `toolboxes`, `chat`
-  follow). Moved out so far: `toolboxes.cjs` (the core box, cap and budget, `resolveTools`,
-  `isWriteTool`, `executeToolCall`), `mcp-wiring.cjs` (server list, discovery, per-server
-  credentials, `executeMcpToolCall`), `chat.cjs` (`handleChat`, the streamed tool rounds),
-  `approvals.cjs`, `usage.cjs` (daily rollups), `auto-router.cjs` (the Fast/Smart/Code
-  classifier), `code-*.cjs`, `mcp*.cjs`. Each factory takes its collaborators as parameters,
-  so its test builds it with fakes; never slice `index.cjs` as text in a test again.
-  When a block moves, `node node_modules/typescript/bin/tsc --allowJs --checkJs --noEmit
-  --target es2022 --module commonjs --types node --skipLibCheck server/<file>.cjs | grep
-  TS2304` lists any identifier it left behind.
+- `apps/web/server/index.cjs` (~750 lines) — wiring only: config from the environment,
+  construction of every service and route factory, `handleRequestScoped` (security headers,
+  the session and CSRF gate, the mounts in order, the static fallback) and server start.
+  **Nothing else goes in it.** An area's logic lives in `server/<area>.cjs` and its HTTP
+  surface in `server/routes/<area>.cjs`; both are factories that take their collaborators
+  as parameters, so their tests build them with fakes and never boot the server (and never
+  slice `index.cjs` as text). Layout:
+  - logic: `projects.cjs` (the project store: `getProject`, chat metas, transcripts,
+    `createProject`, `ownsFile`, the source lock, RAG bookkeeping, the delete sweep),
+    `providers.cjs` (the registry, key masking, headers), `models.cjs` (`modelsInstalled`,
+    the auto-router roles, the manager call, the folder-scan cache), `diary.cjs` (tenant
+    headers, the corpus reads, the connector file bridge), `toolboxes.cjs`, `mcp-wiring.cjs`,
+    `chat.cjs`, `approvals.cjs`, `usage.cjs`, `auto-router.cjs`, `http.cjs` (`json`,
+    `readBody`, `fetchJson`…), `ssrf.cjs` (`isPublicUrl` and the member-origin policy
+    `createEndpointApproved`), `code-*.cjs`, `mcp*.cjs`.
+  - routes: `projects` (sources, uploads, assets, sync, source jobs, the two context routes),
+    `providers`, `models` (stats, auto-roles, the model-manager proxy, `/api/models/*`),
+    `diary` (three mounts: the public connector endpoint, the connector credentials,
+    `/api/diary/*`), `auth` (two mounts: sign-in before the session gate; profile, passkeys,
+    sessions and `/api/admin/*` after), `storage`, `approvals`, `chat-lists` (workspace,
+    free chats, context meter, history), `reasoning-settings`, `health`, plus the earlier
+    `account`, `code`, `connectors`, `features`, `research`, `usage`, `toolboxes`, `chat`,
+    `export`, `import`, `offsite-backup`, `mcp-directory`, `plugin-directory`, `web-address`.
+  - Each route factory returns `(req, res, { path, authn, url }) => Promise<boolean>`; the
+    moved blocks are verbatim behind one sentinel so an unhandled method still falls through
+    to the static fallback. Mount order in `index.cjs` is the original order; only paths that
+    no other mount can match were grouped.
+  - When a block moves, `node node_modules/typescript/bin/tsc --allowJs --checkJs --noEmit
+    --target es2022 --module commonjs --types node --skipLibCheck server/<file>.cjs | grep
+    TS2304` lists any identifier it left behind.
 - `apps/web/src/lazy-views.tsx` — Settings, Diary, Projects and Coding load as lazy
   chunks (prefetched when idle); import them from here, not directly, or they rejoin
   the first bundle. `server/static-files.cjs` serves the build (compression, caching).
@@ -55,7 +71,7 @@ coordinated migration across the live deployment; see `deployment.md`.
 ### Build and test, from `apps/web/`
 
 ```sh
-npm test        # 161 passing at 8a78172
+npm test        # 1,092 passing on wip/index-split (1,024 at a4e0178)
 npm run build
 npm run typecheck
 ```
@@ -141,7 +157,7 @@ the unique ID suffix because it cannot atomically create directories. Uploads ar
 there as real files then synced in — one path whether the file came from the
 browser or was dropped into the folder from a phone.
 
-`ownsFile()` in `index.cjs` guards deletion: a file may be deleted only if it sits
+`ownsFile()` in `projects.cjs` guards deletion: a file may be deleted only if it sits
 **directly** in a folder the project has attached. Sub-paths, traversal and
 lookalike prefixes are refused. It has its own test. Deleting removes the file
 from storage, not just from the project.
@@ -161,7 +177,7 @@ from storage, not just from the project.
   silently delivers part of it.
 - Two independent limits bind at resolve time: `toolCapFor(model)` and
   `toolTokenBudgetFor(model)`, the latter from *measured* prefill rate against the
-  live endpoint (`tokens ≈ 240 + chars/3.6`, error table in `index.cjs`). Dropped
+  live endpoint (`tokens ≈ 240 + chars/3.6`, error table in `toolboxes.cjs`). Dropped
   tools are reported, never silently withheld.
 
 - **Connectors (2026-09-18):** the `gdrive` box is account-level, not a project choice: it joins
@@ -194,7 +210,8 @@ Four things about it are load-bearing:
   which is a cross-tenant read; there is a test for it. No tool schema has a
   user, tenant or project field, so a prompt-injected argument has nothing to
   aim at.
-- **`w:1` only after approval.** The gate in `index.cjs` is unchanged; the
+- **`w:1` only after approval.** The gate (`approvals.cjs`, waited on in `chat.cjs`,
+  answered through `routes/approvals.cjs`) is unchanged; the
   internal server additionally keeps its own write set and refuses a write
   presented with `w:0`, so a tool wrongly listed under a box's `reads` fails
   closed rather than writing unreviewed.

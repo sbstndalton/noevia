@@ -1,3 +1,20 @@
+### 2026-09-21 — index.cjs is wiring (branch `wip/index-split`, not yet deployed)
+
+Everything `handleRequestScoped` still carried inline moved into its own module with injected
+dependencies and a `routes/` file: the project, source and upload routes (`projects.cjs`), the
+provider registry (`providers.cjs`), the models routes (`models.cjs`), the Diary routes and the
+connector endpoint (`diary.cjs`), then sign-in/profile/admin, the storage connection, tool
+approvals, the chat lists and transcripts, reasoning settings, health, and the HTTP helpers
+(`http.cjs`). The member-origin policy shared by providers, storage and the Diary corpus is now
+`createEndpointApproved` in `ssrf.cjs`. Each move is verbatim behind one sentinel and mounted in
+its original order, so every status code, message, the session and CSRF gate and the three
+approval actions answer as before; `index.cjs` is 2,787 → 752 lines and holds only config,
+construction, the router and server start. 68 new tests, none booting the server;
+`documents.test.cjs` now calls the modules instead of slicing `index.cjs` as text. The Claude
+Diary plugin README's revocation section points at Settings → Diary & storage → Connected apps
+instead of a deleted script.
+
+
 ### 2026-09-21 — index.cjs in pieces, and a measurement instead of a port (release a4e0178, deployed)
 
 The server's toolboxes and built-in tools, its MCP wiring and its chat loop each moved out of
