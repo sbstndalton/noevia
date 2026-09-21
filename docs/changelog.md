@@ -1,3 +1,7 @@
+### 2026-09-21 — Code mode can reach granted domains (release 9611580, deployed)
+
+The egress proxy (`code-egress.cjs`, D15) now runs inside web on `CODE_EGRESS_PORT` (8040), reached by the sandbox as `egress` on the internal code network. A Code task approved for network or installs, with named domains, gets a per-task token that allows only those domains on 80/443 and is revoked when the task ends; unset, the capabilities stay unavailable. A granted task now keeps the engine host in `NO_PROXY` — empty, its model calls would have gone through the proxy and been refused as a private address. Live compose: web joins `code` with alias `egress` and gets `CODE_EGRESS_PORT`/`CODE_EGRESS_HOST` (`.bak.before-egress` backups of the override and `.env`).
+
 ### 2026-09-21 — index.cjs is wiring (branch `wip/index-split`, release 2ce73df, deployed)
 
 Everything `handleRequestScoped` still carried inline moved into its own module with injected

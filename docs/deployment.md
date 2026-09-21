@@ -2058,3 +2058,15 @@ Diary, auth, storage, approvals, chat lists, reasoning and health routes moved o
 QA sweep 77/77. After: all containers healthy, zero restarts, no web-log errors; site 200 and
 `/api/chat`, `/api/diary/files`, `/api/profile/diary-connectors`, `/api/models` all 401
 unauthenticated. Native engine untouched. Retain `a4e0178` for rollback.
+
+## Release 9611580 — 2026-09-21 (Code-mode egress proxy)
+
+Live compose edited first (`.bak.before-egress` for the override and `.env`): web's `networks`
+became a map with `code: {aliases: [egress]}`; `CODE_EGRESS_PORT: ${CODE_EGRESS_PORT:-}` and
+`CODE_EGRESS_HOST: egress` added to web's environment; `CODE_EGRESS_PORT=8040` in `.env`;
+`compose config -q` clean. Overlay `2ce73df` → `9611580` after appdata backup
+`ab_20260921_135436` (all archives `gzip -t` clean). 1,095/1,095 unit tests, typecheck clean.
+Verified from the sandbox: direct internet ENETUNREACH; proxy with no or forged token 407; engine
+still reached directly (200). In web, a throwaway proxy with a synthetic `pypi.org` grant: pypi 200,
+github.com / notpypi.org / llama:8080 / pypi.org:22 all 403, 407 after revoke. All containers
+healthy, zero restarts. Retain `2ce73df` for rollback (and restore the two backups to undo).

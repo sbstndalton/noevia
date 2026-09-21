@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-21
 
-- **Live:** release **`2ce73df`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`9611580`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (nine containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**. Sidecar image tags are pinned
@@ -26,6 +26,15 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-21 — Code mode can reach the network (release `9611580`, deployed)
+- The egress proxy runs inside web on port 8040; the sandbox reaches it as `egress` on the
+  internal code network, and it is the sandbox's only way out. A task reaches only the
+  domains its approved grant names, on 80/443, until the task ends. "Reach the network" and
+  "Install dependencies" are offered again. Verified live: direct internet from the sandbox
+  unreachable; no or forged token 407; a synthetic grant for `pypi.org` connects while
+  `github.com`, a lookalike, `llama` and port 22 are 403, and revoking it gives 407. Fixed on
+  the way: `NO_PROXY` was empty, so a granted task's own model calls would have been refused.
 
 ### 2026-09-21 — `index.cjs` is wiring (release `2ce73df`, deployed; QA sweep 77/77)
 - **`index.cjs` is wiring.** The project, source and upload routes (`projects.cjs`,
@@ -91,18 +100,15 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 
 1. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
-2. **Wire the egress proxy** (`server/code-egress.cjs` is built and tested but not mounted) so a
-   Code task can be granted named domains — then re-enable "Reach the network" and
-   "Install dependencies" (D15). Its own internal network, deny by default.
-3. **Shared context across a project's modes** — unblocked now that Code mode exists (per
+2. **Shared context across a project's modes** — unblocked now that Code mode exists (per
    project, per mode, off by default).
-4. **DAV rename, delete and copy** as `server/dav-ops.cjs` per the written contract (D6: DELETE =
+3. **DAV rename, delete and copy** as `server/dav-ops.cjs` per the written contract (D6: DELETE =
    Trash, If-Match required, `AI Memory/**` protected, no LOCK).
-5. **Curated plugin list** for the Plugins page — the last piece of the Customize work.
-6. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
-7. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
+4. **Curated plugin list** for the Plugins page — the last piece of the Customize work.
+5. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
+6. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
    an `Auto` harness only once there is evidence to choose between them.
-8. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
+7. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
    browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
 
 ## Needs the user — in order
@@ -120,7 +126,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 6. **An engine API key** shared by noevia and the Nextcloud Assistant.
 7. **Real-device checks:** phone polish judgement, and the glass banding check (D13).
 8. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
-8. **Deep research live run** approval (D12).
+7. **Deep research live run** approval (D12).
 
 ## Lessons worth keeping
 
