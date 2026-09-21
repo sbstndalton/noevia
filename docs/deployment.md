@@ -2048,3 +2048,13 @@ the chat loop moved out of `index.cjs` (4,241 → 2,787 lines); `reduceToolResul
 unused model search/variants routes removed. 1,024/1,024 unit tests and typecheck passed before
 cutover. All containers healthy, zero restarts; site 200, unauthenticated `/api/chat` 401, no
 errors in the web log. Native engine untouched. Retain release `2d7ba8f` for rollback.
+
+## Release 2ce73df — 2026-09-21 (index.cjs is wiring)
+
+Overlay release `a4e0178` → `2ce73df`; dependencies unchanged. Appdata backup
+`ab_20260921_124126` taken first, every archive `gzip -t` clean. Projects, providers, models,
+Diary, auth, storage, approvals, chat lists, reasoning and health routes moved out of
+`index.cjs` (2,787 → 752 lines). Before cutover: 1,092/1,092 unit tests, typecheck clean, browser
+QA sweep 77/77. After: all containers healthy, zero restarts, no web-log errors; site 200 and
+`/api/chat`, `/api/diary/files`, `/api/profile/diary-connectors`, `/api/models` all 401
+unauthenticated. Native engine untouched. Retain `a4e0178` for rollback.

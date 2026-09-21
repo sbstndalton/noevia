@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-21
 
-- **Live:** release **`a4e0178`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`2ce73df`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (nine containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**. Sidecar image tags are pinned
@@ -27,7 +27,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Done
 
-### 2026-09-21 — committed on `wip/index-split`, not yet merged or deployed
+### 2026-09-21 — `index.cjs` is wiring (release `2ce73df`, deployed; QA sweep 77/77)
 - **`index.cjs` is wiring.** The project, source and upload routes (`projects.cjs`,
   `routes/projects.cjs`), the provider registry (`providers.cjs`, `routes/providers.cjs`), the
   models routes (`models.cjs`, `routes/models.cjs`), the Diary routes with the connector
@@ -94,10 +94,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 2. **Wire the egress proxy** (`server/code-egress.cjs` is built and tested but not mounted) so a
    Code task can be granted named domains — then re-enable "Reach the network" and
    "Install dependencies" (D15). Its own internal network, deny by default.
-3. **Merge `wip/index-split` into `main` and deploy it** (nine commits; the split is
-   complete, see Done). Deploy from `main` only. After it is live, run the browser QA sweep
-   once: the route modules are byte-for-byte moves, but the sweep is the proof.
-4. **Shared context across a project's modes** — unblocked now that Code mode exists (per
+3. **Shared context across a project's modes** — unblocked now that Code mode exists (per
    project, per mode, off by default).
 5. **DAV rename, delete and copy** as `server/dav-ops.cjs` per the written contract (D6: DELETE =
    Trash, If-Match required, `AI Memory/**` protected, no LOCK).

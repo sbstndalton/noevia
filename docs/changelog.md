@@ -1,4 +1,4 @@
-### 2026-09-21 — index.cjs is wiring (branch `wip/index-split`, not yet deployed)
+### 2026-09-21 — index.cjs is wiring (branch `wip/index-split`, release 2ce73df, deployed)
 
 Everything `handleRequestScoped` still carried inline moved into its own module with injected
 dependencies and a `routes/` file: the project, source and upload routes (`projects.cjs`), the
