@@ -2039,3 +2039,12 @@ first (clean, gzip-verified); `RELEASE_027bd00_COMPLETE`, five services healthy,
   pruned once rollback targets are agreed.
 Rollback `d995cd9` with `.env.bak.before-027bd00`.
 
+
+## Release a4e0178 — 2026-09-21 (index.cjs split, reducer fix)
+
+Overlay release `2d7ba8f` → `a4e0178` with `overlay-release.sh`; dependencies unchanged. Appdata
+backup `ab_20260921_104705` taken first, every archive `gzip -t` clean. Toolboxes, MCP wiring and
+the chat loop moved out of `index.cjs` (4,241 → 2,787 lines); `reduceToolResult` made linear;
+unused model search/variants routes removed. 1,024/1,024 unit tests and typecheck passed before
+cutover. All containers healthy, zero restarts; site 200, unauthenticated `/api/chat` 401, no
+errors in the web log. Native engine untouched. Retain release `2d7ba8f` for rollback.

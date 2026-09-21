@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-21
 
-- **Live:** release **`2d7ba8f`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`a4e0178`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (nine containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**. Sidecar image tags are pinned
@@ -48,7 +48,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   panel sections. **Nextcloud** is a connector of its own.
 - **Repo:** usage accounting and the auto router moved out of `index.cjs`; dead components, the
   old Code sidebar CSS and the old Diary landing removed; design lint clean.
-- **`index.cjs` taken apart** (branch `wip/fable-cleanup`, **not yet deployed**): toolboxes and
+- **`index.cjs` taken apart** (release `a4e0178`, deployed): toolboxes and
   the built-in tools (`toolboxes.cjs`), the MCP wiring (`mcp-wiring.cjs`), the chat loop
   (`chat.cjs`) and the approvals gate each live in their own module with injected dependencies,
   a `routes/` file and tests that never boot the server; 4,241 → 2,787 lines. The tests that used
@@ -80,8 +80,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 2. **Wire the egress proxy** (`server/code-egress.cjs` is built and tested but not mounted) so a
    Code task can be granted named domains — then re-enable "Reach the network" and
    "Install dependencies" (D15). Its own internal network, deny by default.
-3. **Merge and deploy `wip/fable-cleanup`** (the `index.cjs` split, the reducer fix, the
-   language study), then keep going on the ~2,800 lines left: the project/source/upload
+3. **Keep taking `index.cjs` apart** (split, reducer fix and
+   language study shipped in `a4e0178`); ~2,800 lines left: the project/source/upload
    routes, the provider registry, the models routes and the Diary routes are the remaining
    inline areas of `handleRequestScoped`.
 4. **Shared context across a project's modes** — unblocked now that Code mode exists (per

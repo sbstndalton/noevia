@@ -1,4 +1,4 @@
-### 2026-09-21 — index.cjs in pieces, and a measurement instead of a port (wip/fable-cleanup, not yet deployed)
+### 2026-09-21 — index.cjs in pieces, and a measurement instead of a port (release a4e0178, deployed)
 
 The server's toolboxes and built-in tools, its MCP wiring and its chat loop each moved out of
 `index.cjs` into a module with injected dependencies (`toolboxes.cjs`, `mcp-wiring.cjs`,
