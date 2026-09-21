@@ -1348,6 +1348,15 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release 76865e1 — 2026-09-21 (routing split, Projects tab)
+
+Latest application rollout: **`76865e1`**, replacing `a73a72d`. Backup `ab_20260921_003009`
+first (gzip-verified); `RELEASE_76865e1_COMPLETE`, five services healthy, restarts=0. Server
+tests 823/823, QA 74/74 (mobile-surfaces' close step hardened after one flaky failure; three
+clean runs since). Front end only.
+Rollback: repoint `current` to `releases/a73a72d`, restore `.env.bak.before-76865e1`, run
+preflight `up.sh … web diary ocr`.
+
 ## Release a73a72d — 2026-09-20 (models page tabs)
 
 Latest application rollout: **`a73a72d`**, replacing `d99c066`. Backup `ab_20260920_234655`

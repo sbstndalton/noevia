@@ -1,3 +1,9 @@
+### 2026-09-21 — Routing split; Projects tab (76865e1)
+
+Routing keeps the Auto roles; thinking effort is its own panel; per-project routing is its own
+tab. Rollback a73a72d.
+
+
 ### 2026-09-20 — Models page: one tab bar (a73a72d)
 
 Routing, Hardware, Benchmarks and Prompts are tabs instead of sections stacked under the model
