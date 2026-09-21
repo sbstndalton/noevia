@@ -123,3 +123,13 @@ test('tags written as properties are found, the way a vault actually writes them
   assert.deepEqual(tags('---\ntitle: no tags here\n---\n'), []);
   assert.deepEqual(tags('# just a heading\n'), []);
 });
+
+test('a template is filled the way Obsidian fills one, and nothing else in it changes', () => {
+  const now = new Date(2026, 8, 21, 9, 5);
+  const fill = (text, title = 'Morning pages') => ctx.fillTemplate(text, { title, now });
+  assert.equal(fill('# {{title}}\nCreated {{date}} at {{time}}'), '# Morning pages\nCreated 2026-09-21 at 09:05');
+  assert.equal(fill('{{date:DD/MM/YYYY}} {{time:HH.mm}}'), '21/09/2026 09.05');
+  assert.equal(fill('{{ DATE }}'), '2026-09-21', 'case and inner spaces are forgiven, as in Obsidian');
+  // Anything that is not one of the three is the owner's text and stays exactly as written.
+  assert.equal(fill('{{weather}} and {{date'), '{{weather}} and {{date');
+});

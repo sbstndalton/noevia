@@ -1,3 +1,10 @@
+### 2026-09-21 — Templates for new Diary files (SHA)
+
+A `Templates` folder at the Diary's root — Obsidian's convention — is offered when a new file is
+still empty. `{{title}}`, `{{date}}` and `{{time}}` are filled in (with optional formats, as in
+Obsidian); anything else in braces stays as written. Nothing is saved until you save.
+
+
 ### 2026-09-21 — Unlinked mentions (780b8c7)
 
 "Find links to this file" also lists the notes that name it in prose without linking it — whole

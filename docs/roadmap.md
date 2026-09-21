@@ -223,7 +223,7 @@ should not look broken. Shipped: `[[wiki links]]` are parsed, rendered, opened a
 backlinks (aliases, `#heading`, `^block`, `![[embed]]`), and typing `[[` in the editor offers
 the files in the folder, inserting the shortest name that is unambiguous. Nothing rewrites a
 file. Also shipped the same day: frontmatter shown as properties, `tags:` counted by the tag filter,
-and unlinked mentions beside backlinks. Not done: templates, and a graph — which needs an index the Diary deliberately
+unlinked mentions beside backlinks, and templates from a `Templates` folder. Not done: a graph — which needs an index the Diary deliberately
 does not keep.
 
 ### Needs the user
