@@ -116,6 +116,8 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 Each builds on the one before or is ordered by value. Work top-down; record any reordering here.
 
+**Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype is an offline "decision layer v0 + RAG rerank".
+
 1. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
 2. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2).
