@@ -29,8 +29,12 @@ coordinated migration across the live deployment; see `deployment.md`.
   `popup.css`, `diary-tab.css`. **`noevia.css` loads LAST and overrides
   everything.** Rules added elsewhere can be silently dead. This has bitten twice.
 - `apps/web/src/App.tsx` (842 lines) — chat state, SSE consumption, theme manager.
-- `apps/web/server/index.cjs` (~3700 lines) — the whole server: routes, tools,
-  MCP, routing, approvals.
+- `apps/web/server/index.cjs` (~4900 lines) — the request handler, tools, MCP, approvals and
+  the chat loop. **It is being taken apart, not added to**: an area that does not touch the
+  handler belongs in its own module, and its HTTP surface in `server/routes/<area>.cjs` with
+  its dependencies injected (the pattern `account`, `code`, `connectors`, `features`,
+  `research`, `usage` already follow). Moved out so far: `usage.cjs` (daily rollups),
+  `auto-router.cjs` (the Fast/Smart/Code classifier), `code-*.cjs`, `mcp*.cjs`.
 - `apps/web/src/lazy-views.tsx` — Settings, Diary, Projects and Coding load as lazy
   chunks (prefetched when idle); import them from here, not directly, or they rejoin
   the first bundle. `server/static-files.cjs` serves the build (compression, caching).
