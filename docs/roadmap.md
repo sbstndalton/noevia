@@ -96,13 +96,13 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    "Install dependencies" (D15). Its own internal network, deny by default.
 3. **Shared context across a project's modes** — unblocked now that Code mode exists (per
    project, per mode, off by default).
-5. **DAV rename, delete and copy** as `server/dav-ops.cjs` per the written contract (D6: DELETE =
+4. **DAV rename, delete and copy** as `server/dav-ops.cjs` per the written contract (D6: DELETE =
    Trash, If-Match required, `AI Memory/**` protected, no LOCK).
-6. **Curated plugin list** for the Plugins page — the last piece of the Customize work.
-7. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
-8. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
+5. **Curated plugin list** for the Plugins page — the last piece of the Customize work.
+6. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
+7. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
    an `Auto` harness only once there is evidence to choose between them.
-9. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
+8. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
    browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
 
 ## Needs the user — in order
@@ -120,7 +120,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 6. **An engine API key** shared by noevia and the Nextcloud Assistant.
 7. **Real-device checks:** phone polish judgement, and the glass banding check (D13).
 8. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
-9. **Deep research live run** approval (D12).
+8. **Deep research live run** approval (D12).
 
 ## Lessons worth keeping
 
