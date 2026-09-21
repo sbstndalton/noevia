@@ -1,3 +1,11 @@
+### 2026-09-21 — The Code tab, full height and honest about the network (SHA)
+
+The chat composer no longer sits under the Code tab, which left the task form half the height
+with an unrelated send button below it. And because this server runs no egress proxy, "Reach the
+network" and "Install dependencies" are shown unavailable with the reason — and the server no
+longer grants them — instead of being accepted and then quietly never happening.
+
+
 ### 2026-09-21 — "Thought for 12s" (bbae129)
 
 A reasoning reply now says how long the model thought — from its first thought to the first word
