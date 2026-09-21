@@ -106,10 +106,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 
 1. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
-2. **DAV client interoperability** — DELETE/MOVE/COPY are built and wired (`dav-ops.cjs`,
-   companion `/api/workspace-ops`, `DAV: 1`). `qa/dav-interop.cjs` shows rclone cannot write at all
-   because `If-Match` is required (docs/dav.md, run 1). Needs the user's decision, then Finder,
-   Explorer and Obsidian runs.
+2. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2).
+   Still to run: Finder, Windows Explorer/WinSCP, iOS Files, Obsidian WebDAV sync. DAV sharing is
+   off live (`COWORK_DAV_PORT=0`), and the Diary image still needs rebuilding for `preserve`
+   before it is turned on.
 3. **Curated plugin list** for the Plugins page — the last piece of the Customize work.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
 5. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;

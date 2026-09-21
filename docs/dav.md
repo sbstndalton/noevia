@@ -190,7 +190,14 @@ and it stays byte-identical. Every PUT, MOVE, COPY-then-read, DELETE, sync and p
 **428**, because rclone (like Finder, Explorer and Obsidian WebDAV sync) never sends `If-Match` /
 `If-None-Match`, and invariant 4 requires them. Overwrites keep no prior version (Trash covers
 removal only), so relaxing PUT would allow silent lost updates; DELETE and MOVE are reversible.
-**Waiting on the user** to choose whether to relax invariant 4, and for which methods.
+**Decision (user, 2026-09-21): relax invariant 4, keeping a version.** Without `If-Match`:
+DELETE and MOVE read the current version and proceed (both reversible); an untagged
+`Overwrite: T` reads the destination's version (the replaced file goes to Trash); a PUT over an
+existing file first keeps its bytes in Trash via the companion's `preserve` op, restoring beside
+it as `<name> (replaced <UTC time>).md`, then writes against the version just read. Protected
+files still require `If-Match` (428). Run 2, same harness: **18/18 pass** — create, mkdir,
+rename, server-side copy, delete, sync, purge, overwrite with the old version in Trash, and
+every attempt on `INDEX.md` refused with it byte-identical.
 
 ### Decision (D6, 2026-09-17)
 
