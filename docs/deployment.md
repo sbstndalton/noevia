@@ -1348,6 +1348,16 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release 6eb1698 — 2026-09-21 (Diary connectors in Settings)
+
+Latest application rollout: **`6eb1698`**, replacing `f57dd21`. Backup gzip-verified first;
+`RELEASE_6eb1698_COMPLETE`, five services healthy, restarts=0. Server tests 839/839; the diary,
+settings and shell QA suites pass. Front end plus one deletion: `diary-connector-admin.cjs` is
+gone, so **the only way to make a Diary connector is now Settings → Diary & storage**. Existing
+connectors are unaffected — the table and the endpoint did not change.
+Rollback: repoint `current` to `releases/f57dd21`, restore `.env.bak.before-6eb1698`, run
+preflight `up.sh … web diary ocr --profile code`.
+
 ## Release f57dd21 — 2026-09-21 (Code mode staged, and on)
 
 Latest application rollout: **`f57dd21`**, replacing `b126eb6` (via `39b0970`). Backup
