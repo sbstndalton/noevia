@@ -61,6 +61,12 @@ community.
   - noevia never reads it.
   This preserves tenant isolation, and fits the existing roadmap item "other harnesses", which the
   user has deferred.
+- **Case studied: [EvanZhouDev/openai-oauth](https://github.com/EvanZhouDev/openai-oauth)** (1.4k stars,
+  Apache-2.0, unofficial). It turns a ChatGPT login into a local OpenAI-compatible API by reusing
+  `~/.codex/auth.json`, refreshing with the Codex CLI's own client id, and calling the private
+  `chatgpt.com/backend-api/codex`. It works today, but only by presenting as Codex to a non-public
+  endpoint, which is exactly what the row above says not to build on. Not adopted; OpenAI "may
+  change or disable the underlying services at any time" (its own README).
 - **What noevia must never do** (and this matrix does not propose): scrape cookies, extract session
   tokens, reuse a CLI's OAuth token from noevia's own HTTP client, impersonate an official client,
   or proxy one user's subscription for another.
