@@ -1,4 +1,4 @@
-### 2026-09-21 — Templates for new Diary files (SHA)
+### 2026-09-21 — Templates for new Diary files (a1ededd)
 
 A `Templates` folder at the Diary's root — Obsidian's convention — is offered when a new file is
 still empty. `{{title}}`, `{{date}}` and `{{time}}` are filled in (with optional formats, as in
