@@ -1363,6 +1363,13 @@ required (`:?`) rather than defaulted, because a silent default is how this went
 either sidecar → give it a new tag and update that one variable. Backup
 `docker-compose.override.yml.bak.before-pinned-sidecars`.
 
+## Release f66ecd2 — 2026-09-21 (auto-tune activity log, Diary properties)
+
+Latest application rollout: **`f66ecd2`** (with `5b0e531`), replacing `c237480`. Backup
+`ab_20260921_090054` gzip-verified first; `RELEASE_f66ecd2_COMPLETE`, services healthy, site
+200. Tests 985/985; `models-settings` and `diary-editor` pass with the new assertions. Server
+change is additive (the auto-tune job gains a bounded `log`); no configuration change.
+
 ## Release c237480 — 2026-09-21 (documents in folders, fixed)
 
 Latest application rollout: **`c237480`** (via `db15f14`), replacing `71f1ab0`. Backup
