@@ -1,6 +1,6 @@
 ### 2026-09-21 — Default model mode setting (release c53713b, deployed)
 
-Models → Routing has a new "Default model mode" panel with an Auto/Manual choice for new projects. It is stored per workspace in `preferences.json` and replaces the browser-local setup-wizard flag; the wizard now writes this setting. "Switch existing projects to <mode>" rewrites that user's projects only. `GET/PUT /api/routing-default` takes `{ routing, applyToExisting }`. At the user's request, all 205 Manual projects in the `sebastian` workspace were switched to Auto, making 224/224 Auto; the member workspace was not touched. 1,117/1,117 unit tests; `qa/models-settings` extended and green.
+Models → Routing has a new "Default model mode" panel with an Auto/Manual choice for new projects. It is stored per workspace in `preferences.json` and replaces the browser-local setup-wizard flag; the wizard now writes this setting. "Switch existing projects to <mode>" rewrites that user's projects only. `GET/PUT /api/routing-default` takes `{ routing, applyToExisting }`. At the user's request, all 205 Manual projects in the `sebastian` workspace were switched to Auto, making 224/224 Auto; the member workspace (Ernestpov, 1 project) was switched too, at the user's request. 1,117/1,117 unit tests; `qa/models-settings` extended and green.
 
 ### 2026-09-21 — Auto routing is the default (release f9dc5df, deployed)
 
