@@ -2070,3 +2070,9 @@ Verified from the sandbox: direct internet ENETUNREACH; proxy with no or forged 
 still reached directly (200). In web, a throwaway proxy with a synthetic `pypi.org` grant: pypi 200,
 github.com / notpypi.org / llama:8080 / pypi.org:22 all 403, 407 after revoke. All containers
 healthy, zero restarts. Retain `2ce73df` for rollback (and restore the two backups to undo).
+
+## Release dbfbd92 — 2026-09-21 (shared context across modes)
+
+Overlay `9611580` → `dbfbd92` after appdata backup `ab_20260921_135931` (all archives `gzip -t`
+clean); no compose changes. 1,101/1,101 unit tests, typecheck clean, `qa/project-modes` green.
+Web healthy, zero restarts; site 200; egress still answers 407 without a token. Retain `9611580`.
