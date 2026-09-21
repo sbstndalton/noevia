@@ -1,3 +1,10 @@
+### 2026-09-21 — "Thought for 12s" (SHA)
+
+A reasoning reply now says how long the model thought — from its first thought to the first word
+of the answer, or to the tool it decided to use — measured as it streamed and kept with the chat.
+Older chats, and ones streamed on another device, fall back to the length of the thinking.
+
+
 ### 2026-09-21 — A quieter chat footer (5ae8d7f)
 
 The context meter no longer takes a row above the composer to say "Calculated when you send":
