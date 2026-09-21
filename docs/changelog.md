@@ -1,4 +1,4 @@
-### 2026-09-21 — The project screen (SHA)
+### 2026-09-21 — The project screen (05cc153)
 
 Header actions, context chips above the composer, an Outputs row for the documents noevia made
 in the project, labelled recent chats, and a context panel with Context and a Scheduled row
