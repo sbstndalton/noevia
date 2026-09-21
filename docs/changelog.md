@@ -1,3 +1,7 @@
+### 2026-09-21 — Default model mode setting (release c53713b, deployed)
+
+Models → Routing has a new "Default model mode" panel with an Auto/Manual choice for new projects. It is stored per workspace in `preferences.json` and replaces the browser-local setup-wizard flag; the wizard now writes this setting. "Switch existing projects to <mode>" rewrites that user's projects only. `GET/PUT /api/routing-default` takes `{ routing, applyToExisting }`. At the user's request, all 205 Manual projects in the `sebastian` workspace were switched to Auto, making 224/224 Auto; the member workspace was not touched. 1,117/1,117 unit tests; `qa/models-settings` extended and green.
+
 ### 2026-09-21 — Auto routing is the default (release f9dc5df, deployed)
 
 At the user's request, new projects are created with Auto (Fast/Smart) routing unless Manual is asked for. This replaces the step-12 Manual default. The setup wizard's Auto box starts ticked, and unticking it stores `manual`. Existing projects keep their setting. Auto with no Fast/Smart roles configured now uses the project's model instead of refusing the message. Also in this release: the multi-hop rerun on the fixed corpus. Rerank 12→6 got 3/4 against 2/4 for the baseline, and 24→3 got 1/4, which supports keeping 6. 1,116/1,116 unit tests; typecheck clean.

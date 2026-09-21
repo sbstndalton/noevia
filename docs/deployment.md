@@ -2100,3 +2100,7 @@ Overlay `067ac1d` → `67f336e` after appdata backup `ab_20260921_165902` (all a
 ## Release f9dc5df — 2026-09-21 (Auto routing default)
 
 Overlay `67f336e` → `f9dc5df` after appdata backup `ab_20260921_171118` (all archives `gzip -t` clean); no compose or engine changes. All containers healthy with 0 restarts; site 200. Retain `67f336e`.
+
+## Release c53713b — 2026-09-21 (default model mode)
+
+Overlay `f9dc5df` → `c53713b` after appdata backup `ab_20260921_171809` (all archives `gzip -t` clean); no compose or engine changes. Data change, requested by the user: web was stopped for about 20 s while a one-off `node` run in the release image set every project in the admin workspace to `routing: "auto"` (205 changed) and wrote `preferences.json` `{defaultRouting:"auto"}`. Backup: `users/17522ab5…/projects.json.bak.before-auto-default`; files kept at 0600. Web healthy afterwards; site 200. Retain `f9dc5df`.
