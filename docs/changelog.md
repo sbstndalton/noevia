@@ -1,3 +1,13 @@
+### 2026-09-21 — Obsidian-style [[links]] in the Diary (SHA)
+
+A vault written in Obsidian is full of `[[wiki links]]`, and noevia rendered every one as
+literal text and found none of them when asked what links to a file. They now render as links,
+open the file, and count as backlinks alongside relative Markdown links. Aliases, heading and
+block anchors and the `![[embed]]` form are all recognised; a link to a file that is not there
+is shown as the writer wrote it rather than as a button that opens nothing. Nothing is
+rewritten: the vault stays exactly as its owner left it.
+
+
 ### 2026-09-21 — Connect an app to the Diary in Settings (6eb1698)
 
 Connected apps is a section of Settings → Diary & storage: name it, copy the credential once,
