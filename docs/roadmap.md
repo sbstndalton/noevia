@@ -192,7 +192,11 @@ Everything below was measured on the branch during 2026-09-17 and went live with
      runs, so Usage shows a peak hour, the favourite model and a per-tool call list beside the
      token totals, heatmap and streaks. Files written before these counters existed read as
      empty, and an account with nothing recorded says so instead of showing a figure.
-  7. **Impeccable critique pass and phone polish pass.**
+  7. **Impeccable critique pass and phone polish pass.** The mechanical half is covered and
+     green: `qa/mobile-audit.cjs` checks horizontal overflow and sub-44px tap targets at
+     320/375/390/768 in both themes, `qa/touch-targets.cjs` and `qa/mobile-surfaces.cjs` cover
+     the keyboard cases, and `npm run lint:design` is clean. What is left is judgement on a
+     real device, which is the user's.
   **Decided 2026-09-18** (recorded at the top of the brief): plugins are bundles of skills,
   connectors and commands; marketplace sources are Claude-compatible repos, any GitHub repo
   added by URL, own/imported skills, and a curated noevia list; desktop first with a phone
