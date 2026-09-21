@@ -66,8 +66,14 @@ services:
 
   web:
     networks:
-      - default
-      - code
+      default: {}
+      # The egress proxy (D15) runs inside web on CODE_EGRESS_PORT; the sandbox reaches it as
+      # `egress`, the only way out of the internal code network, and only for granted domains.
+      code:
+        aliases: [egress]
+    environment:
+      CODE_EGRESS_PORT: ${CODE_EGRESS_PORT:-}
+      CODE_EGRESS_HOST: egress
     volumes:
       # The same volume at the same mount point — see the note above about paths matching.
       - code-workspaces:/workspaces
