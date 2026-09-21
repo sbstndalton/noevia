@@ -1,4 +1,4 @@
-### 2026-09-21 — Connect an app to the Diary in Settings (SHA)
+### 2026-09-21 — Connect an app to the Diary in Settings (6eb1698)
 
 Connected apps is a section of Settings → Diary & storage: name it, copy the credential once,
 revoke it in one click. It replaces `diary-connector-admin.cjs`, a script an administrator had
