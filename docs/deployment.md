@@ -1363,6 +1363,17 @@ required (`:?`) rather than defaulted, because a silent default is how this went
 either sidecar → give it a new tag and update that one variable. Backup
 `docker-compose.override.yml.bak.before-pinned-sidecars`.
 
+## Releases 780b8c7 → bbae129 — 2026-09-21 (morning)
+
+Four front-end releases, each with a gzip-verified appdata backup first and every service
+healthy after: `780b8c7` unlinked mentions, `a1ededd` Diary templates, `5ae8d7f` the quieter
+context meter, `bbae129` thinking time. Tests 988/988 throughout.
+
+`5ae8d7f` was the first release through the updated `overlay-release.sh`, which now brings up
+`docling` and `code-sandbox` itself (by name, `--no-deps`); verified that the model loader was
+not recreated. No manual `compose up` is needed after a release any more — copy the current
+script to `/tmp` on the box along with the tarballs.
+
 ## Release f66ecd2 — 2026-09-21 (auto-tune activity log, Diary properties)
 
 Latest application rollout: **`f66ecd2`** (with `5b0e531`), replacing `c237480`. Backup
