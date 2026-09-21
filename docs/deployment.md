@@ -1348,6 +1348,21 @@ shared primitives, and Google Drive chat tools with per-tool Allow/Ask/Block (th
 `git archive` from the repo root (now noted in `overlay-release.sh`). Rollback: `35ed364` and
 `.env.bak.before-ab2720a`.
 
+## Release 71f1ab0 — 2026-09-21 (link suggestions), and pinned sidecar tags
+
+Latest application rollout: **`71f1ab0`**, replacing `f72c2a6`. Backup gzip-verified first;
+`RELEASE_71f1ab0_COMPLETE`, every service healthy. Server + front-end tests 977/977; the full
+QA sweep is 72 suites green (`diary-reading` is timing-flaky under a full sweep and passes on
+its own; `workspace-preview` is a preview server, not a test, so a sweep's timeout "fails" it).
+
+**Fixed the same day it was introduced:** both new sidecars were tagged
+`cowork-<name>:${COWORK_VERSION}`, so the next overlay release looked for a tag nobody had
+built and compose tried to pull it from Docker Hub. They are now pinned to what was actually
+built — `DOCLING_VERSION=2026-09-21` and `CODE_SANDBOX_VERSION=opencode-1.18.31` in `.env`,
+required (`:?`) rather than defaulted, because a silent default is how this went wrong. Rebuild
+either sidecar → give it a new tag and update that one variable. Backup
+`docker-compose.override.yml.bak.before-pinned-sidecars`.
+
 ## Docling extraction sidecar — deployed 2026-09-21 (Stage B)
 
 The sidecar verified on 2026-09-20 (`releases bb78a1a`/`aad6216`) was built but never wired in,
