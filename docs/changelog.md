@@ -1,4 +1,4 @@
-### 2026-09-21 — A quieter chat footer (SHA)
+### 2026-09-21 — A quieter chat footer (5ae8d7f)
 
 The context meter no longer takes a row above the composer to say "Calculated when you send":
 a short chat that has not been measured shows nothing, a measured one shows a single quiet line
