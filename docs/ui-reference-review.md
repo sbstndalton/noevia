@@ -129,3 +129,34 @@ Validation: 194 web tests, typecheck/build; 155 diary passing, 3 skipped. Browse
 checks cover mixed pins, manual-order persistence, direct project navigation,
 collapse, transparent actions, keyboard access, long-title animation, and
 phone/tablet/desktop layouts in light/dark mode.
+
+## Reference-driven settings polish — 2026-09-22
+
+Reviewed the current Chat and Settings rendering against the supplied Claude settings
+reference (`SCR-20260918-cwhx.png`), its Customize notes, and the existing project
+identity/navigation review above. Applied UI UX Designer, UI UX Pro Max's keyboard
+navigation guidance, and Impeccable's Operate-mode and craft-floor guidance. The
+existing post-overhaul palette, materials and component system remain the visual basis.
+
+Findings and changes:
+
+- Settings had no desktop heading and its working Connectors panel was missing from
+  the category list (the stale-section guard also rejected that destination). Added a
+  visible Settings heading, Back to app, and a Connections group with Connectors and
+  AI providers. Personal preferences and administration remain distinct.
+- Appearance repeated Accent and Material headings across separate cards, separating
+  descriptions from controls. Theme, Accent and Material now form a single sequence
+  with quiet separators. Reading and motion follows with the same row treatment.
+- Search had no recovery action and matched leading/trailing spaces literally. It now
+  trims the query, offers Clear search and an empty-state explanation, and returns
+  focus to the search field after clearing.
+- On narrow screens selecting a category hid the focused navigation button. Focus now
+  moves into the detail pane and returns to the active category on Back.
+- Removed the stale Planned features page, which called available MCP directory and
+  Nextcloud features unbuilt. Old saved section IDs fall back to General.
+- Settings navigation targets are at least 44px; Chat font has a readable accessible label.
+
+Validation: typecheck, production build, design lint, unit suite; synthetic browser
+checks for general preferences/profile persistence, search and connector navigation,
+keyboard focus, responsive light/dark Settings at 375/768/1440, system theme tracking,
+and setup/project/Code mobile surfaces. No production data or Diary corpus was used.
