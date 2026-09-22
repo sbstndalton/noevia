@@ -29,3 +29,9 @@ bench the backend for 60 s.
 container against the model already loaded (`gemma-4-E4B-it-qat-UD-Q4_K_XL`; no model swap), two
 capped 256-token requests and a synthetic in-memory tool: the tool ran exactly once, the real Laya
 checkpoint returned "continue" (logged as `[system-one] supervise`), and the reply completed.
+
+**Second held-out set (30 new messages, 50 decisions; `scripts/system-one-probe-heldout2.json`):**
+45/50 with the shipped labels. Misses: three Smart requests sent to Fast with confident margins
+(0.15–0.34) and one near-tie (0.02), one Code request sent to Smart. A "near-tie → Smart" gate
+(margin < 0.1) would fix one miss and move four correct Fast decisions to Smart, so it was not
+adopted. Remaining errors lean Fast-for-Smart; revisit with the live `[system-one]` margins.
