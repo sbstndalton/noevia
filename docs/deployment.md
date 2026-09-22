@@ -2124,3 +2124,13 @@ Durable chat remains opt-in and unwired; no automatic replay enabled. Existing r
 Retain release `c53713b` and `.env.bak.before-126637e` for rollback via the existing preflight
 no-build release flow. Deployment emitted the pre-existing unmanaged code-workspaces volume
 warning; running sidecars were preserved. No Compose or engine configuration changed.
+
+## Release eadeb69 — 2026-09-21 (descriptions above responsive options)
+
+Overlay 126637e → eadeb69 after verified backup ab_20260921_204248. All preflights
+passed, RELEASE_eadeb69_COMPLETE; checked containers healthy, public HTTP 200.
+Native engine ID/start time unchanged. Prior release and .env.bak.before-eadeb69 retained.
+1170 tests, typecheck/build/design lint passed. Synthetic checks at 375/767/1440 CSS pixels
+confirmed descriptions above controls at every width, Material options two rows on phone
+and one on wider panels. Live General screenshot confirms readable descriptions above
+Material options. No model inference or production feature activation.
