@@ -20,6 +20,9 @@ Current supervision follow-up: [provider-neutral step supervision](17-step-super
 Current setup follow-up: [shared decision-service configuration](18-decision-service-settings.md)
 (Laya routing and supervision share an editable endpoint).
 
+Current routing follow-up: [routing labels measured on Laya](19-routing-labels.md)
+(held-out routing 23/40 → 36/40; supervision unchanged).
+
 ## Deliverables
 
 | # | Document |
