@@ -1,5 +1,15 @@
 ### 2026-09-21 — Material 3 shares component geometry
 
+## 2026-09-21 — Laya endpoint for model-independent step supervision
+
+Connected the experimental checkpoint seam to a private typed-decision service.
+Laya uses a separate CPU-only, offline serving container; the selected answering
+provider (including OpenRouter/OpenAI-compatible endpoints) remains unchanged.
+Validated bounded responses, no redirects or shared answering credentials, and
+existing fallback/approval limits. Pinned model/runtime and optional Compose profile.
+One authorized synthetic Laya inference passed on DaServer; no benchmarks.
+See [service scope and setup](../services/laya/README.md).
+
 ## 2026-09-21 — Experimental step supervision
 
 Added a separate unavailable-by-default Experimental entry and a provider-neutral chat

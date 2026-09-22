@@ -7,6 +7,24 @@
 name: cowork
 
 services:
+  laya:
+    profiles: [laya]
+    build:
+      context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/services/laya
+    image: cowork-laya:0.3.5-noevia1
+    restart: "on-failure:3"
+    read_only: true
+    user: "1000:1000"
+    mem_limit: 6g
+    cpus: 2.0
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=128m,mode=1777"]
+    volumes:
+      - ${COWORK_LAYA_MODEL_DIR:-./state/laya}:/model:ro
+    networks: [laya]
+
   diary:
     build:
       context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/services/diary
@@ -52,7 +70,7 @@ services:
       net.unraid.docker.shell: sh
 
   web:
-    networks: [default, ocr]
+    networks: [default, ocr, laya]
     build:
       context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/apps/web
     image: cowork-web:${COWORK_VERSION:-local}
@@ -60,6 +78,8 @@ services:
     ports:
       - "${COWORK_PORT:-8021}:8021"
     environment:
+      COWORK_DECISION_URL: ${COWORK_DECISION_URL:-}
+      NOEVIA_FEATURE_STEP_SUPERVISION: ${NOEVIA_FEATURE_STEP_SUPERVISION:-}
       OCR_BASE_URL: http://ocr:8030
       UI_PORT: 8021
       # Separate optional listener; no port is published by default.
@@ -156,5 +176,7 @@ services:
     networks: [ocr]
 
 networks:
+  laya:
+    internal: true
   ocr:
     internal: true

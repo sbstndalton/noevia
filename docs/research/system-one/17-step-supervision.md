@@ -1,5 +1,9 @@
 # Step supervision: provider-neutral experimental slice
 
+Update: the [Laya endpoint integration](../../../services/laya/README.md) now wires
+this seam into production construction when a private decision URL is configured.
+It remains off by default. The original mocked-only implementation below is historical.
+
 Implemented with injected mocked providers, disabled and unavailable in production. The
 Experimental settings registry exposes a separate Step supervision entry with an explicit
 unavailable reason. Neither an admin setting nor an environment override can activate it
