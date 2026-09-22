@@ -2148,3 +2148,38 @@ materials at 375 and 1440 CSS pixels. Live Material 3 General settings screensho
 confirmed readable stacked descriptions and rounded selection fills inside their tracks;
 original Soft preference restored after verification. No exhaustive all-page or Safari
 verification performed. No inference, downloads, engine changes or feature activation.
+
+## Release d8f4c21 — 2026-09-21 (CPU Laya step supervision)
+
+User explicitly authorized a bounded CPU-only Laya service on DaServer, its runtime/model
+download, and one synthetic inference. Overlay `fafbc97` → `d8f4c21` after backup
+`ab_20260921_212730` (archive comparisons and gzip checks passed). Source includes the
+previous mocked step-supervision slice `16aa731`. All preflights passed and
+`RELEASE_d8f4c21_COMPLETE`; web/Diary/OCR/model-loader/native engine healthy, zero restarts.
+Public HTTP 200. Native inference and embedding IDs/start times unchanged.
+
+Separate `cowork-laya:0.3.5-noevia1` image reuses the existing CPU Docling runtime layers
+and installs only the pinned Laya wheel. Docling itself was not modified. Five pinned
+English checkpoint files downloaded directly on DaServer, revision
+`1c5edc17a7acd8701df6fc341c0d179f1c62c982`. The `laya` Compose profile uses two CPUs,
+6 GiB memory, no GPU or published ports, read-only model/runtime mounts, and the private
+internal `cowork_laya` network shared with web. Serving is offline. Config:
+`COWORK_DECISION_URL=http://laya:8040`,
+`COWORK_LAYA_MODEL_DIR=/mnt/docker/appdata/cowork/laya/model`. Model files are provisioned
+assets, not application state or part of the personal-data backup.
+
+Exactly one synthetic inference passed with a typed `continue` result; later checks used
+health only. Web-to-Laya health returned 200/ready. Live authenticated Experimental
+screenshot confirmed Step supervision available/off. The original System-One routing
+switch remains unconfigured/off. No experiment activated and no extra inference run.
+Answering-provider independence verified with mocked OpenRouter/OpenAI provider identities;
+no paid or remote answering-provider calls. 1187 web tests, two Python validation tests,
+typecheck, build and design lint passed. No quality/latency benchmark, multilingual
+qualification, real Diary test, or full responsive all-view sweep was run.
+
+Retain `fafbc97` and `.env.bak.before-d8f4c21` for application rollback. For removal of
+the Laya configuration, retain Compose `docker-compose.yml.bak.before-laya`,
+`.env.bak.before-laya` and preflight `web-env-keys.txt.bak.before-laya`; stop only the
+Laya service, restore these files, and use the normal guarded release rollback. Do not
+delete the checkpoint to roll back. The existing unmanaged code-workspaces volume and
+kernel swap-limit warnings were unchanged; the host has no swap.
