@@ -156,8 +156,15 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 ## Local source work — not deployed
 
-Nothing application-side. The first durable-chat slice (research/system-one/15) remains an
-internal, default-off seam.
+Harness hardening after the current-primary-doc review: Claude Code's complete permission and
+endpoint pin is now sent inline while its SDK query loads no repository/user settings or context,
+uses a fixed core tool set, and disables hooks, skills/commands, plugin sync and filesystem MCP
+servers; sandboxed Bash auto-allow and both update paths are off. pi
+now starts offline with only noevia's managed extension and fixed tools, refuses project trust,
+does not load repository context files or persist sessions, waits for `agent_settled`, times out a wedged approval, and is installed
+with lifecycle scripts disabled. Codex remains refused. Fake-agent/bridge coverage passes; no CLI
+was installed and this has not been deployed. The first durable-chat slice
+(research/system-one/15) remains an internal, default-off seam.
 
 ## Next — in order
 
@@ -185,8 +192,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    ACP) against a fake model like the others, then pin it
    (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
    noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
-   model (`qa/pi-bridge-e2e.cjs`). Next,
-   with your go: install one CLI (+ ACP adapter) in the sandbox image and run the `scratch` fixture. No `Auto` harness until there is evidence.
+   model (`qa/pi-bridge-e2e.cjs`). Next, with your go: install Claude Code (+ ACP adapter) or the
+   next measured harness in the sandbox image and run the `scratch` fixture. No `Auto` harness
+   until there is evidence.
 6. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
    one-hop **local graph** shipped 2026-09-22) · a
    browser executor (spec-agent-execution §6; its policy module, `browser-policy.cjs`, is built and

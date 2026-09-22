@@ -1,3 +1,15 @@
+## 2026-09-22 — Claude Code and pi pins hardened (source only)
+
+Claude Code now receives the full noevia-owned permission/model configuration inline, exposes a
+fixed core tool set, and loads no settings, context, hooks, skills/commands or MCP servers from the
+checked-out repository. Its own sandbox can no
+longer auto-approve Bash, and both automatic and manual self-update paths are off. pi starts with
+only noevia's approval gate and a fixed tool set, never loads project resources or context, makes no startup
+network checks, saves no session, and waits for the true whole-turn completion event. Its package
+install can no longer run lifecycle scripts. Codex remains refused because it cannot meet the
+per-command approval rule. Verified with fake ACP/pi processes; no CLI was installed, no model was
+run, and this source change is not deployed.
+
 ## 2026-09-22 — Code mode now runs pi
 
 The coding agent in Code mode is now **pi**, the minimal agent many forks start from. It runs in

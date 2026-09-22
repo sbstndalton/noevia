@@ -686,26 +686,31 @@ the module header).
 
 | Harness | Files | Gate | Endpoint | Off |
 |---|---|---|---|---|
-| Claude Code | `./.claude/settings.local.json` (outranks user and shared settings) + `~/.claude/settings.json` | `ask`: Edit, Write, NotebookEdit, Bash, WebFetch, WebSearch; bypass and auto modes disabled | `env`: `ANTHROPIC_BASE_URL` (engine root; llama.cpp `/v1/messages`), `ANTHROPIC_MODEL` | auto-updater, non-essential traffic, telemetry |
+| Claude Code | `./.claude/settings.local.json` + `~/.claude/settings.json`; the complete pin is also sent inline through `session/new` and SDK filesystem setting sources are empty | fixed core tool set; `ask`: Edit, Write, NotebookEdit, Bash, WebFetch, WebSearch; bypass/auto modes and sandboxed-Bash auto-allow disabled; hooks, skills/commands, plugin sync, connectors and filesystem MCP configuration excluded | `env`: `ANTHROPIC_BASE_URL` (engine root; llama.cpp `/v1/messages`), `ANTHROPIC_MODEL` | automatic and manual self-update, non-essential traffic, telemetry |
 | Codex | — refused (409) | see "Codex, measured" | — | — |
 | Qwen Code | `./.qwen/settings.json` (outranks user) + `~/.qwen/settings.json` | `tools.approvalMode: "default"` — its default is now `auto` (an LLM classifier approves unasked) | `modelProviders.openai` → engine, key via the file's own `env` | auto-update, usage statistics |
-| pi | `~/.pi/agent/{models.json,settings.json,extensions/noevia-gate.js}` | global extension: every non-read tool asks with full input; no UI channel, an error or anything but `true` blocks | provider `noevia`, `openai-completions` | install telemetry |
+| pi | `~/.pi/agent/{models.json,settings.json,extensions/noevia-gate.js}` | the one explicit extension: every non-read tool asks with full input and a five-minute fail-closed timeout; no UI channel, an error or anything but `true` blocks | provider `noevia`, `openai-completions` | startup network, repository context files, discovered extensions/skills/templates/themes, project trust, session persistence, install telemetry |
 
-**Not runnable yet, deliberately.** Live stays OpenCode (`CODE_HARNESS_NAME`). Before any of these
-runs: (1) the sandbox image must install the pinned CLI and its ACP adapter
-(`@agentclientprotocol/claude-agent-acp`, `codex-acp`, `pi-acp`), which is a supply-chain change
-to the one container allowed to run commands and needs the user's go; (2) pi's approvals are bridged by
+**Deployment status.** pi 0.87.0 is live by the user's explicit approval (release `6300572`);
+the hardening described here is local source work until a later deployment. Claude Code and Qwen
+Code remain selectable pins, not installed live. Codex is refused rather than offered. Installing
+another pinned CLI and adapter in the one container allowed to run commands still needs the user's
+go. pi's approvals are bridged by
 noevia's own `services/code-sandbox/pi-acp-bridge.cjs` (community `pi-acp` does not document
 forwarding pi's dialogs): the gate's confirm carries the real tool and full input, becomes an ACP
 `session/request_permission` that noevia classifies like any harness call, and only an explicit
-"Allow once" confirms; other dialogs, malformed payloads, errors and a closed client refuse. Tested
+"Allow once" confirms; other dialogs, malformed payloads, timeouts, errors and a closed client
+refuse. The bridge launches only this managed extension, refuses project resources, runs offline
+without persistent sessions and waits for pi's whole-turn `agent_settled` event rather than the
+earlier per-run `agent_end`. Tested
 end to end through noevia's ACP client against a fake `pi --mode rpc`, and against **real pi 0.87.0**
 (`@earendil-works/pi-coding-agent`, `qa/pi-bridge-e2e.cjs`, scripted local fake model): pi loaded
 noevia's pinned provider and gate from the task HOME, its bash call arrived as a normal permission
-request with the full command, Allow once ran it and Decline blocked it; (3) engine compatibility is unverified:
-Claude Code needs llama.cpp's Anthropic Messages endpoint and Codex needs its Responses endpoint;
-(4) Codex's read-only commands inside its own sandbox can run without asking, so the container
-stays the real boundary (D14, D25). Claude Code also needs the user's own sign-in if it is ever
+request with the full command, Allow once ran it and Decline blocked it. Claude Code needs
+llama.cpp's Anthropic Messages endpoint; its compatibility with the live engine remains unverified.
+Codex's read-only commands inside its own sandbox can run without asking, so the container
+would be its real boundary rather than D14's per-action approval and noevia refuses it. Claude Code
+also needs the user's own sign-in if it is ever
 pointed anywhere but the local engine. No `Auto` harness until paired evidence exists.
 
 **Real-harness checks, 2026-09-22** (opt-in suites with scripted local fake models; no real model):
@@ -716,7 +721,11 @@ pointed anywhere but the local engine. No `Auto` harness until paired evidence e
   Bash arrived as a card (options allow once / reject once); Allow ran it, Decline blocked it; a
   repository shipping its own `.claude/settings.json` with `bypassPermissions` and `allow: Bash`
   still asked. It also asked without noevia's pin in that run, so the adapter itself refuses
-  bypass; noevia's file is defence in depth plus the endpoint, model and update/telemetry off.
+  bypass. The default fake-agent suite now also verifies that noevia sends the full pin inline,
+  disables the adapter's filesystem setting sources, uses strict empty MCP configuration and opts
+  out of dangerous permission skipping. The opt-in real-adapter suite now also checks a hostile
+  startup hook and `.mcp.json`; that extension has not been rerun because the CLI is deliberately
+  not installed in this sandbox.
 - **Codex, measured → refused.** `@agentclientprotocol/codex-acp` 1.12.0 (Codex 0.155) with the
   config noevia would pin (`approval_policy = "on-request"`, `sandbox_mode = "read-only"`,
   provider `noevia` with `wire_api = "responses"`, `web_search = "disabled"`, update check,
