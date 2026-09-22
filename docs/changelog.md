@@ -1,3 +1,16 @@
+### 2026-09-21 — Material 3 shares component geometry
+
+Material 3 now inherits the shared dimensions, padding, font metrics and layout borders
+instead of replacing them. Tonal colors, radii, shadows and inset outlines retain the
+Material appearance. Removed the width-changing selected checkmark and matched segment
+font weights; rounded selection fills stay within wrapped tracks. Sidebar spacing also
+uses the common tokens. Regression test rejects Material-only geometry overrides.
+
+Verification: 1171 unit tests, typecheck/build/design lint and diff whitespace checks pass.
+Synthetic browser comparison: 43 settings/navigation boxes match exactly across Soft,
+Liquid glass, Glassmorphism and Material 3 at 375 and 1440 CSS px, plus the normal desktop
+viewport. Visually inspected the corrected selection fills. No model or personal-data tests.
+
 ### 2026-09-21 — Descriptions above settings controls at every width
 
 Corrected the requested layout: shared settings descriptions occupy their own full-width
