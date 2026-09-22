@@ -199,6 +199,20 @@ files still require `If-Match` (428). Run 2, same harness: **18/18 pass** — cr
 rename, server-side copy, delete, sync, purge, overwrite with the old version in Trash, and
 every attempt on `INDEX.md` refused with it byte-identical.
 
+### Obsidian sync (Remotely Save's client) — 2026-09-22
+
+`apps/web/qa/dav-obsidian.cjs` (opt-in: `WEBDAV_MODULE` = the `webdav` npm client v5, which
+Obsidian's Remotely Save plugin is built on) makes Remotely Save's calls against the same
+throwaway tenant and real companion as the rclone run. **17/17 after one fix.** Depth: infinity
+is refused (403) and the plugin's one-level fallback lists the vault; create, read, folder
+creation, rename, unconditional overwrite (old version in Trash), delete and the compliance probe
+work; every write, delete or move of `INDEX.md` is refused with it byte-identical. **Fixed:**
+PROPFIND never reported `getlastmodified`, so the client saw `lastmod: null`; Remotely Save
+decides what changed from modification times. The companion's file list now passes each
+backend's own time on as `modified` (epoch seconds; unknown stays absent) and DAV emits it as an
+HTTP date. The web half is live; the companion half ships with the next Diary image build (like
+`preserve`); DAV sharing stays off until then.
+
 ### macOS attempt — 2026-09-22 (macOS 27.0, not completed)
 
 The same fixture was mounted with `mount_webdav`, the filesystem Finder uses. Every form

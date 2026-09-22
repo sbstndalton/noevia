@@ -161,10 +161,11 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    any Laya or label change.
 2. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
-3. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2).
+3. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2);
+   Obsidian sync's client passes 17/17 after a modification-time fix (2026-09-22).
    Still to run: Finder (an agent-side `mount_webdav` is refused locally by macOS; see dav.md, 2026-09-22 — needs the user), Windows Explorer/WinSCP, iOS Files, Obsidian WebDAV sync. DAV sharing is
    off live (`COWORK_DAV_PORT=0`), and the Diary image still needs rebuilding for `preserve`
-   before it is turned on.
+   and `modified` before it is turned on.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
 5. **Other harnesses** — **Claude Code and pi pinned and proven with the real CLIs 2026-09-22;
    Codex refused on measurement** (its commands run unasked inside its own sandbox)
