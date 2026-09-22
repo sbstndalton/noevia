@@ -1,3 +1,10 @@
+### 2026-09-21 — Descriptions above settings controls at every width
+
+Corrected the requested layout: shared settings descriptions occupy their own full-width
+row above buttons/selectors even on wide desktops. Compact on/off switches retain their
+inline label. Wrapped segmented choices remain visible. This supersedes the prior
+width-dependent placement in 126637e.
+
 ### 2026-09-21 — Release 126637e deployed
 
 User authorized automatic deployment. Live now includes the shared responsive-control fixes,
