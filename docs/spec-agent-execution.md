@@ -689,7 +689,10 @@ noevia's own `services/code-sandbox/pi-acp-bridge.cjs` (community `pi-acp` does 
 forwarding pi's dialogs): the gate's confirm carries the real tool and full input, becomes an ACP
 `session/request_permission` that noevia classifies like any harness call, and only an explicit
 "Allow once" confirms; other dialogs, malformed payloads, errors and a closed client refuse. Tested
-end to end through noevia's ACP client against a fake `pi --mode rpc`; not yet against real pi; (3) engine compatibility is unverified:
+end to end through noevia's ACP client against a fake `pi --mode rpc`, and against **real pi 0.87.0**
+(`@earendil-works/pi-coding-agent`, `qa/pi-bridge-e2e.cjs`, scripted local fake model): pi loaded
+noevia's pinned provider and gate from the task HOME, its bash call arrived as a normal permission
+request with the full command, Allow once ran it and Decline blocked it; (3) engine compatibility is unverified:
 Claude Code needs llama.cpp's Anthropic Messages endpoint and Codex needs its Responses endpoint;
 (4) Codex's read-only commands inside its own sandbox can run without asking, so the container
 stays the real boundary (D14, D25). Claude Code also needs the user's own sign-in if it is ever

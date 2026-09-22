@@ -161,7 +161,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
 5. **Other harnesses** (Claude Code, Codex, pi) — **pinned configs done 2026-09-22**
    (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
-   noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`, tested against a fake pi). Next,
+   noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
+   model (`qa/pi-bridge-e2e.cjs`). Next,
    with your go: install one CLI (+ ACP adapter) in the sandbox image and run the `scratch` fixture. No `Auto` harness until there is evidence.
 6. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
    browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
