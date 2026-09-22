@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-22
 
-- **Live:** release **`b055571`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`59249d9`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -21,13 +21,18 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 - **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,210 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,215 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Pinned configs for Claude Code, Codex and pi (release `59249d9`, deployed)
+- Each harness gets noevia-written config in the task directory or private HOME: everything but
+  reads asks, bypass/auto modes off, local engine only, no updates or telemetry; pi gets a
+  fail-closed gate extension. Unknown harnesses are still refused. Live remains OpenCode.
 
 ### 2026-09-22 — Routing labels and live footer (releases `e7b59d6`, `6c3cde0`, deployed)
 - The footer follows the visible chat's own stream (generating, first output, exact usage and

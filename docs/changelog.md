@@ -1,3 +1,12 @@
+## 2026-09-22 — Claude Code, Codex and pi can be pinned (release `59249d9`)
+
+Nothing changes in Code mode today; it still runs OpenCode. noevia now knows how to lock down
+three more coding agents the way it locks OpenCode: every edit, command and web access asks you,
+the agent's own "skip permissions" modes are off, it talks only to your local engine, and it does
+not update itself or send telemetry. For pi, which has no permission prompts of its own, noevia
+installs a gate that asks for every non-read action and blocks if it cannot ask. Installing any
+of them in the sandbox is your call.
+
 ## 2026-09-22 — Step supervision stops pausing ordinary chats (release `b055571`)
 
 With Step supervision on, Laya sometimes stopped a harmless chat for review (for example after a

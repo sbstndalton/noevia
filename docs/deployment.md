@@ -2230,6 +2230,14 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release 59249d9 — 2026-09-22 (pinned configs for Claude Code, Codex and pi)
+
+Overlay `b055571` → `59249d9` after appdata backup `ab_20260922_040516` (`gzip -t` passed).
+`RELEASE_59249d9_COMPLETE`; web, Diary, OCR healthy, zero restarts, no web-log errors. The live
+harness is still OpenCode (`CODE_HARNESS_NAME` unset) and the deployed module writes the same
+`opencode.json` gate; Claude Code/Codex/pi pin 2/1/3 files, an unknown harness is refused (409).
+The code-sandbox container was not touched. Rollback: `b055571` with `.env.bak.before-59249d9`.
+
 ## Release b055571 — 2026-09-22 (step-supervision wording)
 
 Overlay `e19119d` → `b055571` after appdata backup `ab_20260922_035047` (`gzip -t` passed).
