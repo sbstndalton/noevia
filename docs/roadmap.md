@@ -154,8 +154,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    off live (`COWORK_DAV_PORT=0`), and the Diary image still needs rebuilding for `preserve`
    before it is turned on.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
-5. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
-   an `Auto` harness only once there is evidence to choose between them.
+5. **Other harnesses** (Claude Code, Codex, pi) — **pinned configs done 2026-09-22**
+   (spec-agent-execution, "Other harnesses: pinned configuration"). Next: bridge pi's approval
+   prompts to ACP (pi-acp does not), then, with your go, install one CLI + ACP adapter in the
+   sandbox image and run the `scratch` fixture. No `Auto` harness until there is evidence.
 6. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
    browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
 
@@ -178,6 +180,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    Connect to Server with an app password once DAV sharing is on (docs/dav.md, 2026-09-22).
 9. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
 10. **Deep research live run** approval (D12).
+11. **Which extra coding harness to install first** in the sandbox image (Claude Code, Codex or
+    pi; configs are pinned, the install is a supply-chain change). Claude Code needs your sign-in
+    if it is ever pointed beyond the local engine.
 
 ## Lessons worth keeping
 

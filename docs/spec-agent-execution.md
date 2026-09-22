@@ -666,3 +666,29 @@ and its agent loop wrapped by this classifier.
 | Host desktop driver with bounded manifest + embedder authorization | cua `libs/cua-driver` | Idea, later if ever; highest-trust capability |
 | SSD expert-streaming MoE runtime on the Mac | Swiftlet | Idea for the Mac node |
 | SSD expert streaming on DaServer | danveloper/flash-moe (`3601d41`) | Reject as software: Metal-only, no license, one model, stale. Idea only — see roadmap research 9 |
+
+### Other harnesses: pinned configuration — 2026-09-22
+
+`server/code-harness-config.cjs` `pinFilesFor` now pins **Claude Code**, **Codex** and **pi** as
+well as OpenCode; any other name is still refused (409) before an agent starts. Files are written
+by noevia into the task's working directory or its private `HOME`, owned by the harness user,
+mode 0600, and listed in the `harness.config` step. Sources were checked on 2026-09-22 (links in
+the module header).
+
+| Harness | Files | Gate | Endpoint | Off |
+|---|---|---|---|---|
+| Claude Code | `./.claude/settings.local.json` (outranks user and shared settings) + `~/.claude/settings.json` | `ask`: Edit, Write, NotebookEdit, Bash, WebFetch, WebSearch; bypass and auto modes disabled | `env`: `ANTHROPIC_BASE_URL` (engine root; llama.cpp `/v1/messages`), `ANTHROPIC_MODEL` | auto-updater, non-essential traffic, telemetry |
+| Codex | `~/.codex/config.toml` | `approval_policy = "on-request"` with `sandbox_mode = "read-only"`: every write or network use escalates; project `untrusted` | provider `noevia`, `wire_api = "responses"` | web search, update check, analytics, feedback, OTel |
+| pi | `~/.pi/agent/{models.json,settings.json,extensions/noevia-gate.js}` | global extension: every non-read tool asks with full input; no UI channel, an error or anything but `true` blocks | provider `noevia`, `openai-completions` | install telemetry |
+
+**Not runnable yet, deliberately.** Live stays OpenCode (`CODE_HARNESS_NAME`). Before any of these
+runs: (1) the sandbox image must install the pinned CLI and its ACP adapter
+(`@agentclientprotocol/claude-agent-acp`, `codex-acp`, `pi-acp`), which is a supply-chain change
+to the one container allowed to run commands and needs the user's go; (2) **pi's approvals must be
+bridged**: `pi-acp` does not document forwarding pi's `confirm` to ACP `session/request_permission`,
+so with it noevia's gate fails closed and pi can read but not edit; noevia needs either a bridge
+that forwards those requests or its own RPC transport; (3) engine compatibility is unverified:
+Claude Code needs llama.cpp's Anthropic Messages endpoint and Codex needs its Responses endpoint;
+(4) Codex's read-only commands inside its own sandbox can run without asking, so the container
+stays the real boundary (D14, D25). Claude Code also needs the user's own sign-in if it is ever
+pointed anywhere but the local engine. No `Auto` harness until paired evidence exists.
