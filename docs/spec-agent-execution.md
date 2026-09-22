@@ -713,6 +713,7 @@ pointed anywhere but the local engine. No `Auto` harness until paired evidence e
   analytics, feedback and OTel off, project `untrusted`): the provider and tool settings were
   honoured, but the adapter starts in its own `agent` mode and a plain `echo > proof.txt` ran
   **without an approval**. With `INITIAL_AGENT_MODE=read-only` an escalated command asked
-  correctly and Decline blocked it, yet the plain write still ran unasked. Codex's gate is its OS
+  correctly and Decline blocked it, yet the plain write still ran unasked — reproduced outside the agent's own shell sandbox, so it
+  is not a nested-sandbox artefact. Codex's gate is its OS
   sandbox, and commands inside it never ask, which D14 does not allow. Revisit if Codex gains an
   "ask for every command" policy.
