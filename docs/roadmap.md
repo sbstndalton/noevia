@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-22 (updated 10:40)
 
-- **Live:** release **`82605a0`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`5a88558`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -29,6 +29,15 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Complete automatic model tuning (release `5a88558`)
+- User-prioritized: **Tune untuned models**, beside Check for updates, detects missing/stale
+  tunes and runs a sequential confirmed maintenance queue. Context, KV cache, three existing
+  MTP-head draft profiles, n-gram and batch settings are measured and quality-screened, then the
+  fastest passing complete profile is applied. 60–70% acceptance is guidance, not a gate.
+- Exact release: 1,242 tests and both affected browser suites pass; six layouts inspected; ten
+  synthetic full-tune tests also pass in the running image. No live tuning started. Harness
+  hardening below was excluded; native engine, embeddings and pi sandbox stayed unchanged.
 
 ### 2026-09-22 — Code mode runs pi (your go)
 - The sandbox runs pi 0.87.0 through noevia's own ACP bridge; every non-read action reaches the

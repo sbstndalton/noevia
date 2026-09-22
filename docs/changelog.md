@@ -1,3 +1,21 @@
+## 2026-09-22 — Complete automatic model tuning (release `5a88558`, deployed)
+
+Models → Your models now has **Tune untuned models** beside **Check for updates**. One
+confirmed maintenance window runs a sequential queue of configured chat models without a
+current tune. It tests f16/q8/q4 KV cache, measured long-context recall, three existing-MTP-head
+draft profiles, n-gram and micro-batch sizes; three deterministic quality probes screen each
+setting. The fastest passing complete profile is rechecked and applied automatically.
+60–70% draft acceptance is guidance, not an artificial cutoff. No model/head download occurs.
+
+Tunes are tied to the model artifact, preset/defaults, engine build and available hardware
+identity. Cancellation/failure/restart restores the active model's original preset when safe;
+external edits are never overwritten. A finished model stays tuned if a later queue entry fails.
+Quality probes are smoke tests, not general accuracy certification. Live model benchmarks still
+require the user to start the in-app pause confirmation; no live inference was run during QA.
+Deployed from isolated `main`, excluding the separate harness-hardening changes below. Exact
+release: 1,242 tests, typecheck/build/design lint and both affected browser suites pass; all ten
+full-tuning synthetic tests also pass inside the running image. Engine and pi sandbox unchanged.
+
 ## 2026-09-22 — Claude Code and pi pins hardened (source only)
 
 Claude Code now receives the full noevia-owned permission/model configuration inline, exposes a
