@@ -1,3 +1,43 @@
+## Release 04780e6 — 2026-09-22 (development branches integrated)
+
+Integrated `ui-polish-update` (`7014b69`) and local
+`codex/harness-hardening-claude-pi` (`c729379`) from `origin/main` (`506f0f8`).
+The tuning commit already existed as a patch-equivalent change; no duplicate feature
+or stale alternative was applied. Only documentation conflicted. See
+[integration evidence](integration-2026-09-22.md).
+
+1,245 unit tests, typecheck, build, design lint and 15 synthetic browser/HTTP suites
+pass. Real pi 0.87.0 and Claude ACP 0.79.0 pass local scripted-model approval checks,
+including hostile Claude repository resources. The Linux pi candidate passes the same
+allow/decline fixture with no network or production volumes. The web image passes 80
+isolated harness/approval/tuning tests. No real Diary corpus or live inference was used.
+
+Backup `ab_20260922_135257` completed successfully; web, Diary and extra-file archives
+independently passed `gzip -t`. Source/app archive checksums matched before deployment.
+Guarded overlay `5a88558` → `04780e6` passed all preflights and reported
+`RELEASE_04780e6_COMPLETE`. Web, Diary and OCR are healthy, zero restarts. The pi
+sandbox was rebuilt from its Dockerfile with pi 0.87.0 and lifecycle scripts disabled,
+then activated as `cowork-code-sandbox:pi-0.87.0-99be0a2`; its deployed bridge SHA-256
+matches source, version is 0.87.0, and the container runs with zero restarts.
+
+The first candidate package accidentally included a dependency symlink; Docker refused
+it before cutover. The corrected archive excludes dependencies/state. The initial sandbox
+activation put the profile flag after the wrapper separator; Compose refused it, the env
+was restored, and the corrected preflight invocation succeeded. Neither failed attempt
+ran an unvalidated candidate.
+
+Public index serves `index-B5Qudv_W.js` / `index-3Twk2Xqu.css`; JavaScript SHA-256 matches
+the local build. Unauthenticated model-tuning access returns 401, and web logs contain
+zero error markers since cutover. Native llama, embeddings and Laya IDs/start times
+are unchanged. Laya's pre-existing unhealthy status remains outside this release.
+The existing unmanaged-volume and kernel swap-limit warnings remain unchanged.
+
+Rollback: restore `config/.env.bak.before-04780e6` (including the old pi tag), point
+`current` at `releases/5a88558`, then use the guarded preflight no-build startup for
+web/diary/ocr and `--profile code -- -d --no-build --no-deps code-sandbox` for the
+sandbox. The old release, pi image and backups are retained. The subsequent record
+commit is documentation only; deployed application source is `04780e6`.
+
 ## 2026-09-22 — Complete automatic model tuning (release `5a88558`)
 
 Models → Your models now has **Tune untuned models** beside **Check for updates**. One

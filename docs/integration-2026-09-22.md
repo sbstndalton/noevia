@@ -28,7 +28,7 @@ hardening; dependency manifests and tuning implementation are unchanged.
 - Synthetic Chrome suites: settings-navigation, general-settings, projects-library,
   projects-empty, models-settings, models-autotune, appearance-system,
   mobile-approvals, tool-calls, code-mode, onboarding, mobile-surfaces,
-  mcp-internal-http and tool-scope-http: pass.
+  mcp-internal-http, tool-scope-http and diary-navigation: pass.
 - Settings/projects reviewed at phone/desktop sizes, with automated 375/768/1440
   light/dark coverage, search, keyboard focus and overflow assertions. Appearance
   persistence and device theme changes pass. Approval cards retain complete
@@ -43,4 +43,6 @@ hardening; dependency manifests and tuning implementation are unchanged.
 
 No real Diary corpus or production inference was used. Physical-device testing
 and authenticated personal-data workflows are outside this synthetic validation.
-Deployment evidence follows in deployment.md after cutover.
+Deployed as `04780e6`, with sandbox `pi-0.87.0-99be0a2`. The Linux sandbox
+also passed the real pi fixture without network or production mounts, and the final
+web image passed 80 targeted tests. See [deployment evidence](deployment.md).

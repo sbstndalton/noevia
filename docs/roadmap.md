@@ -10,9 +10,9 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-09-22 (updated 13:16)
+## Where things stand — 2026-09-22 (updated 14:00)
 
-- **Live:** release **`5a88558`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`04780e6`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -22,13 +22,22 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   (harness: **pi 0.87.0** since 2026-09-22; OpenCode one `.env` change away),
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,242 server and front-end unit tests pass locally (none touches production). Models/settings and full-auto-tune browser suites also pass. The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,245 server and front-end unit tests pass locally (none touches production). Models/settings and full-auto-tune browser suites also pass. The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Outstanding branches integrated (release `04780e6`)
+- Settings and project-library polish plus Claude/pi harness hardening merged into main.
+  Existing model tuning retained without duplication; no outstanding branch excluded.
+- 1,245 tests, typecheck/build/design lint, 15 synthetic browser/HTTP suites, real pi/Claude
+  scripted-model checks, and 80 isolated Linux image tests pass. All three approval actions
+  and tenant isolation preserved. No real Diary corpus used.
+- Web deployed; pi sandbox rebuilt as `pi-0.87.0-99be0a2` and activated. Engine/embeddings
+  unchanged; Laya remains pre-existing unhealthy. [Evidence](integration-2026-09-22.md).
 
 ### 2026-09-22 — Complete model auto-tuning (release `5a88558`)
 - User-prioritized: **Tune untuned models**, beside Check for updates, detects missing/stale
@@ -167,16 +176,8 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 ## Local source work — not deployed
 
-Harness hardening after the current-primary-doc review: Claude Code's complete permission and
-endpoint pin is now sent inline while its SDK query loads no repository/user settings or context,
-uses a fixed core tool set, and disables hooks, skills/commands, plugin sync and filesystem MCP
-servers; sandboxed Bash auto-allow and both update paths are off. pi
-now starts offline with only noevia's managed extension and fixed tools, refuses project trust,
-does not load repository context files or persist sessions, waits for `agent_settled`, times out a wedged approval, and is installed
-with lifecycle scripts disabled. Codex remains refused. Merged with the settings/project-library UI on the integration branch. All 1,245 tests
-and the real pi/Claude CLI checks against scripted synthetic models pass; deployment pending.
-See [integration evidence](integration-2026-09-22.md). The first durable-chat slice
-(research/system-one/15) remains an internal, default-off seam.
+Nothing application-side. The first durable-chat slice (research/system-one/15) remains
+an internal, default-off seam.
 
 ## Next — in order
 
