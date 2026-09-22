@@ -2230,6 +2230,15 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release b055571 — 2026-09-22 (step-supervision wording)
+
+Overlay `e19119d` → `b055571` after appdata backup `ab_20260922_035047` (`gzip -t` passed).
+`RELEASE_b055571_COMPLETE`; web, Diary, OCR healthy, zero restarts, no web-log errors. Deployed
+`decision-endpoint.cjs` against live Laya: 6/6 synthetic spot checks (three benign continue, one
+verify, two injected-instruction escalations). `qa/laya-chat-smoke.cjs` passed again on the
+already-loaded `gemma-4-E4B-it-qat-UD-Q4_K_XL` (no swap; 2 capped requests; tool once; Laya
+"continue"). Rollback: `e19119d` with `.env.bak.before-b055571`.
+
 ## Release e19119d — 2026-09-22 (text-free System-One decision log)
 
 Overlay `6c3cde0` → `e19119d` after appdata backup `ab_20260922_032441` (`gzip -t` passed).

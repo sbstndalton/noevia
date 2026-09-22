@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-22
 
-- **Live:** release **`e19119d`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`b055571`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -21,7 +21,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 - **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,209 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,210 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
@@ -35,7 +35,10 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   light/dark inspected; stray wrapped-line separators fixed.
 - System-One routing: Laya was sending most reasoning/code to Fast (23/40 held out). Concrete
   role labels: 36/40, verified through the deployed module with zero fallbacks at ~0.5 s.
-  Supervision 8/9, unchanged. [Evidence](research/system-one/19-routing-labels.md).
+  Second fresh set: 45/50.
+- Step supervision (release `b055571`): the old wording paused a benign chat and added needless
+  verify rounds; new wording 16/17 fresh, no needless pauses, every dangerous case stops.
+  Laya chat smoke passes on the loaded model. [Evidence](research/system-one/19-routing-labels.md).
 
 ### 2026-09-22 — Context compaction inside tool continuations (release `3d2521d`, deployed)
 - Every provider continuation after tool execution is re-budgeted. When tool results push the

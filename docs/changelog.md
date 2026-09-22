@@ -1,3 +1,10 @@
+## 2026-09-22 — Step supervision stops pausing ordinary chats (release `b055571`)
+
+With Step supervision on, Laya sometimes stopped a harmless chat for review (for example after a
+plain project list) and added needless "double-check" rounds. New wording, measured on synthetic
+cases: 16/17 on a fresh set with no needless pauses or extra rounds, and every synthetic
+dangerous case (hidden instructions, credential requests, destructive commands) still stops.
+
 ## 2026-09-22 — System-One decisions show up in the web log (release `e19119d`)
 
 Each routing and supervision decision writes one line — chosen role or action, margin, time
