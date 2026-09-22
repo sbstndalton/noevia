@@ -30,9 +30,10 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 ## Done
 
 ### 2026-09-22 — Pinned configs for Claude Code, Codex and pi (release `59249d9`, deployed)
-- Each harness gets noevia-written config in the task directory or private HOME: everything but
-  reads asks, bypass/auto modes off, local engine only, no updates or telemetry; pi gets a
-  fail-closed gate extension. Unknown harnesses are still refused. Live remains OpenCode.
+- Claude Code and pi get noevia-written config (everything but reads asks, local engine only, no
+  updates/telemetry; pi a fail-closed gate plus noevia's own ACP bridge). Both proven with the
+  real CLIs against scripted fake models. Codex refused: measured, its commands ran unasked.
+  Live remains OpenCode.
 
 ### 2026-09-22 — Routing labels and live footer (releases `e7b59d6`, `6c3cde0`, deployed)
 - The footer follows the visible chat's own stream (generating, first output, exact usage and
@@ -159,7 +160,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    off live (`COWORK_DAV_PORT=0`), and the Diary image still needs rebuilding for `preserve`
    before it is turned on.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
-5. **Other harnesses** (Claude Code, Codex, pi) — **pinned configs done 2026-09-22**
+5. **Other harnesses** — **Claude Code and pi pinned and proven with the real CLIs 2026-09-22;
+   Codex refused on measurement** (its commands run unasked inside its own sandbox)
    (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
    noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
    model (`qa/pi-bridge-e2e.cjs`). Next,
@@ -186,8 +188,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    Connect to Server with an app password once DAV sharing is on (docs/dav.md, 2026-09-22).
 9. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
 10. **Deep research live run** approval (D12).
-11. **Which extra coding harness to install first** in the sandbox image (Claude Code, Codex or
-    pi; configs are pinned, the install is a supply-chain change). Claude Code needs your sign-in
+11. **Which extra coding harness to install first** in the sandbox image (Claude Code or pi; configs are pinned, the install is a supply-chain change). Claude Code needs your sign-in
     if it is ever pointed beyond the local engine.
 
 ## Lessons worth keeping

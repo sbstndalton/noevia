@@ -669,8 +669,8 @@ and its agent loop wrapped by this classifier.
 
 ### Other harnesses: pinned configuration — 2026-09-22
 
-`server/code-harness-config.cjs` `pinFilesFor` now pins **Claude Code**, **Codex** and **pi** as
-well as OpenCode; any other name is still refused (409) before an agent starts. Files are written
+`server/code-harness-config.cjs` `pinFilesFor` now pins **Claude Code** and **pi** as well as
+OpenCode, and refuses **Codex** on measured evidence (below); any other name is still refused (409) before an agent starts. Files are written
 by noevia into the task's working directory or its private `HOME`, owned by the harness user,
 mode 0600, and listed in the `harness.config` step. Sources were checked on 2026-09-22 (links in
 the module header).
@@ -678,7 +678,7 @@ the module header).
 | Harness | Files | Gate | Endpoint | Off |
 |---|---|---|---|---|
 | Claude Code | `./.claude/settings.local.json` (outranks user and shared settings) + `~/.claude/settings.json` | `ask`: Edit, Write, NotebookEdit, Bash, WebFetch, WebSearch; bypass and auto modes disabled | `env`: `ANTHROPIC_BASE_URL` (engine root; llama.cpp `/v1/messages`), `ANTHROPIC_MODEL` | auto-updater, non-essential traffic, telemetry |
-| Codex | `~/.codex/config.toml` | `approval_policy = "on-request"` with `sandbox_mode = "read-only"`: every write or network use escalates; project `untrusted` | provider `noevia`, `wire_api = "responses"` | web search, update check, analytics, feedback, OTel |
+| Codex | — refused (409) | see "Codex, measured" | — | — |
 | pi | `~/.pi/agent/{models.json,settings.json,extensions/noevia-gate.js}` | global extension: every non-read tool asks with full input; no UI channel, an error or anything but `true` blocks | provider `noevia`, `openai-completions` | install telemetry |
 
 **Not runnable yet, deliberately.** Live stays OpenCode (`CODE_HARNESS_NAME`). Before any of these
@@ -697,3 +697,22 @@ Claude Code needs llama.cpp's Anthropic Messages endpoint and Codex needs its Re
 (4) Codex's read-only commands inside its own sandbox can run without asking, so the container
 stays the real boundary (D14, D25). Claude Code also needs the user's own sign-in if it is ever
 pointed anywhere but the local engine. No `Auto` harness until paired evidence exists.
+
+**Real-harness checks, 2026-09-22** (opt-in suites with scripted local fake models; no real model):
+- **pi 0.87.0** via `pi-acp-bridge.cjs` (`qa/pi-bridge-e2e.cjs`): pinned provider and gate loaded
+  from the task HOME; bash arrived as a normal card; Allow once ran it, Decline blocked it.
+- **Claude Code** via `@agentclientprotocol/claude-agent-acp` 0.79.0 (`qa/claude-code-e2e.cjs`):
+  with only `PATH` and the private `HOME` passed, requests went solely to the pinned endpoint;
+  Bash arrived as a card (options allow once / reject once); Allow ran it, Decline blocked it; a
+  repository shipping its own `.claude/settings.json` with `bypassPermissions` and `allow: Bash`
+  still asked. It also asked without noevia's pin in that run, so the adapter itself refuses
+  bypass; noevia's file is defence in depth plus the endpoint, model and update/telemetry off.
+- **Codex, measured → refused.** `@agentclientprotocol/codex-acp` 1.12.0 (Codex 0.155) with the
+  config noevia would pin (`approval_policy = "on-request"`, `sandbox_mode = "read-only"`,
+  provider `noevia` with `wire_api = "responses"`, `web_search = "disabled"`, update check,
+  analytics, feedback and OTel off, project `untrusted`): the provider and tool settings were
+  honoured, but the adapter starts in its own `agent` mode and a plain `echo > proof.txt` ran
+  **without an approval**. With `INITIAL_AGENT_MODE=read-only` an escalated command asked
+  correctly and Decline blocked it, yet the plain write still ran unasked. Codex's gate is its OS
+  sandbox, and commands inside it never ask, which D14 does not allow. Revisit if Codex gains an
+  "ask for every command" policy.

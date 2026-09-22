@@ -1,11 +1,13 @@
-## 2026-09-22 — Claude Code, Codex and pi can be pinned (release `59249d9`)
+## 2026-09-22 — Claude Code and pi can be pinned; Codex refused (releases `59249d9`, next)
 
 Nothing changes in Code mode today; it still runs OpenCode. noevia now knows how to lock down
-three more coding agents the way it locks OpenCode: every edit, command and web access asks you,
+more coding agents the way it locks OpenCode: every edit, command and web access asks you,
 the agent's own "skip permissions" modes are off, it talks only to your local engine, and it does
 not update itself or send telemetry. For pi, which has no permission prompts of its own, noevia
 installs a gate that asks for every non-read action and blocks if it cannot ask. Installing any
-of them in the sandbox is your call.
+of them in the sandbox is your call. Tested with the real Claude Code and pi against a scripted
+fake model: approvals reach you, Decline blocks, and a repository's own settings can't skip the
+question. Codex was tested the same way and is **refused**: its commands ran without asking.
 
 ## 2026-09-22 — Step supervision stops pausing ordinary chats (release `b055571`)
 
