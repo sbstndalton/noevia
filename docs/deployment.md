@@ -2230,6 +2230,15 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release 080a91d — 2026-09-22 (Diary local graph)
+
+Overlay `1752ac5` → `080a91d` after appdata backup `ab_20260922_042726` (`gzip -t` passed under
+`set -e`). `RELEASE_080a91d_COMPLETE`; web healthy, no web-log errors; the public site serves the
+locally built bundle (`index-DBipJgE3.js`). Front-end only; the Diary service is unchanged and the
+graph only reads through the existing file and backlink paths. Checked on the synthetic fixture
+(`qa/diary-local-graph.cjs`, `diary-editor`, `workspace-filters`); not opened on the real Diary.
+Rollback: `1752ac5` with `.env.bak.before-080a91d`.
+
 ## Release 1752ac5 — 2026-09-22 (browser policy module, unwired)
 
 Overlay `2577e16` → `1752ac5` after appdata backup `ab_20260922_042040` (`gzip -t` passed under

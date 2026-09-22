@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-22
 
-- **Live:** release **`1752ac5`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`080a91d`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -29,7 +29,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Done
 
-### 2026-09-22 — Diary local graph
+### 2026-09-22 — Diary local graph (release `080a91d`, deployed)
 - Diary editor → Local graph: the open note, what it links to (Markdown and `[[wiki]]` links,
   including ones typed but not saved) and what links back (the existing bounded backlink scan),
   drawn as a small graph with clickable, keyboard-focusable nodes and a grouped list of names.
