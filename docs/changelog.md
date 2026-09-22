@@ -1,5 +1,14 @@
 ### 2026-09-21 — Material 3 shares component geometry
 
+## 2026-09-22 — Configure and enable Laya routing in Experimental
+
+Added shared decision-service setup with editable URL/deadline, installed-Laya shortcut,
+health-only connection test and persistent admin Save. Routing now uses the configured
+Laya service for Fast/Smart/Code instead of requiring the old option-logit endpoint.
+Settings apply to subsequent routing and supervision decisions without restart.
+1192 tests, typecheck, build and design lint pass; scoped light/dark responsive UI verified.
+See [configuration and verification](research/system-one/18-decision-service-settings.md).
+
 ## 2026-09-21 — Laya endpoint for model-independent step supervision
 
 Connected the experimental checkpoint seam to a private typed-decision service.
