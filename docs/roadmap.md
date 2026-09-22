@@ -10,9 +10,9 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-09-22 (updated 10:40)
+## Where things stand — 2026-09-22 (updated 13:16)
 
-- **Live:** release **`82605a0`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`5a88558`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -22,13 +22,24 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   (harness: **pi 0.87.0** since 2026-09-22; OpenCode one `.env` change away),
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,231 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,242 server and front-end unit tests pass locally (none touches production). Models/settings and full-auto-tune browser suites also pass. The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Complete model auto-tuning (release `5a88558`)
+- User-prioritized: **Tune untuned models**, beside Check for updates, detects missing/stale
+  tunes and runs a sequential queue under one confirmed maintenance window. Context, KV cache,
+  three MTP draft profiles, n-gram and batch settings are measured and quality-screened, then
+  the fastest complete passing profile is applied. 60–70% acceptance is guidance, not a gate.
+- Three deterministic probes plus long-context recall are smoke tests, not broad accuracy
+  certification. Uses existing MTP heads only; no downloads. Rollback on cancellation/failure,
+  restart recovery and external-edit protection tested. No production inference run started.
+- App-only deployment; pi sandbox unchanged. Laya was already unhealthy at preflight and was
+  left untouched (routing-health diagnosis is separate work).
 
 ### 2026-09-22 — Code mode runs pi (your go)
 - The sandbox runs pi 0.87.0 through noevia's own ACP bridge; every non-read action reaches the

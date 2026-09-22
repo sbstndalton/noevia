@@ -1,3 +1,19 @@
+## 2026-09-22 — Complete automatic model tuning (release `5a88558`)
+
+Models → Your models now has **Tune untuned models** beside **Check for updates**. One
+confirmed maintenance window runs a sequential queue of configured chat models without a
+current tune. It measures f16/q8/q4 KV cache, long-context recall, three existing-MTP-head draft
+settings, n-gram and batch sizes. Three deterministic quality probes screen each setting; the
+fastest passing complete profile is rechecked and applied automatically. 60–70% draft acceptance
+is guidance, not a cutoff. No model/head downloads; no production benchmarks were started.
+
+Changed artifacts, presets/defaults or engine builds invalidate a tune. Cancellation, failures
+and interrupted runs restore the active model's original settings when safe, without overwriting
+external edits. Earlier successful queue entries remain tuned. The probes are smoke tests, not
+general quality certification. 1,242 tests, typecheck/build/design lint and both affected browser
+suites pass; six responsive/theme layouts inspected. The deployed image passes all 10 synthetic
+full-tuning tests. Native engine, embeddings and pi sandbox remain unchanged.
+
 ## 2026-09-22 — Code mode now runs pi
 
 The coding agent in Code mode is now **pi**, the minimal agent many forks start from. It runs in

@@ -1,5 +1,25 @@
 # Deploying noevia to daserver
 
+## Release 5a88558 — 2026-09-22 (complete automatic model tuning)
+
+Guarded overlay `82605a0` → `5a88558`, from an isolated `main` checkout (feature `c03ecd2`
+and focus-spacing fix `5a88558`). The separate harness-hardening branch was not included.
+Backup `ab_20260922_130913` completed with plugin verification; web, Diary and extra-file
+archives independently passed `gzip -t`. Local/remote app and source SHA-256 checksums matched.
+All release preflights passed; `RELEASE_5a88558_COMPLETE`; web, Diary, OCR, model-loader and
+native engine healthy, zero restarts. Existing unmanaged-volume/swap-limit warnings unchanged.
+
+1,242 unit tests, typecheck, build, design lint, models-settings and models-autotune browser
+suites passed in the exact release checkout. Six responsive/theme tuning layouts inspected.
+The running web image passes the ten full-auto-tune tests using synthetic APIs and temp files.
+Public index serves `index-CmttujrD.js` / `index-B5PHrZng.css`, with the new button in
+`ModelManagerPage-DMw6k3cX.js`; unauthenticated tuning discovery returns 401. No authenticated
+live tuning run, personal source refresh, Diary prompt or model download was performed.
+
+Native llama, CPU embeddings and pi sandbox container IDs/start times are unchanged. Laya was
+already unhealthy at preflight and remains outside this release. Rollback: `82605a0` and
+`.env.bak.before-5a88558`, using the existing guarded no-build release flow.
+
 This is the **live, personal** runbook for the Unraid box. It is not the same as
 repo-root `DEPLOY.md`, which describes a generic single-host `docker compose up`
 for a fresh install. That flow does not match production, and following it here
