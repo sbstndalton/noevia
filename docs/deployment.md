@@ -2230,6 +2230,27 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release 6c3cde0 — 2026-09-22 (System-One routing labels)
+
+Overlay `e7b59d6` → `6c3cde0` after appdata backup `ab_20260922_032035` (`gzip -t` passed on
+web, Diary and extra files; sizes in line with the previous backup). `RELEASE_6c3cde0_COMPLETE`;
+web, Diary and OCR healthy with zero restarts; no errors in the web log since cutover. The
+deployed `system-one-router.cjs`, wired as production wires it to Laya, scored 20/24 (Code role
+on) and 16/16 (off) on the synthetic held-out set with zero fallbacks at ~0.5 s per decision;
+deployed step supervision chose "verify" on conflicting synthetic evidence. Live flags:
+`systemOneRouting` and `stepSupervision` on, decision service `http://laya:8040`, 1500 ms.
+Rollback: `e7b59d6` with `.env.bak.before-6c3cde0`.
+
+## Release e7b59d6 — 2026-09-22 (request-local footer telemetry)
+
+Overlay `3d2521d` → `e7b59d6` (contains `80d116f`) after appdata backup `ab_20260922_031154`
+(`gzip -t` passed). `RELEASE_e7b59d6_COMPLETE`; web, Diary and OCR healthy, zero restarts; Laya
+ready; the public site serves the locally checked bundle (`index-B47t8Bhx.js`) and CSS. Before
+deploying, `qa/live-stats.cjs` passed on a fresh build and screenshots at 375/768/1440 light and
+dark were inspected; a stray separator dot at the start of wrapped footer lines was fixed in
+this release. Not done: a signed-in visual check of the live footer (no signed-in browser was
+available to the session). Rollback: `3d2521d` with `.env.bak.before-e7b59d6`.
+
 ## Release 3d2521d — 2026-09-22 (tool-loop context compaction)
 
 Overlay `54d7cf2` → `3d2521d` after appdata backup `ab_20260922_020935`. The plugin reported

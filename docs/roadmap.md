@@ -12,10 +12,8 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-22
 
-- **Live:** release **`3d2521d`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`6c3cde0`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
-- **Pushed, awaiting deployment:** **`80d116f`** streams request-local reply telemetry to the
-  footer. It does not change the live release until DaServer deployment and visual checks pass.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
   Sidecar image tags are pinned in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not
@@ -23,14 +21,21 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 - **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,196 server and front-end unit tests pass locally (none touches production); the
-  deployed decision-service release passed 1,192. The last full browser QA sweep, on 2026-09-21,
+- **Tests:** 1,207 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-21,
   was **73 of 73 green**. `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Routing labels and live footer (releases `e7b59d6`, `6c3cde0`, deployed)
+- The footer follows the visible chat's own stream (generating, first output, exact usage and
+  MTP across tool rounds), separate from engine polling. `qa/live-stats.cjs` passes; 375/768/1440
+  light/dark inspected; stray wrapped-line separators fixed.
+- System-One routing: Laya was sending most reasoning/code to Fast (23/40 held out). Concrete
+  role labels: 36/40, verified through the deployed module with zero fallbacks at ~0.5 s.
+  Supervision 8/9, unchanged. [Evidence](research/system-one/19-routing-labels.md).
 
 ### 2026-09-22 — Context compaction inside tool continuations (release `3d2521d`, deployed)
 - Every provider continuation after tool execution is re-budgeted. When tool results push the
@@ -125,16 +130,8 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 ## Local source work — not deployed
 
-2026-09-22: `80d116f` is pushed to `origin/main`. The footer now separates current-chat SSE
-telemetry from engine-wide polling, shows generating/first-output state immediately, and applies
-exact provider usage across tool-loop rounds. 39 focused and 1,111 socket-free tests pass;
-typecheck/build/design lint pass. Chromium and local listener execution were blocked by this task
-sandbox, so the synthetic browser QA is authored but not run and no visual result is claimed.
-
-2026-09-21: user-authorized continuation applied adapter cutoff/bounds fixes, then prioritized
-the [first durable-chat slice](research/system-one/15-durable-chat-slice.md). It is an internal
-dependency-injection seam, default off and unwired in production. No automatic model switching
-or tool replay. The live release and System-One candidate decision remain unchanged.
+Nothing application-side. The first durable-chat slice (research/system-one/15) remains an
+internal, default-off seam.
 
 ## Next — in order
 
@@ -142,13 +139,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 
 **Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Multi-hop rerun done (12→6 3/4). Next: watch fallback rates in the web log (`[rag] rerank`).
 
-1. **Deploy and exercise `80d116f`, then iterate System-One routing.** Run the synthetic,
-   non-personal footer QA on a browser-capable host and verify the live footer at phone/tablet/
-   desktop widths. Then use bounded synthetic prompts to inspect Laya's actual Fast/Smart/Code
-   and step-supervision decisions, adjust routing/fallback behavior where evidence warrants it,
-   and repeat test → deploy → verify. Preserve approval gates, execution budgets and manual model
-   choices; this is not authority for benchmarks, paid calls, personal sources, model downloads,
-   training, engine changes or heavy compute.
+1. **System-One next steps.** Remaining routing misses are near-ties; a margin gate is not
+   justified on 4 cases. Collect real decision distributions next (an opt-in, text-free log of
+   selected role and margin) before changing more. Rerun `scripts/system-one-probe.cjs` after
+   any Laya or label change.
 2. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
 3. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2).
@@ -162,6 +156,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
 
 ## Needs the user — in order
+
+0. **Look at the live footer once** while a reply streams (phone and desktop): the session had
+   no signed-in browser, so only the synthetic QA and bundle identity were verified.
 
 1. **Which repositories Code mode may open.** Only the throwaway `scratch` fixture is
    registered (`CODE_REPOS`); nothing real is reachable until you choose.

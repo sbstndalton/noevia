@@ -1,4 +1,14 @@
-## 2026-09-22 — Request-local live inference readouts (source `80d116f`, pushed; not deployed)
+## 2026-09-22 — System-One routing picks Smart and Code when it should (release `6c3cde0`)
+
+Laya was routing most reasoning and code questions to the Fast model. Probing it with the exact
+requests production sends, on synthetic messages, showed the abstract role descriptions were the
+cause: 23 of 40 held-out decisions right. Concrete descriptions ("greetings, thanks, or a
+one-line factual answer" / "explaining, comparing, planning…" / "anything involving programming
+code…") score 36 of 40; the rest are near-ties. Step supervision was checked the same way (8/9)
+and left alone. Fallbacks, manual model choice and approvals are unchanged.
+[Evidence](research/system-one/19-routing-labels.md).
+
+## 2026-09-22 — Request-local live inference readouts (source `80d116f`, deployed in `e7b59d6`)
 
 The inference footer now follows the visible chat's own event stream instead of treating the
 engine-wide `/api/stats` poll as reply telemetry. It shows the routed model and generating state
