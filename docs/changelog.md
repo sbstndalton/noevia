@@ -1,3 +1,22 @@
+### 2026-09-21 — Shared settings and segmented-control wrapping (local, undeployed)
+
+Fixed the shared flex-row cause of one-word-per-line descriptions and clipped controls.
+Settings rows now wrap by their available content width, including narrow desktop panels;
+text retains a readable minimum width and control/value groups stay within the card.
+Segmented controls throughout the app wrap instead of hiding options in a horizontal
+scroller. Their selection highlight now tracks both axes and the selected button height,
+including Material 3. Coding composer action groups also wrap within their available width.
+
+Verification: 1170 unit tests passed; typecheck, build, design lint and diff whitespace
+checks passed. Synthetic browser checks reproduced the original narrow desktop General
+settings and confirmed readable descriptions and all Material choices visible. Checked
+Material/Density/Motion/Layout at 375, approximately 768 (767 due to browser zoom rounding),
+and 1440 CSS pixels: no document or segment overflow. Verified second-row Material 3
+selection/highlight alignment, light/dark styling, capability label/value rows and the
+Experimental switch page. Desktop screenshots were inspected; viewport override screenshots
+still suffer the in-app browser's tiled-capture issue. A complete every-view/two-theme sweep
+and physical-device testing were not run. No live preferences or data changed; no deployment.
+
 ### 2026-09-21 — Experimental System-One routing switch (local, undeployed)
 
 Settings → Experimental now exposes an administrator-only System-One routing switch,
