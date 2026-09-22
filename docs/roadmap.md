@@ -12,7 +12,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-09-22
 
-- **Live:** release **`54d7cf2`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`3d2521d`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -29,6 +29,12 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Context compaction inside tool continuations (release `3d2521d`, deployed)
+- Every provider continuation after tool execution is re-budgeted. When tool results push the
+  transient projection over its threshold, older context is summarized before the next request.
+  The current user turn and complete assistant-call/result groups remain byte-identical; no
+  transcript rewrite, fabricated result, blind truncation or tool replay. 1,196 tests pass.
 
 ### 2026-09-21 — Curated plugin starters (release `067ac1d`, deployed)
 - Plugins → MCP servers and Skills open with "Recommended by noevia": Exa, Notion, Linear,
@@ -116,11 +122,6 @@ benchmarks) · UI overhaul releases 1–4 (materials, primitives, Plugins page) 
 rename with passkey continuity · Kiwix offline Wikipedia.
 
 ## Local source work — not deployed
-
-2026-09-22: tool-loop continuations now re-budget and compact their transient model-facing
-projection before another provider request. Current-turn tool groups stay atomic and unchanged;
-the transcript is not rewritten and tools are never replayed to repair context. 1,196 tests,
-typecheck, build and design lint pass. No inference was run.
 
 2026-09-21: user-authorized continuation applied adapter cutoff/bounds fixes, then prioritized
 the [first durable-chat slice](research/system-one/15-durable-chat-slice.md). It is an internal

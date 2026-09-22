@@ -13,6 +13,10 @@ checks pass. Focused coverage forces the real handler over budget between tool r
 confirms the next request receives a summary plus the intact current tool group. No model
 inference, paid endpoint, personal source or Diary data was used.
 
+Deployed as `3d2521d` after verified backup `ab_20260922_020935`; release preflights,
+application/Laya health, public HTTP and clean-log checks passed. Native inference, embedding
+and Laya container identities/start times remained unchanged.
+
 ### 2026-09-21 — Material 3 shares component geometry
 
 ## 2026-09-22 — Configure and enable Laya routing in Experimental

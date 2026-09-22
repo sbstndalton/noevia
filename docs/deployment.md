@@ -2229,3 +2229,28 @@ Light/dark Experimental layouts checked at 375/768/1440 CSS pixels without horiz
 overflow; narrow and desktop screenshots inspected, plus live deployed screenshot.
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
+
+## Release 3d2521d — 2026-09-22 (tool-loop context compaction)
+
+Overlay `54d7cf2` → `3d2521d` after appdata backup `ab_20260922_020935`. The plugin reported
+successful archive verification and completion; `cowork-web-1.tar.gz`,
+`cowork-diary-1.tar.gz` and `extra_files.tar.gz` also passed independent `gzip -t` checks.
+Local and server release-archive SHA-256 values matched. All three release preflights passed;
+the existing unmanaged code-workspaces volume and kernel swap-limit warnings were unchanged.
+
+The guarded overlay completed with `current` and `COWORK_VERSION` on `3d2521d`. Web, Diary and
+OCR are healthy with zero restarts; local and public HTTP return 200, unauthenticated chat
+returns 401, Laya reports ready and the new continuation compactor is present in the running
+web container. Web logs since cutover contain no uncaught/fatal/error entries. The native
+inference, CPU embedding and Laya container IDs/start times remained unchanged and each has
+zero restarts. Docling and the Code sandbox retained their pinned images.
+
+Validation before deployment: 1,196 web tests passed, plus typecheck, production build,
+design lint and `git diff --check`. The real injected chat handler was forced over budget after
+a synthetic tool result and compacted before its next provider request while retaining the
+current user/call/result group. No production inference, paid endpoint, personal source, Diary
+prompt, engine configuration, model download or broad visual sweep was used for this release.
+
+Retain `54d7cf2` and `.env.bak.before-3d2521d` for rollback through the existing guarded
+no-build release flow. The application commit is `3d2521d`; the following deployment record is
+documentation-only.
