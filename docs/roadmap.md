@@ -21,7 +21,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 - **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,228 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,230 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
@@ -155,9 +155,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 **Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Multi-hop rerun done (12→6 3/4). Next: watch fallback rates in the web log (`[rag] rerank`).
 
 1. **System-One next steps.** Remaining routing misses are near-ties; a margin gate is not
-   justified on 4 cases. Since `e19119d` every decision writes a text-free `[system-one]` line
-   (role, margin, latency, fallback) to the web log: read a week of real margins and fallback
-   rates before changing more. Rerun `scripts/system-one-probe.cjs` after
+   justified on 4 cases. Every decision is recorded text-free (role, margin, latency, fallback) in
+   `state/web/system-one-decisions.jsonl` (bounded, rotated; docker logs are lost at each deploy).
+   After a week of real use: `docker exec cowork-web-1 node /app/server/decision-log.cjs
+   /app/server/ui-data` prints the summary; tune only from that. Rerun `scripts/system-one-probe.cjs` after
    any Laya or label change.
 2. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
