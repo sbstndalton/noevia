@@ -2230,6 +2230,15 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release bdddef4 — 2026-09-22 (DAV modification times, web half)
+
+Overlay `080a91d` → `bdddef4` after appdata backup `ab_20260922_043234` (`gzip -t` passed under
+`set -e`). `RELEASE_bdddef4_COMPLETE`; web healthy, no web-log errors. The overlay retags the
+existing Diary image, so the companion's `modified` field is **not** live yet; DAV emits
+`getlastmodified` only when it is present, and DAV sharing is off (`COWORK_DAV_PORT=0`), so
+nothing changes for users until the next Diary image build. Rollback: `080a91d` with
+`.env.bak.before-bdddef4`.
+
 ## Release 080a91d — 2026-09-22 (Diary local graph)
 
 Overlay `1752ac5` → `080a91d` after appdata backup `ab_20260922_042726` (`gzip -t` passed under
