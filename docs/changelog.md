@@ -1,3 +1,10 @@
+## 2026-09-22 — Diary service updated
+
+The Diary service now keeps the previous version in Trash when a WebDAV client overwrites a
+file, and reports each file's last-modified time so sync apps like Obsidian can tell what
+changed. Nothing else in the Diary changed, and no Diary data was touched. File sharing (WebDAV)
+remains off until you turn it on.
+
 ## 2026-09-22 — A local graph for Diary notes
 
 Open a note in the Diary editor and expand **Local graph** to see the notes it links to and the

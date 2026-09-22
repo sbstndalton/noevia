@@ -29,6 +29,11 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Done
 
+### 2026-09-22 — Diary image overlay (your go)
+- The Diary companion now runs the Trash-on-overwrite (`preserve`) and file-time (`modified`)
+  fixes. Built `FROM` the running image with only `agent/` replaced (no dependency changes);
+  backup, preflights, health and D1 isolation checked; rollback tag kept.
+
 ### 2026-09-22 — Diary local graph (release `080a91d`, deployed)
 - Diary editor → Local graph: the open note, what it links to (Markdown and `[[wiki]]` links,
   including ones typed but not saved) and what links back (the existing bounded backlink scan),
@@ -165,8 +170,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 3. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2);
    Obsidian sync's client passes 17/17 after a modification-time fix (2026-09-22).
    Still to run: Finder (an agent-side `mount_webdav` is refused locally by macOS; see dav.md, 2026-09-22 — needs the user), Windows Explorer/WinSCP, iOS Files, Obsidian WebDAV sync. DAV sharing is
-   off live (`COWORK_DAV_PORT=0`), and the Diary image still needs rebuilding for `preserve`
-   and `modified` before it is turned on.
+   off live (`COWORK_DAV_PORT=0`), and the Diary image now carries `preserve` and `modified`
+   (overlay 2026-09-22), so turning it on is your call alone.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
 5. **Other harnesses** — **Claude Code and pi pinned and proven with the real CLIs 2026-09-22;
    Codex refused on measurement** (its commands run unasked inside its own sandbox)

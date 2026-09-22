@@ -2230,6 +2230,21 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Diary image overlay — 2026-09-22 (user-approved)
+
+The Diary image was last built at `bb78a1a` (2026-09-20). Since then only
+`services/diary/agent/workspace_files.py` and `workspace_ops.py` changed (`preserve` from
+`42540fb`, `modified` from `bdddef4`); `requirements.txt` and the Dockerfile did not. So instead
+of a full rebuild (which would re-run `pip install` and could pull newer libraries), a new image
+was built `FROM` the running one with only `agent/` replaced: `deploy/examples/diary-overlay.sh`.
+Backup `ab_20260922_102230` verified first; candidate import smoke test; tag swap; Diary recreated
+through `tools/preflight/up.sh` (all three preflights passed) with `--wait`; D1 isolation
+re-checked; health 200 via web. Now `cowork-diary:f589874` = `sha256:7e9ce07b…`, healthy, zero
+restarts. Synthetic in-container check: `file_list` returns `modified`, `preserve` present. The
+real Diary was not read or written. Rollback: `docker tag cowork-diary:rollback-before-diary-overlay
+cowork-diary:f589874` and recreate `diary` the same way. Later overlays retag this image forward.
+(Web restarted at the same time because the backup plugin stops and starts it.)
+
 ## Release f589874 — 2026-09-22 (durable System-One decision record)
 
 Overlay `bdddef4` → `f589874` after appdata backup `ab_20260922_043527` (`gzip -t` passed under
