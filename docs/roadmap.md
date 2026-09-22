@@ -10,9 +10,9 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-09-22 (updated 14:00)
+## Where things stand — 2026-09-22 (updated 14:48)
 
-- **Live:** release **`04780e6`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`827932b`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
@@ -22,13 +22,22 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   (harness: **pi 0.87.0** since 2026-09-22; OpenCode one `.env` change away),
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,245 server and front-end unit tests pass locally (none touches production). Models/settings and full-auto-tune browser suites also pass. The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,247 server and front-end unit tests pass locally (none touches production). The three-material refinement passes 14 distinct synthetic browser suites, a 468-state sweep and a 198-state final confirmation. Models/settings and full-auto-tune browser suites also pass. The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Three materials refined (release `827932b`)
+- Removed Glassmorphism; older saved values fall back to Soft. Soft stays matte, Liquid
+  controls use restrained highlights without label distortion, Material 3 uses tonal roles
+  and correct state colors. Native-checkbox switches now meet 3:1 knob/track contrast.
+- Keyboard focus, reduced preferences, approval decisions and account isolation verified.
+  1,247 tests and all required checks pass. [Audit and iteration log](material-audit-2026-09-22.md).
+- Deployed after verified backup; public assets match, services healthy, engine/embeddings/pi
+  unchanged. Full evidence and rollback are in [deployment.md](deployment.md).
 
 ### 2026-09-22 — Outstanding branches integrated (release `04780e6`)
 - Settings and project-library polish plus Claude/pi harness hardening merged into main.

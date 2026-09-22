@@ -1,5 +1,7 @@
 # Material audit and refinement — 2026-09-22
 
+**Complete:** application release `827932b` is pushed to main and deployed.
+
 Scope: all main views and all 17 Settings destinations, in Soft, Liquid Glass and
 Material 3. User explicitly removed the fourth material. Original checkout preserved;
 work starts at `9cf92b3` on `ui/material-refinement`.
@@ -164,3 +166,15 @@ Final contrast correction:
 - 1,247 tests, typecheck, build and design lint pass again. Dynamic accessibility/preferences
   checks pass. A focused all-width sweep covers General, Personalization, Features and Security
   plus the main views after this last correction; rollout evidence follows below.
+
+## Verified outcome
+
+Final broad run: **468 states, zero defects/errors**. Focused confirmation after the native
+switch/copy correction: **198 states, zero defects/errors**. All required commands and the
+14 distinct browser suites listed above pass; Code, mobile approvals and onboarding each
+pass in Soft, Liquid and Material. Unit count remains **1,247**, with no failures/skips.
+
+Guarded deployment completed; public bundle/CSS and the three material scripts match the
+validated build; unauthenticated protected endpoints return 401. All app services are healthy
+with zero restarts. The native engine, embeddings and pi sandbox are unchanged. Full backup,
+checksum, release and rollback evidence: [deployment record](deployment.md).

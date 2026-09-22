@@ -1,5 +1,49 @@
 # Deploying noevia to daserver
 
+## Release 827932b — 2026-09-22 (three-material refinement)
+
+Removed the redundant Glassmorphism mode from preferences, pre-paint initialization,
+settings, CSS and reference samples; old saved values fall back to Soft. Soft is matte
+with restrained depth and visible switch boundaries. Liquid Glass is limited to functional
+controls, with readable content, restrained highlights, no label refraction or pointer tilt,
+and reduced-preference handling. Material 3 uses paired color roles, tonal selection,
+correct pressed/disabled states and native-checkbox switch contrast. Shared geometry stays
+stable. General now correctly distinguishes synced theme/accent from browser-local preferences.
+
+`ui/material-refinement` (`7663b40`, `827932b`) was pushed, then fast-forwarded into main
+from `9cf92b3` after a fresh fetch. No remote changes conflicted; no force push or branch
+deletion. The original `ui-polish-update` checkout is unchanged and clean.
+
+Validation: 1,247 unit tests, typecheck, build and design lint pass. Fourteen distinct
+synthetic browser suites pass, including Code, approvals and onboarding in all three
+materials. The broad inventory covers 468 states; the final focused confirmation covers
+198 states, with zero detected overflow, matte-mode blur leaks or page errors. Both themes,
+375/768/1440 widths, smaller approval/drawer viewports, keyboard focus and accessibility
+preferences are covered. All 12 rendered switch on/off/mode/theme pairs meet 3:1 contrast.
+The Impeccable detector's five dimension-animation findings were fixed. See the full
+[material audit and iteration log](material-audit-2026-09-22.md) for evidence and scope limits.
+No real Diary corpus, live model inference or user data was used for testing.
+
+Backup `ab_20260922_143433` completed successfully; web, Diary and extra-file archives
+independently passed `gzip -t`. Local/remote SHA-256 matched for source
+`0731f040149d450e122841bd69443f7bb6475a1f50389c16125b933cde0c7d01` and app
+`9b7232a1d68dbf4b6fb211de415f91d77b795eae39d437b1bf802c3c739b269d` archives.
+Guarded overlay `04780e6` → `827932b` passed mount/env/tenant-isolation preflights and
+reported `RELEASE_827932b_COMPLETE` at 14:46 EDT. Web, Diary and OCR are healthy with zero
+restarts. Native engine, embeddings, pi sandbox and Laya IDs/start times are unchanged.
+Laya remains pre-existing unhealthy. Existing volume/swap-limit warnings are unchanged.
+
+Public index serves `index-U2SHbFp3.js` / `index-Dtub7VGn.css`; both and `theme.js`, `lens.js`,
+`glass-highlight.js` match the local build byte-for-byte. Unauthenticated profile/admin-users
+requests return 401; web logs contain zero error markers since cutover. A Python HTTP client
+received 403; ordinary curl returned 200 and verified every public asset without changing any
+edge/security configuration.
+
+Rollback: restore `config/.env.bak.before-827932b`, point `current` at `releases/04780e6`,
+then run the guarded no-build startup for web/diary/ocr. Old images, branches and backups
+are retained. The subsequent main commit records rollout evidence only; deployed application
+source is `827932b`.
+
 ## Release 04780e6 — 2026-09-22 (development branches integrated)
 
 Integrated `ui-polish-update` (`7014b69`) and local

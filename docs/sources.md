@@ -49,7 +49,7 @@ Three kinds of entry, kept apart on purpose:
 | [emilkowalski/skills](https://github.com/emilkowalski/skills) (MIT) | Read | Installed at user level; `apple-design`, `emil-design-eng`, `animate`, `mobile-native` guide motion and polish work |
 | [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | Read | Deterministic design-rule check (D4), run against `apps/web/src` |
 | [justinwetch/HIGAgentSkills](https://github.com/justinwetch/HIGAgentSkills), [aka-kika/akakika-skills](https://github.com/aka-kika/akakika-skills), [Appllama/appllama-skills](https://github.com/Appllama/appllama-skills), [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | Read | Patterns and checklists consulted during the UI passes |
-| [Ramps Studio](https://www.ramps.studio/), [zoxilsi/studio](https://github.com/zoxilsi/studio) ([site](https://studio.zoxilsi.cc/)), [AetherCSS](https://aethercss.lovable.app), [nikdelvin/liquid-glass](https://github.com/nikdelvin/liquid-glass), [CSS liquid glass roundup](https://freefrontend.com/css-liquid-glass/) | Read | Visual character: ramps, glass and the three materials. None of their code ships; `public/glass.js` is noevia's own |
+| [Ramps Studio](https://www.ramps.studio/), [zoxilsi/studio](https://github.com/zoxilsi/studio) ([site](https://studio.zoxilsi.cc/)), [AetherCSS](https://aethercss.lovable.app), [nikdelvin/liquid-glass](https://github.com/nikdelvin/liquid-glass), [CSS liquid glass roundup](https://freefrontend.com/css-liquid-glass/) | Read | Visual character: ramps, glass and the three materials. `public/lens.js` adapts the MIT-licensed nikdelvin lens technique; attribution is in `public/liquid-glass-LICENSE.txt` |
 | `ui mockups/inspiration/` (in this repo) | Read | The merged screenshots and descriptions the overhaul's architecture came from |
 
 ## Documents, files and storage
@@ -192,7 +192,7 @@ commit, not the README.
 | Safe defaults written for a model the moment it finishes downloading | [model-loader](https://github.com/scratchhax/model-loader)'s own flow, then the parity audit | `POST /sections/{name}/safe-defaults` |
 | The sidebar as one scrolling plane; a collapsed rail that names things on hover; New chat floating over the list; settings as one flat list | ChatGPT and Claude's apps, opened side by side at the user's request | The shared Chat/Code sidebar |
 | Pin the app to the visible viewport so the iOS keyboard cannot push it off screen | [This StackOverflow thread](https://stackoverflow.com/questions/38619762/how-to-prevent-ios-keyboard-from-pushing-the-view-off-screen-with-css-or-js), sent by the user | `public/viewport.js`, the fixed shell |
-| Liquid glass as a material for things you can touch, aero for overlays, ramps for colour | [Apple HIG](https://developer.apple.com/design/human-interface-guidelines), [Material 3](https://m3.material.io), [Ramps Studio](https://www.ramps.studio/), the liquid-glass roundups | The three materials in Settings → Appearance; `public/glass.js` is noevia's own |
+| Liquid glass as a material for things you can touch, aero for overlays, ramps for colour | [Apple HIG](https://developer.apple.com/design/human-interface-guidelines), [Material 3](https://m3.material.io), [Ramps Studio](https://www.ramps.studio/), the liquid-glass roundups | The three materials in Settings → General; bounded lens adaptation in `public/lens.js`, with MIT attribution |
 | A diary that is plain Markdown files you can open anywhere | [Moodiary](https://docs.moodiary.net/guide/) as a shape to beat | The Diary workspace |
 | An offline encyclopaedia the model can read with no internet | [Kiwix](https://kiwix.org) | The offline Wikipedia toolbox (D9) |
 | Browse and install published skills and MCP servers from inside the app | The [MCP registry](https://registry.modelcontextprotocol.io) and [anthropics/skills](https://github.com/anthropics/skills) | The Plugins page |
@@ -239,3 +239,9 @@ Adding an idea: say where it came from and what happened to it. An idea that was
 more here than one that shipped — the shipped one is visible in the app, the dropped one is only
 visible here, and without it the next person re-reads the same source and re-reaches the same
 dead end.
+
+### Material refinement — 2026-09-22
+
+[Material audit](material-audit-2026-09-22.md) records the Apple HIG materials, Meet Liquid Glass,
+Material 3 color roles and user-supplied Liquid Aqua 2.0 reference. The CodePen controls were
+visually inspected; no CodePen source was copied. Glassmorphism was removed as a separate mode.
