@@ -684,10 +684,12 @@ the module header).
 **Not runnable yet, deliberately.** Live stays OpenCode (`CODE_HARNESS_NAME`). Before any of these
 runs: (1) the sandbox image must install the pinned CLI and its ACP adapter
 (`@agentclientprotocol/claude-agent-acp`, `codex-acp`, `pi-acp`), which is a supply-chain change
-to the one container allowed to run commands and needs the user's go; (2) **pi's approvals must be
-bridged**: `pi-acp` does not document forwarding pi's `confirm` to ACP `session/request_permission`,
-so with it noevia's gate fails closed and pi can read but not edit; noevia needs either a bridge
-that forwards those requests or its own RPC transport; (3) engine compatibility is unverified:
+to the one container allowed to run commands and needs the user's go; (2) pi's approvals are bridged by
+noevia's own `services/code-sandbox/pi-acp-bridge.cjs` (community `pi-acp` does not document
+forwarding pi's dialogs): the gate's confirm carries the real tool and full input, becomes an ACP
+`session/request_permission` that noevia classifies like any harness call, and only an explicit
+"Allow once" confirms; other dialogs, malformed payloads, errors and a closed client refuse. Tested
+end to end through noevia's ACP client against a fake `pi --mode rpc`; not yet against real pi; (3) engine compatibility is unverified:
 Claude Code needs llama.cpp's Anthropic Messages endpoint and Codex needs its Responses endpoint;
 (4) Codex's read-only commands inside its own sandbox can run without asking, so the container
 stays the real boundary (D14, D25). Claude Code also needs the user's own sign-in if it is ever
