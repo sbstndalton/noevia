@@ -2230,6 +2230,15 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release e19119d — 2026-09-22 (text-free System-One decision log)
+
+Overlay `6c3cde0` → `e19119d` after appdata backup `ab_20260922_032441` (`gzip -t` passed).
+`RELEASE_e19119d_COMPLETE`; web, Diary, OCR healthy, zero restarts. Verified in the running
+container: a synthetic code question routed to Code and logged
+`[system-one] route {"selected":"code","options":3,"margin":0.72,"ms":639,"fellBack":null}`.
+Read live distributions with `docker logs cowork-web-1 2>&1 | grep '\[system-one\]'`.
+Rollback: `6c3cde0` with `.env.bak.before-e19119d`.
+
 ## Release 6c3cde0 — 2026-09-22 (System-One routing labels)
 
 Overlay `e7b59d6` → `6c3cde0` after appdata backup `ab_20260922_032035` (`gzip -t` passed on

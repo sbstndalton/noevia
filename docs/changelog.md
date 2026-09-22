@@ -1,3 +1,9 @@
+## 2026-09-22 — System-One decisions show up in the web log (release `e19119d`)
+
+Each routing and supervision decision writes one line — chosen role or action, margin, time
+and whether it fell back — and never the message. This is how the next tuning step gets real
+evidence instead of synthetic cases.
+
 ## 2026-09-22 — System-One routing picks Smart and Code when it should (release `6c3cde0`)
 
 Laya was routing most reasoning and code questions to the Fast model. Probing it with the exact
