@@ -2134,3 +2134,17 @@ Native engine ID/start time unchanged. Prior release and .env.bak.before-eadeb69
 confirmed descriptions above controls at every width, Material options two rows on phone
 and one on wider panels. Live General screenshot confirms readable descriptions above
 Material options. No model inference or production feature activation.
+
+## Release fafbc97 — 2026-09-21 (shared Material geometry)
+
+Overlay `eadeb69` → `fafbc97` after verified backup `ab_20260921_205919`
+(archive comparisons and gzip checks passed). All release preflights passed;
+`RELEASE_fafbc97_COMPLETE`. Web, Diary, OCR and model-loader healthy; public HTTP 200.
+Native engine container unchanged. Prior release and `.env.bak.before-fafbc97` retained.
+
+1171 tests passed; typecheck, production build and design lint passed. Synthetic
+measurements confirmed identical dimensions for 43 control/row boxes across all four
+materials at 375 and 1440 CSS pixels. Live Material 3 General settings screenshot
+confirmed readable stacked descriptions and rounded selection fills inside their tracks;
+original Soft preference restored after verification. No exhaustive all-page or Safari
+verification performed. No inference, downloads, engine changes or feature activation.
