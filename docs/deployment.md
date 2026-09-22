@@ -2230,6 +2230,15 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release f589874 — 2026-09-22 (durable System-One decision record)
+
+Overlay `bdddef4` → `f589874` after appdata backup `ab_20260922_043527` (`gzip -t` passed under
+`set -e`). `RELEASE_f589874_COMPLETE`; web healthy, no web-log errors. Routing and supervision
+decisions now also append text-free lines to `state/web/system-one-decisions.jsonl` (1 MiB plus
+one rotation). Summary: `docker exec cowork-web-1 node /app/server/decision-log.cjs
+/app/server/ui-data` (empty at release; fills with real use). Rollback: `bdddef4` with
+`.env.bak.before-f589874`.
+
 ## Release bdddef4 — 2026-09-22 (DAV modification times, web half)
 
 Overlay `080a91d` → `bdddef4` after appdata backup `ab_20260922_043234` (`gzip -t` passed under
