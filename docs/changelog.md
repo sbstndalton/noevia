@@ -1,3 +1,10 @@
+## 2026-09-22 — A local graph for Diary notes
+
+Open a note in the Diary editor and expand **Local graph** to see the notes it links to and the
+notes that link back, as a small diagram and a list you can click. Links you have just typed show
+straight away. Two-way links are drawn heavier, incoming links dashed. It only reads: nothing is
+indexed or changed, and it says so when the backlink scan could not cover every file.
+
 ## 2026-09-22 — Claude Code and pi can be pinned; Codex refused (releases `59249d9`, `d59d1a0`, `2577e16`)
 
 Nothing changes in Code mode today; it still runs OpenCode. noevia now knows how to lock down

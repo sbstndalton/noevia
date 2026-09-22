@@ -21,13 +21,19 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 - **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,225 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,228 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Diary local graph
+- Diary editor → Local graph: the open note, what it links to (Markdown and `[[wiki]]` links,
+  including ones typed but not saved) and what links back (the existing bounded backlink scan),
+  drawn as a small graph with clickable, keyboard-focusable nodes and a grouped list of names.
+  Read-only; no index; says when the scan was partial. `qa/diary-local-graph.cjs`.
 
 ### 2026-09-22 — Pinned configs for Claude Code, Codex and pi (release `59249d9`, deployed)
 - Claude Code and pi get noevia-written config (everything but reads asks, local engine only, no
@@ -166,7 +172,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
    model (`qa/pi-bridge-e2e.cjs`). Next,
    with your go: install one CLI (+ ACP adapter) in the sandbox image and run the `scratch` fixture. No `Auto` harness until there is evidence.
-6. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
+6. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
+   one-hop **local graph** shipped 2026-09-22) · a
    browser executor (spec-agent-execution §6; its policy module, `browser-policy.cjs`, is built and
    tested, 2026-09-22; the executor itself needs a node with a browser) · the Mac app with an offline Diary replica (D22).
 
