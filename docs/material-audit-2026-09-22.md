@@ -105,3 +105,62 @@ Validated candidate checkpoint:
   Diary navigation and connectors pass. The final motion-only confirmation is in progress.
 - Predeployment backup `ab_20260922_143433` completed without issues. Web, Diary and extra-file
   archives independently pass `gzip -t`; production is still release `04780e6`.
+
+Final review notes:
+- The Code compose, approval, delete and result screens were visually reviewed in all three
+  materials, light/dark, at phone width. Full arguments remain visible; all three ordinary
+  write actions remain reachable; delete/push still cannot receive standing approval.
+- Corrected General's description: theme and accent sync through the account; material,
+  density and motion are browser preferences. The old copy incorrectly promised material sync.
+- No known unresolved finding from this audit. This is not a claim of native Apple rendering,
+  complete Material platform certification, or physical-device/screen-reader certification.
+  Browser coverage is installed Chrome plus the Codex browser; the non-Chromium CSS fallback
+  and reduced-preference behavior are covered structurally/unit-wise, not on physical Safari.
+- Shared sizing/typography remain intentional product constraints. The Material skin maps
+  roles, shape, elevation and interaction states without reflowing the application when a
+  person switches material. Soft has no separate platform standard; its criteria here are
+  opacity, restrained depth, readable boundaries, focus and touch reachability.
+
+Reproduce from `apps/web` (set `PLAYWRIGHT_MODULE` to the installed Playwright module):
+
+```sh
+npm test
+npm run typecheck
+npm run build
+npm run lint:design
+node qa/materials.cjs
+node qa/material-preferences.cjs
+node qa/general-settings.cjs
+node qa/settings-navigation.cjs
+node qa/projects-library.cjs
+node qa/phone-drawer-settings.cjs
+node qa/appearance-system.cjs
+node qa/models-settings.cjs
+node qa/models-autotune.cjs
+node qa/diary-navigation.cjs
+node qa/connectors.cjs
+for material in soft liquid material; do
+  QA_MATERIAL=$material node qa/code-mode.cjs
+  QA_MATERIAL=$material node qa/mobile-approvals.cjs
+  QA_MATERIAL=$material node qa/onboarding.cjs
+done
+```
+
+Run the fixed-port suites serially. `qa/materials.cjs` writes its full synthetic inventory
+and screenshots to `QA_SCREENSHOTS` (default `/tmp/noevia-material-audit`); `QA_SECTIONS`
+optionally limits Settings destinations with `|` separators. The initial and final test logs
+in this work session are `/tmp/noevia-material-*.log`, `/tmp/noevia-code-*.log`,
+`/tmp/noevia-approvals-*.log` and `/tmp/noevia-onboarding-*.log`. They are temporary local
+artifacts; this document is the durable result and failure/fix record.
+
+Final contrast correction:
+- Reviewing the normal Personalization/Features panels exposed the second switch
+  implementation (`input.noevia-switch`): it still hard-coded white knobs in every theme.
+  Replaced these with outline/on-primary roles, added a visible off-track boundary, and
+  removed optical knob shadows in Material 3. Shared geometry is unchanged.
+- Added rendered knob/track contrast assertions for on/off, three materials and two themes;
+  all 12 combinations meet at least 3:1. The test waits for the existing background transition
+  to settle; its first attempt incorrectly sampled the transition immediately after toggling.
+- 1,247 tests, typecheck, build and design lint pass again. Dynamic accessibility/preferences
+  checks pass. A focused all-width sweep covers General, Personalization, Features and Security
+  plus the main views after this last correction; rollout evidence follows below.
