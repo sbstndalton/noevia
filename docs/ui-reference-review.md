@@ -160,3 +160,23 @@ Validation: typecheck, production build, design lint, unit suite; synthetic brow
 checks for general preferences/profile persistence, search and connector navigation,
 keyboard focus, responsive light/dark Settings at 375/768/1440, system theme tracking,
 and setup/project/Code mobile surfaces. No production data or Diary corpus was used.
+
+## Projects library polish — 2026-09-22
+
+Continued with Impeccable's product-interface guidance. The existing project grid,
+identity icons, palette and material choices are preserved. Cards now use a compact
+identity/title/action row, readable wrapping for long names, a visible ellipsis menu,
+and a Pinned marker reflecting real state. A native title button covers the card's
+primary click area; options and Restore remain independent buttons rather than
+controls nested inside a simulated button.
+
+Your projects / Archived now have arrow-key and Home/End navigation, roving focus,
+and an associated tab panel. Clearing a failed search restores input focus. When
+all projects are archived, the active list correctly says No active projects and
+provides View archived projects. Search feedback describes both names and descriptions,
+which are the fields actually searched. Update timestamps expose their full date.
+
+Validation: 1,242 unit tests, typecheck, build and design lint passed. Synthetic browser
+suites `projects-library`, `projects-empty` and `project-screen` passed. The library
+suite covers keyboard opening, independent menus, pin state, clear-filter focus,
+all-archived recovery, long names and 375/768/1440 layouts in light and dark.
