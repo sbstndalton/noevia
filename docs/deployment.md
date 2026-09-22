@@ -2230,6 +2230,16 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release d59d1a0 — 2026-09-22 (pi approval bridge)
+
+Overlay `59249d9` → `d59d1a0` after appdata backup `ab_20260922_041001`. Note: the pre-deploy
+`gzip -t` check in the command line was mis-quoted and printed "No such file" without stopping the
+overlay; the backup itself had completed (plugin log clean, all archives present) and all three
+archives passed `gzip -t` when rechecked right after. Guard the check with `&&` so a failure
+stops the release. `RELEASE_d59d1a0_COMPLETE`; web healthy, zero restarts, no web-log errors;
+the deployed pi gate carries noevia's machine-readable payload. Live harness still OpenCode;
+code-sandbox untouched. Rollback: `59249d9` with `.env.bak.before-d59d1a0`.
+
 ## Release 59249d9 — 2026-09-22 (pinned configs for Claude Code, Codex and pi)
 
 Overlay `b055571` → `59249d9` after appdata backup `ab_20260922_040516` (`gzip -t` passed).
