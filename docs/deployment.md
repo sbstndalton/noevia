@@ -2183,3 +2183,25 @@ the Laya configuration, retain Compose `docker-compose.yml.bak.before-laya`,
 Laya service, restore these files, and use the normal guarded release rollback. Do not
 delete the checkpoint to roll back. The existing unmanaged code-workspaces volume and
 kernel swap-limit warnings were unchanged; the host has no swap.
+
+### Activation and end-to-end verification — 2026-09-21
+
+User explicitly requested activation and one bounded synthetic chat with the configured
+local answering model. Enabled Step supervision through the authenticated admin UI;
+reload confirmed the persisted On state. Application remains `d8f4c21`.
+
+`qa/laya-chat-smoke.cjs` ran inside web with an isolated temporary tenant workspace,
+real `gemma-4-E2B_q4_0-it` requests, the real Laya endpoint, and a synthetic in-memory
+tool/approval gate. Successful result: two model requests, exactly one tool execution,
+one Laya decision (`continue`), final output `fixture complete`. No real source, Diary
+or external write tool was used. The first fixture attempt crashed parsing an SSE
+keep-alive during model loading; the next returned without a tool because this engine
+rejected object-valued tool_choice. Corrected the fixture to ignore keep-alives and
+use tool_choice=required with thinking disabled and 256 output tokens. The final test
+passed. These retries were setup corrections, not benchmarks or quality qualification.
+
+Temporary runner and synthetic workspaces removed. Web and Laya healthy. The answering
+model loaded through its existing inference endpoint; no engine configuration changed.
+The original System-One routing switch is still unconfigured/off. Laya endpoint setup
+is operator-only (`COWORK_DECISION_URL`); the UI currently exposes activation, not an
+endpoint/model editor.
