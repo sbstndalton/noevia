@@ -15,7 +15,7 @@ function load({ chromium = true, calm = false, nodes = [] } = {}) {
     matchMedia: () => media,
     getComputedStyle: () => ({ borderTopLeftRadius: '12px' }),
     requestAnimationFrame: (f) => frames.push(f),
-    ResizeObserver: class { observe(n) { observed.push(n); } },
+    ResizeObserver: class { observe(n) { observed.push(n); } disconnect() {} unobserve() {} },
     MutationObserver: class { constructor(f) { this.f = f; mutate = mutate || f; observers.push(f); } observe() {} },
     module: { exports: {} },
     document: {
@@ -29,7 +29,7 @@ function load({ chromium = true, calm = false, nodes = [] } = {}) {
 }
 const control = (width = 120, height = 36) => {
   const props = {};
-  return { props, style: { setProperty: (k, v) => { props[k] = v; } }, getBoundingClientRect: () => ({ width, height }) };
+  return { isConnected: true, props, style: { setProperty: (k, v) => { props[k] = v; } }, getBoundingClientRect: () => ({ width, height }) };
 };
 
 test('Chromium gets a per-size refraction filter on each lens control', () => {
@@ -72,4 +72,13 @@ test('filters are cached by size and radius, and zero-size nodes are skipped', (
   const hidden = control(0, 0);
   f.exports.fit(hidden);
   assert.equal(hidden.props['--lens'], undefined);
+});
+
+test('the in-app reduced-motion preference disables refraction too', () => {
+  const a = control();
+  const f = load({ nodes: [a] });
+  f.attributes['data-motion'] = 'reduced'; f.change();
+  assert.equal(f.attributes['data-lens'], undefined);
+  f.attributes['data-motion'] = 'system'; f.change();
+  assert.equal(f.attributes['data-lens'], 'svg');
 });

@@ -10,7 +10,7 @@
   `ab_20260918_092222`. Rollback target `35ed364` (release 1). The user is reviewing release 2 on
   desktop and phone; fold their feedback in before anything else.
 - **Release 1 (Foundation):** one M3 palette (`apps/web/scripts/palette.cjs`), `tokens.css`,
-  `materials.css` (Soft default, Liquid glass, Glassmorphism, Material 3), `public/lens.js`,
+  `materials.css` (Soft default, Liquid glass, Material 3), `public/lens.js`,
   `SegmentedControl`.
 - **Release 2 (Shell + Primitives + Connectors):** framed sidebar and workspace panes
   (`styles/shell-v2.css`); Settings is an in-app region that slides over the workspace (phone:
@@ -50,7 +50,7 @@
   Read `reference/craft-floor.md` before UI edits; run `impeccable detect` on changed files.
 - **Click-test every change yourself in Chrome** with Playwright
   (`PLAYWRIGHT_MODULE=~/noevia-local-test/node_modules/playwright-core`), desktop and phone,
-  light and dark, all four materials where relevant. Test data and screenshots live in
+  light and dark, all three materials where relevant. Test data and screenshots live in
   `~/noevia-local-test` (never inside the repo).
 - **Before each commit:** `npm test`, `npm run typecheck`, `npm run build` (empty
   `/tmp/noevia-qa-dist/*` first), `npm run lint:design`, and the affected `qa/*.cjs` suites all
