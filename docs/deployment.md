@@ -2230,6 +2230,14 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release 82605a0 — 2026-09-22 (Qwen Code pinned)
+
+Overlay `f589874` → `82605a0` after appdata backup `ab_20260922_103552` (`gzip -t` passed under
+`set -e`). `RELEASE_82605a0_COMPLETE`; web healthy, no web-log errors. The Diary image carried
+forward is the overlay image (`sha256:7e9ce07b…`; rollback tag `sha256:7c27989b…` kept). Live
+harness still pi. Deployed module: pi 3 files, Qwen Code 2, Claude Code 2, Codex and DeepSeek
+refused (409). Rollback: `f589874` with `.env.bak.before-82605a0`.
+
 ## Code mode harness → pi 0.87.0 — 2026-09-22 (user-approved)
 
 Image `cowork-code-sandbox:pi-0.87.0` built on the box from `releases/f589874/services/code-sandbox`
