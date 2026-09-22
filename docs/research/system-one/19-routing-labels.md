@@ -24,3 +24,8 @@ by approvals regardless, so no change was made on one case.
 **Latency:** median 0.45–0.6 s per decision; a few decisions reached ~1.1 s during back-to-back
 runs. Inside the 1.5 s deadline; misses fall back to the legacy classifier and three in a row
 bench the backend for 60 s.
+
+**End-to-end smoke (2026-09-22, release `e19119d`):** `qa/laya-chat-smoke.cjs` inside the web
+container against the model already loaded (`gemma-4-E4B-it-qat-UD-Q4_K_XL`; no model swap), two
+capped 256-token requests and a synthetic in-memory tool: the tool ran exactly once, the real Laya
+checkpoint returned "continue" (logged as `[system-one] supervise`), and the reply completed.

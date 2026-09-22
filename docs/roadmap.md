@@ -158,23 +158,23 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 
 ## Needs the user — in order
 
-0. **Look at the live footer once** while a reply streams (phone and desktop): the session had
+1. **Look at the live footer once** while a reply streams (phone and desktop): the session had
    no signed-in browser, so only the synthetic QA and bundle identity were verified.
-
-1. **Which repositories Code mode may open.** Only the throwaway `scratch` fixture is
+2. **Which repositories Code mode may open.** Only the throwaway `scratch` fixture is
    registered (`CODE_REPOS`); nothing real is reachable until you choose.
-2. **One model or two in the engine** — partly settled 2026-09-21: the second router slot is
+3. **One model or two in the engine** — partly settled 2026-09-21: the second router slot is
    the RAG reranker (the user's choice); embeddings run on the CPU `embed` container. The idle
    `nomic-embed-text-v1` router preset can go once nothing else needs it.
-3. **`Ornith-1.5-9B-Q5_K_M`** was removed from `models.ini` at 00:08 on 2026-09-21 (backup
+4. **`Ornith-1.5-9B-Q5_K_M`** was removed from `models.ini` at 00:08 on 2026-09-21 (backup
    `models.ini.bak-20260921-040852`); a restart dropped it from the served list. Restore or not.
-4. **First Connect Google Drive** on the live site, then retire the host rclone cron.
-5. **A maintenance window** (D2) for: the Tasks-box hints, the Prompt Architect benchmark, and the
+5. **First Connect Google Drive** on the live site, then retire the host rclone cron.
+6. **A maintenance window** (D2) for: the Tasks-box hints, the Prompt Architect benchmark, and the
    known-good settings measurements.
-6. **An engine API key** shared by noevia and the Nextcloud Assistant.
-7. **Real-device checks:** phone polish judgement, and the glass banding check (D13).
-8. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
-5. **Deep research live run** approval (D12).
+7. **An engine API key** shared by noevia and the Nextcloud Assistant.
+8. **Real-device checks:** phone polish judgement, the glass banding check (D13), and a Finder
+   Connect to Server with an app password once DAV sharing is on (docs/dav.md, 2026-09-22).
+9. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
+10. **Deep research live run** approval (D12).
 
 ## Lessons worth keeping
 
