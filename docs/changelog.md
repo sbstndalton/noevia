@@ -1,4 +1,4 @@
-## 2026-09-22 — Claude Code and pi can be pinned; Codex refused (releases `59249d9`, next)
+## 2026-09-22 — Claude Code and pi can be pinned; Codex refused (releases `59249d9`, `d59d1a0`, `2577e16`)
 
 Nothing changes in Code mode today; it still runs OpenCode. noevia now knows how to lock down
 more coding agents the way it locks OpenCode: every edit, command and web access asks you,

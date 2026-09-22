@@ -2230,6 +2230,14 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release 2577e16 — 2026-09-22 (Codex refused on measurement)
+
+Overlay `d59d1a0` → `2577e16` after appdata backup `ab_20260922_041658` (all three archives
+passed `gzip -t`, now under `set -e`, so a failed check stops the release). `RELEASE_2577e16_COMPLETE`;
+web healthy, no web-log errors. Deployed module: OpenCode 1 file, Claude Code 2, pi 3, Codex
+refused (409). Live harness still OpenCode; code-sandbox untouched. Rollback: `d59d1a0` with
+`.env.bak.before-2577e16`.
+
 ## Release d59d1a0 — 2026-09-22 (pi approval bridge)
 
 Overlay `59249d9` → `d59d1a0` after appdata backup `ab_20260922_041001`. Note: the pre-deploy
