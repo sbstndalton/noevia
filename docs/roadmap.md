@@ -18,7 +18,8 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
   Sidecar image tags are pinned in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not
   tied to the app release.
-- **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
+- **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**
+  (harness: **pi 0.87.0** since 2026-09-22; OpenCode one `.env` change away),
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
 - **Tests:** 1,230 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
@@ -28,6 +29,11 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
 ## Done
+
+### 2026-09-22 — Code mode runs pi (your go)
+- The sandbox runs pi 0.87.0 through noevia's own ACP bridge; every non-read action reaches the
+  approval card with its real command or path. Two live `scratch` tasks on the loaded model fixed
+  `median()` (test `ok`, only `median.js` changed). OpenCode remains one `.env` change away.
 
 ### 2026-09-22 — Diary image overlay (your go)
 - The Diary companion now runs the Trash-on-overwrite (`preserve`) and file-time (`modified`)
@@ -173,8 +179,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    off live (`COWORK_DAV_PORT=0`), and the Diary image now carries `preserve` and `modified`
    (overlay 2026-09-22), so turning it on is your call alone.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
-5. **Other harnesses** — **Claude Code and pi pinned and proven with the real CLIs 2026-09-22;
-   Codex refused on measurement** (its commands run unasked inside its own sandbox)
+5. **Other harnesses** — pi is live (2026-09-22); Claude Code pinned and proven with the real
+   CLI; Codex refused on measurement. Next: Qwen Code and the DeepSeek harness (your request)
    (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
    noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
    model (`qa/pi-bridge-e2e.cjs`). Next,
@@ -203,8 +209,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    Connect to Server with an app password once DAV sharing is on (docs/dav.md, 2026-09-22).
 9. **`--fit on --fit-target 1024`** for the engine, now that the syslog mirror is on.
 10. **Deep research live run** approval (D12).
-11. **Which extra coding harness to install first** in the sandbox image (Claude Code or pi; configs are pinned, the install is a supply-chain change). Claude Code needs your sign-in
-    if it is ever pointed beyond the local engine.
+11. **Claude Code in the sandbox** — pinned and proven locally; installing it is your call (it
+    needs llama.cpp's Anthropic endpoint to work with your model, and your sign-in if ever pointed
+    beyond the local engine).
 
 ## Lessons worth keeping
 

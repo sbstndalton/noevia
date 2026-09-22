@@ -2230,6 +2230,28 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Code mode harness → pi 0.87.0 — 2026-09-22 (user-approved)
+
+Image `cowork-code-sandbox:pi-0.87.0` built on the box from `releases/f589874/services/code-sandbox`
+(`--build-arg HARNESS_PACKAGE=@earendil-works/pi-coding-agent HARNESS_VERSION=0.87.0`, `--network
+host`; it contains `pi-acp-bridge.cjs`). Tested first in a **temporary** second sandbox
+(`cowork-code-sandbox-pi-test`, same hardening, network and volume; removed after): engine
+reachable, `model-loader` unresolvable, and one real task through noevia's code service on the
+loaded `gemma-4-E4B-it-qat-UD-Q4_K_XL` (no model swap) fixed `scratch`'s `median()` with three
+approval cards (`ls -F`, edit `median.js`, `node test.js`), all shown with their real command/path
+and allowed by rule; only `median.js` changed; `node test.js` prints `ok` on the task branch.
+
+Then, with `docker-compose.override.yml.bak.before-pi-harness` and `.env.bak.before-pi-harness`:
+the override's sandbox build args and `CODE_HARNESS_COMMAND/ARGS` became `.env` variables
+defaulting to OpenCode, and web gained `CODE_HARNESS_NAME/VERSION`; `.env` sets
+`CODE_SANDBOX_VERSION=pi-0.87.0` plus six pi lines. `compose config` valid; web recreated through
+preflight `up.sh` (all three checks passed), sandbox recreated; both healthy. A second task through
+the **live** wiring (`code-sandbox:8030`, harness list from env) completed with five approvals
+(two edit rounds), only `median.js` changed, test `ok`; the fixture's `main` is unchanged.
+**Back to OpenCode:** `CODE_SANDBOX_VERSION=opencode-1.18.31`, delete the six pi lines, recreate
+web and `code-sandbox` (the OpenCode image is still on the box). Known limits: pi reports no
+token usage or exit codes through the bridge (shown as such in the task meta).
+
 ## Diary image overlay — 2026-09-22 (user-approved)
 
 The Diary image was last built at `bb78a1a` (2026-09-20). Since then only

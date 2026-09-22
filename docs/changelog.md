@@ -1,3 +1,11 @@
+## 2026-09-22 — Code mode now runs pi
+
+The coding agent in Code mode is now **pi**, the minimal agent many forks start from. It runs in
+the same locked-down sandbox. Because pi normally never asks before acting, noevia adds its own
+gate: every edit and command shows up on your approval card first, with the exact command or
+file. Tested live twice on the throwaway `scratch` repository: it fixed the bug and the tests
+pass. OpenCode is still installed and one setting away.
+
 ## 2026-09-22 — Diary service updated
 
 The Diary service now keeps the previous version in Trash when a WebDAV client overwrites a

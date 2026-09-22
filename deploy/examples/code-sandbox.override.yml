@@ -12,6 +12,7 @@
 #   CODE_REPOS=scratch|/workspaces/repos/scratch  # repositories, named, absolute, git
 #   CODE_WORKSPACE_ROOT=/workspaces/trees         # worktrees on the SHARED volume, not tenant state
 #   CODE_HARNESS_USER=1000:1000                   # who the sandbox runs as
+#   CODE_HARNESS_NAME=opencode|pi|claude-code     # web: the harness noevia pins config for
 #
 # Those last two are not optional, and staging this on DaServer is what proved it:
 #   * noevia creates the worktree and sends its absolute path; the supervisor resolves that same
@@ -26,8 +27,8 @@ services:
     build:
       context: ../../services/code-sandbox
       args:
-        HARNESS_PACKAGE: opencode-ai
-        HARNESS_VERSION: "1.18.31"
+        HARNESS_PACKAGE: ${CODE_SANDBOX_PACKAGE:-opencode-ai}
+        HARNESS_VERSION: "${CODE_SANDBOX_HARNESS_VERSION:-1.18.31}"
     # Tagged by what it contains -- the harness and its pinned version -- not by the web
     # release, so an application overlay does not go looking for a sandbox tag nobody built.
     image: cowork-code-sandbox:${CODE_SANDBOX_VERSION:-local}
@@ -56,8 +57,12 @@ services:
       - code
     environment:
       WORKSPACE_ROOT: /workspaces
-      CODE_HARNESS_COMMAND: opencode
-      CODE_HARNESS_ARGS: acp
+      # Which harness the sandbox runs; unset = OpenCode. For pi (noevia's ACP bridge routes its
+      # approvals to noevia): CODE_SANDBOX_PACKAGE=@earendil-works/pi-coding-agent,
+      # CODE_SANDBOX_HARNESS_VERSION=0.87.0, CODE_SANDBOX_COMMAND=node,
+      # CODE_SANDBOX_ARGS=/srv/pi-acp-bridge.cjs, and on web CODE_HARNESS_NAME=pi.
+      CODE_HARNESS_COMMAND: ${CODE_SANDBOX_COMMAND:-opencode}
+      CODE_HARNESS_ARGS: ${CODE_SANDBOX_ARGS:-acp}
       PORT: "8030"
     # No `ports:`. Publishing this would let anything that reaches the host start a coding
     # agent, and there is no authentication here by design — reachability IS the control.
