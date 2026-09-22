@@ -173,8 +173,9 @@ uses a fixed core tool set, and disables hooks, skills/commands, plugin sync and
 servers; sandboxed Bash auto-allow and both update paths are off. pi
 now starts offline with only noevia's managed extension and fixed tools, refuses project trust,
 does not load repository context files or persist sessions, waits for `agent_settled`, times out a wedged approval, and is installed
-with lifecycle scripts disabled. Codex remains refused. Fake-agent/bridge coverage passes; no CLI
-was installed and this has not been deployed. The first durable-chat slice
+with lifecycle scripts disabled. Codex remains refused. Merged with the settings/project-library UI on the integration branch. All 1,245 tests
+and the real pi/Claude CLI checks against scripted synthetic models pass; deployment pending.
+See [integration evidence](integration-2026-09-22.md). The first durable-chat slice
 (research/system-one/15) remains an internal, default-off seam.
 
 ## Next — in order
