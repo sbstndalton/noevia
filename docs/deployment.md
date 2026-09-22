@@ -2105,3 +2105,22 @@ Overlay `67f336e` → `f9dc5df` after appdata backup `ab_20260921_171118` (all a
 
 Overlay `f9dc5df` → `c53713b` after appdata backup `ab_20260921_171809` (all archives `gzip -t` clean); no compose or engine changes. Data change, requested by the user: web was stopped for about 20 s while a one-off `node` run in the release image set every project in the admin workspace to `routing: "auto"` (205 changed) and wrote `preferences.json` `{defaultRouting:"auto"}`. Backup: `users/17522ab5…/projects.json.bak.before-auto-default`; files kept at 0600. Web healthy afterwards; site 200. Retain `f9dc5df`.
 Then, at the user's request, the same one-off ran for member Ernestpov (`users/b32fbf0a…`, 1 of 1 project switched, backup `projects.json.bak.before-auto-default`; no preferences file, so the built-in Auto default applies). Web healthy; site 200.
+
+## Release 126637e — 2026-09-21 (shared responsive controls and experimental routing)
+
+User authorized automatic deployment. Overlay `c53713b` → `126637e`, dependencies unchanged.
+Fresh local production build; prior source verification: 1170 unit tests, typecheck,
+build and design lint passed. Backup `ab_20260921_202839` completed with archive comparisons
+and `gzip -t` verification. Deployment mount, model-loader isolation and env preflights passed;
+`RELEASE_126637e_COMPLETE`. Web/Diary/OCR/model-loader/native engine healthy, zero restarts.
+Public root HTTP 200, web startup log clean. Native inference and embedding container IDs
+and start times unchanged. No model execution, downloads or personal-source testing.
+
+Authenticated live browser confirmed the repaired General settings: Material description
+347 px wide, selector client/scroll width both 347 px, all four choices visible. Experimental
+section present; System-One switch off/disabled with dedicated endpoint not configured.
+Durable chat remains opt-in and unwired; no automatic replay enabled. Existing reranker unchanged.
+
+Retain release `c53713b` and `.env.bak.before-126637e` for rollback via the existing preflight
+no-build release flow. Deployment emitted the pre-existing unmanaged code-workspaces volume
+warning; running sidecars were preserved. No Compose or engine configuration changed.

@@ -1,3 +1,11 @@
+### 2026-09-21 — Release 126637e deployed
+
+User authorized automatic deployment. Live now includes the shared responsive-control fixes,
+Experimental settings and prior bounded continuation source changes. Backup and preflight
+passed; all checked services healthy, public HTTP 200. Live Material text/options visually
+verified. System-One remains off/unconfigured, durable chat inactive, native engine unchanged.
+See [deployment verification and rollback](deployment.md#release-126637e--2026-09-21-shared-responsive-controls-and-experimental-routing).
+
 ### 2026-09-21 — Shared settings and segmented-control wrapping (local, undeployed)
 
 Fixed the shared flex-row cause of one-word-per-line descriptions and clipped controls.
