@@ -199,6 +199,15 @@ files still require `If-Match` (428). Run 2, same harness: **18/18 pass** — cr
 rename, server-side copy, delete, sync, purge, overwrite with the old version in Trash, and
 every attempt on `INDEX.md` refused with it byte-identical.
 
+### macOS attempt — 2026-09-22 (macOS 27.0, not completed)
+
+The same fixture was mounted with `mount_webdav`, the filesystem Finder uses. Every form
+(credentials in the URL, `-a` descriptor, with and without `-S`, sandboxed or not) exited 22/19
+**before sending any request** (a logging proxy saw none), so macOS refused locally — most likely
+a privacy permission the agent's shell lacks. Nothing about noevia was measured. Expect Finder to
+mount **read-only**, since it only writes to class-2 (LOCK) servers and noevia advertises `DAV: 1`
+(D6). The real check is the user's: Finder → Go → Connect to Server with an app password.
+
 ### Decision (D6, 2026-09-17)
 
 Protected set confirmed — capture files, month files, the index — plus `AI Memory/**`.
