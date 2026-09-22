@@ -1,5 +1,14 @@
 ### 2026-09-21 — Material 3 shares component geometry
 
+## 2026-09-21 — Experimental step supervision
+
+Added a separate unavailable-by-default Experimental entry and a provider-neutral chat
+checkpoint seam. Mocked decisions can continue, request a bounded verification round,
+or pause for review. Failed decisions preserve existing behavior; durable escalation
+uses the existing checkpoint store and blocks automatic restoration. No Jev/Laya calls,
+model switching or replay. 1181 web tests, typecheck, build and design lint pass.
+See [scope and verification](research/system-one/17-step-supervision.md).
+
 Material 3 now inherits the shared dimensions, padding, font metrics and layout borders
 instead of replacing them. Tonal colors, radii, shadows and inset outlines retain the
 Material appearance. Removed the width-changing selected checkmark and matched segment

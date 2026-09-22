@@ -14,6 +14,9 @@ Current durability follow-up: [first internal durable-chat slice](15-durable-cha
 Current experimental UI follow-up: [opt-in routing switch](16-experimental-routing.md)
 (local source only; baseline, not a selected dedicated System-One model).
 
+Current supervision follow-up: [provider-neutral step supervision](17-step-supervision.md)
+(disabled; injected mocked providers only).
+
 ## Deliverables
 
 | # | Document |
