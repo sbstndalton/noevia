@@ -2205,3 +2205,27 @@ model loaded through its existing inference endpoint; no engine configuration ch
 The original System-One routing switch is still unconfigured/off. Laya endpoint setup
 is operator-only (`COWORK_DECISION_URL`); the UI currently exposes activation, not an
 endpoint/model editor.
+
+
+## Release 54d7cf2 — 2026-09-22 (decision-service setup and routing)
+
+Overlay `d8f4c21` → `54d7cf2` after backup `ab_20260922_004935`; plugin
+archive verification and gzip integrity checks passed. All release preflights passed,
+`RELEASE_54d7cf2_COMPLETE`, web/Diary/OCR healthy with zero restarts, public HTTP 200.
+Laya remains healthy. Native inference/embedding container IDs and start times unchanged.
+No dependencies, engine configuration, model files or Compose changes. Retain `d8f4c21`
+and `.env.bak.before-54d7cf2` for rollback. Existing volume/swap warnings unchanged.
+
+Authenticated live UI verified Decision service setup in Settings → Server → Experimental.
+Test connection reported ready without inference. Saved `http://laya:8040`, deadline
+1500 ms, enabled System-One routing, and reloaded: endpoint/deadline and both routing
+and Step supervision remain enabled. Existing approval gates/manual models unchanged.
+Source release pushed to origin/main.
+
+Validation: `npm --prefix apps/web test` passed all 1192 tests; typecheck, build,
+design lint and git diff --check passed. Synthetic browser checks covered save/reload,
+invalid URL preserving saved state, focused errors and successful health tests.
+Light/dark Experimental layouts checked at 375/768/1440 CSS pixels without horizontal
+overflow; narrow and desktop screenshots inspected, plus live deployed screenshot.
+No additional real inference, routing-quality benchmark, paid endpoint call, personal
+source/Diary test, Safari test or exhaustive all-view visual sweep was run.
