@@ -641,6 +641,15 @@ origin matches the secret's domain list, and never returns substituted values in
 **Uncertain outcomes:** a connection loss or timeout after a submit/pay action records
 `tool.uncertain` on the job; the step is not retried and the user is asked to check.
 
+**Policy module built — 2026-09-22.** `apps/web/server/browser-policy.cjs` implements the
+consequence classifier, navigation check and secret handling above as pure functions with tests
+(`browser-policy.test.cjs`): http(s) only, allowlisted hosts and their subdomains, no local or
+private addresses or embedded credentials; submits (explicit, default form buttons, Enter in a
+form), uploads, POST navigation and consequential labels (en/de/fr/es, whole words,
+accent-insensitive) need approval; reads, typing and selecting do not; unknown actions ask.
+`{{secret:name}}` is substituted only on the secret's domains; evidence is masked. Not wired to
+anything: no executor, route or flag yet.
+
 **Implementation choice:** start with direct Playwright/CDP on the node for the classifier and
 audit control; evaluate Browser Use behind the same interface only with its telemetry disabled
 and its agent loop wrapped by this classifier.

@@ -21,7 +21,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 - **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,219 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,225 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
@@ -167,7 +167,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    model (`qa/pi-bridge-e2e.cjs`). Next,
    with your go: install one CLI (+ ACP adapter) in the sandbox image and run the `scratch` fixture. No `Auto` harness until there is evidence.
 6. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
-   browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
+   browser executor (spec-agent-execution §6; its policy module, `browser-policy.cjs`, is built and
+   tested, 2026-09-22; the executor itself needs a node with a browser) · the Mac app with an offline Diary replica (D22).
 
 ## Needs the user — in order
 
