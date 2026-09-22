@@ -2230,6 +2230,13 @@ overflow; narrow and desktop screenshots inspected, plus live deployed screensho
 No additional real inference, routing-quality benchmark, paid endpoint call, personal
 source/Diary test, Safari test or exhaustive all-view visual sweep was run.
 
+## Release 1752ac5 — 2026-09-22 (browser policy module, unwired)
+
+Overlay `2577e16` → `1752ac5` after appdata backup `ab_20260922_042040` (`gzip -t` passed under
+`set -e`). `RELEASE_1752ac5_COMPLETE`; web healthy, no web-log errors. Adds
+`server/browser-policy.cjs`, which nothing calls yet; no behaviour change. Rollback: `2577e16`
+with `.env.bak.before-1752ac5`.
+
 ## Release 2577e16 — 2026-09-22 (Codex refused on measurement)
 
 Overlay `d59d1a0` → `2577e16` after appdata backup `ab_20260922_041658` (all three archives
