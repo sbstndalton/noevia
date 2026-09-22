@@ -11,6 +11,9 @@ Current implementation follow-up: [adapter cutoff and conditional bounds](14-ada
 Current durability follow-up: [first internal durable-chat slice](15-durable-chat-slice.md)
 (disabled by default; synthetic verification only).
 
+Current experimental UI follow-up: [opt-in routing switch](16-experimental-routing.md)
+(local source only; baseline, not a selected dedicated System-One model).
+
 ## Deliverables
 
 | # | Document |

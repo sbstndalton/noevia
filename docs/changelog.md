@@ -1,3 +1,15 @@
+### 2026-09-21 — Experimental System-One routing switch (local, undeployed)
+
+Settings → Experimental now exposes an administrator-only System-One routing switch,
+using the existing persisted/audited feature registry. On selects the option-logit
+comparison baseline for new Auto role decisions; off restores the existing classifier.
+Failures and deadlines fall back to that classifier. Requires an explicitly configured
+private decision endpoint; no model is loaded, downloaded or selected automatically.
+1170 unit tests, typecheck, build and design lint passed. Synthetic browser checks covered
+save/reload, keyboard rollback and mobile/desktop presentation. See
+[implementation and verification](research/system-one/16-experimental-routing.md).
+No deployment or real inference. Dedicated System-One model selection remains open.
+
 ### 2026-09-21 — Default model mode setting (release c53713b, deployed)
 
 ### 2026-09-21 — Broader continuation verification (local, undeployed)
