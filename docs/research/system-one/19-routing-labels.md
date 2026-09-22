@@ -45,3 +45,8 @@ checkpoint returned "continue" (logged as `[system-one] supervise`), and the rep
 (0.15–0.34) and one near-tie (0.02), one Code request sent to Smart. A "near-tie → Smart" gate
 (margin < 0.1) would fix one miss and move four correct Fast decisions to Smart, so it was not
 adopted. Remaining errors lean Fast-for-Smart; revisit with the live `[system-one]` margins.
+
+**Third held-out set (`scripts/system-one-probe-heldout3.json`):** the shipped labels scored 81/90
+across sets 1–2 and 45/50 on set 3. Two Smart-label variants (adding "advice, stories, emails";
+narrowing Fast to "a quick fact answerable in a few words") scored lower on both (75–79/90,
+43/50), so the shipped labels stand. Across three fresh sets routing is right about 9 times in 10.
