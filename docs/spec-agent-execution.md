@@ -688,6 +688,7 @@ the module header).
 |---|---|---|---|---|
 | Claude Code | `./.claude/settings.local.json` (outranks user and shared settings) + `~/.claude/settings.json` | `ask`: Edit, Write, NotebookEdit, Bash, WebFetch, WebSearch; bypass and auto modes disabled | `env`: `ANTHROPIC_BASE_URL` (engine root; llama.cpp `/v1/messages`), `ANTHROPIC_MODEL` | auto-updater, non-essential traffic, telemetry |
 | Codex | — refused (409) | see "Codex, measured" | — | — |
+| Qwen Code | `./.qwen/settings.json` (outranks user) + `~/.qwen/settings.json` | `tools.approvalMode: "default"` — its default is now `auto` (an LLM classifier approves unasked) | `modelProviders.openai` → engine, key via the file's own `env` | auto-update, usage statistics |
 | pi | `~/.pi/agent/{models.json,settings.json,extensions/noevia-gate.js}` | global extension: every non-read tool asks with full input; no UI channel, an error or anything but `true` blocks | provider `noevia`, `openai-completions` | install telemetry |
 
 **Not runnable yet, deliberately.** Live stays OpenCode (`CODE_HARNESS_NAME`). Before any of these
@@ -726,3 +727,15 @@ pointed anywhere but the local engine. No `Auto` harness until paired evidence e
   is not a nested-sandbox artefact. Codex's gate is its OS
   sandbox, and commands inside it never ask, which D14 does not allow. Revisit if Codex gains an
   "ask for every command" policy.
+- **Qwen Code 0.24.3** in `--acp` mode (`qa/qwen-code-e2e.cjs`): requests only to the pinned
+  endpoint; `run_shell_command` arrived as a card with the full command; Allow once ran it,
+  Decline blocked it; a repository's own `.qwen/settings.json` with `approvalMode: "yolo"` is
+  overwritten by noevia's pin and the call still asked. `.qwen/` and `.pi/` are now in
+  `HARNESS_LEAVINGS`, so pinned files are never committed onto a task branch.
+- **DeepSeek Harness (`@deepseek-ai/dsh`, 0.0.1-rc)**, read at source, not yet run: an ACP agent
+  server (`dsh --profile acp`) whose approval seam is fail-closed (`ask` by default; only
+  `allowed-once` proceeds) and forwards approvals as `session/request_permission` (allow/reject
+  once) — the right shape for noevia. Its model endpoint is a custom `llm-pi-ai` provider
+  (`openai-completions`, `baseURL`) in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`, with the key
+  read from an env var. Not pinned yet: still refused (409) until the same real-program check the
+  others passed has been run against its release build.

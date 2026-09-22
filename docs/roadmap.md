@@ -22,7 +22,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   (harness: **pi 0.87.0** since 2026-09-22; OpenCode one `.env` change away),
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,230 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
+- **Tests:** 1,231 server and front-end unit tests pass locally (none touches production). The last full browser QA sweep, on 2026-09-22 against `e19119d`,
   was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
   passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
@@ -180,7 +180,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    (overlay 2026-09-22), so turning it on is your call alone.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
 5. **Other harnesses** — pi is live (2026-09-22); Claude Code pinned and proven with the real
-   CLI; Codex refused on measurement. Next: Qwen Code and the DeepSeek harness (your request)
+   CLI; **Qwen Code pinned and proven with the real CLI**; Codex refused on measurement. Next: run
+   the DeepSeek harness (`dsh --profile acp`, read at source: fail-closed approvals forwarded over
+   ACP) against a fake model like the others, then pin it
    (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
    noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
    model (`qa/pi-bridge-e2e.cjs`). Next,
