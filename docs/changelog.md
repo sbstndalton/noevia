@@ -1,3 +1,18 @@
+## 2026-09-22 — Compact context inside tool continuations
+
+The chat loop now rechecks and, when necessary, compacts its model-facing projection before
+every continuation after tool execution. The saved transcript and cross-turn summary remain
+unchanged. The current user turn, assistant tool calls and their matching results stay
+byte-identical and atomic; invalid or oversized protected groups stop with a readable error
+without deleting messages, fabricating results or replaying tools. Continuation summaries use
+the existing provider-neutral compaction call and conservative context estimate, in bounded
+rolling batches. The context meter and opt-in context log report the compacted continuation.
+
+Verification: 1,196 web tests, typecheck, production build, design lint and diff whitespace
+checks pass. Focused coverage forces the real handler over budget between tool rounds and
+confirms the next request receives a summary plus the intact current tool group. No model
+inference, paid endpoint, personal source or Diary data was used.
+
 ### 2026-09-21 — Material 3 shares component geometry
 
 ## 2026-09-22 — Configure and enable Laya routing in Experimental

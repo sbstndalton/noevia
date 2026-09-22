@@ -10,18 +10,21 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-09-21
+## Where things stand — 2026-09-22
 
-- **Live:** release **`067ac1d`** on DaServer at **https://noevia.daserver.work**, built from
+- **Live:** release **`54d7cf2`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
-- **Stack (nine containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
-  embeddings), kiwix, model-loader, **code-sandbox**, **docling**. Sidecar image tags are pinned
-  in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not tied to the app release.
-- **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**.
+- **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
+  embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
+  Sidecar image tags are pinned in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not
+  tied to the app release.
+- **Features on:** previews, Diary MCP append, tool router, Kiwix, off-site backup, **Code mode**,
+  **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,024 server and front-end unit tests pass (none boots the server or touches the
-  network); the full browser QA sweep on 2026-09-21 was **73 of 73 green**. `diary-reading` has been timing-flaky under a full sweep
-  before and passes on its own.
+- **Tests:** 1,196 server and front-end unit tests pass locally (none touches production); the
+  deployed decision-service release passed 1,192. The last full browser QA sweep, on 2026-09-21,
+  was **73 of 73 green**. `diary-reading` has been timing-flaky under a full sweep before and
+  passes on its own.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
@@ -113,6 +116,11 @@ benchmarks) · UI overhaul releases 1–4 (materials, primitives, Plugins page) 
 rename with passkey continuity · Kiwix offline Wikipedia.
 
 ## Local source work — not deployed
+
+2026-09-22: tool-loop continuations now re-budget and compact their transient model-facing
+projection before another provider request. Current-turn tool groups stay atomic and unchanged;
+the transcript is not rewritten and tools are never replayed to repair context. 1,196 tests,
+typecheck, build and design lint pass. No inference was run.
 
 2026-09-21: user-authorized continuation applied adapter cutoff/bounds fixes, then prioritized
 the [first durable-chat slice](research/system-one/15-durable-chat-slice.md). It is an internal

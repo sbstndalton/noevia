@@ -4,6 +4,13 @@ Status: **research/design**, 2026-09-16. Nothing here is implemented unless mark
 *present*. Strengthens the existing metering and compaction in
 `apps/web/server/chat-context.cjs`; it does not replace it. Roadmap: Research priority 1.
 
+Implementation follow-up, 2026-09-22: every tool continuation is now measured before its
+provider request. An over-budget projection rolls older context into a transient summary while
+preserving the current user turn and complete tool-call/result groups byte-identically. It does
+not change the transcript or persisted cross-turn summary, and failure never drops or fabricates
+tool results. This closes the intra-request compaction gap; exact tokenizer integration and a
+durable full-result store remain outside this slice.
+
 ## 1. Three layers (architectural principle)
 
 | Layer | What it is | Where it lives today |
@@ -28,6 +35,9 @@ from the record and may be regenerated; the record is never rewritten to make a 
   two exchanges (cut moved back to a user message); rolling summary in batches (≤45% limit
   each, output ≤1536 tokens, ≤24 calls, ≤1000 messages); rejects empty/oversized summaries
   and non-shrinking results; state saved atomically with a prefix hash. *Present.*
+- Tool-loop continuation compaction (`compactContinuation`): re-measures before each provider
+  continuation, summarizes only context older than the current user turn in bounded batches,
+  validates complete tool groups and updates the transient meter. *Present.*
 
 ### Gaps
 1. **No protected-input preflight.** Summarizer calls start without checking whether the
