@@ -14,6 +14,8 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 - **Live:** release **`3d2521d`** on DaServer at **https://noevia.daserver.work**, built from
   `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
+- **Pushed, awaiting deployment:** **`80d116f`** streams request-local reply telemetry to the
+  footer. It does not change the live release until DaServer deployment and visual checks pass.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
   Sidecar image tags are pinned in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not
@@ -123,6 +125,12 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 ## Local source work — not deployed
 
+2026-09-22: `80d116f` is pushed to `origin/main`. The footer now separates current-chat SSE
+telemetry from engine-wide polling, shows generating/first-output state immediately, and applies
+exact provider usage across tool-loop rounds. 39 focused and 1,111 socket-free tests pass;
+typecheck/build/design lint pass. Chromium and local listener execution were blocked by this task
+sandbox, so the synthetic browser QA is authored but not run and no visual result is claimed.
+
 2026-09-21: user-authorized continuation applied adapter cutoff/bounds fixes, then prioritized
 the [first durable-chat slice](research/system-one/15-durable-chat-slice.md). It is an internal
 dependency-injection seam, default off and unwired in production. No automatic model switching
@@ -134,16 +142,23 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
 
 **Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Multi-hop rerun done (12→6 3/4). Next: watch fallback rates in the web log (`[rag] rerank`).
 
-1. **Confirm the tax-folder documents re-read under Docling** the next time that project is
+1. **Deploy and exercise `80d116f`, then iterate System-One routing.** Run the synthetic,
+   non-personal footer QA on a browser-capable host and verify the live footer at phone/tablet/
+   desktop widths. Then use bounded synthetic prompts to inspect Laya's actual Fast/Smart/Code
+   and step-supervision decisions, adjust routing/fallback behavior where evidence warrants it,
+   and repeat test → deploy → verify. Preserve approval gates, execution budgets and manual model
+   choices; this is not authority for benchmarks, paid calls, personal sources, model downloads,
+   training, engine changes or heavy compute.
+2. **Confirm the tax-folder documents re-read under Docling** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
-2. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2).
+3. **DAV client interoperability, remaining clients** — rclone passes 18/18 (docs/dav.md, run 2).
    Still to run: Finder, Windows Explorer/WinSCP, iOS Files, Obsidian WebDAV sync. DAV sharing is
    off live (`COWORK_DAV_PORT=0`), and the Diary image still needs rebuilding for `preserve`
    before it is turned on.
-3. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
-4. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
+4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
+5. **Other harnesses** (Claude Code, Codex) — each needs its own pinned config before it runs;
    an `Auto` harness only once there is evidence to choose between them.
-5. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
+6. **Later:** a Diary graph (needs an index the Diary deliberately does not keep) · a
    browser executor (spec-agent-execution §6) · the Mac app with an offline Diary replica (D22).
 
 ## Needs the user — in order

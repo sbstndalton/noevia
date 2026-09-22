@@ -1,3 +1,21 @@
+## 2026-09-22 — Request-local live inference readouts (source `80d116f`, pushed; not deployed)
+
+The inference footer now follows the visible chat's own event stream instead of treating the
+engine-wide `/api/stats` poll as reply telemetry. It shows the routed model and generating state
+immediately, records server-observed first output as it arrives, and applies provider-reported
+tokens, rate and MTP acceptance without waiting for the next poll. Tool-loop rounds are
+cumulative and use a weighted provider rate. Missing measurements remain explicitly unavailable;
+they are never guessed from chunks or text. Engine totals/hardware stay separately labelled, so
+another chat or a stale poll cannot replace the visible reply's facts.
+
+Verification: 39 focused telemetry/tool-loop tests and 1,111 socket-free tests pass; typecheck,
+production build (195 modules), design lint and diff whitespace checks pass. The full suite could
+not complete in this task sandbox: 34 listener-based tests were refused with `listen EPERM`, while
+1,143 tests passed and no assertion failure was observed. A fully synthetic, port-free browser QA
+was added, but Chromium launch and visual inspection were blocked by the task's browser sandbox.
+No inference, benchmark, paid endpoint, personal source or Diary data was used. Production remains
+on `3d2521d` until the pushed source is deployed and checked on DaServer.
+
 ## 2026-09-22 — Compact context inside tool continuations
 
 The chat loop now rechecks and, when necessary, compacts its model-facing projection before
