@@ -1,38 +1,16 @@
-# Plan: keep backup settings status refreshes ordered
+# Backup status ordering
 
 Issue: #35
 
-Status: plan only; implementation pending.
+Implemented: every status request has an identity; only the current request can update status or report a load error. Starting a backup/restore action invalidates earlier reads immediately, and its follow-up refresh supersedes earlier action and Google Drive refreshes. Unmount invalidates pending reads. Status failures have a Reload status action and remain separate from action POST failures.
 
-## Problem
-
-Backup settings starts status refreshes after backup and restore-test actions and from Google Drive changes/polling. These requests can overlap, and every response can replace component state. A slower earlier refresh can therefore make a later completed action appear to revert.
-
-## Intended changes
-
-- Give every backup-status load a monotonically increasing request identity or abort superseded requests.
-- Allow only the current refresh to update `status` or surface a load error.
-- Keep action POST failures distinct from status-refresh failures so a successful refresh does not erase useful action feedback and a stale load failure cannot obscure current state.
-- Ensure the follow-up refresh launched by an action is authoritative relative to all earlier loads.
-- Preserve Google Drive `onChange` and pending-state polling while applying the same ordering rule to their loads.
-- Keep the solution local to this settings surface unless a small existing helper already matches the contract; do not introduce a general request framework.
-
-## Acceptance criteria
-
-- A delayed refresh from an earlier action cannot replace status returned after a later action.
-- A Google Drive refresh or poll cannot replace a newer action result, and a superseded error cannot become the current alert.
-- Backup, restore-test, copy, connect, disconnect, and polling controls retain their existing operation/pending behavior.
-- Server-side operation exclusivity remains unchanged.
+The original mount/action example was unreachable because action controls are hidden before the initial response. The corrected regression uses enabled successive actions and Google Drive copy followed by a restore test.
 
 ## Verification
 
-- Add real-component tests using deferred intercepted APIs. Complete one enabled action and hold refresh A, complete a second enabled action and return refresh B, then release A; assert B remains visible.
-- Cover overlap between a Google Drive `onChange` or pending poll and an action refresh.
-- Cover stale success and stale failure, plus an ordinary action POST failure and recovery.
-- Assert the initial loading state still gates action controls until the first status arrives.
-- Run web tests, typecheck, and production build.
-- Exercise Settings → Backups in Chromium with synthetic APIs at 375, 768, and 1440 CSS pixels in light and dark themes; no live backup or Google calls.
+- 1247 unit tests, typecheck and production build passed.
+- `qa/backup-status-ordering.cjs` exercises the real settings UI with deferred synthetic APIs: successive action and Google/action overlap, stale success/error, earlier response during a later POST, initial loading gate, current status retry and separate action errors.
+- Chrome at375/768/1440 CSS pixels in light/dark: no horizontal overflow and visible keyboard focus. Mobile light and desktop dark screenshots inspected.
+- Impeccable detector: no findings. Independent Sol review: no actionable findings.
 
-## Compatibility constraints
-
-Preserve current endpoint contracts, server exclusivity, Google polling interval, recovery-key flow, status wording, and action labels. Do not access live backups, credentials, production APIs, or private data.
+No live backup, Google endpoint, private data, physical device or screen reader was used. Endpoint contracts, server operation exclusivity, polling, and recovery-key flow remain unchanged. Draft for review; no merge or deployment.
