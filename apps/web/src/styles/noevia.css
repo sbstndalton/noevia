@@ -1762,6 +1762,9 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 .routing-details-body li span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .routing-details-body li span:last-child { font-family: var(--font-mono); white-space: nowrap; }
 .routing-details-body small { display: block; color: var(--text-faint); }
+.stats-disclosure > .routing-details { flex: none; align-self: flex-end; box-sizing: border-box; max-width: min(360px, 100%); margin: 0; padding: 0 12px; border-style: solid; border-radius: 14px; background: var(--bg-surface); }
+.stats-disclosure > .routing-details[open] { width: min(360px, 100%); }
+@media (max-width: 700px) { .stats-disclosure > .routing-details { align-self: stretch; } }
 /* Diary breadcrumb: one row, one type size, links for ancestors (matches the chat header crumbs). */
 .diary-breadcrumb { display: flex; align-items: center; flex-wrap: nowrap; gap: 2px; min-width: 0; font-size: var(--text-callout); }
 .diary-breadcrumb > span { color: var(--text-faint); padding: 0 2px; }

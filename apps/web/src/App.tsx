@@ -58,6 +58,7 @@ import { StatsBar } from './components/StatsBar';
 import { settleToolCalls } from './tool-call-state';
 import { mergeTranscripts } from './transcript-merge';
 import { readLastPlace, writeLastPlace, clearLastPlace } from './last-view';
+import { currentRoutingDecision } from './current-routing';
 
 type View =
   | { kind: 'diary' }
@@ -389,6 +390,7 @@ export default function App(): JSX.Element {
   }, [sourceProjectId, sourceFolderKey, sourceBusy, refreshProjects]);
 
   const messages: Message[] = view.kind === 'chat' ? messagesByChat[view.chatId] ?? [] : [];
+  const routingDecision = currentRoutingDecision(messages, view.kind === 'chat' && appMode === 'chat');
 
   const persist = useCallback((chatId: string, msgs: Message[]) => {
     // Reasoning, tool activity and cost are persisted too, so reopening a
@@ -1120,6 +1122,7 @@ export default function App(): JSX.Element {
       <StatsBar
         stats={stats}
         reply={view.kind === 'chat' ? replyTelemetryByChat[view.chatId] || null : null}
+        routingDecision={routingDecision}
         modelLabel={modelChoiceLabel(activeProject, modelsLoaded && !modelsError ? models : null)}
       />
       {view.kind === 'chat' && activeProject && appMode === 'chat' && (

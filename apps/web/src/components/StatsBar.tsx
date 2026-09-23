@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
-import type { LiveStats, ReplyTelemetry } from '../types';
+import type { LiveStats, ReplyTelemetry, RoutingDecision } from '../types';
 import { Icon } from './icons/Icon';
+import { RoutingDetails } from './ChatView';
 
 interface StatsBarProps {
   stats: LiveStats | null; // App polls /api/stats and passes it down (single poller)
   /** Exact, request-local facts from the currently visible chat's SSE stream. */
   reply?: ReplyTelemetry | null;
+  /** Request-local route for the latest assistant turn in the visible chat. */
+  routingDecision?: RoutingDecision | null;
   /** What the composer says it will send to — so the strip names the model that answered. */
   modelLabel?: string;
 }
@@ -46,7 +49,7 @@ function usePhone(): boolean {
 /** Inference status under the composer: on a phone a single line (status, model, speed) that
  *  expands into plain-language details; on a desktop the same details, always open, laid out
  *  across the width instead of stacked. Purely presentational: App owns the /api/stats poll. */
-export function StatsBar({ stats, reply, modelLabel }: StatsBarProps): JSX.Element {
+export function StatsBar({ stats, reply, routingDecision, modelLabel }: StatsBarProps): JSX.Element {
   const phone = usePhone();
   const [userOpen, setUserOpen] = useState(readOpen);
   const active = reply?.phase === 'waiting' || reply?.phase === 'streaming';
@@ -120,6 +123,7 @@ export function StatsBar({ stats, reply, modelLabel }: StatsBarProps): JSX.Eleme
         <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveAnnouncement}</span>
         <p className="stats-bar stats-bar-static">{status(false)}</p>
         {details}
+        {routingDecision && <RoutingDetails decision={routingDecision} />}
       </section>
     );
   }
@@ -133,6 +137,7 @@ export function StatsBar({ stats, reply, modelLabel }: StatsBarProps): JSX.Eleme
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} />
       </button>
       {open && details}
+      {routingDecision && <RoutingDetails decision={routingDecision} />}
     </section>
   );
 }
