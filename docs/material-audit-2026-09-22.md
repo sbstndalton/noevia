@@ -178,3 +178,76 @@ Guarded deployment completed; public bundle/CSS and the three material scripts m
 validated build; unauthenticated protected endpoints return 401. All app services are healthy
 with zero restarts. The native engine, embeddings and pi sandbox are unchanged. Full backup,
 checksum, release and rollback evidence: [deployment record](deployment.md).
+
+## Cloud continuation — state-layer correction (not deployed)
+
+The earlier release remains a baseline, not visual acceptance. On the fresh `1af80af`
+checkout, source review found that Material 3's wrapped segmented choices retained
+single-row separators and that selected Chat/Code controls had no selected hover/press
+layer. Menu press, outlined-button press and destructive-button hover/press also lacked
+role-paired layers. These now use the foreground role of their actual container; wrapped
+choices get individual outlines while keeping shared dimensions. Liquid primary actions
+now retain their primary color on hover/press, including those inside a popover/dialog.
+
+The cloud runtime has Playwright's module but no Chrome/Chromium executable. Its browser
+download returned a zero-byte archive because external browser CDN access is blocked.
+No new before/after screenshot or rendered parity claim is made for this continuation;
+the prior screenshots are evidence only for the prior release. The full 17-destination,
+multi-device visual reinspection and non-Chromium fallback remain open. This CSS-only
+checkpoint does not touch approval, account, Diary, model or deployment code. Validation
+and Git commit for this checkpoint are recorded below when available.
+
+### Hermetic cloud test continuation — 2026-09-23
+
+The generic `npm test` previously imported `server/index.cjs` without an inference
+override, so its fallback was `http://host.docker.internal:11434`. The SSRF
+admin-probe test also intentionally fetched an arbitrary loopback port. The test
+script now preloads a worker-local isolated state directory, replaces inference,
+manager and Diary URLs with inert loopback port zero, clears connected services,
+and rejects outbound sockets unless they target a `127.0.0.1` port opened by a
+fixture in that worker. The SSRF probe now uses an HTTP 503 fixture; the egress
+disconnect test uses a disposable upstream instead of allowing a race to reach
+port 80. The guard refuses Unix sockets, external hosts and arbitrary local
+ports, including 11434. No production data or model service was contacted.
+
+Validation in the guarded configuration: **1,247/1,247** tests pass with zero
+skips; typecheck, build and design lint pass; `git diff --check` passes. The
+cloud browser is provisioned, but opening the disposable fixture at
+`http://127.0.0.1:31239` returned `ERR_BLOCKED_BY_CLIENT`. There is still no
+new rendered before/after inspection, so the CSS checkpoint remains unvalidated
+visually and undeployed. The earlier browser download failure is historical.
+
+
+## Local recovery and release validation — 2026-09-22 EDT
+
+With explicit user authorization to use local access, recovered the complete diff of
+cloud commits `0c5c7558a456a0871af9415945726b15314ee861` and
+`989229c527803ebfa54eccdf821e6793c5afb774` onto a clean integration branch from
+`origin/main` at `1af80af`. The remote cloud branch was only a pointer to that
+baseline and contained neither correction; no stale alternative was merged.
+
+The guarded suite passes all 1,247 tests, zero skips. Separate probes confirm that
+the guard refuses model port 11434, external hosts, arbitrary loopback ports and
+Unix sockets before connecting. Typecheck, build, design lint and diff checks pass.
+No production data, real Diary corpus or live inference was used.
+
+The full synthetic browser inventory covers 468 states: all 17 Settings destinations,
+Chat, Projects, project menus, Plugins and Diary, in three materials, two themes and
+375/768/1440 widths. Zero page errors, horizontal overflow or matte-mode blur leaks.
+Representative desktop and mobile screenshots were inspected. Dynamic preferences,
+12 switch contrast pairs, keyboard focus and reduced effects pass. Code mode and
+mobile approvals pass, including all three decisions and complete command arguments.
+
+A new interaction regression (`qa/material-states.cjs`) exposed a nested Liquid
+primary action whose hover rule overrode its pressed layer. Added the matching
+container-specific pressed rule. Collapsed Material mode switches also need their
+state layers to override the shared rail skin. Both corrections now pass rendered
+hover/press checks in light and dark, including the collapsed rail. Shared geometry
+and application behavior remain unchanged. The final focused confirmation passes
+126 states (General plus main views, all modes/themes/sizes), with zero errors or
+defects. The production rollout is recorded in the deployment log.
+
+This closes the cloud checkpoint's missing Chromium visual validation. It does not
+certify native Apple rendering parity, physical Safari behavior, or every possible
+content/interaction combination. The historical cloud blockers above remain as an
+audit trail, not the current release status.

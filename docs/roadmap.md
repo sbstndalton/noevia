@@ -30,6 +30,14 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Done
 
+### Cloud CSS state correction (recovered and locally validated)
+- Material 3 segmented, mode switch, menu and button state layers were corrected;
+  Liquid primary actions keep their paired foreground/background on hover and press.
+  Local Chromium validation now covers the complete 17-destination inventory and
+  targeted interaction states. Native Apple/Safari parity remains open; see the audit.
+- The unit suite now runs behind a test-only outbound guard and passes all 1,247
+  cases with isolated state and disposable loopback fixtures.
+
 ### 2026-09-22 — Three materials refined (release `827932b`)
 - Removed Glassmorphism; older saved values fall back to Soft. Soft stays matte, Liquid
   controls use restrained highlights without label distortion, Material 3 uses tonal roles

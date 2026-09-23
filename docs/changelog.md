@@ -1475,3 +1475,21 @@ Verified: typecheck, build and `lint:design` clean; web tests 473 pass / 57 fail
 to this branch's head before the merge (the failures are this environment's missing native
 dependencies); model-manager pytest 48 passed, up from 38 + PR #1's 8, plus the 2 new ones
 above.
+# 2026-09-22 (cloud material state correction; not deployed)
+
+Corrected wrapped Material 3 segmented boundaries and role-paired hover/pressed
+states for the mode switch, menus, outlined and destructive buttons. Liquid primary
+actions retain legible primary colors during interaction, including in dialogs.
+No geometry or application behavior changed. The cloud browser binary was unavailable;
+rendered review remains pending. See [audit continuation](material-audit-2026-09-22.md).
+
+The test runner now isolates state and restricts outbound sockets to disposable
+fixture ports. The SSRF and egress disconnect tests no longer target arbitrary
+host-local ports. All 1,247 guarded tests pass, along with typecheck, build and
+design lint; the cloud browser blocks the local fixture, so visual QA is pending.
+
+Local recovery: both cloud commits were recovered through their exact combined diff.
+All 1,247 guarded tests and required static checks pass locally; the 468-state
+synthetic view sweep, accessibility preferences, Code mode and mobile approvals pass.
+Fixed two remaining nested/collapsed hover/press cascade conflicts and added a
+rendered interaction regression. See the audit and deployment record for final status.
