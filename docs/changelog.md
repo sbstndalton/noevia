@@ -1,3 +1,25 @@
+## Release 6b1621c — 2026-09-23 (auto-tune recovery and compact progress)
+
+Auto-tune now waits until the router reports every model unloaded before saving the
+next candidate profile. This prevents the immediate 409 that could follow a rejected
+quality probe while the previous model was still unloading. A bounded timeout names
+the blocking model and state; cancellation still restores the current phase. Failed
+quality probes report the check and failure type without storing generated answers.
+The Auto Tune panel puts status, progress and Resume above compact queued details.
+
+[Issue #72](https://github.com/sbstndalton/noevia/issues/72) was fixed by
+[PR #73](https://github.com/sbstndalton/noevia/pull/73), merged as `6b1621c`.
+All 1,354 web tests, typecheck, build and design lint passed; the candidate web image
+passed 32 isolated tuner/calibration tests. A web-only guarded overlay from `5004b50`
+completed with the web container healthy. Public CSS and model-manager JavaScript
+match the validated build; protected routes return 401 without authentication.
+Brave review confirmed the deployed layout and recovery controls without resuming a
+real tune. Diary, OCR, llama and the Laya recovery image retained their container
+IDs and start times. Configuration and Compose backups named `.bak.before-6b1621c`
+are retained for web-only rollback to `5004b50`; no full appdata backup was run
+because it would restart unrelated services. Historical state cannot explain why
+the initial f16 quality probe failed.
+
 ## Release 827932b — 2026-09-22 (three-material refinement)
 
 Removed the redundant Glassmorphism mode from preferences, pre-paint initialization,
