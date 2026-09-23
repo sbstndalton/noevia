@@ -1,34 +1,9 @@
-# Off-site backups are never copied to Google Drive after the scheduled backup
+# Copy completed backups to Google Drive
 
-Status: plan only; implementation pending. Found in live testing on release `aa5132b`, 2026-09-23.
+Fixes [#56](https://github.com/sbstndalton/noevia/issues/56). Audited against `e19e5f619a987b4be3953ee7582d55ae164e1b1c`.
 
-## What happens
+`runNow` previously queued its Drive copy inside the `exclusive('backup')` callback. That microtask ran while `busy` still held the backup lock, so it skipped the copy after both scheduled and manual backups. The encrypted local snapshot completed but its Google Drive mirror could become stale.
 
-Settings → Backups on the live site says "The last copy to Drive is more than two days old (9/18/2026)", while the nightly backup itself ran on 9/23 at 02:14 UTC (115 files). The live status file agrees: `lastBackup.at` is 2026-09-23, and `mirror.at` is still 2026-09-18 with state `ok`. So the encrypted snapshots reach the `/offsite` folder every night, but not Google Drive.
+`runNow` now waits for the backup and retention lock to release, starts one background mirror when idle, and returns the completed backup without waiting for the upload. Backup failure never starts a mirror. The existing copy helper still checks the directory destination, Drive connection and copy setting, records success or failure, and keeps manual `copyNow` available. An active copy blocks a simultaneous backup or manual copy.
 
-## Cause
-
-`apps/web/server/offsite-service.cjs`, `runNow`:
-
-```js
-runNow: () => exclusive('backup', async (b) => {
-  …
-  Promise.resolve().then(() => { if (!busy) return copyToDrive(); }).catch(() => {});
-  return saved;
-}),
-```
-
-The `.then` callback is a microtask that runs before `exclusive()`'s `finally { busy = '' }`, because `await work(...)` resumes a tick later. So `busy` is still `'backup'`, and the copy is skipped after every backup, both scheduled and "Back up now". The only paths that still copy are "Copy to Drive now", connecting Google, and turning the Drive copy back on. That's why the last copy is from 9/18.
-
-Reproduced against the real module with fakes (`backupFactory`, `driveFactory`; no network, no live data): after `runNow()` plus 200 ms, the fake `drive.mirror` has been called **0** times. After `copyNow()` it's 1.
-
-## Fix
-
-- Start the copy after `exclusive` has released `busy`. For example, have `runNow` await `exclusive(...)` and then call `copyToDrive()` without awaiting it, or queue it with `setImmediate`/`setTimeout(0)` and check `busy` there.
-- Keep the intent: a slow upload must never hold the page or the backup's response.
-- Add a unit test with the same fakes: after `runNow()` the mirror is called once. Also check it isn't called when `driveCopy` is off or Drive isn't connected.
-- After deploying, confirm on the live site that the next nightly run updates `mirror.at`. An admin can press "Copy to Drive now" once to bring the off-site copy current right away.
-
-## Not affected
-
-Local encrypted snapshots, retention, restore tests and the connection itself are fine. Only the Drive mirror is stale.
+Synthetic service tests cover a deferred upload that does not delay the backup response, one mirror call and its success status, failure status, manual copy, overlap rejection, and no mirror after a failed backup or with copy disabled, Drive disconnected, or a non-directory destination. The scheduler calls this same `runNow` method; its existing cadence test remains in place. Required checks: `npm --prefix apps/web run test`, `typecheck`, `build`, and `lint:design`, plus `git diff --check`. No live Google Drive, production backup, or private data is used.
