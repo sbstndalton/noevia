@@ -141,7 +141,7 @@ function load(env, selected, failure) {
       if (!s.requires.every(dep => chosen.includes(dep))) { rejected.push({ id, reason: 'missing-requirement' }); continue; }
       const body = skillBlock([s]);
       // Reject oversize bodies instead of counting a truncation as a full skill load.
-      if (s.content.length > 12000 || bytes + Buffer.byteLength(body) > env.cfg.bodyBytes) { rejected.push({ id, reason: 'body-budget' }); continue; }
+      if (bytes + Buffer.byteLength(body) > env.cfg.bodyBytes) { rejected.push({ id, reason: 'body-budget' }); continue; }
       const read = skills.read(env.state.project, env.state.project.files.find(f => f.name === s.file), env.state.current, 0, 40000);
       if (!read.startsWith('Loaded instruction skill ')) { rejected.push({ id, reason: 'stale-skill' }); continue; }
       accepted.push(id); bodies.push({ id, body }); bytes += Buffer.byteLength(body);

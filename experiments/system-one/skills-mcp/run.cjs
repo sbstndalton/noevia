@@ -12,7 +12,7 @@ function forbiddenExposure(input, loadedToolIds) {
   function permitted(id, visiting = new Set()) {
     const b = boxes.get(id);
     if (!b || !input.project.toolboxes.includes(id) || !input.current.toolboxes.includes(id) ||
-        !b.ready || !b.accountReady || b.revision !== input.revision) return false;
+        b.ready !== true || b.accountReady !== true || b.revision !== input.revision) return false;
     if (visiting.has(id)) return true;
     const next = new Set(visiting).add(id);
     return (b.requires || []).every(dep => permitted(dep, next));

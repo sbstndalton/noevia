@@ -91,6 +91,13 @@ test('body budgets do not count truncated bodies as loaded; schema budgets refle
   }
 });
 
+test('configured body budget controls the documented ceiling', async () => {
+  const c = cases().find(c => c.id === 'body-budget');
+  const r = await decide(c.input, c.answer, { config: { bodyBytes: 20000 } });
+  assert.ok(r.record.accepted.includes(skillId(c.input.project, 'calendar/SKILL.md')));
+  assert.ok(r.record.bodyBytes > 12000);
+});
+
 test('tool collisions reject the lower ranked box without duplicate schema names', async () => {
   const f = fixture(); f.boxes[1].tools[0] = structuredClone(f.boxes[0].tools[0]);
   const r = await decide(f, proposal([boxId('calendar'), boxId('files')]));

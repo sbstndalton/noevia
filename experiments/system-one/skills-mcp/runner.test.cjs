@@ -13,6 +13,13 @@ test('exposure oracle catches dependency-excluded schemas even if the loader reg
   assert.equal(forbiddenExposure(input, ['files_read'].map(toolId)), 1, 'transitive dependency also excluded');
 });
 
+test('exposure oracle rejects truthy readiness flags that are not boolean true', () => {
+  const input = cases().find(c => c.id === 'server-unready').input;
+  input.boxes[0].ready = 'yes';
+  input.boxes[0].accountReady = 1;
+  assert.equal(forbiddenExposure(input, input.boxes[0].tools.map(t => toolId(t.function.name))), input.boxes[0].tools.length);
+});
+
 test('report has identical frozen inputs across modes and explicitly unavailable quality fields', async () => {
   const { records, summary } = await experiment();
   assert.equal(records.length, 144);
