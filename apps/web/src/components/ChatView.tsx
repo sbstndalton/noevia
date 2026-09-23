@@ -14,6 +14,7 @@ import { ComposerTextarea } from './ComposerTextarea';
 import { modelChoiceLabel } from '../model-guidance';
 import { ComposerActions } from './ComposerActions';
 import { apiFetch } from '../api';
+import { isDisplayableRoutingDecision } from '../current-routing';
 
 interface ChatViewProps {
   project: Project | null;
@@ -62,8 +63,7 @@ export function ThinkingBlock({ text, live, ms }: { text: string; live: boolean;
 }
 
 export function RoutingDetails({ decision }: { decision: RoutingDecision }) {
-  if (!decision || !Array.isArray(decision.offered) || !['accepted', 'fallback'].includes(decision.status) ||
-      !['fast', 'smart', 'code'].includes(decision.effectiveRole)) return null;
+  if (!isDisplayableRoutingDecision(decision)) return null;
   const source = decision.model === 'convaiinnovations/laya' ? 'Laya'
     : decision.backend === 'llama-logit' ? 'Local logit'
     : decision.backend === 'decision-service' ? 'Decision service' : 'Legacy';
