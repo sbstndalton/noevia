@@ -6,7 +6,7 @@ file. It reads the working tree and never writes.
 
 ## Why
 
-816 tracked files, and `apps/web/server/index.cjs` alone is 264 KB. Without a way to
+The server is split across area modules and route factories. Without a way to
 ask *where* something is decided, the safe move is to read whole files — which is most
 of what a session costs before any work starts.
 
@@ -19,10 +19,10 @@ no service to run, nothing to keep in sync with the working tree.
 ## Tools
 
 - `search_code(query, k?, glob?)` — ripgrep, with each hit reported alongside the
-  declaration that encloses it and its line range, so you can read one function
-  instead of a file.
+  top-level declaration that encloses it and its line range, so you can read one function
+  instead of a file. Nested helpers are reported under their enclosing factory.
 - `outline_file(path)` — a file's top-level declarations with line ranges. Outline
-  `index.cjs` (~4 KB of output) and read only the range you need.
+  `apps/web/server/toolboxes.cjs` and read only the range you need.
 
 Both return a header line, then tab-separated rows with the column names first,
 capped at the same 8,000 characters the product gives a tool result

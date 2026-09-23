@@ -69,7 +69,9 @@ if [ "$layers" -gt 100 ]; then
 fi
 cat > "$work/Dockerfile" <<DOCKER
 FROM $web_image
-RUN find /app/server -maxdepth 1 -type f -delete && rm -rf /app/server/fixtures /app/dist
+# Replace every application-owned entry, including old nested routes. Dependencies
+# and the runtime data mount point stay in place; this runs only in the image build.
+RUN find /app/server -mindepth 1 -maxdepth 1 ! -name node_modules ! -name ui-data -exec rm -rf {} + && rm -rf /app/dist
 COPY dist /app/dist
 COPY server /app/server
 DOCKER
