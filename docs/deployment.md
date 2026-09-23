@@ -1,5 +1,36 @@
 # Deploying noevia to daserver
 
+## Laya-only recovery rollout — 2026-09-23
+
+Issue #70 / draft PR #71 implemented automatic replacement of Laya's CPU worker
+after a decision timeout, crash or pipe failure. The candidate image
+`cowork-laya:0.3.5-recovery-2ffd153` was built from the existing
+`cowork-laya:0.3.5-noevia1` image with only `services/laya/server.py` copied in;
+installed dependencies and the read-only model files were unchanged. Candidate
+image SHA-256: `2935a4f20aa8d9c962bb415b714692ed27d56d20b6f2fda06ac8373ff9830699`.
+
+Candidate verification used synthetic decisions only: 6/6 initial requests at
+514–727 ms; forced `SIGKILL` of an idle worker made health go 503 → 200 in
+16.073 seconds; forced `SIGSTOP` followed by a decision returned 503 in 1,335 ms
+and recovered to ready in 16.064 seconds; 6/6 decisions after recovery took
+512–577 ms. No failed decision was replayed.
+
+The live Compose change replaced only Laya's image tag and build context with
+`/mnt/docker/appdata/cowork/laya/recovery-2ffd153`. The previous Compose file is
+retained as `docker-compose.yml.bak.before-laya-recovery-2ffd153`. The installed
+host preflight with `--profile laya --no-build --no-deps --wait laya` passed.
+After cutover, 6/6 synthetic live decisions took 513–586 ms. The installed
+Noevia router, using its saved settings read-only, classified `smart` in 633 ms
+with `fellBack: null` and `enabled: true`. Final Laya health was healthy with zero
+restarts. Web retained its container start time of 13:32:54Z; Laya started at
+20:27:17Z on 2026-09-23. The candidate container was removed. No Diary, private
+prompts or answering-model requests were used; the separate UI PR #69 was not
+deployed or merged.
+
+Rollback: restore the retained live Compose backup, then use the installed host
+preflight to start only Laya with `--profile laya --no-build --no-deps --wait laya`.
+Retain both image tags and the model files for that operation.
+
 ## Release 72ae258 — 2026-09-22 (cloud material corrections recovered)
 
 Recovered cloud commits `0c5c755` and `989229c` from their exact combined diff,
