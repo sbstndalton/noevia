@@ -1,18 +1,11 @@
-# Chat metadata save recovery — plan only
+# Chat metadata save recovery
 
-Issue: #51. Base: `59f38d0bbc497aeb0bf234535f6cb3df97c2d3f6`.
+Fixes #51. Audited baseline: `59f38d0bbc497aeb0bf234535f6cb3df97c2d3f6`.
 
-`App.handlePatchChat` optimistically changes free or project chat metadata, then silently discards a failed list POST. In a synthetic Chrome fixture, a 500 from either endpoint left a failed Pin visible and a failed Archive hidden, with no alert. Rename and row actions use the same handler.
+A rejected Pin or Archive previously remained as an optimistic sidebar change with no error; Rename used the same handler. The free-chat and project-chat endpoints receive a whole list and merge incoming records by ID.
 
-## Intended change
+`App.handlePatchChat` now keeps the displayed metadata at its last confirmed state until the save succeeds. Saves are queued per list, so rapid actions on the same list use the state left by the preceding result. A failed request reports a dismissible error and leaves the chat available to retry, even when `/api/workspace` is also unavailable. On success only the action's fields are applied to the latest local record; unrelated chats and newer preview/title/time fields survive. The client applies the server's 120-character title limit and ignores workspace GETs started before a confirmed save. Free and project lists remain independent. Chat history, the server's merge/tombstone rules, tenant boundaries, and project configuration saves are unchanged.
 
-Keep the change local to chat metadata handling in `App.tsx` and focused browser QA. Surface a concise dismissible save error through the existing alert. On failure, reconcile the affected chat fields from the last confirmed state without depending solely on a workspace fetch, and leave unrelated chats and fields intact. Order rapid writes to the same list and protect newer optimistic actions from earlier completions or refreshes; free and project lists must remain independent. Preserve the server's merge/tombstone behavior and existing tenant boundaries. Do not alter chat history or project configuration saves.
+Synthetic Chrome QA drives the actual Sidebar menu through rejected Pin, Rename and Archive for both scopes; delayed consecutive saves; independent project/free requests; a workspace refresh carrying newer unrelated fields; a stale GET; title normalization; and 375/1440 light/dark alert layout. No live inference, private Diary, or production data is used. Cross-device simultaneous writes are outside this fixture and retain the existing whole-record server behavior.
 
-## Acceptance and verification
-
-- Failed Pin, Rename, and Archive recover accurately for free and project chats, including when the follow-up workspace GET fails.
-- Repeated/rapid actions on one list converge on the latest successful action; a failed earlier operation cannot undo a newer one. Concurrent updates to unrelated chat fields such as preview and `updatedAt` survive reconciliation.
-- A synthetic browser regression uses the actual Sidebar menu and save routes with forced failures and delayed responses. No live inference, Diary, or private data.
-- From `apps/web`: `npm test`, `npm run typecheck`, `npm run build`, `npm run lint:design`, plus the synthetic browser regression. Use external dependency and build directories.
-
-This PR contains the plan only. Cross-device simultaneous writes are not established by the synthetic browser fixture; reassess if implementation changes their contract.
+Required checks from `apps/web`: `npm test`, `npm run typecheck`, `npm run build`, `npm run lint:design`, `node qa/chat-metadata-recovery.cjs` with Playwright Chrome, plus branch `git diff --check`.
