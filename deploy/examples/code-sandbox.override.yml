@@ -12,7 +12,7 @@
 #   CODE_REPOS=scratch|/workspaces/repos/scratch  # repositories, named, absolute, git
 #   CODE_WORKSPACE_ROOT=/workspaces/trees         # worktrees on the SHARED volume, not tenant state
 #   CODE_HARNESS_USER=1000:1000                   # who the sandbox runs as
-#   CODE_HARNESS_NAME=opencode|pi|claude-code     # web: the harness noevia pins config for
+#   CODE_HARNESS_NAME=opencode|pi|claude-code|qwen-code|deepseek  # web: the harness noevia pins config for
 #
 # Those last two are not optional, and staging this on DaServer is what proved it:
 #   * noevia creates the worktree and sends its absolute path; the supervisor resolves that same
