@@ -1,19 +1,22 @@
 # Code task request ordering
 
-Plan only for [#62](https://github.com/sbstndalton/noevia/issues/62). This document does not implement the fix. Base: `main` at `1c3ab0e5c21f11d69380e720a9730cb8ea63f361`. Implement after [PR #61](https://github.com/sbstndalton/noevia/pull/61) merges, then reconcile against its CodePanel changes.
+Implemented for [#62](https://github.com/sbstndalton/noevia/issues/62) after [PR #61](https://github.com/sbstndalton/noevia/pull/61) merged. The branch preserves PR61's bounded assistant output and the existing server ownership and approval contracts.
 
 ## Problem and evidence
 
 `CodePanel.load()` applies every GET success/failure, while approval polls can overlap and `act()` performs a follow-up GET without invalidating older polls. In a synthetic Chrome run of the actual built App, a delayed `waiting_approval` poll returned after **Allow once** and its newer follow-up GET, restoring the consumed approval card. Direct Sidebar navigation from project A to B reused the unkeyed ProjectView/CodePanel; after B returned no tasks, a delayed A poll restored A's task under B's heading. Both sequences reproduced deterministically; see the private `R/code-poll-validation.md` and fixture. Server `owned()` checks still reject wrong-project decisions (404) and consumed approvals (409); this is a stale UI bug, not a demonstrated server isolation bypass.
 
-## Intended change
+## Implementation
 
-- Bind Code GET/poll callbacks to the currently mounted project and a request/action generation. Ignore older success **and failure** callbacks after a newer GET, mutation, project switch, or unmount. Do not let an A mutation's post-action load, busy state, or error state settle into B.
-- Avoid overlapping poll snapshots or order them so old snapshots cannot replace a newer state. Preserve the fast poll while approval is waiting.
-- Reset Code task and compose state on project change, including repository, capabilities, harness, prompt, domains, and preparation. Ensure the App/ProjectView mount/access path does not briefly show A's Code controls under B. Keep the change within this client lifecycle; retain server project ownership and approval policy.
+- `CodePanel` gives each project a keyed child lifecycle. Task snapshots, errors, busy state, repository, capabilities, harness, prompt, domains, and preparation are discarded in the same render that changes project identity.
+- Ordinary GETs are single-flight. A request generation accepts only the current success or failure, while a mutation invalidates any earlier read and performs an authoritative follow-up refresh. Mutation callbacks and `finally` handlers are ignored after unmount.
+- Polls pause during a mutation and resume afterwards. A slow ordinary poll remains eligible instead of being starved by the one- or two-second timer; a mutation refresh can still supersede an older held poll.
+- `useCodeAccess` binds its result to the project that produced it, so the prior project's Code permission cannot keep the panel mounted during the next project's access check.
 
 ## Acceptance and verification
 
-Add a synthetic browser regression using the real App, Sidebar, and CodePanel (a focused `apps/web/qa/code-request-ordering.cjs` is suitable). Hold an old waiting-approval GET, click **Allow once**, let the mutation and follow-up GET show running/completed, then release the old GET; the approval card must stay gone. Switch A→B directly while A GET is held, return B's empty snapshot, then release A's success or rejection; A task, approval, error, and compose selections must never appear under B. Hold an A mutation and its follow-up load across the switch; B must retain its own task/action feedback. Keep the three explicit write decisions and existing `qa/code-mode.cjs` behavior. Run `npm --prefix apps/web run typecheck`, `npm --prefix apps/web run build`, the focused browser QA, and existing `qa/code-mode.cjs` with the installed Playwright module.
+`apps/web/qa/code-request-ordering.cjs` drives the actual App, Sidebar, ProjectView, and CodePanel against controlled synthetic APIs. It covers a slow current poll, obsolete same-project success and failure, consumed approval, a delayed A success before B's response, a rejected A read after B is current, immediate composer reset, a held post-mutation refresh, a rejected old-project mutation, and independent B busy settlement. `qa/code-mode.cjs` continues to cover all three explicit decisions, output, and normal project revisits.
+
+Required verification is the web unit suite, typecheck, production build, design lint, focused request-ordering browser QA, and existing Code output/approval browser QA. All browser data is synthetic; no harness or live repository is contacted.
 
 No backend authorization change, live harness execution, repository mutation, account access, or deployment is part of this fix.
