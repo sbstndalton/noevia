@@ -1,24 +1,11 @@
-# Repo-index and overlay deployment implementation plan
+# Remove stale overlay code and repair repo-index regressions
 
-Issues: [#12](https://github.com/sbstndalton/noevia/issues/12), [#13](https://github.com/sbstndalton/noevia/issues/13)
+Implemented for review; not merged or deployed. Issues: [#12](https://github.com/sbstndalton/noevia/issues/12), [#13](https://github.com/sbstndalton/noevia/issues/13).
 
-## Scope
+Repo-index regressions now target `server/toolboxes.cjs` and assert the documented top-level declaration contract: the nested `toolTokenBudgetFor` helper belongs to the enclosing `createToolboxes` factory. A small nested-function fixture protects this behavior, and the README reflects the split server layout.
 
-Repair repo-index regressions after the server split and make overlay releases remove OLD-only nested application code while retaining inherited dependencies and runtime state.
+Overlay image cleanup now removes every application-owned top-level entry recursively before copying the new server tree. It preserves inherited `server/node_modules` and the `server/ui-data` runtime mount point. This removes old nested routes/modules without changing flattening, config comparison, rollback, health waits, sidecar handling or native-engine checks.
 
-## Implementation
+Validation: 9 repo-index tests pass; deployment tests pass (5 passed, 9 environment-dependent rclone/flock skips), plus the preflight wrapper test and shell syntax check. The filesystem regression executes the exact Dockerfile cleanup command against synthetic OLD/NEW trees and verifies retired nested files and symlinks disappear while dependency files, runtime data and external symlink targets survive. 1,247 web tests, typecheck, production build and design lint pass.
 
-1. Decide and document whether search reports only enclosing top-level declarations or also nested functions. Update the `toolTokenBudgetFor` regression to target `server/toolboxes.cjs` and make tests assert that documented contract rather than the obsolete `index.cjs` layout.
-2. Change the overlay Dockerfile sequence so application-owned `/app/server` content is replaced. Preserve `/app/server/node_modules` explicitly, since dependency reuse is the purpose of the overlay, and leave runtime-mounted state outside the image replacement.
-3. Add a synthetic release fixture with OLD-only files under `server/routes` and another nested directory. Verify they disappear while NEW files and inherited dependencies remain.
-4. Keep flattening, config equivalence checks, health waits, rollback, sidecar handling, and the native-engine identity check unchanged.
-
-## Verification
-
-- `node --test tools/repo-index/*.test.cjs` passes and returned ranges contain the intended declaration/enclosing scope.
-- A no-Docker filesystem test covers replacement semantics; if feasible, an image test also checks `/app/server/node_modules` and the final manifest.
-- Run deployment preflight/unit tests and shell syntax checking for the release script.
-
-## Risks
-
-Blindly removing `/app/server` would discard inherited dependencies and break the release. Moving dependencies aside must occur within the image build and restore permissions/ownership. Never operate on host appdata or mounted runtime paths during the image cleanup.
+Limits: no Docker image build or production release was run. Docker and PHP preflight execution are unavailable locally; filesystem semantics and the Python wrapper were tested.
