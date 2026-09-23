@@ -615,7 +615,31 @@ A future Cowork capability, preferably on an execution node. Not wired into Chat
   to a desktop node; not for the web container.
 
 
-### Executor interface — 2026-09-17 (not built)
+### Executor interface — 2026-09-17 (built 2026-09-23, not wired)
+
+`server/browser-executor.cjs` implements it over an injected Playwright browser; nothing mounts
+it (no execution node, route, job or flag). Measured with Chrome 153 / Playwright 1.62
+(`qa/browser-executor.cjs`, opt-in, loopback only, 31 checks):
+
+- **The element is read, not described.** The executor reads the real DOM (tag, type, accessible
+  name, text, form and method) and hands those facts to `browser-policy.cjs`. A submit button the
+  model calls "Show details" asks. Declined, timed-out or failed approvals do nothing.
+- **Where the page may go is enforced twice.** Every request Playwright can route (subresources,
+  posts, popups, WebSockets) is checked against the allowed list, so actions can report
+  `blocked` and the audit can name what was refused. But **Chromium follows a server redirect
+  without routing the hop**: with only the route layer, the refused host was hit. `route.fetch`
+  cannot fix this, because it sends from Playwright's Node side and bypasses the browser's proxy
+  and resolver. So a session **requires an egress proxy grant** (`code-egress.cjs`, D15) unless the
+  executor is built with `direct: true`. After each action the page's own origin is checked, and
+  a page that landed somewhere refused is reported `blocked` and stepped back.
+- Secrets are substituted only at typing time, on a bound origin. Results, cards, logs and state
+  are masked, and screenshots paint over form fields once a secret has been typed. Uploads come
+  only from files given to the task. Downloads land in the task's directory under a base name.
+  Chrome also rewrites `../../x` to `_.._x`. An action that fails after dispatch is `uncertain`.
+- Not done: named or signed-in profiles (need node pairing, §5); running it as a durable job;
+  the approval card UI; a node to run it on.
+
+#### Original design (2026-09-17)
 
 Runs as a node capability (`browser`), inside a job:
 

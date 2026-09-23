@@ -228,8 +228,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    until there is evidence.
 6. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
    one-hop **local graph** shipped 2026-09-22) · a
-   browser executor (spec-agent-execution §6; its policy module, `browser-policy.cjs`, is built and
-   tested, 2026-09-22; the executor itself needs a node with a browser) · the Mac app with an offline Diary replica (D22).
+   browser executor (spec-agent-execution §6; `browser-policy.cjs` built 2026-09-22; the executor,
+   `browser-executor.cjs`, built and proven on real Chromium behind the egress proxy 2026-09-23,
+   not deployed; what remains is a node to run it on and the job/card wiring) · the Mac app with an offline Diary replica (D22).
 
 ## Needs the user — in order
 
