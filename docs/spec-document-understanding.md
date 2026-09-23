@@ -36,8 +36,10 @@ statements about the current source-completeness and binary-read behavior.
 - The compact project summary stays capped at 200,000 characters. A separate
   page store retains up to 300 pages / 2,000,000 characters, with 200,000 characters
   per page. Limits set partial/truncated status; page requests outside extracted
-  coverage fail explicitly. These output limits are not a hard CPU/RAM/time sandbox
-  for the native parser; worker isolation remains separate follow-up work.
+  coverage fail explicitly. Since 2026-09-23 the native parser also runs in a worker thread
+  (`documents-native.cjs`) with a 120 s wall-clock limit, its own 512 MB heap limit and none of
+  the server's environment. Hitting a limit makes that document unreadable (422, stated
+  reason), not the server; a limit is a stop, not a CPU quota. It adds ~50–120 ms per document.
 - `read_project_file` now accepts `startPage`, `endPage` (at most 5 pages) and
   `offset`; responses include source/text versions, page status, and a continuation
   offset for the 8,000-character payload cap. The authenticated
