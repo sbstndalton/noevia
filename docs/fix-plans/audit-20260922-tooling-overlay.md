@@ -2,7 +2,7 @@
 
 Implemented for review; not merged or deployed. Issues: [#12](https://github.com/sbstndalton/noevia/issues/12), [#13](https://github.com/sbstndalton/noevia/issues/13).
 
-Repo-index regressions now target `server/toolboxes.cjs` and assert the documented top-level declaration contract: the nested `toolTokenBudgetFor` helper belongs to the enclosing `createToolboxes` factory. A small nested-function fixture protects this behavior, and the README reflects the split server layout.
+Repo-index regressions now target `server/toolboxes.cjs` and assert the documented top-level declaration contract: the nested `toolTokenBudgetFor` helper belongs to the enclosing `createToolboxes` factory. A small nested-function fixture protects this behavior, and the README reflects the split server layout. CI explicitly installs ripgrep, which is absent from the current Ubuntu runner; otherwise search tests fail with `spawnSync rg ENOENT`.
 
 Overlay image cleanup now removes every application-owned top-level entry recursively before copying the new server tree. It preserves inherited `server/node_modules` and the `server/ui-data` runtime mount point. This removes old nested routes/modules without changing flattening, config comparison, rollback, health waits, sidecar handling or native-engine checks.
 
