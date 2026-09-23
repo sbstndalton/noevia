@@ -1,14 +1,9 @@
-# Google Drive read tools are treated as writes
+# Offer connected Drive tools and classify their reads correctly
 
-Found in live testing on release `aa5132b`, 2026-09-23.
+Fixes [#59](https://github.com/sbstndalton/noevia/issues/59). Audited against `e19e5f619a987b4be3953ee7582d55ae164e1b1c`.
 
-Settings → Connectors → Google Drive listed "Read-only tools (0)", and chat gated every Drive search and read behind approval. `isWriteTool` treats anything outside `readOnlyToolNames()`, and that set was collected only from `allToolboxes()`, which is filtered by `ENABLED_TOOLBOXES`. Drive is a per-user connector box (reached through `connectedBoxes`) and isn't in that list live, so its `READS` were never counted.
+When the operator's `ENABLED_TOOLBOXES` list omitted `gdrive`, `allToolboxes()` filtered it out. This made Settings → Connectors mark all seven Drive tools as writes. It also prevented chat resolution from offering any of them after `connectedBoxes(user)` selected the box for a connected account. The initial plan's claim that every Drive read would prompt in chat under this configuration was not supported by that resolver path.
 
-Implemented: `readOnlyToolNames()` now collects `reads` from every known box (built-in, connector and MCP) whether or not it is offered. What a chat is offered is unchanged. "Unknown ⇒ write" and the MCP `readOnly === false` override are unchanged.
+Built-in connector boxes now remain in the available catalogue regardless of the operator filter; chat still selects them only through `connectedBoxes(user)`. They remain absent from the project picker and cannot be persisted in a project's selected toolboxes. The Drive tool's own executor also checks the account connection. The read classifier treats a name as a write if any available box declares that name a write, so a collision cannot remove an approval. Unknown names and an MCP server's explicit `readOnly === false` still mean write.
 
-## Verification
-
-- New test in `server/toolboxes.test.cjs`: with `gdrive` excluded from `offered`, the four Drive reads are reads, the three writes and an unknown Drive tool are writes, and `allToolboxes()` still omits `gdrive`. It fails on `main` and passes here.
-- Full `npm test`, typecheck and build: see the PR.
-
-Not done here: the minor "New chat doesn't close Settings" note from the live session.
+Synthetic tests cover the real toolbox resolver and Settings connector response: four Drive reads and three writes when Drive is omitted from operator boxes, per-account connected selection, hidden connector box in the picker, collision safety, and unknown/MCP write behavior. A real chat-handler fixture verifies a default Drive read runs without an approval event, saved `ask` still prompts, saved `block` withholds the tool, a Drive write still prompts, and a disconnected user gets no Drive tools. Required checks: `npm --prefix apps/web run test`, `typecheck`, `build`, and `lint:design`, plus `git diff --check`. No live Drive, private data, or deployment is used.
