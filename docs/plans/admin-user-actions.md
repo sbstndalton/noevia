@@ -2,7 +2,7 @@
 
 Issue: #24
 
-Status: plan only; awaiting implementation.
+Status: implemented and verified with synthetic fixtures (2026-09-23).
 
 ## Problem
 
@@ -33,3 +33,7 @@ Admin Users mutations and link creation use unguarded promise chains. Rejected r
 ## Compatibility constraints
 
 Keep server authorization as the real gate, preserve current endpoint contracts and confirmation wording, and do not expose tokens beyond the existing administrator flow.
+
+## Implementation verification
+
+`npm test` passed all 1,247 tests; `npm run typecheck` and `npm run build` passed. `qa/admin-user-actions.cjs` drives the real React components in installed Chrome with intercepted synthetic APIs. Checked relevant failure/recovery states at 375, 768 and 1440 pixels in light/dark, keyboard focus and document overflow. Impeccable detector returned no findings. No production APIs, private Diary corpus, physical devices or screen readers were used.
