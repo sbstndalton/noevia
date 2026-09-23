@@ -22,6 +22,7 @@ services:
     ports:
       - "10.69.0.130:8092:8090"
     environment:
+      MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN:?Set a non-empty model-loader authentication token}
       MODELS_DIR: /models
       MODELS_INI_PATH: /config/models.ini
       DATA_DIR: /data

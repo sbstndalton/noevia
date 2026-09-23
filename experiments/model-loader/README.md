@@ -129,3 +129,12 @@ in models.ini. Run a controlled calibration/switch before using it, rather than
 starting a second large model alongside production. Production Qwen and its
 original 32k load options were restored. The production noevia release is still
 `ae39000`; application code changes in this workspace are locally tested only.
+
+### Authentication before startup
+
+The manager has Docker socket access and a LAN-published port. Compose requires a
+non-empty `MODEL_LOADER_TOKEN`; generate a random value (for example with
+`openssl rand -hex 32`) and store it in a private, untracked `.env` beside the
+Compose file or in the deployment environment. Send it as `X-Model-Loader-Token`
+for API requests. Only `/api/v1/health` is public; HTML pages also require the
+header. Do not place the token in URLs or commit it.

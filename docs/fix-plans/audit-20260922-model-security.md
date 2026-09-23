@@ -1,25 +1,11 @@
-# Model-manager download and experiment security plan
+# Constrain download credentials and require experiment authentication
 
-Issues: [#10](https://github.com/sbstndalton/noevia/issues/10), [#11](https://github.com/sbstndalton/noevia/issues/11)
+Implemented for review; not merged or deployed. Issues: [#10](https://github.com/sbstndalton/noevia/issues/10), [#11](https://github.com/sbstndalton/noevia/issues/11).
 
-## Scope
+Hugging Face download authentication now uses an exact parsed HTTPS origin, rejects userinfo and non-default ports, and normalizes host case. A request hook re-evaluates authorization on every HEAD/GET and redirect, including parallel ranged GETs sent to the URL resolved by HEAD. Account tokens are removed before CDN/cross-origin requests; resume and range behavior remain covered.
 
-Constrain Hugging Face credentials to approved HTTPS origins and make the Docker-socket experiment require authentication when published beyond loopback.
+The Docker-socket-mounted, LAN-published model-loader experiment now requires a non-empty `MODEL_LOADER_TOKEN` through Compose required-variable interpolation. Its README documents private token storage and the header; only health is public.
 
-## Implementation
+Validation: 67 model-manager tests pass (four existing FastAPI deprecation warnings). Synthetic HTTPX transports capture exact-origin, lookalike/path/query/downgrade, redirect, resumed and parallel-range requests; URL cases include userinfo, ports, malformed hosts and case normalization. The compose regression asserts required auth; existing API tests verify 401 without/wrong token, success with the synthetic token, and public health. 1,247 web tests, typecheck, production build and design lint pass.
 
-1. Replace substring matching in `downloader.py` with a parsed-origin allowlist shared with Hugging Face URL construction. Reject ambiguous URL forms and attach bearer auth only to exact approved HTTPS hosts.
-2. Handle redirects explicitly or use a client policy that demonstrably strips auth before any cross-origin request. Re-evaluate the destination at every hop; retain range/resume behavior.
-3. Add `MODEL_LOADER_TOKEN` to the experiment compose with required-variable syntax and document generation/storage. Keep the health endpoint policy explicit.
-4. Add a static compose/preflight assertion for any non-loopback, Docker-socket-mounted manager lacking mandatory auth.
-
-## Verification
-
-- Synthetic HTTP servers capture HEAD, ranged GET, and redirect headers for exact Hugging Face, lookalike, and cross-origin destinations.
-- URL cases include userinfo, case normalization, ports, and malformed hosts.
-- Compose config fails without a token; API tests prove unauthenticated privileged requests return 401 and the synthetic token succeeds.
-- Run the model-manager pytest suite and deployment preflight tests.
-
-## Risks
-
-Hugging Face downloads may redirect to content hosts; the allowlist/redirect design must support required hosts without sending the account token to arbitrary storage domains. Do not print tokens in compose diagnostics or tests.
+Limits: Docker/Compose is unavailable locally, so actual Compose interpolation and image startup were not executed. No real token, download, model operation or production service was used.
