@@ -1,37 +1,13 @@
-# Auto-tune step by step: one model, one setting, every step visible
+# Native auto-tune, one model and one setting at a time
 
-Status: plan only; implementation pending. Requested by the user on 2026-09-23 after a live run on `aa5132b`.
+Implemented in PR #55 for issue #57. The job is a deterministic script. It never asks an AI agent to choose values or drive the process.
 
-Tuning is a script. No AI agent should need to tune a model by hand, pick values, or drive it step by step. The user's requirement is that the script itself works step by step.
+The script tunes one chat model per maintenance lease. It records a waiting state while an in-flight chat finishes, with a five-minute upper bound and a cancellable wait. Chat opens for at least one second between models; the next lease is taken only when chat is idle. A timed-out wait leaves the queue resumable.
 
-## Today (`apps/web/server/llamacpp-full-autotune.cjs`)
+Within each model the script runs KV cache → context size → drafting → batch/micro-batch. KV candidates are f16, q8_0 and q4_0, measured with drafting off using the existing three quality probes and throughput workloads. The fastest passing KV type wins. Context uses the existing calibration script, including memory checks and near-full prompt recall within the configured prompt budget. Drafting compares off, three existing MTP profiles and n-gram, rejecting candidates that do not draft or change the deterministic list answer. Batch measures the existing 512/1024/2048 micro-batch candidates on the selected drafting profile. Drafting and batch each recheck the committed context under their selected settings, so extra draft or batch memory cannot silently reduce the context size. Draft acceptance is reported, not used as a threshold.
 
-- `start()` takes **one** maintenance lease (`maintenance.hold('Chat is paused while automatic model tuning runs.')`, line ~237) for the whole run and releases it only in `run()`'s `finally`. With "Tune untuned models" (`untuned: true`, six models live) chat is paused for all of them at once, possibly for hours.
-- Inside one model, KV cache → context → drafting/batch run as child jobs under that same lease, with one rollback journal. Nothing is final until the whole model is.
-- On restart, `recover()` marks the job and every pending queue item `interrupted`. The queue is abandoned and has to be started again. Only the speed stage (`llamacpp-autotune.cjs`) reuses earlier partial measurements.
+Each phase snapshots the full preset before its first trial, writes measured candidates through the existing revision and backup path, commits a winner, saves its value and evidence, then advances. On failure or cancellation only the active phase snapshot is restored; earlier phase commits remain. An external edit or uncertain reload stops safely and blocks Resume. A crash between a preset write and journal update also fails closed rather than overwriting an unknown version.
 
-## Wanted (user's choices)
+The durable state file exposes models → phases → steps, with pending, running, passed, failed, skipped or interrupted states, measured values and reasons. Recovery marks the active phase interrupted and restores only that phase if its revision still matches. No inference resumes at startup. An administrator can explicitly Resume after renewed pause confirmation; completed phases and models are skipped after checking the current preset revision and model identity. Legacy pre-v3 interrupted jobs can be viewed but must start a new tune.
 
-1. **One model at a time.** The queue takes a lease per model, not per queue. Between models the lease is released, so chat works again, then the next model's lease is taken. If chat is in use, it waits for it to go idle, bounded, rather than preempting it.
-2. **One setting at a time.** Each model runs as ordered phases: KV cache type → context size → drafting (MTP/n-gram) → batch/ubatch. Each phase:
-   - measures, quality-checks and **commits** its winner to `models.ini` (with the existing revision and external-edit guard) before the next phase starts;
-   - records the committed value and its evidence in the state file;
-   - rolls back only its own change if it fails or is cancelled. Earlier committed phases stay.
-3. **Every step visible and resumable.**
-   - The job exposes `models[] → phases[] → steps[]`, each `pending | running | passed | failed | skipped | interrupted`, with the measured value and the reason.
-   - The page lists them live, not just a single `phase` string.
-   - After a restart or cancel, **Resume** continues from the first unfinished phase of the first unfinished model, reusing committed results.
-
-## Constraints to keep
-
-- A deterministic script, with no model or AI deciding what to try. Existing candidate lists, quality probes, memory floor and time budgets stay as they are.
-- `models.ini` edits keep the revision check and back up before each commit. External edits still stop the run.
-- One run at a time server-wide. The pause message still names the model and the phase ("Chat is paused while noevia tunes Qwen3.5-4B: context size").
-- The existing `llamacpp-calibration.cjs` (context only) becomes the context phase, or is called by it, so there aren't two implementations.
-
-## Tests
-
-- Queue of 3 fake models: the lease is released between models (chat can run between them), and model 2 fails without undoing model 1.
-- Phase commit: kill after the context phase, restart, Resume → KV and context are not re-measured; drafting starts.
-- A phase that fails restores only its own setting.
-- UI (`qa/models-autotune.cjs`): the phase list renders with states; Resume appears after an interrupted run; 375/768/1440 light/dark.
+Verification uses fake model/router collaborators and synthetic browser responses. The focused tests cover the full measured pipeline, a three-model queue with a chat between leases, cancellation and Resume after context, phase-only rollback, an external preset edit, restart recovery, admin/method/confirmation routing, and idle wait timeout/cancellation. The browser fixture checks nested progress, legacy status, Resume, keyboard focus and 375/768/1440 widths in light and dark. No live model tuning or private Diary corpus is involved.
