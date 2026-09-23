@@ -137,4 +137,7 @@ non-empty `MODEL_LOADER_TOKEN`; generate a random value (for example with
 `openssl rand -hex 32`) and store it in a private, untracked `.env` beside the
 Compose file or in the deployment environment. Send it as `X-Model-Loader-Token`
 for API requests. Only `/api/v1/health` is public; HTML pages also require the
-header. Do not place the token in URLs or commit it.
+header. Do not place the token in URLs or commit it. Run
+`docker compose build --pull model-loader` before `docker compose up`; the
+Compose file builds `../../services/model-manager` instead of reusing the old
+pre-authentication `model-loader-test:e11a6ec` image.
