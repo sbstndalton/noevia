@@ -1,3 +1,28 @@
+## Release 6b59118 — 2026-09-23 (Auto routing label in inference stats and saved replies)
+
+[PR #69](https://github.com/sbstndalton/noevia/pull/69) shows the Auto routing decision
+alongside inference stats and in saved replies. Deployed web-only, staged via
+`git archive 6b59118` (no local checkout modified) to
+`/mnt/docker/appdata/cowork/releases/6b59118`, built as `cowork-web:6b59118`
+(`sha256:ddf73b888f317e70c2e894ecb1b856bca104704f3aebbc746252882b9ecffa22`). Config and
+the live Compose Manager file were backed up as `*.bak.before-6b59118`; `current` and
+`COWORK_VERSION` were repointed at `6b59118`. Cutover used the installed guarded preflight
+`--no-build --no-deps --wait --wait-timeout 180 web`; no other service was rebuilt,
+restarted or touched.
+
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:6b1621c`).
+`https://noevia.daserver.work/` returned 200 and `/api/profile` returned 401 unauthenticated.
+Served `index.html` referenced `index-CU_LuO7r.js` and `index-B1OLP7Ag.css`, both present
+byte-identically in the built image's `dist/assets`. Laya (`cowork-laya:0.3.5-recovery-2ffd153`),
+Diary, OCR, code-sandbox, model-loader, docling and the native llama engine kept identical
+container IDs and `StartedAt` timestamps before and after cutover; only synthetic checks were
+used, no real tune or Diary access.
+
+Rollback: restore `config/.env.bak.before-6b59118` and the Compose Manager
+`docker-compose.yml.bak.before-6b59118`, repoint `current` at
+`releases/6b1621c`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release 6b1621c — 2026-09-23 (auto-tune recovery and compact progress)
 
 Auto-tune now waits until the router reports every model unloaded before saving the
