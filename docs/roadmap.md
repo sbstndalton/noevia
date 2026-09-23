@@ -226,7 +226,9 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    model (`qa/pi-bridge-e2e.cjs`). Next, with your go: install Claude Code (+ ACP adapter) or the
    next measured harness in the sandbox image and run the `scratch` fixture. No `Auto` harness
    until there is evidence.
-6. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
+6. **Skills portability and bounded skill/toolbox selection — research, then implement.**
+   Build the default-off offline contract and measurement harness in [issue #19](https://github.com/sbstndalton/noevia/issues/19), then decide from held-out evidence whether any production experiment is justified. Keep script execution and each MCP candidate behind separate qualification gates. See [the research plan](research-skills-mcp-loading.md).
+7. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
    one-hop **local graph** shipped 2026-09-22) · a
    browser executor (spec-agent-execution §6; its policy module, `browser-policy.cjs`, is built and
    tested, 2026-09-22; the executor itself needs a node with a browser) · the Mac app with an offline Diary replica (D22).
