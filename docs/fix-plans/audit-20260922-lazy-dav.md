@@ -1,23 +1,13 @@
-# Lazy loading and Diary DAV copy implementation plan
+# Show lazy-view loading and correct Diary DAV capabilities
 
-Issues: [#8](https://github.com/sbstndalton/noevia/issues/8), [#9](https://github.com/sbstndalton/noevia/issues/9)
+Implemented for review; not merged or deployed. Issues: [#8](https://github.com/sbstndalton/noevia/issues/8), [#9](https://github.com/sbstndalton/noevia/issues/9).
 
-## Scope
+Coding, Models, Projects, Diary, and Settings now show a shared visible `role="status"` fallback. Only the active destination announces; a pre-mounted hidden Diary stays silent. Settings uses the existing stage layout so its loading message remains visible while the underlying app is hidden. The existing rejected-import retry/reload path is retained.
 
-Provide visible, announced loading feedback for lazy application views and correct Diary sharing copy to describe implemented DAV methods without promising unverified client interoperability.
+Diary sharing copy now describes reads, saves, folders, move/rename, same-Diary copies, Trash-backed deletion/overwrite preservation, protected-file versions, and unsupported locking. It does not promise Finder or Windows compatibility.
 
-## Implementation
+Validation: 1,247 web tests pass; typecheck, production build, and design lint pass. `qa/lazy-views.cjs` covers deferred loading, hidden Diary silence, and rejection/reload. `qa/lazy-app.cjs` holds each of the five actual built chunks and verifies exactly one visible loading message, retained navigation, and replacement by the loaded view. Run with an existing Playwright installation via `PLAYWRIGHT_MODULE`.
 
-1. Add a shared, layout-stable lazy-view fallback with concise `role="status"` text. Use it for Coding, Models, Projects, Diary, and Settings while retaining the current rejected-import reload path.
-2. Ensure hidden pre-mounted views do not announce loading when they are not the active destination.
-3. Rewrite Diary sharing help text around implemented capabilities: listing, reads, conditional saves, folder creation, move/rename, copy within supported bounds, and Trash-backed delete. State that locking is unsupported and that client/file-manager compatibility is bounded by tested interoperability.
+Synthetic combined-UI QA checked Chat, Projects, Diary, Settings, Code preview and setup welcome at 375/768/1440 in both themes (36 combinations, no document overflow). This is bounded layout coverage, not every workflow. A live-resized project composer at effective 375 CSS pixels had identical geometry after reload. Native Brave 100%→90% reflowed immediately and looked the same after reload. The reported reload-only resize/zoom issue was not reproduced; pinch zoom and physical devices remain untested. In-app browser screenshot artifacts and a pre-existing 80% scale required actual CSS-width measurements; emulation was not counted as browser zoom.
 
-## Verification
-
-- Delay each dynamic import and assert the active view shows one status while the main layout stays present; exercise the existing load-failure recovery.
-- Review copy against the DAV `Allow` construction and operation handlers. A focused text assertion may prevent reintroducing the retired method claims; no implementation-mirroring test is needed for copy alone.
-- Run `npm test`, `npm run typecheck`, and `npm run build` from `apps/web`.
-
-## Risks
-
-The Diary view is pre-mounted, so an unconditional live region could announce during unrelated work. Loading UI must not create focus jumps. Capability copy must distinguish protocol methods from universal Finder/Windows support.
+No DAV implementation changes or live client interoperability tests were performed.
