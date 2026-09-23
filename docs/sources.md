@@ -40,6 +40,19 @@ Three kinds of entry, kept apart on purpose:
 | [Anthropic Agent Skills](https://agentskills.io) and [Claude Code skills docs](https://code.claude.com/docs/en/skills) | Read | The `SKILL.md` format noevia's instruction skills follow |
 | [anthropics/skills](https://github.com/anthropics/skills) | Read | The skills catalogue Plugins browses and installs from (one `SKILL.md` per skill, fetched on request) |
 
+## Skills and MCP selection follow-up — 2026-09-23
+
+These sources seed [a measured research plan](research-skills-mcp-loading.md). None is installed or adopted by that plan.
+
+| Source | Kind | Used for |
+| --- | --- | --- |
+| [getfounded/mcp-tool-kit](https://github.com/getfounded/mcp-tool-kit) | Read, not used | Archived catalogue/group and lazy-disclosure reference; its transports and broad registration do not match Noevia's current client and curated manifests |
+| [ezyang/codemcp](https://github.com/ezyang/codemcp) | Read, not used | Historical predeclared-command and recoverable-edit ideas; its maintainer calls it obsolete and its auto-accept behavior is not adopted |
+| [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) | Read, not used | Educational reference servers for individual schema/client qualification, never bundle installation |
+| [nickclyde/duckduckgo-mcp-server](https://github.com/nickclyde/duckduckgo-mcp-server) | Read, not used | Optional search/fetch candidate pending pinned transport, quality, citation, latency, rate-limit, fetch-control and maintenance checks |
+| Practitioner observation supplied by the user on 2026-09-23 | Read, anecdotal | Hypothesis that Markdown skills vary across providers and script-backed skills depend on their execution host; original speaker, URL, date, versions and measurements were unavailable |
+| User's prompt-driven System-One proposal, 2026-09-23 | Proposed, not implemented | A model proposes relevant skill/toolbox IDs; deterministic code validates and loads only the existing authorized capabilities |
+
 ## Design references
 
 | Source | Kind | Used for |
