@@ -2,7 +2,7 @@
 
 Issues: #23 and #25
 
-Status: plan only; awaiting implementation.
+Status: implemented and verified with synthetic fixtures (2026-09-23).
 
 ## Problem
 
@@ -32,3 +32,7 @@ Diary storage and workspace loads can overlap. Each resolved request currently w
 ## Compatibility constraints
 
 Keep existing API contracts, event names, storage modes, and optimistic project patches. Avoid visual redesign and production mutation.
+
+## Implementation verification
+
+`npm test` passed all 1,247 tests; `npm run typecheck` and `npm run build` passed. `qa/ordered-ui-loads.cjs` drives the real React components in installed Chrome with intercepted synthetic APIs. Checked relevant failure/recovery states at 375, 768 and 1440 pixels in light/dark, keyboard focus and document overflow. Impeccable detector returned no findings. No production APIs, private Diary corpus, physical devices or screen readers were used.
