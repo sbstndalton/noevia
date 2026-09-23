@@ -220,10 +220,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    (overlay 2026-09-22), so turning it on is your call alone.
 4. **Deep research** — measure on a sandbox model (D12), then turn on for admins.
 5. **Other harnesses** — pi is live (2026-09-22); Claude Code pinned and proven with the real
-   CLI; **Qwen Code pinned and proven with the real CLI**; Codex refused on measurement. Next: run
-   the DeepSeek harness (`dsh --profile acp`, read at source: fail-closed approvals forwarded over
-   ACP) against a fake model like the others, then pin it
-   (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
+   CLI; **Qwen Code pinned and proven with the real CLI**; Codex refused on measurement;
+   **DeepSeek Harness pinned and proven with the real CLI** (2026-09-23, not deployed:
+   its shipped profile ran commands unasked, so noevia inserts its own gate; subagents are
+   read-only under it) (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
    noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
    model (`qa/pi-bridge-e2e.cjs`). Next, with your go: install Claude Code (+ ACP adapter) or the
    next measured harness in the sandbox image and run the `scratch` fixture. No `Auto` harness
