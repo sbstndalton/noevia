@@ -1,5 +1,47 @@
 # Deploying noevia to daserver
 
+## Release 72ae258 — 2026-09-22 (cloud material corrections recovered)
+
+Recovered cloud commits `0c5c755` and `989229c` from their exact combined diff,
+then fixed nested Liquid primary pressed feedback and collapsed Material selected
+feedback found during local validation. Integrated `integration/cloud-material-states`
+into main after a fresh fetch; `origin/main` advanced from `1af80af` to `72ae258`.
+The cloud branch `codex/ui-material-parity-20260922` contained only the baseline and
+was excluded as redundant. Earlier UI/harness integrations remain intact. No force
+push or branch deletion; the original `ui-polish-update` checkout remains clean.
+
+Validation: all 1,247 guarded unit tests pass, zero skips; typecheck/build/design lint
+and diff checks pass. Synthetic Chromium inventory: 468 states, followed by 126
+focused final states, zero errors/overflow/matte-mode blur leaks. Rendered interaction
+checks cover selected segments, expanded/collapsed mode switches, secondary/destructive
+buttons and nested Liquid primary actions in both themes. Accessibility preferences,
+switch contrast, Code-mode and mobile-approval regressions pass. All three approval
+actions and tenant isolation are preserved. No real Diary or live model was tested.
+Native Apple/Safari parity remains unverified; this is a validated web correction.
+
+Fresh backup `ab_20260922_201853` completed without issues; web, Diary and extra-file
+archives independently passed `gzip -t`. Local and uploaded SHA-256 matched:
+- Source archive: `a3996bd50003bcb0f1e2c2fb115511a51aede001cbdeba77eaedcfe0e14bd927`
+- App archive: `ab894f225b829ae832cfb1449e4d9b6a5ab89172602883e990d1c24e224a7899`
+
+Guarded overlay `827932b` → `72ae258` passed writable-mount, model-loader isolation
+and environment checks, then reported `RELEASE_72ae258_COMPLETE` at 20:29 EDT.
+Web, Diary and OCR are healthy with zero restarts. Engine, embeddings, pi sandbox
+and Laya IDs/start times are unchanged. Laya's prior unhealthy status remains outside
+this release; existing unmanaged-volume and kernel swap-limit warnings are unchanged.
+
+Public root serves `index-DNUG1LWZ.js` and `index-BRbxgTrV.css`; both plus `theme.js`,
+`lens.js` and `glass-highlight.js` match the validated build byte-for-byte. Protected
+profile/admin-user endpoints return 401 without authentication. Web logs contain zero
+error markers since cutover. The test network guard is test-only and adds no dependency
+or production networking change.
+
+Rollback: restore `config/.env.bak.before-72ae258`, point `current` at
+`releases/827932b`, and use the guarded no-build startup for web/diary/ocr. Old releases,
+images and backups are retained. The subsequent main commit records deployment evidence
+only; deployed application source is `72ae258ad180af8a4701812f352fe6d8776980b9`.
+
+
 ## Release 827932b — 2026-09-22 (three-material refinement)
 
 Removed the redundant Glassmorphism mode from preferences, pre-paint initialization,

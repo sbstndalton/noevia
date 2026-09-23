@@ -1475,7 +1475,7 @@ Verified: typecheck, build and `lint:design` clean; web tests 473 pass / 57 fail
 to this branch's head before the merge (the failures are this environment's missing native
 dependencies); model-manager pytest 48 passed, up from 38 + PR #1's 8, plus the 2 new ones
 above.
-# 2026-09-22 (cloud material state correction; not deployed)
+# 2026-09-22 (cloud material state correction; deployed as `72ae258`)
 
 Corrected wrapped Material 3 segmented boundaries and role-paired hover/pressed
 states for the mode switch, menus, outlined and destructive buttons. Liquid primary
@@ -1493,3 +1493,8 @@ All 1,247 guarded tests and required static checks pass locally; the 468-state
 synthetic view sweep, accessibility preferences, Code mode and mobile approvals pass.
 Fixed two remaining nested/collapsed hover/press cascade conflicts and added a
 rendered interaction regression. See the audit and deployment record for final status.
+
+Release `72ae258` is live after verified backup `ab_20260922_201853` and guarded
+overlay from `827932b`. All application services healthy, zero restarts; public assets
+match the local build, protected endpoints return 401, no web error markers. Model
+services and pi sandbox unchanged. Full rollback evidence is in docs/deployment.md.
