@@ -623,8 +623,11 @@ it (no execution node, route, job or flag). Measured with Chrome 153 / Playwrigh
 
 - **The element is read, not described.** The executor reads the real DOM (tag, type, accessible
   name, text, form and method) and hands those facts to `browser-policy.cjs`. A submit button the
-  model calls "Show details" asks. Declined, timed-out or failed approvals do nothing. An approval
-  is also invalidated if its page origin or exact DOM target changes while the user is deciding.
+  model calls "Show details" asks. Declined, timed-out or failed approvals do nothing. After an
+  approval returns, the executor immediately revalidates the page origin and exact DOM target;
+  a change already visible then invalidates the approval. The same node, its event handlers or
+  page state can still change after that check or during dispatch, so this is not a general TOCTOU
+  guarantee.
 - **Where the page may go is enforced twice.** Every request Playwright can route (subresources,
   posts, popups, WebSockets) is checked against the allowed list, so actions can report
   `blocked` and the audit can name what was refused. But **Chromium follows a server redirect
