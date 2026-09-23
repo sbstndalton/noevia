@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { LiveStats, ReplyTelemetry, RoutingDecision } from '../types';
 import { Icon } from './icons/Icon';
@@ -52,6 +52,21 @@ function usePhone(): boolean {
 export function StatsBar({ stats, reply, routingDecision, modelLabel }: StatsBarProps): JSX.Element {
   const phone = usePhone();
   const [userOpen, setUserOpen] = useState(readOpen);
+  const rootRef = useRef<HTMLElement>(null);
+  // The routing panel is an anchored popover (it must not grow the strip or squeeze the
+  // chat), so give it the Escape-to-close a popover is expected to have even though the
+  // underlying <details> element has no built-in keyboard dismissal.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const panel = rootRef.current?.querySelector<HTMLDetailsElement>('.routing-details[open]');
+      if (!panel) return;
+      panel.open = false;
+      panel.querySelector('summary')?.focus();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
   const active = reply?.phase === 'waiting' || reply?.phase === 'streaming';
   // A completed external-provider reply is valid even when the separately
   // polled native engine is down. Do not relabel that reply as offline.
@@ -119,7 +134,7 @@ export function StatsBar({ stats, reply, routingDecision, modelLabel }: StatsBar
   // Wide: one row, no control — there is nothing to reveal.
   if (!phone) {
     return (
-      <section className="stats-disclosure is-open is-wide" aria-label="Inference details">
+      <section ref={rootRef} className="stats-disclosure is-open is-wide" aria-label="Inference details">
         <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveAnnouncement}</span>
         <p className="stats-bar stats-bar-static">{status(false)}</p>
         {details}
@@ -129,7 +144,7 @@ export function StatsBar({ stats, reply, routingDecision, modelLabel }: StatsBar
   }
 
   return (
-    <section className={`stats-disclosure${open ? ' is-open' : ''}`} aria-label="Inference details">
+    <section ref={rootRef} className={`stats-disclosure${open ? ' is-open' : ''}`} aria-label="Inference details">
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveAnnouncement}</span>
       <button type="button" className="stats-bar" aria-expanded={open} aria-controls="stats-details" onClick={toggle}
         title={open ? 'Hide inference details' : 'Show inference details'}>
