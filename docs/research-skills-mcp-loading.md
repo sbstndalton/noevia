@@ -1,6 +1,8 @@
 # Skills portability and bounded skill/toolbox selection
 
-Plan for [issue #19](https://github.com/sbstndalton/noevia/issues/19). This records research and implementation gates; it is not a deployment record.
+Implementation and research gates for [issue #19](https://github.com/sbstndalton/noevia/issues/19). The offline experiment is implemented; live quality and adoption remain pending. This is not a deployment record.
+
+Run instructions, contract boundaries and reproducible results: [offline experiment](../experiments/system-one/skills-mcp/README.md). The [runtime matrix](../experiments/system-one/skills-mcp/compatibility.md) and [script design](../experiments/system-one/skills-mcp/script-execution-design.md) separate supported behavior from deferred capabilities.
 
 ## Evidence and current behavior
 
@@ -18,7 +20,7 @@ System-One currently routes model roles and supports step supervision. It does n
 
 ## First implementation slice: offline and default-off
 
-Build a fixture-driven experiment under `experiments/system-one/skills-mcp/`. It must not be wired into production chat, call a live model/provider, install a package, start an MCP server, execute a skill script or change a production setting.
+The fixture-driven experiment lives under `experiments/system-one/skills-mcp/`. It must not be wired into production chat, call a live model/provider, install a package, start an MCP server, execute a skill script or change a production setting.
 
 Compare three modes on identical frozen and held-out synthetic fixtures:
 

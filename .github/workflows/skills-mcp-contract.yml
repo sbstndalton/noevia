@@ -1,0 +1,31 @@
+name: Offline skills MCP contract
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/system-one/skills-mcp/**'
+      - 'apps/web/server/**'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/skills-mcp-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/system-one/skills-mcp/**'
+      - 'apps/web/server/**'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/skills-mcp-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Pure collaborators and injected fixtures only; no package installation.
+      - run: node --require ./apps/web/tests/hermetic-network.cjs --test experiments/system-one/skills-mcp/*.test.cjs
+      - run: node experiments/system-one/skills-mcp/run.cjs --run-offline > "$RUNNER_TEMP/skills-mcp-results.jsonl"

@@ -194,7 +194,9 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 ## Local source work — not deployed
 
-Nothing application-side. The first durable-chat slice (research/system-one/15) remains
+No production application change. The Skills/MCP offline contract experiment is implemented
+in [draft PR #20](https://github.com/sbstndalton/noevia/pull/20); model quality and production
+adoption remain pending. The first durable-chat slice (research/system-one/15) remains
 an internal, default-off seam.
 
 ## Next — in order
@@ -226,8 +228,8 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    model (`qa/pi-bridge-e2e.cjs`). Next, with your go: install Claude Code (+ ACP adapter) or the
    next measured harness in the sandbox image and run the `scratch` fixture. No `Auto` harness
    until there is evidence.
-6. **Skills portability and bounded skill/toolbox selection — research, then implement.**
-   Build the default-off offline contract and measurement harness in [issue #19](https://github.com/sbstndalton/noevia/issues/19), then decide from held-out evidence whether any production experiment is justified. Keep script execution and each MCP candidate behind separate qualification gates. See [the research plan](research-skills-mcp-loading.md).
+6. **Skills portability and bounded skill/toolbox selection — offline prototype in draft review.**
+   The default-off contract and measurement harness for [issue #19](https://github.com/sbstndalton/noevia/issues/19) is implemented. Next, collect authorized held-out model evidence before deciding whether a production experiment is justified. Keep script execution and each MCP candidate behind separate qualification gates. See [the research plan](research-skills-mcp-loading.md).
 7. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
    one-hop **local graph** shipped 2026-09-22) · a
    browser executor (spec-agent-execution §6; its policy module, `browser-policy.cjs`, is built and
