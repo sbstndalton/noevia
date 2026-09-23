@@ -1,0 +1,9 @@
+# Offer connected Drive tools and classify their reads correctly
+
+Fixes [#59](https://github.com/sbstndalton/noevia/issues/59). Audited against `e19e5f619a987b4be3953ee7582d55ae164e1b1c`.
+
+When the operator's `ENABLED_TOOLBOXES` list omitted `gdrive`, `allToolboxes()` filtered it out. This made Settings → Connectors mark all seven Drive tools as writes. It also prevented chat resolution from offering any of them after `connectedBoxes(user)` selected the box for a connected account. The initial plan's claim that every Drive read would prompt in chat under this configuration was not supported by that resolver path.
+
+Built-in connector boxes now remain in the available catalogue regardless of the operator filter; chat still selects them only through `connectedBoxes(user)`. They remain absent from the project picker and cannot be persisted in a project's selected toolboxes. The Drive tool's own executor also checks the account connection. The read classifier treats a name as a write if any available box declares that name a write, so a collision cannot remove an approval. Unknown names and an MCP server's explicit `readOnly === false` still mean write.
+
+Synthetic tests cover the real toolbox resolver and Settings connector response: four Drive reads and three writes when Drive is omitted from operator boxes, per-account connected selection, hidden connector box in the picker, collision safety, and unknown/MCP write behavior. A real chat-handler fixture verifies a default Drive read runs without an approval event, saved `ask` still prompts, saved `block` withholds the tool, a Drive write still prompts, and a disconnected user gets no Drive tools. Required checks: `npm --prefix apps/web run test`, `typecheck`, `build`, and `lint:design`, plus `git diff --check`. No live Drive, private data, or deployment is used.
