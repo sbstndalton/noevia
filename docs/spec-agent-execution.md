@@ -718,11 +718,12 @@ the module header).
 | Claude Code | `./.claude/settings.local.json` + `~/.claude/settings.json`; the complete pin is also sent inline through `session/new` and SDK filesystem setting sources are empty | fixed core tool set; `ask`: Edit, Write, NotebookEdit, Bash, WebFetch, WebSearch; bypass/auto modes and sandboxed-Bash auto-allow disabled; hooks, skills/commands, plugin sync, connectors and filesystem MCP configuration excluded | `env`: `ANTHROPIC_BASE_URL` (engine root; llama.cpp `/v1/messages`), `ANTHROPIC_MODEL` | automatic and manual self-update, non-essential traffic, telemetry |
 | Codex | — refused (409) | see "Codex, measured" | — | — |
 | Qwen Code | `./.qwen/settings.json` (outranks user) + `~/.qwen/settings.json` | `tools.approvalMode: "default"` — its default is now `auto` (an LLM classifier approves unasked) | `modelProviders.openai` → engine, key via the file's own `env` | auto-update, usage statistics |
+| DeepSeek Harness | `~/.dsh/profiles/acp/{cordis.patch.yml,noevia-gate.mjs}` | inserted `tools/pre-execute` gate: every tool but plain reads returns `ask`, through dsh's fail-closed seam; approval `ask` and sandbox `workspace-write` pinned rather than read from env | one `llm-pi-ai` route → engine, key as a header | OTel upload, DeepSeek session log, web search, DeepSeek route/account, plugin manager, config editors, repository instructions and skills |
 | pi | `~/.pi/agent/{models.json,settings.json,extensions/noevia-gate.js}` | the one explicit extension: every non-read tool asks with full input and a five-minute fail-closed timeout; no UI channel, an error or anything but `true` blocks | provider `noevia`, `openai-completions` | startup network, repository context files, discovered extensions/skills/templates/themes, project trust, session persistence, install telemetry |
 
 **Deployment status.** pi 0.87.0 is live by the user's explicit approval (release `6300572`);
-the hardening described here is local source work until a later deployment. Claude Code and Qwen
-Code remain selectable pins, not installed live. Codex is refused rather than offered. Installing
+the hardening described here is local source work until a later deployment. Claude Code, Qwen
+Code and DeepSeek Harness remain selectable pins, not installed live. Codex is refused rather than offered. Installing
 another pinned CLI and adapter in the one container allowed to run commands still needs the user's
 go. pi's approvals are bridged by
 noevia's own `services/code-sandbox/pi-acp-bridge.cjs` (community `pi-acp` does not document
@@ -770,10 +771,31 @@ pointed anywhere but the local engine. No `Auto` harness until paired evidence e
   Decline blocked it; a repository's own `.qwen/settings.json` with `approvalMode: "yolo"` is
   overwritten by noevia's pin and the call still asked. `.qwen/` and `.pi/` are now in
   `HARNESS_LEAVINGS`, so pinned files are never committed onto a task branch.
-- **DeepSeek Harness (`@deepseek-ai/dsh`, 0.0.1-rc)**, read at source, not yet run: an ACP agent
-  server (`dsh --profile acp`) whose approval seam is fail-closed (`ask` by default; only
-  `allowed-once` proceeds) and forwards approvals as `session/request_permission` (allow/reject
-  once) — the right shape for noevia. Its model endpoint is a custom `llm-pi-ai` provider
-  (`openai-completions`, `baseURL`) in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`, with the key
-  read from an env var. Not pinned yet: still refused (409) until the same real-program check the
-  others passed has been run against its release build.
+- **DeepSeek Harness (`@deepseek-ai/dsh` 0.1.7-alpha.2)** in `dsh --profile acp` mode
+  (`qa/deepseek-e2e.cjs`, 2026-09-23), driven through noevia's own code harness:
+  - **Shipped defaults, measured → not acceptable as-is.** Its approval seam is fail-closed, but the
+    shipped profile consults it only for sandbox *escalations*: a plain `echo > proof.txt` ran in
+    its `workspace-write` sandbox without asking, and a Decline answer never came into play (the
+    Codex shape). The shipped profile also uploads session logs over OTel to DeepSeek
+    (`FEEDBACK_ONLY` by default) and keeps a separate DeepSeek session-log path.
+  - **Pinned.** `~/.dsh/profiles/acp/cordis.patch.yml` (the task's private HOME) plus a noevia gate
+    plugin inserted beside it: a `tools/pre-execute` handler, prepended, that returns `ask` for
+    every tool except `read`, `read_image`, `glob`, `grep`, `todo_write` and `get_goal`. `ask` goes
+    through the harness's fail-closed seam to `session/request_permission`. The patch also fixes
+    approval to `ask` and the sandbox to `workspace-write` (the shipped values read env vars), gives
+    one `llm-pi-ai` route to the engine (key as an `Authorization` header, no env var), and
+    disables OTel, the DeepSeek session log, web search, the direct DeepSeek route and account,
+    the plugin manager, the settings/config editors, repository instruction files and filesystem skills.
+  - **Its permission request names only `toolCallId`** (an ACP ToolCallUpdate); the command is in
+    the earlier `tool_call`. noevia now merges the two by id (the request's own fields win), so
+    the card shows the real command. This applies to any harness that does the same.
+  - **Result:** requests went only to the pinned endpoint with the pinned key. Bash arrived as a
+    card with its full command; Allow once ran it; Decline blocked it. A repository shipping its
+    own `AGENTS.md`, a `.dsh` skill and a `.dsh` profile patch (`approval: never`,
+    `danger-full-access`) changed nothing, and neither text reached the model. A control run
+    without the disables showed both reaching it.
+  - **Limitation:** dsh starts subagents with approval prompts off, so under the gate a subagent's
+    non-read tool is refused outright (no card, nothing runs). Starting a subagent asks. In
+    practice subagents are read-only.
+  - Selectable as `CODE_HARNESS_NAME=deepseek`; not installed in the sandbox image. Installing it
+    is the user's call, as with Claude Code and Qwen Code.
