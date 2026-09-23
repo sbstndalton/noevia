@@ -12,4 +12,4 @@ The Research panel is keyed by project and access state is project-specific befo
 
 ## Verification
 
-Controlled browser cases cover direct A→B navigation, a pending A plan completion, an old same-project poll after cancellation, and successful start/cancel/save POSTs followed by failed GETs. The routed checks are the full web unit suite, typecheck, build, design lint, new race QA and existing Research QA. Use synthetic data only; no backend change, live model or production operation.
+Controlled browser cases cover direct A→B navigation, a pending A plan completion, late A GET success and failure, a slow single-flight poll that resumes, an old same-project poll after cancellation, and successful start/cancel/save POSTs followed by failed GETs. They also check that obsolete artifacts do not announce a save and a successful save announces its source once. The routed checks are the full web unit suite, typecheck, build, design lint, new race QA and existing Research QA. Use synthetic data only; no backend change, live model or production operation.
