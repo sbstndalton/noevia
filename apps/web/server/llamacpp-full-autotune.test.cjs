@@ -90,6 +90,17 @@ test('ordered script commits KV, context, drafting and batch with measured evide
   assert.doesNotMatch(JSON.stringify(j), /beforeText|originalText|lastRevision|_revision/);
 });
 
+test('Laya is reported as a system model, not a chat model needing tuning, and cannot be started directly', async t => {
+  const f = fixture(t, { models: ['synthetic', 'laya_multilingual_f16'] });
+  const scan = (await f.manager.autotune.untuned()).body;
+  assert.deepEqual(scan.models, ['synthetic']);
+  assert.deepEqual(scan.skipped.find(s => s.model === 'laya_multilingual_f16'), { model: 'laya_multilingual_f16', reason: 'System routing model — not tuned' });
+  assert.notEqual(scan.skipped.find(s => s.model === 'embed').reason, scan.skipped.find(s => s.model === 'laya_multilingual_f16').reason);
+  const r = await f.manager.autotune.start('laya_multilingual_f16', { confirmPause: true });
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, 'System routing model — not tuned');
+});
+
 test('quality rejection followed by asynchronous unload still reaches the next KV candidate', async t => {
   const f = fixture(t, { badF16: true, unloadPolls: 4 });
   await f.manager.autotune.start('synthetic', { confirmPause: true });

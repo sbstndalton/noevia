@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { WORKLOADS, SPEC_CANDIDATES, geomean } = require('./llamacpp-autotune.cjs');
+const { isSystemModel, modelPathFromArgs, SYSTEM_MODEL_REASON } = require('./model-system.cjs');
 const VERSION = 3;
 const KV = ['f16', 'q8_0', 'q4_0'];
 const UBATCH = [512, 1024, 2048];
@@ -67,6 +68,9 @@ function createFullAutotuner({ request, rawModels, presets, maintenance, applyUn
     const models = [], skipped = [];
     for (const row of r.body.data) {
       const profile = presets.get(row.id), args = row.status?.args || [];
+      if (isSystemModel(row.id, modelPathFromArgs(args))) {
+        skipped.push({ model: row.id, reason: SYSTEM_MODEL_REASON }); continue;
+      }
       if (!profile.exists || args.some(a => ['--embedding', '--embeddings', '--rerank', '--reranking'].includes(a)) ||
           ['embedding', 'embeddings', 'rerank', 'reranking'].some(k => ['true', '1', 'on'].includes(String(profile.options[k])))) {
         skipped.push({ model: row.id, reason: 'Not a configured chat model' }); continue;
@@ -423,6 +427,7 @@ function createFullAutotuner({ request, rawModels, presets, maintenance, applyUn
     if (!Number.isInteger(promptBudgetSeconds) || promptBudgetSeconds < 15 || promptBudgetSeconds > 1800)
       return { ok: false, status: 400, body: { error: 'Choose a prompt time limit between 15 and 1800 seconds.' } };
     if (starting || state.job?.status === 'running') return { ok: false, status: 409, body: { error: 'Auto-tune is already running.' } };
+    if (!bulk && isSystemModel(model)) return { ok: false, status: 400, body: { error: SYSTEM_MODEL_REASON } };
     starting = true;
     try {
       const scan = await candidates();

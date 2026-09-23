@@ -178,6 +178,19 @@ test('bulk tuning discovery and start are admin-only and the server owns the que
   assert.equal(f.sent.pop().status, 405);
 });
 
+test('starting auto-tune on a system routing model (Laya) is rejected as a 4xx, even requested directly', async () => {
+  const f = fixture({ manager: { autotune: {
+    untuned: async () => ({ status: 200, body: { models: [], skipped: [{ model: 'laya_multilingual_f16', reason: 'System routing model — not tuned' }] } }),
+    start: async (model) => model === 'laya_multilingual_f16'
+      ? { status: 400, body: { error: 'System routing model — not tuned' } }
+      : { status: 202, body: { status: 'running' } },
+  } } });
+  await f.call('POST', '/api/models/autotune', { model: 'laya_multilingual_f16', confirmPause: true }, 'admin');
+  const sent = f.sent.pop();
+  assert.equal(sent.status, 400);
+  assert.equal(sent.body.error, 'System routing model — not tuned');
+});
+
 test('resume is admin-only, POST-only and passes renewed pause confirmation', async () => {
   const calls = [];
   const f = fixture({ manager: { autotune: {
