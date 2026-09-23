@@ -34,6 +34,8 @@ jobs:
       - run: npm run build
       # Dev tooling for agents working on this repo. No install step, but it
       # imports apps/web/server/tool-result-reduce.cjs, so it must not drift.
+      - name: Install repo-index search dependency
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: node --test tools/repo-index/*.test.cjs
         working-directory: .
 

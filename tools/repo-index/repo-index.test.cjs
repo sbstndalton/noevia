@@ -35,7 +35,7 @@ test('search finds text that is really in the tree and names the enclosing decla
   assert.ok(hits.length > 0, 'a constant that exists must be found');
   assert.ok(hits.every((h) => h.file.startsWith('apps/web/server/')), 'the glob is honoured');
   assert.ok(hits.every((h) => !h.file.startsWith('./')), "rg's './' prefix is stripped");
-  assert.ok(hits.some((h) => h.symbol.startsWith('toolTokenBudgetFor')));
+  assert.ok(hits.some((h) => h.file === 'apps/web/server/toolboxes.cjs' && h.symbol.startsWith('createToolboxes')));
 });
 
 test('a query with no matches is an answer, not an error', () => {
@@ -52,18 +52,18 @@ test('a path outside the repository is refused', () => {
   assert.equal(resolveInRoot('apps/web/server/index.cjs').endsWith('/apps/web/server/index.cjs'), true);
 });
 
-test('outlining the largest file costs a fraction of reading it', () => {
-  const out = textOf(call('outline_file', { path: 'apps/web/server/index.cjs' }));
-  const raw = require('fs').readFileSync(require('path').resolve(__dirname, '../../apps/web/server/index.cjs'), 'utf8');
+test('outlining toolboxes reports the top-level factory enclosing its budget helper', () => {
+  const out = textOf(call('outline_file', { path: 'apps/web/server/toolboxes.cjs' }));
+  const raw = require('fs').readFileSync(require('path').resolve(__dirname, '../../apps/web/server/toolboxes.cjs'), 'utf8');
   assert.ok(out.length < raw.length / 10, `outline ${out.length} vs file ${raw.length}`);
   assert.match(out, /advisory/, 'the brace-counted end line is declared advisory');
   const budget = rowsOf(out).map((d) => ({ ...d, line: Number(d.line), endLine: Number(d.endLine) }))
-    .find((d) => d.name === 'toolTokenBudgetFor');
-  assert.ok(budget, 'a known top-level function is listed');
+    .find((d) => d.name === 'createToolboxes');
+  assert.ok(budget, 'the enclosing top-level factory is listed');
   // The range must actually contain the function, or the outline is a trap.
   const body = raw.split('\n').slice(budget.line - 1, budget.endLine).join('\n');
-  assert.match(body, /^function toolTokenBudgetFor/);
-  assert.match(body, /TOOL_TOKEN_BUDGET_DEFAULT;\s*\n\}$/);
+  assert.match(body, /^function createToolboxes/);
+  assert.match(body, /function toolTokenBudgetFor/);
 });
 
 test('an unknown tool is a protocol error, a failing tool is content', () => {
@@ -76,4 +76,11 @@ test('outline handles python and reports a class by dedent', () => {
   const decls = outline(src);
   assert.deepEqual(decls.map((d) => d.name), ['Thing', 'top']);
   assert.equal(enclosing(src, 5).name, 'Thing');
+});
+
+
+test('nested functions are reported inside their top-level enclosing factory', () => {
+  const src = 'function factory() {\n  function nested() {\n    return 1;\n  }\n  return nested;\n}\n';
+  assert.deepEqual(outline(src), [{ name: 'factory', line: 1, endLine: 6 }]);
+  assert.equal(enclosing(src, 3).name, 'factory');
 });
