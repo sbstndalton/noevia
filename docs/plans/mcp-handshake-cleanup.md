@@ -1,38 +1,17 @@
-# Plan: close MCP sessions after partial handshake failure
+# MCP handshake cleanup
 
 Issue: #33
 
-Status: plan only; implementation pending.
-
-## Problem
-
-The MCP transport stores a server-issued session ID while processing `initialize`. If response validation or the required initialized notification then fails, `connect()` rejects without returning the session. Discovery and tool callers cannot close it because their cleanup blocks begin only after a successful connect.
-
-## Intended changes
-
-- Put the complete initialize/initialized handshake behind one error boundary that retains access to its mutable session object.
-- When any initialize response has supplied a session ID and response status/body/protocol validation or the later notification fails, perform one best-effort DELETE before rethrowing.
-- Preserve the original handshake error regardless of DELETE refusal, timeout, malformed response, or network failure.
-- Bound cleanup latency to no more than the smaller of the connect caller's timeout and the existing five-second disconnect default.
-- Send no DELETE when no session ID was received.
-- Keep the existing discovery and tool-call `finally` blocks for failures after connect succeeds; do not add session caching or change authentication scope.
-
-## Acceptance criteria
-
-- A failed initialized notification cannot strand a session ID returned by initialize.
-- An initialize error status, malformed body, JSON-RPC error, or mismatched response that nevertheless supplies a session ID receives the same cleanup attempt.
-- Cleanup failure never masks or replaces the original connect failure.
-- Initialize failures without a session ID make no DELETE request.
-- Successful discovery and tool calls continue to close their sessions exactly once with the same credentials and protocol headers.
+Implemented: `connect()` now owns cleanup until it returns a successfully initialized session. If initialize response validation or the initialized notification fails after a session ID arrives, it attempts DELETE with the same credentials and protocol headers, then rethrows the original error. Cleanup is best effort and bounded by the smaller of the caller timeout and five seconds. No ID means no DELETE; successful connections remain owned by existing caller cleanup blocks.
 
 ## Verification
 
-- Add transport tests for successful initialize plus failed notification, initialize error/malformed response with an ID header, and initialize failure without an ID.
-- Cover DELETE success, refusal, timeout, and network rejection while asserting the original connect error.
-- Assert cleanup carries the issued ID and auth headers and obeys the bounded timeout/redirect policy.
-- Retain the existing successful session lifecycle and real-caller wiring tests.
-- Run the web unit tests, typecheck, and production build with synthetic transports only.
+- 51 focused MCP tests passed, including handshake failure stages crossed with DELETE success, refusal, network failure and timeout; no-session and successful-session lifecycle checks.
+- Full web suite: 1273 tests passed.
+- Typecheck and production build passed.
+- Independent Sol review: no actionable findings.
+- Synthetic transports only; no live MCP endpoint, credential, or private corpus was used.
 
-## Compatibility constraints
+## Limits
 
-Preserve the streamable-HTTP protocol version, response parsing, per-user authentication boundaries, SSRF redirect policy, and caller-visible error text. Do not introduce shared session reuse, live MCP calls, or credential logging.
+Cleanup cannot force a remote server to honor DELETE or recover a session ID that was never received. Per-user authentication, response parsing, redirect restrictions, and session ownership after successful connect are unchanged. No shared session cache was introduced.
