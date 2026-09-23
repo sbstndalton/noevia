@@ -2,7 +2,7 @@
 
 Issue: #30
 
-Status: plan only; implementation pending.
+Status: implemented and verified (2026-09-23).
 
 ## Problem
 
@@ -35,3 +35,7 @@ The linked-folder picker allows overlapping navigation while retaining its previ
 ## Compatibility constraints
 
 Preserve the current `FolderPicker`/`ProjectView` API, native dialog behavior, storage path semantics, and source-folder deduplication. This plan does not change `StorageFileBrowser` or the PR #15 work.
+
+## Verification result
+
+All 1,247 unit tests, typecheck and build pass. `qa/folder-picker-ordering.cjs` drives real React navigation with deferred synthetic HTTP: old-first/old-last success, stale failure, loading/link guards, creation reload and submitted path. Relevant dialog checked at 375/768/1440 in light/dark with focus and overflow measurements. No production storage, physical-device or screen-reader coverage.
