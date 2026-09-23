@@ -16,12 +16,18 @@ services:
     mem_limit: 14g
     memswap_limit: 14g
   model-loader:
-    image: model-loader-test:e11a6ec
+    # Build from this checkout so token enforcement cannot drift behind the
+    # Docker-socket-bearing experiment configuration.
+    build:
+      context: ../../services/model-manager
+      dockerfile: Dockerfile
+    image: model-loader-test:source-auth
     container_name: model-loader-test
     restart: unless-stopped
     ports:
       - "10.69.0.130:8092:8090"
     environment:
+      MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN:?Set a non-empty model-loader authentication token}
       MODELS_DIR: /models
       MODELS_INI_PATH: /config/models.ini
       DATA_DIR: /data
