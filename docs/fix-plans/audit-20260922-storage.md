@@ -1,25 +1,11 @@
-# Storage UI and test-contract implementation plan
+# Fix storage test settings, labels, and browser dialog
 
-Issues: [#5](https://github.com/sbstndalton/noevia/issues/5), [#6](https://github.com/sbstndalton/noevia/issues/6), [#7](https://github.com/sbstndalton/noevia/issues/7)
+Implemented for review; not merged or deployed. Issues: [#5](https://github.com/sbstndalton/noevia/issues/5), [#6](https://github.com/sbstndalton/noevia/issues/6), [#7](https://github.com/sbstndalton/noevia/issues/7).
 
-## Scope
+Storage controls now have persistent visible labels and stable associations, with saved-secret guidance in help text. Test sends edited fields with `useSavedSecret`; the server reads only the signed-in account's secret and requires the same origin and storage kind before applying the existing outbound approval policy. Edited WebDAV paths/folders and S3 endpoint paths/buckets/access keys are tested rather than silently using the old connection. The legacy `useSaved` API remains compatible.
 
-Give storage fields persistent labels, test edited non-secret values with the saved secret, and make the project storage browser a complete accessible dialog.
+The storage browser uses a named native modal dialog with initial focus, Tab/Shift+Tab wrapping, Escape and backdrop dismissal, trigger-focus restoration, and announced load/read errors.
 
-## Implementation
+Validation: 1,250 web tests pass; typecheck, production build, and design lint pass. Route tests capture WebDAV headers, verify the S3 signature, assert tenant lookup and cross-origin/type rejection, and confirm no secret in the response or saved-setting mutation. `PLAYWRIGHT_MODULE=/path/to/playwright node apps/web/qa/storage-accessibility.cjs` tests actual components with mocked APIs: all three storage types, edited Test payload, focus wrapping/restoration, Escape, errors, and 375/768/1440 light/dark layouts. Manual synthetic-app checks covered the storage form and project import dialog.
 
-1. Refactor `StoragePicker` fields into labelled controls with stable ids. Keep configured-secret guidance as help text rather than using it as the field name.
-2. Define an explicit storage-test request shape. When `useSavedSecret` is requested, merge only the stored secret into the submitted edited connection on the server. Never return or log it. Apply validation and outbound-origin approval to the merged target.
-3. Preserve the existing full-saved-connection test mode only if another caller needs it; use distinct names so the two contracts cannot be confused.
-4. Upgrade `StorageFileBrowser` to a labelled modal dialog with initial focus, focus containment, Escape close, trigger-focus restoration, and announced async errors. Prefer a shared dialog primitive if it already satisfies these behaviors.
-
-## Verification
-
-- Component tests query each Nextcloud, WebDAV, and S3 field by persistent label after values are entered.
-- Route tests prove edited WebDAV endpoint/folder and S3 endpoint/bucket are tested with the saved secret, and that the secret never appears in a response.
-- Dialog tests cover role/name, initial and returned focus, Tab containment, Escape, and an alert on browse/read failure.
-- Run `npm test`, `npm run typecheck`, and `npm run build` from `apps/web`.
-
-## Risks
-
-The merge contract must prevent clients from selecting another account's credentials or bypassing SSRF checks. Secret-preservation behavior during Save is separate and must remain unchanged. Focus restoration needs stable trigger ownership across both project entry points.
+Limits: no real storage connection, corpus, or production mutation. Physical devices and assistive-technology speech were not tested.
