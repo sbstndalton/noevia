@@ -111,3 +111,19 @@ test('history saves carry a revision; a save based on a stale revision is refuse
   assert.match(body.revision, /^[a-f0-9]{64}$/);
   assert.equal((await post('/api/chats/c-two-devices/history', { history: phone })).status, 200, 'saves without a base revision still work (older clients)');
 });
+
+test('routing details round-trip through history and remain on conflict copies', async () => {
+  const routingDecision = { offered: [{ id: 'fast', label: 'Short answer' }, { id: 'smart', label: 'Reasoning' }],
+    scores: { fast: 0.2, smart: 0.8 }, selectedRole: 'smart', effectiveRole: 'smart',
+    backend: 'decision-service', model: 'convaiinnovations/laya', calibrated: false,
+    latencyMs: 37, status: 'accepted', fallbackReason: null };
+  const history = [{ role: 'assistant', content: 'Synthetic answer', model: 'Assistant · Auto (smart)', routingDecision }];
+  assert.equal((await post('/api/chats/c-routing-details/history', { history })).status, 200);
+  const read = JSON.parse((await request('/api/chats/c-routing-details/history', { headers: mutationHeaders() })).text);
+  assert.deepEqual(read.history[0].routingDecision, routingDecision);
+  const concurrent = [...history, { role: 'user', content: 'Another turn' }];
+  assert.equal((await post('/api/chats/c-routing-details/history', { history: concurrent, baseRevision: read.revision })).status, 200);
+  const stale = await post('/api/chats/c-routing-details/history', { history, baseRevision: read.revision });
+  assert.equal(stale.status, 409);
+  assert.deepEqual(JSON.parse(stale.text).history[0].routingDecision, routingDecision);
+});

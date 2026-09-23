@@ -143,7 +143,9 @@ export default function App(): JSX.Element {
   messagesRef.current = messagesByChat;
   const [diaryEnabled, setDiaryEnabled] = useState(false);
   const [popupOpen, setPopupOpen] = useState(false);
-  const loadedChats = useRef<Set<string>>(new Set(view.kind === 'chat' ? [view.chatId] : []));
+  // A restored chat must fetch its saved transcript; only a newly created empty
+  // chat may skip that read until its first send.
+  const loadedChats = useRef<Set<string>>(new Set(view.kind === 'chat' && !restored.current ? [view.chatId] : []));
   const patchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingPatches = useRef<Record<string, Partial<Project>>>({});
   const lastSourceSync = useRef<Record<string, number>>({});
@@ -323,6 +325,7 @@ export default function App(): JSX.Element {
             role: h.role,
             content: h.content,
             senderLabel: h.model,
+            routingDecision: h.routingDecision,
             reasoning: h.reasoning,
             reasoningMs: h.reasoningMs,
             toolCalls: settleToolCalls(h.toolCalls),
@@ -396,6 +399,7 @@ export default function App(): JSX.Element {
       role: m.role,
       content: m.content,
       model: m.senderLabel,
+      routingDecision: m.routingDecision,
       reasoning: m.reasoning || undefined,
       reasoningMs: m.reasoningMs,
       toolCalls: m.toolCalls && m.toolCalls.length ? m.toolCalls : undefined,
@@ -412,7 +416,7 @@ export default function App(): JSX.Element {
         historyRevisions.current[chatId] = result.conflict.revision;
         if (merged !== next) {
           next = merged;
-          setMessagesByChat((prev) => ({ ...prev, [chatId]: merged.map((h) => ({ id: uid(), role: h.role, content: h.content, senderLabel: h.model, reasoning: h.reasoning, reasoningMs: h.reasoningMs, toolCalls: settleToolCalls(h.toolCalls), stats: h.stats })) }));
+          setMessagesByChat((prev) => ({ ...prev, [chatId]: merged.map((h) => ({ id: uid(), role: h.role, content: h.content, senderLabel: h.model, routingDecision: h.routingDecision, reasoning: h.reasoning, reasoningMs: h.reasoningMs, toolCalls: settleToolCalls(h.toolCalls), stats: h.stats })) }));
         }
       }
     };
@@ -514,7 +518,7 @@ export default function App(): JSX.Element {
           if (ev.type === 'meta' && ev.route) {
             setMessagesByChat((prev) => ({
               ...prev,
-              [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId ? { ...m, senderLabel: `Assistant · Auto (${ev.route})` } : m)),
+              [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId ? { ...m, senderLabel: `Assistant · Auto (${ev.route})`, routingDecision: ev.routingDecision } : m)),
             }));
           } else if (ev.type === 'skills_scope') {
             setMessagesByChat(prev => ({ ...prev, [chatId]: (prev[chatId] ?? []).map(m => m.id === replyId ? { ...m, skillScope: ev.text || undefined } : m) }));
