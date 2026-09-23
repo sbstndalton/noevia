@@ -1,28 +1,9 @@
-# Dialogs that are themselves the sheet render with no surface
+# Restore surfaces on native dialog panels
 
-Status: plan only; implementation pending. Found in live testing on release `aa5132b`, 2026-09-23 (Liquid glass material, dark).
+Issue: [#58](https://github.com/sbstndalton/noevia/issues/58). Baseline: `e19e5f619a987b4be3953ee7582d55ae164e1b1c`.
 
-## What happens
+“Pull from your storage” (`StorageFileBrowser.tsx`) and “Choose a folder” (`FolderPicker.tsx`) use a native `<dialog>` that is itself the `.aero.dialog-sheet` panel. The broad reset in `overlays.css` removed its background, border, and shadow. The reset outranked the plain `.aero` surface in Liquid glass. Soft and Material 3 have stronger material-specific surface rules; the live transparent-dialog observation came from Liquid glass in release `aa5132b`.
 
-Two native dialogs render with a transparent background and no border, so their title, folder list and buttons float over the blurred page:
+The reset now matches only a native dialog with a direct `.dialog-sheet` child. Direct-panel dialogs keep their material surface and existing scrim. Wrapper dialogs, such as `ModelPopup`, retain a transparent outer dialog and a surfaced inner panel. No component behavior or copy changes are needed.
 
-- **Pull from your storage** (`StorageFileBrowser.tsx`, `<dialog class="modal-card aero dialog-sheet">`). This is a regression from #15, which moved it to a native dialog. It shipped in `aa5132b`.
-- **Choose a folder** (`FolderPicker.tsx`, `<dialog class="folder-picker aero dialog-sheet">`), used by Sources → Link folder. Broken since UI overhaul release 3 (`4e32b22`).
-
-Measured in the live page: `getComputedStyle(dialog).backgroundColor === 'rgba(0, 0, 0, 0)'`, `backgroundImage: none`, `border: 0`.
-
-## Cause
-
-`styles/overlays.css:66`:
-
-```css
-dialog.dialog-sheet, dialog:has(> .dialog-sheet) { border: 0; padding: 0; background: none; box-shadow: none; }
-```
-
-The rule is right for dialogs that are only the backdrop around an inner `.dialog-sheet` panel (the `:has(> .dialog-sheet)` case). But `dialog.dialog-sheet` also matches dialogs that **are** the panel. Its specificity (0,1,1) beats the `.aero` surface rules (0,1,0) in `materials.css` and `material3.css`, so the panel's own surface, border and blur are wiped. `dialog.aero.dialog-sheet` (line 81) sets size and padding but no surface.
-
-## Fix
-
-- Limit the reset to backdrop-only dialogs, e.g. `dialog:has(> .dialog-sheet)`, and let `dialog.aero.dialog-sheet` keep the material's `.aero` surface. Alternatively restate the surface on `dialog.aero.dialog-sheet` for each material. The first is smaller and matches the comment on line 79 ("a dialog that is itself the frame").
-- Check all three materials (Soft, Liquid glass, Material 3) in light and dark at 375/768/1440, for both dialogs plus one wrapper-style dialog (e.g. `EditProjectModal`) to confirm it's unchanged.
-- Add a QA assertion: an open `dialog.aero.dialog-sheet` has a non-transparent background or a backdrop filter. `qa/storage-accessibility.cjs` from #15 is the natural place; it passed because it checks focus and labels, not the surface.
+`qa/storage-accessibility.cjs` uses a synthetic storage API and mounts the real `StorageFileBrowser` and `FolderPicker` components. Its fixture loads the production stylesheet sequence, including `materials.css`, `material3.css`, and `phone.css`. A small wrapper dialog mirrors the production wrapper structure. The browser check covers surfaces, viewport bounds, horizontal overflow, focus on open, Escape and focus restoration at 375/768/1440 in Soft, Liquid glass, and Material 3, each in light and dark. Existing storage label, connection test, and failure checks continue to run. The fixture validates browser behavior with mocked storage, not physical touch keyboards or a live connection.
