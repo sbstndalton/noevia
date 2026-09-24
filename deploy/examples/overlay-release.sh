@@ -3,9 +3,12 @@
 #
 # For releases where apps/web dependencies are unchanged since OLD: reuse OLD's
 # installed node_modules instead of running npm on the box (its IPv6 route to the
-# registry is broken). Replaces the web image's dist/ and server/ only, retags the
-# unchanged diary/ocr/model-loader images, repoints the release, and rolls back
-# automatically if the health wait fails. The native engine must stay untouched.
+# registry is broken). Replaces the web image's dist/ and server/ only, bumps
+# COWORK_VERSION (web only), repoints the release, and rolls back automatically if
+# the health wait fails. The native engine must stay untouched. Sidecars (Diary, OCR,
+# model manager, Docling, Code sandbox) keep their own DIARY_VERSION / OCR_VERSION /
+# MODEL_MANAGER_VERSION / DOCLING_VERSION / CODE_SANDBOX_VERSION tags; nothing is
+# retagged forward. A Diary agent change ships separately with diary-overlay.sh.
 #
 # Before running:
 #   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` (keep the folder: dist symlinks to it) then `npm run build` in apps/web
@@ -25,6 +28,17 @@ manager=/boot/config/plugins/compose.manager/projects/Cowork
 
 [ "$(readlink -f "$base/current")" = "$base/releases/$OLD" ]
 [ "$(sed -n 's/^COWORK_VERSION=//p' "$config")" = "$OLD" ]
+# Every sidecar tag the .env pins must already exist locally: this release builds none of
+# them and `up --no-build` would otherwise try to pull a tag nobody built.
+for pair in diary:DIARY_VERSION ocr:OCR_VERSION model-loader:MODEL_MANAGER_VERSION docling:DOCLING_VERSION code-sandbox:CODE_SANDBOX_VERSION; do
+  svc=${pair%%:*}; key=${pair#*:}; tag=$(sed -n "s/^$key=//p" "$config")
+  case $key in DIARY_VERSION|OCR_VERSION) [ -n "$tag" ] || { echo "$key is not set in $config; see docs/deployment.md 'Migrating an existing .env'" >&2; exit 1; } ;; esac
+  [ -z "$tag" ] || docker image inspect "cowork-$svc:$tag" >/dev/null 2>&1 \
+    || { echo "$key=$tag but image cowork-$svc:$tag does not exist; not deploying" >&2; exit 1; }
+done
+# Any required tag the deployment's compose files use but .env lacks fails here, before anything changes.
+(cd "$manager" && docker compose --env-file "$config" --profile code config -q) \
+  || { echo "compose config fails with $config; set the missing *_VERSION keys first" >&2; exit 1; }
 
 mkdir -p "$base/releases/$NEW"
 tar -xzf "/tmp/src-$NEW.tar.gz" -C "$base/releases/$NEW"
@@ -76,9 +90,6 @@ COPY dist /app/dist
 COPY server /app/server
 DOCKER
 docker build -q -t "cowork-web:$NEW" "$work" >/dev/null
-for svc in diary ocr model-loader; do
-  docker image inspect "cowork-$svc:$OLD" >/dev/null 2>&1 && docker tag "cowork-$svc:$OLD" "cowork-$svc:$NEW"
-done
 
 cp -p "$config" "$config.bak.before-$NEW"
 old_native=$(docker inspect cowork-llama-1 --format '{{.Id}}')
@@ -98,7 +109,7 @@ if ! { bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build 
 fi
 [ "$(docker inspect cowork-llama-1 --format '{{.Id}}')" = "$old_native" ]
 # Sidecars that live outside the web release (Docling, the Code sandbox) are tagged by what they
-# contain, not by COWORK_VERSION, so a release does not replace them. Make sure the ones this
+# contain (DOCLING_VERSION, CODE_SANDBOX_VERSION), not by COWORK_VERSION, so a release does not replace them. Make sure the ones this
 # deployment defines are running -- `--no-deps` and by name, so nothing else (the model loader,
 # the engine) is recreated as a side effect.
 sidecars=$(docker compose --env-file "$config" --profile code config --services 2>/dev/null | grep -xE 'docling|code-sandbox' || true)

@@ -163,6 +163,25 @@ test('"allow for this task" covers the same class only, and never a delete or a 
     [ACTIONS.EDIT, ACTIONS.DELETE, ACTIONS.DELETE, ACTIONS.GIT_PUSH, ACTIONS.GIT_PUSH]);
 });
 
+test('a standing execute allow does not cover hidden pushes, deletes or run-time commands', async () => {
+  const cmd = (command) => ({ toolCall: { kind: 'execute', title: 'bash', rawInput: { command } }, options: OPTIONS });
+  const r = await run({
+    capabilities: [ACTIONS.EXECUTE, ACTIONS.DELETE, ACTIONS.GIT_PUSH],
+    answers: ['approve_all', 'deny', 'deny', 'deny', 'approve_all', 'deny'],
+    script: async (h) => {
+      await h.requestPermission(cmd('make build'));                 // asks, stands for execute
+      await h.requestPermission(cmd('git -C . push origin HEAD:main')); // a push: asks
+      await h.requestPermission(cmd("'rm' -rf x"));                 // a delete: asks
+      await h.requestPermission(cmd("bash -c 'rm -rf .'"));         // a delete: asks
+      await h.requestPermission(cmd("bash -c 'make'"));             // run-time string: asks, cannot stand
+      await h.requestPermission(cmd("bash -c 'make'"));             // asks again
+      await h.requestPermission(cmd('make test'));                  // covered by the first standing allow
+    },
+  });
+  assert.deepEqual(r.asked.map((a) => a.action), [ACTIONS.EXECUTE, ACTIONS.GIT_PUSH, ACTIONS.DELETE, ACTIONS.DELETE,
+    ACTIONS.EXECUTE, ACTIONS.EXECUTE]);
+});
+
 test('a standing allow does not leak into another task', async () => {
   const first = await run({ capabilities: [ACTIONS.EDIT], answers: ['approve_all'],
     script: async (h, cwd) => { await h.requestPermission(editCall(path.join(cwd, 'a.txt'))); } });
@@ -531,4 +550,71 @@ test("a networked task's result says which hosts it reached and which were refus
   // No grant, no network section.
   const offline = await run({ script: async () => {} });
   assert.equal('network' in offline.job.result, false);
+});
+
+test('relative fs paths resolve inside the worktree, never against the web process cwd', async () => {
+  const outside = temp('noevia-houtside-');
+  fs.writeFileSync(path.join(outside, 'secret.txt'), 'synthetic secret');
+  const before = fs.existsSync(path.join(process.cwd(), 'noevia-escape-probe.txt'));
+  const r = await run({
+    script: async (h, cwd) => {
+      assert.equal(await h.writeTextFile({ path: 'noevia-escape-probe.txt', content: 'inside' }), null);
+      assert.equal(fs.readFileSync(path.join(cwd, 'noevia-escape-probe.txt'), 'utf8'), 'inside', 'the relative write landed in the worktree');
+      assert.deepEqual(await h.readTextFile({ path: 'a.txt' }), { content: 'a' }, 'a relative read is the worktree file');
+      await assert.rejects(() => h.writeTextFile({ path: '../escape.txt', content: 'no' }), /Outside/);
+      await assert.rejects(() => h.readTextFile({ path: '../../etc/passwd' }), /Outside/);
+      await assert.rejects(() => h.readTextFile({ path: path.join(outside, 'secret.txt') }), /Outside/);
+      fs.symlinkSync(outside, path.join(cwd, 'link'));
+      await assert.rejects(() => h.readTextFile({ path: 'link/secret.txt' }), /Outside/);
+      await assert.rejects(() => h.writeTextFile({ path: 'link/new.txt', content: 'no' }), /Outside/);
+    },
+  });
+  assert.equal(r.job.status, 'completed', r.job.error);
+  assert.equal(fs.existsSync(path.join(process.cwd(), 'noevia-escape-probe.txt')), before, 'nothing written to the process cwd');
+  assert.equal(fs.existsSync(path.join(outside, 'new.txt')), false);
+  assert.equal(fs.existsSync(path.join(path.dirname(r.workspace), 'escape.txt')), false);
+});
+
+// ---- #181: a symlink as the final component is never followed, dangling or not ----
+test('a symlinked final component is refused for reads and writes; ordinary writes still land inside', async () => {
+  const outside = temp('noevia-symout-');
+  const target = path.join(outside, 'authorized_keys'); // absent: the link dangles
+  fs.writeFileSync(path.join(outside, 'present.txt'), 'synthetic secret');
+  const r = await run({
+    script: async (h, cwd) => {
+      fs.symlinkSync(target, path.join(cwd, 'k'));
+      await assert.rejects(() => h.writeTextFile({ path: 'k', content: 'ssh-ed25519 AAAA' }), /Outside|symlink/);
+      await assert.rejects(() => h.writeTextFile({ path: path.join(cwd, 'k'), content: 'x' }), /Outside|symlink/);
+      assert.equal(fs.existsSync(target), false, 'nothing was created outside the worktree');
+      fs.symlinkSync(path.join(outside, 'present.txt'), path.join(cwd, 'p'));
+      await assert.rejects(() => h.writeTextFile({ path: 'p', content: 'x' }), /Outside|symlink/);
+      await assert.rejects(() => h.readTextFile({ path: 'p' }), /Outside|symlink/);
+      assert.equal(fs.readFileSync(path.join(outside, 'present.txt'), 'utf8'), 'synthetic secret');
+      // Documented choice: a link to a file inside the worktree is refused too (by contains() or by the lstat check).
+      fs.symlinkSync(path.join(cwd, 'a.txt'), path.join(cwd, 'in'));
+      await assert.rejects(() => h.writeTextFile({ path: 'in', content: 'x' }), /Outside|symlink/);
+      await assert.rejects(() => h.readTextFile({ path: 'in' }), /Outside|symlink/);
+      assert.equal(await h.writeTextFile({ path: 'sub/dir/ok.txt', content: 'fine' }), null);
+      assert.equal(fs.readFileSync(path.join(cwd, 'sub/dir/ok.txt'), 'utf8'), 'fine');
+    },
+  });
+  assert.equal(r.job.status, 'completed', r.job.error);
+});
+
+test('defaultFiles refuses a link swapped in after the containment check (O_NOFOLLOW)', () => {
+  const { defaultFiles } = require('./code-harness.cjs');
+  const root = temp('noevia-race-'), outside = temp('noevia-race-out-');
+  const victim = path.join(outside, 'v.txt');
+  fs.symlinkSync(victim, path.join(root, 'late'));
+  assert.throws(() => defaultFiles.write(path.join(root, 'late'), 'x', root), /symlink/);
+  assert.throws(() => defaultFiles.read(path.join(root, 'late'), 100, root), /symlink/);
+  assert.equal(fs.existsSync(victim), false);
+  assert.throws(() => defaultFiles.write(path.join(outside, 'x.txt'), 'x', root), /Outside/);
+  assert.throws(() => defaultFiles.write(path.join(root, 'x.txt'), 'x'), /Outside/, 'no root, no write');
+  // mkdir -p must not follow a symlinked directory out of the worktree.
+  fs.symlinkSync(outside, path.join(root, 'dirlink'));
+  assert.throws(() => defaultFiles.write(path.join(root, 'dirlink', 'a', 'b', 'file'), 'x', root), /Outside/);
+  assert.equal(fs.existsSync(path.join(outside, 'a')), false, 'nothing created outside');
+  defaultFiles.write(path.join(root, 'new', 'deep', 'ok.txt'), 'ok', root);
+  assert.equal(fs.readFileSync(path.join(root, 'new', 'deep', 'ok.txt'), 'utf8'), 'ok');
 });

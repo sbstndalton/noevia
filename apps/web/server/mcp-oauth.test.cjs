@@ -2,8 +2,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const Database = require('better-sqlite3');
 const { createMcpOAuth } = require('./mcp-oauth.cjs');
+const { createSecretStore } = require('./secrets.cjs');
 
 const secrets = { encrypt: (v) => 'enc:' + Buffer.from(v).toString('base64'), decrypt: (v) => Buffer.from(v.slice(4), 'base64').toString() };
 function fakeAs({ registration = true, s256 = true } = {}) {
@@ -108,4 +112,52 @@ test('a service without self-registration uses an app an administrator registere
   await oauth.setClient({ serverId: 's', serverUrl: 'https://mcp.example/mcp', clientId: 'manual-app-2' });
   assert.equal(oauth.connected('u1', 's'), false);
   assert.equal(oauth.clientInfo('s').hasSecret, false);
+});
+
+test('token rows are user-bound: a copied row fails to decrypt, a legacy v1 row still works, refresh re-encrypts as bound', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-oauth-secrets-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const realSecrets = createSecretStore(root);
+  const as = fakeAs(); const db = new Database(':memory:');
+  const clock = { t: 1e12 };
+  const oauth = createMcpOAuth({ db, secrets: realSecrets, fetchImpl: as.fetchImpl, urlAllowed: async () => true, redirectUri: () => 'https://n/cb', now: () => clock.t });
+  const url = await oauth.start({ userId: 'u1', serverId: 's', serverUrl: 'https://mcp.example/mcp' });
+  const a = authorize(as, url); await oauth.finish({ userId: 'u1', state: a.state, code: a.code });
+  const row = db.prepare('SELECT data_enc FROM mcp_oauth_tokens WHERE user_id=?').get('u1');
+  assert.match(row.data_enc, /^enc:v2:/, 'new writes are user-bound');
+  assert.equal(await oauth.tokenFor('u1', 's'), 'AT-1');
+  // Copying the row to another account's key makes it undecryptable there.
+  db.prepare('INSERT INTO mcp_oauth_tokens VALUES(?,?,?,?)').run('u2', 's', row.data_enc, clock.t);
+  assert.equal(await oauth.tokenFor('u2', 's'), null, 'a row copied to another account fails to decrypt');
+  // A pre-existing v1 (unbound) row still decrypts for its account.
+  db.prepare('DELETE FROM mcp_oauth_tokens WHERE user_id=?').run('u1');
+  db.prepare('INSERT INTO mcp_oauth_tokens VALUES(?,?,?,?)').run('u1', 's', realSecrets.encrypt(JSON.stringify({ accessToken: 'LEGACY-AT', refreshToken: 'RT-1', expiresAt: clock.t + 3600000 })), clock.t);
+  assert.equal(await oauth.tokenFor('u1', 's'), 'LEGACY-AT', 'v1 row still decrypts');
+  // Once it is refreshed (a write), it is re-encrypted bound to the account.
+  clock.t += 3600 * 1000;
+  assert.equal(await oauth.tokenFor('u1', 's'), 'AT-2');
+  const refreshed = db.prepare('SELECT data_enc FROM mcp_oauth_tokens WHERE user_id=?').get('u1');
+  assert.match(refreshed.data_enc, /^enc:v2:/, 'refresh re-encrypts as user-bound');
+});
+
+test('pending sign-in states are capped per user (oldest evicted) and bound to the initiating user', async () => {
+  const as = fakeAs(); const { oauth } = make(as);
+  const urls = [];
+  for (let i = 0; i < 25; i++) urls.push(await oauth.start({ userId: 'u1', serverId: 's', serverUrl: 'https://mcp.example/mcp' }));
+  const firstState = new URL(urls[0]).searchParams.get('state');
+  const lastState = new URL(urls[urls.length - 1]).searchParams.get('state');
+  const first = authorize(as, urls[0]);
+  // The oldest of 25 states was evicted once the per-user cap (20) was exceeded.
+  await assert.rejects(oauth.finish({ userId: 'u1', state: firstState, code: first.code }), /expired or was already used/);
+  const last = authorize(as, urls[urls.length - 1]);
+  assert.equal((await oauth.finish({ userId: 'u1', state: lastState, code: last.code })).serverId, 's');
+});
+
+test('a state cannot be burned by a different user presenting it', async () => {
+  const as = fakeAs(); const { oauth } = make(as);
+  const url = await oauth.start({ userId: 'u1', serverId: 's', serverUrl: 'https://mcp.example/mcp' });
+  const a = authorize(as, url);
+  await assert.rejects(oauth.finish({ userId: 'u2', state: a.state, code: a.code }), /different account/);
+  // Rejected attempt by another user must not have consumed the state.
+  assert.equal((await oauth.finish({ userId: 'u1', state: a.state, code: a.code })).serverId, 's');
 });

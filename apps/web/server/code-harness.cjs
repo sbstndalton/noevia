@@ -79,12 +79,14 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
     // disk, so it can fail for ordinary reasons — a full volume, a read-only mount — and leaving
     // it outside meant a live proxy token and a branch claimed for good.
     jobs.run(taskId, async (ctx) => {
+      let sessionEnd = null;
       try {
         // A task that named no model runs on whatever this deployment loads, and the identity
         // records the model that actually ran rather than the absence of a choice.
         const endpoint = engine();
         const chosen = model || endpoint.model || null;
         const session = createSession({ taskId, ctx, workspace, domains, capabilities, harness, model: chosen });
+        sessionEnd = session.end;
         // Recorded first so a running task is identifiable in the list, not just once it ends.
         ctx.checkpoint({ branch: workspace.branch, task: String(prompt).slice(0, 120) });
         // The agent's own config file, written by noevia before the agent exists: the gate it
@@ -135,7 +137,9 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
           // Which hosts the task reached and which it was refused, from the proxy's own record.
           ...(grant && typeof egress.activity === 'function' ? { network: egress.activity(taskId) } : {}) };
       } finally {
-        // Whatever happened, the task stops being able to reach anything.
+        // Whatever happened, the task stops being able to reach anything, and no approval it
+        // raised is left waiting to be answered into an action.
+        sessionEnd?.();
         cleanup();
       }
     }).catch(() => {
@@ -151,6 +155,11 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
   function createSession({ taskId, ctx, workspace, domains, capabilities, harness, model }) {
     // "Allow for this task", per action class. Scoped to this job, in memory, gone when it ends.
     const blanket = new Map(); // action -> 'allow' | 'deny'
+    // Aborted when the task is cancelled, fails or ends: every approval it still has waiting is
+    // refused then, not left to time out against a connection that is already gone.
+    const ended = new AbortController();
+    const end = () => { if (!ended.signal.aborted) ended.abort(); };
+    ctx.signal?.addEventListener?.('abort', end, { once: true });
     const counts = { tools: 0, approvals: 0, allowed: 0, refused: 0, denied: 0 };
     // Exit codes per finished command, when the harness bothers to report one. Bounded: a long
     // task should not be able to grow this without limit.
@@ -258,8 +267,9 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         return pickOption(options, 'allow_once');
       }
       // A standing "allow for this task" covers only the same class, and never a delete or a
-      // push: the two actions whose damage a human should see every single time.
-      const standing = blanket.get(classified.action);
+      // push: the two actions whose damage a human should see every single time. A command whose
+      // real effect is built at run time (`sh -c`, `eval`, `xargs`, `$VAR`) never rides one either.
+      const standing = classified.standable === false ? undefined : blanket.get(classified.action);
       if (standing === 'allow') { counts.allowed++; return pickOption(options, 'allow_once'); }
       if (standing === 'deny') { counts.refused++; return pickOption(options, 'reject_once'); }
 
@@ -271,12 +281,12 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         diff: diffOf(toolCall),
       };
       ctx.event('approval.requested', request);
-      const answer = await askApproval(request);
+      const answer = ended.signal.aborted ? 'aborted' : await askApproval(request, { signal: ended.signal });
       ctx.event('approval.decided', { decision: answer, action: classified.action });
       record({ event: 'code.decided', action: classified.action, decision: answer });
 
       if (answer === 'approve' || answer === 'approve_all') {
-        if (answer === 'approve_all' && canStand(classified.action)) blanket.set(classified.action, 'allow');
+        if (answer === 'approve_all' && canStand(classified.action) && classified.standable !== false) blanket.set(classified.action, 'allow');
         counts.allowed++;
         return pickOption(options, 'allow_once');
       }
@@ -297,10 +307,18 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         record({ event: 'code.refused', reason: 'path outside the workspace' });
         throw Object.assign(Error('Outside this task’s workspace'), { code: -32602 });
       }
-      return target;
+      // Hand back the path contains() actually judged: resolved against the worktree. Returning
+      // the raw target let a relative path be checked against the worktree and then read or
+      // written relative to the web process's own cwd.
+      const root = workspaces.get(taskId)?.path;
+      if (typeof root !== 'string' || !root) {
+        record({ event: 'code.refused', reason: 'path outside the workspace' });
+        throw Object.assign(Error('Outside this task’s workspace'), { code: -32602 });
+      }
+      return nodePath.resolve(root, target);
     };
     const readTextFile = async ({ path: target, line = null, limit = null } = {}) => {
-      const content = files.read(inside(target), MAX_FILE_BYTES);
+      const content = files.read(inside(target), MAX_FILE_BYTES, workspaces.get(taskId)?.path);
       if (line === null && limit === null) return { content };
       const all = content.split('\n');
       const from = Math.max(0, (Number(line) || 1) - 1);
@@ -309,7 +327,7 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
     const writeTextFile = async ({ path: target, content } = {}) => {
       const text = String(content ?? '');
       if (Buffer.byteLength(text) > MAX_FILE_BYTES) throw Object.assign(Error('File too large'), { code: -32602 });
-      files.write(inside(target), text);
+      files.write(inside(target), text, workspaces.get(taskId)?.path);
       ctx.event('tool.completed', { name: 'write_file', path: target, bytes: Buffer.byteLength(text) });
       return null;
     };
@@ -372,7 +390,7 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
 
     return {
       handlers: { requestPermission, readTextFile, writeTextFile, sessionUpdate },
-      flushOutput,
+      flushOutput, end,
       summary: () => ({ ...counts, workspace: workspace.path }),
       // Usage the harness streamed wins over anything on the prompt result: the real one reports
       // it in `usage_update` and leaves the result's `_meta` empty.
@@ -404,16 +422,68 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
 }
 
 /** Real file I/O, injectable so the policy above can be tested without a disk. */
+/**
+ * The parent directory must realpath inside the worktree root, and the final component must not
+ * be a symlink (dangling or not). The file is then opened with O_NOFOLLOW, so a link swapped in
+ * after the check is still refused by the kernel. A symlink whose target is inside the worktree
+ * is refused too: simpler to reason about than following it, and the agent can write the target.
+ */
+function pinnedParent(target, root) {
+  const refuse = () => { throw Object.assign(Error('Outside this task’s workspace'), { code: -32602 }); };
+  if (typeof root !== 'string' || !root) refuse();
+  let realRoot, realParent;
+  try { realRoot = fs.realpathSync(root); realParent = fs.realpathSync(nodePath.dirname(target)); } catch { refuse(); }
+  const rel = nodePath.relative(realRoot, realParent);
+  if (rel.startsWith('..') || nodePath.isAbsolute(rel)) refuse();
+  const final = nodePath.join(realParent, nodePath.basename(target));
+  let st = null;
+  try { st = fs.lstatSync(final); } catch (err) { if (err.code !== 'ENOENT') throw err; }
+  if (st && st.isSymbolicLink()) {
+    throw Object.assign(Error('Refusing to follow a symlink'), { code: -32602 });
+  }
+  return final;
+}
+
 const defaultFiles = {
-  read(target, max) {
-    const stat = fs.statSync(target);
-    if (!stat.isFile()) throw Object.assign(Error('Not a file'), { code: -32602 });
-    if (stat.size > max) throw Object.assign(Error('File too large'), { code: -32602 });
-    return fs.readFileSync(target, 'utf8');
+  read(target, max, root) {
+    const final = pinnedParent(target, root);
+    const { O_RDONLY, O_NOFOLLOW } = fs.constants;
+    let fd;
+    try { fd = fs.openSync(final, O_RDONLY | O_NOFOLLOW); }
+    catch (err) { if (err.code === 'ELOOP') throw Object.assign(Error('Refusing to follow a symlink'), { code: -32602 }); throw err; }
+    try {
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile()) throw Object.assign(Error('Not a file'), { code: -32602 });
+      if (stat.size > max) throw Object.assign(Error('File too large'), { code: -32602 });
+      return fs.readFileSync(fd, 'utf8');
+    } finally { fs.closeSync(fd); }
   },
-  write(target, text) {
-    fs.mkdirSync(nodePath.dirname(target), { recursive: true });
-    fs.writeFileSync(target, text);
+  write(target, text, root) {
+    // Create missing directories first, then judge where the parent really is.
+    // mkdir -p follows symlinks, so vet the deepest existing ancestor before creating anything.
+    if (typeof root === 'string' && root) {
+      const refuse = () => { throw Object.assign(Error('Outside this task\u2019s workspace'), { code: -32602 }); };
+      let realRoot;
+      try { realRoot = fs.realpathSync(root); } catch { refuse(); }
+      const dir = nodePath.resolve(nodePath.dirname(target));
+      let existing = dir;
+      while (!fs.existsSync(existing)) {
+        if (fs.lstatSync(existing, { throwIfNoEntry: false })) refuse(); // a dangling link
+        const up = nodePath.dirname(existing);
+        if (up === existing) refuse();
+        existing = up;
+      }
+      if (existing !== dir && fs.lstatSync(existing).isSymbolicLink()) refuse();
+      const rel = nodePath.relative(realRoot, fs.realpathSync(existing));
+      if (rel.startsWith('..') || nodePath.isAbsolute(rel)) refuse();
+      if (existing !== dir) fs.mkdirSync(dir, { recursive: true });
+    }
+    const final = pinnedParent(target, root);
+    const { O_WRONLY, O_CREAT, O_TRUNC, O_NOFOLLOW } = fs.constants;
+    let fd;
+    try { fd = fs.openSync(final, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0o644); }
+    catch (err) { if (err.code === 'ELOOP') throw Object.assign(Error('Refusing to follow a symlink'), { code: -32602 }); throw err; }
+    try { fs.writeFileSync(fd, text); } finally { fs.closeSync(fd); }
   },
 };
 

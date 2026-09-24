@@ -80,6 +80,17 @@ function createCodeService({ repos, connect, egress = null, engine = undefined, 
   // outlives the request it belongs to is not a decision, and a restart must re-ask.
   const pending = new Map(); // approvalId -> { id, taskId, request, resolve, timer }
   const stores = new WeakMap();
+  // A card that timed out on our own clock (never the harness's — see the pi bridge's matching
+  // deadline in services/code-sandbox/pi-acp-bridge.cjs) is remembered briefly so a person who
+  // was mid-click sees why their answer was rejected, instead of a generic "no longer waiting"
+  // that reads the same as "somebody else already answered this". Bounded and self-expiring: it
+  // is a UI courtesy, never a source of truth for anything the harness acts on.
+  const expired = new Map(); // approvalId -> expiry epoch ms
+  const EXPIRED_MEMORY_MS = 60000;
+  const rememberExpired = (id) => {
+    expired.set(id, now() + EXPIRED_MEMORY_MS);
+    if (expired.size > 200) for (const [k, until] of expired) if (until <= now()) expired.delete(k);
+  };
 
   function storeFor(workspace) {
     let store = stores.get(workspace);
@@ -99,7 +110,7 @@ function createCodeService({ repos, connect, egress = null, engine = undefined, 
     return store;
   }
 
-  function askApproval(request) {
+  function askApproval(request, { signal = null } = {}) {
     return new Promise((resolve) => {
       // A random id, not one derived from the map's size and the clock: two approvals raised in
       // the same millisecond would otherwise collide, and the overwritten one would hang until
@@ -108,15 +119,23 @@ function createCodeService({ repos, connect, egress = null, engine = undefined, 
       let settled = false;
       const finish = (decision) => {
         if (settled) return;
-        settled = true; clearTimeout(timer); pending.delete(id); resolve(decision);
+        settled = true; clearTimeout(timer); pending.delete(id);
+        if (decision === 'timeout') rememberExpired(id);
+        resolve(decision);
       };
       // Waiting forever is a leaked task. Timing out as a REFUSAL is the only safe default.
       const timer = setTimeout(() => finish('timeout'), timeoutMs);
       timer.unref?.();
       pending.set(id, { id, taskId: request.taskId, request, decide: finish });
+      // The task ended (cancelled, failed, disconnected): nobody can act on this answer any more.
+      if (signal) {
+        if (signal.aborted) finish('aborted');
+        else signal.addEventListener('abort', () => finish('aborted'), { once: true });
+      }
     });
   }
-  const pendingFor = (taskId) => [...pending.values()].find((p) => p.taskId === taskId) || null;
+  const pendingAll = (taskId) => [...pending.values()].filter((p) => p.taskId === taskId);
+  const pendingFor = (taskId) => pendingAll(taskId)[0] || null;
 
   function owned(workspace, project, taskId) {
     const { jobs } = storeFor(workspace);
@@ -189,7 +208,12 @@ function createCodeService({ repos, connect, egress = null, engine = undefined, 
       // otherwise be approved unseen, and "Allow for this task" would stand on its action class.
       if (typeof approvalId !== 'string' || !approvalId) throw fail(400, 'Which approval is this answer for?');
       const waiting = pending.get(approvalId);
-      if (!waiting || waiting.taskId !== taskId) throw fail(409, 'That approval is no longer waiting.');
+      if (!waiting || waiting.taskId !== taskId) {
+        const wasExpired = expired.has(approvalId) && expired.get(approvalId) > now();
+        throw fail(409, wasExpired
+          ? 'This approval expired before anyone answered it.'
+          : 'That approval is no longer waiting.');
+      }
       waiting.decide(decision);
       return { ok: true };
     },
@@ -197,7 +221,7 @@ function createCodeService({ repos, connect, egress = null, engine = undefined, 
       owned(workspace, project, taskId);
       // Refuse anything still waiting first, so a cancelled task never leaves a card that
       // could later be answered into an action.
-      pendingFor(taskId)?.decide('aborted');
+      for (const waiting of pendingAll(taskId)) waiting.decide('aborted');
       const { harness, jobs } = storeFor(workspace);
       harness.cancel(taskId);
       return view(jobs.get(taskId), null);

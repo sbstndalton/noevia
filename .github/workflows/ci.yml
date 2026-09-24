@@ -9,15 +9,78 @@ permissions:
   contents: read
 
 jobs:
+  # Path filter. Every existing job below still runs (so its check name always
+  # reports), but when its filter is false it only runs a no-op step and
+  # succeeds. That keeps any required-check names intact without settings changes.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.ci == 'true' }}
+      diary: ${{ steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
+      model_manager: ${{ steps.filter.outputs.model_manager == 'true' || steps.filter.outputs.ci == 'true' }}
+      docling: ${{ steps.filter.outputs.docling == 'true' || steps.filter.outputs.ci == 'true' }}
+      images: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
+      sidecars: ${{ steps.filter.outputs.sidecars }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'package*.json'
+              - 'tools/repo-index/**'
+              - '*.config.*'
+              - 'tsconfig*.json'
+              - '.nvmrc'
+              - '.npmrc'
+            diary:
+              - 'services/diary/**'
+            model_manager:
+              - 'services/model-manager/**'
+            docling:
+              - 'services/docling/**'
+            sidecars:
+              - 'services/laya/**'
+              - 'services/model-manager/**'
+              - 'services/code-sandbox/**'
+              - 'services/ocr/**'
+              - 'services/docling/**'
+            deploy:
+              - 'compose.yaml'
+              - 'deploy/**'
+              - 'docs/deployment.md'
+            docs:
+              - 'docs/**'
+              - '**/*.md'
+            # A change to CI itself runs every job.
+            ci:
+              - '.github/workflows/**'
   node-tests:
     name: Node tests, typecheck, frontend build
+    needs: changes
     runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.web }}
     defaults:
       run:
         working-directory: apps/web
     steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No web changes; skipping."
       - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
       - uses: actions/setup-node@v4
+        if: env.RUN_JOB == 'true'
         with:
           node-version: 22
           cache: npm
@@ -27,74 +90,124 @@ jobs:
       # The tests exercise the real server (auth.cjs needs better-sqlite3 and
       # friends from the nested server package), so install both trees.
       - run: npm ci --no-fund --no-audit
+        if: env.RUN_JOB == 'true'
       - run: npm ci --no-fund --no-audit
+        if: env.RUN_JOB == 'true'
         working-directory: apps/web/server
       - run: npm run typecheck
+        if: env.RUN_JOB == 'true'
       - run: npm test
+        if: env.RUN_JOB == 'true'
       - run: npm run build
+        if: env.RUN_JOB == 'true'
       # Dev tooling for agents working on this repo. No install step, but it
       # imports apps/web/server/tool-result-reduce.cjs, so it must not drift.
       - name: Install repo-index search dependency
+        if: env.RUN_JOB == 'true'
         run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: node --test tools/repo-index/*.test.cjs
+        if: env.RUN_JOB == 'true'
         working-directory: .
 
   python-tests:
     name: Diary test suite
+    needs: changes
     runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.diary }}
     defaults:
       run:
         working-directory: services/diary
     steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No diary changes; skipping."
       - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
       - uses: actions/setup-python@v5
+        if: env.RUN_JOB == 'true'
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/diary/requirements.txt
       - run: pip install -r requirements.txt
+        if: env.RUN_JOB == 'true'
       - run: python -m pytest -q
+        if: env.RUN_JOB == 'true'
 
   docling-tests:
     name: Docling extraction contract
+    needs: changes
     runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.docling }}
     defaults:
       run:
         working-directory: services/docling
     steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No docling changes; skipping."
       - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
       - uses: actions/setup-python@v5
+        if: env.RUN_JOB == 'true'
         with:
           python-version: "3.12"
       # No Docling install: extract.py keeps every Docling import inside a
       # function precisely so this contract is testable without the 669 MB of
       # models. These tests existed but nothing ran them until now.
       - run: pip install pytest
+        if: env.RUN_JOB == 'true'
       - run: python -m pytest -q
+        if: env.RUN_JOB == 'true'
 
   model-manager-tests:
     name: Model manager test suite
+    needs: changes
     runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.model_manager }}
     defaults:
       run:
         working-directory: services/model-manager
     steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No model_manager changes; skipping."
       - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
       - uses: actions/setup-python@v5
+        if: env.RUN_JOB == 'true'
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/model-manager/requirements.txt
       - run: pip install -r requirements.txt pytest pytest-asyncio
+        if: env.RUN_JOB == 'true'
       - run: python -m pytest -q
+        if: env.RUN_JOB == 'true'
 
   docker-build:
     name: Docker images build
+    needs: changes
     runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.images }}
     steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No images changes; skipping."
       - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
       - uses: docker/setup-buildx-action@v3
+        if: env.RUN_JOB == 'true'
       - name: Build web image
+        if: env.RUN_JOB == 'true'
         uses: docker/build-push-action@v6
         with:
           context: apps/web
@@ -102,9 +215,30 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build diary image
+        if: env.RUN_JOB == 'true'
         uses: docker/build-push-action@v6
         with:
           context: services/diary
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Single aggregate result. Passes when every job succeeded or was skipped;
+  # fails on any failure or cancellation.
+  ci-required:
+    name: CI required
+    if: always()
+    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, docker-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "A required job ended with: $r"; exit 1 ;;
+            esac
+          done

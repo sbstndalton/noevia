@@ -1,4 +1,123 @@
+## Format
+
+From 2026-09-24 each release entry starts with a `### Services` list with one line per service:
+Web, Diary, Model manager, Code sandbox, OCR, Docling, Deploy/infra. Each line names the PRs
+that touched that service and the image tag deployed for it (for example `cowork-web:958022b`),
+"merged, not yet deployed" when the code is on main but the running image predates it, or
+"no change". Sidecar image tags are pinned separately from `COWORK_VERSION`, so a web-only
+release leaves the other services on their previous tags. The prose, deploy evidence and rollback
+notes follow as before. Entries before release 7b6942c keep their original free-form layout.
+
+## Release 11617a3 — 2026-09-24 (round-13 fixes: harness approval bypasses, MCP discovery TTL, Diary storage-outage handling, UI fixes)
+
+### Services
+
+- **Web:** [#166](https://github.com/sbstndalton/noevia/pull/166), [#167](https://github.com/sbstndalton/noevia/pull/167), [#168](https://github.com/sbstndalton/noevia/pull/168) (web side), [#169](https://github.com/sbstndalton/noevia/pull/169) (web side), [#171](https://github.com/sbstndalton/noevia/pull/171), [#172](https://github.com/sbstndalton/noevia/pull/172), [#187](https://github.com/sbstndalton/noevia/pull/187), [#188](https://github.com/sbstndalton/noevia/pull/188), [#189](https://github.com/sbstndalton/noevia/pull/189) (web side) — deployed as `cowork-web:11617a3` (full `compose build web` from the release context; frontend changed).
+- **Diary:** Diary parts of [#134](https://github.com/sbstndalton/noevia/pull/134), [#168](https://github.com/sbstndalton/noevia/pull/168), [#169](https://github.com/sbstndalton/noevia/pull/169), [#189](https://github.com/sbstndalton/noevia/pull/189) — deployed as `cowork-diary:11617a3` (`diary-overlay.sh`, `agent/` only, FROM `cowork-diary:5b6d9b6`).
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-dda50c2`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** live Compose files unchanged (backed up as `*.bak.before-11617a3`).
+
+Source shipped via `git archive 11617a3` to `releases/11617a3`. `apps/web/src` changed vs dda50c2
+(lockfile and Dockerfile identical), so web was built on DaServer with `docker compose build web`
+(`cowork-web:11617a3`, image `23fd3187b3cb`). Candidate checks, run with no network: the in-image `code-harness.cjs` and
+`mcp-wiring.cjs` SHA-256 hashes match the release; `pinnedParent` and `discoveryFailTtlMs` are present; dist serves
+`index-CzWzWYqN.js` / `index-CV0N4hHI.css`. Diary diff vs 5b6d9b6 was `agent/` plus tests only (requirements.txt and
+Dockerfile identical). The overlay took appdata backup `ab_20260924_140932` (gzip verified), which restarted web at
+18:09:47Z (same container id). It then recreated Diary as image `96dc142c…`, and Diary health via web returned 200.
+
+Cutover used guarded `up.sh … --no-build --no-deps --wait` for `web`, then the Diary overlay. Web and Diary are healthy
+with zero restarts. All other cowork containers (code-sandbox, model-loader, laya, ocr, docling, llama, embed, kiwix)
+kept identical ids and start times. Public `/` returned 200 on 3 of 3 requests, and `/api/profile` returned 401. The served assets exist in
+the image, and web logs had no error markers over 60 s. The Diary import check passed; no Diary data was read. Restart-alert
+baseline re-acked.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-11617a3 config/.env` (also reverts DIARY_VERSION), `ln -sfn releases/dda50c2 current`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+- Diary: `sed -i 's/^DIARY_VERSION=.*/DIARY_VERSION=5b6d9b6/' config/.env` (or restore `config/.env.bak.before-diary-11617a3`), then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 diary`.
+
+## Release dda50c2 — 2026-09-24 (harness containment, RAG/prompt budget, round-12 hardening, pi bridge timeouts)
+
+### Services
+
+- **Web:** [#132](https://github.com/sbstndalton/noevia/pull/132), [#133](https://github.com/sbstndalton/noevia/pull/133) (web side), [#134](https://github.com/sbstndalton/noevia/pull/134), [#135](https://github.com/sbstndalton/noevia/pull/135) — deployed as `cowork-web:dda50c2` (server/ overlay FROM `cowork-web:958022b`).
+- **Diary:** no image change — stays `cowork-diary:5b6d9b6`; the #134 Diary `agent/` changes are merged, not yet deployed.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** [#133](https://github.com/sbstndalton/noevia/pull/133) — deployed as `cowork-code-sandbox:pi-0.87.0-dda50c2` (pi-acp-bridge.cjs overlay).
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** repo-side changes only; live Compose files unchanged (backed up as `*.bak.before-dda50c2`).
+
+Source shipped via `git archive dda50c2` to `releases/dda50c2`. Web lockfiles and all of `apps/web`
+outside `server/` are identical to 958022b, so the web image is `FROM cowork-web:958022b` with
+`/app/server` replaced (node_modules kept) and the existing dist reused (`index-BaEAos9j.js`,
+`index-CVYcHCIL.css`). Candidate `sha256:e6544d4d…`: server `.cjs` hashes match the release; the in-image
+server tests pass 1144 of 1152. The 958022b image fails the same 8 tests the same way (repo files that
+are not in the image). With no network, `/api/setup/status` returned 200. Sandbox `sha256:2ecb13d6…`:
+the diff against 5b6d9b6 was only the bridge and its test; `node --check` passes; bridge tests 5/5;
+the in-container bridge SHA-256 `5ce4f3db…` matches the release.
+
+Cutover used guarded `up.sh … --no-build --no-deps --wait` for `web`, then `--profile code` for
+`code-sandbox`. Both were recreated with zero restarts. Web is healthy and the sandbox is running. All other cowork containers
+(diary, model-loader, laya, ocr, docling, llama, embed, kiwix) kept identical ids and start times.
+Public `/` returned 200 on 3 of 3 requests, and `/api/profile` returned 401. The served assets exist in the image. Web logs had no error markers over 60 s.
+Restart-alert baseline re-acked.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-dda50c2 config/.env` (also reverts the sandbox tag), `ln -sfn releases/958022b current`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+- Code sandbox: `sed -i 's/^CODE_SANDBOX_VERSION=.*/CODE_SANDBOX_VERSION=pi-0.87.0-5b6d9b6/' config/.env`, then `up.sh --env-file … --profile code -- -d --no-build --no-deps --wait --wait-timeout 180 code-sandbox`.
+
+## Release 5b6d9b6 — 2026-09-24 (Diary hardening, model manager + code sandbox hardening, per-service tags; sidecars only)
+
+### Services
+
+- **Web:** no change — stays `cowork-web:958022b` (`current` and `COWORK_VERSION` untouched).
+- **Diary:** [#77](https://github.com/sbstndalton/noevia/pull/77), [#84](https://github.com/sbstndalton/noevia/pull/84), [#87](https://github.com/sbstndalton/noevia/pull/87), [#93](https://github.com/sbstndalton/noevia/pull/93), [#94](https://github.com/sbstndalton/noevia/pull/94), [#99](https://github.com/sbstndalton/noevia/pull/99) — deployed as `cowork-diary:5b6d9b6` (agent/ overlay).
+- **Model manager:** [#79](https://github.com/sbstndalton/noevia/pull/79) — deployed as `cowork-model-loader:5b6d9b6` (app/ overlay).
+- **Code sandbox:** [#79](https://github.com/sbstndalton/noevia/pull/79) — deployed as `cowork-code-sandbox:pi-0.87.0-5b6d9b6` (supervisor.cjs overlay).
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** [#104](https://github.com/sbstndalton/noevia/pull/104), [#106](https://github.com/sbstndalton/noevia/pull/106) merged; live `.env` and Compose Manager files migrated to `DIARY_VERSION`/`OCR_VERSION`/`MODEL_MANAGER_VERSION`.
+
+Source shipped via `git archive 5b6d9b6` to `releases/5b6d9b6`. Before building, diffs against the
+running sources were confirmed limited to Diary `agent/` (+ tests, README), model manager `app/*.py`
+(+ tests) and code sandbox `supervisor.cjs`; Dockerfiles and requirements identical, so every image
+is an overlay `FROM` the running one with no pip/npm step.
+
+1. Per-service tags: backed up `docker-compose.yml`, `docker-compose.override.yml` and `.env` as
+   `*.bak.before-per-service-tags`; diary/ocr/model-loader image lines switched to the required
+   variables, pinned to the running tags (5004b50/5004b50/a1ededd). `compose config` resolved every
+   cowork image to its running tag and a dry-run `up` recreated nothing; no container changed.
+2. Model manager `sha256:869beb3f…`: recreated `model-loader` only (guarded `up.sh`), healthy,
+   `/api/v1/health` 200 from web; api.py in the container matches the release (shardBase guard).
+3. Code sandbox `sha256:ba39f7fc…`: recreated `code-sandbox` only (`up.sh --env-file … --profile code --`),
+   running with zero restarts, supervisor.cjs SHA-256 matches the release, TCP reachable from web.
+4. Diary `sha256:ab519fdf…`: `diary-overlay.sh 5b6d9b6` took appdata backup
+   `ab_20260924_130511` (verified; it stops/starts web and diary, so web kept its container id
+   but has a new start time), recreated diary only, healthy, health via web 200.
+
+All other cowork containers (laya, llama, embed, ocr, docling, kiwix) kept identical ids and start
+times. Public `/` 200, `/api/profile` 401.
+
+Rollback (from the Compose Manager project directory; old images untouched):
+- Model manager: `sed -i 's/^MODEL_MANAGER_VERSION=.*/MODEL_MANAGER_VERSION=a1ededd/' config/.env`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 model-loader`.
+- Code sandbox: `sed -i 's/^CODE_SANDBOX_VERSION=.*/CODE_SANDBOX_VERSION=pi-0.87.0-99be0a2/' config/.env`, then `up.sh --env-file … --profile code -- -d --no-build --no-deps --wait --wait-timeout 180 code-sandbox`.
+- Diary: `sed -i 's/^DIARY_VERSION=.*/DIARY_VERSION=5004b50/' config/.env` (or restore `config/.env.bak.before-diary-5b6d9b6`), then `up.sh … diary`.
+- Per-service-tag migration: restore the three `*.bak.before-per-service-tags` files.
+
 ## Release 958022b — 2026-09-24 (job start controller leak, phone preview Settings, web-only)
+
+### Services
+
+- **Web:** [#102](https://github.com/sbstndalton/noevia/pull/102) — deployed as `cowork-web:958022b`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#102](https://github.com/sbstndalton/noevia/pull/102) starting a background job no
 longer leaks a controller when the journal write fails; the phone preview on desktop collapses
@@ -23,6 +142,16 @@ Rollback: `config/.env.bak.before-958022b` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release c3a03c7 — 2026-09-24 (account cleanup, job journals, research saves, code harness hardening, web-only)
+
+### Services
+
+- **Web:** [#98](https://github.com/sbstndalton/noevia/pull/98), [#99](https://github.com/sbstndalton/noevia/pull/99), [#100](https://github.com/sbstndalton/noevia/pull/100), [#101](https://github.com/sbstndalton/noevia/pull/101) — deployed as `cowork-web:c3a03c7`.
+- **Diary:** [#99](https://github.com/sbstndalton/noevia/pull/99) (Diary part) — merged, not yet deployed.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#98](https://github.com/sbstndalton/noevia/pull/98) deleting a user removes their MCP
 sign-ins and directory keys; disabled admin credentials are no longer used for discovery; WebDAV
@@ -55,6 +184,16 @@ from the Compose Manager project directory.
 
 ## Release 852ef76 — 2026-09-24 (S3 region, storage secret v2, replay history, web-only)
 
+### Services
+
+- **Web:** [#96](https://github.com/sbstndalton/noevia/pull/96), [#97](https://github.com/sbstndalton/noevia/pull/97) — deployed as `cowork-web:852ef76`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
+
 Web changes deployed: [#96](https://github.com/sbstndalton/noevia/pull/96) S3 connections store and sign with a
 region (new `storage_connections.region` column, default `us-east-1`, migrated at startup); storage
 secrets are always encrypted and bound to the account (v2), and legacy v1 secrets are upgraded on
@@ -81,6 +220,16 @@ Rollback: `config/.env.bak.before-852ef76` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release 0c2be32 — 2026-09-24 (routing model, Diary edit proxy and offsite backup hardening, web-only)
+
+### Services
+
+- **Web:** [#90](https://github.com/sbstndalton/noevia/pull/90), [#91](https://github.com/sbstndalton/noevia/pull/91), [#92](https://github.com/sbstndalton/noevia/pull/92), [#95](https://github.com/sbstndalton/noevia/pull/95) — deployed as `cowork-web:0c2be32`.
+- **Diary:** [#93](https://github.com/sbstndalton/noevia/pull/93), [#94](https://github.com/sbstndalton/noevia/pull/94) — merged, not yet deployed.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#90](https://github.com/sbstndalton/noevia/pull/90) Details/Configure hide tuning and calibration for the system
 routing model, and the Settings routing summary wraps at narrow widths; [#91](https://github.com/sbstndalton/noevia/pull/91) the Diary
@@ -111,6 +260,16 @@ from the Compose Manager project directory.
 
 ## Release 7e8ce3a — 2026-09-24 (code-workspace and Drive hardening, web-only)
 
+### Services
+
+- **Web:** [#86](https://github.com/sbstndalton/noevia/pull/86), [#88](https://github.com/sbstndalton/noevia/pull/88) — deployed as `cowork-web:7e8ce3a`.
+- **Diary:** [#87](https://github.com/sbstndalton/noevia/pull/87) — merged, not yet deployed.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
+
 Web changes deployed: [#86](https://github.com/sbstndalton/noevia/pull/86) the code-workspace
 release refuses harness-planted git hooks, filters and fsmonitor, and runs git with them
 disabled; [#88](https://github.com/sbstndalton/noevia/pull/88) caps Drive reads (Range request
@@ -137,6 +296,16 @@ Rollback: `config/.env.bak.before-7e8ce3a` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release 7ce2213 — 2026-09-24 (hardening batch, web-only)
+
+### Services
+
+- **Web:** [#76](https://github.com/sbstndalton/noevia/pull/76), [#80](https://github.com/sbstndalton/noevia/pull/80), [#81](https://github.com/sbstndalton/noevia/pull/81), [#82](https://github.com/sbstndalton/noevia/pull/82), [#83](https://github.com/sbstndalton/noevia/pull/83), [#85](https://github.com/sbstndalton/noevia/pull/85) — deployed as `cowork-web:7ce2213`.
+- **Diary:** [#77](https://github.com/sbstndalton/noevia/pull/77), [#84](https://github.com/sbstndalton/noevia/pull/84) — merged, not yet deployed.
+- **Model manager:** [#79](https://github.com/sbstndalton/noevia/pull/79) — merged, not yet deployed.
+- **Code sandbox:** [#79](https://github.com/sbstndalton/noevia/pull/79) — merged, not yet deployed.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#76](https://github.com/sbstndalton/noevia/pull/76) server error
 bodies no longer leak raw errors, JSON bodies are checked, chat ids are sanitized and
@@ -172,6 +341,16 @@ Rollback: `config/.env.bak.before-7ce2213` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release 7b6942c — 2026-09-24 (chat save races)
+
+### Services
+
+- **Web:** [#75](https://github.com/sbstndalton/noevia/pull/75) — deployed as `cowork-web:7b6942c`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 [PR #75](https://github.com/sbstndalton/noevia/pull/75) fixes chat save races while replies
 stream. The chat list no longer drops a chat when two sends overlap; a save conflict during
