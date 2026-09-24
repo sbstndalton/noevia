@@ -2079,3 +2079,13 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 
 /* Keep the workspace frame present while its lazy destination arrives. */
 .view-loading { flex: 1; min-height: 160px; padding: var(--space-6); color: var(--text-secondary); }
+.connector-trust { margin:20px 0 24px; padding:18px 20px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); }
+.connector-trust h2 { margin:0 0 14px; font-size:var(--text-callout); }
+.connector-trust dl { display:grid; gap:0; margin:0; }
+.connector-trust dl > div { display:grid; grid-template-columns:minmax(90px, 130px) minmax(0, 1fr); gap:12px; padding:9px 0; border-top:1px solid var(--border-subtle); }
+.connector-trust dt { color:var(--text-secondary); }
+.connector-trust dd { margin:0; overflow-wrap:anywhere; }
+.connector-trust p { margin:14px 0 0; color:var(--text-secondary); line-height:1.5; }
+.connector-tool-search { display:block; width:min(100%, 360px); min-height:44px; margin:12px 0; padding:8px 12px; font:inherit; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+.connector-tool-search:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+@media (max-width:480px) { .connector-trust dl > div { grid-template-columns:1fr; gap:3px; } }
