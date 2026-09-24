@@ -156,7 +156,7 @@ decision recorded at the end.
 |---|---|---|---|
 | DELETE file | Move to Trash with capsule | 204 | 403 protected, 409 no Trash, 412/428 precondition |
 | DELETE folder | Trash every child, then the folder, one transaction | 204 | 403 if any descendant is protected, 507 over bound |
-| MOVE | Rename within tenant root; `Overwrite: F` default; `T` only with destination `If-Match` | 201 new / 204 replaced | 403 protected source or destination, 409 missing parent, 412 destination exists with `Overwrite: F` |
+| MOVE | Rename within tenant root; missing `Overwrite` header defaults to `T` per RFC 4918 §10.6 (an untagged `T` reads the destination's version; the replaced file goes to Trash, so this is safe) | 201 new / 204 replaced | 403 protected source or destination, 409 missing parent, 412 destination exists with `Overwrite: F` |
 | COPY | Bounded copy; new ETags; never onto protected paths | 201 / 204 | 403, 409, 412, 507 |
 | LOCK / UNLOCK | Advisory, short-lived (≤ 15 min, refreshable) exclusive write locks stored by the companion; writes by other credentials without the lock token get 423 | 200 / 204 | 403 protected paths, 423 already locked |
 | PROPPATCH | Still unsupported (405) — no dead properties are stored | — | — |
