@@ -8,6 +8,36 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release c7f7999 — 2026-09-24 (settings reorganisation, notifications, memory, response style, keyboard, archived chats, Customise, home recents)
+
+### Services
+
+- **Web:** [#277](https://github.com/sbstndalton/noevia/pull/277) batch G settings split, notifications, memory, response style, keyboard, language, archived chats, Customise, home recents (closes [#226](https://github.com/sbstndalton/noevia/issues/226), [#227](https://github.com/sbstndalton/noevia/issues/227), [#228](https://github.com/sbstndalton/noevia/issues/228), [#229](https://github.com/sbstndalton/noevia/issues/229), [#230](https://github.com/sbstndalton/noevia/issues/230), [#232](https://github.com/sbstndalton/noevia/issues/232), [#238](https://github.com/sbstndalton/noevia/issues/238), [#239](https://github.com/sbstndalton/noevia/issues/239); [#231](https://github.com/sbstndalton/noevia/issues/231) partial) — deployed as `cowork-web:c7f7999` (full build FROM release source, `apps/web` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** merged, not yet deployed — stays `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env`/Compose backed up as `*.bak.before-c7f7999`.
+
+`origin/main` was confirmed at `c7f7999` and every check-run on that commit (Docling extraction
+contract, Docker images build, Node tests/typecheck/frontend build, Model manager test suite,
+Diary test suite, offline-contract, Detect changed areas, CI required) was completed/success before
+release. Only `apps/web` changed since the live `89142c0`. Source shipped via `git archive c7f7999`
+to `releases/c7f7999`. Web required a full build (frontend changed); server/Dockerfile/package files
+unchanged in scope but the build ran end to end, producing `index-BjjnjAwL.js` / `index-7jjrR2RA.css`.
+
+Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero
+restarts and reported healthy. Public `/` returned 200, `/api/profile` returned 401, and the served
+`index-*.js/css` names matched the web image's `dist/assets` byte-for-byte by filename.
+`diary`, `code-sandbox`, `model-loader`, `ocr`, `docling`, `laya`, `llama`, `embed` and `kiwix` kept
+identical container ids, `StartedAt` and zero restarts. Restart-alert baseline re-acked. No model
+runs, real Diary data, new harness installation or broader exposure were part of this release.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-c7f7999 config/.env`, `ln -sfn releases/89142c0 current`, then
+  `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release 89142c0 — 2026-09-24 (composer Chat/Cowork toggle, tool catalogue)
 
 ### Services
