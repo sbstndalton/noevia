@@ -43,7 +43,7 @@ test('excluded skill vectors never re-enter retrieval or fallback context',async
  const body=source.slice(source.indexOf('async function filesContext('),source.indexOf('\nmodule.exports'));
  const p=fixture();p.files.push({name:'long.txt',content:'ORDINARY-LONG '.repeat(300)});skills.reconcile(p);
  for(const available of [true,false]){
-  const context={DIRECT_INJECT_MAX:2400,documentNotice:()=>'',ragAvailable:()=>available,searchProject:async()=>[{file:'review.md',body:'FORBIDDEN-SKILL-VECTOR'},{file:'removed.md',body:'REMOVED-SOURCE'}]};
+  const context={DIRECT_INJECT_MAX:2400,FILES_CONTEXT_MAX_CHARS:120000,LARGE_FILE_HEAD:24000,documentNotice:()=>'',ragAvailable:()=>available,searchProject:async()=>[{file:'review.md',body:'FORBIDDEN-SKILL-VECTOR'},{file:'removed.md',body:'REMOVED-SOURCE'}]};
   vm.createContext(context);vm.runInContext(body,context);
   const text=await context.filesContext('project',skills.sources(p),'query','tenant');
   assert.ok(!text.includes('FORBIDDEN'));assert.ok(!text.includes('REMOVED'));assert.ok(!text.includes('review.md'));assert.match(text,/Ordinary notes/);assert.match(text,/ORDINARY-LONG/);
@@ -57,4 +57,23 @@ test('long skill reads paginate and never claim a partial body was fully loaded'
 test('published skills with license/compatibility fields and a long description are valid', () => {
   const p={files:[file('Body','name: pdf\ndescription: '+'d'.repeat(900)+'\nlicense: Proprietary. LICENSE.txt has complete terms\ncompatibility: any')]};skills.reconcile(p);
   assert.equal(skills.list(p)[0].valid,true,skills.list(p)[0].error);
+});
+test('an ordinary note with a Name: line in the body (not the frontmatter) is not a skill candidate and reaches rag', () => {
+ const note={name:'meeting.md',content:'---\ntitle: Meeting\n---\nName: Alice'};
+ assert.equal(skills.inspect(note),null);
+ const p={files:[note]};skills.reconcile(p);
+ assert.deepEqual(Object.keys(p.instructionSkills),[]);
+ assert.deepEqual(skills.sources(p).map(f=>f.name),['meeting.md']);
+});
+test('a genuine skill with name/description in frontmatter is still detected', () => {
+ assert.equal(skills.inspect(file()).valid,true);
+});
+test('a formerly-recorded candidate note is released by reconcile once it no longer matches', () => {
+ const note={name:'meeting.md',content:'---\nname: Meeting\n---\nBody text.'};
+ const p={files:[note]};skills.reconcile(p);
+ assert.deepEqual(Object.keys(p.instructionSkills),['meeting.md']);
+ note.content='---\ntitle: Meeting\n---\nName: Alice';
+ skills.reconcile(p);
+ assert.deepEqual(Object.keys(p.instructionSkills),[]);
+ assert.deepEqual(skills.sources(p).map(f=>f.name),['meeting.md']);
 });

@@ -8,6 +8,37 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release dda50c2 — 2026-09-24 (harness containment, RAG/prompt budget, round-12 hardening, pi bridge timeouts)
+
+### Services
+
+- **Web:** [#132](https://github.com/sbstndalton/noevia/pull/132), [#133](https://github.com/sbstndalton/noevia/pull/133) (web side), [#134](https://github.com/sbstndalton/noevia/pull/134), [#135](https://github.com/sbstndalton/noevia/pull/135) — deployed as `cowork-web:dda50c2` (server/ overlay FROM `cowork-web:958022b`).
+- **Diary:** no image change — stays `cowork-diary:5b6d9b6`; the #134 Diary `agent/` changes are merged, not yet deployed.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** [#133](https://github.com/sbstndalton/noevia/pull/133) — deployed as `cowork-code-sandbox:pi-0.87.0-dda50c2` (pi-acp-bridge.cjs overlay).
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** repo-side changes only; live Compose files unchanged (backed up as `*.bak.before-dda50c2`).
+
+Source shipped via `git archive dda50c2` to `releases/dda50c2`. Web lockfiles and all of `apps/web`
+outside `server/` are identical to 958022b, so the web image is `FROM cowork-web:958022b` with
+`/app/server` replaced (node_modules kept) and the existing dist reused (`index-BaEAos9j.js`,
+`index-CVYcHCIL.css`). Candidate `sha256:e6544d4d…`: server `.cjs` hashes match the release; the in-image
+server tests pass 1144 of 1152. The 958022b image fails the same 8 tests the same way (repo files that
+are not in the image). With no network, `/api/setup/status` returned 200. Sandbox `sha256:2ecb13d6…`:
+the diff against 5b6d9b6 was only the bridge and its test; `node --check` passes; bridge tests 5/5;
+the in-container bridge SHA-256 `5ce4f3db…` matches the release.
+
+Cutover used guarded `up.sh … --no-build --no-deps --wait` for `web`, then `--profile code` for
+`code-sandbox`. Both were recreated with zero restarts. Web is healthy and the sandbox is running. All other cowork containers
+(diary, model-loader, laya, ocr, docling, llama, embed, kiwix) kept identical ids and start times.
+Public `/` returned 200 on 3 of 3 requests, and `/api/profile` returned 401. The served assets exist in the image. Web logs had no error markers over 60 s.
+Restart-alert baseline re-acked.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-dda50c2 config/.env` (also reverts the sandbox tag), `ln -sfn releases/958022b current`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+- Code sandbox: `sed -i 's/^CODE_SANDBOX_VERSION=.*/CODE_SANDBOX_VERSION=pi-0.87.0-5b6d9b6/' config/.env`, then `up.sh --env-file … --profile code -- -d --no-build --no-deps --wait --wait-timeout 180 code-sandbox`.
+
 ## Release 5b6d9b6 — 2026-09-24 (Diary hardening, model manager + code sandbox hardening, per-service tags; sidecars only)
 
 ### Services
