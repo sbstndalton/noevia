@@ -2078,7 +2078,7 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 /* Server administration reads as its own area: a rule above it and a quiet "Admins only" tag. */
 .settings-navigation nav section.settings-nav-admin { margin-top: var(--space-4); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
 .settings-navigation nav section h2 { display: flex; align-items: center; gap: var(--space-2); }
-.settings-nav-badge { font-size: var(--text-caption2); font-weight: 500; color: var(--text-secondary); padding: 1px var(--space-2); border-radius: var(--radius-pill); border: 1px solid var(--border-subtle); }
+.settings-nav-badge { font-size: var(--text-caption2); font-weight: 500; color: var(--text-secondary); padding: 1px var(--space-2); border-radius: var(--radius-pill); border: 1px solid var(--border-subtle); white-space: nowrap; flex: none; }
 .link-button { font: inherit; color: var(--accent-text); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .link-button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-xs); }
 .set-row-value { font-size: var(--text-callout); color: var(--text-secondary); }

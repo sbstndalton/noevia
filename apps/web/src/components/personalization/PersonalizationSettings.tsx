@@ -94,13 +94,13 @@ export function PersonalizationSettings({ onOpen }: { onOpen?: (section: string)
       </div>
     </section>
     <section className="settings-section">
-      <label className="personal-instructions">
-        <span className="set-row-label">Custom instructions</span>
-        <span className="set-row-desc">Rules for how to respond, for example units or spelling. Facts about you belong in <button type="button" className="link-button" onClick={() => onOpen?.('memory')}>Memory</button>.</span>
-        <textarea value={draft} maxLength={max} rows={6} disabled={saved === null || busy}
+      <div className="personal-instructions">
+        <label className="set-row-label" htmlFor="custom-instructions">Custom instructions</label>
+        <span className="set-row-desc" id="custom-instructions-desc">Rules for how to respond, for example units or spelling. Facts about you belong in <button type="button" className="link-button" onClick={() => onOpen?.('memory')}>Memory</button>.</span>
+        <textarea id="custom-instructions" aria-describedby="custom-instructions-desc" value={draft} maxLength={max} rows={6} disabled={saved === null || busy}
           placeholder="Prefer metric units. Use British spelling."
           onChange={(e) => { setDraft(e.target.value); touched(); }} />
-      </label>
+      </div>
       <div className="personal-preview" aria-live="polite">
         <span className="set-row-label">What noevia is told</span>
         {preview.length ? <ul>{preview.map((line, i) => <li key={i}>{line}</li>)}</ul> : <p className="set-row-desc">Nothing: the model uses its own defaults.</p>}
