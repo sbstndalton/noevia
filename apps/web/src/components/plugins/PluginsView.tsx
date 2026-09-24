@@ -43,8 +43,8 @@ export function PluginsView({ onStartChat, embedded = false, projects = [], onPr
     {tab === 'connectors'
       ? <div className="plugins-connected"><h2 className="plugins-subhead">Connected</h2><ConnectorsSettings hideTitle isAdmin={isAdmin} onStartChat={onStartChat}/></div>
       : tab === 'plugins'
-        ? <div className="plugins-connected"><h2 className="plugins-subhead">Installed MCP servers</h2><SignInServers/><KeyServers/><p className="plugins-note">Each MCP server is a toolbox a project chooses; every write it offers still asks before it runs.{isAdmin ? '' : ' Adding servers is an administrator action.'}</p><h2 className="plugins-subhead">Discover</h2><Directory key="mcp" kind="mcp" projects={projects} onProjectsChanged={onProjectsChanged} isAdmin={isAdmin}/></div>
-        : <><p className="plugins-note">Installed skills are listed in each project’s instruction skills. Browse below to add one to a project.</p><h2 className="plugins-subhead">Discover</h2><Directory key="skills" kind="skills" projects={projects} onProjectsChanged={onProjectsChanged} isAdmin={isAdmin}/></>}
+        ? <div className="plugins-connected"><h2 className="plugins-subhead">Installed MCP servers</h2><SignInServers/><KeyServers/><p className="plugins-note">Each MCP server is a toolbox a project chooses; every write it offers still asks before it runs.{isAdmin ? '' : ' Adding servers is an administrator action.'}</p><h2 className="plugins-subhead">Library</h2><Directory key="mcp" kind="mcp" projects={projects} onProjectsChanged={onProjectsChanged} isAdmin={isAdmin}/></div>
+        : <><p className="plugins-note">Installed skills are listed in each project’s instruction skills. Browse below to add one to a project.</p><h2 className="plugins-subhead">Library</h2><Directory key="skills" kind="skills" projects={projects} onProjectsChanged={onProjectsChanged} isAdmin={isAdmin}/></>}
   </div>;
   return embedded ? body : <main className="main plugins-view">{body}</main>;
 }

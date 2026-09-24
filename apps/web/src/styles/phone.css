@@ -696,7 +696,7 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .plugin-grid-installed pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .plugin-url-review { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--nav-hover); color: var(--text-primary); overflow-wrap: anywhere; }
-.plugin-url-review p { margin: 0; line-height: 1.45; }
+.plugin-url-review p { margin: 0; line-height: var(--leading-body); }
 .plugin-url-address { overflow-wrap: anywhere; }
 
 .plugin-tool-detail { margin-top: var(--space-2); overflow-wrap: anywhere; }
@@ -711,3 +711,8 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .plugin-preview-tools li strong, .plugin-preview-tools li span { display: block; }
 
 .plugin-url-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* Integration review (#260): the Yours/Discover switch sizes to its options like the Skills/Connectors/Plugins
+   switch above it, and disclosure summaries read at the card's footnote size. */
+.plugins-directory > .glass-seg { align-self: flex-start; width: max-content; }
+.plugin-grid-installed summary, .plugin-tool-detail summary { font-size: var(--text-footnote); }

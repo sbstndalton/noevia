@@ -140,7 +140,7 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
       </div>
 
       {menu && <ContextMenu at={menu.at} onClose={()=>setMenu(null)} items={[
-        {label:'Edit project',icon:<ShellIcon name="settings"/>,onSelect:()=>onEdit(menu.project.id)},
+        {label:'Project settings',icon:<ShellIcon name="settings"/>,onSelect:()=>onEdit(menu.project.id)},
         {label:menu.project.pinned?'Unpin project':'Pin project',icon:<ShellIcon name="pin"/>,onSelect:()=>onPatch(menu.project.id,{pinned:!menu.project.pinned})},
         {label:menu.project.archived?'Restore project':'Archive project',icon:<ShellIcon name="folder"/>,onSelect:()=>onPatch(menu.project.id,{archived:!menu.project.archived})},
         {label:'Delete project',danger:true,onSelect:()=>setConfirmDelete(menu.project.id)}
