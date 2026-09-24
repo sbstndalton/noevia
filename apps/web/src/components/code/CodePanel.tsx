@@ -270,7 +270,7 @@ function TaskCard({ task, busy, onDecide, onCancel }: {
       <span className="code-status">{STATUS[task.status]}</span>
     </header>
     <p className="code-meta">{[task.branch, task.capabilities.map(a => ACTION_LABEL[a]).join(' · ')].filter(Boolean).join(' · ') || 'Read only'}</p>
-    <p className="code-stage" role={task.status === 'waiting_approval' ? 'status' : undefined}>{outcome} · {elapsed(task)} elapsed · Updated <time dateTime={new Date(task.updatedAt).toISOString()}>{updated}</time></p>
+    <p className="code-stage"><span role={task.status === 'waiting_approval' ? 'status' : undefined}>{outcome}</span> · {elapsed(task)} elapsed · Updated <time dateTime={new Date(task.updatedAt).toISOString()}>{updated}</time></p>
     {task.error && <p className="code-note is-error">{task.error}</p>}
     {task.approval && <ApprovalCard approval={task.approval} busy={busy.startsWith('decide:')} onDecide={onDecide}/>}
     {active && <div className="code-actions"><button type="button" className="btn btn-secondary" onClick={onCancel} disabled={!!busy}>Cancel task</button></div>}
