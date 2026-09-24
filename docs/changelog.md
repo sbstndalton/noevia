@@ -1,3 +1,38 @@
+## Release 7ce2213 — 2026-09-24 (hardening batch, web-only)
+
+Web changes deployed: [#76](https://github.com/sbstndalton/noevia/pull/76) server error
+bodies no longer leak raw errors, JSON bodies are checked, chat ids are sanitized and
+approvals are scoped; [#80](https://github.com/sbstndalton/noevia/pull/80) and
+[#83](https://github.com/sbstndalton/noevia/pull/83) guard the system model (Laya) from
+delete, calibration, preset apply and section delete/rename, and gate research maintenance;
+[#81](https://github.com/sbstndalton/noevia/pull/81) hides system-model rename/delete in the
+Configure tab, merges racing history loads and orders stats updates;
+[#82](https://github.com/sbstndalton/noevia/pull/82) caps and aborts MCP responses and makes
+the diary stream and tool arguments robust; [#85](https://github.com/sbstndalton/noevia/pull/85)
+makes chat delete stop the reply and block saves, resets the project view on switch, and keeps
+merged roles alternating. [#77](https://github.com/sbstndalton/noevia/pull/77),
+[#79](https://github.com/sbstndalton/noevia/pull/79) and [#84](https://github.com/sbstndalton/noevia/pull/84)
+(Diary service, model-manager, code-sandbox) are merged but NOT deployed by this web-only release.
+
+CI green on `7ce2213`. Deployed via `git archive 7ce2213` (no local checkout modified) to
+`/mnt/docker/appdata/cowork/releases/7ce2213`, built as `cowork-web:7ce2213`
+(`sha256:e3605b2deabbd04561cfe1312c0b47e131540563f97a599f7b9153a1575b6c0a`). Config and the
+live Compose Manager file were backed up as `*.bak.before-7ce2213`; `current`/`COWORK_VERSION`
+were repointed at `7ce2213`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only (it must run from the Compose Manager project directory; the first
+attempt from another cwd was blocked before any change). All 42 non-web container IDs and start
+times were identical before and after.
+
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:7b6942c`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-DoBtRaex.js` and `index-B1OLP7Ag.css` are present in the image's `dist/assets`;
+`errorResponse` from #76 is exported in the running container.
+
+Rollback: `config/.env.bak.before-7ce2213` and the Compose Manager
+`docker-compose.yml.bak.before-7ce2213` restore `current` to `releases/7b6942c`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
 ## Release 7b6942c — 2026-09-24 (chat save races)
 
 [PR #75](https://github.com/sbstndalton/noevia/pull/75) fixes chat save races while replies
