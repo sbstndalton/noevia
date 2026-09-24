@@ -1,3 +1,32 @@
+## Release 0c2be32 — 2026-09-24 (routing model, Diary edit proxy and offsite backup hardening, web-only)
+
+Web changes deployed: [#90](https://github.com/sbstndalton/noevia/pull/90) Details/Configure hide tuning and calibration for the system
+routing model, and the Settings routing summary wraps at narrow widths; [#91](https://github.com/sbstndalton/noevia/pull/91) the Diary
+edit proxy forwards `base_hash` and relays 409 conflicts; [#92](https://github.com/sbstndalton/noevia/pull/92) fixes offsite S3 listing
+with a "/" prefix and adds a Drive-copy busy-lock guard; [#95](https://github.com/sbstndalton/noevia/pull/95) the Drive mirror never
+prunes a foreign backup store (store id, sibling folder, 25% guard, serialized runs), caps
+storage reads/listings, and fixes SigV4 canonical path encoding. [#93](https://github.com/sbstndalton/noevia/pull/93) (Diary trash long
+names) and [#94](https://github.com/sbstndalton/noevia/pull/94) (Diary tenant delete race, fixed 502 text) are merged but NOT deployed by
+this web-only release.
+
+CI green on `0c2be32`. Deployed via `git archive 0c2be32` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/0c2be32`, built as
+`cowork-web:0c2be32`
+(`sha256:ecb14d6ef8aafcb22d72e6282eaaf672375c8690afae11691bafb8a0123ee257`). Config and the
+live Compose Manager file were backed up as `*.bak.before-0c2be32`; `current`/`COWORK_VERSION`
+were repointed at `0c2be32`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:7e8ce3a`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-94Ntc5E5.js` and `index-C7qt3UiI.css` are present in the image's `dist/assets`;
+`/app/server/offsite-s3.cjs` loads in the running container.
+
+Rollback: `config/.env.bak.before-0c2be32` and the Compose Manager
+`docker-compose.yml.bak.before-0c2be32` restore `current` to `releases/7e8ce3a`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
 ## Release 7e8ce3a — 2026-09-24 (code-workspace and Drive hardening, web-only)
 
 Web changes deployed: [#86](https://github.com/sbstndalton/noevia/pull/86) the code-workspace
