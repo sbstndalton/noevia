@@ -192,7 +192,28 @@
     },
     {
       "name": "COWORK_VERSION",
-      "purpose": "Image tag for built images",
+      "purpose": "Web image tag",
+      "secret": false,
+      "human_required": false,
+      "default": "dev"
+    },
+    {
+      "name": "DIARY_VERSION",
+      "purpose": "Diary image tag (required by Compose)",
+      "secret": false,
+      "human_required": false,
+      "default": "dev"
+    },
+    {
+      "name": "OCR_VERSION",
+      "purpose": "OCR image tag (required by Compose)",
+      "secret": false,
+      "human_required": false,
+      "default": "dev"
+    },
+    {
+      "name": "MODEL_MANAGER_VERSION",
+      "purpose": "Model manager image tag (required with compose.llamacpp.yaml)",
       "secret": false,
       "human_required": false,
       "default": "dev"
