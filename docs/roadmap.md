@@ -31,7 +31,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
 - **Tests:** `apps/web` `npm test` 1487/1487 at `958022b`; Diary pytest 353 passed, 3 skipped
-  (at the #99 merge); model-manager pytest 72; CI's 6 checks green on every merged PR. Browser QA
+  (at the #99 merge); model-manager pytest 72; all required CI checks green on every merged PR (five always run; the offline-contract check runs only when its paths change). Browser QA
   records below describe their own dated runs.
 - **Deploy:** full releases use `deploy/examples/overlay-release.sh OLD NEW` after a verified
   appdata backup; it keeps the sidecars running itself. Web-only releases: `git archive <sha>` →
