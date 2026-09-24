@@ -8,6 +8,36 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 89142c0 — 2026-09-24 (composer Chat/Cowork toggle, tool catalogue)
+
+### Services
+
+- **Web:** [#276](https://github.com/sbstndalton/noevia/pull/276) composer Chat/Cowork toggle and permitted tool catalogue (closes [#236](https://github.com/sbstndalton/noevia/issues/236), [#237](https://github.com/sbstndalton/noevia/issues/237)) — deployed as `cowork-web:89142c0` (full build FROM release source, `apps/web` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** merged, not yet deployed — stays `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env`/Compose backed up as `*.bak.before-89142c0`.
+
+`origin/main` was confirmed at `89142c0` and every check-run on that commit (Docling extraction
+contract, Docker images build, Node tests/typecheck/frontend build, Model manager test suite,
+offline-contract, Detect changed areas) was completed/success before release. Only `apps/web`
+changed since the live `9b532a8`. Source shipped via `git archive 89142c0` to `releases/89142c0`.
+Web required a full build (frontend changed); server/Dockerfile/package files unchanged in scope
+but the build ran end to end, producing `index-DKpCIBTO.js` / `index-DghX1G7f.css`.
+
+Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero
+restarts and reported healthy. Public `/` returned 200, `/api/profile` returned 401, and the served
+`index-*.js/css` names matched the web image's `dist/assets` byte-for-byte by filename.
+`diary`, `code-sandbox`, `model-loader`, `ocr`, `docling`, `laya`, `llama`, `embed` and `kiwix` kept
+identical container ids, `StartedAt` and zero restarts. Restart-alert baseline re-acked. No model
+runs, real Diary data, new harness installation or broader exposure were part of this release.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-89142c0 config/.env`, `ln -sfn releases/9b532a8 current`, then
+  `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release 9b532a8 — 2026-09-24 (model manager guided tuning, secrets rotation, Diary tombstone/quarantine, upload/RAG/MCP hardening, code-sandbox batch A)
 
 ### Services
