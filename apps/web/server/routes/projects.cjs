@@ -282,6 +282,8 @@ function createProjectRoutes({
                 preview: String(c.preview || '').slice(0, 200),
                 pinned: c.pinned === true,
                 archived: c.archived === true,
+                // The session's harness (#236); absent means Chat, as for every older chat.
+                ...(c.mode === 'cowork' ? { mode: 'cowork' } : {}),
               })),
           );
           return json(res, 200, { ok: true });

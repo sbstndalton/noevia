@@ -106,6 +106,12 @@ test('chat metas: listing, saving a normalized list and deleting one', async () 
   assert.equal(f.store.savedChats[1][0].id, 'c2');
   assert.equal(f.store.savedChats[1][0].title, 'New task');
   assert.equal(typeof f.store.savedChats[1][0].updatedAt, 'number');
+  assert.equal('mode' in f.store.savedChats[1][0], false, 'no mode means Chat');
+  // #236: a project chat keeps its Cowork mode; anything else is dropped.
+  await f.call('POST', '/api/projects/p1/chats', { chats: [{ id: 'cw', mode: 'cowork' }, { id: 'cx', mode: 'root' }] });
+  assert.equal(f.store.savedChats[1][0].mode, 'cowork');
+  assert.equal('mode' in f.store.savedChats[1][1], false);
+  f.sent.pop();
   await f.call('POST', '/api/projects/p1/chats', { chats: 'x' });
   assert.deepEqual(f.sent.pop(), { status: 400, body: { error: 'chats array required' } });
   await f.call('DELETE', '/api/projects/p1/chats/c1');
