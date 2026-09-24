@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { apiFetch, fetchWorkspace, saveProjectConfig } from '../../api';
+import { editOutcome, isCommitKey } from '../../memory-edit';
 import { ConfirmDialog } from '../ContextMenu';
 import { notifyWorkspaceChanged, useWorkspaceChanged } from '../data/workspace-changed';
 
@@ -69,10 +70,13 @@ export function MemorySettings({ onOpenDiary }: { onOpenDiary?: () => void } = {
   };
   const saveEdit = async () => {
     if (!editing || !saved) return;
-    const text = editing.text.replace(/\s+/g, ' ').trim();
-    const next = text ? account.map((m, i) => (i === editing.index ? text : m)) : account.filter((_, i) => i !== editing.index);
+    const outcome = editOutcome(editing.text);
+    // An emptied edit is a forget: ask first rather than deleting silently.
+    if (outcome.kind === 'confirm-forget') { askForget(editing.index, account[editing.index] ?? ''); return; }
+    const next = account.map((m, i) => (i === editing.index ? outcome.text : m));
     if (await putAccount(next, useProject, 'Updated. New messages use the corrected line.')) setEditing(null);
   };
+  const askForget = (index: number, line: string) => setConfirm({ title: 'Forget this line?', body: `“${line}” will no longer be sent with new messages. Past replies are not changed.`, label: 'Forget', run: async () => { if (await putAccount(account.filter((_, j) => j !== index), useProject, 'Forgotten.')) setEditing(null); } });
   const withProjects = (projects ?? []).filter((p) => p.memories.length);
 
   return <>
@@ -85,16 +89,16 @@ export function MemorySettings({ onOpenDiary }: { onOpenDiary?: () => void } = {
       {saved && <ul className="memory-list set-rows" aria-label="Account memory">
         {account.map((m, i) => <li key={`${i}:${m}`} className="memory-item">
           {editing?.index === i
-            ? <><input aria-label="Edit memory" value={editing.text} maxLength={maxChars} autoFocus disabled={busy} onChange={(e) => setEditing({ index: i, text: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') void saveEdit(); if (e.key === 'Escape') setEditing(null); }} />
+            ? <><input aria-label="Edit memory" value={editing.text} maxLength={maxChars} autoFocus disabled={busy} onChange={(e) => setEditing({ index: i, text: e.target.value })} onKeyDown={(e) => { if (isCommitKey(e.key, e.nativeEvent.isComposing)) void saveEdit(); if (e.key === 'Escape') setEditing(null); }} />
               <span className="memory-actions"><button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void saveEdit()}>Save</button><button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setEditing(null)}>Cancel</button></span></>
             : <><span className="memory-text">{m}</span>
               <span className="memory-actions"><button className="btn btn-ghost btn-sm" disabled={busy} aria-label={`Edit “${m}”`} onClick={() => setEditing({ index: i, text: m })}>Edit</button>
-                <button className="btn btn-ghost btn-sm" disabled={busy} aria-label={`Forget “${m}”`} onClick={() => void putAccount(account.filter((_, j) => j !== i), useProject, 'Forgotten.')}>Forget</button></span></>}
+                <button className="btn btn-ghost btn-sm" disabled={busy} aria-label={`Forget “${m}”`} onClick={() => askForget(i, m)}>Forget</button></span></>}
         </li>)}
         {!account.length && <li className="memory-empty">Nothing remembered yet.</li>}
       </ul>}
       {saved && <div className="memory-add">
-        <input aria-label="New memory" placeholder="I work as a nurse in Bergen." value={adding} maxLength={maxChars} disabled={busy || account.length >= maxItems} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void add(); }} />
+        <input aria-label="New memory" placeholder="I work as a nurse in Bergen." value={adding} maxLength={maxChars} disabled={busy || account.length >= maxItems} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => { if (isCommitKey(e.key, e.nativeEvent.isComposing)) void add(); }} />
         <button className="modal-btn secondary" disabled={busy || !adding.trim() || account.length >= maxItems} onClick={() => void add()}>Remember</button>
         <span className="personal-count">{account.length} / {maxItems}</span>
       </div>}
@@ -115,7 +119,7 @@ export function MemorySettings({ onOpenDiary }: { onOpenDiary?: () => void } = {
         <h3>{p.name}{!useProject && <small className="memory-off"> · not sent</small>}</h3>
         <ul className="memory-list set-rows" aria-label={`Memory for ${p.name}`}>
           {p.memories.map((m, i) => <li key={`${i}:${m}`} className="memory-item"><span className="memory-text">{m}</span>
-            <span className="memory-actions"><button className="btn btn-ghost btn-sm" disabled={busy} aria-label={`Forget “${m}” in ${p.name}`} onClick={() => void putProject(p, p.memories.filter((_, j) => j !== i), 'Forgotten.')}>Forget</button></span></li>)}
+            <span className="memory-actions"><button className="btn btn-ghost btn-sm" disabled={busy} aria-label={`Forget “${m}” in ${p.name}`} onClick={() => setConfirm({ title: 'Forget this line?', body: `“${m}” will no longer be sent in ${p.name}. Past replies are not changed.`, label: 'Forget', run: async () => { await putProject(p, p.memories.filter((_, j) => j !== i), 'Forgotten.'); } })}>Forget</button></span></li>)}
         </ul>
         <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setConfirm({ title: `Clear memory for ${p.name}?`, body: `All ${p.memories.length} line${p.memories.length === 1 ? '' : 's'} saved in this project will be forgotten. Its files and instructions stay.`, label: 'Clear', run: async () => { await putProject(p, [], `Memory for ${p.name} cleared.`); } })}>Clear this project’s memory</button>
       </div>)}

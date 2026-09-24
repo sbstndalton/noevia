@@ -53,6 +53,7 @@ const port=31293,origin=`http://localhost:${port}`,web=path.resolve(__dirname,'.
     await dialog.getByLabel('New memory').fill('Temporary line to forget');await dialog.getByRole('button',{name:'Remember'}).click();
     await list.getByText('Temporary line to forget').waitFor();
     await dialog.getByRole('button',{name:'Forget “Temporary line to forget”'}).click();
+    await page.getByRole('dialog',{name:'Forget this line?'}).getByRole('button',{name:'Forget',exact:true}).click();
     await list.getByText('Temporary line to forget').waitFor({state:'detached'});
     await dialog.getByRole('switch',{name:'Use project memory'}).click();
     await dialog.getByRole('status').filter({hasText:'no longer sent'}).waitFor();
