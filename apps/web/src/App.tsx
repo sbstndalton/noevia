@@ -46,6 +46,7 @@ import type {
 import { ChatView } from './components/ChatView';
 import { ModelPopup } from './components/ModelPopup';
 import { ProjectView } from './components/ProjectView';
+import { ActiveCodeTasks } from './components/code/ActiveCodeTasks';
 import { Coding, Diary, ModelManager, Projects, Settings, ViewLoading, prefetchViewsWhenIdle } from './lazy-views';
 import type { SettingsSection } from './components/SettingsShell';
 import { FeaturePreview } from './components/PreviewPanel';
@@ -1083,6 +1084,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
+      {featureFlags.codeHarness === true && <ActiveCodeTasks onOpenProject={(id) => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'project', id }); }}/>}
       <div className="regular-workspace" style={{display:'contents'}}>
       <Sidebar
         mode={appMode==='code'&&showPreviews?'code':'chat'}

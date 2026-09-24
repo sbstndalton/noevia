@@ -358,7 +358,7 @@ const codeService = require('./code-service.cjs').createCodeService({
   sharedContext: (workspace, project) => require('./shared-context.cjs').forCode(project, loadChats(project.id)),
 });
 const codeRoutes = require('./routes/code.cjs').createCodeRoutes({
-  features, getProject, workspace: () => currentWorkspace(), json, readJson, service: codeService,
+  features, getProject, projects: () => PROJECTS.filter((project) => !diaryExtras.internalProject(project)), workspace: () => currentWorkspace(), json, readJson, service: codeService,
 });
 
 const usageRoutes = require('./routes/usage.cjs').createUsageRoutes({
