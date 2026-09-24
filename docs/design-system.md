@@ -172,3 +172,50 @@ browsers ignore the viewport meta, so forcing the phone layout there instead set
 `data-layout="mobile"` on the root, which holds the app to a phone-width column and is
 mirrored by the shell, Settings and model-manager rules at the end of `noevia.css`. Other
 views still follow the real viewport width, and the control says so on screen.
+
+## Visual system, motion contract and theme families — 2026-09-24 (#245, #247, #249)
+
+This supersedes the material sections above where they disagree. Sources of truth:
+`tokens.css` (scales), `themes.css` (families, tokens only), `motion.css` (keyframes and
+reduced motion), `system.css` (loads last: the shared surface rules).
+
+**Surfaces.** One elevation scale with three steps, each a fill, an edge and a shadow:
+`flat` (`--elev-flat`, `--edge-flat`) for sidebar rows, New chat, buttons and menu items;
+`raised` (`--surface-raised`, `--edge-raised`, `--elev-raised`) for the composer only, the
+page's focal point; `overlay` (`--surface-overlay`, `--elev-overlay`) for menus, popovers, the
+tool catalogue and dialogs. The old `--shadow-*` names alias onto the scale. No paired
+light/dark (neumorphic) shadows, no per-element shadow values.
+
+**Shape and space.** Three radius roles: `--radius-control` (buttons, rows, fields, menu
+items), `--radius-overlay` (menus, popovers, cards) and `--radius-surface` (composer, panels,
+dialogs). Spacing stays on the 4pt `--space-*` scale.
+
+**Type.** Headings and the home greeting use `--font-display` with `--display-weight` and
+`--display-tracking`; everything else uses `--font-ui`. The sidebar reads destinations
+(primary, medium) before history (secondary, regular) before section labels (caption,
+semibold, secondary). The chat font preference still overrides messages only.
+
+**Motion.** Four purposes, each a duration and an easing token: `immediate` (hover, press,
+colour; ~100ms, `ease`), `quick` (menus, popovers, toasts entering; 140–180ms, strong
+ease-out), `considered` (Chat/Cowork and Chat/Code thumbs, drawers, dialogs, Settings;
+220–300ms, drawer curve) and `async` (loading and tool-activity loops; 1.2s, linear). Five
+keyframes remain, all in `motion.css`, each with its reason: `motion-enter`, `motion-exit`,
+`motion-pulse`, `motion-spin`, `sidebar-title-scroll`; an element picks its travel with
+`--enter-from` / `--exit-to`. Reduced motion (OS or Settings → Motion) makes entrances instant,
+stops loops and removes transitions; state still changes through text and colour.
+`npm run lint:design` rejects `transition: all` and literal durations in stylesheets.
+
+**Theme families.** A family is the whole visual language, independent of accent and
+light/dark: Editorial (default; warm paper, Fraunces display + Inter, soft bordered depth),
+Contemporary (crisp tonal surfaces, Geist, tighter corners, near-flat depth) and Glass
+(translucent chrome over an opaque reading plane, Sora display + Manrope, rounder shapes,
+blur only on overlays and chrome). Mono is JetBrains Mono everywhere. Faces load per family
+from Google Fonts after first paint (`public/fonts.js`) with system fallbacks of similar
+metrics. The choice is a per-device preference (`noevia:theme-family`, `data-family` before
+paint in `public/theme.js`); a saved `noevia:material` migrates (Soft → Editorial, Material 3 →
+Contemporary, Liquid glass → Glass). Settings → Appearance shows each family as a live sample
+in light and dark with the current accent (`.theme-scope` re-declares the semantic tokens on
+the sample). Family-scoped component rules may change colour, depth and shape but never size,
+spacing or font metrics (`tests/family-geometry.test.cjs`); family grounds are contrast-checked
+for every accent (`tests/theme-family-contrast.test.cjs`). Screenshots:
+`apps/web/qa/theme-families.cjs`.
