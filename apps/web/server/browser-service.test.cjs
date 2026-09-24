@@ -152,7 +152,10 @@ test('recovery after a restart marks a running task interrupted, never silently 
   const workspace = { dir: temp('noevia-browser-recover-') };
   const egress = { endpoint: 'egress:8040', grant: ({ taskId }) => ({ token: `tok-${taskId}` }), revoke: () => {} };
   const fake1 = fakeBrowser();
-  const svc1 = createBrowserService({ launch: async () => fake1.browser, egress, timeoutMs: 60, idleTimeoutMs: 60000 });
+  // Short on purpose: nothing in this test ever finishes or cancels svc1's task (the whole point
+  // is that its own process never gets the chance to), so its idle timer is left to fire and
+  // clean the test process up itself, quickly, rather than the 10-minute production default.
+  const svc1 = createBrowserService({ launch: async () => fake1.browser, egress, timeoutMs: 60, idleTimeoutMs: 50 });
   const started = await svc1.start(workspace, project, { domains: ['shop.example.test'] });
   assert.equal(svc1.get(workspace, project, started.taskId).status, 'running');
   // A fresh service (simulating a new process) sees the same directory.
@@ -161,6 +164,9 @@ test('recovery after a restart marks a running task interrupted, never silently 
   const recovered = svc2.get(workspace, project, started.taskId);
   assert.equal(recovered.status, 'interrupted');
   assert.match(recovered.error, /restart/);
+  // svc1's own in-process loop does not know the journal now shows this job interrupted; let its
+  // idle timer resolve that on its own rather than asserting anything about how.
+  await new Promise((r) => setTimeout(r, 80));
 });
 
 test('a task from another project is not found, rather than forbidden — tenant scoping', async () => {

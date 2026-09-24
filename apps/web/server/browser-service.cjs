@@ -95,9 +95,13 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
         if (decision === 'timeout') rememberExpired(id);
         resolve(decision === 'approve' ? 'approve' : 'deny');
       };
-      // Waiting forever is a leaked task; a timeout is a REFUSAL, never a silent approval.
+      // Waiting forever is a leaked task; a timeout is a REFUSAL, never a silent approval. Left
+      // ref'd on purpose: an unref'd timer does not keep the event loop alive, so if nothing
+      // else happens to be pending when this is the only outstanding work, the process can end
+      // before it ever fires — silently abandoning whoever is awaiting this decision instead of
+      // refusing it. In the real server this timer is never the only thing running (the HTTP
+      // listener already keeps the process alive), so this changes nothing about shutdown.
       const timer = setTimeout(() => finish('timeout'), timeoutMs);
-      timer.unref?.();
       pending.set(id, { id, taskId: card.jobId, request: { ...card, id }, decide: finish });
       if (signal) {
         if (signal.aborted) finish('aborted');
@@ -214,8 +218,11 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
                   resolve(value);
                 };
                 waking = () => finish(false);
+                // Also left ref'd (see the approval timer above): the real server always has its
+                // HTTP listener keeping the process alive regardless, so this only matters for a
+                // bare `node --test` process where this timer could otherwise be the sole
+                // remaining handle and never get to fire at all.
                 const idleTimer = setTimeout(() => finish(true), idleTimeoutMs);
-                idleTimer.unref?.();
                 if (ctx.signal.aborted) finish(false);
                 else ctx.signal.addEventListener('abort', onAbort, { once: true });
               });
