@@ -44,6 +44,10 @@ const CHUNK_STRIDE = 150;
 // a two-sentence file must not round-trip an embedding call.
 const DIRECT_INJECT_MAX = 2400;
 const TOP_K = 6;
+// Overall cap on file text put into one prompt by filesContext, so 60 large
+// sources cannot add ~1.4M characters. Env-overridable like the rerank knobs.
+const FILES_CONTEXT_MAX_CHARS = clampInt(process.env.FILES_CONTEXT_MAX_CHARS, 120_000, 4_000, 2_000_000);
+const LARGE_FILE_HEAD = 24000;
 const MIN_SCORE = 0.3;
 
 // Optional cross-encoder rerank (docs/research/system-one, experiments/system-one/rag). Off unless
@@ -219,7 +223,25 @@ function ensureVecTable(index, dim) {
   index.dim = dim;
 }
 
-async function embedBatchAndStore(index, rows) {
+// Remove one file's chunks AND their vectors. chunks.id is INTEGER PRIMARY KEY, so SQLite
+// reuses freed ids: a vector left behind would join to whatever chunk takes its id next.
+// Callers run this inside a transaction with whatever replaces the file.
+function dropFileRows(index, fileName) {
+  if (index.dim) {
+    const del = index.db.prepare('DELETE FROM vec_items WHERE chunk_id = ?');
+    for (const { id } of index.db.prepare('SELECT id FROM chunks WHERE file = ?').all(fileName)) del.run(id);
+  }
+  index.db.prepare('DELETE FROM chunks WHERE file = ?').run(fileName);
+}
+
+// Per project+tenant+file: runs are chained so two index runs never interleave, and every
+// index or delete bumps a generation so a superseded run stops before writing anything more.
+const fileQueues = new Map(); // key -> promise tail
+const fileGenerations = new Map(); // key -> latest generation
+const fileKey = (projectId, fileName, userId) => JSON.stringify([userId || null, projectId, fileName]);
+const bumpGeneration = (key) => { const g = (fileGenerations.get(key) || 0) + 1; fileGenerations.set(key, g); return g; };
+
+async function embedBatchAndStore(index, rows, isCurrent = () => true) {
   let dim = index.dim;
   let embedded = 0;
   // NOTE: prepare the vec_items statements only AFTER ensureVecTable() has run
@@ -229,8 +251,12 @@ async function embedBatchAndStore(index, rows) {
   // always an integer from our own chunks table — no injection surface).
   let del = index.dim ? index.db.prepare('DELETE FROM vec_items WHERE chunk_id = ?') : null;
   for (let i = 0; i < rows.length; i += 8) {
+    if (!isCurrent()) break;
     const batch = rows.slice(i, i + 8);
     const vectors = await embed(batch.map((r) => r.body));
+    // A newer run (or a delete) replaced these chunks while we were embedding: writing now
+    // would attach vectors to ids that no longer mean this text.
+    if (!isCurrent()) break;
     if (!dim) {
       dim = vectors[0].length;
       ensureVecTable(index, dim);
@@ -252,16 +278,37 @@ async function embedBatchAndStore(index, rows) {
 
 // Index (or re-index) one project file. Returns counts for logging; throws on
 // hard failures is deliberately avoided — callers log the result.
-async function indexProjectFile(projectId, fileName, text, userId) {
+//
+// Runs for the same file are serialized, and a newer run supersedes an older one: the older
+// one stops before writing further vectors. The old version's chunks and vectors are replaced
+// by the new chunks in one transaction, so a search during re-index sees only the NEW version
+// (at first without vectors, then gaining them batch by batch) — never a mix of versions, and
+// never an old vector joined to new text.
+function indexProjectFile(projectId, fileName, text, userId) {
+  const key = fileKey(projectId, fileName, userId);
+  const generation = bumpGeneration(key);
+  const run = (fileQueues.get(key) || Promise.resolve())
+    .catch(() => {})
+    .then(() => indexProjectFileNow(projectId, fileName, text, userId, () => fileGenerations.get(key) === generation));
+  const tail = run.catch(() => {});
+  fileQueues.set(key, tail);
+  tail.then(() => { if (fileQueues.get(key) === tail) fileQueues.delete(key); });
+  return run;
+}
+
+async function indexProjectFileNow(projectId, fileName, text, userId, isCurrent) {
+  if (!isCurrent()) return { ok: true, stored: 0, embedded: 0, superseded: true };
   const index = openIndex(projectId, userId);
   if (!index) return { ok: false, reason: 'rag-unavailable' };
   try {
-    index.db.prepare('DELETE FROM chunks WHERE file = ?').run(fileName);
     if (text.length <= DIRECT_INJECT_MAX) {
       // Small file: stored for the record, injected directly by handleChat.
-      index.db
-        .prepare('INSERT INTO chunks (file, chunk_no, body, content_hash) VALUES (?, 0, ?, ?)')
-        .run(fileName, text, hash(text));
+      index.db.transaction(() => {
+        dropFileRows(index, fileName);
+        index.db
+          .prepare('INSERT INTO chunks (file, chunk_no, body, content_hash) VALUES (?, 0, ?, ?)')
+          .run(fileName, text, hash(text));
+      })();
       return { ok: true, stored: 1, embedded: 0, direct: true };
     }
     const pieces = chunkText(text);
@@ -277,10 +324,13 @@ async function indexProjectFile(projectId, fileName, text, userId) {
       unique.push(body);
     }
     const ins = index.db.prepare('INSERT INTO chunks (file, chunk_no, body, content_hash) VALUES (?, ?, ?, ?)');
-    const rows = unique.map((body, i) => ({ id: Number(ins.run(fileName, i, body, hash(body)).lastInsertRowid), body }));
+    const rows = index.db.transaction(() => {
+      dropFileRows(index, fileName);
+      return unique.map((body, i) => ({ id: Number(ins.run(fileName, i, body, hash(body)).lastInsertRowid), body }));
+    })();
     let embedded = 0;
     try {
-      embedded = await embedBatchAndStore(index, rows);
+      embedded = await embedBatchAndStore(index, rows, isCurrent);
     } catch (err) {
       console.warn(`[rag] embedding failed for ${projectId}/${fileName} (${err.message}) — text stored, vectors pending`);
     }
@@ -292,10 +342,12 @@ async function indexProjectFile(projectId, fileName, text, userId) {
 
 // Drop one file's chunks (called when a file is removed from a project).
 function deleteProjectFile(projectId, fileName, userId) {
+  // Supersede any index run still embedding this file, so it cannot write vectors afterwards.
+  bumpGeneration(fileKey(projectId, fileName, userId));
   const index = openIndex(projectId, userId);
   if (!index) return;
   try {
-    index.db.prepare('DELETE FROM chunks WHERE file = ?').run(fileName);
+    index.db.transaction(() => dropFileRows(index, fileName))();
   } finally {
     index.db.close();
   }
@@ -343,7 +395,7 @@ async function filesContext(projectId, files, query, userId) {
   // "what have you got?", "is my file attached?" — was answered from whatever
   // happened to be retrieved, and looked exactly like a file that had not
   // attached. The manifest costs a few tokens and settles it.
-  const manifest = `Sources attached to this project (${files.length}): ${files
+  let manifest = `Sources attached to this project (${files.length}): ${files
     .map((f) => `"${f.name}"`)
     .join(', ')}. Excerpts of the relevant ones follow; ask to read a file in full if you need more of it.`;
 
@@ -356,15 +408,19 @@ async function filesContext(projectId, files, query, userId) {
       for (const h of hits) if (permitted.has(h.file)) parts.push(`[from ${h.file}] ${h.body}`);
     }
   }
-  if (parts.length === 0) {
-    // Fallback: inject small files whole; for big files without vectors, take
-    // the head of each so context still carries something useful.
-    for (const f of small) parts.push(`File "${f.name}":\n${f.content}`);
-    for (const f of large) parts.push(`File "${f.name}" (excerpts):\n${String(f.content).slice(0, 24000)}`);
-  } else {
-    // Always keep small files present — they are cheap and usually key context.
-    for (const f of small) parts.push(`File "${f.name}":\n${f.content}`);
+  // Whole small files (and, without hits, the head of each large file) are
+  // added smallest first until FILES_CONTEXT_MAX_CHARS is spent; anything that
+  // does not fit is named below so the model knows it exists.
+  let budget = FILES_CONTEXT_MAX_CHARS - parts.reduce((n, x) => n + x.length, 0);
+  const candidates = small.map((f) => ({ f, text: `File "${f.name}":\n${f.content}` }));
+  if (parts.length === 0) for (const f of large) candidates.push({ f, text: `File "${f.name}" (excerpts):\n${String(f.content).slice(0, LARGE_FILE_HEAD)}` });
+  candidates.sort((a, b) => a.text.length - b.text.length);
+  const omitted = [];
+  for (const c of candidates) {
+    if (c.text.length <= budget) { parts.push(c.text); budget -= c.text.length; }
+    else omitted.push(c.f.name);
   }
+  if (omitted.length) manifest += ` ${omitted.length} more file${omitted.length === 1 ? '' : 's'} not included (prompt size limit): ${omitted.map((n) => `"${n}"`).join(', ')}.`;
   const coverage = 'Source completeness: ' + (notices.join('\n') || 'Legacy text sources have no page completeness metadata.') + '\nContext may contain excerpts only. Use read_project_file with PDF startPage/endPage and offset for pages beyond the summary. Do not treat missing excerpts or failed/partial sources as evidence of absence.';
   return parts.length ? [manifest, coverage, ...parts].join('\n\n') : [manifest, coverage].join("\n");
 }

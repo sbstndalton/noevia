@@ -163,6 +163,25 @@ test('"allow for this task" covers the same class only, and never a delete or a 
     [ACTIONS.EDIT, ACTIONS.DELETE, ACTIONS.DELETE, ACTIONS.GIT_PUSH, ACTIONS.GIT_PUSH]);
 });
 
+test('a standing execute allow does not cover hidden pushes, deletes or run-time commands', async () => {
+  const cmd = (command) => ({ toolCall: { kind: 'execute', title: 'bash', rawInput: { command } }, options: OPTIONS });
+  const r = await run({
+    capabilities: [ACTIONS.EXECUTE, ACTIONS.DELETE, ACTIONS.GIT_PUSH],
+    answers: ['approve_all', 'deny', 'deny', 'deny', 'approve_all', 'deny'],
+    script: async (h) => {
+      await h.requestPermission(cmd('make build'));                 // asks, stands for execute
+      await h.requestPermission(cmd('git -C . push origin HEAD:main')); // a push: asks
+      await h.requestPermission(cmd("'rm' -rf x"));                 // a delete: asks
+      await h.requestPermission(cmd("bash -c 'rm -rf .'"));         // a delete: asks
+      await h.requestPermission(cmd("bash -c 'make'"));             // run-time string: asks, cannot stand
+      await h.requestPermission(cmd("bash -c 'make'"));             // asks again
+      await h.requestPermission(cmd('make test'));                  // covered by the first standing allow
+    },
+  });
+  assert.deepEqual(r.asked.map((a) => a.action), [ACTIONS.EXECUTE, ACTIONS.GIT_PUSH, ACTIONS.DELETE, ACTIONS.DELETE,
+    ACTIONS.EXECUTE, ACTIONS.EXECUTE]);
+});
+
 test('a standing allow does not leak into another task', async () => {
   const first = await run({ capabilities: [ACTIONS.EDIT], answers: ['approve_all'],
     script: async (h, cwd) => { await h.requestPermission(editCall(path.join(cwd, 'a.txt'))); } });
@@ -531,4 +550,27 @@ test("a networked task's result says which hosts it reached and which were refus
   // No grant, no network section.
   const offline = await run({ script: async () => {} });
   assert.equal('network' in offline.job.result, false);
+});
+
+test('relative fs paths resolve inside the worktree, never against the web process cwd', async () => {
+  const outside = temp('noevia-houtside-');
+  fs.writeFileSync(path.join(outside, 'secret.txt'), 'synthetic secret');
+  const before = fs.existsSync(path.join(process.cwd(), 'noevia-escape-probe.txt'));
+  const r = await run({
+    script: async (h, cwd) => {
+      assert.equal(await h.writeTextFile({ path: 'noevia-escape-probe.txt', content: 'inside' }), null);
+      assert.equal(fs.readFileSync(path.join(cwd, 'noevia-escape-probe.txt'), 'utf8'), 'inside', 'the relative write landed in the worktree');
+      assert.deepEqual(await h.readTextFile({ path: 'a.txt' }), { content: 'a' }, 'a relative read is the worktree file');
+      await assert.rejects(() => h.writeTextFile({ path: '../escape.txt', content: 'no' }), /Outside/);
+      await assert.rejects(() => h.readTextFile({ path: '../../etc/passwd' }), /Outside/);
+      await assert.rejects(() => h.readTextFile({ path: path.join(outside, 'secret.txt') }), /Outside/);
+      fs.symlinkSync(outside, path.join(cwd, 'link'));
+      await assert.rejects(() => h.readTextFile({ path: 'link/secret.txt' }), /Outside/);
+      await assert.rejects(() => h.writeTextFile({ path: 'link/new.txt', content: 'no' }), /Outside/);
+    },
+  });
+  assert.equal(r.job.status, 'completed', r.job.error);
+  assert.equal(fs.existsSync(path.join(process.cwd(), 'noevia-escape-probe.txt')), before, 'nothing written to the process cwd');
+  assert.equal(fs.existsSync(path.join(outside, 'new.txt')), false);
+  assert.equal(fs.existsSync(path.join(path.dirname(r.workspace), 'escape.txt')), false);
 });
