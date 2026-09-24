@@ -577,7 +577,10 @@ dialog.folder-picker::backdrop { background:rgba(0,0,0,.4); backdrop-filter:blur
 .projects-head .seg button.is-selected { background:none;border-bottom-color:var(--text-primary);color:var(--text-primary);font-weight:600;border-radius:0; }
 .projects-head .projects-search { border:0;border-radius:0;background:none;width:210px;padding:12px 0;box-shadow:none; }
 .projects-head .projects-search:focus { outline:2px solid var(--focus-ring);outline-offset:2px; }
-.projects-sort { min-height:44px; padding:8px 30px 8px 10px; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-control); font:inherit; }
+.projects-sort { box-sizing:border-box; min-height:38px; margin-bottom:8px; padding:0 30px 0 12px; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--control-border); border-radius:var(--radius-sm); font-family:var(--font-ui); font-size:var(--text-footnote); }
+/* Same control size as the filter field beside it: 38px, 44px on touch and narrow screens. */
+@media (pointer: coarse), (max-width: 640px) { .projects-sort { min-height:44px; } }
+[data-family='contemporary'] .projects-sort { background:transparent; border-color:var(--md-outline); border-radius:4px; }
 .projects-sort:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
 .project-edit-folders .source-list { margin:8px 0; }
 .project-edit-folders .source-name { min-width:0; overflow-wrap:anywhere; }

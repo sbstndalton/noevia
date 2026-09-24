@@ -1171,7 +1171,6 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      {featureFlags.codeHarness === true && <ActiveCodeTasks onOpenProject={(id) => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'project', id, codeRequest: uid() }); }}/>}
       <div className="regular-workspace" style={{display:'contents'}}>
       <Sidebar
         mode={appMode==='code'&&showPreviews?'code':'chat'}
@@ -1210,6 +1209,8 @@ export default function App(): JSX.Element {
 
       <div className={`app-stack pane${settingsOpen ? ' has-settings' : ''}`}>
       <div className="app-main" ref={appMain}>
+      {/* In flow at the top of the pane: it pushes the view down rather than covering its header. */}
+      {featureFlags.codeHarness === true && <ActiveCodeTasks onOpenProject={(id) => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'project', id, codeRequest: uid() }); }}/>}
       {appMode === 'code' && showPreviews && <Suspense fallback={<ViewLoading name="Coding" active={!settingsOpen} />}><div className="code-mount" style={{display:codeShown?'contents':'none'}}><Coding.View page={codePage} onStartChat={startFreeChatWith} projects={projects} onProjectsChanged={refreshProjects}/><MountedSignal onMounted={() => setCodeShown(true)}/></div></Suspense>}
       <div className="chat-views" style={{display:appMode==='code'&&showPreviews?'none':'contents'}}>
       {view.kind === 'plugins' && <PluginsView onStartChat={startFreeChatWith} projects={projects} onProjectsChanged={refreshProjects}/>}
