@@ -56,6 +56,11 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
   const [mode, setMode] = useState<'yours' | 'discover'>('yours');
   const [yourQuery, setYourQuery] = useState('');
   const [skillProject, setSkillProject] = useState(projects[0]?.id || '');
+  useEffect(() => {
+    if (kind === 'skills' && !projects.some((project) => project.id === skillProject)) {
+      setSkillProject(projects[0]?.id || '');
+    }
+  }, [kind, projects, skillProject]);
   const [projectSkills, setProjectSkills] = useState<ProjectSkill[]>([]);
   const [skillsStatus, setSkillsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [skillsAttempt, setSkillsAttempt] = useState(0);
