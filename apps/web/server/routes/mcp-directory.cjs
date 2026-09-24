@@ -8,6 +8,7 @@
 //   DELETE /api/mcp-oauth/:id
 //   GET    /api/mcp-oauth/callback                     the sign-in service's return address
 //   GET/POST /api/admin/mcp-directory                  admin: list / add a registry server
+//   POST   /api/admin/mcp-directory/custom/preview     admin: validate and list tools without saving
 //   POST   /api/admin/mcp-directory/custom             admin: add any server by URL
 //   PUT    /api/admin/mcp-directory/:id/keys           admin: replace a shared key
 //   PUT    /api/admin/mcp-directory/:id/oauth-client   admin: hand-registered app
@@ -133,7 +134,8 @@ function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, 
       }
       // Add any MCP server by its URL (roadmap: Customize backends). Same rules as a directory
       // server: hosted https, public address, must answer, its own toolbox, every tool asks.
-      if (p === '/api/admin/mcp-directory/custom' && req.method === 'POST') {
+      if ((p === '/api/admin/mcp-directory/custom' || p === '/api/admin/mcp-directory/custom/preview') && req.method === 'POST') {
+        const preview = p.endsWith('/preview');
         let body; try { body = await readJson(req); } catch { return reply(res, 400, { error: 'invalid JSON' }); }
         const title = String(body?.title || '').trim().slice(0, 80);
         const url = String(body?.url || '').trim();
@@ -155,6 +157,7 @@ function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, 
         catch (e) {
           const probe = !hasKey ? await probeMcpAuth(url) : { status: 0 };
           if (probe.status === 401) {
+            if (preview) return reply(res, 200, { requiresSignIn: true, toolCount: null, tools: [], toolsTruncated: false });
             let added;
             try { added = directoryMcp.add({ registryName, title, url, oauth: true }, authn.user.id); } catch (err) { return reply(res, err.status || 400, { error: err.message }); }
             syncDirectoryServers();
@@ -170,6 +173,13 @@ function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, 
           return reply(res, 422, { error: `${hasKey ? 'The server did not accept that key, or' : 'The server'} did not answer as an MCP server: ${String(e.message || e).slice(0, 200)}` });
         }
         if (!found.size) return reply(res, 422, { error: 'The server answered but offers no tools noevia can use.' });
+        if (preview) {
+          const tools = [...found.values()].slice(0, 40).map((entry) => ({
+            name: String(entry.tool?.function?.name || '').slice(0, 120),
+            description: String(entry.tool?.function?.description || '').slice(0, 240),
+          }));
+          return reply(res, 200, { requiresSignIn: false, toolCount: found.size, tools, toolsTruncated: found.size > tools.length });
+        }
         let added;
         try { added = directoryMcp.add({ registryName, title, url, declaredHeaders, headerValues: headerName ? { [headerName]: headerValue } : {}, personal: hasKey && body?.keyMode === 'personal' }, authn.user.id); }
         catch (e) { return reply(res, e.status || 400, { error: e.message }); }

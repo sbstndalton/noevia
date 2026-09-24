@@ -70,6 +70,46 @@ test('admin tool details are bounded to the server-bound toolbox', async () => {
   assert.equal(JSON.stringify(row.tools).includes('hidden'), false);
 });
 
+test('custom preview validates and discovers bounded tools without saving', async () => {
+  const discovered = new Map(Array.from({ length: 43 }, (_, i) => [`tool_${i}`, { tool: { function: { name: `tool_${i}`, description: 'd'.repeat(300), parameters: { secret: 'hidden' } } } }]));
+  const { routes, calls } = build({ discoverOneServer: async () => discovered });
+  const body = { title: 'Preview', url: 'https://external.example/mcp', headerName: 'X-Key', headerValue: 'secret', keyMode: 'personal' };
+  const denied = fakeRes();
+  await routes(req('POST', body), denied, { path: '/api/admin/mcp-directory/custom/preview', authn: member });
+  assert.equal(denied.out.code, 403);
+  const res = fakeRes();
+  await routes(req('POST', body), res, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  assert.equal(res.out.code, 200);
+  assert.equal(res.out.body.toolCount, 43);
+  assert.equal(res.out.body.tools.length, 40);
+  assert.equal(res.out.body.tools[0].description.length, 240);
+  assert.equal(res.out.body.toolsTruncated, true);
+  assert.equal(JSON.stringify(res.out.body).includes('secret'), false);
+  assert.deepEqual(calls, [], 'preview must not save, sync or start sign-in');
+});
+
+test('custom preview rejects invalid destination and header before discovery', async () => {
+  let discovery = 0;
+  const { routes, calls } = build({ discoverOneServer: async () => { discovery++; return new Map(); }, directoryUrlAllowed: async () => false });
+  const privateAddress = fakeRes();
+  await routes(req('POST', { title: 'Private', url: 'https://private.example/mcp' }), privateAddress, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  assert.equal(privateAddress.out.code, 422);
+  const invalidHeader = fakeRes();
+  const publicRoutes = build({ discoverOneServer: async () => { discovery++; return new Map(); } }).routes;
+  await publicRoutes(req('POST', { title: 'Header', url: 'https://external.example/mcp', headerName: 'Bad Header', headerValue: 'secret' }), invalidHeader, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  assert.equal(invalidHeader.out.code, 400);
+  assert.equal(discovery, 0);
+  assert.deepEqual(calls, []);
+});
+
+test('custom preview reports sign-in requirement without adding a server', async () => {
+  const { routes, calls } = build({ discoverOneServer: async () => { throw new Error('401'); }, probeMcpAuth: async () => ({ status: 401, challenge: 'test' }) });
+  const res = fakeRes();
+  await routes(req('POST', { title: 'OAuth', url: 'https://external.example/mcp' }), res, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  assert.deepEqual(res.out.body, { requiresSignIn: true, toolCount: null, tools: [], toolsTruncated: false });
+  assert.deepEqual(calls, []);
+});
+
 test('a personal key is checked against the server before it is stored, and is this account\'s only', async () => {
   const { routes, calls } = build();
   const res = fakeRes();
