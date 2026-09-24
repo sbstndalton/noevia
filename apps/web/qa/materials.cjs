@@ -60,7 +60,7 @@ const sections=process.env.QA_SECTIONS?.split('|')||['General','Personalization'
   await settings.getByRole('button',{name:'Close settings',exact:true}).click();await settings.waitFor({state:'detached'});
   await navClick(page,'Projects');await page.getByRole('heading',{name:'Projects',exact:true,level:1}).waitFor();await inspect('Projects');
   await page.getByRole('button',{name:'Project options for Synthetic research'}).click();await page.getByRole('menu').waitFor();await inspect('Project menu');await page.keyboard.press('Escape');
-  await navClick(page,'Plugins');await page.waitForTimeout(200);await inspect('Plugins');
+  await navClick(page,'Customise');await page.waitForTimeout(200);await inspect('Customise');
   await navClick(page,'Diary');await page.waitForTimeout(200);await inspect('Diary');
   await page.close();
  }

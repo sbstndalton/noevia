@@ -26,7 +26,7 @@ const out=process.env.QA_SCREENSHOTS||'/tmp/noevia-shots';
   const check=async(label)=>{const l=await layout();
    assert.ok(l.labels>=2&&l.lists&&l.diaryInNav,`${tag} ${label}: drawer shows labels and lists ${JSON.stringify(l)}`);
    if(l.sticky){assert.ok(l.overlap<=1,`${tag} ${label}: top destinations under the footer ${JSON.stringify(l)}`);assert.ok(l.gapBelowFooter<=1,`${tag} ${label}: rows show below the footer ${JSON.stringify(l)}`);}
-   const plugins=page.getByRole('button',{name:'Plugins',exact:true});await plugins.scrollIntoViewIfNeeded();
+   const plugins=page.getByRole('button',{name:'Customise',exact:true});await plugins.scrollIntoViewIfNeeded();
    await plugins.evaluate((el,t)=>{const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);if(!el.contains(hit))throw Error(t+': Plugins covered by '+(hit?.className||hit?.tagName));},`${tag} ${label}`);};
   await open();await drawer.waitFor();await check('from chat');
   const orow=page.locator('.chat-row').filter({hasText:'Synthetic recent7'});await orow.scrollIntoViewIfNeeded();if(!touch)await orow.hover();const opts=page.getByRole('button',{name:'Options for Synthetic recent7',exact:true});
