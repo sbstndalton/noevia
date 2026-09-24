@@ -51,3 +51,27 @@ test('the app stylesheets pass', () => {
   const sources = [[dir, /\.(css|tsx?)$/], [pub, /\.js$/]].flatMap(([root, re]) => fs.readdirSync(root, { recursive: true }).filter((f) => re.test(f)).map((f) => ({ file: f, text: fs.readFileSync(path.join(root, f), 'utf8') })));
   assert.deepEqual(undefinedTokens(sources), []);
 });
+
+// #247: every transition names its properties and takes its timing from the motion contract.
+test('motion rules: no transition-all and no literal durations outside the contract', () => {
+  const rules = (css, file = 'a.css') => lint(css, file).map((f) => f.rule);
+  assert.deepEqual(rules('a { transition: opacity var(--motion-quick) var(--ease-quick); }'), []);
+  assert.deepEqual(rules('a { transition: all var(--motion-quick) var(--ease-quick); }'), ['transition-all']);
+  assert.deepEqual(rules('a { transition: var(--motion-quick); }'), ['transition-all']);
+  assert.deepEqual(rules('a { transition-property: all; }'), ['transition-all']);
+  assert.deepEqual(rules('a { transition: opacity 120ms ease; }'), ['motion-token']);
+  assert.deepEqual(rules('a { animation: motion-spin 1.6s linear infinite; }'), ['motion-token']);
+  assert.deepEqual(rules('a { transition: none; animation: none; }'), []);
+  assert.deepEqual(rules(':root { --motion-quick: 160ms; }', 'src/styles/tokens.css'), []);
+  assert.deepEqual(rules('* { transition-duration: 1ms !important; }', 'src/styles/motion.css'), []);
+  // Scripts and components are out of scope for the CSS motion rules.
+  assert.deepEqual(rules('a { transition: opacity 120ms ease; }', 'x.tsx'), []);
+});
+
+test('a weight may come from a --*-weight token, which is itself held to four steps', () => {
+  const rules = (css) => lint(css, 'a.css').map((f) => f.rule);
+  assert.deepEqual(rules('h1 { font-weight: var(--display-weight, 600); }'), []);
+  assert.deepEqual(rules(':root { --display-weight: 500; }'), []);
+  assert.deepEqual(rules(':root { --display-weight: 450; }'), ['font-weight']);
+  assert.deepEqual(rules('h1 { font-weight: var(--anything); }'), ['font-weight']);
+});

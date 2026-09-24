@@ -7,7 +7,7 @@ const code = fs.readFileSync(path.join(__dirname, '../public/lens.js'), 'utf8');
 
 // Runs public/lens.js against a minimal fake DOM.
 function load({ chromium = true, calm = false, nodes = [] } = {}) {
-  const attributes = { 'data-material': 'liquid' }, frames = [], observed = [], observers = [];
+  const attributes = { 'data-family': 'glass' }, frames = [], observed = [], observers = [];
   let mutate, mediaChange;
   const media = { matches: calm, addEventListener: (_, f) => { mediaChange = f; } };
   const context = {
@@ -25,7 +25,7 @@ function load({ chromium = true, calm = false, nodes = [] } = {}) {
     },
   };
   vm.runInNewContext(code, context);
-  return { lensWhen: (m) => { attributes['data-material'] = m; observers.forEach((o) => o([])); return attributes['data-lens']; }, attributes, observed, media, exports: context.module.exports, change: () => mediaChange(), mutate: () => { observers.at(-1)(); frames.splice(0).forEach((f) => f()); } };
+  return { lensWhen: (m) => { attributes['data-family'] = m; observers.forEach((o) => o([])); return attributes['data-lens']; }, attributes, observed, media, exports: context.module.exports, change: () => mediaChange(), mutate: () => { observers.at(-1)(); frames.splice(0).forEach((f) => f()); } };
 }
 const control = (width = 120, height = 36) => {
   const props = {};
@@ -58,12 +58,13 @@ test('reduced transparency or motion turns the lens off and back on', () => {
   assert.ok(a.props['--lens']);
 });
 
-test('lens is only active in the liquid material', () => {
+test('lens is only active in the Glass family', () => {
   const a = control();
   const f = load({ nodes: [a] });
   assert.equal(f.attributes['data-lens'], 'svg');
-  assert.equal(f.lensWhen('soft'), undefined);
-  assert.equal(f.lensWhen('liquid'), 'svg');
+  assert.equal(f.lensWhen('editorial'), undefined);
+  assert.equal(f.lensWhen('contemporary'), undefined);
+  assert.equal(f.lensWhen('glass'), 'svg');
 });
 
 test('filters are cached by size and radius, and zero-size nodes are skipped', () => {
