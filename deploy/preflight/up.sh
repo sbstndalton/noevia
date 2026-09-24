@@ -22,4 +22,10 @@ if [[ -f "$preflight_dir/web-env-keys.txt" ]]; then
 fi
 docker compose "${compose_args[@]}" config --format json \
   | php "$preflight_dir/check.php" --config-json - "${expect_args[@]}"
-exec docker compose "${compose_args[@]}" up "${up_args[@]}"
+docker compose "${compose_args[@]}" up "${up_args[@]}"
+# A successful up is a known deploy: re-baseline the restart alert if installed
+# (../sidecar-restart-alert.sh). Set SIDECAR_ALERT_ACK=0 to skip. Never fatal.
+alert_script="${SIDECAR_ALERT_SCRIPT:-$preflight_dir/../sidecar-restart-alert.sh}"
+if [[ "${SIDECAR_ALERT_ACK:-1}" != 0 && -x "$alert_script" ]]; then
+  "$alert_script" --ack || echo "warning: sidecar-restart-alert --ack failed" >&2
+fi

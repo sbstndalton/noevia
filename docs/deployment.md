@@ -334,6 +334,54 @@ Use the per-service format described at the top of `docs/changelog.md`: a `### S
 naming, for Web, Diary, Model manager, Code sandbox, OCR, Docling and Deploy/infra, the PRs and
 deployed image tag, or "merged, not yet deployed" for code on main that the release did not ship.
 
+## Alerting on unexpected sidecar restarts
+
+`deploy/tools/sidecar-restart-alert.sh` compares each `cowork-*` container's
+`Id`, `State.StartedAt`, `RestartCount` and `Config.Image` with a TSV baseline
+(default `/mnt/docker/appdata/cowork/state/sidecar-restart-alert.tsv`) and sends
+one Unraid notification per changed container through
+`/usr/local/emhttp/webGui/scripts/notify` (level `alert` when `RestartCount`
+grew or the exit code is non-zero, otherwise `warning`; details include old and
+new StartedAt, image, restart count, exit code and the last 3 log lines). A
+container that stops or dies without restarting (status `running` -> anything
+else) raises an `alert` "stopped"; one that disappears raises an `alert` "gone"; a new one is logged only,
+unless `--strict`. The first run only writes the baseline. It exits non-zero
+only when Docker fails (2) or on usage errors (64); a failed notify keeps the
+old baseline line so the alert is retried next run.
+The reported exit code on a restart is the current container's value (usually
+0 once it is running again), not necessarily why the previous run ended.
+
+Install (manual, not done by any release script):
+
+```sh
+scp deploy/tools/sidecar-restart-alert.sh root@100.70.173.74:/mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh
+ssh root@100.70.173.74 'chmod +x /mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh &&
+  /mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh --ack'
+```
+
+Schedule it with a Dynamix cron fragment (the box has `/boot/config/plugins/dynamix/*.cron`
+and `/usr/local/sbin/update_cron`; the User Scripts plugin is not installed):
+
+```sh
+cat > /boot/config/plugins/dynamix/noevia-sidecar-alert.cron <<'CRON'
+# Noevia sidecar restart alert
+*/5 * * * * /mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh &> /dev/null
+CRON
+/usr/local/sbin/update_cron
+```
+
+Release runbook: the repo `deploy/preflight/up.sh` runs `--ack` automatically
+after a successful `up` when the script is installed at
+`tools/sidecar-restart-alert.sh` (set `SIDECAR_ALERT_ACK=0` to skip). The copy
+installed at `tools/preflight/up.sh` predates this and must be refreshed from the
+repo; until then, and after any restart done outside `up.sh` (Compose Manager
+GUI, `docker restart`, Diary overlay), run
+`/mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh --ack` immediately.
+
+Test without sending or moving the baseline:
+`/mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh --dry-run`.
+Offline test: `bash deploy/tools/test-sidecar-restart-alert.sh`.
+
 ## Known gaps
 
 - **`UPGRADES.md` on the server is stale.** It describes a retired
