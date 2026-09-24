@@ -8,6 +8,44 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 5b6d9b6 — 2026-09-24 (Diary hardening, model manager + code sandbox hardening, per-service tags; sidecars only)
+
+### Services
+
+- **Web:** no change — stays `cowork-web:958022b` (`current` and `COWORK_VERSION` untouched).
+- **Diary:** [#77](https://github.com/sbstndalton/noevia/pull/77), [#84](https://github.com/sbstndalton/noevia/pull/84), [#87](https://github.com/sbstndalton/noevia/pull/87), [#93](https://github.com/sbstndalton/noevia/pull/93), [#94](https://github.com/sbstndalton/noevia/pull/94), [#99](https://github.com/sbstndalton/noevia/pull/99) — deployed as `cowork-diary:5b6d9b6` (agent/ overlay).
+- **Model manager:** [#79](https://github.com/sbstndalton/noevia/pull/79) — deployed as `cowork-model-loader:5b6d9b6` (app/ overlay).
+- **Code sandbox:** [#79](https://github.com/sbstndalton/noevia/pull/79) — deployed as `cowork-code-sandbox:pi-0.87.0-5b6d9b6` (supervisor.cjs overlay).
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** [#104](https://github.com/sbstndalton/noevia/pull/104), [#106](https://github.com/sbstndalton/noevia/pull/106) merged; live `.env` and Compose Manager files migrated to `DIARY_VERSION`/`OCR_VERSION`/`MODEL_MANAGER_VERSION`.
+
+Source shipped via `git archive 5b6d9b6` to `releases/5b6d9b6`. Before building, diffs against the
+running sources were confirmed limited to Diary `agent/` (+ tests, README), model manager `app/*.py`
+(+ tests) and code sandbox `supervisor.cjs`; Dockerfiles and requirements identical, so every image
+is an overlay `FROM` the running one with no pip/npm step.
+
+1. Per-service tags: backed up `docker-compose.yml`, `docker-compose.override.yml` and `.env` as
+   `*.bak.before-per-service-tags`; diary/ocr/model-loader image lines switched to the required
+   variables, pinned to the running tags (5004b50/5004b50/a1ededd). `compose config` resolved every
+   cowork image to its running tag and a dry-run `up` recreated nothing; no container changed.
+2. Model manager `sha256:869beb3f…`: recreated `model-loader` only (guarded `up.sh`), healthy,
+   `/api/v1/health` 200 from web; api.py in the container matches the release (shardBase guard).
+3. Code sandbox `sha256:ba39f7fc…`: recreated `code-sandbox` only (`up.sh --env-file … --profile code --`),
+   running with zero restarts, supervisor.cjs SHA-256 matches the release, TCP reachable from web.
+4. Diary `sha256:ab519fdf…`: `diary-overlay.sh 5b6d9b6` took appdata backup
+   `ab_20260924_130511` (verified; it stops/starts web and diary, so web kept its container id
+   but has a new start time), recreated diary only, healthy, health via web 200.
+
+All other cowork containers (laya, llama, embed, ocr, docling, kiwix) kept identical ids and start
+times. Public `/` 200, `/api/profile` 401.
+
+Rollback (from the Compose Manager project directory; old images untouched):
+- Model manager: `sed -i 's/^MODEL_MANAGER_VERSION=.*/MODEL_MANAGER_VERSION=a1ededd/' config/.env`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 model-loader`.
+- Code sandbox: `sed -i 's/^CODE_SANDBOX_VERSION=.*/CODE_SANDBOX_VERSION=pi-0.87.0-99be0a2/' config/.env`, then `up.sh --env-file … --profile code -- -d --no-build --no-deps --wait --wait-timeout 180 code-sandbox`.
+- Diary: `sed -i 's/^DIARY_VERSION=.*/DIARY_VERSION=5004b50/' config/.env` (or restore `config/.env.bak.before-diary-5b6d9b6`), then `up.sh … diary`.
+- Per-service-tag migration: restore the three `*.bak.before-per-service-tags` files.
+
 ## Release 958022b — 2026-09-24 (job start controller leak, phone preview Settings, web-only)
 
 ### Services
