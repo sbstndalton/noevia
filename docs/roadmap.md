@@ -10,10 +10,13 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-09-22 (updated 14:48)
+## Where things stand — 2026-09-24
 
-- **Live:** release **`827932b`** on DaServer at **https://noevia.daserver.work**, built from
-  `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
+- **Source:** current `main` is **`ab52db7`**. The web package's `0.1.0` is metadata, not the
+  application release number; deploy images use their source commit as `COWORK_VERSION`.
+- **Live:** latest verified web release is **`9ee7bb0`** on DaServer at
+  **https://noevia.daserver.work**, built from `main` (GitHub `sbstndalton/noevia`).
+  `cowork.daserver.work` stays routed for passkeys. See the [release record](changelog.md#release-9ee7bb0--2026-09-23-laya-excluded-from-auto-tuner).
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
   Sidecar image tags are pinned in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not
@@ -22,9 +25,9 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   (harness: **pi 0.87.0** since 2026-09-22; OpenCode one `.env` change away),
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,247 server and front-end unit tests pass locally (none touches production). The three-material refinement passes 14 distinct synthetic browser suites, a 468-state sweep and a 198-state final confirmation. Models/settings and full-auto-tune browser suites also pass. The last full browser QA sweep, on 2026-09-22 against `e19119d`,
-  was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
-  passes on its own.
+- **Tests:** the latest merged PR reports 1,354 web tests plus typecheck, build and design lint
+  passing. Its change was covered by 32 isolated tuner/calibration checks; the broader browser
+  QA records below describe their own dated runs.
 - **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
   keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
 
