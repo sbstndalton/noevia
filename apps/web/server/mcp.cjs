@@ -233,15 +233,38 @@ async function disconnect(baseUrl, session, authHeaders = {}, timeoutMs = 5000, 
 }
 
 // tools/list, following `nextCursor` pagination to the end.
+// Discovery is bounded in total, not only per page (each page is still capped
+// at MAX_RESPONSE_BYTES by rpc): a server that pages forever or returns huge
+// definitions stops at the page or byte budget, with a warning, keeping the
+// tools gathered so far. Both budgets are read per call so they are env-overridable.
+function positiveEnv(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
 async function listTools(baseUrl, session, authHeaders = {}, timeoutMs = 60000, signal) {
+  const maxPages = positiveEnv('MCP_LIST_TOOLS_MAX_PAGES', 20);
+  const maxBytes = positiveEnv('MCP_LIST_TOOLS_MAX_BYTES', 16 * 1024 * 1024);
   const all = [];
+  let bytes = 0;
   let cursor;
-  for (let page = 0; page < 20; page++) { // bounded: a broken server must not spin
+  for (let page = 0; ; page++) {
+    if (page >= maxPages) {
+      console.warn(`[mcp] tools/list for ${baseUrl} stopped after ${maxPages} pages; keeping ${all.length} tools`);
+      break;
+    }
     const result = await rpc(baseUrl, session, {
       jsonrpc: '2.0', id: requestId(), method: 'tools/list',
       params: cursor ? { cursor } : {},
     }, { headers: authHeaders, timeoutMs, signal });
-    for (const t of (result && result.tools) || []) all.push(t);
+    for (const t of (result && result.tools) || []) {
+      const size = Buffer.byteLength(JSON.stringify(t) || '');
+      if (bytes + size > maxBytes) {
+        console.warn(`[mcp] tools/list for ${baseUrl} reached its ${maxBytes}-byte budget; keeping ${all.length} tools`);
+        return all;
+      }
+      bytes += size;
+      all.push(t);
+    }
     cursor = result && result.nextCursor;
     if (!cursor) break;
   }

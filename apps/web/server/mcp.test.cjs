@@ -532,3 +532,40 @@ test('disconnect honours an abort signal: cleanup is capped at about a second', 
     assert.ok(took >= 900 && took < 2500, `abort mid-cleanup took ${took} ms`);
   } finally { global.fetch = realFetch; }
 });
+
+// ── #202 (second half): paged discovery has a total budget ──────────────
+test('listTools stops a server that pages forever at the page and byte budgets, keeping what it has', async () => {
+  const realFetch = global.fetch, realWarn = console.warn;
+  const env = { pages: process.env.MCP_LIST_TOOLS_MAX_PAGES, bytes: process.env.MCP_LIST_TOOLS_MAX_BYTES };
+  let requests = 0; const warnings = [];
+  console.warn = (m) => warnings.push(String(m));
+  global.fetch = async (_url, options) => {
+    requests++;
+    const body = JSON.parse(options.body);
+    const tools = [{ name: `t${requests}`, description: 'x'.repeat(1000), inputSchema: { type: 'object' } }];
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { tools, nextCursor: `c${requests}` } }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    delete process.env.MCP_LIST_TOOLS_MAX_PAGES; delete process.env.MCP_LIST_TOOLS_MAX_BYTES;
+    let tools = await mcp.listTools('https://server.invalid/mcp', { id: 's' }, {}, 1000);
+    assert.equal(requests, 20); assert.equal(tools.length, 20);
+    assert.match(warnings.at(-1), /stopped after 20 pages; keeping 20 tools/);
+
+    requests = 0; process.env.MCP_LIST_TOOLS_MAX_PAGES = '1000'; process.env.MCP_LIST_TOOLS_MAX_BYTES = '5000';
+    tools = await mcp.listTools('https://server.invalid/mcp', { id: 's' }, {}, 1000);
+    assert.equal(tools.length, 4, 'four ~1.1 kB definitions fit in 5000 bytes');
+    assert.equal(requests, 5);
+    assert.match(warnings.at(-1), /reached its 5000-byte budget; keeping 4 tools/);
+  } finally {
+    global.fetch = realFetch; console.warn = realWarn;
+    for (const [k, v] of [['MCP_LIST_TOOLS_MAX_PAGES', env.pages], ['MCP_LIST_TOOLS_MAX_BYTES', env.bytes]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});
+
+test('the per-page response cap still applies inside listTools', async () => {
+  const realFetch = global.fetch;
+  global.fetch = async () => new Response('x'.repeat(mcp.MAX_RESPONSE_BYTES + 10), { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    await assert.rejects(mcp.listTools('https://server.invalid/mcp', { id: 's' }, {}, 1000), /response body exceeded the 8 MB limit/);
+  } finally { global.fetch = realFetch; }
+});
