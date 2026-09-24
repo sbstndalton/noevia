@@ -35,27 +35,36 @@ test('skippedSignature is order-independent and empty for no entries', () => {
 
 test('resolveSkippedToast: same skipped set does not re-show the toast', () => {
   const sig = skippedSignature([a, b]);
-  const r = resolveSkippedToast(sig, [a, b]);
+  const msg = sourceRefreshIssues([a, b]);
+  const r = resolveSkippedToast({ signature: sig, message: msg }, [a, b], msg);
   assert.equal(r.signature, sig);
   assert.equal(r.show, undefined);
 });
 
 test('resolveSkippedToast: a changed skipped set shows the new message', () => {
   const prevSig = skippedSignature([a]);
-  const r = resolveSkippedToast(prevSig, [a, b]);
+  const r = resolveSkippedToast({ signature: prevSig, message: sourceRefreshIssues([a]) }, [a, b], sourceRefreshIssues([a]));
   assert.equal(r.signature, skippedSignature([a, b]));
   assert.equal(r.show, sourceRefreshIssues([a, b]));
 });
 
-test('resolveSkippedToast: a clean refresh clears a previously-shown toast', () => {
+test('resolveSkippedToast: a clean refresh clears a previously-shown toast that is still the one on screen', () => {
   const prevSig = skippedSignature([a]);
-  const r = resolveSkippedToast(prevSig, []);
+  const prevMsg = sourceRefreshIssues([a]);
+  const r = resolveSkippedToast({ signature: prevSig, message: prevMsg }, [], prevMsg);
   assert.equal(r.signature, '');
   assert.equal(r.show, null);
 });
 
+test('resolveSkippedToast: a clean refresh does NOT clear an unrelated error currently on screen', () => {
+  const prevSig = skippedSignature([a]);
+  const prevMsg = sourceRefreshIssues([a]);
+  const r = resolveSkippedToast({ signature: prevSig, message: prevMsg }, [], 'Some unrelated project error.');
+  assert.equal(r.show, undefined);
+});
+
 test('resolveSkippedToast: nothing to show and nothing previously shown is a no-op', () => {
-  const r = resolveSkippedToast('', []);
+  const r = resolveSkippedToast({ signature: '', message: '' }, [], null);
   assert.equal(r.signature, '');
   assert.equal(r.show, undefined);
 });
