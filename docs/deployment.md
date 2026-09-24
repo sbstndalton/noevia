@@ -330,6 +330,9 @@ authenticated browser session. Check the things that only break against real dat
 Nextcloud uploads and deletions, MCP approval decisions, source refresh, vision.
 
 Record the change in the canonical DaServer changelog.
+Use the per-service format described at the top of `docs/changelog.md`: a `### Services` list
+naming, for Web, Diary, Model manager, Code sandbox, OCR, Docling and Deploy/infra, the PRs and
+deployed image tag, or "merged, not yet deployed" for code on main that the release did not ship.
 
 ## Known gaps
 
