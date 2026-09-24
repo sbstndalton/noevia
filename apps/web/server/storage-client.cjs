@@ -24,6 +24,8 @@
 // unaffected by this.
 
 const { signS3Request } = require('./s3-sign.cjs');
+const { normalizeS3Region } = require('./s3-region.cjs');
+
 
 // PROPFIND <href> text is XML-escaped (&amp; &lt; &gt; &quot; &apos; and numeric refs like &#38;);
 // it has to be decoded back to the real path before parsing as a URL, or an escaped name (e.g.
@@ -205,7 +207,7 @@ async function s3List(conn, connectionPath) {
   const queryPrefix = dirPrefix ? `${dirPrefix}/` : '';
   const url = s3Url(conn, '', { 'list-type': '2', prefix: queryPrefix, delimiter: '/', 'max-keys': '1000' });
   const response = await withRetry(() => fetch(url, {
-    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || ''),
+    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }),
     signal: AbortSignal.timeout(15000),
     redirect: 'error',
   }));
@@ -232,7 +234,7 @@ async function s3List(conn, connectionPath) {
 async function s3Read(conn, connectionPath) {
   const url = s3Url(conn, joinRoot(conn.corpusRoot, connectionPath));
   const response = await withRetry(() => fetch(url, {
-    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || ''),
+    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }),
     signal: AbortSignal.timeout(20000),
     redirect: 'error',
   }));
@@ -327,7 +329,7 @@ async function readBinaryFile(conn, rawPath, opts) {
   const url = s3 ? s3Url(conn, full) : davUrl(conn, full);
   const response = await withRetry(() => fetch(url, {
     method: 'GET',
-    headers: s3 ? signS3Request('GET', url, '', conn.username || '', conn.secret || '') : davHeaders(conn, {}),
+    headers: s3 ? signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }) : davHeaders(conn, {}),
     signal: AbortSignal.timeout(30000),
     redirect: 'error',
   }));
