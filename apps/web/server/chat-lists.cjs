@@ -8,6 +8,10 @@ const path = require('node:path');
 const LIST_CAP = 1000;
 const TOMBSTONE_CAP = 5000;
 
+/** The id a chat is stored under: the same rule for history files, metas and tombstones,
+ *  so a raw id that differs only by stripped characters cannot dodge a tombstone. */
+function safeChatId(id) { return String(id ?? '').replace(/[^a-zA-Z0-9_-]/g, ''); }
+
 function tombstoneFile(dir) { return path.join(dir, 'deleted-chats.json'); }
 
 function readTombstones(dir) {
@@ -32,4 +36,4 @@ function mergeChats(current, incoming, tombstones = new Set()) {
   return [...byId.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, LIST_CAP);
 }
 
-module.exports = { mergeChats, readTombstones, addTombstone, LIST_CAP };
+module.exports = { mergeChats, readTombstones, addTombstone, safeChatId, LIST_CAP };
