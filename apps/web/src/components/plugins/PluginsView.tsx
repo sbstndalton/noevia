@@ -378,7 +378,7 @@ function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.E
   const [form, setForm] = useState({ title: '', url: '', headerName: '', headerValue: '', keyMode: 'personal' as 'personal' | 'shared' });
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState(false);
-  const [preview, setPreview] = useState<{ requiresSignIn: boolean; toolCount: number | null; tools: { name: string; description: string }[]; toolsTruncated: boolean } | null>(null);
+  const [preview, setPreview] = useState<{ requiresSignIn: boolean; toolCount: number | null; tools: { name: string; description: string }[]; toolsTruncated: boolean; previewToken: string } | null>(null);
   const revision = useRef(0);
   const resetReview = () => { revision.current++; setReview(false); setPreview(null); };
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
@@ -398,9 +398,9 @@ function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.E
   const submit = () => void signInTab(async () => {
     setBusy(true); setNote(null);
     try {
-      const r = await apiFetch('/api/admin/mcp-directory/custom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      const r = await apiFetch('/api/admin/mcp-directory/custom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, previewToken: preview?.previewToken }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setNote({ text: d.error || 'That did not work.', error: true }); return null; }
+      if (!r.ok) { if (r.status === 409) resetReview(); setNote({ text: d.error || 'That did not work.', error: true }); return null; }
       onChange(d.servers || []);
       if (d.signIn) { setNote({ text: 'Sign in with this server in the new tab. Its tools will be discovered after sign-in; review the available tools before selecting its toolbox in a project.' }); return d.signIn; }
       if (d.needsClient) { setNote({ text: 'This server needs an app registered by hand. Use “Set up app” on its card below.', error: true }); setOpen(false); return null; }
@@ -410,7 +410,8 @@ function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.E
     } finally { setBusy(false); }
   }).catch((e) => setNote({ text: (e as Error).message, error: true }));
   if (!open) return <p className="plugins-note"><button className="btn btn-secondary btn-sm" onClick={() => { setOpen(true); setNote(null); }}>Add a server by URL</button>{note && <> <span role={note.error ? 'alert' : 'status'} className={note.error ? 'plugin-add-error' : ''}>{note.text}</span></>}</p>;
-  return <form className="plugin-key-form plugin-url-form" onSubmit={(e) => { e.preventDefault(); if (review && preview) submit(); else void check(); }}>
+  return <form className="plugin-key-form plugin-url-form" onSubmit={(e) => { e.preventDefault(); if (busy) return; if (review && preview) submit(); else void check(); }}>
+    <fieldset className="plugin-url-fields" disabled={busy}>
     <label><span>Name</span><input required value={form.title} onChange={set('title')} placeholder="What this server is"/></label>
     <label><span>Address</span><input required type="url" inputMode="url" autoComplete="off" spellCheck={false} value={form.url} onChange={set('url')} placeholder="https://example.com/mcp"/></label>
     <label><span>Sign-in header (optional)</span><input autoComplete="off" spellCheck={false} value={form.headerName} onChange={set('headerName')} placeholder="Authorization"/></label>
@@ -419,13 +420,14 @@ function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.E
       <label><input type="radio" name="url-mode" checked={form.keyMode === 'personal'} onChange={() => { resetReview(); setForm((f) => ({ ...f, keyMode: 'personal' })); }}/> Each person uses their own key</label>
       <label><input type="radio" name="url-mode" checked={form.keyMode === 'shared'} onChange={() => { resetReview(); setForm((f) => ({ ...f, keyMode: 'shared' })); }}/> Everyone uses this key</label>
     </fieldset>}
+    </fieldset>
     {review ? <div className="plugin-url-review" role="group" aria-label="Review server access">
       <b>Review before connecting</b>
       <p><strong>Server:</strong> {form.title} · <span className="plugin-url-address">{form.url}</span></p>
       <p><strong>Data access:</strong> Requests to this external server can send conversation context and tool arguments when its toolbox is selected.</p>
       {preview?.requiresSignIn ? <p>The server requires sign-in. Tool details are unavailable until sign-in completes.</p> : <><p><strong>Discovered tools:</strong> {preview?.toolCount ?? 0}{preview?.toolsTruncated ? ' (first 40 shown)' : ''}</p><ul className="plugin-preview-tools">{preview?.tools.map((tool) => <li key={tool.name}><strong>{tool.name}</strong>{tool.description && <span>{tool.description}</span>}</li>)}</ul></>}
       <p><strong>Credential:</strong> {form.headerName ? `${form.headerName} header; ${form.keyMode === 'shared' ? 'shared with everyone who uses this toolbox' : 'used only for your requests'}.` : 'No header supplied. The server may ask you to sign in.'}</p>
-      <p><strong>Control:</strong> A project must select the toolbox. Every tool call still asks for approval.</p>
+      <p><strong>Control:</strong> A project must select the toolbox. Tools may change later; every call still asks for approval.</p>
     </div> : <small className="plugin-key-note">Preview checks the public HTTPS address and asks the server for its tools without saving it. Review the destination and discovered tools before connecting.</small>}
     <span className="plugin-key-actions"><button className="btn btn-primary btn-sm" disabled={busy}>{busy ? (review ? 'Connecting…' : 'Checking…') : review ? 'Connect reviewed server' : 'Preview tools'}</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setOpen(false); resetReview(); }}>Cancel</button></span>
     {note && <small role={note.error ? 'alert' : 'status'} className={note.error ? 'plugin-add-error' : ''}>{note.text}</small>}

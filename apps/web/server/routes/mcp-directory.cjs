@@ -1,4 +1,7 @@
 'use strict';
+const crypto = require('node:crypto');
+const previewKey = crypto.randomBytes(32);
+const PREVIEW_TTL_MS = 5 * 60 * 1000;
 // MCP servers that were added from the Plugins page, and each account's own sign-in or key.
 //   GET    /api/mcp-keys/servers                       servers whose key each person supplies
 //   PUT    /api/mcp-keys/:id  { headers }              store this account's key (checked first)
@@ -18,6 +21,20 @@
 // `syncDirectoryServers`), never a copy.
 function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, mcpState, directoryMcp, mcpOAuth, discoverOneServer, discoverMcpTools, probeMcpAuth, syncDirectoryServers, directoryUrlAllowed }) {
   const reply = (res, code, body) => (json(res, code, body), true);
+  const catalog = (tools) => [...tools].map((entry) => entry.tool || entry).map((tool) => tool.function).sort((a, b) => String(a?.name).localeCompare(String(b?.name)));
+  const previewSignature = (actor, form, catalogValue, expires) => crypto.createHmac('sha256', previewKey)
+    .update(JSON.stringify([actor, form, catalogValue, expires])).digest('hex');
+  const issuePreview = (actor, form, catalogValue) => {
+    const expires = Date.now() + PREVIEW_TTL_MS;
+    return `${expires}.${previewSignature(actor, form, catalogValue, expires)}`;
+  };
+  const matchesPreview = (token, actor, form, catalogValue) => {
+    const match = /^(\d{13})\.([0-9a-f]{64})$/.exec(String(token || ''));
+    if (!match || Number(match[1]) < Date.now()) return false;
+    const expected = previewSignature(actor, form, catalogValue, Number(match[1]));
+    return crypto.timingSafeEqual(Buffer.from(match[2], 'hex'), Buffer.from(expected, 'hex'));
+  };
+
   return async function mcpDirectoryRoutes(req, res, { path: p, authn }) {
     // Per-account keys for directory servers the admin set to "each person uses their own key".
     if (authn && p === '/api/mcp-keys/servers' && req.method === 'GET') {
@@ -152,12 +169,15 @@ function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, 
         try { pendingHeaders = require('../directory-mcp.cjs').checkHeaderValues(declaredHeaders, headerName ? { [headerName]: headerValue } : {}); } catch (e) { return reply(res, e.status || 400, { error: e.message }); }
         const hasKey = Object.keys(pendingHeaders).length > 0;
         const registryName = `url:${url}`;
+        const previewForm = [title, url, headerName, headerValue, body?.keyMode === 'shared' ? 'shared' : 'personal'];
+        const consent = (tools) => matchesPreview(body?.previewToken, authn.user.id, previewForm, tools);
         let found;
         try { found = await discoverOneServer({ id: directoryMcp.idFor(registryName), url, auth: hasKey ? 'directory' : 'none', directory: true, pendingHeaders }); }
         catch (e) {
           const probe = !hasKey ? await probeMcpAuth(url) : { status: 0 };
           if (probe.status === 401) {
-            if (preview) return reply(res, 200, { requiresSignIn: true, toolCount: null, tools: [], toolsTruncated: false });
+            if (preview) return reply(res, 200, { requiresSignIn: true, toolCount: null, tools: [], toolsTruncated: false, previewToken: issuePreview(authn.user.id, previewForm, 'sign-in') });
+            if (!consent('sign-in')) return reply(res, 409, { error: 'The server or access details changed since preview. Preview again before connecting.' });
             let added;
             try { added = directoryMcp.add({ registryName, title, url, oauth: true }, authn.user.id); } catch (err) { return reply(res, err.status || 400, { error: err.message }); }
             syncDirectoryServers();
@@ -178,13 +198,25 @@ function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, 
             name: String(entry.tool?.function?.name || '').slice(0, 120),
             description: String(entry.tool?.function?.description || '').slice(0, 240),
           }));
-          return reply(res, 200, { requiresSignIn: false, toolCount: found.size, tools, toolsTruncated: found.size > tools.length });
+          return reply(res, 200, { requiresSignIn: false, toolCount: found.size, tools, toolsTruncated: found.size > tools.length, previewToken: issuePreview(authn.user.id, previewForm, catalog(found.values())) });
         }
+        if (!consent(catalog(found.values()))) return reply(res, 409, { error: 'The server or its tools changed since preview. Preview again before connecting.' });
         let added;
         try { added = directoryMcp.add({ registryName, title, url, declaredHeaders, headerValues: headerName ? { [headerName]: headerValue } : {}, personal: hasKey && body?.keyMode === 'personal' }, authn.user.id); }
         catch (e) { return reply(res, e.status || 400, { error: e.message }); }
         syncDirectoryServers();
-        await discoverMcpTools(true);
+        let rediscovered = false;
+        try {
+          await discoverMcpTools(true);
+          const box = (mcpState.boxes || []).find((b) => b.directory && b.server === added.id && b.id === added.id);
+          rediscovered = !!box && consent(catalog(box.tools || []));
+        } catch { /* A failed rediscovery must not leave the server enabled. */ }
+        if (!rediscovered) {
+          directoryMcp.remove(added.id, authn.user.id);
+          syncDirectoryServers();
+          try { await discoverMcpTools(true); } catch { /* The saved entry is already gone. */ }
+          return reply(res, 409, { error: 'The server’s tools changed while connecting. It was not kept; preview again.' });
+        }
         return reply(res, 201, { server: { ...added, toolCount: found.size }, servers: describe() });
       }
       // A hand-registered app for a sign-in service that does not let apps register themselves.

@@ -88,6 +88,57 @@ test('custom preview validates and discovers bounded tools without saving', asyn
   assert.deepEqual(calls, [], 'preview must not save, sync or start sign-in');
 });
 
+test('custom add requires matching preview and rolls back rediscovery drift', async () => {
+  const calls = [];
+  let variant = 'reviewed';
+  const found = () => new Map([['search', { tool: { function: { name: 'search', description: variant, parameters: {} } } }]]);
+  const mcpState = { servers: new Map(), boxes: [] };
+  const directoryMcp = {
+    list: () => [], idFor: () => 'dir-custom',
+    add: () => { calls.push('add'); return { id: 'dir-custom', title: 'Custom', registryName: 'url:https://external.example/mcp' }; },
+    remove: () => { calls.push('remove'); },
+  };
+  const { routes } = build({ directoryMcp, mcpState, discoverOneServer: async () => found(), syncDirectoryServers: () => calls.push('sync'),
+    discoverMcpTools: async () => { calls.push('rediscover'); mcpState.boxes = [{ id: 'dir-custom', server: 'dir-custom', directory: true, tools: [{ function: { name: 'search', description: 'changed after save', parameters: {} } }] }]; } });
+  const body = { title: 'Custom', url: 'https://external.example/mcp' };
+  const preview = fakeRes();
+  await routes(req('POST', body), preview, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  const noToken = fakeRes();
+  await routes(req('POST', body), noToken, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(noToken.out.code, 409);
+  assert.deepEqual(calls, []);
+  variant = 'changed before save';
+  const changed = fakeRes();
+  await routes(req('POST', { ...body, previewToken: preview.out.body.previewToken }), changed, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(changed.out.code, 409);
+  assert.deepEqual(calls, []);
+  variant = 'reviewed';
+  const drift = fakeRes();
+  await routes(req('POST', { ...body, previewToken: preview.out.body.previewToken }), drift, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(drift.out.code, 409);
+  assert.deepEqual(calls, ['add', 'sync', 'rediscover', 'remove', 'sync', 'rediscover']);
+});
+
+test('custom add succeeds only with matching preview and stable rediscovery', async () => {
+  const calls = [];
+  const functionTool = { name: 'search', description: 'Find documents', parameters: {} };
+  const mcpState = { servers: new Map(), boxes: [] };
+  const row = { id: 'dir-custom', title: 'Custom', registryName: 'url:https://external.example/mcp' };
+  const directoryMcp = { list: () => [row], idFor: () => row.id, add: () => { calls.push('add'); return row; }, remove: () => { calls.push('remove'); } };
+  const { routes } = build({ directoryMcp, mcpState, discoverOneServer: async () => new Map([['search', { tool: { function: functionTool } }]]),
+    syncDirectoryServers: () => calls.push('sync'), discoverMcpTools: async () => { calls.push('rediscover'); mcpState.boxes = [{ id: row.id, server: row.id, directory: true, tools: [{ function: functionTool }] }]; } });
+  const body = { title: 'Custom', url: 'https://external.example/mcp' };
+  const preview = fakeRes();
+  await routes(req('POST', body), preview, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  const changedForm = fakeRes();
+  await routes(req('POST', { ...body, title: 'Renamed', previewToken: preview.out.body.previewToken }), changedForm, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(changedForm.out.code, 409);
+  const added = fakeRes();
+  await routes(req('POST', { ...body, previewToken: preview.out.body.previewToken }), added, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(added.out.code, 201);
+  assert.deepEqual(calls, ['add', 'sync', 'rediscover']);
+});
+
 test('custom preview rejects invalid destination and header before discovery', async () => {
   let discovery = 0;
   const { routes, calls } = build({ discoverOneServer: async () => { discovery++; return new Map(); }, directoryUrlAllowed: async () => false });
@@ -106,7 +157,9 @@ test('custom preview reports sign-in requirement without adding a server', async
   const { routes, calls } = build({ discoverOneServer: async () => { throw new Error('401'); }, probeMcpAuth: async () => ({ status: 401, challenge: 'test' }) });
   const res = fakeRes();
   await routes(req('POST', { title: 'OAuth', url: 'https://external.example/mcp' }), res, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
-  assert.deepEqual(res.out.body, { requiresSignIn: true, toolCount: null, tools: [], toolsTruncated: false });
+  assert.equal(res.out.body.requiresSignIn, true);
+  assert.match(res.out.body.previewToken, /^\d{13}\.[0-9a-f]{64}$/);
+  assert.deepEqual(res.out.body.tools, []);
   assert.deepEqual(calls, []);
 });
 
