@@ -28,7 +28,7 @@ OCR, code-sandbox, model-loader, docling and the native llama engine kept identi
 container IDs and `StartedAt` timestamps before and after cutover. Web was not
 rolled back because the failure is isolated to the tunnel, reproducible without any
 version dependency, and the container itself is verified healthy locally; the public
-200/401 checks remain outstanding and must be reconfirmed once the tunnel recovers.
+200/401 checks remain outstanding and must be reconfirmed once the tunnel recovers. Reconfirmed after the tunnel recovered without restarting it: `/` returned 200 and `/api/profile` returned 401 (3/3 tries), and the served `index-C1P7G4yr.js` and `index-B1OLP7Ag.css` are present in the `cowork-web:9ee7bb0` image.
 
 Rollback (only needed if the web image itself is found to be at fault):
 `config/.env.bak.before-9ee7bb0` and the Compose Manager
