@@ -261,7 +261,7 @@ export function ChatView({
           </span>
         </div>
         <div className="header-controls">
-          <button className="icon-btn" onClick={onOpenSettings} title="Settings">
+          <button className="icon-btn" onClick={onOpenSettings} title={t('settings.title')} aria-label={t('settings.title')}>
             <SlidersIcon size={15} />
           </button>
         </div>

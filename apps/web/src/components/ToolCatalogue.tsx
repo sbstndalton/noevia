@@ -4,7 +4,7 @@ import { fetchPermittedTools } from '../api';
 import { filterCatalogue, type CatalogueEntry, type PermittedBox } from '../tool-catalogue';
 import type { ChatMode } from '../chat-mode';
 import { ShellIcon } from './ShellIcon';
-import { t as translate, useT } from '../i18n';
+import { useT } from '../i18n';
 import type { MessageKey } from '../i18n';
 
 const PERMISSION_LABEL: Record<CatalogueEntry['permission'], MessageKey> = {
@@ -25,7 +25,8 @@ export function ToolCatalogue({ open, onOpenChange, projectId, mode, toggled, on
   const id = useId();
   const t = useT();
   const [boxes, setBoxes] = useState<PermittedBox[] | null>(null);
-  const [error, setError] = useState('');
+  // A server message is shown as sent; our own failure is a code, translated at render.
+  const [error, setError] = useState<{ kind: 'load' } | { kind: 'server'; text: string } | null>(null);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -36,10 +37,10 @@ export function ToolCatalogue({ open, onOpenChange, projectId, mode, toggled, on
   useEffect(() => {
     if (!open || boxes) return;
     let live = true;
-    setError('');
+    setError(null);
     fetchPermittedTools(projectId, mode)
       .then(v => { if (live) { setBoxes(v.boxes); onBoxes(v.boxes); } })
-      .catch(err => { if (live) setError(err instanceof Error ? err.message : translate('tools.loadError')); });
+      .catch(err => { if (live) setError(err instanceof Error && err.message ? { kind: 'server', text: err.message } : { kind: 'load' }); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, boxes, projectId, mode]);
@@ -81,7 +82,7 @@ export function ToolCatalogue({ open, onOpenChange, projectId, mode, toggled, on
         placeholder={t('tools.search')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onKey} />
       <p className="tool-catalogue-boundary">{t(projectId ? 'tools.boundaryProject' : 'tools.boundaryAccount')}</p>
       {!boxes && !error && <p className="tool-catalogue-note" role="status">{t('composer.loadingTools')}</p>}
-      {error && <p className="tool-catalogue-note" role="alert">{error}</p>}
+      {error && <p className="tool-catalogue-note" role="alert">{error.kind === 'server' ? error.text : t('tools.loadError')}</p>}
       {boxes && <ul id={`${id}-list`} className="tool-catalogue-list" role="listbox" aria-label={t('tools.trigger')}>
         {rows.map((row, i) => {
           const on = row.kind === 'box' && (row.active || toggled.includes(row.boxId));

@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { ShellIcon } from '../ShellIcon';
 import { filterShortcuts, referenceShortcuts } from './shortcuts';
 import { useAccountPreferences } from '../../user-preferences';
-import { useT } from '../../i18n';
+import { localiseKeys, useT } from '../../i18n';
 import type { MessageKey } from '../../i18n';
 
 // The reference rows are built in English from the handler table; their text is looked up here.
@@ -17,8 +17,12 @@ const LABEL_KEYS: Record<string, MessageKey> = {
 export function ShortcutReference({ apple, query, onQuery }: { apple: boolean; query: string; onQuery: (q: string) => void }): JSX.Element {
   const { sendKey } = useAccountPreferences();
   const t = useT();
-  // Translated before filtering, so search matches what is on screen (the English group still matches).
-  const rows = filterShortcuts(referenceShortcuts(apple, sendKey).map((r) => ({ ...r, label: LABEL_KEYS[r.label] ? t(LABEL_KEYS[r.label]) : r.label })), query);
+  // Search matches what is on screen and the English words too (as Settings search does), so
+  // "send" still finds "Nachricht senden".
+  const english = referenceShortcuts(apple, sendKey);
+  const shown = english.map((r) => ({ ...r, label: LABEL_KEYS[r.label] ? t(LABEL_KEYS[r.label]) : r.label, keys: localiseKeys(t, r.keys) }));
+  const rows = shown.filter((r, i) => filterShortcuts([english[i]], query).length > 0
+    || filterShortcuts([{ ...r, group: t(`keyboard.group.${r.group}`) as typeof r.group }], query).length > 0);
   const groups = [...new Set(rows.map((r) => r.group))];
   return <div className="shortcut-reference">
     <div className="settings-search shortcut-search"><ShellIcon name="search" size={16}/><input aria-label={t('keyboard.searchShortcuts')} placeholder={t('keyboard.searchShortcuts')} value={query} onChange={(e) => onQuery(e.target.value)} /></div>

@@ -404,4 +404,12 @@ export const ES_ES: Catalogue = {
   'appearance.status.saveError': "No se ha podido guardar la apariencia en tu perfil. Tus cambios siguen aplicados aquí. Reintenta para guardar.",
   'appearance.status.loading': "Cargando la apariencia del perfil…",
   'appearance.status.loadError': "No se ha podido cargar la apariencia del perfil. Los cambios se quedan en este navegador hasta que lo reintentes.",
+  'mode.willSendAsChat': "Se enviará como Chat: {reason}.",
+  'mode.reason.harnessOff': "el entorno de código está desactivado en este servidor",
+  'mode.reason.freeChat': "Cowork funciona dentro de un proyecto y este es un chat libre",
+  'mode.reason.adminOnly': "el entorno de código es solo para administradores",
+  'mode.reason.noRepository': "no hay ningún repositorio seleccionado",
+  'keys.ctrl': "Ctrl",
+  'keys.shift': "Mayús",
+  'keys.enter': "Intro",
 };

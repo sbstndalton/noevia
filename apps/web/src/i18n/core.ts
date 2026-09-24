@@ -4,24 +4,21 @@
 import { EN_GB } from './en-GB';
 import type { Catalogue, MessageKey } from './en-GB';
 import { EN_US } from './en-US';
-import { DE_DE } from './de-DE';
-import { ES_ES } from './es-ES';
-import { FR_FR } from './fr-FR';
-import { IT_IT } from './it-IT';
-import { NB_NO } from './nb-NO';
-import { NL_NL } from './nl-NL';
-import { PT_BR } from './pt-BR';
-import { SV_SE } from './sv-SE';
 
 export type { Catalogue, MessageKey };
 export type Params = Record<string, string | number>;
 
 export const BASE_LOCALE = 'en-GB';
-export const CATALOGUES: Record<string, Catalogue> = {
-  'en-GB': EN_GB, 'en-US': EN_US, 'de-DE': DE_DE, 'es-ES': ES_ES, 'fr-FR': FR_FR,
-  'it-IT': IT_IT, 'nb-NO': NB_NO, 'nl-NL': NL_NL, 'pt-BR': PT_BR, 'sv-SE': SV_SE,
-};
-export const SUPPORTED = Object.keys(CATALOGUES);
+/** Every interface locale, fixed at build time (matches the server's LOCALES). */
+export const SUPPORTED: readonly string[] = ['en-GB', 'en-US', 'de-DE', 'es-ES', 'fr-FR', 'it-IT', 'nb-NO', 'nl-NL', 'pt-BR', 'sv-SE'];
+/** Catalogues in memory. English ships in the main bundle; the rest arrive through loaders.ts
+ *  (a fixed map of build-time chunks) and are registered here once loaded. */
+export const CATALOGUES: Record<string, Catalogue> = { 'en-GB': EN_GB, 'en-US': EN_US };
+
+/** Adds a loaded catalogue; ignored for anything that is not a supported locale. */
+export function registerCatalogue(locale: string, catalogue: Catalogue): void {
+  if (SUPPORTED.includes(locale)) CATALOGUES[locale] = catalogue;
+}
 
 // A bare language picks the locale noevia has for it; Norwegian's three codes all read Bokmål.
 const BY_LANGUAGE: Record<string, string> = { en: 'en-GB', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', nb: 'nb-NO', no: 'nb-NO', nn: 'nb-NO', nl: 'nl-NL', pt: 'pt-BR', sv: 'sv-SE' };
@@ -43,7 +40,7 @@ export function matchLanguage(tag: string): string | null {
 /** The interface locale: a saved choice wins; 'system' walks the browser's languages in order
  *  of preference and takes the first noevia supports; otherwise English. */
 export function resolveInterfaceLocale(preference: string | undefined, languages: readonly string[] = []): string {
-  if (preference && preference !== 'system' && CATALOGUES[preference]) return preference;
+  if (preference && preference !== 'system' && SUPPORTED.includes(preference)) return preference;
   for (const tag of languages) { const found = matchLanguage(tag); if (found) return found; }
   return BASE_LOCALE;
 }
@@ -56,7 +53,7 @@ export function interpolate(text: string, params?: Params): string {
 
 /** A message in the locale, falling back key by key to English (and then to the key itself). */
 export function translate(locale: string, key: MessageKey, params?: Params): string {
-  const own = CATALOGUES[locale]?.[key];
+  const own = Object.prototype.hasOwnProperty.call(CATALOGUES, locale) ? CATALOGUES[locale][key] : undefined;
   const text = typeof own === 'string' && own ? own : (EN_GB as Record<string, string>)[key] ?? key;
   return interpolate(text, params);
 }

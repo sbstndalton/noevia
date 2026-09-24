@@ -404,4 +404,12 @@ export const NL_NL: Catalogue = {
   'appearance.status.saveError': "De weergave kon niet in je profiel worden opgeslagen. Je keuzes gelden hier nog wel. Probeer opnieuw om op te slaan.",
   'appearance.status.loading': "Weergave uit profiel laden…",
   'appearance.status.loadError': "De weergave uit je profiel kon niet worden geladen. Wijzigingen blijven in deze browser tot je het opnieuw probeert.",
+  'mode.willSendAsChat': "Wordt als Chat verstuurd: {reason}.",
+  'mode.reason.harnessOff': "de codeomgeving staat uit op deze server",
+  'mode.reason.freeChat': "Cowork werkt binnen een project en dit is een losse chat",
+  'mode.reason.adminOnly': "de codeomgeving is alleen voor beheerders",
+  'mode.reason.noRepository': "er is geen repository gekozen",
+  'keys.ctrl': "Ctrl",
+  'keys.shift': "Shift",
+  'keys.enter': "Enter",
 };

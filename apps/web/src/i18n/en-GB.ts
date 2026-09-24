@@ -407,6 +407,14 @@ export const EN_GB = {
   'appearance.status.saveError': 'Appearance could not be saved to your profile. Your choices are still applied here. Retry to save.',
   'appearance.status.loading': 'Loading profile appearance…',
   'appearance.status.loadError': 'Profile appearance could not be loaded. Changes stay in this browser until you retry.',
+  'mode.willSendAsChat': 'Will send as Chat: {reason}.',
+  'mode.reason.harnessOff': 'the coding harness is off on this server',
+  'mode.reason.freeChat': 'Cowork runs inside a project, and this is a free chat',
+  'mode.reason.adminOnly': 'the coding harness is limited to administrators',
+  'mode.reason.noRepository': 'no repository is selected',
+  'keys.ctrl': 'Ctrl',
+  'keys.shift': 'Shift',
+  'keys.enter': 'Enter',
 } as const;
 
 export type MessageKey = keyof typeof EN_GB;

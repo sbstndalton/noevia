@@ -74,7 +74,7 @@ export function ComposerModeBar({ mode, messageCount, projectId, disabled, acces
                   {access.repositories.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               : <strong>{repository}</strong>}</>
-          : mode === 'cowork' ? decision.notice?.replace(/^Sent as Chat: /, 'Will send as Chat: ') : t('mode.runsChat')}
+          : mode === 'cowork' && decision.reason ? t('mode.willSendAsChat', { reason: t(`mode.reason.${decision.reason}`) }) : t('mode.runsChat')}
       </span>
       {children}
     </div>

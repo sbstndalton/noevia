@@ -2,18 +2,22 @@
 // src tests are (transpiled, run in a fresh context), with relative imports resolved to src/i18n.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),ts=require('typescript');
 const dir=path.join(__dirname,'../src/i18n');
-const cache={};
+const cache={},warnings=[];
 function load(name){
   if(cache[name])return cache[name];
   const exports={};cache[name]=exports;
   const code=ts.transpileModule(fs.readFileSync(path.join(dir,name+'.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  vm.runInNewContext(code,{exports,Intl,require:(m)=>{if(!m.startsWith('./'))throw Error('unexpected import '+m);return load(m.slice(2));}});
+  vm.runInNewContext(code,{exports,Intl,console:{warn:(...a)=>warnings.push(a)},Promise,require:(m)=>{if(!m.startsWith('./'))throw Error('unexpected import '+m);return load(m.slice(2));}});
   return exports;
 }
 const core=load('core');
 // Arrays built inside the vm context have another Array prototype; compare them as JSON.
 const same=(a,b,m)=>assert.equal(JSON.stringify(a),JSON.stringify(b),m);
 const EN=load('en-GB').EN_GB;
+// The app loads non-English catalogues as chunks; node registers them directly for the checks below.
+const FILES={'de-DE':'DE_DE','es-ES':'ES_ES','fr-FR':'FR_FR','it-IT':'IT_IT','nb-NO':'NB_NO','nl-NL':'NL_NL','pt-BR':'PT_BR','sv-SE':'SV_SE'};
+assert.equal(Object.keys(core.CATALOGUES).join(),'en-GB,en-US','only English is bundled eagerly');
+for(const [l,name] of Object.entries(FILES))core.registerCatalogue(l,load(l)[name]);
 const NON_BASE=Object.keys(core.CATALOGUES).filter(l=>l!=='en-GB');
 
 test('every supported account locale has a catalogue, and nothing else does',()=>{
@@ -108,7 +112,11 @@ test('plural keys come in pairs, and catalogues are bundled, not fetched',()=>{
   for(const base of new Set(plural))assert.ok(EN[base+'.one']&&EN[base+'.other'],base);
   for(const f of fs.readdirSync(dir)){
     const src=fs.readFileSync(path.join(dir,f),'utf8');
-    assert.doesNotMatch(src,/\bfetch\(|import\(/,`${f} loads something at runtime`);
+    assert.doesNotMatch(src,/\bfetch\(/,`${f} fetches at runtime`);
+    // Dynamic imports only in loaders.ts, and only literal paths to a supported catalogue.
+    const imports=[...src.matchAll(/import\(([^)]*)\)/g)].map(m=>m[1]);
+    if(f!=='loaders.ts'){assert.equal(imports.length,0,`${f} imports at runtime`);continue;}
+    for(const arg of imports)assert.match(arg,/^'\.\/(de-DE|es-ES|fr-FR|it-IT|nb-NO|nl-NL|pt-BR|sv-SE)'$/,`non-literal import ${arg}`);
   }
 });
 
@@ -118,4 +126,51 @@ test('every appearance sync status useAppearance can report has a translation in
   const statuses=[...new Set([...hook.matchAll(/setStatus\('([^']+)'\)/g)].map(m=>m[1]))];
   assert.ok(statuses.length>=4);
   for(const s of statuses)assert.ok(settings.includes(`'${s}': 'appearance.status.`),`untranslated appearance status: ${s}`);
+});
+
+test('the chunk loader map holds only supported non-English ids; anything else never imports',async()=>{
+  const loaders=load('loaders');
+  same(Object.keys(loaders.LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  let calls=0;const spy={'de-DE':()=>{calls++;return Promise.resolve({});}};
+  for(const bad of ['xx-XX','../en-GB','__proto__','constructor','toString','',"de-DE'"])assert.equal(await loaders.loadCatalogue(bad,spy),false,bad);
+  assert.equal(calls,0,'an unsupported id called a loader');
+  assert.equal(await loaders.loadCatalogue('xx-XX'),false);
+  assert.equal(await loaders.loadCatalogue('en-GB',spy),true,'English is already there');
+  assert.equal(calls,0);
+});
+
+test('a chunk loads once and is cached; a failed one stays English, logs once and is not retried',async()=>{
+  const loaders=load('loaders');
+  const saved=core.CATALOGUES['it-IT'];delete core.CATALOGUES['it-IT'];
+  let ok=0;const good={'it-IT':()=>{ok++;return Promise.resolve({'common.cancel':'Annulla'});}};
+  try{
+    const [a,b]=await Promise.all([loaders.loadCatalogue('it-IT',good),loaders.loadCatalogue('it-IT',good)]);
+    assert.equal(a&&b,true);assert.equal(ok,1,'concurrent requests share one load');
+    assert.equal(await loaders.loadCatalogue('it-IT',good),true);assert.equal(ok,1,'cached');
+    assert.equal(core.translate('it-IT','common.cancel'),'Annulla');
+  }finally{core.CATALOGUES['it-IT']=saved;}
+  const savedSv=core.CATALOGUES['sv-SE'];delete core.CATALOGUES['sv-SE'];
+  let tries=0;const bad={'sv-SE':()=>{tries++;return Promise.reject(Error('chunk 404'));}};
+  try{
+    warnings.length=0;
+    assert.equal(await loaders.loadCatalogue('sv-SE',bad),false);
+    assert.equal(await loaders.loadCatalogue('sv-SE',bad),false);
+    assert.equal(tries,1,'no retry loop');assert.equal(warnings.length,1,'logged once');
+    assert.equal(core.translate('sv-SE','common.save'),'Save','stays English');
+  }finally{core.CATALOGUES['sv-SE']=savedSv;}
+});
+
+test('every Cowork fallback reason has a message key', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../src/chat-mode.ts'), 'utf8');
+  const codes = src.match(/export type FallbackReason = ([^;]+);/)[1].match(/'(\w+)'/g).map((c) => c.slice(1, -1));
+  assert.equal(codes.length, 4);
+  for (const c of codes) assert.ok(EN[`mode.reason.${c}`], c);
+});
+
+test('key names follow the locale: Strg in German, Maj in French, Ctrl in English', () => {
+  for (const [l, ctrl, shift] of [['en-GB', 'Ctrl', 'Shift'], ['de-DE', 'Strg', 'Umschalt'], ['fr-FR', 'Ctrl', 'Maj']]) {
+    assert.equal(core.translate(l, 'keys.ctrl'), ctrl); assert.equal(core.translate(l, 'keys.shift'), shift);
+  }
+  // The German shortcut note and the key name agree.
+  assert.match(core.translate('de-DE', 'keyboard.otherNote'), /Strg/);
 });

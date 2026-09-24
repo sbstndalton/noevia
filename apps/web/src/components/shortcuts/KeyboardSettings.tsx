@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { JSX } from 'react';
 import { SegmentedControl } from '../SegmentedControl';
 import { savePreferences, useAccountPreferences } from '../../user-preferences';
-import { sendHintText, useT } from '../../i18n';
+import { keyNames, sendHintText, useT } from '../../i18n';
 import type { SendKey } from '../../user-preferences';
 import { isApple } from './shortcuts';
 import { ShortcutReference } from './ShortcutReference';
@@ -16,7 +16,6 @@ export function KeyboardSettings(): JSX.Element {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const mod = apple ? '⌘' : 'Ctrl+';
   const change = async (sendKey: SendKey) => {
     setBusy(true); setError('');
     try { await savePreferences({ sendKey }); }
@@ -30,7 +29,7 @@ export function KeyboardSettings(): JSX.Element {
       <div className="set-rows">
         <div className="set-row">
           <div className="set-row-text"><span className="set-row-label">{t('keyboard.sendWith')}</span><span className="set-row-desc">{t('keyboard.sendWithDesc', { hint: sendHintText(t, prefs.sendKey, apple) })}</span></div>
-          <div className="set-row-control" aria-busy={busy || undefined}><SegmentedControl label={t('keyboard.sendWith')} value={prefs.sendKey} options={[['enter', 'Enter'], ['mod-enter', `${mod}Enter`]]} onChange={(v) => void change(v)} /></div>
+          <div className="set-row-control" aria-busy={busy || undefined}><SegmentedControl label={t('keyboard.sendWith')} value={prefs.sendKey} options={[['enter', keyNames(t, apple).enter], ['mod-enter', `${keyNames(t, apple).mod}${keyNames(t, apple).enter}`]]} onChange={(v) => void change(v)} /></div>
         </div>
       </div>
       {prefs.sendKey !== 'enter' && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void change('enter')}>{t('keyboard.restoreDefault')}</button>}

@@ -3,7 +3,15 @@
 // or after the account record loads. `t()` is for code outside React (a class boundary, a toast).
 import { useEffect, useMemo, useState } from 'react';
 import { PREFERENCES_CHANGED, currentPreferences, useAccountPreferences } from '../user-preferences';
-import { resolveInterfaceLocale, translate, translatePlural } from './core';
+import { CATALOGUES, resolveInterfaceLocale, translate, translatePlural } from './core';
+import { loadCatalogue } from './loaders';
+
+/** Fired when a catalogue chunk arrives, so everything using useT() swaps from English. */
+export const CATALOGUE_LOADED = 'noevia:catalogue-loaded';
+function ensureCatalogue(locale: string): void {
+  if (CATALOGUES[locale]) return;
+  void loadCatalogue(locale).then((ok) => { if (ok && typeof window !== 'undefined') window.dispatchEvent(new Event(CATALOGUE_LOADED)); });
+}
 import type { MessageKey, Params } from './core';
 
 export type { MessageKey, Params };
@@ -34,25 +42,39 @@ export function useT(): Translate {
   useEffect(() => {
     const again = () => setTick((n) => n + 1);
     window.addEventListener('languagechange', again);
-    return () => window.removeEventListener('languagechange', again);
+    window.addEventListener(CATALOGUE_LOADED, again);
+    return () => { window.removeEventListener('languagechange', again); window.removeEventListener(CATALOGUE_LOADED, again); };
   }, []);
   const locale = interfaceLocale(preference);
-  return useMemo(() => bind(locale), [locale]);
+  // English renders at once; the locale's chunk swaps in when it resolves (cached afterwards).
+  const ready = !!CATALOGUES[locale];
+  useEffect(() => { if (!ready) ensureCatalogue(locale); }, [locale, ready]);
+  return useMemo(() => bind(locale), [locale, ready]);
 }
 
 /** Keeps <html lang> on the interface locale, so screen readers, hyphenation and spellcheck
  *  follow it. Called once at start-up. */
 export function startInterfaceLanguage(): void {
   if (typeof document === 'undefined') return;
-  const apply = () => { document.documentElement.lang = interfaceLocale(); };
+  const apply = () => { const locale = interfaceLocale(); document.documentElement.lang = locale; ensureCatalogue(locale); };
   apply();
   window.addEventListener(PREFERENCES_CHANGED, apply);
   window.addEventListener('languagechange', apply);
 }
 
-/** The composer's send hint in the interface language, with the platform's key names. */
+/** Key names as printed on this locale's keyboards (Strg, Maj, Intro…); Apple uses symbols. */
+export function keyNames(t: Translate, apple: boolean): { mod: string; newline: string; enter: string } {
+  const enter = t('keys.enter');
+  return apple ? { mod: '⌘', newline: `⇧${enter}`, enter } : { mod: `${t('keys.ctrl')}+`, newline: `${t('keys.shift')}+${enter}`, enter };
+}
+
+/** Rewrites an English key combination (Ctrl+Shift+K, Shift+Enter) with the locale's key names. */
+export function localiseKeys(t: Translate, keys: string): string {
+  return keys.replace(/\bCtrl\+/g, `${t('keys.ctrl')}+`).replace(/\bShift\+/g, `${t('keys.shift')}+`).replace(/\bEnter\b/g, t('keys.enter'));
+}
+
+/** The composer's send hint in the interface language, with the locale's key names. */
 export function sendHintText(t: Translate, sendKey: 'enter' | 'mod-enter', apple: boolean): string {
-  return sendKey === 'enter'
-    ? t('composer.hintEnter', { newline: apple ? '⇧Enter' : 'Shift+Enter' })
-    : t('composer.hintMod', { mod: apple ? '⌘' : 'Ctrl+' });
+  const k = keyNames(t, apple);
+  return sendKey === 'enter' ? t('composer.hintEnter', { newline: k.newline }) : t('composer.hintMod', { mod: k.mod });
 }

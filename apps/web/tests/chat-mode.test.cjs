@@ -6,14 +6,15 @@ const { decideDispatch, sessionMode, parseMode, switchNeedsNewSession } = load('
 const ok = { mode: 'cowork', harnessEnabled: true, canUseCode: true, projectId: 'p1', repository: 'demo' };
 
 test('Chat always goes to the chat harness, silently', () => {
-  assert.deepEqual({ ...decideDispatch({ ...ok, mode: 'chat' }) }, { harness: 'chat', notice: null });
+  assert.deepEqual({ ...decideDispatch({ ...ok, mode: 'chat' }) }, { harness: 'chat', notice: null, reason: null });
 });
 test('Cowork with harness, admin access, a project and a repository goes to the code harness', () => {
-  assert.deepEqual({ ...decideDispatch(ok) }, { harness: 'cowork', notice: null });
+  assert.deepEqual({ ...decideDispatch(ok) }, { harness: 'cowork', notice: null, reason: null });
 });
 test('every missing precondition falls back to Chat with a one-line reason', () => {
-  for (const [patch, reason] of [[{ harnessEnabled: false }, /off/], [{ projectId: null }, /project/], [{ canUseCode: false }, /administrators/], [{ repository: null }, /repository/]]) {
+  for (const [patch, reason, code] of [[{ harnessEnabled: false }, /off/, 'harnessOff'], [{ projectId: null }, /project/, 'freeChat'], [{ canUseCode: false }, /administrators/, 'adminOnly'], [{ repository: null }, /repository/, 'noRepository']]) {
     const d = decideDispatch({ ...ok, ...patch });
+    assert.equal(d.reason, code, 'a translatable code travels with the English notice');
     assert.equal(d.harness, 'chat');
     assert.match(d.notice, /^Sent as Chat: /);
     assert.match(d.notice, reason);

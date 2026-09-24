@@ -404,4 +404,12 @@ export const NB_NO: Catalogue = {
   'appearance.status.saveError': "Utseendet kunne ikke lagres i profilen. Valgene dine gjelder fortsatt her. Prøv igjen for å lagre.",
   'appearance.status.loading': "Laster utseende fra profilen…",
   'appearance.status.loadError': "Utseendet fra profilen kunne ikke lastes. Endringer blir i denne nettleseren til du prøver igjen.",
+  'mode.willSendAsChat': "Sendes som Chat: {reason}.",
+  'mode.reason.harnessOff': "kodemiljøet er slått av på denne serveren",
+  'mode.reason.freeChat': "Cowork kjører i et prosjekt, og dette er en fri chat",
+  'mode.reason.adminOnly': "kodemiljøet er forbeholdt administratorer",
+  'mode.reason.noRepository': "ingen repo er valgt",
+  'keys.ctrl': "Ctrl",
+  'keys.shift': "Shift",
+  'keys.enter': "Enter",
 };

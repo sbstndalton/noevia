@@ -404,4 +404,12 @@ export const PT_BR: Catalogue = {
   'appearance.status.saveError': "Não foi possível salvar a aparência no perfil. Suas escolhas continuam aplicadas aqui. Tente de novo para salvar.",
   'appearance.status.loading': "Carregando a aparência do perfil…",
   'appearance.status.loadError': "Não foi possível carregar a aparência do perfil. As alterações ficam neste navegador até você tentar de novo.",
+  'mode.willSendAsChat': "Será enviado como Chat: {reason}.",
+  'mode.reason.harnessOff': "o ambiente de código está desativado neste servidor",
+  'mode.reason.freeChat': "o Cowork roda dentro de um projeto, e este é um chat livre",
+  'mode.reason.adminOnly': "o ambiente de código é restrito a administradores",
+  'mode.reason.noRepository': "nenhum repositório selecionado",
+  'keys.ctrl': "Ctrl",
+  'keys.shift': "Shift",
+  'keys.enter': "Enter",
 };

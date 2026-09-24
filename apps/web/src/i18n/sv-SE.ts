@@ -404,4 +404,12 @@ export const SV_SE: Catalogue = {
   'appearance.status.saveError': "Utseendet kunde inte sparas i din profil. Dina val gäller fortfarande här. Försök igen för att spara.",
   'appearance.status.loading': "Läser in utseende från profilen…",
   'appearance.status.loadError': "Utseendet från profilen kunde inte läsas in. Ändringar stannar i den här webbläsaren tills du försöker igen.",
+  'mode.willSendAsChat': "Skickas som Chatt: {reason}.",
+  'mode.reason.harnessOff': "kodmiljön är avstängd på den här servern",
+  'mode.reason.freeChat': "Cowork körs i ett projekt, och det här är en fri chatt",
+  'mode.reason.adminOnly': "kodmiljön är bara för administratörer",
+  'mode.reason.noRepository': "inget repo är valt",
+  'keys.ctrl': "Ctrl",
+  'keys.shift': "Skift",
+  'keys.enter': "Enter",
 };

@@ -404,4 +404,12 @@ export const FR_FR: Catalogue = {
   'appearance.status.saveError': "Impossible d’enregistrer l’apparence dans votre profil. Vos choix restent appliqués ici. Réessayez pour enregistrer.",
   'appearance.status.loading': "Chargement de l’apparence du profil…",
   'appearance.status.loadError': "Impossible de charger l’apparence du profil. Les modifications restent dans ce navigateur jusqu’à ce que vous réessayiez.",
+  'mode.willSendAsChat': "Sera envoyé en Chat : {reason}.",
+  'mode.reason.harnessOff': "l’environnement de code est désactivé sur ce serveur",
+  'mode.reason.freeChat': "Cowork s’exécute dans un projet, et ceci est une discussion libre",
+  'mode.reason.adminOnly': "l’environnement de code est réservé aux admins",
+  'mode.reason.noRepository': "aucun dépôt n’est sélectionné",
+  'keys.ctrl': "Ctrl",
+  'keys.shift': "Maj",
+  'keys.enter': "Entrée",
 };
