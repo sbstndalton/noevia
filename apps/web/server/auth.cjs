@@ -633,7 +633,11 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
       const row = db.prepare('SELECT * FROM storage_connections WHERE user_id=?').get(userId);
       if (!row) return { kind: 'local', baseUrl: '', bucket: '', region: DEFAULT_S3_REGION, username: '', corpusRoot: '' };
       let plain = '';
-      try { plain = secrets ? secrets.decrypt(row.secret, userId) : row.secret; } catch { plain = ''; }
+      try { plain = secrets ? secrets.decrypt(row.secret, userId) : row.secret; } catch {
+        // Lost or rotated secrets.key, or a ciphertext bound to another account.
+        console.warn(`storage secret for user ${userId} could not be decrypted; treating it as unset`);
+        plain = '';
+      }
       // Upgrade a legacy unbound (v1) ciphertext to the account-bound format.
       if (secrets && plain && String(row.secret).startsWith('enc:v1:')) {
         db.prepare('UPDATE storage_connections SET secret=? WHERE user_id=?').run(secrets.encrypt(plain, userId), userId);

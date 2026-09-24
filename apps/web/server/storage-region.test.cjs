@@ -128,3 +128,35 @@ test('storage secrets are bound to the account and never stored verbatim', (t) =
   assert.match(auth.db.prepare('SELECT secret FROM storage_connections WHERE user_id=?').get('victim').secret, /^enc:v2:/);
   assert.equal(auth.getStorage('victim', true).secret, 'legacy-secret');
 });
+
+test('getStorage warns with the user id, never the secret, when decryption fails', (t) => {
+  const { auth, addUser } = authFixture(t);
+  addUser('u1');
+  auth.saveStorage('u1', { ...S3 });
+  auth.db.prepare("UPDATE storage_connections SET secret='enc:v2:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' WHERE user_id='u1'").run();
+  const warned = [];
+  t.mock.method(console, 'warn', (...a) => warned.push(a.join(' ')));
+  assert.equal(auth.getStorage('u1', true).secret, '');
+  assert.equal(warned.length, 1);
+  assert.match(warned[0], /u1/);
+  assert.doesNotMatch(warned[0], /synthetic-secret|enc:v2/);
+});
+
+test('encrypt callers re-save plaintext, so repeated saves never double-encrypt', (t) => {
+  const { root, secrets, auth, addUser } = authFixture(t);
+  const { createWorkspaceStore } = require('./workspace.cjs');
+  const WS_USER = '0b6c2d7e-1f4a-4c3b-9e8d-7a6b5c4d3e2f';
+  const def = { id: 'default', label: 'Default', baseUrl: 'http://localhost', apiKey: '', shared: true };
+  const ws = createWorkspaceStore(root, def, secrets).get(WS_USER);
+  ws.providers.push({ id: 'p1', label: 'P', baseUrl: 'https://llm.example.test', apiKey: 'synthetic-key' });
+  ws.saveProviders(); ws.saveProviders();
+  const reloaded = createWorkspaceStore(root, def, secrets).get(WS_USER);
+  assert.equal(reloaded.providers.find((p) => p.id === 'p1').apiKey, 'synthetic-key');
+  reloaded.saveProviders();
+  assert.equal(createWorkspaceStore(root, def, secrets).get(WS_USER).providers.find((p) => p.id === 'p1').apiKey, 'synthetic-key');
+  addUser('u2');
+  auth.saveStorage('u2', { ...S3 });
+  auth.getStorage('u2', true);
+  auth.saveStorage('u2', { ...auth.getStorage('u2', true), bucket: 'renamed' });
+  assert.equal(auth.getStorage('u2', true).secret, 'synthetic-secret');
+});
