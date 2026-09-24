@@ -41,7 +41,19 @@ export function PluginsView({ onStartChat, embedded = false, projects = [], onPr
 
 function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp' | 'skills'; projects: { id: string; name: string }[]; onProjectsChanged?: () => void; isAdmin: boolean }): JSX.Element {
   const [added, setAdded] = useState<Added[]>([]);
-  useEffect(() => { if (kind !== 'mcp' || !isAdmin) return; apiFetch('/api/admin/mcp-directory').then((r) => r.json()).then((d) => setAdded(d.servers || [])).catch(() => undefined); }, [kind, isAdmin]);
+  const [addedStatus, setAddedStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [addedAttempt, setAddedAttempt] = useState(0);
+  useEffect(() => {
+    if (kind !== 'mcp' || !isAdmin) return;
+    let live = true;
+    setAddedStatus('loading');
+    apiFetch('/api/admin/mcp-directory').then(async (r) => { if (!r.ok) throw new Error('Could not load added servers.'); return r.json(); })
+      .then((d) => { if (live) { setAdded(d.servers || []); setAddedStatus('ready'); } })
+      .catch(() => { if (live) setAddedStatus('error'); });
+    return () => { live = false; };
+  }, [kind, isAdmin, addedAttempt]);
+  const [mode, setMode] = useState<'yours' | 'discover'>('yours');
+  const [yourQuery, setYourQuery] = useState('');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState('');
@@ -56,15 +68,17 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     return () => { live = false; };
   }, [kind]);
   useEffect(() => {
+    if (kind === 'mcp' && mode === 'yours') return;
     let live = true;
     const t = window.setTimeout(() => {
-      setError('');
+      setItems(null); setError('');
       apiFetch(`/api/plugins/directory?kind=${kind}&q=${encodeURIComponent(query.trim())}`)
         .then(async (r) => { const data = await r.json().catch(() => ({})); if (!live) return; setSource(data.source ?? null); if (!r.ok) throw new Error(data.error || 'The directory could not be reached.'); setItems(data.items); })
         .catch((e) => { if (live) { setError((e as Error).message); setItems([]); } });
     }, query ? 300 : 0);
     return () => { live = false; window.clearTimeout(t); };
-  }, [kind, query, attempt]);
+  }, [kind, mode, query, attempt]);
+  const matchingAdded = [...added].filter((a) => `${a.title} ${a.registryName}`.toLocaleLowerCase().includes(yourQuery.trim().toLocaleLowerCase())).sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
   const card = (i: Item, starter = false) => <li key={(starter ? 'starter:' : '') + i.id} className="plugin-card surface">
         <span className="plugin-card-icon"><ShellIcon name={kind === 'mcp' ? 'server' : 'sparkles'} size={20}/></span>
         <span className="plugin-card-text">
@@ -80,7 +94,22 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
         </span>
 </li>;
   return <section className="plugins-directory" aria-label={kind === 'mcp' ? 'MCP servers' : 'Skills'}>
-    <div className="settings-search plugins-search"><ShellIcon name="search" size={16}/><input aria-label={kind === 'mcp' ? 'Search MCP servers' : 'Search skills'} placeholder={kind === 'mcp' ? 'Search MCP servers' : 'Search skills'} value={query} onChange={(e) => setQuery(e.target.value)}/></div>
+    {kind === 'mcp' && <SegmentedControl label="MCP server inventory" value={mode} onChange={setMode} options={[["yours", "Added"], ["discover", "Discover"]]}/>}
+    {kind === 'mcp' && mode === 'yours' ? <>
+      <div className="settings-search plugins-search"><ShellIcon name="search" size={16}/><input aria-label="Search added MCP servers" placeholder="Search added servers by name or source" value={yourQuery} onChange={(e) => setYourQuery(e.target.value)}/></div>
+      <p className="plugins-note">Servers added to this noevia. A project must select one to use its tools, and every tool asks before it runs.</p>
+      {!isAdmin ? <p className="plugins-note">An administrator manages this inventory.</p>
+        : addedStatus === 'loading' ? <p className="plugins-note" role="status">Loading added servers…</p>
+        : addedStatus === 'error' ? <p className="route-note" role="alert">Could not load added servers. <button className="btn btn-secondary btn-sm" onClick={() => setAddedAttempt((n) => n + 1)}>Try again</button></p>
+        : matchingAdded.length ? <ul className="plugin-grid">{matchingAdded.map((a) =>
+          <li key={a.id} className="plugin-card surface">
+            <span className="plugin-card-icon"><ShellIcon name="server" size={20}/></span>
+            <span className="plugin-card-text"><b>{a.title}</b><small className="plugin-publisher">{a.registryName.startsWith('url:') ? 'Added by URL' : 'Public MCP registry'} · {a.error ? 'Needs attention' : `${tools(a.toolCount)} available`}</small><small>{a.registryName.startsWith('url:') ? a.registryName.slice(4) : a.registryName}</small></span>
+            <span className="plugin-card-actions"><AddServer item={{ id: a.registryName, name: a.title, publisher: '', description: '', version: '', url: '', remote: true, installable: true, headers: a.declaredHeaders }} added={a} onChange={setAdded}/></span>
+          </li>)}</ul>
+        : <p className="plugins-note" role="status">{yourQuery ? `No added servers match “${yourQuery}”.` : 'No MCP servers added yet. Explore the directory to add one.'}</p>}
+    </> : <>
+      <div className="settings-search plugins-search"><ShellIcon name="search" size={16}/><input aria-label={kind === 'mcp' ? 'Search MCP servers' : 'Search skills'} placeholder={kind === 'mcp' ? 'Search MCP servers' : 'Search skills'} value={query} onChange={(e) => setQuery(e.target.value)}/></div>
     <p className="plugins-note">{kind === 'mcp'
       ? (isAdmin ? 'Published by their authors in the public MCP registry, not reviewed by noevia. Administrators can add hosted servers: each becomes a toolbox a project has to choose, it never receives your passwords, and every one of its tools asks before it runs.' : 'Published by their authors in the public MCP registry, not reviewed by noevia. An administrator can add hosted servers for everyone on this noevia.')
       : 'Skills published by Anthropic. Add one to a project and it arrives switched off: review it in the project’s instruction skills, then enable it. Only the written instructions are copied; scripts a skill bundles are never downloaded or run.'}
@@ -88,15 +117,6 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     {error && <p className="route-note" role="alert">{error} <button className="btn btn-secondary btn-sm" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p>}
     {kind === 'mcp' && isAdmin && <AddByUrl onChange={setAdded}/>}
     {items === null ? <p className="plugins-note" aria-live="polite">Loading…</p> : !error && items.length === 0 ? <p className="plugins-note">Nothing matches “{query}”.</p> : null}
-    {/* Servers added by URL have no registry entry of their own; list them here so they can be
-        managed (user roadmap: custom MCP server by URL). */}
-    {kind === 'mcp' && isAdmin && added.some((a) => a.registryName.startsWith('url:')) && <ul className="plugin-grid">
-      {added.filter((a) => a.registryName.startsWith('url:')).map((a) => <li key={a.id} className="plugin-card surface">
-        <span className="plugin-card-icon"><ShellIcon name="server" size={20}/></span>
-        <span className="plugin-card-text"><b>{a.title}</b><small className="plugin-publisher">Added by URL</small><small>{a.registryName.slice(4)}</small></span>
-        <span className="plugin-card-actions"><AddServer item={{ id: a.registryName, name: a.title, publisher: '', description: '', version: '', url: '', remote: true, installable: true, headers: a.declaredHeaders }} added={a} onChange={setAdded}/></span>
-      </li>)}
-    </ul>}
     {!query && starters.length > 0 && <section className="plugins-starters" aria-label="Recommended by noevia">
       <h2 className="plugins-subhead">Recommended by noevia</h2>
       <ul className="plugin-grid">{starters.map((i) => card(i, true))}</ul>
@@ -104,7 +124,7 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     {!query && starters.length > 0 && items && items.length > 0 && <h2 className="plugins-subhead">{kind === 'mcp' ? 'All MCP servers' : 'All skills'}</h2>}
     <ul className="plugin-grid">
       {items?.map((i) => card(i))}
-    </ul>
+    </ul></>}
   </section>;
 }
 
