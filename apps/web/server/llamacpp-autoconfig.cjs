@@ -119,7 +119,9 @@ function suggest({ meta, modelBytes, mmprojBytes = 0, budgetGib, current = {}, c
     pinnedGib = mmprojBytes / GIB + MMPROJ_COMPUTE_GIB + 7 * Math.max(0, ubatch - 512) * (m.blockCount || 0) * (m.embeddingLength || 0) / 1e9;
   }
   const native = m.contextLength || 0;
-  const candidates = [...new Set([...CTX_CANDIDATES, ...(native ? [native] : [])])].filter(c => !native || c <= native).sort((a, b) => a - b);
+  // Only offer context sizes the calibrator actually load-tests; snap to the largest qualified
+  // candidate at or below the model's native context instead of proposing the raw native value.
+  const candidates = CTX_CANDIDATES.filter(c => !native || c <= native).sort((a, b) => a - b);
   const rows = candidates.map(ctx => {
     const kvGib = (kvCacheBytes(m, ctx) + draftKvBytes(m, ctx)) / GIB;
     const totalGib = (modelGib + kvGib + pinnedGib + RESERVE_GIB) * SAFETY;

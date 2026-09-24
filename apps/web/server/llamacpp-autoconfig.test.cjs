@@ -103,3 +103,14 @@ test('the context ladder matches the Python planner exactly', () => {
   assert.ok(CTX_CANDIDATES.every((v) => v % 4096 === 0), 'every candidate is 4096-aligned');
   assert.deepEqual(CTX_CANDIDATES, [...CTX_CANDIDATES].sort((a, b) => a - b), 'and ascending');
 });
+
+test('a native context off the calibrated ladder is snapped down, never suggested raw', () => {
+  const gib = 1024 ** 3;
+  // 100000 sits strictly between the qualified 98304 and 106496 rungs.
+  const meta = { ...summarize(Object.fromEntries(Object.entries(qwen35).map(([k, [, v]]) => [k, v]))), contextLength: 100000 };
+  const r = suggest({ meta, modelBytes: 5.56 * gib, budgetGib: 200 });
+  assert.equal(r.values['ctx-size'], '98304');
+  assert.ok(CTX_CANDIDATES.includes(Number(r.values['ctx-size'])));
+  assert.ok(r.rows.every((row) => CTX_CANDIDATES.includes(row.ctx)), 'every offered row is a qualified, verifiable candidate');
+  assert.ok(!r.rows.some((row) => row.ctx === 100000), 'the raw native value itself is never a candidate');
+});
