@@ -19,7 +19,7 @@ test('extras keep approvals/results paired and send only the current question', 
 test('failed or interrupted optional context rejects before capture; reference is bounded', async () => {
   await assert.rejects(runner(async function* () { yield {type:'error',text:'unavailable'}; })(true,'q','s',()=>{}), /unavailable/);
   await assert.rejects(runner(async function* () { yield {type:'delta',text:'partial'}; })(true,'q','s',()=>{}), /interrupted/);
-  assert.equal(server.reference({extrasEnabled:true,extraContext:'x'.repeat(20000)}).length,12000);
+  const framed=server.reference({extrasEnabled:true,extraContext:'x'.repeat(20000)});assert.equal(framed.length,12000);assert.match(framed,/^<untrusted kind="Diary attachment excerpts">[\s\S]*<\/untrusted>$/);
 });
 test('internal contexts have no optional tools by default and free chats remain distinct', () => {
   assert.deepEqual(server.newProject().toolboxes, []);
