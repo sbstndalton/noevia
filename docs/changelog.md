@@ -1,3 +1,34 @@
+## Release c3a03c7 — 2026-09-24 (account cleanup, job journals, research saves, code harness hardening, web-only)
+
+Web changes deployed: [#98](https://github.com/sbstndalton/noevia/pull/98) deleting a user removes their MCP
+sign-ins and directory keys; disabled admin credentials are no longer used for discovery; WebDAV
+hrefs decode HTML entities; `$` in key templates is handled literally;
+[#99](https://github.com/sbstndalton/noevia/pull/99) one unreadable job journal no longer blocks other background
+jobs; [#100](https://github.com/sbstndalton/noevia/pull/100) research reports save to the current project by id,
+the phone preview honours `data-layout` in JS checks, and the approval card re-enables after a
+decision; [#101](https://github.com/sbstndalton/noevia/pull/101) code harness config writes refuse symlinks,
+approvals are answered by id, the engine key is never committed (tracked config is refused and
+pinned files are removed before auto-commit), and grants are released once. Diary changes in #99
+are merged but not deployed by this web-only release.
+
+CI green on `c3a03c7`. Deployed via `git archive c3a03c7` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/c3a03c7`, built as
+`cowork-web:c3a03c7`
+(`sha256:57bccee21803427c2c8ee3a28a0c187798f887d4652071def4a52fa94de0c275`). Config and the
+live Compose Manager file were backed up as `*.bak.before-c3a03c7`; `current`/`COWORK_VERSION`
+were repointed at `c3a03c7`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 34 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:852ef76`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-DTEDzgUo.js` and `index-C7qt3UiI.css` are present in the image's `dist/assets`;
+`cwdPinPaths` is a function in the running container; no error/unreadable lines in the startup log.
+
+Rollback: `config/.env.bak.before-c3a03c7` and the Compose Manager
+`docker-compose.yml.bak.before-c3a03c7` restore `current` to `releases/852ef76`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
 ## Release 852ef76 — 2026-09-24 (S3 region, storage secret v2, replay history, web-only)
 
 Web changes deployed: [#96](https://github.com/sbstndalton/noevia/pull/96) S3 connections store and sign with a
