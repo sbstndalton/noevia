@@ -2098,3 +2098,5 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 .mm-role-evidence { flex: 1 1 100%; order: 3; color: var(--text-secondary); font-size: var(--text-caption); }
 .mm-recover-list li > div { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
 .mm-recover-list small { color: var(--text-secondary); font-size: var(--text-caption); }
+.mm-loader-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); min-width: 0; }
+.mm-loader-state { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--text-footnote); }

@@ -107,15 +107,15 @@ function RecoverPanel({ onTab }: { onTab: (tab: 'discover' | 'hardware') => void
   return <section className="mm-panel" aria-labelledby="mm-recover">
     <div className="mm-panel-head"><h3 id="mm-recover">Recover</h3>
       <button type="button" className="modal-btn secondary" onClick={() => void load()}>Check again</button></div>
-    <div className="model-row"><span className={`model-dot${backends && !unhealthy.length ? '' : ' down'}`}/><span className="model-name">Model loader</span>
-      <span className="model-role">{backends === null ? 'Health unavailable' : !backends.length ? 'No engine found' : unhealthy.length
+    <div className="mm-loader-row"><span className={`model-dot${backends && !unhealthy.length ? '' : ' down'}`}/><strong>Model loader</strong>
+      <span className="mm-loader-state">{backends === null ? 'Health unavailable' : !backends.length ? 'No engine found' : unhealthy.length
         ? unhealthy.map((b) => `${b.name}: ${b.probe_error || b.last_restart_error || b.status}`).join(' · ')
         : backends.map((b) => `${b.name} running${b.loaded_model ? ` · ${b.loaded_model} loaded` : ''}`).join(' · ')}</span>
       <button type="button" className="mm-guided-link" onClick={() => onTab('hardware')}>Open logs</button></div>
     {items === null && <p className="mm-note" role="status">Checking jobs…</p>}
     {items?.length === 0 && <p className="mm-note" role="status">No failed or stuck tuning, calibration or download jobs.</p>}
     {!!items?.length && <ul className="mm-recover-list">{items.map((item) => <li key={item.kind + item.id}>
-      <div><strong>{item.kind === 'autotune' ? 'Auto-tune' : item.kind === 'calibration' ? 'Context measurement' : 'Download'}</strong> · {item.model || 'unknown model'} · {item.status}
+      <div><span><strong>{item.kind === 'autotune' ? 'Auto-tune' : item.kind === 'calibration' ? 'Context measurement' : 'Download'}</strong> · {item.model || 'unknown model'} · {item.status}</span>
         {item.detail && <small>{item.detail}</small>}
         {item.kind !== 'download' && <small>Settings saved before this run stay active; chat keeps using them.</small>}
         {!item.actions.length && <small>{SYSTEM_MODEL_LABEL} — not tuned or calibrated.</small>}</div>
