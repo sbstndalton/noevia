@@ -8,6 +8,40 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release e35ab29 — 2026-09-24 (browser executor wired into managed jobs)
+
+### Services
+
+- **Web:** [#280](https://github.com/sbstndalton/noevia/pull/280) wire the browser executor into managed jobs and approval cards (closes [#274](https://github.com/sbstndalton/noevia/issues/274)) — deployed as `cowork-web:e35ab29` (full build FROM release source, `apps/web/server` and `apps/web/src` changed). `NOEVIA_FEATURE_BROWSER_EXECUTOR` was left unset, so the feature stays off by default.
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-e35ab29`.
+
+`origin/main` was confirmed at `e35ab29` (only #281, unrelated, open against it) and every check-run
+on that commit (CI: Detect changed areas, Model manager test suite, Diary test suite, Docker images
+build, Node tests/typecheck/frontend build, Docling extraction contract, CI required; plus Offline
+skills MCP contract) was completed/success before release. `apps/web/server` and `apps/web/src` both
+changed since the live `c09ee38`, so a full web build was required. Source shipped via
+`git archive e35ab29` to `releases/e35ab29`. The in-image test suite ran as part of the build
+(334/334 passing) and produced `index-ClOM-B3G.js` / `index-hZUNMXvd.css`.
+
+Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero
+restarts and reported healthy. Public `/` returned 200 three times, `/api/profile` returned 401, the
+served `index-*.js/css` names matched the web image's `dist/assets` byte-for-byte by filename,
+`server/browser-service.cjs` and `server/routes/browser.cjs` were confirmed present in the container,
+and logs since start were clean (no `[egress]` or `[browser]` errors). `diary`, `code-sandbox`,
+`model-loader`, `ocr`, `docling`, `laya`, `llama`, `embed` and `kiwix` kept identical container ids,
+`StartedAt` and zero restarts (snapshot diff before/after showed only `cowork-web-1` changed).
+Restart-alert baseline re-acked. No model runs, real Diary data, new harness installation or broader
+exposure were part of this release; only synthetic candidate checks were used.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-e35ab29 config/.env`, `ln -sfn releases/c09ee38 current`, then
+  `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release c09ee38 — 2026-09-24 (model evidence import)
 
 ### Services
