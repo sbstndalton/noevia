@@ -212,7 +212,8 @@ function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, 
           rediscovered = !!box && consent(catalog(box.tools || []));
         } catch { /* A failed rediscovery must not leave the server enabled. */ }
         if (!rediscovered) {
-          directoryMcp.remove(added.id, authn.user.id);
+          // A concurrent delete may already have removed it; either way the answer is the same 409.
+          try { directoryMcp.remove(added.id, authn.user.id); } catch { /* Already gone. */ }
           syncDirectoryServers();
           try { await discoverMcpTools(true); } catch { /* The saved entry is already gone. */ }
           return reply(res, 409, { error: 'The server’s tools changed while connecting. It was not kept; preview again.' });

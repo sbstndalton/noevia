@@ -208,3 +208,71 @@ test('the admin directory refuses members and answers admins', async () => {
   await routes(req('PATCH'), r4, { path: '/api/admin/mcp-directory', authn: admin });
   assert.equal(r4.out.code, 405);
 });
+
+// Review follow-ups for #258: the preview token expires, is bound to the admin who previewed,
+// the sign-in path connects with its own token, and a concurrent delete still yields the 409.
+const customDeps = (extra = {}) => {
+  const calls = [];
+  const functionTool = { name: 'search', description: 'Find documents', parameters: {} };
+  const mcpState = { servers: new Map(), boxes: [] };
+  const row = { id: 'dir-custom', title: 'Custom', registryName: 'url:https://external.example/mcp' };
+  const directoryMcp = { list: () => [row], idFor: () => row.id, add: () => { calls.push('add'); return row; }, remove: () => { calls.push('remove'); } };
+  const built = build({ directoryMcp, mcpState, discoverOneServer: async () => new Map([['search', { tool: { function: functionTool } }]]),
+    syncDirectoryServers: () => calls.push('sync'), discoverMcpTools: async () => { calls.push('rediscover'); mcpState.boxes = [{ id: row.id, server: row.id, directory: true, tools: [{ function: functionTool }] }]; }, ...extra });
+  return { ...built, calls, directoryMcp };
+};
+const customBody = { title: 'Custom', url: 'https://external.example/mcp' };
+
+test('custom add refuses an expired preview token', async (t) => {
+  const { routes, calls } = customDeps();
+  const preview = fakeRes();
+  await routes(req('POST', customBody), preview, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  const realNow = Date.now;
+  t.after(() => { Date.now = realNow; });
+  Date.now = () => realNow() + 5 * 60 * 1000 + 1000;
+  const late = fakeRes();
+  await routes(req('POST', { ...customBody, previewToken: preview.out.body.previewToken }), late, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(late.out.code, 409);
+  assert.deepEqual(calls, []);
+});
+
+test('a preview token is bound to the admin who previewed', async () => {
+  const { routes, calls } = customDeps();
+  const preview = fakeRes();
+  await routes(req('POST', customBody), preview, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  const other = fakeRes();
+  await routes(req('POST', { ...customBody, previewToken: preview.out.body.previewToken }), other, { path: '/api/admin/mcp-directory/custom', authn: { user: { id: 'adm2', role: 'admin' } } });
+  assert.equal(other.out.code, 409);
+  assert.deepEqual(calls, []);
+});
+
+test('sign-in path connects with its own sign-in preview token', async () => {
+  const calls = [];
+  const row = { id: 'dir-oauth', title: 'OAuth', registryName: 'url:https://external.example/mcp' };
+  const { routes } = build({
+    discoverOneServer: async () => { throw new Error('401'); }, probeMcpAuth: async () => ({ status: 401, challenge: 'test' }),
+    directoryMcp: { list: () => [row], idFor: () => row.id, add: (entry) => { calls.push(['add', entry.oauth]); return row; }, remove: () => calls.push('remove') },
+    syncDirectoryServers: () => calls.push('sync'),
+    mcpOAuth: { clientInfo: () => null, forget: () => {}, start: async () => { calls.push('start'); return 'https://auth.example/authorize'; } },
+  });
+  const body = { title: 'OAuth', url: 'https://external.example/mcp' };
+  const preview = fakeRes();
+  await routes(req('POST', body), preview, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  const res = fakeRes();
+  await routes(req('POST', { ...body, previewToken: preview.out.body.previewToken }), res, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(res.out.code, 202);
+  assert.equal(res.out.body.signIn, 'https://auth.example/authorize');
+  assert.deepEqual(calls, [['add', true], 'sync', 'start']);
+});
+
+test('a concurrent delete during rediscovery still returns the drift 409', async () => {
+  const { routes, calls, directoryMcp } = customDeps({ discoverMcpTools: async () => { throw new Error('rediscovery failed'); } });
+  directoryMcp.remove = () => { calls.push('remove'); throw Object.assign(new Error('not found'), { status: 404 }); };
+  const preview = fakeRes();
+  await routes(req('POST', customBody), preview, { path: '/api/admin/mcp-directory/custom/preview', authn: admin });
+  const res = fakeRes();
+  await routes(req('POST', { ...customBody, previewToken: preview.out.body.previewToken }), res, { path: '/api/admin/mcp-directory/custom', authn: admin });
+  assert.equal(res.out.code, 409);
+  assert.match(res.out.body.error, /not kept/);
+  assert.ok(calls.includes('remove'));
+});
