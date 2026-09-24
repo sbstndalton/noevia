@@ -1,3 +1,198 @@
+## Release 958022b — 2026-09-24 (job start controller leak, phone preview Settings, web-only)
+
+Web changes deployed: [#102](https://github.com/sbstndalton/noevia/pull/102) starting a background job no
+longer leaks a controller when the journal write fails; the phone preview on desktop collapses
+Settings panes like a real phone.
+
+CI green on `958022b`. Deployed via `git archive 958022b` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/958022b`, built as
+`cowork-web:958022b`
+(`sha256:ee934d3dc820296cd3f567ed17686ada0a07aaad6c2897295d0a805ca362e9fd`). Config and the
+live Compose Manager file were backed up as `*.bak.before-958022b`; `current`/`COWORK_VERSION`
+were repointed at `958022b`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:c3a03c7`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-BaEAos9j.js` and `index-CVYcHCIL.css` are present in the image's `dist/assets`;
+no error/unreadable lines in the startup log.
+
+Rollback: `config/.env.bak.before-958022b` and the Compose Manager
+`docker-compose.yml.bak.before-958022b` restore `current` to `releases/c3a03c7`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
+## Release c3a03c7 — 2026-09-24 (account cleanup, job journals, research saves, code harness hardening, web-only)
+
+Web changes deployed: [#98](https://github.com/sbstndalton/noevia/pull/98) deleting a user removes their MCP
+sign-ins and directory keys; disabled admin credentials are no longer used for discovery; WebDAV
+hrefs decode HTML entities; `$` in key templates is handled literally;
+[#99](https://github.com/sbstndalton/noevia/pull/99) one unreadable job journal no longer blocks other background
+jobs; [#100](https://github.com/sbstndalton/noevia/pull/100) research reports save to the current project by id,
+the phone preview honours `data-layout` in JS checks, and the approval card re-enables after a
+decision; [#101](https://github.com/sbstndalton/noevia/pull/101) code harness config writes refuse symlinks,
+approvals are answered by id, the engine key is never committed (tracked config is refused and
+pinned files are removed before auto-commit), and grants are released once. Diary changes in #99
+are merged but not deployed by this web-only release.
+
+CI green on `c3a03c7`. Deployed via `git archive c3a03c7` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/c3a03c7`, built as
+`cowork-web:c3a03c7`
+(`sha256:57bccee21803427c2c8ee3a28a0c187798f887d4652071def4a52fa94de0c275`). Config and the
+live Compose Manager file were backed up as `*.bak.before-c3a03c7`; `current`/`COWORK_VERSION`
+were repointed at `c3a03c7`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 34 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:852ef76`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-DTEDzgUo.js` and `index-C7qt3UiI.css` are present in the image's `dist/assets`;
+`cwdPinPaths` is a function in the running container; no error/unreadable lines in the startup log.
+
+Rollback: `config/.env.bak.before-c3a03c7` and the Compose Manager
+`docker-compose.yml.bak.before-c3a03c7` restore `current` to `releases/852ef76`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
+## Release 852ef76 — 2026-09-24 (S3 region, storage secret v2, replay history, web-only)
+
+Web changes deployed: [#96](https://github.com/sbstndalton/noevia/pull/96) S3 connections store and sign with a
+region (new `storage_connections.region` column, default `us-east-1`, migrated at startup); storage
+secrets are always encrypted and bound to the account (v2), and legacy v1 secrets are upgraded on
+read; [#97](https://github.com/sbstndalton/noevia/pull/97) model replay merges adjacent same-role turns and never
+starts with an assistant turn; WebDAV MOVE/COPY default `Overwrite` to `T` per RFC 4918.
+
+CI green on `852ef76`. Deployed via `git archive 852ef76` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/852ef76`, built as
+`cowork-web:852ef76`
+(`sha256:25a1b70c5f1dfea627f34bb06a6abbdea4e7512c0562ceb9ca6f48f576ac0c79`). Config and the
+live Compose Manager file were backed up as `*.bak.before-852ef76`; `current`/`COWORK_VERSION`
+were repointed at `852ef76`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:0c2be32`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-SGaWTEhw.js` and `index-C7qt3UiI.css` are present in the image's `dist/assets`;
+`normalizeReplayHistory` is a function in the running container; no error/migration lines in
+the startup log.
+
+Rollback: `config/.env.bak.before-852ef76` and the Compose Manager
+`docker-compose.yml.bak.before-852ef76` restore `current` to `releases/0c2be32`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
+## Release 0c2be32 — 2026-09-24 (routing model, Diary edit proxy and offsite backup hardening, web-only)
+
+Web changes deployed: [#90](https://github.com/sbstndalton/noevia/pull/90) Details/Configure hide tuning and calibration for the system
+routing model, and the Settings routing summary wraps at narrow widths; [#91](https://github.com/sbstndalton/noevia/pull/91) the Diary
+edit proxy forwards `base_hash` and relays 409 conflicts; [#92](https://github.com/sbstndalton/noevia/pull/92) fixes offsite S3 listing
+with a "/" prefix and adds a Drive-copy busy-lock guard; [#95](https://github.com/sbstndalton/noevia/pull/95) the Drive mirror never
+prunes a foreign backup store (store id, sibling folder, 25% guard, serialized runs), caps
+storage reads/listings, and fixes SigV4 canonical path encoding. [#93](https://github.com/sbstndalton/noevia/pull/93) (Diary trash long
+names) and [#94](https://github.com/sbstndalton/noevia/pull/94) (Diary tenant delete race, fixed 502 text) are merged but NOT deployed by
+this web-only release.
+
+CI green on `0c2be32`. Deployed via `git archive 0c2be32` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/0c2be32`, built as
+`cowork-web:0c2be32`
+(`sha256:ecb14d6ef8aafcb22d72e6282eaaf672375c8690afae11691bafb8a0123ee257`). Config and the
+live Compose Manager file were backed up as `*.bak.before-0c2be32`; `current`/`COWORK_VERSION`
+were repointed at `0c2be32`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:7e8ce3a`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-94Ntc5E5.js` and `index-C7qt3UiI.css` are present in the image's `dist/assets`;
+`/app/server/offsite-s3.cjs` loads in the running container.
+
+Rollback: `config/.env.bak.before-0c2be32` and the Compose Manager
+`docker-compose.yml.bak.before-0c2be32` restore `current` to `releases/7e8ce3a`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
+## Release 7e8ce3a — 2026-09-24 (code-workspace and Drive hardening, web-only)
+
+Web changes deployed: [#86](https://github.com/sbstndalton/noevia/pull/86) the code-workspace
+release refuses harness-planted git hooks, filters and fsmonitor, and runs git with them
+disabled; [#88](https://github.com/sbstndalton/noevia/pull/88) caps Drive reads (Range request
+plus a streamed cap), makes autoconfig suggest only calibrator-verified context sizes, and adds
+InstructionSkills guards. [#87](https://github.com/sbstndalton/noevia/pull/87) (Diary
+index_update validation and quarantine) is merged but NOT deployed by this web-only release.
+
+CI green on `7e8ce3a`. Deployed via `git archive 7e8ce3a` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/7e8ce3a`, built as
+`cowork-web:7e8ce3a`
+(`sha256:e0400c5f93df8e60b598934c74080fb344f94736578a4a07ae5d50c870ca99e7`). Config and the
+live Compose Manager file were backed up as `*.bak.before-7e8ce3a`; `current`/`COWORK_VERSION`
+were repointed at `7e8ce3a`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:7ce2213`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-B6Wdf04v.js` and `index-B1OLP7Ag.css` are present in the image's `dist/assets`;
+`/app/server/code-workspace.cjs` loads in the running container.
+
+Rollback: `config/.env.bak.before-7e8ce3a` and the Compose Manager
+`docker-compose.yml.bak.before-7e8ce3a` restore `current` to `releases/7ce2213`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
+## Release 7ce2213 — 2026-09-24 (hardening batch, web-only)
+
+Web changes deployed: [#76](https://github.com/sbstndalton/noevia/pull/76) server error
+bodies no longer leak raw errors, JSON bodies are checked, chat ids are sanitized and
+approvals are scoped; [#80](https://github.com/sbstndalton/noevia/pull/80) and
+[#83](https://github.com/sbstndalton/noevia/pull/83) guard the system model (Laya) from
+delete, calibration, preset apply and section delete/rename, and gate research maintenance;
+[#81](https://github.com/sbstndalton/noevia/pull/81) hides system-model rename/delete in the
+Configure tab, merges racing history loads and orders stats updates;
+[#82](https://github.com/sbstndalton/noevia/pull/82) caps and aborts MCP responses and makes
+the diary stream and tool arguments robust; [#85](https://github.com/sbstndalton/noevia/pull/85)
+makes chat delete stop the reply and block saves, resets the project view on switch, and keeps
+merged roles alternating. [#77](https://github.com/sbstndalton/noevia/pull/77),
+[#79](https://github.com/sbstndalton/noevia/pull/79) and [#84](https://github.com/sbstndalton/noevia/pull/84)
+(Diary service, model-manager, code-sandbox) are merged but NOT deployed by this web-only release.
+
+CI green on `7ce2213`. Deployed via `git archive 7ce2213` (no local checkout modified) to
+`/mnt/docker/appdata/cowork/releases/7ce2213`, built as `cowork-web:7ce2213`
+(`sha256:e3605b2deabbd04561cfe1312c0b47e131540563f97a599f7b9153a1575b6c0a`). Config and the
+live Compose Manager file were backed up as `*.bak.before-7ce2213`; `current`/`COWORK_VERSION`
+were repointed at `7ce2213`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only (it must run from the Compose Manager project directory; the first
+attempt from another cwd was blocked before any change). All 42 non-web container IDs and start
+times were identical before and after.
+
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:7b6942c`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-DoBtRaex.js` and `index-B1OLP7Ag.css` are present in the image's `dist/assets`;
+`errorResponse` from #76 is exported in the running container.
+
+Rollback: `config/.env.bak.before-7ce2213` and the Compose Manager
+`docker-compose.yml.bak.before-7ce2213` restore `current` to `releases/7b6942c`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
+## Release 7b6942c — 2026-09-24 (chat save races)
+
+[PR #75](https://github.com/sbstndalton/noevia/pull/75) fixes chat save races while replies
+stream. The chat list no longer drops a chat when two sends overlap; a save conflict during
+a streaming reply no longer replaces the transcript or loses the reply; and persisting was
+moved out of the React state updater. Deployed web-only via `git archive 7b6942c` (no local
+checkout modified) to `/mnt/docker/appdata/cowork/releases/7b6942c`, built as
+`cowork-web:7b6942c` (`sha256:da15caf99d8e8d3b40bbf177ea9feaf40a6a297ce6bfd5e262592b3e17ad542a`).
+Config and the live Compose Manager file were backed up as `*.bak.before-7b6942c`;
+`current`/`COWORK_VERSION` were repointed at `7b6942c`. Cutover used the guarded preflight
+`--no-build --no-deps --wait --wait-timeout 180 web` only; all 42 non-web container IDs and
+start times were identical before and after.
+
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:9ee7bb0`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-RdBcm5Rx.js` and `index-B1OLP7Ag.css` are present in the image's `dist/assets`.
+Later PRs merged to main after 7b6942c are not part of this release.
+
+Rollback: `config/.env.bak.before-7b6942c` and the Compose Manager
+`docker-compose.yml.bak.before-7b6942c` restore `current` to `releases/9ee7bb0`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release 9ee7bb0 — 2026-09-23 (Laya excluded from auto-tuner)
 
 [PR #74](https://github.com/sbstndalton/noevia/pull/74) blocks the auto-tuner from

@@ -48,7 +48,7 @@ from pydantic import BaseModel
 from . import corpus as fmt
 from .config import load_config
 from .context import ContextAssembler
-from .corpus_store import CorpusError, CorpusStore
+from .corpus_store import MONTH_ID_RE, CorpusError, CorpusStore, EditConflict
 from .external_sources import (
     external_source_paths,
     infer_date,
@@ -101,6 +101,8 @@ class AppState:
         templates_path = Path(__file__).resolve().parent.parent / "config" / "prompts" / "logging.md"
         templates = yaml.safe_load(templates_path.read_text(encoding="utf-8"))
         self.pipeline = LoggingPipeline(self.store, self.llm_main, self.llm_aux, templates)
+        self.recover_lock = threading.Lock()
+        self.recovered = True
 
 
     def __del__(self):
@@ -119,6 +121,32 @@ _tenant_lock = threading.Lock()
 _TENANT_STATE_CAP = 32
 _TENANT_STATE_TTL_S = 24 * 60 * 60
 _base_cfg = load_config()
+
+# Brief tombstone of just-deleted tenant ids, protected by _tenant_lock.
+# DELETE /api/internal/tenant rmtree's the tenant root; without this, a
+# request that raced the delete can construct a ManagedCorpusBackend (which
+# mkdirs + creates the sqlite db as a side effect of __init__) right after
+# rmtree and silently leave behind a fresh, empty tenant directory. The
+# tombstone is kept only long enough to catch that race, not to permanently
+# block reuse of a tenant id.
+_deleted_tenants: dict = {}
+_DELETED_TENANT_TTL_S = 30.0
+
+
+def _mark_tenant_deleted_locked(user_id: str) -> None:
+    """Record a deletion tombstone. Caller holds _tenant_lock."""
+    now = time.monotonic()
+    _deleted_tenants[user_id] = now
+    stale = [uid for uid, ts in _deleted_tenants.items() if now - ts > _DELETED_TENANT_TTL_S]
+    for uid in stale:
+        _deleted_tenants.pop(uid, None)
+
+
+def _tenant_recently_deleted_locked(user_id: str) -> bool:
+    """True if user_id was deleted within the tombstone window. Caller holds
+    _tenant_lock."""
+    ts = _deleted_tenants.get(user_id)
+    return ts is not None and (time.monotonic() - ts) <= _DELETED_TENANT_TTL_S
 
 
 def _set_cfg(cfg, dotted: str, value) -> None:
@@ -188,8 +216,22 @@ def _tenant_state(request: Request, *, recover=True) -> AppState:
     user_id = user_id.lower()
     storage_header = request.headers.get("X-Cowork-Storage", "")
     managed_root = Path(_base_cfg.get("retrieval.db_path")).parent / "users" / user_id
-    managed = ManagedCorpusBackend(managed_root, user_id)
-    is_managed = managed.active()
+    with _tenant_lock:
+        if _tenant_recently_deleted_locked(user_id):
+            raise HTTPException(status_code=404, detail="tenant not found")
+    try:
+        managed = ManagedCorpusBackend(managed_root, user_id)
+        is_managed = managed.active()
+    except Exception:  # noqa: BLE001
+        # A concurrent DELETE /api/internal/tenant can rmtree the tenant root
+        # while we're mid-construction (e.g. sqlite file vanishes under us).
+        # If that's what happened, fail closed with 404 instead of a 500;
+        # any real construction error unrelated to a delete race still
+        # propagates.
+        with _tenant_lock:
+            if _tenant_recently_deleted_locked(user_id):
+                raise HTTPException(status_code=404, detail="tenant not found")
+        raise
     if request.headers.get("X-Cowork-Storage-Blocked") == "1" and not is_managed:
         raise HTTPException(403, "The original storage endpoint is not approved. Ask an administrator to review the connection.")
     volume = None if is_managed else tenant_volume(user_id)
@@ -197,99 +239,146 @@ def _tenant_state(request: Request, *, recover=True) -> AppState:
     storage_key = "managed" if is_managed else json.dumps(volume, sort_keys=True) if volume else storage_header
     state_key = f"{user_id}:{hashlib.sha256(storage_key.encode()).hexdigest()[:16]}"
     with _tenant_lock:
+        if _tenant_recently_deleted_locked(user_id):
+            # Lost the race: constructing ManagedCorpusBackend above (mkdir +
+            # sqlite init) recreated the tenant root right after DELETE ran.
+            # Undo that side effect and fail closed rather than silently
+            # reviving a deleted tenant.
+            try:
+                managed.close()
+            except Exception:  # noqa: BLE001
+                pass
+            shutil.rmtree(managed_root, ignore_errors=True)
+            raise HTTPException(status_code=404, detail="tenant not found")
         cached = _tenant_states.get(state_key)
         if cached is not None:
             # LRU touch: move to the most-recently-used end.
             _tenant_states.move_to_end(state_key)
             cached.last_used = time.monotonic()
-            if recover and not getattr(cached, 'recovered', True):
-                cached.store.apply_pending()
-                _reindex_dirty(cached)
-                cached.recovered = True
-            return cached
-        cfg = copy.deepcopy(_base_cfg)
-        tenant_root = Path(cfg.get("retrieval.db_path")).parent / "users" / user_id
-        tenant_root.mkdir(parents=True, exist_ok=True)
-        tenant_db = tenant_root / "index.db"
-        legacy_owner = request.headers.get("X-Cowork-Legacy-Owner") == "1" or user_id == os.environ.get("DIARY_LEGACY_USER_ID")
-        source_db = Path(cfg.get("retrieval.db_path"))
-        if legacy_owner and source_db.exists() and not tenant_db.exists():
-            _snapshot_sqlite(source_db, tenant_db)
-        _set_cfg(cfg, "retrieval.db_path", str(tenant_db))
-        storage = None
-        if storage_header:
-            try:
-                storage = json.loads(base64.urlsafe_b64decode(storage_header + "=" * (-len(storage_header) % 4)))
-            except Exception:  # noqa: BLE001
-                storage = None
-        if volume:
-            _set_cfg(cfg, "corpus.backend", "local")
-            _set_cfg(cfg, "corpus.local.root", volume["root"])
-            _set_cfg(cfg, "corpus.local.volume_identity", user_id)
-            _set_cfg(cfg, "corpus.local.reader_uid", volume.get("reader_uid"))
-            _set_cfg(cfg, "corpus.root", volume["prefix"])
-        elif storage and storage.get("kind") in ("nextcloud", "webdav"):
-            _set_cfg(cfg, "corpus.backend", "webdav")
-            _set_cfg(cfg, "corpus.webdav.base_url", storage.get("baseUrl", ""))
-            _set_cfg(cfg, "corpus.webdav.username", storage.get("username", ""))
-            _set_cfg(cfg, "corpus.webdav.password", storage.get("secret", ""))
-            _set_cfg(cfg, "corpus.root", storage.get("corpusRoot", ""))
-        elif storage and storage.get("kind") == "s3":
-            _set_cfg(cfg, "corpus.backend", "s3")
-            _set_cfg(cfg, "corpus.s3.endpoint_url", storage.get("baseUrl", ""))
-            _set_cfg(cfg, "corpus.s3.bucket", storage.get("bucket", ""))
-            _set_cfg(cfg, "corpus.s3.access_key", storage.get("username", ""))
-            _set_cfg(cfg, "corpus.s3.secret_key", storage.get("secret", ""))
-            # The user's chosen folder inside the bucket maps to a key prefix;
-            # corpus paths stay bare keys under that prefix.
-            _set_cfg(cfg, "corpus.s3.prefix", storage.get("corpusRoot", ""))
-            _set_cfg(cfg, "corpus.root", "")
-            _set_cfg(cfg, "corpus.monthly_prefix", "")
-        elif not legacy_owner:
-            _set_cfg(cfg, "corpus.backend", "local")
-            _set_cfg(cfg, "corpus.local.root", str(tenant_root / "corpus"))
-            _set_cfg(cfg, "corpus.root", "")
-        # Fresh accounts start inside the app. An existing index/corpus or remote
-        # connection always requires the explicit copy-and-verify import path.
-        fresh = not legacy_owner and not volume and not tenant_db.exists() and not (storage and storage.get("kind") != "local")
-        local_root = Path(cfg.get("corpus.local.root") or str(tenant_root / "corpus"))
-        fresh = fresh and not (local_root.exists() and any(local_root.iterdir()))
-        if fresh and not is_managed:
-            with managed.migration_lock():
-                if not managed.active():
-                    managed.activate({}, corpus_settings(cfg))
-            is_managed = True
-            state_key = f"{user_id}:{hashlib.sha256(b'managed').hexdigest()[:16]}"
-        if is_managed:
-            _set_cfg(cfg, "corpus.backend", "managed")
-            _set_cfg(cfg, "corpus.root", "")
-            _set_cfg(cfg, "corpus.webdav.remote_root", "")
-            _set_cfg(cfg, "retrieval.db_path", str(tenant_root / "managed-index.db"))
-            for key, value in managed.settings().items():
-                _set_cfg(cfg, "corpus." + key, value)
-        backend = managed if is_managed else LegacyWriteGuard(create_backend(cfg), managed)
-        state = AppState(cfg, backend=backend)
-        state.managed = managed
-        if is_managed:
-            with managed.db() as db:
-                for row in db.execute("SELECT path FROM files WHERE lower(path) LIKE '%.md'"):
-                    state.journal.mark_dirty(row[0])
-        state.recovered = False
-        if recover:
-            state.store.apply_pending()
-            _reindex_dirty(state)
-            state.recovered = True
-        state.last_used = time.monotonic()
-        _tenant_states[state_key] = state
-        _evict_tenant_states_locked()
-        return state
+            state, evicted = cached, []
+        else:
+            state, evicted = _build_tenant_state_locked(request, user_id, state_key, storage_header, managed, is_managed, volume)
+    # Close outside the lock: closing HTTP clients/SQLite can block, and every
+    # tenant request serializes on _tenant_lock.
+    for old_state in evicted:
+        if old_state is not state:
+            _close_state(old_state)
+    if recover:
+        _recover_state(state)
+    return state
+
+
+def _recover_state(state: "AppState") -> None:
+    """Replay the journal + reindex once per state, OUTSIDE _tenant_lock.
+
+    Recovery does remote I/O; holding the global lock here let one unreachable
+    WebDAV/S3 tenant stall every tenant. The per-state lock makes concurrent
+    first requests for the same tenant recover exactly once.
+    """
+    if getattr(state, "recovered", True):
+        return
+    # setdefault is atomic: tests and legacy code may build AppState without __init__.
+    with state.__dict__.setdefault("recover_lock", threading.Lock()):
+        if state.recovered:
+            return
+        state.store.apply_pending()
+        _reindex_dirty(state)
+        state.recovered = True
+
+
+def _build_tenant_state_locked(request, user_id, state_key, storage_header, managed, is_managed, volume):
+    """Create and register a tenant state. Caller holds _tenant_lock."""
+    cfg = copy.deepcopy(_base_cfg)
+    tenant_root = Path(cfg.get("retrieval.db_path")).parent / "users" / user_id
+    tenant_root.mkdir(parents=True, exist_ok=True)
+    tenant_db = tenant_root / "index.db"
+    legacy_owner = request.headers.get("X-Cowork-Legacy-Owner") == "1" or user_id == os.environ.get("DIARY_LEGACY_USER_ID")
+    source_db = Path(cfg.get("retrieval.db_path"))
+    if legacy_owner and source_db.exists() and not tenant_db.exists():
+        _snapshot_sqlite(source_db, tenant_db)
+    _set_cfg(cfg, "retrieval.db_path", str(tenant_db))
+    storage = None
+    if storage_header:
+        try:
+            storage = json.loads(base64.urlsafe_b64decode(storage_header + "=" * (-len(storage_header) % 4)))
+        except Exception:  # noqa: BLE001
+            storage = None
+    if volume:
+        _set_cfg(cfg, "corpus.backend", "local")
+        _set_cfg(cfg, "corpus.local.root", volume["root"])
+        _set_cfg(cfg, "corpus.local.volume_identity", user_id)
+        _set_cfg(cfg, "corpus.local.reader_uid", volume.get("reader_uid"))
+        _set_cfg(cfg, "corpus.root", volume["prefix"])
+    elif storage and storage.get("kind") in ("nextcloud", "webdav"):
+        _set_cfg(cfg, "corpus.backend", "webdav")
+        _set_cfg(cfg, "corpus.webdav.base_url", storage.get("baseUrl", ""))
+        _set_cfg(cfg, "corpus.webdav.username", storage.get("username", ""))
+        _set_cfg(cfg, "corpus.webdav.password", storage.get("secret", ""))
+        _set_cfg(cfg, "corpus.root", storage.get("corpusRoot", ""))
+    elif storage and storage.get("kind") == "s3":
+        _set_cfg(cfg, "corpus.backend", "s3")
+        _set_cfg(cfg, "corpus.s3.endpoint_url", storage.get("baseUrl", ""))
+        _set_cfg(cfg, "corpus.s3.bucket", storage.get("bucket", ""))
+        _set_cfg(cfg, "corpus.s3.access_key", storage.get("username", ""))
+        _set_cfg(cfg, "corpus.s3.secret_key", storage.get("secret", ""))
+        # SigV4 scope region; AWS buckets outside us-east-1 reject any other.
+        region = str(storage.get("region") or "").strip().lower()
+        _set_cfg(cfg, "corpus.s3.region", region if re.fullmatch(r"[a-z0-9-]{1,32}", region) else "us-east-1")
+        # The user's chosen folder inside the bucket maps to a key prefix;
+        # corpus paths stay bare keys under that prefix.
+        _set_cfg(cfg, "corpus.s3.prefix", storage.get("corpusRoot", ""))
+        _set_cfg(cfg, "corpus.root", "")
+        _set_cfg(cfg, "corpus.monthly_prefix", "")
+    elif not legacy_owner:
+        _set_cfg(cfg, "corpus.backend", "local")
+        _set_cfg(cfg, "corpus.local.root", str(tenant_root / "corpus"))
+        _set_cfg(cfg, "corpus.root", "")
+    # Fresh accounts start inside the app. An existing index/corpus or remote
+    # connection always requires the explicit copy-and-verify import path.
+    fresh = not legacy_owner and not volume and not tenant_db.exists() and not (storage and storage.get("kind") != "local")
+    local_root = Path(cfg.get("corpus.local.root") or str(tenant_root / "corpus"))
+    fresh = fresh and not (local_root.exists() and any(local_root.iterdir()))
+    if fresh and not is_managed:
+        with managed.migration_lock():
+            if not managed.active():
+                managed.activate({}, corpus_settings(cfg))
+        is_managed = True
+        state_key = f"{user_id}:{hashlib.sha256(b'managed').hexdigest()[:16]}"
+    if is_managed:
+        _set_cfg(cfg, "corpus.backend", "managed")
+        _set_cfg(cfg, "corpus.root", "")
+        _set_cfg(cfg, "corpus.webdav.remote_root", "")
+        _set_cfg(cfg, "retrieval.db_path", str(tenant_root / "managed-index.db"))
+        for key, value in managed.settings().items():
+            _set_cfg(cfg, "corpus." + key, value)
+    backend = managed if is_managed else LegacyWriteGuard(create_backend(cfg), managed)
+    state = AppState(cfg, backend=backend)
+    state.managed = managed
+    if is_managed:
+        with managed.db() as db:
+            for row in db.execute("SELECT path FROM files WHERE lower(path) LIKE '%.md'"):
+                state.journal.mark_dirty(row[0])
+    state.recovered = False
+    state.last_used = time.monotonic()
+    _tenant_states[state_key] = state
+    evicted = _evict_tenant_states_locked()
+    return state, evicted
 
 
 def _close_state(state: AppState) -> None:
     """Release a tenant AppState's heavyweight resources (SQLite connections,
     HTTP clients). Errors are ignored: eviction must never take the service
     down, and a half-closed state is simply rebuilt from scratch if a later
-    request needs the same tenant again."""
+    request needs the same tenant again.
+
+    Closing takes the store write lock, so an in-flight guarded write finishes
+    first; afterwards store.closed makes every later write raise StoreClosed
+    instead of touching (or recreating) the tenant's files."""
+    try:
+        with state.store._write_lock:
+            state.store.closed = True
+    except Exception:  # noqa: BLE001
+        log.exception("failed to mark tenant store closed")
     try:
         state.backend.close()
         state.llm_main.close()
@@ -300,19 +389,25 @@ def _close_state(state: AppState) -> None:
         log.exception("failed to close evicted tenant state")
 
 
-def _evict_tenant_states_locked() -> None:
+def _evict_tenant_states_locked() -> list:
     """TTL + LRU eviction of cached tenant states. Caller must hold
     _tenant_lock. Without this, every distinct storage-config change mints a
     new heavyweight entry (SQLite connections, HTTP clients) that is never
-    released except via the explicit tenant-delete route."""
+    released except via the explicit tenant-delete route.
+
+    Returns the evicted states; the caller must _close_state() them AFTER
+    releasing _tenant_lock (closing can block on I/O)."""
+    evicted = []
     now = time.monotonic()
     stale = [k for k, s in _tenant_states.items() if now - getattr(s, "last_used", now) > _TENANT_STATE_TTL_S]
     for key in stale:
-        _tenant_states.pop(key)
+        evicted.append(_tenant_states.pop(key))
         log.info("evicted tenant state %s (TTL expired)", key.split(":")[0])
     while len(_tenant_states) > _TENANT_STATE_CAP:
         key, state = _tenant_states.popitem(last=False)  # least recently used
+        evicted.append(state)
         log.info("evicted tenant state %s (LRU cap)", key.split(":")[0])
+    return evicted
 
 
 @asynccontextmanager
@@ -377,6 +472,7 @@ def delete_tenant(request: Request) -> JSONResponse:
                 _close_state(state)
                 _tenant_states.pop(key, None)
         shutil.rmtree(root, ignore_errors=True)
+        _mark_tenant_deleted_locked(user_id)
     return JSONResponse({"ok": True})# ---------------- in-memory session (per tenant, bounded) ----------------
 
 SESSIONS: "OrderedDict[str, dict]" = OrderedDict()
@@ -396,7 +492,7 @@ def _session(session_id: str, tenant_id: str = "legacy") -> dict:
     sid = str(session_id or "default")
     if not _SESSION_ID_RE.fullmatch(sid):
         sid = "default"
-    tid = str(tenant_id or "legacy")
+    tid = str(tenant_id or "legacy").lower()  # match _tenant_state's normalization
     if tid != "legacy" and not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", tid):
         raise HTTPException(status_code=400, detail="invalid tenant")
     key = f"{tid}:{sid}"
@@ -434,6 +530,10 @@ class EditEntryRequest(BaseModel):
     me: str
     assistant: str = ""
     month: Optional[str] = None  # YYYY-MM hint; discovery scans all months without it
+    # sha256 of the exchange block the client edited (corpus.exchange_hash).
+    # Optional for backward compatibility: clients that omit it keep the old
+    # last-write-wins behaviour; clients that send it get 409 on a stale base.
+    base_hash: Optional[str] = None
 
 
 # ---------------- pages ----------------
@@ -670,16 +770,22 @@ def api_entries_edit(req: EditEntryRequest, request: Request) -> JSONResponse:
         return JSONResponse({"error": "invalid xid"}, status_code=400)
     if not req.me.strip():
         return JSONResponse({"error": "me is required"}, status_code=400)
+    if req.month is not None and not MONTH_ID_RE.fullmatch(req.month):
+        return JSONResponse({"error": "month must be YYYY-MM"}, status_code=400)
+    if req.base_hash is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", req.base_hash.strip()):
+        return JSONResponse({"error": "invalid base_hash"}, status_code=400)
     st = _tenant_state(request)
     try:
-        path, day_iso = run_in_threadpool_sync(st.store.edit_exchange, xid, req.me, req.assistant, req.month)
+        path, day_iso, new_hash = run_in_threadpool_sync(st.store.edit_exchange, xid, req.me, req.assistant, req.month, req.base_hash)
+    except EditConflict as exc:
+        return JSONResponse({"error": str(exc), "conflict": True, "current_hash": exc.current_hash, "current_text": exc.current_text}, status_code=409)
     except CorpusError as exc:
         return JSONResponse({"error": str(exc)}, status_code=503 if "queued" in str(exc) else 404)
     except Exception as exc:  # noqa: BLE001 — persistent write conflict etc.
         log.exception("entry edit failed")
-        return JSONResponse({"error": f"edit failed: {exc}"}, status_code=502)
+        return JSONResponse({"error": "edit failed"}, status_code=502)
     _reindex_dirty(st)
-    return JSONResponse({"ok": True, "document": path, "day": day_iso})
+    return JSONResponse({"ok": True, "document": path, "day": day_iso, "hash": new_hash})
 
 
 @app.get("/api/external-sources")
@@ -739,7 +845,8 @@ def api_external_sources_import(body: ImportRequest, request: Request) -> JSONRe
             raise HTTPException(status_code=413, detail="Source file exceeds 2 MiB")
         text = raw.decode("utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        raise HTTPException(status_code=400, detail=f"file unreadable: {exc}")
+        log.warning("import source unreadable: %s", type(exc).__name__)
+        raise HTTPException(status_code=400, detail="file unreadable (not UTF-8 text or not accessible)")
     if not text.strip():
         raise HTTPException(status_code=400, detail="file is empty")
 
@@ -754,7 +861,8 @@ def api_external_sources_import(body: ImportRequest, request: Request) -> JSONRe
             now=datetime.now().replace(hour=12, minute=0, second=0, microsecond=0),
         )
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"import failed: {exc}")
+        log.exception("diary import failed")
+        raise HTTPException(status_code=502, detail="import failed; check the Diary service log")
 
     threading.Thread(
         target=_reindex_today,
@@ -792,7 +900,8 @@ def api_storage_backup(request: Request):
         raise HTTPException(401, "unauthorized")
     # A worker must not replay legacy writes, initialize empty diaries, or load
     # inference clients merely because it is checking for durable backup work.
-    user_id = request.headers.get("X-Cowork-User-ID", "")
+    # Same normalization as _tenant_state: tenant ids are case-insensitive.
+    user_id = request.headers.get("X-Cowork-User-ID", "").lower()
     if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", user_id):
         raise HTTPException(400, "invalid tenant")
     root = Path(_base_cfg.get("retrieval.db_path")).parent / "users" / user_id
@@ -1060,10 +1169,10 @@ async def v1_chat_completions(request: Request) -> JSONResponse:
         result = await run_in_threadpool(_run_exchange, st, last, session_id, tenant_id, entry_time, entry_day, True, optional_reference(body))
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         log.exception("v1 exchange failed")
         return JSONResponse(
-            {"error": {"message": f"model error: {exc}", "type": "api_error"}}, status_code=502
+            {"error": {"message": "model error", "type": "api_error"}}, status_code=502
         )
 
     now = int(time.time())

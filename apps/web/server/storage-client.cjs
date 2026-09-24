@@ -24,8 +24,61 @@
 // unaffected by this.
 
 const { signS3Request } = require('./s3-sign.cjs');
+const { normalizeS3Region } = require('./s3-region.cjs');
+
+
+// PROPFIND <href> text is XML-escaped (&amp; &lt; &gt; &quot; &apos; and numeric refs like &#38;);
+// it has to be decoded back to the real path before parsing as a URL, or an escaped name (e.g.
+// "a&b.md" sent as "a&amp;b.md") lists under the escaped spelling and 404s on every read.
+function decodeXmlEntities(s) {
+  return String(s).replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (m, ent) => {
+    if (ent[0] === '#') {
+      const code = ent[1] === 'x' || ent[1] === 'X' ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
+      // A hostile body can name a code point String.fromCodePoint refuses (out of range, or a
+      // lone surrogate): leave the original text alone rather than throwing and losing the listing.
+      const valid = Number.isFinite(code) && code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF);
+      return valid ? String.fromCodePoint(code) : m;
+    }
+    switch (ent) {
+      case 'amp': return '&';
+      case 'lt': return '<';
+      case 'gt': return '>';
+      case 'quot': return '"';
+      case 'apos': return "'";
+      default: return m;
+    }
+  });
+}
 
 const READ_CAP = 200_000; // matches the project-file upload cap
+const TEXT_BODY_CAP = READ_CAP * 4; // bytes read for a text preview (UTF-8 is at most 4 bytes a char)
+const LIST_BODY_CAP = 4 * 1024 * 1024; // a directory listing response
+
+/** Reads at most `cap` bytes of a response body as UTF-8, then cancels the rest of the stream. */
+async function readCappedText(response, cap) {
+  if (!response.body) return { text: '', capped: false };
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0, capped = false;
+  try {
+    while (size < cap) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const room = cap - size;
+      const piece = value.byteLength > room ? value.subarray(0, room) : value;
+      chunks.push(Buffer.from(piece));
+      size += piece.byteLength;
+    }
+    if (size >= cap) {
+      const next = await reader.read().catch(() => ({ done: true }));
+      if (!next.done) { capped = true; await reader.cancel().catch(() => {}); }
+    }
+  } finally { reader.releaseLock(); }
+  // A multi-byte character cut at the cap decodes to U+FFFD; drop it.
+  let text = Buffer.concat(chunks, size).toString('utf8');
+  if (capped) text = text.replace(/\uFFFD$/, '');
+  return { text, capped };
+}
 const TEXT_EXTENSIONS = new Set([
   '.txt', '.md', '.markdown', '.json', '.csv', '.yml', '.yaml',
   '.ts', '.tsx', '.js', '.jsx', '.py', '.sh', '.html', '.css',
@@ -101,7 +154,7 @@ async function davList(conn, fullPath) {
   }));
   if (response.status === 404) return [];
   if (!response.ok && response.status !== 207) throw new Error(`storage returned ${response.status}`);
-  const body = await response.text();
+  const { text: body } = await readCappedText(response, LIST_BODY_CAP);
   const entries = [];
   const requestDir = decodeURIComponent(new URL(target).pathname).replace(/\/+$/, '');
   for (const match of body.matchAll(/<(?:[a-zA-Z0-9]+:)?response>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?response>/g)) {
@@ -109,8 +162,9 @@ async function davList(conn, fullPath) {
     const hrefMatch = block.match(/<(?:[a-zA-Z0-9]+:)?href>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?href>/);
     if (!hrefMatch) continue;
     let href;
-    try { href = decodeURIComponent(new URL(hrefMatch[1].trim(), target).pathname); } catch { continue; }
-    const relative = href.replace(/\/+$/, '').slice(requestDir.length + 1);
+    try { href = decodeURIComponent(new URL(decodeXmlEntities(hrefMatch[1]).trim(), target).pathname).replace(/\/+$/, ''); } catch { continue; }
+    if (href !== requestDir && !href.startsWith(`${requestDir}/`)) continue; // a foreign href: not under the browsed directory
+    const relative = href.slice(requestDir.length + 1);
     if (!relative || relative.includes('/')) continue; // direct children only
     const isDir = /<(?:[a-zA-Z0-9]+:)?collection\s*\/?>/.test(block);
     const sizeMatch = block.match(/<(?:[a-zA-Z0-9]+:)?getcontentlength>(\d+)</);
@@ -133,7 +187,7 @@ async function davRead(conn, fullPath) {
     redirect: 'error',
   }));
   if (!response.ok) throw new Error(`storage returned ${response.status}`);
-  return response.text();
+  return readCappedText(response, TEXT_BODY_CAP);
 }
 
 // ── S3-compatible ────────────────────────────────────────────────────────────
@@ -153,12 +207,12 @@ async function s3List(conn, connectionPath) {
   const queryPrefix = dirPrefix ? `${dirPrefix}/` : '';
   const url = s3Url(conn, '', { 'list-type': '2', prefix: queryPrefix, delimiter: '/', 'max-keys': '1000' });
   const response = await withRetry(() => fetch(url, {
-    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || ''),
+    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }),
     signal: AbortSignal.timeout(15000),
     redirect: 'error',
   }));
   if (!response.ok) throw new Error(`storage returned ${response.status}`);
-  const body = await response.text();
+  const { text: body } = await readCappedText(response, LIST_BODY_CAP);
   const entries = [];
   for (const match of body.matchAll(/<CommonPrefixes><Prefix>([\s\S]*?)<\/Prefix><\/CommonPrefixes>/g)) {
     const full = match[1].replace(/\/+$/, '');
@@ -180,12 +234,12 @@ async function s3List(conn, connectionPath) {
 async function s3Read(conn, connectionPath) {
   const url = s3Url(conn, joinRoot(conn.corpusRoot, connectionPath));
   const response = await withRetry(() => fetch(url, {
-    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || ''),
+    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }),
     signal: AbortSignal.timeout(20000),
     redirect: 'error',
   }));
   if (!response.ok) throw new Error(`storage returned ${response.status}`);
-  return response.text();
+  return readCappedText(response, TEXT_BODY_CAP);
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -224,10 +278,10 @@ async function readTextFile(conn, rawPath, opts) {
   if (!TEXT_EXTENSIONS.has(extensionOf(name))) {
     throw Object.assign(new Error(`"${name}" is not a supported text file`), { status: 400 });
   }
-  const text = connectionKind(conn) === 's3'
+  const { text, capped } = connectionKind(conn) === 's3'
     ? await s3Read(conn, path)
     : await davRead(conn, scoped ? joinRoot(conn.corpusRoot, path) : path);
-  return { name, content: text.slice(0, READ_CAP), truncated: text.length > READ_CAP };
+  return { name, content: text.slice(0, READ_CAP), truncated: capped || text.length > READ_CAP };
 }
 
 /** Create one directory. The only write this module performs: MKCOL creates a
@@ -275,7 +329,7 @@ async function readBinaryFile(conn, rawPath, opts) {
   const url = s3 ? s3Url(conn, full) : davUrl(conn, full);
   const response = await withRetry(() => fetch(url, {
     method: 'GET',
-    headers: s3 ? signS3Request('GET', url, '', conn.username || '', conn.secret || '') : davHeaders(conn, {}),
+    headers: s3 ? signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }) : davHeaders(conn, {}),
     signal: AbortSignal.timeout(30000),
     redirect: 'error',
   }));
@@ -374,7 +428,7 @@ async function removeEmptyFolder(conn, rawPath) {
     const hrefMatch = block.match(/<(?:[a-zA-Z0-9]+:)?href>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?href>/);
     if (!hrefMatch) continue;
     let href;
-    try { href = decodeURIComponent(new URL(hrefMatch[1].trim(), target).pathname).replace(/\/+$/, ''); } catch { children++; continue; }
+    try { href = decodeURIComponent(new URL(decodeXmlEntities(hrefMatch[1]).trim(), target).pathname).replace(/\/+$/, ''); } catch { children++; continue; }
     if (href === requestDir) {
       isCollection = /<(?:[a-zA-Z0-9]+:)?collection\s*\/?>/.test(block);
       etag = (block.match(/<(?:[a-zA-Z0-9]+:)?getetag>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?getetag>/)?.[1] || '').trim()

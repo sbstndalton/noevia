@@ -188,6 +188,51 @@ test('corpus scoping is still available for callers that want it', async (t) => 
   assert.equal(notes.content, '# notes\n\nremote knowledge');
 });
 
+function startRawPropfindServer(xmlBody) {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      if (req.method === 'PROPFIND') {
+        res.writeHead(207, { 'Content-Type': 'application/xml' });
+        res.end(xmlBody);
+        return;
+      }
+      res.writeHead(404); res.end();
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+test('PROPFIND hrefs are XML-entity-decoded, and an href outside the browsed directory is skipped', async (t) => {
+  const xml = `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">` +
+    `<d:response><d:href>/dav/Cowork/a%26b.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>3</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `<d:response><d:href>/dav/Cowork/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>` +
+    `<d:response><d:href>/elsewhere/foreign.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `</d:multistatus>`;
+  // The real escaping happens on the wire: the server sends the entity-escaped form of "a&b.md".
+  const escaped = xml.replace('/dav/Cowork/a%26b.md', '/dav/Cowork/a&amp;b.md');
+  const { server, port } = await startRawPropfindServer(escaped);
+  t.after(() => server.close());
+  const conn = { kind: 'webdav', baseUrl: `http://127.0.0.1:${port}/dav`, username: 'u', secret: 'p', corpusRoot: 'Cowork' };
+  const entries = await listFiles(conn, 'Cowork');
+  assert.deepEqual(entries.map((e) => e.name), ['a&b.md'], 'entity-decoded, and the foreign href is dropped');
+});
+
+test('an out-of-range or surrogate numeric entity in a hostile PROPFIND body does not crash the listing', async (t) => {
+  const xml = `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">` +
+    `<d:response><d:href>/dav/Cowork/bad&#99999999;.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `<d:response><d:href>/dav/Cowork/bad2&#xD800;.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `<d:response><d:href>/dav/Cowork/ok.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `</d:multistatus>`;
+  const { server, port } = await startRawPropfindServer(xml);
+  t.after(() => server.close());
+  const conn = { kind: 'webdav', baseUrl: `http://127.0.0.1:${port}/dav`, username: 'u', secret: 'p', corpusRoot: 'Cowork' };
+  const entries = await listFiles(conn, 'Cowork');
+  // The invalid entities are left as literal text (not decoded, not thrown); the listing still
+  // succeeds and includes every entry, including the well-formed one.
+  assert.ok(entries.some((e) => e.name === 'ok.md'));
+  assert.equal(entries.length, 3);
+});
+
 test('createFolder makes a directory, tolerates one that exists, and refuses S3', async (t) => {
   const { server, port } = await startFakeDav();
   t.after(() => server.close());
@@ -225,6 +270,72 @@ test('s3 listFiles and readTextFile honor the connection-relative contract', asy
 
   await assert.rejects(() => readTextFile(conn, 'Docs/binary.bin'), /not a supported text file/);
   await assert.rejects(() => readTextFile(conn, 'nope.md'), /storage returned 404/);
+});
+
+// ── capped body reads (mocked fetch; no network) ─────────────────────────────
+
+/** A response whose body is `total` bytes of `fill`, served in 64 KiB chunks, counting pulls. */
+function hugeResponse(total, fill = 'a', status = 200, prefix = '') {
+  const stats = { served: 0, cancelled: false };
+  const chunk = 64 * 1024;
+  const body = new ReadableStream({
+    pull(controller) {
+      if (stats.served >= total) return controller.close();
+      const n = Math.min(chunk, total - stats.served);
+      const text = stats.served === 0 ? (prefix + fill.repeat(n)).slice(0, n) : fill.repeat(n);
+      stats.served += n;
+      controller.enqueue(new TextEncoder().encode(text));
+    },
+    cancel() { stats.cancelled = true; },
+  }, { highWaterMark: 0 });
+  const response = new Response(body, { status });
+  response.text = () => { throw new Error('the whole body must never be buffered'); };
+  return { response, stats };
+}
+
+function withFetch(t, impl) {
+  const real = globalThis.fetch;
+  globalThis.fetch = impl;
+  t.after(() => { globalThis.fetch = real; });
+}
+
+const { READ_CAP } = require('./storage-client.cjs');
+const HUGE = 64 * 1024 * 1024;
+
+for (const kind of ['webdav', 's3']) {
+  test(`${kind} readTextFile stops reading an oversized body at the cap and cancels it`, async (t) => {
+    const { response, stats } = hugeResponse(HUGE);
+    withFetch(t, async () => response);
+    const conn = kind === 's3'
+      ? { kind, baseUrl: 'http://s3.invalid', bucket: 'b', username: 'ak', secret: 'sk' }
+      : { kind, baseUrl: 'http://dav.invalid/remote.php/dav/files/u' };
+    const r = await readTextFile(conn, 'big.md');
+    assert.equal(r.content.length, READ_CAP);
+    assert.equal(r.truncated, true);
+    assert.ok(stats.served <= READ_CAP * 4 + 128 * 1024, `read ${stats.served} bytes`);
+    assert.equal(stats.cancelled, true);
+  });
+
+  test(`${kind} listing reads at most 4 MiB of an oversized body`, async (t) => {
+    const entry = kind === 's3'
+      ? '<ListBucketResult><Contents><Key>a.md</Key><Size>3</Size></Contents>'
+      : '<d:multistatus><d:response><d:href>/remote.php/dav/files/u/a.md</d:href><d:propstat><d:prop><d:getcontentlength>3</d:getcontentlength></d:prop></d:propstat></d:response>';
+    const { response, stats } = hugeResponse(HUGE, ' ', kind === 's3' ? 200 : 207, entry);
+    withFetch(t, async () => response);
+    const conn = kind === 's3'
+      ? { kind, baseUrl: 'http://s3.invalid', bucket: 'b', username: 'ak', secret: 'sk' }
+      : { kind, baseUrl: 'http://dav.invalid/remote.php/dav/files/u' };
+    const entries = await listFiles(conn, '');
+    assert.deepEqual(entries.map((e) => e.name), ['a.md'], 'entries inside the cap still parse');
+    assert.ok(stats.served <= 4 * 1024 * 1024 + 128 * 1024, `read ${stats.served} bytes`);
+    assert.equal(stats.cancelled, true);
+  });
+}
+
+test('a small text body is read whole and not marked truncated', async (t) => {
+  withFetch(t, async () => new Response('short and sweet \u00e9'));
+  const r = await readTextFile({ kind: 'webdav', baseUrl: 'http://dav.invalid/' }, 'a.md');
+  assert.deepEqual(r, { name: 'a.md', content: 'short and sweet \u00e9', truncated: false });
 });
 
 // ── route-level tests (fake WebDAV behind the real proxy routes) ─────────────

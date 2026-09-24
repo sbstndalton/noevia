@@ -57,6 +57,7 @@ import { Inspector } from './components/Inspector';
 import { StatsBar } from './components/StatsBar';
 import { settleToolCalls } from './tool-call-state';
 import { mergeTranscripts } from './transcript-merge';
+import { adoptMergedTranscript, enqueueKeyed, latestGate, resolveLoadedHistory, shouldSaveChat, upsertChatMeta } from './chat-save';
 import { readLastPlace, writeLastPlace, clearLastPlace } from './last-view';
 import { currentRoutingDecision } from './current-routing';
 
@@ -113,6 +114,9 @@ export default function App(): JSX.Element {
   // workspace load below can drop a reference to something that no longer exists.
   const restored = useRef(readLastPlace());
   const [view, setView] = useState<View>(() => restored.current?.view ?? { kind: 'chat', chatId: `c-${uid()}`, projectId: null });
+  // Latest view for async callbacks (a delete resolving after the person moved elsewhere).
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [accountId, setAccountId] = useState<string | null>(null);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -156,8 +160,20 @@ export default function App(): JSX.Element {
   // then terminates the upstream request.
   const streamAbort = useRef<Record<string, AbortController>>({});
   const sendingChats = useRef<Set<string>>(new Set());
+  const historyLoads = useRef<Record<string, Promise<Message[] | null>>>({});
+  const statsGate = useRef(latestGate());
   const historyRevisions = useRef<Record<string, string | null>>({});
   const historySaves = useRef<Record<string, Promise<void>>>({});
+  // A merged transcript that arrived while a reply was streaming into that chat. Applying it then
+  // would replace the live user message and reply placeholder; it is folded into the save made
+  // when the stream ends instead.
+  const deferredMerges = useRef<Record<string, HistoryEntry[]>>({});
+  // Chats whose transcript should be saved once the current render commits (kept out of state
+  // updaters, which StrictMode runs twice).
+  const persistAfterCommit = useRef<Set<string>>(new Set());
+  // Chats deleted in this session. A save queued (or retried) after the delete must not write the
+  // transcript back under the dead id.
+  const deletedChats = useRef<Set<string>>(new Set());
   const abortStream = useCallback((chatId: string) => {
     streamAbort.current[chatId]?.abort();
     delete streamAbort.current[chatId];
@@ -295,9 +311,10 @@ export default function App(): JSX.Element {
     const tick = () => {
       if (pending || document.visibilityState === 'hidden') return;
       pending = true;
+      const seq = statsGate.current.next();
       void fetchStats()
-        .then((s) => alive && setStats(s))
-        .catch(() => alive && setStats((prev) => (prev ? { ...prev, up: false, mtp: [] } : prev)))
+        .then((s) => { if (alive && statsGate.current.isLatest(seq)) setStats(s); })
+        .catch(() => { if (alive && statsGate.current.isLatest(seq)) setStats((prev) => (prev ? { ...prev, up: false, mtp: [] } : prev)); })
         .finally(() => { pending = false; });
     };
     tick();
@@ -316,12 +333,12 @@ export default function App(): JSX.Element {
     const id = view.chatId;
     if (loadedChats.current.has(id)) return;
     loadedChats.current.add(id);
-    fetchChatHistoryRevision(id)
+    // A send made before this resolves waits on it (see handleSend), and whatever is already on
+    // screen is merged with the loaded copy rather than replaced by it.
+    const load = fetchChatHistoryRevision(id)
       .then(({ history, revision }) => {
         historyRevisions.current[id] = revision;
-        setMessagesByChat((prev) => ({
-          ...prev,
-          [id]: history.map((h) => ({
+        const loaded: Message[] = history.map((h) => ({
             id: uid(),
             role: h.role,
             content: h.content,
@@ -331,10 +348,17 @@ export default function App(): JSX.Element {
             reasoningMs: h.reasoningMs,
             toolCalls: settleToolCalls(h.toolCalls),
             stats: h.stats,
-          })),
-        }));
+          }));
+        setMessagesByChat((prev) => ({ ...prev, [id]: resolveLoadedHistory(prev[id] ?? [], loaded) }));
+        return loaded;
       })
-      .catch(() => undefined);
+      .catch(() => {
+        // Not loaded: reopening the chat retries instead of leaving it empty with no revision.
+        loadedChats.current.delete(id);
+        return null;
+      })
+      .finally(() => { if (historyLoads.current[id] === load) delete historyLoads.current[id]; });
+    historyLoads.current[id] = load;
   }, [view]);
 
   const allChats: ChatMeta[] = useMemo(() => {
@@ -409,21 +433,46 @@ export default function App(): JSX.Element {
     }));
     // Saves for one chat run in order. If another device saved first, merge its copy with ours
     // (nothing either side wrote is dropped), show the merged transcript, and save that.
+    const show = (merged: HistoryEntry[]) => {
+      if (sendingChats.current.has(chatId)) { deferredMerges.current[chatId] = merged; return; }
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [chatId]: adoptMergedTranscript(prev[chatId] ?? [], merged, uid, (h, id) => ({ id, role: h.role, content: h.content, senderLabel: h.model, routingDecision: h.routingDecision, reasoning: h.reasoning, reasoningMs: h.reasoningMs, toolCalls: settleToolCalls(h.toolCalls), stats: h.stats })),
+      }));
+    };
+    if (!shouldSaveChat(chatId, deletedChats.current)) return;
     const run = async () => {
+      if (!shouldSaveChat(chatId, deletedChats.current)) return;
       let next = entries;
+      // A merge held back while a reply streamed is folded in now, so the save that follows the
+      // stream does not overwrite the other device's turns with our shorter copy.
+      const deferred = deferredMerges.current[chatId];
+      if (deferred && !sendingChats.current.has(chatId)) {
+        delete deferredMerges.current[chatId];
+        const merged = mergeTranscripts(deferred, next);
+        if (merged !== next) { next = merged; show(merged); }
+      }
       for (let attempt = 0; attempt < 3; attempt++) {
+        if (!shouldSaveChat(chatId, deletedChats.current)) return;
         const result = await saveChatHistory(chatId, next, historyRevisions.current[chatId]);
         if (result.ok) { historyRevisions.current[chatId] = result.revision; return; }
         const merged = mergeTranscripts(result.conflict.history, next);
         historyRevisions.current[chatId] = result.conflict.revision;
         if (merged !== next) {
           next = merged;
-          setMessagesByChat((prev) => ({ ...prev, [chatId]: merged.map((h) => ({ id: uid(), role: h.role, content: h.content, senderLabel: h.model, routingDecision: h.routingDecision, reasoning: h.reasoning, reasoningMs: h.reasoningMs, toolCalls: settleToolCalls(h.toolCalls), stats: h.stats })) }));
+          show(merged);
         }
       }
     };
     historySaves.current[chatId] = (historySaves.current[chatId] || Promise.resolve()).then(run).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!persistAfterCommit.current.size) return;
+    const due = [...persistAfterCommit.current];
+    persistAfterCommit.current.clear();
+    for (const chatId of due) persist(chatId, messagesByChat[chatId] ?? []);
+  }, [messagesByChat, persist]);
 
   const handleSend = useCallback(
     async (chatId: string, projectId: string | null, text: string, base?: Message[]) => {
@@ -432,7 +481,11 @@ export default function App(): JSX.Element {
       if (streamingChats[chatId] || sendingChats.current.has(chatId)) return;
       sendingChats.current.add(chatId);
       const userMsg: Message = { id: uid(), role: 'user', content: text };
-      const existing = base ?? messagesRef.current[chatId] ?? [];
+      // History still loading: wait for it so the model sees the earlier turns and the load does
+      // not land on top of this turn.
+      const pendingLoad = base ? undefined : historyLoads.current[chatId];
+      const loaded = pendingLoad ? await pendingLoad : null;
+      const existing = base ?? (loaded ? resolveLoadedHistory(messagesRef.current[chatId] ?? [], loaded) : messagesRef.current[chatId] ?? []);
       const history: HistoryEntry[] = existing.filter(m => !m.error).map(m => ({ role: m.role, content: m.content }));
       setMessagesByChat(prev => ({ ...prev, [chatId]: [...existing, userMsg] }));
       const replyId = uid();
@@ -451,25 +504,41 @@ export default function App(): JSX.Element {
       // Upsert the chat's meta on every send, not only the first. Registering
       // once meant updatedAt froze at creation, so a list sorted by recency
       // never actually moved, and there was nothing to preview a chat with.
-      const upsert = (list: ChatMeta[]): ChatMeta[] => {
-        const existing = list.find((c) => c.id === chatId);
-        const meta: ChatMeta = existing
-          ? { ...existing, title: titleAfterSend(existing.title, messagesRef.current[chatId] ?? [], base, text), preview: text.slice(0, 200), updatedAt: Date.now() }
-          : { id: chatId, title: text.slice(0, 80), preview: text.slice(0, 200), updatedAt: Date.now() };
-        return [meta, ...list.filter((c) => c.id !== chatId)];
-      };
-      if (projectId) {
-        const project = projects.find((p) => p.id === projectId);
-        if (project) {
-          saveProjectChats(projectId, upsert(project.chats || []))
-            .then(() => refreshProjects())
-            .catch(() => undefined);
+      // Each write sends the whole list, so it is built from the latest list when its turn in the
+      // per-list queue comes (not the list captured when this send began), and writes for one
+      // list run in order. Two new chats sent at once therefore both survive.
+      const priorMessages = messagesRef.current[chatId] ?? [];
+      const sentAt = Date.now();
+      const make = (existing: ChatMeta | undefined): ChatMeta => existing
+        ? { ...existing, title: titleAfterSend(existing.title, priorMessages, base, text), preview: text.slice(0, 200), updatedAt: sentAt }
+        : { id: chatId, title: text.slice(0, 80), preview: text.slice(0, 200), updatedAt: sentAt };
+      void enqueueKeyed(chatMetaSaves.current, projectId === null ? 'free' : `project:${projectId}`, async () => {
+        if (projectId) {
+          const project = projectsRef.current.find((p) => p.id === projectId);
+          if (!project) return;
+          const next = upsertChatMeta(project.chats || [], chatId, make);
+          await saveProjectChats(projectId, next);
+          projectsRef.current = projectsRef.current.map((p) => (p.id === projectId ? { ...p, chats: next } : p));
+        } else {
+          const next = upsertChatMeta(freeChatsRef.current, chatId, make);
+          await saveFreeChats(next);
+          freeChatsRef.current = next;
         }
-      } else {
-        saveFreeChats(upsert(freeChats))
-          .then(() => refreshProjects())
-          .catch(() => undefined);
-      }
+        // A workspace GET that began before this save may carry the old list.
+        workspaceRequest.current += 1;
+        // Await (not fire-and-forget) so the refs are back in sync with the
+        // server before the next queued task for this key reads them. Every
+        // render reassigns projectsRef/freeChatsRef from state at the top of
+        // this component, so a render landing between two queued tasks would
+        // otherwise reset the ref to the stale pre-save list and the next
+        // task's whole-list PUT would drop this task's chat. If this call is
+        // itself superseded by a later refreshProjects (request !==
+        // workspaceRequest.current), it resolves without touching the refs,
+        // but that's fine: the ref writes just above (projectsRef.current /
+        // freeChatsRef.current) already reflect this task's saved list, and
+        // the later, superseding refresh will bring in server truth anyway.
+        await refreshProjects();
+      }).catch(() => undefined);
 
       const startedAt = Date.now();
       let failed = false;
@@ -618,7 +687,8 @@ export default function App(): JSX.Element {
             }));
             // Totals are engine-scoped, so reconcile them separately without
             // letting that response replace this chat's request-local facts.
-            void fetchStats().then(setStats).catch(() => undefined);
+            const statsSeq = statsGate.current.next();
+            void fetchStats().then((s) => { if (statsGate.current.isLatest(statsSeq)) setStats(s); }).catch(() => undefined);
           } else if (ev.type === 'done') {
             streamCompleted = true;
             setReplyTelemetryByChat((prev) => ({
@@ -688,14 +758,17 @@ export default function App(): JSX.Element {
           delete next[chatId];
           return next;
         });
-        setMessagesByChat((prev) => {
-          const msgs = (prev[chatId] ?? []).map((m) => (m.id === replyId && m.toolCalls ? { ...m, toolCalls: settleToolCalls(m.toolCalls) } : m));
-          persist(chatId, msgs);
-          return { ...prev, [chatId]: msgs };
-        });
+        // A chat deleted mid-reply stays deleted: no settle write, no save.
+        if (!deletedChats.current.has(chatId)) {
+          persistAfterCommit.current.add(chatId);
+          setMessagesByChat((prev) => ({
+            ...prev,
+            [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId && m.toolCalls ? { ...m, toolCalls: settleToolCalls(m.toolCalls) } : m)),
+          }));
+        }
       }
     },
-    [freeChats, persist, projects, streamingChats],
+    [refreshProjects, streamingChats],
   );
 
   const sendToCurrent = useCallback(
@@ -836,18 +909,39 @@ export default function App(): JSX.Element {
       const req = projectId ? deleteChat(projectId, chatId) : deleteFreeChat(chatId);
       req
         .then(() => {
+          // Stop the live reply first so its stream cannot write the chat back, then forget every
+          // per-chat record; later saves for this id are refused (see shouldSaveChat).
+          deletedChats.current.add(chatId);
+          abortStream(chatId);
           loadedChats.current.delete(chatId);
+          sendingChats.current.delete(chatId);
+          persistAfterCommit.current.delete(chatId);
+          delete deferredMerges.current[chatId];
+          delete historyRevisions.current[chatId];
+          delete historyLoads.current[chatId];
+          delete historySaves.current[chatId];
+          setStreamingChats((prev) => {
+            if (!(chatId in prev)) return prev;
+            const next = { ...prev };
+            delete next[chatId];
+            return next;
+          });
           setMessagesByChat((prev) => {
             const next = { ...prev };
             delete next[chatId];
             return next;
           });
-          if (projectId) setView({ kind: 'project', id: projectId });
+          // Only the open chat moves the view: a project chat returns to its project, a free chat
+          // to a fresh new chat, so the next message does not go to the deleted id.
+          if (viewRef.current.kind === 'chat' && viewRef.current.chatId === chatId) {
+            if (projectId) setView({ kind: 'project', id: projectId });
+            else startFreeChat();
+          }
           refreshProjects();
         })
         .catch(() => undefined);
     },
-    [refreshProjects],
+    [refreshProjects, abortStream, startFreeChat],
   );
 
   // A metadata POST contains the whole list. Save one action at a time per list,
@@ -1036,6 +1130,7 @@ export default function App(): JSX.Element {
 
       {view.kind === 'project' && activeProject && (
         <ProjectView
+          key={activeProject.id}
           modelLabel={modelChoiceLabel(activeProject, modelsLoaded && !modelsError ? models : null)}
           onOpenModels={() => setPopupOpen(true)}
           onEdit={() => setEditingProjectId(activeProject.id)}
