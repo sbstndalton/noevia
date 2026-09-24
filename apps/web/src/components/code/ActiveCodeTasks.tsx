@@ -12,6 +12,7 @@ interface ActiveTask {
 /** One scoped request covers every project; the server includes only this administrator's live tasks. */
 export function ActiveCodeTasks({ onOpenProject }: { onOpenProject: (id: string) => void }): JSX.Element | null {
   const [tasks, setTasks] = useState<ActiveTask[]>([]);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
   const [unavailable, setUnavailable] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -25,10 +26,10 @@ export function ActiveCodeTasks({ onOpenProject }: { onOpenProject: (id: string)
       pending = true;
       try {
         const response = await apiFetch('/api/code/active');
-        if (response.status === 403 || response.status === 404) { if (live) { setUnavailable(true); setTasks([]); } return; }
+        if (response.status === 403 || response.status === 404) { if (live) { setUnavailable(true); setTasks([]); setTotal(0); } return; }
         if (!response.ok) throw new Error(`Task status unavailable (${response.status})`);
-        const result = await response.json() as { tasks: ActiveTask[] };
-        if (live) { setTasks(result.tasks); setError(''); }
+        const result = await response.json() as { tasks: ActiveTask[]; total: number };
+        if (live) { setTasks(result.tasks); setTotal(result.total); setError(''); }
       } catch (cause) {
         if (live) setError(cause instanceof Error ? cause.message : 'Task status unavailable');
       } finally { pending = false; }
@@ -48,6 +49,7 @@ export function ActiveCodeTasks({ onOpenProject }: { onOpenProject: (id: string)
     <details>
       <summary>{error ? 'Code task status unavailable' : waiting ? `${waiting} Code ${waiting === 1 ? 'task needs' : 'tasks need'} your decision` : `${tasks.length} active Code ${tasks.length === 1 ? 'task' : 'tasks'}`}</summary>
       {error && <p role="alert">{error} <button type="button" onClick={() => setRevision((value) => value + 1)}>Retry</button></p>}
+      {total > tasks.length && <p>Showing {tasks.length} of {total} active tasks. Open a project’s Code tab for its complete task list.</p>}
       {tasks.length > 0 && <ul>{tasks.map((task) => <li key={task.id}>
         <span><strong>{task.projectName}</strong> · {task.status === 'waiting_approval' ? `Waiting for your decision${task.approvalAction ? `: ${task.approvalAction.replaceAll('_', ' ')}` : ''}` : task.stage || (task.status === 'queued' ? 'Queued' : 'Running')}</span>
         <small>{task.title || 'Code task'}</small>

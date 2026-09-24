@@ -21,12 +21,13 @@ function createCodeRoutes({ service, features, getProject, projects = () => [], 
       if (req.method !== 'GET') return send(405, { error: 'method not allowed' });
       try {
         const ws = workspace();
-        const tasks = projects().flatMap((project) => service.list(ws, project)
-          .filter((task) => ['queued', 'running', 'waiting_approval'].includes(task.status))
-          .map((task) => ({ id: task.id, projectId: project.id, projectName: project.name,
-            title: task.task, status: task.status, stage: task.stage, updatedAt: task.updatedAt,
-            approvalAction: task.approval?.action || null })));
-        return send(200, { tasks });
+        const visible = projects();
+        const names = new Map(visible.map((project) => [project.id, project.name]));
+        const active = service.listActive(ws, names.keys());
+        const tasks = active.tasks.map((task) => ({ id: task.id, projectId: task.projectId,
+          projectName: names.get(task.projectId), title: task.task, status: task.status,
+          stage: task.stage, updatedAt: task.updatedAt, approvalAction: task.approval?.action || null }));
+        return send(200, { tasks, total: active.total });
       } catch (error) { return send(error.status || 500, { error: error.publicMessage || 'Could not load active tasks' }); }
     }
     const project = getProject(decodeURIComponent(m[1]));

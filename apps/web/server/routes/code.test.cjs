@@ -10,7 +10,8 @@ function harness({ enabled = true } = {}) {
     harnesses: () => [{ id: 'opencode', label: 'OpenCode', version: null }],
     promptPreparation: () => [{ id: 'direct', label: 'Direct', available: true, reason: 'As you wrote it.' }],
     sandboxed: () => true,
-    list: (ws, p) => p.id === 'p1' ? [{ id: 'task-1', status: 'waiting_approval', task: 'Fix tests', stage: 'Checking tests', updatedAt: 10, approval: { action: 'execute_command' } }] : [{ id: 'task-2', status: 'completed' }], get: (ws, p, id) => ({ id }),
+    list: (ws, p) => p.id === 'p1' ? [{ id: 'task-1', status: 'waiting_approval', task: 'Fix tests', stage: 'Checking tests', updatedAt: 10, approval: { action: 'execute_command' } }] : [{ id: 'task-2', status: 'completed' }],
+    listActive: () => ({ tasks: [{ id: 'task-1', projectId: 'p1', status: 'waiting_approval', task: 'Fix tests', stage: 'Checking tests', updatedAt: 10, approval: { action: 'execute_command' } }], total: 1 }), get: (ws, p, id) => ({ id }),
     start: async (ws, p, body) => { calls.push(['start', p.id, body]); return { taskId: 't', branch: 'noevia/task-t' }; },
     decide: (ws, p, id, decision, approvalId) => { calls.push(['decide', id, decision, approvalId]); return { ok: true }; },
     cancel: (ws, p, id) => { calls.push(['cancel', id]); return { id, status: 'cancelled' }; },
@@ -41,7 +42,7 @@ test('active summary includes only live tasks from this scoped project list', as
   const { call } = harness();
   const response = await call('GET', '/api/code/active');
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.tasks, [{ id: 'task-1', projectId: 'p1', projectName: 'Alpha', title: 'Fix tests', status: 'waiting_approval', stage: 'Checking tests', updatedAt: 10, approvalAction: 'execute_command' }]);
+  assert.deepEqual(response.body, { tasks: [{ id: 'task-1', projectId: 'p1', projectName: 'Alpha', title: 'Fix tests', status: 'waiting_approval', stage: 'Checking tests', updatedAt: 10, approvalAction: 'execute_command' }], total: 1 });
   assert.equal((await call('POST', '/api/code/active')).status, 405);
 });
 

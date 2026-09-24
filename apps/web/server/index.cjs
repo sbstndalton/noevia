@@ -613,7 +613,7 @@ async function handleRequestScoped(req, res) {
     if (await mcpDirectoryRoutes(req, res, { path: p, authn })) return;
     if (authn && await webAddressRoutes(req, res, { path: p, authn })) return;
     if (authn && p.startsWith('/api/projects/') && await researchRoutes(req, res, { path: p, authn })) return;
-    if (authn && p.startsWith('/api/projects/') && await codeRoutes(req, res, { path: p, authn })) return;
+    if (authn && (p === '/api/code/active' || p.startsWith('/api/projects/')) && await codeRoutes(req, res, { path: p, authn })) return;
     if (await diaryRoutes.connectors(req, res, { path: p, authn })) return;
     if (await projectRoutes(req, res, { path: p, authn, url })) return;
     if (await authRoutes.account(req, res, { path: p, authn })) return;
