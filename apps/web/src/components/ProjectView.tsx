@@ -35,6 +35,7 @@ function uniqueName(name: string, existing: { name: string }[]): string {
 
 interface ProjectViewProps {
   project: Project;
+  codeRequest?: string;
   onNewChat: (projectId: string) => void;
   onSendFirst: (projectId: string, text: string) => void;
   onSave: (projectId: string, patch: Partial<Project>) => Promise<void>;
@@ -76,6 +77,7 @@ function timeAgo(ts: number): string {
 
 export function ProjectView({
   project,
+  codeRequest,
   onNewChat,
   onSendFirst,
   onSave,
@@ -94,6 +96,7 @@ export function ProjectView({
   const [tab, setTab] = useState<'chats' | 'sources' | 'research' | 'code'>('chats');
   const researchAccess = useResearchAccess(project.id);
   const codeAccess = useCodeAccess(project.id);
+  useEffect(() => { if (codeRequest && codeAccess) setTab('code'); }, [codeRequest, codeAccess]);
   useEffect(() => { if (tab === 'research' && !researchAccess) setTab('chats'); }, [tab, researchAccess]);
   useEffect(() => { if (tab === 'code' && !codeAccess) setTab('chats'); }, [tab, codeAccess]);
   const [draft, setDraft] = useState('');
