@@ -76,7 +76,8 @@ credentials and model management, which the wizard does not cover.
 | `MODEL_MANAGER_KIND`, `MODEL_MANAGER_BASE_URL`, `MODEL_MANAGER_API_KEY` | Optional provider-specific local model management | Only if the human runs a supported model manager | API key **yes** | `HAS-SAFE-DEFAULT` (`none`) |
 | `MCP_SERVER_URL` | Optional MCP server exposing curated Nextcloud toolboxes to the model; streamable-http endpoint, usually ending `/mcp` | Only if the human runs an MCP server; it must be in multi-user mode so noevia can pass each user's own credential per request | no | `HAS-SAFE-DEFAULT` (empty — no MCP toolboxes, only the built-in `core` box) |
 | `MCP_NEXTCLOUD_ORIGINS` | Comma-separated origins that are the **same** Nextcloud the MCP server is configured against. A user's stored app password is forwarded only when their storage connection points at one of these | Required for MCP tools to work at all; ask the human for every address that reaches their Nextcloud (a LAN address and a public hostname are usually both needed) | no | `HAS-SAFE-DEFAULT` (empty — credentials are never forwarded, so MCP tools return an actionable error instead of leaking) |
-| `COWORK_VERSION` | Image tag for built images | Leave as `dev` unless the human asks for a pinned tag | no | `HAS-SAFE-DEFAULT` (`dev`) |
+| `COWORK_VERSION` | Web image tag | Leave as `dev` unless the human asks for a pinned tag | no | `HAS-SAFE-DEFAULT` (`dev`) |
+| `DIARY_VERSION`, `OCR_VERSION`, `MODEL_MANAGER_VERSION` | Diary, OCR and model manager image tags; required by Compose (`MODEL_MANAGER_VERSION` only with the llama.cpp overlay) | Leave as `dev` from `.env.example` unless the human asks for pinned tags | no | `HAS-SAFE-DEFAULT` (`dev`) |
 
 `STOP AND ASK THE HUMAN:` for every `HUMAN-REQUIRED` row above you lack a value
 for. Do not guess in those fields. The public origin, the inference endpoint and
