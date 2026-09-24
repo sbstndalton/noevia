@@ -65,6 +65,7 @@ import { mergeTranscripts } from './transcript-merge';
 import { adoptMergedTranscript, enqueueKeyed, latestGate, resolveLoadedHistory, shouldSaveChat, upsertChatMeta } from './chat-save';
 import { readLastPlace, writeLastPlace, clearLastPlace } from './last-view';
 import { currentRoutingDecision } from './current-routing';
+import { useT } from './i18n';
 
 type View =
   | { kind: 'diary' }
@@ -82,6 +83,7 @@ function uid(): string {
 
 export default function App(): JSX.Element {
   const {theme,preference,setTheme,setPreference,appearanceStatus,appearanceError,retryAppearance} = useAppearance();
+  const tr = useT();
   const [settingsSection,setSettingsSection] = useState<string>(() => readLastPlace()?.settings ?? 'general');
   // Each open is a fresh Settings: reopening while the last one is still animating out replaces it.
   const [settingsKey, setSettingsKey] = useState(0);
@@ -1258,7 +1260,7 @@ export default function App(): JSX.Element {
           project={activeProject ?? null}
           onProjectChanged={refreshProjects}
           chatId={view.chatId}
-          title={activeChatMeta?.title ?? (view.projectId ? 'New task' : 'New chat')}
+          title={activeChatMeta?.title ?? (view.projectId ? tr('sidebar.newTask') : tr('common.newChat'))}
           projectName={activeProject?.name ?? null}
           modelLabel={modelChoiceLabel(activeProject, modelsLoaded && !modelsError ? models : null)}
           installedModels={modelsLoaded && !modelsError ? models : null}
