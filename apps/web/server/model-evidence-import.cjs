@@ -15,6 +15,7 @@ const evidenceLib = require('./evidence.cjs');
 
 const ALLOWED_HOSTS = new Set(['huggingface.co']);
 const CHECKPOINT_RE = /^[\w.-]+\/[\w.-]+(?::[\w.-]+)?$/;
+const DOT_ONLY = /^\.+$/;
 const MAX_FIELD = 2000;
 const MAX_LIST = 8;
 
@@ -34,20 +35,28 @@ function sanitizeText(value, maxLen = MAX_FIELD) {
 }
 
 // The download checkpoint is `org/repo` or `org/repo:quant`; the model card lives at the
-// repo, not the quantization tag.
+// repo, not the quantization tag. A dot-only segment ("..", ".") is syntactically allowed by
+// the character class but is a path-traversal segment once interpolated into the card URL
+// (`acme/..` → `/api/models/acme/..` → the models listing; `../datasets` → `/api/datasets`),
+// so both segments are rejected outright rather than just escaped.
 function repoFromCheckpoint(checkpoint) {
   if (!CHECKPOINT_RE.test(String(checkpoint || ''))) return null;
-  return String(checkpoint).split(':')[0];
+  const repo = String(checkpoint).split(':')[0];
+  if (repo.split('/').some((segment) => DOT_ONLY.test(segment))) return null;
+  return repo;
 }
 
 function cardUrl(repo) {
   return `https://huggingface.co/api/models/${repo.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+// Confirms both the host and that the path still lands under the model-info endpoint this
+// module is meant to call — a second, independent check on top of repoFromCheckpoint's
+// segment validation, in case a future caller ever builds the URL another way.
 function hostAllowed(rawUrl) {
   try {
     const u = new URL(rawUrl);
-    return u.protocol === 'https:' && ALLOWED_HOSTS.has(u.hostname.toLowerCase());
+    return u.protocol === 'https:' && ALLOWED_HOSTS.has(u.hostname.toLowerCase()) && u.pathname.startsWith('/api/models/');
   } catch {
     return false;
   }
@@ -57,7 +66,7 @@ function hostAllowed(rawUrl) {
 // (huggingface.co/docs/hub/model-cards). Every string is sanitised and capped; the eval
 // section is capped to a handful of entries to keep one card bounded.
 function normalizeCard(repo, body) {
-  if (!body || typeof body !== 'object') return null;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const cardData = body.cardData && typeof body.cardData === 'object' ? body.cardData : {};
   const revision = /^[a-f0-9]{6,64}$/i.test(String(body.sha || '')) ? body.sha : null;
   const license = sanitizeText(cardData.license || body.license, 100);
@@ -98,10 +107,11 @@ function artifactIdentityHash(artifact) {
   return evidenceLib.identityHash({ artifact });
 }
 
-// Fetches and normalizes one model's external evidence. Never throws: every failure mode
-// (bad checkpoint, disallowed host, offline, oversized/invalid response) resolves to
+// Fetches and normalizes one model's external evidence. Never throws itself: every failure
+// mode (bad checkpoint, disallowed host, offline, oversized/invalid response) resolves to
 // { ok:false, reason }, so a caller wiring this into "download finished" cannot let a
-// metadata failure block or fail the download.
+// metadata failure block or fail the download. (importModelEvidence below, which also
+// writes the record, can still throw — see its own comment.)
 async function fetchModelCardEvidence({ checkpoint, artifact, fetchJson, now = () => Date.now() }) {
   const repo = repoFromCheckpoint(checkpoint);
   if (!repo) return { ok: false, reason: 'invalid checkpoint' };
@@ -135,14 +145,43 @@ async function fetchModelCardEvidence({ checkpoint, artifact, fetchJson, now = (
   };
 }
 
+// A caller (the explicit "fetch evidence" route) may pass an admin-supplied checkpoint
+// override. That override must describe the same repository the model itself already names,
+// or an admin could attribute an unrelated repo's license/eval claims to this model. When no
+// override is given, the model name is used as the checkpoint (true for a pulled llama.cpp
+// model, whose id is the HF repo it was pulled from).
+function resolveCheckpoint(model, checkpoint) {
+  if (checkpoint == null) return model;
+  const modelRepo = repoFromCheckpoint(model);
+  if (!modelRepo || repoFromCheckpoint(checkpoint) !== modelRepo) return null;
+  return checkpoint;
+}
+
 // Records the evidence via the shared append-only store (evidence.cjs), deduped by the
-// artifact-scoped identity: a refetch of the same artifact with unchanged card data appends
-// nothing; a changed card (or a new artifact under the same model name) appends a new record.
+// artifact-scoped identity. Deliberately compares only the fields that describe the card's
+// content, not `revision`: a repository that re-pushes the same card under a new commit (or
+// a moving `main` ref) must not append a new record every time it is refetched — only an
+// actual change to the recorded fields does. `revision` is still stored on every record for
+// provenance, just excluded from the "did anything change" comparison.
+//
+// Uses store.append (not store.appendIfChanged, whose generic whole-value comparison would
+// re-include revision) directly, so this can throw the same way any other evidence write can
+// — store.append rejects credential-shaped text. Every caller here (the download-completed
+// hook and the explicit import route) already catches and swallows that.
+function cardContentKey(value) {
+  if (!value) return null;
+  const { revision, ...rest } = value;
+  return JSON.stringify(rest);
+}
 async function importModelEvidence({ model, checkpoint, artifact, fetchJson, store, now }) {
-  const fetched = await fetchModelCardEvidence({ checkpoint, artifact, fetchJson, now });
+  const resolvedCheckpoint = resolveCheckpoint(model, checkpoint);
+  if (checkpoint != null && resolvedCheckpoint == null) return { ok: false, reason: 'checkpoint does not match this model' };
+  const fetched = await fetchModelCardEvidence({ checkpoint: resolvedCheckpoint, artifact, fetchJson, now });
   if (!fetched.ok || !store) return fetched;
-  const entry = store.appendIfChanged({ model, identityHash: fetched.record.identityHash, ...fetched.record });
-  return { ok: true, record: entry };
+  const entry = { model, ...fetched.record };
+  const newest = store.list().filter((r) => r.model === model && r.category === entry.category && r.identityHash === entry.identityHash).at(-1);
+  if (newest && cardContentKey(newest.value) === cardContentKey(entry.value)) return { ok: true, record: newest };
+  return { ok: true, record: store.append(entry) };
 }
 
 // State for one model's external evidence against its current artifact. Unlike
@@ -168,6 +207,7 @@ module.exports = {
   normalizeCard,
   artifactIdentityHash,
   fetchModelCardEvidence,
+  resolveCheckpoint,
   importModelEvidence,
   deriveExternal,
   ALLOWED_HOSTS,

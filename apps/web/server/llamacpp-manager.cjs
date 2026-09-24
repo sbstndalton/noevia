@@ -290,13 +290,18 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
   // Best-effort import of attributable model-card evidence for one model (#266). The
   // checkpoint (HF repo) equals the llama.cpp model id for a pulled model; a locally
   // renamed or non-HF model simply has no importable checkpoint and this resolves to
-  // { ok:false }. Never throws — every caller (the download-completed hook and the
-  // explicit route) treats a failure here as "nothing to show", not an error.
+  // { ok:false }. An explicit checkpoint override (only reachable from the admin-only
+  // "fetch evidence" route) is rejected unless it names the same repository as the model
+  // itself — see resolveCheckpoint in model-evidence-import.cjs — so an admin cannot
+  // attribute an unrelated repo's card to this model. This resolves failures, it does not
+  // throw for them; but the write it performs (store.append, on a change) can still throw
+  // on credential-shaped content, so every caller here (the download-completed hook and the
+  // explicit route) catches and swallows.
   async function importEvidence(model,{checkpoint}={}){
     const importLib=require('./model-evidence-import.cjs');
     const live=await computeIdentity(model);
     if(!live)return {ok:false,reason:'model artifact unavailable'};
-    return importLib.importModelEvidence({model,checkpoint:checkpoint||model,artifact:live.identity.artifact,fetchJson,store:evidenceStore,now:()=>Date.now()});
+    return importLib.importModelEvidence({model,checkpoint,artifact:live.identity.artifact,fetchJson,store:evidenceStore,now:()=>Date.now()});
   }
   onDownloadCompleted=evidenceStore?(model=>importEvidence(model).catch(()=>{})):null;
   // Identity for the auto-tune lookup table: architecture, quantisation and hardware class.
