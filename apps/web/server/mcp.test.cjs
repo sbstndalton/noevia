@@ -471,3 +471,64 @@ test('an oversized remote response body is capped, not buffered whole', async ()
     assert.equal(aborted, true, 'the oversized fetch is aborted rather than left to finish');
   } finally { global.fetch = realFetch; }
 });
+
+// ── #202: credential headers never replace protocol headers ─────────────
+test('user/key headers cannot override Content-Type, Accept, protocol version or the session id', async () => {
+  const seen = [];
+  const realFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    seen.push(options);
+    if (options.method === 'DELETE') return { ok: true, status: 200 };
+    const body = JSON.parse(options.body);
+    return new Response(body.id === undefined ? '' : JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }), {
+      status: body.id === undefined ? 202 : 200, headers: { 'content-type': 'application/json', 'mcp-session-id': 'real-session' },
+    });
+  };
+  const hostile = { 'X-Api-Key': 'synthetic-key', 'mcp-session-id': 'forged', accept: 'text/html', 'CONTENT-TYPE': 'text/plain', 'Mcp-Protocol-Version': '1999-01-01' };
+  try {
+    const { session } = await mcp.connect('https://server.invalid/mcp', hostile, 1000);
+    await mcp.callTool('https://server.invalid/mcp', session, 'synthetic_tool', {}, hostile, 1000);
+    await mcp.disconnect('https://server.invalid/mcp', session, hostile);
+    for (const { headers } of seen) {
+      const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+      assert.equal(Object.keys(headers).length, Object.keys(lower).length, 'no duplicate header names in different case');
+      assert.equal(lower['x-api-key'], 'synthetic-key', 'the key itself is still sent');
+      assert.equal(lower['mcp-protocol-version'], mcp.PROTOCOL_VERSION);
+      assert.notEqual(lower['mcp-session-id'], 'forged');
+      assert.notEqual(lower.accept, 'text/html');
+      assert.notEqual(lower['content-type'], 'text/plain');
+    }
+    assert.equal(seen.at(-1).headers['mcp-session-id'], 'real-session');
+  } finally { global.fetch = realFetch; }
+});
+
+// ── #185: the HTTP status travels separately from the server's body ──────
+test('an HTTP failure exposes its status as httpStatus', async () => {
+  const realFetch = global.fetch;
+  global.fetch = async () => new Response('synthetic server secret detail', { status: 503 });
+  try {
+    await assert.rejects(mcp.connect('https://server.invalid/mcp', {}, 1000), (e) => e.httpStatus === 503 && /synthetic server secret/.test(e.message));
+  } finally { global.fetch = realFetch; }
+});
+
+// ── #149: an aborted caller waits at most ~1 s for session cleanup ──────
+test('disconnect honours an abort signal: cleanup is capped at about a second', async () => {
+  const realFetch = global.fetch;
+  global.fetch = async (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+  });
+  try {
+    const aborted = new AbortController(); aborted.abort();
+    let started = Date.now();
+    assert.equal(await mcp.disconnect('https://server.invalid/mcp', { id: 's1' }, {}, 5000, aborted.signal), false);
+    let took = Date.now() - started;
+    assert.ok(took >= 900 && took < 2500, `already-aborted cleanup took ${took} ms`);
+
+    const later = new AbortController();
+    started = Date.now();
+    setTimeout(() => later.abort(), 50);
+    assert.equal(await mcp.disconnect('https://server.invalid/mcp', { id: 's2' }, {}, 5000, later.signal), false);
+    took = Date.now() - started;
+    assert.ok(took >= 900 && took < 2500, `abort mid-cleanup took ${took} ms`);
+  } finally { global.fetch = realFetch; }
+});
