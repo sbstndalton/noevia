@@ -197,6 +197,13 @@ button:disabled { opacity: .5; cursor: default; }
 .rail-row-btn { background: transparent; border: 0; border-radius: 8px; padding: 12px 4px; }
 .rail-row-label, .chat-index-title { font-weight: 500; }
 .chat-index-row { padding: 18px 4px; }
+.chat-index-title { display:flex; align-items:center; gap:7px; min-width:0; }
+.chat-index-title > svg { flex:none; color:var(--text-secondary); }
+.chat-index-title > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-index-preview { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow:hidden; overflow-wrap:anywhere; }
+.chat-index-status { display:inline-flex; align-items:center; gap:6px; color:var(--text-secondary); font-size:var(--text-caption); }
+.chat-index-time { font-variant-numeric:tabular-nums; }
+@media (max-width:480px) { .chat-index-row { gap:8px; align-items:flex-start; } .chat-index-time { max-width:80px; text-align:right; } }
 .project-composer .composer-inner { max-width: none; }
 
 /* Settings and diary use the same typography and restrained surfaces. */

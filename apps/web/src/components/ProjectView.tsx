@@ -229,17 +229,17 @@ export function ProjectView({
                       <button className="chat-index-row" onClick={() => onOpenChat(project.id, c.id)}>
                         <span className="chat-index-main">
                           <span className="chat-index-title">
-                            {streamingChats[c.id] && <span className="chat-working" aria-label="Still generating"><i /><i /><i /></span>}
-                            {c.pinned && <span aria-label="Pinned">📌 </span>}
-                            {c.title || 'New task'}
+                            {c.pinned && <ShellIcon name="pin" size={14}/>}
+                            <span>{c.title || 'New task'}</span>
                           </span>
                           {/* The title is the first message, so until a second
                               one arrives the preview repeats it verbatim. */}
                           {c.preview && c.preview.trim() !== (c.title || '').trim() && (
                             <span className="chat-index-preview">{c.preview}</span>
                           )}
+                          {streamingChats[c.id] && <span className="chat-index-status"><span className="chat-working" aria-hidden="true"><i /><i /><i /></span>Generating response</span>}
                         </span>
-                        <span className="chat-index-time">{timeAgo(c.updatedAt)}</span>
+                        <time className="chat-index-time" dateTime={new Date(c.updatedAt).toISOString()} title={new Date(c.updatedAt).toLocaleString()}>{timeAgo(c.updatedAt)}</time>
                       </button>
                       <button
                         className="recents-del"
