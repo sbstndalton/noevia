@@ -1,4 +1,24 @@
+## Format
+
+From 2026-09-24 each release entry starts with a `### Services` list with one line per service:
+Web, Diary, Model manager, Code sandbox, OCR, Docling, Deploy/infra. Each line names the PRs
+that touched that service and the image tag deployed for it (for example `cowork-web:958022b`),
+"merged, not yet deployed" when the code is on main but the running image predates it, or
+"no change". Sidecar image tags are pinned separately from `COWORK_VERSION`, so a web-only
+release leaves the other services on their previous tags. The prose, deploy evidence and rollback
+notes follow as before. Entries before release 7b6942c keep their original free-form layout.
+
 ## Release 958022b — 2026-09-24 (job start controller leak, phone preview Settings, web-only)
+
+### Services
+
+- **Web:** [#102](https://github.com/sbstndalton/noevia/pull/102) — deployed as `cowork-web:958022b`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#102](https://github.com/sbstndalton/noevia/pull/102) starting a background job no
 longer leaks a controller when the journal write fails; the phone preview on desktop collapses
@@ -23,6 +43,16 @@ Rollback: `config/.env.bak.before-958022b` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release c3a03c7 — 2026-09-24 (account cleanup, job journals, research saves, code harness hardening, web-only)
+
+### Services
+
+- **Web:** [#98](https://github.com/sbstndalton/noevia/pull/98), [#99](https://github.com/sbstndalton/noevia/pull/99), [#100](https://github.com/sbstndalton/noevia/pull/100), [#101](https://github.com/sbstndalton/noevia/pull/101) — deployed as `cowork-web:c3a03c7`.
+- **Diary:** [#99](https://github.com/sbstndalton/noevia/pull/99) (Diary part) — merged, not yet deployed.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#98](https://github.com/sbstndalton/noevia/pull/98) deleting a user removes their MCP
 sign-ins and directory keys; disabled admin credentials are no longer used for discovery; WebDAV
@@ -55,6 +85,16 @@ from the Compose Manager project directory.
 
 ## Release 852ef76 — 2026-09-24 (S3 region, storage secret v2, replay history, web-only)
 
+### Services
+
+- **Web:** [#96](https://github.com/sbstndalton/noevia/pull/96), [#97](https://github.com/sbstndalton/noevia/pull/97) — deployed as `cowork-web:852ef76`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
+
 Web changes deployed: [#96](https://github.com/sbstndalton/noevia/pull/96) S3 connections store and sign with a
 region (new `storage_connections.region` column, default `us-east-1`, migrated at startup); storage
 secrets are always encrypted and bound to the account (v2), and legacy v1 secrets are upgraded on
@@ -81,6 +121,16 @@ Rollback: `config/.env.bak.before-852ef76` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release 0c2be32 — 2026-09-24 (routing model, Diary edit proxy and offsite backup hardening, web-only)
+
+### Services
+
+- **Web:** [#90](https://github.com/sbstndalton/noevia/pull/90), [#91](https://github.com/sbstndalton/noevia/pull/91), [#92](https://github.com/sbstndalton/noevia/pull/92), [#95](https://github.com/sbstndalton/noevia/pull/95) — deployed as `cowork-web:0c2be32`.
+- **Diary:** [#93](https://github.com/sbstndalton/noevia/pull/93), [#94](https://github.com/sbstndalton/noevia/pull/94) — merged, not yet deployed.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#90](https://github.com/sbstndalton/noevia/pull/90) Details/Configure hide tuning and calibration for the system
 routing model, and the Settings routing summary wraps at narrow widths; [#91](https://github.com/sbstndalton/noevia/pull/91) the Diary
@@ -111,6 +161,16 @@ from the Compose Manager project directory.
 
 ## Release 7e8ce3a — 2026-09-24 (code-workspace and Drive hardening, web-only)
 
+### Services
+
+- **Web:** [#86](https://github.com/sbstndalton/noevia/pull/86), [#88](https://github.com/sbstndalton/noevia/pull/88) — deployed as `cowork-web:7e8ce3a`.
+- **Diary:** [#87](https://github.com/sbstndalton/noevia/pull/87) — merged, not yet deployed.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
+
 Web changes deployed: [#86](https://github.com/sbstndalton/noevia/pull/86) the code-workspace
 release refuses harness-planted git hooks, filters and fsmonitor, and runs git with them
 disabled; [#88](https://github.com/sbstndalton/noevia/pull/88) caps Drive reads (Range request
@@ -137,6 +197,16 @@ Rollback: `config/.env.bak.before-7e8ce3a` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release 7ce2213 — 2026-09-24 (hardening batch, web-only)
+
+### Services
+
+- **Web:** [#76](https://github.com/sbstndalton/noevia/pull/76), [#80](https://github.com/sbstndalton/noevia/pull/80), [#81](https://github.com/sbstndalton/noevia/pull/81), [#82](https://github.com/sbstndalton/noevia/pull/82), [#83](https://github.com/sbstndalton/noevia/pull/83), [#85](https://github.com/sbstndalton/noevia/pull/85) — deployed as `cowork-web:7ce2213`.
+- **Diary:** [#77](https://github.com/sbstndalton/noevia/pull/77), [#84](https://github.com/sbstndalton/noevia/pull/84) — merged, not yet deployed.
+- **Model manager:** [#79](https://github.com/sbstndalton/noevia/pull/79) — merged, not yet deployed.
+- **Code sandbox:** [#79](https://github.com/sbstndalton/noevia/pull/79) — merged, not yet deployed.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 Web changes deployed: [#76](https://github.com/sbstndalton/noevia/pull/76) server error
 bodies no longer leak raw errors, JSON bodies are checked, chat ids are sanitized and
@@ -172,6 +242,16 @@ Rollback: `config/.env.bak.before-7ce2213` and the Compose Manager
 from the Compose Manager project directory.
 
 ## Release 7b6942c — 2026-09-24 (chat save races)
+
+### Services
+
+- **Web:** [#75](https://github.com/sbstndalton/noevia/pull/75) — deployed as `cowork-web:7b6942c`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no change.
 
 [PR #75](https://github.com/sbstndalton/noevia/pull/75) fixes chat save races while replies
 stream. The chat list no longer drops a chat when two sends overlap; a save conflict during
