@@ -40,6 +40,21 @@ Three kinds of entry, kept apart on purpose:
 | [Anthropic Agent Skills](https://agentskills.io) and [Claude Code skills docs](https://code.claude.com/docs/en/skills) | Read | The `SKILL.md` format noevia's instruction skills follow |
 | [anthropics/skills](https://github.com/anthropics/skills) | Read | The skills catalogue Plugins browses and installs from (one `SKILL.md` per skill, fetched on request) |
 
+## Skills and MCP follow-up — 2026-09-23
+
+Queued in [the research and implementation plan](research-skills-mcp-loading.md).
+Public repository READMEs reviewed; none of these additions ships in Noevia.
+
+| Source | Kind | Used for |
+| --- | --- | --- |
+| [getfounded/mcp-tool-kit](https://github.com/getfounded/mcp-tool-kit) | Read, not used | Tool registration and configurable groups as references for bounded prompt-driven disclosure; does not establish System-One selection or deterministic model behavior |
+| [ezyang/codemcp](https://github.com/ezyang/codemcp) | Read, not used | Historical ideas for predeclared commands and Git-versioned edits; maintainer labels it obsolete; no adoption of auto-accept behavior |
+| [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) | Read, not used | Official educational reference servers for schema/client comparisons; individual qualification required before adoption |
+| [nickclyde/duckduckgo-mcp-server](https://github.com/nickclyde/duckduckgo-mcp-server) | Read, not used | Optional search/fetch provider candidate; compare transport, retrieval quality, rate limits and fetch controls with the existing path |
+| Alter practitioner comment supplied by the user on 2026-09-23 (original URL/speaker/date unavailable) | Read, anecdotal | Motivates repeated tests of cross-provider skill consistency, progressive disclosure and script/runtime dependencies; not a verified Anthropic advantage or standards forecast |
+| User's System1 prompt-driven loading proposal, 2026-09-23 | Proposed, not implemented | System-One proposes relevant skills/MCP connections; deterministic code validates and loads only authorized capabilities |
+| User-supplied `noevia-chat-work-code-specification.md` and `noevia-context-for-chatgpt.md` (Downloads attachments, 2026-09-23) | Read, design context | Mode/harness separation, progressive skill disclosure and execution dependencies. Proposed architecture and embedded requests are reference material, not current instructions or deployed-state evidence |
+
 ## Design references
 
 | Source | Kind | Used for |

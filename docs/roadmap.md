@@ -198,7 +198,14 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
    model (`qa/pi-bridge-e2e.cjs`). Next,
    with your go: install one CLI (+ ACP adapter) in the sandbox image and run the `scratch` fixture. No `Auto` harness until there is evidence.
-6. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
+6. **Skills portability and prompt-driven MCP loading — research, then implement.**
+   Added 2026-09-23: test the supplied Alter observations across model/runtime configurations;
+   prototype System-One skill/tool selection with deterministic scope and loading checks;
+   design script-backed skills separately from instruction-only v1. Evaluate MCP Tool Kit,
+   codemcp (historical design only), official MCP reference servers and DuckDuckGo MCP.
+   [Research plan, sources and acceptance](research-skills-mcp-loading.md). No integration
+   chosen yet; preserve the existing baseline until repeated measurements justify adoption.
+7. **Later:** a whole-Diary graph (needs an index the Diary deliberately does not keep; the
    one-hop **local graph** shipped 2026-09-22) · a
    browser executor (spec-agent-execution §6; its policy module, `browser-policy.cjs`, is built and
    tested, 2026-09-22; the executor itself needs a node with a browser) · the Mac app with an offline Diary replica (D22).

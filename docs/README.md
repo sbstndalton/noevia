@@ -21,6 +21,7 @@ content folded in below.
 | [spec-context-projection.md](spec-context-projection.md), [spec-agent-execution.md](spec-agent-execution.md), [spec-deep-research.md](spec-deep-research.md) | Context layers/compaction/reduction; qualification, Prompt Architect, CodeHarness, durable work, execution nodes, browser; deep research | Context, agent-execution or deep research work |
 | [research/system-one/](research/system-one/README.md) | Local-first System-One architecture: decision layer, residency, checkpoints, adaptive model switching, capability DB, provider/OAuth matrix, benchmark plan | Any routing, RAG, model-lifecycle or provider work |
 | [research-remote-access.md](research-remote-access.md) | Headscale vs NetBird vs Tailscale recommendation | Changing remote access |
+| [research-skills-mcp-loading.md](research-skills-mcp-loading.md) | Skills portability, script execution and System-One selection with deterministic loading; four MCP candidates | Researching or implementing skill/tool loading |
 | [research-master-container.md](research-master-container.md) | Docker socket threat model and master-container recommendation | Changing container lifecycle or the model manager |
 | [research-known-good-settings.md](research-known-good-settings.md) | Hardware, live presets vs measured context, provisional limits | Changing model presets |
 | [research-language-consolidation.md](research-language-consolidation.md) | Languages in use, where a chat turn's time goes (measured), and why nothing is ported | Before proposing a rewrite or a port |
