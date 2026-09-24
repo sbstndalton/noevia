@@ -24,6 +24,31 @@
 // unaffected by this.
 
 const { signS3Request } = require('./s3-sign.cjs');
+const { normalizeS3Region } = require('./s3-region.cjs');
+
+
+// PROPFIND <href> text is XML-escaped (&amp; &lt; &gt; &quot; &apos; and numeric refs like &#38;);
+// it has to be decoded back to the real path before parsing as a URL, or an escaped name (e.g.
+// "a&b.md" sent as "a&amp;b.md") lists under the escaped spelling and 404s on every read.
+function decodeXmlEntities(s) {
+  return String(s).replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (m, ent) => {
+    if (ent[0] === '#') {
+      const code = ent[1] === 'x' || ent[1] === 'X' ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
+      // A hostile body can name a code point String.fromCodePoint refuses (out of range, or a
+      // lone surrogate): leave the original text alone rather than throwing and losing the listing.
+      const valid = Number.isFinite(code) && code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF);
+      return valid ? String.fromCodePoint(code) : m;
+    }
+    switch (ent) {
+      case 'amp': return '&';
+      case 'lt': return '<';
+      case 'gt': return '>';
+      case 'quot': return '"';
+      case 'apos': return "'";
+      default: return m;
+    }
+  });
+}
 
 const READ_CAP = 200_000; // matches the project-file upload cap
 const TEXT_BODY_CAP = READ_CAP * 4; // bytes read for a text preview (UTF-8 is at most 4 bytes a char)
@@ -137,8 +162,9 @@ async function davList(conn, fullPath) {
     const hrefMatch = block.match(/<(?:[a-zA-Z0-9]+:)?href>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?href>/);
     if (!hrefMatch) continue;
     let href;
-    try { href = decodeURIComponent(new URL(hrefMatch[1].trim(), target).pathname); } catch { continue; }
-    const relative = href.replace(/\/+$/, '').slice(requestDir.length + 1);
+    try { href = decodeURIComponent(new URL(decodeXmlEntities(hrefMatch[1]).trim(), target).pathname).replace(/\/+$/, ''); } catch { continue; }
+    if (href !== requestDir && !href.startsWith(`${requestDir}/`)) continue; // a foreign href: not under the browsed directory
+    const relative = href.slice(requestDir.length + 1);
     if (!relative || relative.includes('/')) continue; // direct children only
     const isDir = /<(?:[a-zA-Z0-9]+:)?collection\s*\/?>/.test(block);
     const sizeMatch = block.match(/<(?:[a-zA-Z0-9]+:)?getcontentlength>(\d+)</);
@@ -181,7 +207,7 @@ async function s3List(conn, connectionPath) {
   const queryPrefix = dirPrefix ? `${dirPrefix}/` : '';
   const url = s3Url(conn, '', { 'list-type': '2', prefix: queryPrefix, delimiter: '/', 'max-keys': '1000' });
   const response = await withRetry(() => fetch(url, {
-    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || ''),
+    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }),
     signal: AbortSignal.timeout(15000),
     redirect: 'error',
   }));
@@ -208,7 +234,7 @@ async function s3List(conn, connectionPath) {
 async function s3Read(conn, connectionPath) {
   const url = s3Url(conn, joinRoot(conn.corpusRoot, connectionPath));
   const response = await withRetry(() => fetch(url, {
-    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || ''),
+    headers: signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }),
     signal: AbortSignal.timeout(20000),
     redirect: 'error',
   }));
@@ -303,7 +329,7 @@ async function readBinaryFile(conn, rawPath, opts) {
   const url = s3 ? s3Url(conn, full) : davUrl(conn, full);
   const response = await withRetry(() => fetch(url, {
     method: 'GET',
-    headers: s3 ? signS3Request('GET', url, '', conn.username || '', conn.secret || '') : davHeaders(conn, {}),
+    headers: s3 ? signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }) : davHeaders(conn, {}),
     signal: AbortSignal.timeout(30000),
     redirect: 'error',
   }));
@@ -402,7 +428,7 @@ async function removeEmptyFolder(conn, rawPath) {
     const hrefMatch = block.match(/<(?:[a-zA-Z0-9]+:)?href>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?href>/);
     if (!hrefMatch) continue;
     let href;
-    try { href = decodeURIComponent(new URL(hrefMatch[1].trim(), target).pathname).replace(/\/+$/, ''); } catch { children++; continue; }
+    try { href = decodeURIComponent(new URL(decodeXmlEntities(hrefMatch[1]).trim(), target).pathname).replace(/\/+$/, ''); } catch { children++; continue; }
     if (href === requestDir) {
       isCollection = /<(?:[a-zA-Z0-9]+:)?collection\s*\/?>/.test(block);
       etag = (block.match(/<(?:[a-zA-Z0-9]+:)?getetag>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?getetag>/)?.[1] || '').trim()
