@@ -356,6 +356,13 @@ function createToolboxes({
     } catch {
       return `ERROR: tool arguments were not valid JSON: ${String(rawArgs).slice(0, 200)}`;
     }
+    // A syntactically valid JSON value like `null`, `42`, or `"x"` parses fine
+    // but is not an arguments object; every tool below assumes it can read
+    // properties off `args`, so treat anything else as a clean argument error
+    // rather than letting it surface as an unhandled TypeError.
+    if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+      return `ERROR: tool arguments must be a JSON object: ${String(rawArgs).slice(0, 200)}`;
+    }
     if (kiwixTools?.names.has(name)) return kiwixTools.execute(name, args);
     if (driveTools?.names.has(name)) return driveTools.execute(scope.getStore()?.authn?.user, name, args);
     if (name === 'get_current_time') {
