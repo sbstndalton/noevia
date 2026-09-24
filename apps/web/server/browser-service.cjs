@@ -83,9 +83,15 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
     return new Promise((resolve) => {
       const id = crypto.randomUUID();
       let settled = false;
+      const onAbort = () => finish('aborted');
       const finish = (decision) => {
         if (settled) return;
         settled = true; clearTimeout(timer); pending.delete(id);
+        // One job's signal outlives many approvals raised on it over the task's life (one per
+        // consequential action); a listener left attached after each one settles otherwise, and
+        // the signal accumulates one forever-unfired 'abort' listener per action for as long as
+        // the job runs.
+        if (signal) signal.removeEventListener('abort', onAbort);
         if (decision === 'timeout') rememberExpired(id);
         resolve(decision === 'approve' ? 'approve' : 'deny');
       };
@@ -95,7 +101,7 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
       pending.set(id, { id, taskId: card.jobId, request: { ...card, id }, decide: finish });
       if (signal) {
         if (signal.aborted) finish('aborted');
-        else signal.addEventListener('abort', () => finish('aborted'), { once: true });
+        else signal.addEventListener('abort', onAbort, { once: true });
       }
     });
   }
@@ -186,13 +192,33 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
           for (;;) {
             if (ctx.signal.aborted) break;
             if (!queue.length) {
-              let idle;
-              const timedOut = await Promise.race([
-                new Promise((r) => { waking = () => r(false); }),
-                new Promise((r) => { idle = setTimeout(() => r(true), idleTimeoutMs); idle.unref?.(); }),
-                new Promise((r) => { if (ctx.signal.aborted) return r(false); ctx.signal.addEventListener('abort', () => r(false), { once: true }); }),
-              ]);
-              clearTimeout(idle);
+              // One promise, settled exactly once, with every listener and timer it registered
+              // torn down on the way out — whichever of the three ways out fires. `Promise.race`
+              // over three separately-constructed promises looks equivalent, but it is not: the
+              // two that lose the race are still "pending" as far as anything tracking this
+              // test's/request's outstanding promises is concerned (their timer is cleared, so it
+              // will never settle them; their abort listener may never fire at all), and they
+              // leak for the life of the process. With one action arriving per idle wait in the
+              // common case, that is one or two dangling, permanently-unsettled promises per
+              // action — surfacing under `node --test` as "Promise resolution is still pending
+              // but the event loop has already resolved" on whatever test or request happened to
+              // be active when the process finally exits.
+              const timedOut = await new Promise((resolve) => {
+                let settled = false;
+                const onAbort = () => finish(false);
+                const finish = (value) => {
+                  if (settled) return;
+                  settled = true;
+                  clearTimeout(idleTimer);
+                  ctx.signal.removeEventListener('abort', onAbort);
+                  resolve(value);
+                };
+                waking = () => finish(false);
+                const idleTimer = setTimeout(() => finish(true), idleTimeoutMs);
+                idleTimer.unref?.();
+                if (ctx.signal.aborted) finish(false);
+                else ctx.signal.addEventListener('abort', onAbort, { once: true });
+              });
               if (ctx.signal.aborted) break;
               if (timedOut) throw Object.assign(Error(TIMEOUT_REASON), { publicMessage: TIMEOUT_REASON });
               continue;
