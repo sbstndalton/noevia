@@ -289,14 +289,17 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
       Store source URL, retrieval date, license/attribution terms, benchmark task and conditions,
       and provenance; label public model-card/benchmark results as priors, and keep them separate
       from local benchmark runs and noevia outcome evidence. Record recommended inference settings
-      with their source, runtime/artifact scope and confidence; show unknowns as unknown and let
-      operators review/apply settings explicitly. Do not bundle a source unless its terms permit
+      with their source, runtime/artifact scope and confidence; show unknowns as unknown. Feed
+      recommendations into the existing estimate → auto-tune flow: apply settings automatically
+      only after a local fit/quality check, with a visible result and rollback to the prior config.
+      Do not bundle a source unless its terms permit
       the intended storage and redistribution; an API or catalogue that requires attribution or
       restricts redistribution must be handled accordingly. Prerequisites: source/license review,
       stable exact-artifact identity, and a schema/versioning and refresh policy. Acceptance:
       interrupted/offline lookup never blocks a model download; imported records are attributable,
       deduplicated and refreshable; source claims cannot be mistaken for local measurements; no
-      setting is silently applied or routing decision changed by unqualified public scores.
+      setting is applied solely on a public claim or routing decision changed by unqualified
+      public scores.
    3. **Extract boundaries incrementally.** Begin with the UI and core as separately deployable
       interfaces while preserving the existing web release path; then separate inference/model
       lifecycle only where the current model-manager/engine API and privilege boundary support it.
@@ -321,7 +324,13 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
       starts until compatibility, import/export, rollback and live-data backup are specified.
       Acceptance: a documented keep/port/replace decision with a synthetic-fixture migration plan
       and no loss of current Diary behavior or tenant isolation.
-   6. **Native macOS client, later.** Start only after the core and service contracts are stable
+   6. **Make Skills portable across clients.** Keep Skills as versioned manifests, instructions
+      and optional assets rather than creating a container for each Skill. Define discovery,
+      compatibility, origin, updates and per-Skill tool/permission requirements in core; execute
+      any Skill-provided code only in an existing qualified sandbox with the same approval policy.
+      Acceptance: web and future native clients can list and invoke the same Skill version through
+      core, and disabling a Skill revokes its access without affecting unrelated Skills.
+   7. **Native macOS client, later.** Start only after the core and service contracts are stable
       and the modular stack is usable without the web UI. Reuse authentication, projects, Diary,
       inference and tool-policy APIs; define local/offline Diary behavior and sync/conflict rules
       separately before claiming feature parity. Acceptance: the Mac client can change without
