@@ -3,7 +3,7 @@ import type { JSX } from 'react';
 import type { HealthState, InstalledModel, LiveStats } from '../../types';
 import type { AutoRoles } from '../../api';
 import { fetchAutoRoles } from '../../api';
-import { notifyModelsChanged } from '../../models-changed';
+import { notifyModelsChanged, useModelsChanged } from '../../models-changed';
 import { installedSummary } from '../../models-summary';
 
 /** Settings keeps only what answers "is the engine fine and where does Auto go";
@@ -11,7 +11,11 @@ import { installedSummary } from '../../models-summary';
 export function ModelsSummary({ models, modelsError, health, stats, onOpen }: { models: InstalledModel[]; modelsError: string | null; health: HealthState; stats: LiveStats | null; onOpen: () => void }): JSX.Element {
   const [roles, setRoles] = useState<{ configured: boolean; roles: AutoRoles | null } | null>(null);
   const [rolesError, setRolesError] = useState(false);
+  const load = () => { fetchAutoRoles().then((v) => { setRoles(v); setRolesError(false); }).catch(() => setRolesError(true)); };
   useEffect(() => { let live = true; fetchAutoRoles().then((v) => { if (live) setRoles(v); }).catch(() => { if (live) setRolesError(true); }); return () => { live = false; }; }, []);
+  // A save on the Routing tab (ModelsSettings.tsx) fires this so the cached card here does not
+  // keep showing stale roles until the whole Settings page remounts.
+  useModelsChanged(load);
   // `models` is App's list, which only refetches on models-changed. A chat that loads a model
   // on demand used to leave it stale, so this read "none loaded" beside a Loaded card (#205).
   // Opening the summary asks again.
