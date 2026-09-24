@@ -28,8 +28,11 @@ export function ActiveCodeTasks({ onOpenProject }: { onOpenProject: (id: string)
         const response = await apiFetch('/api/code/active');
         if (response.status === 403 || response.status === 404) { if (live) { setUnavailable(true); setTasks([]); setTotal(0); } return; }
         if (!response.ok) throw new Error(`Task status unavailable (${response.status})`);
-        const result = await response.json() as { tasks: ActiveTask[]; total: number };
-        if (live) { setTasks(result.tasks); setTotal(result.total); setError(''); }
+        const result = await response.json().catch(() => null) as { tasks?: unknown; total?: unknown } | null;
+        // A malformed body is a status error, never a crash of the whole shell.
+        if (!result || !Array.isArray(result.tasks)) throw new Error('Task status unavailable');
+        const valid = (result.tasks as ActiveTask[]).filter((task) => task && typeof task.id === 'string' && typeof task.projectId === 'string');
+        if (live) { setTasks(valid); setTotal(typeof result.total === 'number' ? result.total : valid.length); setError(''); }
       } catch (cause) {
         if (live) setError(cause instanceof Error ? cause.message : 'Task status unavailable');
       } finally { pending = false; }
