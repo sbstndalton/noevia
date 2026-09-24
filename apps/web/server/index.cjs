@@ -44,7 +44,7 @@ const { createWorkspaceStore } = require('./workspace.cjs');
 const { createSecretStore } = require('./secrets.cjs');
 const { isPublicUrl, createEndpointApproved } = require('./ssrf.cjs');
 // One JSON reply shape, the 401, a bounded body read and the JSON fetch (http.cjs).
-const { json, unauthorized, fetchJson, readBody, readJson, authResult } = require('./http.cjs');
+const { json, unauthorized, fetchJson, readBody, readJson, authResult, errorResponse } = require('./http.cjs');
 
 const PORT = Number(process.env.UI_PORT || 8021);
 const HOST = process.env.UI_HOST || '0.0.0.0';
@@ -380,6 +380,11 @@ const researchRoutes = require('./routes/research.cjs').createResearchRoutes({
     tools: (workspace, project) => ({
       complete: async (messages, { signal, maxTokens }) => {
         const provider = getProvider(DEFAULT_PROVIDER_ID), model = researchModel(project);
+        // Same maintenance gate as chat and RAG: tuning/calibration must not share the engine.
+        let leave;
+        try { leave = modelManager.enterInference?.() || (() => {}); }
+        catch (e) { throw Object.assign(e, { publicMessage: e.publicMessage || (e.status === 503 ? e.message : 'The model is busy. Try again shortly.') }); }
+        try {
         const r = await fetch(`${provider.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1/chat/completions`, { method: 'POST', redirect: 'error',
           headers: providerHeaders(provider, { 'Content-Type': 'application/json' }), signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
           body: JSON.stringify({ model, stream: false, max_tokens: maxTokens, messages }) });
@@ -387,6 +392,7 @@ const researchRoutes = require('./routes/research.cjs').createResearchRoutes({
         const choice = (await r.json()).choices?.[0];
         if (choice?.finish_reason === 'length') throw Object.assign(Error('A research step was cut off by the output limit.'), { publicMessage: 'A research step was cut off by the output limit.' });
         return String(choice?.message?.content || '');
+        } finally { leave(); }
       },
       search: async (query) => require('./routes/research.cjs').parseSearchResults(await executeMcpToolCall('tavily_search', { query, max_results: 5 })),
       extract: async (url) => {
@@ -639,7 +645,11 @@ async function handleRequestScoped(req, res) {
     if (res.destroyed || res.writableEnded) return;
     if (res.headersSent) {
       res.end(`data: ${JSON.stringify({ type: 'error', text: 'The request could not be completed. Please retry.' })}\n\n`);
-    } else json(res, err.status || 500, { error: String((err && err.message) || err) });
+    } else {
+      const failure = errorResponse(err);
+      if (failure.status >= 500) console.error('[request] unhandled error:', err);
+      json(res, failure.status, failure.body);
+    }
   }
 }
 
