@@ -405,7 +405,7 @@ class CorpusStore:
         enqueued. Omitting it keeps the legacy last-write-wins behaviour for
         older clients.
 
-        Returns (document path, owning day ISO) for the edited exchange.
+        Returns (document path, owning day ISO, post-edit exchange hash).
         """
         if month is not None and not MONTH_ID_RE.fullmatch(month):
             raise ValueError("month must be YYYY-MM")
@@ -413,7 +413,8 @@ class CorpusStore:
         if found is None:
             raise CorpusError(f"no corpus document contains exchange {xid}")
         original, _ = self.backend.get_text(found[0])
-        if original is None or fmt.replace_exchange_text(original, xid, new_me, new_claude) is None:
+        edited = None if original is None else fmt.replace_exchange_text(original, xid, new_me, new_claude)
+        if edited is None:
             raise CorpusError("The entry cannot be edited safely: malformed or missing block")
         if base_hash is not None:
             current_hash = fmt.exchange_hash(original, xid)
@@ -427,7 +428,7 @@ class CorpusStore:
         if not self.journal.is_applied(jid):
             raise CorpusError("Correction is queued but could not be saved yet. It will retry when storage is available.")
         path, day = found
-        return path, day.isoformat()
+        return path, day.isoformat(), fmt.exchange_hash(edited, xid)
 
     def _documents_for_month(self, month_id: str) -> List[Tuple[str, date]]:
         """(document path, owning day) pairs for a YYYY-MM month id."""

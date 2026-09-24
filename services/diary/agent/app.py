@@ -691,19 +691,15 @@ def api_entries_edit(req: EditEntryRequest, request: Request) -> JSONResponse:
         return JSONResponse({"error": "invalid base_hash"}, status_code=400)
     st = _tenant_state(request)
     try:
-        path, day_iso = run_in_threadpool_sync(st.store.edit_exchange, xid, req.me, req.assistant, req.month, req.base_hash)
+        path, day_iso, new_hash = run_in_threadpool_sync(st.store.edit_exchange, xid, req.me, req.assistant, req.month, req.base_hash)
     except EditConflict as exc:
         return JSONResponse({"error": str(exc), "conflict": True, "current_hash": exc.current_hash, "current_text": exc.current_text}, status_code=409)
     except CorpusError as exc:
         return JSONResponse({"error": str(exc)}, status_code=503 if "queued" in str(exc) else 404)
     except Exception as exc:  # noqa: BLE001 — persistent write conflict etc.
         log.exception("entry edit failed")
-        return JSONResponse({"error": f"edit failed: {exc}"}, status_code=502)
+        return JSONResponse({"error": "edit failed"}, status_code=502)
     _reindex_dirty(st)
-    try:
-        new_hash = fmt.exchange_hash(st.store.backend.get_text(path)[0], xid)
-    except Exception:  # noqa: BLE001 — the edit is saved; the hash is advisory
-        new_hash = None
     return JSONResponse({"ok": True, "document": path, "day": day_iso, "hash": new_hash})
 
 

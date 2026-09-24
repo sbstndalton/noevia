@@ -91,6 +91,7 @@ def test_edit_endpoint_returns_409_with_current_text(client):
     assert ok.status_code == 200
     new_hash = ok.json()["hash"]
     assert new_hash and new_hash != base
+    assert new_hash == exchange_hash(st.store.read_month(datetime.now().date())[0], xid)
     stale = client.post("/api/entries/edit", json={"xid": xid, "me": "Tab B.", "month": month, "base_hash": base})
     assert stale.status_code == 409
     body = stale.json()
@@ -126,3 +127,19 @@ def test_chat_session_keyed_by_normalized_tenant():
     appmod.SESSIONS.clear()
     assert appmod._session("s1", U1.upper()) is appmod._session("s1", U1)
     assert appmod._session("s1", U1) is not appmod._session("s1", U2)
+
+
+def test_store_returns_hash_of_applied_document(tmp_path):
+    st = _store(tmp_path)
+    xid = st.log_exchange(DAY, "topic", "original", "reply")
+    _, _, new_hash = st.edit_exchange(xid, "edited", "reply", month="2026-09")
+    assert new_hash == exchange_hash(st.read_month(DAY)[0], xid)
+
+
+def test_edit_endpoint_hides_exception_text(client, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("secret internal detail")
+    st = appmod.get_state()
+    monkeypatch.setattr(type(st.store), "edit_exchange", boom)
+    r = client.post("/api/entries/edit", json={"xid": "11111111-1111-4111-8111-111111111111", "me": "x"})
+    assert r.status_code == 502 and r.json() == {"error": "edit failed"}
