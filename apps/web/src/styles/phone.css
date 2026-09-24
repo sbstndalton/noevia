@@ -691,3 +691,12 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .plugins-page .connector-page .row-label { font-weight: 600; }
 .plugins-page .connector-page .row-desc { color: var(--text-secondary); font-size: var(--text-footnote); overflow-wrap: anywhere; }
 .plugins-page .connector-page .group.surface { border-radius: var(--radius-lg); overflow: hidden; }
+
+/* Project instruction inventory stays compact; long file names and instructions wrap on phones. */
+.plugins-project-picker { display: flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-footnote); }
+.plugins-project-picker select { max-width: min(100%, 28rem); min-height: 44px; }
+.plugin-grid-installed { grid-template-columns: 1fr; }
+.plugin-grid-installed .plugin-card { align-items: center; }
+.plugin-grid-installed details { margin-top: var(--space-2); max-width: 100%; }
+.plugin-grid-installed summary { cursor: pointer; color: var(--text-primary); }
+.plugin-grid-installed pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

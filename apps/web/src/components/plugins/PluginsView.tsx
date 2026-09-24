@@ -8,6 +8,7 @@ import { ConnectorsSettings } from '../connectors/ConnectorsSettings';
 type Tab = 'connected' | 'mcp' | 'skills';
 interface Item { why?: string; id: string; name: string; publisher: string; description: string; version: string; url: string; remote: boolean; installable?: boolean; notInstallable?: string; needsKey?: boolean; headers?: KeyHeader[] }
 interface KeyHeader { name: string; required: boolean; secret: boolean; description: string; template: string | null }
+interface ProjectSkill { file: string; name: string; description: string; version: string; content: string; status: 'review' | 'updated' | 'enabled' | 'disabled' | 'invalid'; error: string; missingTools: string[] }
 interface Added { id: string; registryName: string; title: string; declaredHeaders?: KeyHeader[]; toolCount: number | null; error: string | null; keyHeaders?: string[]; oauth?: boolean; personal?: boolean; redirectUri?: string; oauthClient?: { manual: boolean; clientId: string | null; hasSecret: boolean; redirectUri: string; issuer: string } | null }
 
 /** Open the sign-in in a new tab from inside the click (or the browser blocks it), then point it at the URL. */
@@ -54,6 +55,19 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
   }, [kind, isAdmin, addedAttempt]);
   const [mode, setMode] = useState<'yours' | 'discover'>('yours');
   const [yourQuery, setYourQuery] = useState('');
+  const [skillProject, setSkillProject] = useState(projects[0]?.id || '');
+  const [projectSkills, setProjectSkills] = useState<ProjectSkill[]>([]);
+  const [skillsStatus, setSkillsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [skillsAttempt, setSkillsAttempt] = useState(0);
+  useEffect(() => {
+    if (kind !== 'skills' || !skillProject) return;
+    let live = true; setSkillsStatus('loading');
+    apiFetch(`/api/projects/${encodeURIComponent(skillProject)}/instruction-skills`)
+      .then(async (r) => { const data = await r.json(); if (!r.ok || !Array.isArray(data.skills)) throw new Error(data.error || 'Could not load skills.'); return data.skills as ProjectSkill[]; })
+      .then((skills) => { if (live) { setProjectSkills(skills); setSkillsStatus('ready'); } })
+      .catch(() => { if (live) setSkillsStatus('error'); });
+    return () => { live = false; };
+  }, [kind, skillProject, skillsAttempt]);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState('');
@@ -68,7 +82,7 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     return () => { live = false; };
   }, [kind]);
   useEffect(() => {
-    if (kind === 'mcp' && mode === 'yours') return;
+    if (mode === 'yours') return;
     let live = true;
     const t = window.setTimeout(() => {
       setItems(null); setError('');
@@ -78,6 +92,7 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     }, query ? 300 : 0);
     return () => { live = false; window.clearTimeout(t); };
   }, [kind, mode, query, attempt]);
+  const matchingSkills = [...projectSkills].filter((skill) => `${skill.name} ${skill.file} ${skill.description}`.toLocaleLowerCase().includes(yourQuery.trim().toLocaleLowerCase())).sort((a, b) => (a.name || a.file).localeCompare(b.name || b.file) || a.file.localeCompare(b.file));
   const matchingAdded = [...added].filter((a) => `${a.title} ${a.registryName}`.toLocaleLowerCase().includes(yourQuery.trim().toLocaleLowerCase())).sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
   const card = (i: Item, starter = false) => <li key={(starter ? 'starter:' : '') + i.id} className="plugin-card surface">
         <span className="plugin-card-icon"><ShellIcon name={kind === 'mcp' ? 'server' : 'sparkles'} size={20}/></span>
@@ -89,13 +104,22 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
         </span>
         <span className="plugin-card-actions">
           {i.url && <a className="btn btn-secondary btn-sm plugin-card-link" href={i.url} target="_blank" rel="noreferrer noopener" aria-label={`View ${i.name}`}>View</a>}
-          {kind === 'skills' && <AddSkill skill={i} projects={projects} onAdded={onProjectsChanged}/>}
+          {kind === 'skills' && <AddSkill skill={i} projects={projects} installedIn={(skillsStatus === 'ready' ? projectSkills : []).filter((s) => s.file === `${i.id}/SKILL.md`).map(() => skillProject)} onAdded={() => { setSkillsAttempt((n) => n + 1); onProjectsChanged?.(); }}/>}
           {kind === 'mcp' && isAdmin && <AddServer item={i} added={added.find((a) => a.registryName === i.id)} onChange={setAdded}/>}
         </span>
 </li>;
   return <section className="plugins-directory" aria-label={kind === 'mcp' ? 'MCP servers' : 'Skills'}>
-    {kind === 'mcp' && <SegmentedControl label="MCP server inventory" value={mode} onChange={setMode} options={[["yours", "Added"], ["discover", "Discover"]]}/>}
-    {kind === 'mcp' && mode === 'yours' ? <>
+    <SegmentedControl label={kind === 'mcp' ? 'MCP server inventory' : 'Skill inventory'} value={mode} onChange={setMode} options={[["yours", kind === 'mcp' ? "Added" : "In a project"], ["discover", "Discover"]]}/>
+    {kind === 'skills' && mode === 'yours' ? <>
+      <label className="plugins-project-picker">Project <select value={skillProject} onChange={(e) => setSkillProject(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <div className="settings-search plugins-search"><ShellIcon name="search" size={16}/><input aria-label="Search project skills" placeholder="Search skills by name or file" value={yourQuery} onChange={(e) => setYourQuery(e.target.value)}/></div>
+      <p className="plugins-note">Instruction files in this project. Enabled versions guide replies; they do not grant tools or write permission. Review, enable or remove files from the project.</p>
+      {!skillProject ? <p className="plugins-note">Create a project to keep instruction skills.</p>
+        : skillsStatus === 'loading' ? <p className="plugins-note" role="status">Loading project skills…</p>
+        : skillsStatus === 'error' ? <p className="route-note" role="alert">Could not load project skills. <button className="btn btn-secondary btn-sm" onClick={() => setSkillsAttempt((n) => n + 1)}>Try again</button></p>
+        : matchingSkills.length ? <ul className="plugin-grid plugin-grid-installed">{matchingSkills.map((skill) => <li key={skill.file} className="plugin-card surface"><span className="plugin-card-text"><b>{skill.name || skill.file}</b><small className="plugin-publisher">Project file · {skill.status === 'enabled' ? 'Enabled' : skill.status === 'review' || skill.status === 'updated' ? 'Review required' : skill.status === 'invalid' ? 'Needs correction' : 'Disabled'}</small><small>{skill.file}{skill.version ? ` · v${skill.version}` : ''}</small>{skill.description && <small>{skill.description}</small>}<details><summary>View instructions and scope</summary><p>Instructions for this project only. Required tools are never enabled automatically.</p>{skill.missingTools?.length > 0 && <p>Requires: {skill.missingTools.join(', ')}</p>}{skill.error && <p role="alert">{skill.error}</p>}<pre>{skill.content}</pre></details></span></li>)}</ul>
+        : <p className="plugins-note" role="status">{yourQuery ? `No project skills match “${yourQuery}”.` : 'No instruction skills in this project. Discover one or upload a Markdown skill in the project.'}</p>}
+    </> : kind === 'mcp' && mode === 'yours' ? <>
       <div className="settings-search plugins-search"><ShellIcon name="search" size={16}/><input aria-label="Search added MCP servers" placeholder="Search added servers by name or source" value={yourQuery} onChange={(e) => setYourQuery(e.target.value)}/></div>
       <p className="plugins-note">Servers added to this noevia. A project must select one to use its tools, and every tool asks before it runs.</p>
       {!isAdmin ? <p className="plugins-note">An administrator manages this inventory.</p>
@@ -129,13 +153,13 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
 }
 
 /** Add one published skill to a chosen project. It arrives needing review, never enabled. */
-function AddSkill({ skill, projects, onAdded }: { skill: Item; projects: { id: string; name: string }[]; onAdded?: () => void }): JSX.Element {
+function AddSkill({ skill, projects, installedIn = [], onAdded }: { skill: Item; projects: { id: string; name: string }[]; installedIn?: string[]; onAdded?: () => void }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [project, setProject] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
   if (!projects.length) return <button className="btn btn-secondary btn-sm plugin-card-link" disabled title="Create a project first">Add to project</button>;
-  if (!open) return <span className="plugin-add"><button className="btn btn-secondary btn-sm plugin-card-link" aria-label={`Add ${skill.name} to a project`} onClick={() => { setOpen(true); setNote(null); }}>Add to project</button>{note && <small role={note.error ? 'alert' : 'status'} className={note.error ? 'plugin-add-error' : ''}>{note.text}</small>}</span>;
+  if (!open) return <span className="plugin-add">{installedIn.length > 0 && <small>In selected project</small>}<button className="btn btn-secondary btn-sm plugin-card-link" aria-label={`Add ${skill.name} to a project`} onClick={() => { setOpen(true); setNote(null); }}>Add to project</button>{note && <small role={note.error ? 'alert' : 'status'} className={note.error ? 'plugin-add-error' : ''}>{note.text}</small>}</span>;
   const add = async () => {
     setBusy(true); setNote(null);
     try {
