@@ -77,6 +77,27 @@ test('S3/S4: history route sanitizes ids like storage, honours tombstones, rejec
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('S3: deleting a raw id with stripped characters blocks its history under both spellings', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-hardening-'));
+  try {
+    lists.addTombstone(dir, 'chat.1');
+    assert.ok(lists.readTombstones(dir).has('chat.1') && lists.readTombstones(dir).has('chat1'));
+    lists.addTombstone(dir, 'chat.1');
+    assert.equal([...lists.readTombstones(dir)].length, 2, 'deduped');
+    const captured = [];
+    const route = createChatListRoutes({
+      json: (_r, status, body) => { captured.push({ status, body }); return true; },
+      readBody: async (req) => req.body, currentWorkspace: () => ({ dir }), PROJECTS: [], FREE_CHATS: [], diaryExtras: {}, crypto,
+      STORED_HISTORY_BYTES: 1e6, STORED_HISTORY_CAP: 100, chatLists: () => ({ freeChats: [], projects: [] }), removeChat: () => true,
+      store: { sanitizeChats: (c) => c, saveFreeChats() {}, deleteFreeChat() {}, readHistory: () => [], writeHistory: () => { throw new Error('wrote'); } },
+    });
+    for (const id of ['chat.1', 'chat1']) {
+      await route({ method: 'POST', body: '{"history":[]}' }, {}, { path: `/api/chats/${id}/history` });
+      assert.equal(captured.at(-1).status, 410, id);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('S3: safeChatId matches the storage rule', () => {
   assert.equal(lists.safeChatId('a/b..c!_-9'), 'abc_-9');
   assert.equal(lists.safeChatId(null), '');

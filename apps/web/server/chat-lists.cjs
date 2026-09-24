@@ -20,8 +20,10 @@ function readTombstones(dir) {
 }
 
 function addTombstone(dir, id) {
-  const ids = [...readTombstones(dir)].filter((x) => x !== id);
-  ids.push(id);
+  // Metas match by raw id, history files by the safe id: record both so neither can return.
+  const added = [...new Set([String(id), safeChatId(id)])].filter(Boolean);
+  const ids = [...readTombstones(dir)].filter((x) => !added.includes(x));
+  ids.push(...added);
   fs.mkdirSync(dir, { recursive: true });
   const file = tombstoneFile(dir), tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(ids.slice(-TOMBSTONE_CAP)));
