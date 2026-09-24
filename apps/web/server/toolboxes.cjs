@@ -342,7 +342,7 @@ function createToolboxes({
     }));
   }
 
-  async function executeToolCall(project, name, rawArgs, allowed) {
+  async function executeToolCall(project, name, rawArgs, allowed, signal) {
     // A model can name a tool it was never offered — by hallucination, or from
     // a box the project has since deselected mid-conversation. Enforce the
     // resolved list here rather than trusting that whatever was sent upstream is
@@ -403,7 +403,7 @@ function createToolboxes({
     // the workspace and authn the rest of the call depends on survive — and
     // two interleaved chats each keep their own project (see the scope test).
     if (mcpTools().has(name)) {
-      return scope.run({ ...scope.getStore(), internalCallProject: project || null }, () => executeMcp(name, args));
+      return scope.run({ ...scope.getStore(), internalCallProject: project || null }, () => executeMcp(name, args, signal));
     }
     return `ERROR: unknown tool "${name}"`;
   }
