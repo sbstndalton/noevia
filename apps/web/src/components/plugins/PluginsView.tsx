@@ -9,7 +9,7 @@ type Tab = 'connected' | 'mcp' | 'skills';
 interface Item { why?: string; id: string; name: string; publisher: string; description: string; version: string; url: string; remote: boolean; installable?: boolean; notInstallable?: string; needsKey?: boolean; headers?: KeyHeader[] }
 interface KeyHeader { name: string; required: boolean; secret: boolean; description: string; template: string | null }
 interface ProjectSkill { file: string; name: string; description: string; version: string; content: string; status: 'review' | 'updated' | 'enabled' | 'disabled' | 'invalid'; error: string; missingTools: string[] }
-interface Added { id: string; registryName: string; title: string; declaredHeaders?: KeyHeader[]; toolCount: number | null; error: string | null; keyHeaders?: string[]; oauth?: boolean; personal?: boolean; redirectUri?: string; oauthClient?: { manual: boolean; clientId: string | null; hasSecret: boolean; redirectUri: string; issuer: string } | null }
+interface Added { id: string; registryName: string; title: string; declaredHeaders?: KeyHeader[]; toolCount: number | null; tools?: { name: string; description: string }[]; toolsTruncated?: boolean; error: string | null; keyHeaders?: string[]; oauth?: boolean; personal?: boolean; redirectUri?: string; oauthClient?: { manual: boolean; clientId: string | null; hasSecret: boolean; redirectUri: string; issuer: string } | null }
 
 /** Open the sign-in in a new tab from inside the click (or the browser blocks it), then point it at the URL. */
 const tools = (n: number | null | undefined) => `${n ?? '…'} tool${n === 1 ? '' : 's'}`;
@@ -133,7 +133,12 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
         : matchingAdded.length ? <ul className="plugin-grid">{matchingAdded.map((a) =>
           <li key={a.id} className="plugin-card surface">
             <span className="plugin-card-icon"><ShellIcon name="server" size={20}/></span>
-            <span className="plugin-card-text"><b>{a.title}</b><small className="plugin-publisher">{a.registryName.startsWith('url:') ? 'Added by URL' : 'Public MCP registry'} · {a.error ? 'Needs attention' : `${tools(a.toolCount)} available`}</small><small>{a.registryName.startsWith('url:') ? a.registryName.slice(4) : a.registryName}</small></span>
+            <span className="plugin-card-text"><b>{a.title}</b><small className="plugin-publisher">{a.registryName.startsWith('url:') ? 'Added by URL' : 'Public MCP registry'} · {a.error ? 'Needs attention' : `${tools(a.toolCount)} available`}</small><small>{a.registryName.startsWith('url:') ? a.registryName.slice(4) : a.registryName}</small>
+              <details className="plugin-tool-detail"><summary>Available tools{a.tools?.length ? ` (${a.toolCount ?? a.tools.length})` : ''}</summary>
+                {a.tools?.length ? <ul>{a.tools.map((tool) => <li key={tool.name}><b>{tool.name}</b>{tool.description && <span>{tool.description}</span>}</li>)}</ul> : <p>{a.error ? 'Tools are unavailable while this server needs attention.' : 'No tools discovered yet.'}</p>}
+                {a.toolsTruncated && <p>Showing the first 40 tools.</p>}
+                <p>A project must select this toolbox. Every call asks for approval.</p>
+              </details></span>
             <span className="plugin-card-actions"><AddServer item={{ id: a.registryName, name: a.title, publisher: '', description: '', version: '', url: '', remote: true, installable: true, headers: a.declaredHeaders }} added={a} onChange={setAdded}/></span>
           </li>)}</ul>
         : <p className="plugins-note" role="status">{yourQuery ? `No added servers match “${yourQuery}”.` : 'No MCP servers added yet. Explore the directory to add one.'}</p>}

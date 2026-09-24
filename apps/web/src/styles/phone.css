@@ -704,3 +704,10 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .plugin-url-review { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--nav-hover); color: var(--text-primary); overflow-wrap: anywhere; }
 .plugin-url-review p { margin: 0; line-height: 1.45; }
 .plugin-url-address { overflow-wrap: anywhere; }
+
+.plugin-tool-detail { margin-top: var(--space-2); overflow-wrap: anywhere; }
+.plugin-tool-detail summary { cursor: pointer; color: var(--text-primary); }
+.plugin-tool-detail ul { margin: var(--space-2) 0; padding-left: 1.25rem; }
+.plugin-tool-detail li { margin-bottom: var(--space-2); }
+.plugin-tool-detail li b, .plugin-tool-detail li span { display: block; }
+.plugin-tool-detail p { margin: var(--space-2) 0 0; }

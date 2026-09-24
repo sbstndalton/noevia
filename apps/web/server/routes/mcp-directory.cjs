@@ -63,7 +63,18 @@ function createMcpDirectoryRoutes({ json, readJson, auth, servers: MCP_SERVERS, 
     if (p === '/api/admin/mcp-directory' || p.startsWith('/api/admin/mcp-directory/')) {
       if (!authn || authn.user.role !== 'admin') return reply(res, 403, { error: 'Administrator required' });
       const redirectUri = `${String(auth.origin || process.env.PUBLIC_ORIGIN || '').replace(/\/$/, '')}/api/mcp-oauth/callback`;
-      const describe = () => directoryMcp.list().map((s) => { const st = mcpState.servers.get(s.id); return { ...s, toolCount: st?.toolCount ?? null, error: st?.error || null, ...(s.oauth ? { oauthClient: mcpOAuth.clientInfo(s.id), redirectUri } : {}) }; });
+      const describe = () => directoryMcp.list().map((s) => {
+        const st = mcpState.servers.get(s.id);
+        // These are the tools actually bound to this server's toolbox, not the global
+        // name registry (where collisions can hide a server's own tools).
+        const box = (mcpState.boxes || []).find((b) => b.directory && b.server === s.id && b.id === s.id);
+        const tools = (box?.tools || []).slice(0, 40).map((t) => ({
+          name: String(t.function?.name || '').slice(0, 120),
+          description: String(t.function?.description || '').slice(0, 240),
+        }));
+        return { ...s, toolCount: st?.toolCount ?? null, tools, toolsTruncated: (box?.tools?.length || 0) > tools.length,
+          error: st?.error || null, ...(s.oauth ? { oauthClient: mcpOAuth.clientInfo(s.id), redirectUri } : {}) };
+      });
       if (p === '/api/admin/mcp-directory' && req.method === 'GET') return reply(res, 200, { servers: describe() });
       if (p === '/api/admin/mcp-directory' && req.method === 'POST') {
         let body; try { body = await readJson(req); } catch { return reply(res, 400, { error: 'invalid JSON' }); }

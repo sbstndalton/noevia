@@ -19,7 +19,7 @@ function build(overrides = {}) {
   const calls = [];
   const deps = {
     json, readJson, auth: { origin: 'https://noevia.example', audit: () => {} },
-    servers, mcpState: { servers: new Map([['dir-a', { toolCount: 3, error: null }]]), tools: new Map() },
+    servers, mcpState: { servers: new Map([['dir-a', { toolCount: 3, error: null }]]), tools: new Map(), boxes: [{ id: 'dir-a', server: 'dir-a', directory: true, tools: [{ function: { name: 'find_note', description: 'Find a note', parameters: { secret: 'never expose' } } }] }] },
     directoryMcp: {
       list: () => [{ id: 'dir-a', title: 'A', url: 'https://a.example/mcp', oauth: true, personal: true, declaredHeaders: [{ name: 'X-Key', required: true, secret: true }] }],
       hasUserKey: (uid, id) => uid === 'u1' && id === 'dir-a',
@@ -51,6 +51,23 @@ test('a member sees the servers that want their own key, and whether they gave o
   const res = fakeRes();
   assert.equal(await routes(req('GET'), res, { path: '/api/mcp-keys/servers', authn: member }), true);
   assert.deepEqual(res.out.body, { servers: [{ id: 'dir-a', title: 'A', headers: [{ name: 'X-Key', required: true, secret: true }], hasKey: true }] });
+});
+
+test('admin tool details are bounded to the server-bound toolbox', async () => {
+  const offered = Array.from({ length: 45 }, (_, i) => ({ function: { name: `tool_${i}`, description: 'x'.repeat(300), parameters: { secret: 'hidden' } } }));
+  const mcpState = { servers: new Map([['dir-a', { toolCount: 45, error: null }]]), boxes: [
+    { id: 'other', server: 'other', directory: true, tools: [{ function: { name: 'wrong_server' } }] },
+    { id: 'dir-a', server: 'dir-a', directory: true, tools: offered },
+  ] };
+  const { routes } = build({ mcpState });
+  const res = fakeRes();
+  await routes(req('GET'), res, { path: '/api/admin/mcp-directory', authn: admin });
+  const row = res.out.body.servers[0];
+  assert.equal(row.tools.length, 40);
+  assert.equal(row.toolsTruncated, true);
+  assert.equal(row.tools[0].description.length, 240);
+  assert.equal(row.tools.some((tool) => tool.name === 'wrong_server'), false);
+  assert.equal(JSON.stringify(row.tools).includes('hidden'), false);
 });
 
 test('a personal key is checked against the server before it is stored, and is this account\'s only', async () => {
@@ -87,6 +104,8 @@ test('the admin directory refuses members and answers admins', async () => {
   await routes(req('GET'), r2, { path: '/api/admin/mcp-directory', authn: admin });
   assert.equal(r2.out.code, 200);
   assert.equal(r2.out.body.servers[0].toolCount, 3);
+  assert.deepEqual(r2.out.body.servers[0].tools, [{ name: 'find_note', description: 'Find a note' }]);
+  assert.equal(JSON.stringify(r2.out.body).includes('never expose'), false);
   assert.equal(r2.out.body.servers[0].redirectUri, 'https://noevia.example/api/mcp-oauth/callback');
   const r3 = fakeRes();
   await routes(req('DELETE'), r3, { path: '/api/admin/mcp-directory/dir-a', authn: admin });
