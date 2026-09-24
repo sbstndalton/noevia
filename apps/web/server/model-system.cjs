@@ -30,5 +30,6 @@ function isSystemModel(id, modelPath) {
 }
 
 const SYSTEM_MODEL_REASON = 'System routing model — not tuned';
+const SYSTEM_MODEL_DELETE_REASON = 'System routing model — not deleted';
 
-module.exports = { isSystemModel, modelPathFromArgs, SYSTEM_MODEL_REASON };
+module.exports = { isSystemModel, modelPathFromArgs, SYSTEM_MODEL_REASON, SYSTEM_MODEL_DELETE_REASON };

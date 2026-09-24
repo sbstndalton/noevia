@@ -139,7 +139,7 @@ function ModelCard({ model: m, file, update, busy, onToggle, onConfigure, onDele
       <button className="popup-tab" disabled={busy} onClick={onToggle}>{busy ? 'Working…' : m.loaded ? 'Unload' : 'Load'}</button>
       {!system && <button className="popup-tab" onClick={onConfigure}>Tune</button>}
       <button className="popup-tab" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide details' : 'Details'}</button>
-      <DeleteModel model={m} file={file} onDeleted={onDeleted}/>
+      {!system && <DeleteModel model={m} file={file} onDeleted={onDeleted}/>}
     </div>
     {runtimeOptions && <MtpControl model={m} onChanged={onRefresh}/>}
     {open && <div className="mm-detail">

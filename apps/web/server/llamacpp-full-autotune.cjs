@@ -493,6 +493,21 @@ function createFullAutotuner({ request, rawModels, presets, maintenance, applyUn
       return { ok: false, status: 409, body: { error: 'Settings could not safely be restored; inspect models.ini before starting a new tune.' } };
     if (presets.snapshot().revision !== j._revision)
       return { ok: false, status: 409, body: { error: 'Settings changed outside auto-tune. Start a new tune after reviewing them.' } };
+    // A job persisted by a pre-patch build may still list a system routing model (e.g. Laya) in
+    // its queue. Never resume tuning it — drop it from the queue and record why, same as a fresh
+    // scan would have. If nothing tunable remains, the job is done rather than resumable.
+    const systemItems = j.models.filter(item => isSystemModel(item.model));
+    if (systemItems.length) {
+      j.models = j.models.filter(item => !isSystemModel(item.model));
+      j.skipped = [...(j.skipped || []), ...systemItems.map(item => ({ model: item.model, reason: SYSTEM_MODEL_REASON }))];
+      if (j.model && isSystemModel(j.model)) j.model = j.models[0]?.model || j.model;
+      if (!j.models.length) {
+        j.status = 'passed'; j.phase = 'Done'; j.finishedAt = now(); j.error = undefined;
+        save();
+        return { ok: true, status: 200, body: publicJob(j) };
+      }
+      save();
+    }
     starting = true;
     try {
       const rows = await rawModels();
@@ -518,4 +533,4 @@ function createFullAutotuner({ request, rawModels, presets, maintenance, applyUn
   }
   return { start, resume, cancel, status, untuned, recover, completion: () => completion };
 }
-module.exports = { createFullAutotuner, qualityCheck, QUALITY, VERSION };
+module.exports = { createFullAutotuner, qualityCheck, QUALITY, VERSION, newModel };

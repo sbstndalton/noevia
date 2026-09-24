@@ -66,6 +66,8 @@ const pending = (id, label) => ({ id, label, status: 'pending', steps: [{ id: id
     const layaCard = manager.getByRole('article', { name: 'laya_multilingual_f16' });
     await layaCard.waitFor();
     assert.equal(await layaCard.getByRole('button', { name: 'Tune' }).count(), 0, 'Laya must not offer a Tune action');
+    assert.equal(await layaCard.getByRole('button', { name: 'Delete' }).count(), 0, 'Laya must not offer a Delete action');
+    assert.ok(await layaCard.getByRole('button', { name: 'Unload' }).isVisible(), 'Unload stays available');
     await layaCard.getByText('System · routing').waitFor();
     await layaCard.scrollIntoViewIfNeeded();
     await page.screenshot({ path: (process.env.QA_SCREENSHOTS || '/tmp') + '/models-library-laya-not-tunable.png' });
