@@ -24,7 +24,7 @@ chmod +x "$work/bin/docker" "$work/bin/notify"
 export PATH="$work/bin:$PATH"
 t=$'\t'
 set_c() { # name id started count exit
-  printf '/%s\t%s\t%s\t%s\timg:1\t%s\trunning' "$1" "$2" "$3" "$4" "${5:-0}" > "$fix/$1"
+  printf '/%s\t%s\t%s\t%s\timg:1\t%s\t%s' "$1" "$2" "$3" "$4" "${5:-0}" "${6:-running}" > "$fix/$1"
 }
 fails=0; passes=0
 check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; fi; }
@@ -74,6 +74,12 @@ printf 'cowork-web-1\ncowork-new-1\n' > "$fix/names"
 set_c cowork-new-1 eee 2026-09-24T12:00:00Z 0
 run 2>/dev/null
 check "new container is info only" '[ "$(count)" -eq 3 ] && grep -q cowork-new-1 "$state"'
+
+set_c cowork-new-1 eee 2026-09-24T12:00:00Z 0 137 exited
+run
+check "running -> exited alerts once" '[ "$(count)" -eq 4 ] && tail -1 "$sent" | grep -q "cowork-new-1 stopped" && tail -1 "$sent" | grep -q "|-i|alert|"'
+run
+check "stopped container not re-alerted" '[ "$(count)" -eq 4 ]'
 
 touch "$fix/fail"
 cp "$state" "$work/before"

@@ -90,8 +90,15 @@ else
       fi
       keep "$cur"; continue
     fi
-    IFS="$tab" read -r _ pid pstarted pcount pimage _ _ <<< "$prev"
+    IFS="$tab" read -r _ pid pstarted pcount pimage _ pstatus <<< "$prev"
     if [[ "$pid" == "$id" && "$pstarted" == "$started" && "$pcount" == "$count" && "$pimage" == "$image" ]]; then
+      # Same run: only a running -> not-running transition is news (stop/death).
+      if [[ "$pstatus" == running && "$status" != running ]]; then
+        logs="$(docker logs --tail 3 "$name" 2>&1 | cut -c1-200 | awk 'NR>1{printf " | "} {printf "%s", $0}')"
+        if ! send alert "$name stopped" "Status running -> ${status}; exit code ${exitcode}; image ${image}; started ${started}; last log lines: ${logs}"; then
+          echo "notify failed for $name; will retry next run" >&2; keep "$prev"; continue
+        fi
+      fi
       keep "$cur"; continue
     fi
     level=warning

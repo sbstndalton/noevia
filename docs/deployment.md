@@ -281,10 +281,13 @@ one Unraid notification per changed container through
 `/usr/local/emhttp/webGui/scripts/notify` (level `alert` when `RestartCount`
 grew or the exit code is non-zero, otherwise `warning`; details include old and
 new StartedAt, image, restart count, exit code and the last 3 log lines). A
-container that disappears raises an `alert` "gone"; a new one is logged only,
+container that stops or dies without restarting (status `running` -> anything
+else) raises an `alert` "stopped"; one that disappears raises an `alert` "gone"; a new one is logged only,
 unless `--strict`. The first run only writes the baseline. It exits non-zero
 only when Docker fails (2) or on usage errors (64); a failed notify keeps the
 old baseline line so the alert is retried next run.
+The reported exit code on a restart is the current container's value (usually
+0 once it is running again), not necessarily why the previous run ended.
 
 Install (manual, not done by any release script):
 
