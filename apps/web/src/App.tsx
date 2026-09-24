@@ -48,6 +48,7 @@ import type {
 import { ChatView } from './components/ChatView';
 import { ModelPopup } from './components/ModelPopup';
 import { ProjectView } from './components/ProjectView';
+import { ActiveCodeTasks } from './components/code/ActiveCodeTasks';
 import { Coding, Diary, ModelManager, Projects, Settings, ViewLoading, prefetchViewsWhenIdle } from './lazy-views';
 import type { SettingsSection } from './components/SettingsShell';
 import { FeaturePreview } from './components/PreviewPanel';
@@ -72,7 +73,7 @@ type View =
   | { kind: 'plugins' }
   | { kind: 'archived' }
   | { kind: 'models'; model?: string }
-  | { kind: 'project'; id: string }
+  | { kind: 'project'; id: string; codeRequest?: string }
   | { kind: 'chat'; chatId: string; projectId?: string | null };
 
 function uid(): string {
@@ -1170,6 +1171,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
+      {featureFlags.codeHarness === true && <ActiveCodeTasks onOpenProject={(id) => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'project', id, codeRequest: uid() }); }}/>}
       <div className="regular-workspace" style={{display:'contents'}}>
       <Sidebar
         mode={appMode==='code'&&showPreviews?'code':'chat'}
@@ -1235,6 +1237,7 @@ export default function App(): JSX.Element {
         <ProjectView
           key={activeProject.id}
           modelLabel={modelChoiceLabel(activeProject, modelsLoaded && !modelsError ? models : null)}
+          codeRequest={view.codeRequest}
           onOpenModels={() => setPopupOpen(true)}
           onEdit={() => setEditingProjectId(activeProject.id)}
           project={activeProject}
