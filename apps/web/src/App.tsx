@@ -503,7 +503,18 @@ export default function App(): JSX.Element {
         }
         // A workspace GET that began before this save may carry the old list.
         workspaceRequest.current += 1;
-        void refreshProjects();
+        // Await (not fire-and-forget) so the refs are back in sync with the
+        // server before the next queued task for this key reads them. Every
+        // render reassigns projectsRef/freeChatsRef from state at the top of
+        // this component, so a render landing between two queued tasks would
+        // otherwise reset the ref to the stale pre-save list and the next
+        // task's whole-list PUT would drop this task's chat. If this call is
+        // itself superseded by a later refreshProjects (request !==
+        // workspaceRequest.current), it resolves without touching the refs,
+        // but that's fine: the ref writes just above (projectsRef.current /
+        // freeChatsRef.current) already reflect this task's saved list, and
+        // the later, superseding refresh will bring in server truth anyway.
+        await refreshProjects();
       }).catch(() => undefined);
 
       const startedAt = Date.now();
