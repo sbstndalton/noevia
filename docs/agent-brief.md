@@ -1,8 +1,9 @@
 # noevia — agent brief
 
-Read this top to bottom before touching anything. It assumes no prior context.
-State verified at commit `8a78172`, 2026-09-09; later sections were added without a full
-re-audit, so verify against code before relying on any detail. Current plan: `roadmap.md`.
+Read this before touching anything. Architecture notes below describe implementation details
+and are not a release snapshot; verify them against code before relying on a specific detail.
+Use [roadmap.md](roadmap.md) for current status and [changelog.md](changelog.md) plus
+[deployment.md](deployment.md) for release records.
 
 ## What noevia is
 

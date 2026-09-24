@@ -17,12 +17,13 @@ box unless you connect something that makes it leave.
 - **Plugins** — browse the public MCP registry and published skills, add a server from the
   registry or by URL, and give it a shared key, your own key, or an OAuth sign-in. Each server
   becomes a toolbox a project has to choose.
-- **Skills** — a project's reviewed `SKILL.md` files; the one that matches a message is loaded
-  for it.
+- **Skills** — review and enable project `SKILL.md` files; relevant instructions are loaded
+  for chat, with bounded automatic selection available when configured.
 - **Diary** — a separate space whose corpus is Markdown files you can open anywhere, with
   retrieval, crash-safe logging and optional WebDAV or S3 storage.
 - **Model management** — install, tune, measure and route local models from inside the app.
-- **Code mode** — a coding workspace behind a feature flag, still being built.
+- **Code mode** — a feature-flagged coding workspace with sandboxed harnesses and approval
+  gates for changes and other non-read actions.
 - **Accounts** — administrators and members with separate data, passkeys or passwords,
   invitations and recovery links, and encrypted credentials.
 
@@ -43,6 +44,11 @@ The core needs only an OpenAI-compatible inference API. Everything else — the 
 document extraction, model management, MCP servers — is optional and off until you configure it.
 
 ## Quick start
+
+Release images are tagged with the source Git commit (`COWORK_VERSION`); `0.1.0` in the web
+package metadata is not the deployed application release number. The live release and current
+development status are recorded in [`docs/roadmap.md`](docs/roadmap.md) and
+[`docs/changelog.md`](docs/changelog.md).
 
 ```sh
 docker compose up --build -d

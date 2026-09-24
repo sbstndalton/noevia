@@ -10,10 +10,18 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-09-22 (updated 14:48)
+## Where things stand — 2026-09-24
 
-- **Live:** release **`827932b`** on DaServer at **https://noevia.daserver.work**, built from
-  `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for passkeys.
+- **Source:** current `main` is **`958022b`**. The web package's `0.1.0` is metadata, not the
+  application release number; deploy images use their source commit as `COWORK_VERSION`.
+- **Live:** web release **`cowork-web:958022b`** on DaServer at **https://noevia.daserver.work**,
+  built from `main` (GitHub `sbstndalton/noevia`). `cowork.daserver.work` stays routed for
+  passkeys. 2026-09-24 web-only releases, in order: `7b6942c`, `7ce2213`, `7e8ce3a`, `0c2be32`,
+  `852ef76`, `c3a03c7`, `958022b`. See the
+  [release record](changelog.md#release-958022b--2026-09-24-job-start-controller-leak-phone-preview-settings-web-only).
+- **Not yet deployed:** Diary still runs `cowork-diary:5004b50` and the model-manager and
+  code-sandbox images are unchanged, so the Diary/sidecar fixes merged on 2026-09-24
+  (#77, #79, #84, #87, #93, #94, #99) are in `main` only.
 - **Stack (ten containers):** web, diary, ocr, llama (native llama.cpp Vulkan), embed (CPU
   embeddings), kiwix, model-loader, **code-sandbox**, **docling**, and CPU-only **Laya**.
   Sidecar image tags are pinned in `.env` (`DOCLING_VERSION`, `CODE_SANDBOX_VERSION`), not
@@ -22,11 +30,27 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   (harness: **pi 0.87.0** since 2026-09-22; OpenCode one `.env` change away),
   **System-One routing** and **Step supervision**. The two experiments share the saved Laya endpoint.
   **Off:** deep research.
-- **Tests:** 1,247 server and front-end unit tests pass locally (none touches production). The three-material refinement passes 14 distinct synthetic browser suites, a 468-state sweep and a 198-state final confirmation. Models/settings and full-auto-tune browser suites also pass. The last full browser QA sweep, on 2026-09-22 against `e19119d`,
-  was **77 of 77 green** (after fixing three stale test fixtures). `diary-reading` has been timing-flaky under a full sweep before and
-  passes on its own.
-- **Deploy:** `deploy/examples/overlay-release.sh OLD NEW` after a verified appdata backup; it now
-  keeps the sidecars running itself. Runbook: [deployment.md](deployment.md).
+- **Tests:** `apps/web` `npm test` 1487/1487 at `958022b`; Diary pytest 353 passed, 3 skipped
+  (at the #99 merge); model-manager pytest 72; CI's 6 checks green on every merged PR. Browser QA
+  records below describe their own dated runs.
+- **Deploy:** full releases use `deploy/examples/overlay-release.sh OLD NEW` after a verified
+  appdata backup; it keeps the sidecars running itself. Web-only releases: `git archive <sha>` →
+  scp → build `cowork-web:<sha>` → `tools/preflight/up.sh … web` run from the Compose project
+  folder; tags are commit SHAs; rollback is the previous release symlink plus the `.env` backup.
+  Runbook: [deployment.md](deployment.md).
+
+### 2026-09-24 — Overnight hardening (web releases `7b6942c` … `958022b`)
+
+Merged fixes, release by release in [changelog.md](changelog.md): chat save/list races; server
+error bodies, JSON validation, chat-id sanitising and approval scoping; system-model (Laya) guards
+on delete, calibration, presets and sections, plus a research maintenance gate; MCP response cap
+and abort; Diary edit conflicts, journal quarantine, tenant delete safety, `index_update`
+validation and long names in trash; model-manager download path guard and code-sandbox process
+cleanup; code-workspace/harness git-hook and symlink hardening, approvals by id, and the engine
+key never committed; Drive mirror prune safety, storage read caps, SigV4 path, S3 region and
+account-bound secrets; offsite S3 prefix; jobs journal resilience; chat replay role alternation;
+DAV `Overwrite` default; deleting a user clears their MCP credentials. Diary and sidecar parts are
+merged but not deployed (see above).
 
 ## Done
 
