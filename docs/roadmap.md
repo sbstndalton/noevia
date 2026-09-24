@@ -260,6 +260,74 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    `browser-executor.cjs`, built and proven on real Chromium behind the egress proxy 2026-09-23,
    not deployed; what remains is a node to run it on and the job/card wiring) · the Mac app with an offline Diary replica (D22).
 
+8. **Later — modular platform and model evidence (proposed; not started).** This is a staged
+   architecture direction, not a commitment to split every concern into a process or container.
+   Keep the current release gates above first. Compose already runs the web app, Diary, OCR,
+   inference, model loader, embedding, Laya and other sidecars as separate services where their
+   runtime or security boundary calls for it; the web app also contains substantial API and
+   orchestration logic. Keep `noevia` as the integration and release repository: it pins component
+   versions, wires networks/configuration in Compose, and records the compatible stack. Move a
+   component to an independently versioned repository only when its API, ownership, release and
+   migration contracts are stable. A future macOS client should consume those contracts rather
+   than duplicate service behavior.
+
+   Phases, in order:
+
+   1. **Map boundaries and contracts.** After the System-One architecture review, inventory the
+      existing web routes/services and sidecars; define versioned internal APIs, health/readiness,
+      authentication, data ownership, configuration, and failure behavior for the UI, core,
+      inference/model manager, MCP management, and Diary. Keep authorization, tenant checks,
+      write approvals, tool policy and orchestration in core. UI code calls core APIs; service
+      boundaries do not grant authority. Acceptance: a reviewed dependency/data-flow map and
+      API contracts identify which existing pieces can move without changing user-visible
+      behavior, with migration and rollback notes.
+   2. **Model evidence during download.** Extend the existing Models → Guidance work and the
+      exact-configuration capability-database design in
+      [System-One §12.6](research/system-one/12-adaptive-model-switching.md#126-model-capability-database).
+      A model download should trigger a bounded metadata lookup/import alongside the artifact
+      transfer, keyed to the exact model revision, quantization, runtime and relevant settings.
+      Store source URL, retrieval date, license/attribution terms, benchmark task and conditions,
+      and provenance; label public model-card/benchmark results as priors, and keep them separate
+      from local benchmark runs and noevia outcome evidence. Record recommended inference settings
+      with their source, runtime/artifact scope and confidence; show unknowns as unknown and let
+      operators review/apply settings explicitly. Do not bundle a source unless its terms permit
+      the intended storage and redistribution; an API or catalogue that requires attribution or
+      restricts redistribution must be handled accordingly. Prerequisites: source/license review,
+      stable exact-artifact identity, and a schema/versioning and refresh policy. Acceptance:
+      interrupted/offline lookup never blocks a model download; imported records are attributable,
+      deduplicated and refreshable; source claims cannot be mistaken for local measurements; no
+      setting is silently applied or routing decision changed by unqualified public scores.
+   3. **Extract boundaries incrementally.** Begin with the UI and core as separately deployable
+      interfaces while preserving the existing web release path; then separate inference/model
+      lifecycle only where the current model-manager/engine API and privilege boundary support it.
+      Keep a single Compose integration/release point in `noevia`, pin component versions, and
+      migrate state and secrets with explicit compatibility and rollback steps. Acceptance: each
+      extracted component can be upgraded or rolled back through the pinned stack without
+      weakening tenant isolation, approval gates, health reporting or backup/restore.
+   4. **Qualify MCP management and server isolation.** Treat an MCP manager as a control plane for
+      discovery, configuration, lifecycle and health, not as a merged trust boundary. Preserve
+      per-server identity, credentials, network scope and failure isolation; individual servers
+      may be containers or remote API services according to their risk and operational needs.
+      Core remains the authority for account/project policy, tool exposure, write approvals and
+      call validation. Prerequisites: the phase-1 contracts and a review of Docker-socket needs;
+      do not give a manager broad socket access as a convenience. Acceptance: one failing or
+      compromised server cannot obtain another server's credentials or bypass core policy, and
+      a server can be disabled without taking down unrelated tools.
+   5. **Compare Diary companion before migration.** Review
+      [sbstndalton/diary-companion](https://github.com/sbstndalton/diary-companion) against
+      `services/diary` for features, tenant/authentication boundaries, data format, migrations,
+      backups, deployment and maintenance. Record what is reusable and what is already newer in
+      noevia before choosing whether to reactivate the repository. No corpus or state migration
+      starts until compatibility, import/export, rollback and live-data backup are specified.
+      Acceptance: a documented keep/port/replace decision with a synthetic-fixture migration plan
+      and no loss of current Diary behavior or tenant isolation.
+   6. **Native macOS client, later.** Start only after the core and service contracts are stable
+      and the modular stack is usable without the web UI. Reuse authentication, projects, Diary,
+      inference and tool-policy APIs; define local/offline Diary behavior and sync/conflict rules
+      separately before claiming feature parity. Acceptance: the Mac client can change without
+      changing service policy or storage ownership, and reconnect/sync behavior is covered by an
+      explicit migration and conflict design.
+
 ## Needs the user — in order
 
 1. **Look at the live footer once** while a reply streams (phone and desktop): the session had
