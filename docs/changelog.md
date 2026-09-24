@@ -8,6 +8,36 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release b5941e4 — 2026-09-24 (routing/menu fixes, stale loaded summary, chat-only prompt suite, Diary polling and journal replay order, admin-gated warm-up, backup-worker backoff)
+
+### Services
+
+- **Web:** [#207](https://github.com/sbstndalton/noevia/pull/207), [#208](https://github.com/sbstndalton/noevia/pull/208) (web side), [#209](https://github.com/sbstndalton/noevia/pull/209), [#213](https://github.com/sbstndalton/noevia/pull/213) — deployed as `cowork-web:b5941e4` (full `compose build web` from the release context; frontend changed).
+- **Diary:** [#208](https://github.com/sbstndalton/noevia/pull/208) (journal replay order, `ORDER BY rowid`) — deployed as `cowork-diary:b5941e4` (`diary-overlay.sh`, `agent/` only, FROM `cowork-diary:11617a3`).
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-dda50c2`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** live Compose files unchanged (backed up as `*.bak.before-b5941e4`).
+
+Source shipped via `git archive b5941e4` to `releases/b5941e4`. `apps/web/src` changed vs 11617a3 (lockfile and
+Dockerfile identical), so web was built on DaServer (`cowork-web:b5941e4`, image `752c3966e0ca`). Candidate checks were run
+with no network. `isChatGenerationModel` (chat-model-kind.cjs) and `MAX_BACKOFF_MS` (diary-backup-worker.cjs) are present.
+Dist serves `index-BsftJ7Co.js` / `index-CV0N4hHI.css`. The `installedSummary` / `notifyModelsChanged` grep can't match
+minified output because both are renamed identifiers. The bundle and SettingsShell chunk hashes changed from 11617a3.
+The Diary diff vs 11617a3 was `agent/journal.py` plus one test (requirements.txt and Dockerfile identical). The overlay took
+appdata backup `ab_20260924_144722` (gzip verified). It then recreated Diary as image `aedb9cef…`, and Diary health via web
+returned 200. The in-container `/app/agent/journal.py` contains `ORDER BY rowid`.
+
+Cutover used guarded `up.sh … --no-build --no-deps --wait` for `web`, then the Diary overlay. Web started at 18:47:36Z and
+Diary at 18:47:43Z. Both are healthy with zero restarts. All other cowork containers (code-sandbox, model-loader, laya, ocr,
+docling, llama, embed, kiwix) kept identical ids and start times. Public `/` returned 200 on 3 of 3 requests, and
+`/api/profile` returned 401. Web logs had zero error markers over 60 s. No Diary data was read. Restart-alert baseline re-acked.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-b5941e4 config/.env` (also reverts DIARY_VERSION), `ln -sfn releases/11617a3 current`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+- Diary: `sed -i 's/^DIARY_VERSION=.*/DIARY_VERSION=11617a3/' config/.env` (or restore `config/.env.bak.before-diary-b5941e4`), then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 diary`.
+
 ## Release 11617a3 — 2026-09-24 (round-13 fixes: harness approval bypasses, MCP discovery TTL, Diary storage-outage handling, UI fixes)
 
 ### Services
