@@ -54,3 +54,10 @@ test('duplicate turns map to distinct local messages in order',()=>{
  const out=s.adoptMergedTranscript(cur,[{role:'user',content:'hi'},{role:'user',content:'hi'}],()=>'x',(h,id)=>({id,...h}));
  assert.deepEqual(J(out.map(m=>m.id)),['a','b']);
 });
+
+test('a chat deleted in this session is never saved again',()=>{
+ const deleted=new Set(['gone']);
+ assert.equal(s.shouldSaveChat('gone',deleted),false);
+ assert.equal(s.shouldSaveChat('kept',deleted),true);
+ assert.equal(s.shouldSaveChat('',deleted),false);
+});
