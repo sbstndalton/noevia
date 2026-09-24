@@ -1,3 +1,30 @@
+## Release 852ef76 — 2026-09-24 (S3 region, storage secret v2, replay history, web-only)
+
+Web changes deployed: [#96](https://github.com/sbstndalton/noevia/pull/96) S3 connections store and sign with a
+region (new `storage_connections.region` column, default `us-east-1`, migrated at startup); storage
+secrets are always encrypted and bound to the account (v2), and legacy v1 secrets are upgraded on
+read; [#97](https://github.com/sbstndalton/noevia/pull/97) model replay merges adjacent same-role turns and never
+starts with an assistant turn; WebDAV MOVE/COPY default `Overwrite` to `T` per RFC 4918.
+
+CI green on `852ef76`. Deployed via `git archive 852ef76` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/852ef76`, built as
+`cowork-web:852ef76`
+(`sha256:25a1b70c5f1dfea627f34bb06a6abbdea4e7512c0562ceb9ca6f48f576ac0c79`). Config and the
+live Compose Manager file were backed up as `*.bak.before-852ef76`; `current`/`COWORK_VERSION`
+were repointed at `852ef76`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:0c2be32`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-SGaWTEhw.js` and `index-C7qt3UiI.css` are present in the image's `dist/assets`;
+`normalizeReplayHistory` is a function in the running container; no error/migration lines in
+the startup log.
+
+Rollback: `config/.env.bak.before-852ef76` and the Compose Manager
+`docker-compose.yml.bak.before-852ef76` restore `current` to `releases/0c2be32`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
 ## Release 0c2be32 — 2026-09-24 (routing model, Diary edit proxy and offsite backup hardening, web-only)
 
 Web changes deployed: [#90](https://github.com/sbstndalton/noevia/pull/90) Details/Configure hide tuning and calibration for the system
