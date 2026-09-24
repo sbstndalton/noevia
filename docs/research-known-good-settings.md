@@ -42,6 +42,20 @@ size.
 KV cache `q8_0` and flash attention on are the configurations these results were measured
 with; `parallel 1` (a single slot) is assumed throughout.
 
+### KV cache quantization floor (2026-09-24, issue #190)
+
+Automatic tuning (full auto-tune and autoconfig) never selects a KV cache type below Q5 for
+either K or V by default: `q4_0`/`q4_1` degrade quality too much to pick automatically. The
+full auto-tuner's KV phase candidates are `f16`, `q8_0`, `q5_1`, `q5_0` — Q4 is only reachable
+by setting `NOEVIA_AUTOTUNE_ALLOW_BELOW_Q5_KV=1` before starting a tune, an explicit operator
+override, never a silent fallback. Easy mode's KV cache selector offers the same floor
+(`Engine default` / `f16` / `q8_0` / `q5_0`); Advanced mode's field editor still accepts every
+type the preset validator supports, including `q4_0`/`q4_1`, for expert use. Existing saved
+`q4_0` profiles are left untouched until the owner retunes or edits them; they are below the
+new automatic floor but are not migrated automatically. This does not change the KV
+comparison suggested in measurement item 2 above — that item now should use `q5_0`/`q5_1`
+in place of `q4_0` unless the override is specifically what is being evaluated.
+
 ## Measurements to run (each is a production engine action — schedule with the user)
 
 1. Native calibration (Settings → model details → Measure context) for each registered model
