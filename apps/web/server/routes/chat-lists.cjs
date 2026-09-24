@@ -71,6 +71,8 @@ function createChatListRoutes({ json, readBody, currentWorkspace, PROJECTS, FREE
               preview: String(c.preview || '').slice(0, 200),
               pinned: c.pinned === true,
               archived: c.archived === true,
+              // The session's harness (#236); absent means Chat, as for every older chat.
+              ...(c.mode === 'cowork' ? { mode: 'cowork' } : {}),
             }));
           const lists = require('../chat-lists.cjs');
           FREE_CHATS.splice(0, FREE_CHATS.length, ...lists.mergeChats(Array.from(FREE_CHATS), nextFreeChats, lists.readTombstones(currentWorkspace().dir)));

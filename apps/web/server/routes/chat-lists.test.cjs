@@ -109,3 +109,11 @@ test('the context meter reads null when nothing was recorded', async () => {
   await f.call('GET', '/api/chats/c1/context-window');
   assert.deepEqual(f.sent.pop(), { status: 200, body: { meter: null } });
 });
+
+test('a free chat keeps its Cowork mode; anything else reads back as Chat (#236)', async () => {
+  const f = fixture();
+  await f.call('POST', '/api/freechats', { chats: [{ id: 'fc', mode: 'cowork' }, { id: 'fx', mode: 'shell' }, { id: 'fy' }] });
+  assert.equal(f.freeChats.find((c) => c.id === 'fc').mode, 'cowork');
+  assert.equal('mode' in f.freeChats.find((c) => c.id === 'fx'), false);
+  assert.equal('mode' in f.freeChats.find((c) => c.id === 'fy'), false);
+});
