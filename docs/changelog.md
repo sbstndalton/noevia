@@ -8,6 +8,37 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release d5cf1ea — 2026-09-24 (theme families, visual and motion system batch J)
+
+### Services
+
+- **Web:** [#278](https://github.com/sbstndalton/noevia/pull/278) theme families Editorial/Contemporary/Glass replace materials with migration, unified elevation/radius/type tokens, motion system with reduced-motion support (closes [#245](https://github.com/sbstndalton/noevia/issues/245), [#247](https://github.com/sbstndalton/noevia/issues/247), [#249](https://github.com/sbstndalton/noevia/issues/249)) — deployed as `cowork-web:d5cf1ea` (full build FROM release source, `apps/web/src` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env`/Compose backed up as `*.bak.before-d5cf1ea`.
+
+`origin/main` was confirmed at `d5cf1ea` and every check-run on that commit (Docling extraction
+contract, Docker images build, Node tests/typecheck/frontend build, Model manager test suite,
+Diary test suite, Detect changed areas, CI required) was completed/success before release.
+Only `apps/web/src` changed since the live `c7f7999`. Source shipped via `git archive d5cf1ea`
+to `releases/d5cf1ea`. Web required a full build (frontend changed); the in-image test suite ran
+as part of the build and passed, producing `index-DNSqOhiT.js` / `index-CsqE8JA1.css`.
+
+Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero
+restarts and reported healthy. Public `/` returned 200, `/api/profile` returned 401, the served
+`index-*.js/css` names matched the web image's `dist/assets` byte-for-byte by filename, and the
+served `/theme.js` contained `data-family`. `diary`, `code-sandbox`, `model-loader`, `ocr`,
+`docling`, `laya`, `llama`, `embed` and `kiwix` kept identical container ids, `StartedAt` and zero
+restarts. Restart-alert baseline re-acked. No model runs, real Diary data, new harness installation
+or broader exposure were part of this release.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-d5cf1ea config/.env`, `ln -sfn releases/c7f7999 current`, then
+  `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release c7f7999 — 2026-09-24 (settings reorganisation, notifications, memory, response style, keyboard, archived chats, Customise, home recents)
 
 ### Services
