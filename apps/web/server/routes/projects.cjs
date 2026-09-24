@@ -215,6 +215,16 @@ function createProjectRoutes({
         if (!getProvider(patch.provider)) return json(res, 400, { error: 'no such provider' });
         project.provider = patch.provider;
       }
+      // Explicit sampling override (issue #194): null clears it, back to the automatic preset
+      // (or engine defaults, if automatic sampling presets are off). Unknown/out-of-range keys
+      // are dropped rather than rejecting the whole request — sanitizeExplicitSampling mirrors
+      // the same validation selectSamplingParams applies at request time.
+      if (patch.sampling === null) { delete project.sampling; delete storedProject.sampling; }
+      else if (patch.sampling !== undefined) {
+        const cleaned = require('../sampling-presets.cjs').sanitizeExplicitSampling(patch.sampling);
+        if (cleaned) project.sampling = cleaned;
+        else { delete project.sampling; delete storedProject.sampling; }
+      }
       if (patch.toolboxes !== undefined) {
         const boxes = sanitizeToolboxes(patch.toolboxes);
         if (!boxes) return json(res, 400, { error: 'toolboxes must be an array of toolbox ids' });
@@ -549,7 +559,9 @@ function createProjectRoutes({
       const assetId = decodeURIComponent(projAssetOne[2]).replace(/[^a-zA-Z0-9_-]/g, '');
       const project = getProject(id);
       if (!project) return json(res, 404, { error: 'no such project' });
-      const asset = (project.assets || []).find((a) => a.id === assetId);
+      // A retired image (replaced, but still named by a chat transcript) stays readable (#218).
+      const asset = (project.assets || []).find((a) => a.id === assetId)
+        || (req.method === 'GET' ? (project.retiredAssets || []).find((a) => a.id === assetId) : null);
       if (!asset) return json(res, 404, { error: 'no such image' });
       const file = path.join(currentWorkspace().assetDir(id), assetId);
       if (req.method === 'GET') {
