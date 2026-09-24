@@ -12,6 +12,11 @@ const STATUS: Record<CodeTask['status'], string> = {
   queued: 'Queued', running: 'Running', waiting_approval: 'Waiting for you',
   completed: 'Finished', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted',
 };
+const elapsed = (task: CodeTask): string => {
+  const end = ACTIVE.has(task.status) ? Date.now() : task.updatedAt;
+  const seconds = Math.max(0, Math.floor((end - task.createdAt) / 1000));
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+};
 /** Plain language for each action class, in the same words the approval card uses. */
 export const ACTION_LABEL: Record<CodeAction, string> = {
   read_repository: 'Read the repository', edit_file: 'Edit files', execute_command: 'Run commands',
@@ -122,7 +127,7 @@ function ProjectCodePanel({ projectId }: { projectId: string }): JSX.Element {
   const toggle = (action: CodeAction) => setCapabilities(list =>
     (list || []).includes(action) ? (list || []).filter(a => a !== action) : [...(list || []), action]);
 
-  if (!state || !capabilities) return <div className="code-panel"><p className="code-note">{error || 'Loading Code mode…'}</p></div>;
+  if (!state || !capabilities) return <div className="code-panel"><p className={`code-note${error ? ' is-error' : ''}`} role={error ? 'alert' : 'status'}>{error || 'Loading Code mode…'}</p>{error && <button type="button" className="btn btn-secondary" onClick={() => void load()}>Retry loading tasks</button>}</div>;
   // Network and installs only mean something where the egress proxy exists; elsewhere they are
   // shown, unavailable, with the reason, rather than offered and then silently not granted.
   const online = state.network === true;
@@ -221,6 +226,15 @@ function ProjectCodePanel({ projectId }: { projectId: string }): JSX.Element {
     </section>
 
     <section className="code-tasks" aria-label="Coding tasks">
+      <div className="code-tasks-heading">
+        <div><h2>Tasks</h2><p className="code-note" role="status">{state.tasks.filter(task => task.status === 'waiting_approval').length > 0
+          ? `${state.tasks.filter(task => task.status === 'waiting_approval').length} waiting for your decision`
+          : state.tasks.filter(task => ACTIVE.has(task.status)).length > 0
+            ? `${state.tasks.filter(task => ACTIVE.has(task.status)).length} in progress`
+            : `${state.tasks.length} ${state.tasks.length === 1 ? 'task' : 'tasks'} saved`}
+          {state.tasks.some(task => task.status === 'failed' || task.status === 'interrupted') && ' · Some tasks need review'}</p></div>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!!busy} onClick={() => void load()}>Refresh tasks</button>
+      </div>
       {state.tasks.length === 0
         ? <EmptyState icon="code" title="No tasks yet" compact>Describe a task above. Its branch stays in the repository when it finishes.</EmptyState>
         : state.tasks.map(task => <TaskCard key={task.id} task={task} busy={busy}
@@ -244,7 +258,7 @@ function TaskCard({ task, busy, onDecide, onCancel }: {
 }): JSX.Element {
   const active = ACTIVE.has(task.status);
   const updated = new Date(task.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-  const outcome = task.status === 'waiting_approval' ? 'Waiting for your decision'
+  const outcome = task.status === 'waiting_approval' ? `Waiting for your decision${task.approval ? `: ${ACTION_LABEL[task.approval.action]}` : ''}`
     : task.status === 'completed' ? `Finished${task.result?.tools ? ` after ${task.result.tools} tool ${task.result.tools === 1 ? 'call' : 'calls'}` : ''}`
     : task.status === 'failed' ? 'Stopped with an error'
     : task.status === 'cancelled' ? 'Cancelled'
@@ -256,7 +270,7 @@ function TaskCard({ task, busy, onDecide, onCancel }: {
       <span className="code-status">{STATUS[task.status]}</span>
     </header>
     <p className="code-meta">{[task.branch, task.capabilities.map(a => ACTION_LABEL[a]).join(' · ')].filter(Boolean).join(' · ') || 'Read only'}</p>
-    <p className="code-stage" role={task.status === 'waiting_approval' ? 'status' : undefined}>{outcome} · Updated {updated}</p>
+    <p className="code-stage" role={task.status === 'waiting_approval' ? 'status' : undefined}>{outcome} · {elapsed(task)} elapsed · Updated <time dateTime={new Date(task.updatedAt).toISOString()}>{updated}</time></p>
     {task.error && <p className="code-note is-error">{task.error}</p>}
     {task.approval && <ApprovalCard approval={task.approval} busy={busy.startsWith('decide:')} onDecide={onDecide}/>}
     {active && <div className="code-actions"><button type="button" className="btn btn-secondary" onClick={onCancel} disabled={!!busy}>Cancel task</button></div>}
@@ -316,7 +330,7 @@ function PreparationNote({ mode }: { mode?: PreparationMode }): JSX.Element | nu
 function TaskMeta({ meta }: { meta: NonNullable<CodeTask['meta']> }): JSX.Element {
   const parts = [
     meta.harnessVersion ? `${meta.harness || 'harness'} ${meta.harnessVersion}` : meta.harness,
-    meta.usage ? `${meta.usage.total?.toLocaleString()} tokens` : null,
+    meta.usage?.total != null ? `${meta.usage.total.toLocaleString()} tokens` : null,
     // Context used is its own measurement; a harness can report it and not token usage.
     meta.context ? `context ${meta.context.percent}% of ${meta.context.size.toLocaleString()}` : null,
     meta.commands ? `${meta.commands} command${meta.commands === 1 ? '' : 's'}${meta.failedCommands ? `, ${meta.failedCommands} failed` : ''}` : null,
