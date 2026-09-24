@@ -31,7 +31,10 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
   const unsupported = operation => Promise.resolve({ ok: false, status: 501, body: { error: `${operation} is not exposed by this llama.cpp adapter` } });
   const modelQuery = model => '?model=' + encodeURIComponent(model) + '&autoload=false';
   const rawModels = signal => request('/models', {signal});
-  const tracker=require('./llamacpp-downloads.cjs').createDownloadTracker({base,headers,file:downloadStatePath,fetchStream});
+  // Set once evidenceStore/importEvidence exist below; the tracker is created first because
+  // presets/evidence require the request() helper this closure also builds.
+  let onDownloadCompleted=null;
+  const tracker=require('./llamacpp-downloads.cjs').createDownloadTracker({base,headers,file:downloadStatePath,fetchStream,onCompleted:model=>onDownloadCompleted?.(model)});
   const presets=presetPath ? require('./llamacpp-presets.cjs').createPresetStore(presetPath) : null;
   const maintenance=require('./inference-maintenance.cjs').createMaintenanceGate();
   async function mutate(fn) {const leave=maintenance.enter();try{return await fn();}finally{leave();}}
@@ -276,10 +279,26 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
     const live=evidenceStore?await computeIdentity(model):null;
     if(evidenceStore)identityCache.set(model,{at:Date.now(),value:live});
     const records=evidenceStore?evidenceStore.list():[];
+    const importLib=require('./model-evidence-import.cjs');
+    const external=importLib.deriveExternal(records,{model,artifactHash:live?.identity?.artifact?importLib.artifactIdentityHash(live.identity.artifact):null});
     return {ok:true,status:200,body:{model,tracked:!!evidenceStore,identityHash:live?.identityHash||null,
       categories:evidenceLib.CATEGORIES.map(category=>{const d=evidenceLib.derive(records,{model,category,liveHash:live?.identityHash||null});
-        return {category,state:d.state,value:d.record?.value??null,result:d.record?.result??null,at:d.record?.at??null,suite:d.record?.suite??null,limitations:d.record?.limitations||[]};})}};
+        return {category,state:d.state,value:d.record?.value??null,result:d.record?.result??null,at:d.record?.at??null,suite:d.record?.suite??null,limitations:d.record?.limitations||[]};}),
+      external:{category:'external_model_card',state:external.state,value:external.record?.value??null,at:external.record?.at??null,suite:external.record?.suite??null,
+        provenance:external.record?.provenance??null,limitations:external.record?.limitations||[]}}};
   }
+  // Best-effort import of attributable model-card evidence for one model (#266). The
+  // checkpoint (HF repo) equals the llama.cpp model id for a pulled model; a locally
+  // renamed or non-HF model simply has no importable checkpoint and this resolves to
+  // { ok:false }. Never throws — every caller (the download-completed hook and the
+  // explicit route) treats a failure here as "nothing to show", not an error.
+  async function importEvidence(model,{checkpoint}={}){
+    const importLib=require('./model-evidence-import.cjs');
+    const live=await computeIdentity(model);
+    if(!live)return {ok:false,reason:'model artifact unavailable'};
+    return importLib.importModelEvidence({model,checkpoint:checkpoint||model,artifact:live.identity.artifact,fetchJson,store:evidenceStore,now:()=>Date.now()});
+  }
+  onDownloadCompleted=evidenceStore?(model=>importEvidence(model).catch(()=>{})):null;
   // Identity for the auto-tune lookup table: architecture, quantisation and hardware class.
   async function tuneIdentity(model){
     const read=await readModel(model);
@@ -323,7 +342,7 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
     suggestPreset,
     estimateMemory,
     reloadPresets,
-    evidence, recordEvidence,
+    evidence, recordEvidence, importEvidence,
     calibration: calibrator ? { start: calibrator.start, cancel: calibrator.cancel, status: calibrator.status, recover: calibrator.recover } : null,
     autotune: autotuner ? { start: autotuner.start, resume: autotuner.resume, cancel: autotuner.cancel, status: autotuner.status, recover: autotuner.recover, untuned: autotuner.untuned } : null,
     unload: model => mutate(()=>post('/models/unload', { model })),
