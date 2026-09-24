@@ -700,3 +700,7 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .plugin-grid-installed details { margin-top: var(--space-2); max-width: 100%; }
 .plugin-grid-installed summary { cursor: pointer; color: var(--text-primary); }
 .plugin-grid-installed pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.plugin-url-review { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--nav-hover); color: var(--text-primary); overflow-wrap: anywhere; }
+.plugin-url-review p { margin: 0; line-height: 1.45; }
+.plugin-url-address { overflow-wrap: anywhere; }
