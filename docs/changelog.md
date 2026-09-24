@@ -8,6 +8,36 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 11617a3 — 2026-09-24 (round-13 fixes: harness approval bypasses, MCP discovery TTL, Diary storage-outage handling, UI fixes)
+
+### Services
+
+- **Web:** [#166](https://github.com/sbstndalton/noevia/pull/166), [#167](https://github.com/sbstndalton/noevia/pull/167), [#168](https://github.com/sbstndalton/noevia/pull/168) (web side), [#169](https://github.com/sbstndalton/noevia/pull/169) (web side), [#171](https://github.com/sbstndalton/noevia/pull/171), [#172](https://github.com/sbstndalton/noevia/pull/172), [#187](https://github.com/sbstndalton/noevia/pull/187), [#188](https://github.com/sbstndalton/noevia/pull/188), [#189](https://github.com/sbstndalton/noevia/pull/189) (web side) — deployed as `cowork-web:11617a3` (full `compose build web` from the release context; frontend changed).
+- **Diary:** Diary parts of [#134](https://github.com/sbstndalton/noevia/pull/134), [#168](https://github.com/sbstndalton/noevia/pull/168), [#169](https://github.com/sbstndalton/noevia/pull/169), [#189](https://github.com/sbstndalton/noevia/pull/189) — deployed as `cowork-diary:11617a3` (`diary-overlay.sh`, `agent/` only, FROM `cowork-diary:5b6d9b6`).
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-dda50c2`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** live Compose files unchanged (backed up as `*.bak.before-11617a3`).
+
+Source shipped via `git archive 11617a3` to `releases/11617a3`. `apps/web/src` changed vs dda50c2
+(lockfile and Dockerfile identical), so web was built on DaServer with `docker compose build web`
+(`cowork-web:11617a3`, image `23fd3187b3cb`). Candidate checks, run with no network: the in-image `code-harness.cjs` and
+`mcp-wiring.cjs` SHA-256 hashes match the release; `pinnedParent` and `discoveryFailTtlMs` are present; dist serves
+`index-CzWzWYqN.js` / `index-CV0N4hHI.css`. Diary diff vs 5b6d9b6 was `agent/` plus tests only (requirements.txt and
+Dockerfile identical). The overlay took appdata backup `ab_20260924_140932` (gzip verified), which restarted web at
+18:09:47Z (same container id). It then recreated Diary as image `96dc142c…`, and Diary health via web returned 200.
+
+Cutover used guarded `up.sh … --no-build --no-deps --wait` for `web`, then the Diary overlay. Web and Diary are healthy
+with zero restarts. All other cowork containers (code-sandbox, model-loader, laya, ocr, docling, llama, embed, kiwix)
+kept identical ids and start times. Public `/` returned 200 on 3 of 3 requests, and `/api/profile` returned 401. The served assets exist in
+the image, and web logs had no error markers over 60 s. The Diary import check passed; no Diary data was read. Restart-alert
+baseline re-acked.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-11617a3 config/.env` (also reverts DIARY_VERSION), `ln -sfn releases/dda50c2 current`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+- Diary: `sed -i 's/^DIARY_VERSION=.*/DIARY_VERSION=5b6d9b6/' config/.env` (or restore `config/.env.bak.before-diary-11617a3`), then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 diary`.
+
 ## Release dda50c2 — 2026-09-24 (harness containment, RAG/prompt budget, round-12 hardening, pi bridge timeouts)
 
 ### Services
