@@ -33,13 +33,7 @@
 }
 
 /* ── Navigation drawer destinations: 56px, pill active indicator, label-large. ── */
-[data-family='contemporary'] .app .sidebar.pane .nav-item,
-[data-family='contemporary'] .app .sidebar.pane :is(.project-disclosure, .nested-chat-title) {
-  border-radius: var(--radius-pill); color: var(--md-on-surface-variant);
-}
-[data-family='contemporary'] .app .sidebar.pane :is(.proj-row, .chat-row) {
-  border-radius: var(--radius-pill);
-}
+/* Rows take the family's control radius (system.css), not M3 pills: one shape for every row. */
 [data-family='contemporary'] .app .sidebar.pane :is(.nav-item, .proj-row, .chat-row):hover {
   background: color-mix(in srgb, var(--md-on-surface) var(--m3-hover), transparent);
 }
