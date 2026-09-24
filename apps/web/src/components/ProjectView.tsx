@@ -21,6 +21,7 @@ import { useResearchAccess } from './research/useResearchAccess';
 import { CodePanel } from './code/CodePanel';
 import { useCodeAccess } from './code/useCodeAccess';
 import { EmptyState } from './EmptyState';
+import { useT } from '../i18n';
 
 /** First free "name", "name (2)", "name (3)", … avoiding collisions. */
 function uniqueName(name: string, existing: { name: string }[]): string {
@@ -89,6 +90,7 @@ export function ProjectView({
   onEdit,
   modelLabel,
 }: ProjectViewProps): JSX.Element {
+  const t = useT();
   const [composerBusy, setComposerBusy] = useState(false);
   const [composerStatus, setComposerStatus] = useState('');
   const [panel, setPanel] = useState<'instructions' | 'memory' | 'context' | null>(null);
@@ -363,8 +365,8 @@ export function ProjectView({
             <div className="composer-inner chat-composer-inner pane">
               <ComposerTextarea
                 rows={1}
-                aria-label={`Message ${project.name}`}
-                placeholder={`Message ${project.name}`}
+                aria-label={t('composer.placeholderProject', { name: project.name })}
+                placeholder={t('composer.placeholderProject', { name: project.name })}
                 value={draft}
                 onValue={setDraft}
                 onSubmit={send}
@@ -394,7 +396,7 @@ export function ProjectView({
               value={project.instructions}
               placeholder="How the AI should behave in every chat of this project…"
               onChange={(v) => onPatch(project.id, { instructions: v })}
-              onFile={(t) => onPatch(project.id, { instructions: t })}
+              onFile={(text) => onPatch(project.id, { instructions: text })}
               fileMode="replace"
             />
           )}
@@ -409,7 +411,7 @@ export function ProjectView({
               value={project.memories.join('\n')}
               placeholder="One memory per line — e.g. Prefer concise answers with runnable examples"
               onChange={(v) => onPatch(project.id, { memories: v.split('\n').map((x) => x.trim()).filter(Boolean) })}
-              onFile={(t) => onPatch(project.id, { memories: [...project.memories, ...t.split('\n').map((x) => x.trim()).filter(Boolean)] })}
+              onFile={(text) => onPatch(project.id, { memories: [...project.memories, ...text.split('\n').map((x) => x.trim()).filter(Boolean)] })}
               fileMode="append"
             />
           )}
