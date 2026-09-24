@@ -48,6 +48,12 @@
 .code-output h4 { margin: 0; font-size: var(--text-caption); font-weight: 600; color: var(--text-secondary); }
 .code-output > p { margin: 0; font-size: var(--text-footnote); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .code-output > .code-output-note { font-size: var(--text-caption2); color: var(--text-secondary); }
+.code-output-details { display: block; }
+.code-output-details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--text-caption); font-weight: 600; }
+.code-output-details > summary::before { content: '▸'; margin-right: 8px; }
+.code-output-details[open] > summary::before { transform: rotate(90deg); }
+.code-output-details > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.code-output-details[open] > summary { margin-bottom: 6px; }
 
 /* The approval card. Deliberately plain and unmissable: the arguments are the point. */
 .code-approval { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--bg); }

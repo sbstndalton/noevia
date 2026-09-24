@@ -243,13 +243,20 @@ function TaskCard({ task, busy, onDecide, onCancel }: {
   onDecide: (decision: 'approve' | 'approve_all' | 'deny', approvalId: string) => void; onCancel: () => void;
 }): JSX.Element {
   const active = ACTIVE.has(task.status);
+  const updated = new Date(task.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  const outcome = task.status === 'waiting_approval' ? 'Waiting for your decision'
+    : task.status === 'completed' ? `Finished${task.result?.tools ? ` after ${task.result.tools} tool ${task.result.tools === 1 ? 'call' : 'calls'}` : ''}`
+    : task.status === 'failed' ? 'Stopped with an error'
+    : task.status === 'cancelled' ? 'Cancelled'
+    : task.status === 'interrupted' ? 'Interrupted before completion'
+    : task.stage || STATUS[task.status];
   return <article className={`code-task is-${task.status}`} aria-busy={active && !task.approval}>
     <header>
       <h3>{task.task || task.branch || 'Task'}</h3>
       <span className="code-status">{STATUS[task.status]}</span>
     </header>
     <p className="code-meta">{[task.branch, task.capabilities.map(a => ACTION_LABEL[a]).join(' · ')].filter(Boolean).join(' · ') || 'Read only'}</p>
-    {task.stage && active && !task.approval && <p className="code-stage">{task.stage}</p>}
+    <p className="code-stage" role={task.status === 'waiting_approval' ? 'status' : undefined}>{outcome} · Updated {updated}</p>
     {task.error && <p className="code-note is-error">{task.error}</p>}
     {task.approval && <ApprovalCard approval={task.approval} busy={busy.startsWith('decide:')} onDecide={onDecide}/>}
     {active && <div className="code-actions"><button type="button" className="btn btn-secondary" onClick={onCancel} disabled={!!busy}>Cancel task</button></div>}
@@ -261,11 +268,17 @@ function TaskCard({ task, busy, onDecide, onCancel }: {
         ? <ul>{task.plan.subQuestions.map((entry, index) => <li key={index}>{entry}</li>)}</ul>
         : <p className="code-plan-note">No entries were reported.</p>)}
     </section>}
-    {task.assistantOutput?.text && <section className="code-output" role="region" aria-label="Assistant output" tabIndex={0}>
-      <h4>Assistant output</h4>
-      {task.assistantOutput.truncated && <p className="code-output-note">Showing the first 32 KiB of output.</p>}
-      <p>{task.assistantOutput.text}</p>
-    </section>}
+    {task.assistantOutput?.text && (active
+      ? <section className="code-output" role="region" aria-label="Assistant output" tabIndex={0}>
+          <h4>Assistant output</h4>
+          {task.assistantOutput.truncated && <p className="code-output-note">Showing the first 32 KiB of output.</p>}
+          <p>{task.assistantOutput.text}</p>
+        </section>
+      : <details className="code-output code-output-details">
+          <summary>Assistant output{task.assistantOutput.truncated ? ' (shortened)' : ''}</summary>
+          {task.assistantOutput.truncated && <p className="code-output-note">Showing the first 32 KiB of output.</p>}
+          <p>{task.assistantOutput.text}</p>
+        </details>)}
     {task.result && !active && <p className="code-meta">
       {task.result.tools ?? 0} tool calls · {task.result.allowed ?? 0} allowed · {task.result.refused ?? 0} declined · {task.result.denied ?? 0} refused by noevia
     </p>}
