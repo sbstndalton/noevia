@@ -40,6 +40,7 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'active' | 'archived'>('active');
+  const [sort, setSort] = useState<'recent' | 'name'>('recent');
   const archivedCount = projects.filter((p) => p.archived).length;
   // The headline describes "Your projects"; archived ones are counted on their own tab.
   const activeProjects = projects.filter((p) => !p.archived);
@@ -47,7 +48,7 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
   const visibleProjects = projects
     .filter((p) => (tab === 'archived' ? p.archived : !p.archived))
     .filter((p) => `${p.name} ${p.goal || ''}`.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
+    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (sort === 'name' ? a.name.localeCompare(b.name) : b.updatedAt - a.updatedAt) || a.name.localeCompare(b.name));
 
   return (
     <div className="main projects-workspace">
@@ -86,6 +87,10 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <select className="projects-sort" aria-label="Sort projects" value={sort} onChange={(e) => setSort(e.target.value as 'recent' | 'name')}>
+            <option value="recent">Recent activity</option>
+            <option value="name">Name</option>
+          </select>
         </div>
 
         <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
@@ -112,6 +117,7 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
                 {p.goal && <p className="project-card-goal">{p.goal}</p>}
                 <div className="project-card-meta">
                   {p.pinned && <span className="project-card-pin"><ShellIcon name="pin" size={14}/>Pinned</span>}
+                  {p.archived && <span className="project-chip">Archived</span>}
                   <span className="project-chip">{p.chats.length} {p.chats.length === 1 ? 'chat' : 'chats'}</span>
                   {p.files.length > 0 && <span className="project-chip">{p.files.length} {p.files.length === 1 ? 'file' : 'files'}</span>}
                   {p.modes?.length && (p.modes.length > 1 || p.modes[0] !== 'chat') ? <span className="project-chip" aria-label={`Available in ${p.modes.join(', ')}`}>{p.modes.map((m) => m === 'chat' ? 'Chat' : m === 'cowork' ? 'Cowork' : 'Code').join(' · ')}</span> : null}
@@ -133,7 +139,7 @@ export function ProjectsView({ projects, onOpenProject, onPatch, onCreate, onDel
       </div>
 
       {menu && <ContextMenu at={menu.at} onClose={()=>setMenu(null)} items={[
-        {label:'Project settings',icon:<ShellIcon name="settings"/>,onSelect:()=>onEdit(menu.project.id)},
+        {label:'Edit project',icon:<ShellIcon name="settings"/>,onSelect:()=>onEdit(menu.project.id)},
         {label:menu.project.pinned?'Unpin project':'Pin project',icon:<ShellIcon name="pin"/>,onSelect:()=>onPatch(menu.project.id,{pinned:!menu.project.pinned})},
         {label:menu.project.archived?'Restore project':'Archive project',icon:<ShellIcon name="folder"/>,onSelect:()=>onPatch(menu.project.id,{archived:!menu.project.archived})},
         {label:'Delete project',danger:true,onSelect:()=>setConfirmDelete(menu.project.id)}

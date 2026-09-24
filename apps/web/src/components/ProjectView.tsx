@@ -4,7 +4,6 @@ import { ComposerActions } from './ComposerActions';
 import { ComposerModel } from './ComposerModel';
 import { ComposerTextarea } from './ComposerTextarea';
 import { sourceStatus } from '../source-status';
-import { FolderPicker } from './FolderPicker';
 import { ShellIcon } from './ShellIcon';
 import { ProjectIcon } from './ProjectIdentity';
 import { useEffect, useState } from 'react';
@@ -99,7 +98,6 @@ export function ProjectView({
   useEffect(() => { if (tab === 'code' && !codeAccess) setTab('chats'); }, [tab, codeAccess]);
   const [draft, setDraft] = useState('');
   const [skillFiles, setSkillFiles] = useState<string[]>([]);
-  const [pickingFolder, setPickingFolder] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [addError, setAddError] = useState('');
@@ -171,6 +169,7 @@ export function ProjectView({
             <div className="project-head-main">
               <h1 className="project-title"><ProjectIcon project={project} size={30}/>{project.name}</h1>
               {project.goal && <p className="project-goal">{project.goal}</p>}
+              <p className="project-detail-meta">{project.archived ? 'Archived · ' : ''}{project.chats.length} {project.chats.length === 1 ? 'chat' : 'chats'} · Updated <time dateTime={new Date(project.updatedAt).toISOString()} title={new Date(project.updatedAt).toLocaleString()}>{timeAgo(project.updatedAt)}</time></p>
             </div>
             <div className="project-head-actions">
               {chatEnabled && <button className="btn btn-secondary btn-sm" onClick={() => onNewChat(project.id)}>New chat</button>}
@@ -269,13 +268,12 @@ export function ProjectView({
                   : <p className="rail-empty">A folder is created on your first upload when storage is connected.</p>}
               </section>
               <details className="project-linked-folders">
-                <summary>Linked reference folders ({(project.sourceFolders || []).filter(f=>f!==project.projectFolder).length})</summary>
+                <summary>Linked reference folders ({linkedFolders.length})</summary>
                 <p className="rail-empty">Read files from other storage folders without moving them. Refresh to pick up changes; unlinking keeps the original files.</p>
                 <ul className="source-list">{(project.sourceFolders || []).filter(f=>f!==project.projectFolder).map(f=><li key={f}>
                   <span className="source-name" title={f}><ShellIcon name="folder"/> {f}</span>
-                  <button className="btn btn-ghost btn-sm" disabled={syncing} onClick={()=>void updateFolders((project.sourceFolders || []).filter(x=>x!==f))} aria-label={`Unlink ${f}`}>Unlink</button>
                 </li>)}</ul>
-                <button className="btn btn-secondary btn-sm" disabled={syncing} onClick={()=>setPickingFolder(true)}>Link folder</button>
+                <button className="btn btn-secondary btn-sm" onClick={onEdit}>Edit linked folders</button>
                 <p className="source-status">Linked folders refresh when you return and about every five minutes while this project is open. Refresh pauses during chat generation, while offline, or when this tab is hidden.</p>
               </details>
               <div className="source-actions">
@@ -471,7 +469,6 @@ export function ProjectView({
           }}
         />
       )}
-      {pickingFolder && <FolderPicker onClose={()=>setPickingFolder(false)} onPick={path=>{setPickingFolder(false);void updateFolders([...new Set([...(project.sourceFolders || []),path])]);}}/>}
       {browsing && (
         <StorageFileBrowser
           onClose={() => setBrowsing(false)}

@@ -573,6 +573,12 @@ dialog.folder-picker::backdrop { background:rgba(0,0,0,.4); backdrop-filter:blur
 .projects-head .seg button.is-selected { background:none;border-bottom-color:var(--text-primary);color:var(--text-primary);font-weight:600;border-radius:0; }
 .projects-head .projects-search { border:0;border-radius:0;background:none;width:210px;padding:12px 0;box-shadow:none; }
 .projects-head .projects-search:focus { outline:2px solid var(--focus-ring);outline-offset:2px; }
+.projects-sort { min-height:44px; padding:8px 30px 8px 10px; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:7px; font:inherit; }
+.projects-sort:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+.project-edit-folders .source-list { margin:8px 0; }
+.project-edit-folders .source-name { min-width:0; overflow-wrap:anywhere; }
+.project-edit-folders > .btn { align-self:flex-start; }
+.project-detail-meta { margin:8px 0 0; color:var(--text-secondary); font-size:var(--text-caption); font-variant-numeric:tabular-nums; }
 .projects-grid { gap:22px;padding-top:26px; }
 .project-card { display:flex;flex-direction:column;min-height:254px;padding:25px 26px 19px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:9px;box-shadow:none;transition:border-color .16s,background .16s; }
 .project-card:hover { transform:none;box-shadow:none;background:var(--bg-surface);border-color:var(--control-border); }
