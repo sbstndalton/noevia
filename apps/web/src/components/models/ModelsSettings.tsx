@@ -7,23 +7,26 @@ import { SegmentedControl } from '../SegmentedControl';
 import { matchesModelUse, modelChoiceLabel } from '../../model-guidance';
 import { AUTO_EXPLAINED, ROLE_LABEL, roleSummary } from '../../routing-copy';
 import { ReasoningControl } from '../ReasoningControl';
+import { SamplingPresetsControl } from '../SamplingPresetsControl';
 import { BenchmarksTab, PromptsTab } from './BenchmarksTab';
 import { ConfigureTab } from './ConfigureTab';
 import { DownloadTab } from './DownloadTab';
 import { HardwareTab } from './HardwareTab';
 import { LibraryTab } from './LibraryTab';
+import { GuidedOptimize } from './GuidedOptimize';
+import { OverviewTab } from './OverviewTab';
 import { notifyModelsChanged } from '../../models-changed';
 import { routingViewState } from '../../routing-view-state';
 export type { RoutingViewState } from '../../routing-view-state';
 
 export type ModelSort = 'name' | 'size' | 'modified';
 export type ModelFilter = 'all' | 'loaded' | 'vision' | 'unconfigured';
-export type Tab = 'yours' | 'discover' | 'routing' | 'projects' | 'hardware' | 'benchmarks' | 'prompts';
+export type Tab = 'overview' | 'yours' | 'discover' | 'routing' | 'projects' | 'hardware' | 'benchmarks' | 'prompts';
 
 // One tab bar for the whole page. Your models and Discover are the two anyone opens while
 // switching a model; the rest are their own pages' worth of content.
 const TABS: [Tab, string][] = [
-  ['yours', 'Your models'], ['discover', 'Discover'], ['routing', 'Routing'], ['projects', 'Projects'],
+  ['overview', 'Overview'], ['yours', 'Your models'], ['discover', 'Discover'], ['routing', 'Routing'], ['projects', 'Projects'],
   ['hardware', 'Hardware'], ['benchmarks', 'Benchmarks'], ['prompts', 'Prompts'],
 ];
 
@@ -65,6 +68,7 @@ export function ModelsSettings({ models, routes, projects, modelsError, initialM
       <button className="modal-btn secondary" onClick={() => setOpen('')}><ShellIcon name="left" size={16}/>All models</button>
       <h1>{open}</h1>
     </div>
+    <GuidedOptimize model={open} installed={models.find((m) => m.name === open)} onOpenTab={go} />
     <ConfigureTab initial={open} onSaved={changed} onSelect={setOpen} />
   </div>;
 
@@ -100,6 +104,7 @@ export function ModelsSettings({ models, routes, projects, modelsError, initialM
     </nav>
 
     <div role="tabpanel" aria-label={TABS.find(([id]) => id === tab)?.[1]}>
+      {tab === 'overview' && <OverviewTab models={models} modelsError={modelsError} onOpen={openModel} onTab={go} />}
       {tab === 'yours' && <LibraryTab query={query} sort={sort} filter={filter} onConfigure={openModel} onChanged={changed} />}
       {tab === 'discover' && <DownloadTab query={query} sort={hfSort} onDownloaded={changed} onSetUp={openModel} />}
       {tab === 'routing' && <RoutingSection models={models} modelsError={modelsError} />}
@@ -184,6 +189,12 @@ function RoutingSection({ models, modelsError }: { models: InstalledModel[]; mod
   <section className="mm-panel">
     <div className="mm-panel-head"><h3>Thinking</h3></div>
     <ReasoningControl global />
+  </section>
+
+  {/* Issue #194: task-aware sampling presets, own panel for the same reason as Thinking above. */}
+  <section className="mm-panel">
+    <div className="mm-panel-head"><h3>Sampling</h3></div>
+    <SamplingPresetsControl />
   </section></>;
 }
 
