@@ -284,7 +284,11 @@ test('an answer names the card it was for: an expired approval is a 409, and the
   let first = null;
   for (let i = 0; i < 200 && !(first = svc.get(ws, project, started.taskId)?.approval); i++) await new Promise((r) => setTimeout(r, 2));
   assert.equal(first.title, 'first');
-  assert.deepEqual(await asks[0], { outcome: 'selected', optionId: 'n' }, 'the first timed out as a refusal');
+  // The approval timer is unref'd, so something has to keep the loop alive while it runs out.
+  const alive = setInterval(() => {}, 10);
+  let firstAnswer;
+  try { firstAnswer = await asks[0]; } finally { clearInterval(alive); }
+  assert.deepEqual(firstAnswer, { outcome: 'selected', optionId: 'n' }, 'the first timed out as a refusal');
   let second = null;
   for (let i = 0; i < 200 && !(second = svc.get(ws, project, started.taskId)?.approval); i++) await new Promise((r) => setTimeout(r, 2));
   assert.equal(second.title, 'second');
