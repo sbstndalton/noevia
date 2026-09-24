@@ -434,18 +434,20 @@ dialog.folder-picker::backdrop { background:rgba(0,0,0,.4); backdrop-filter:blur
 .sidebar-label { display:block; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--text-footnote); }
 .sidebar-label-text { display:inline-block; min-width:100%; white-space:nowrap; }
 .sidebar .proj-row:hover .sidebar-label.is-overflowing,
-.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing,
-.sidebar .chat-row:hover .sidebar-label.is-overflowing,
-.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing { text-overflow:clip; mask-image:linear-gradient(to right,#000 calc(100% - 14px),transparent); }
+.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing { text-overflow:clip; mask-image:linear-gradient(to right,#000 calc(100% - 14px),transparent); }
 .sidebar .proj-row:hover .sidebar-label.is-overflowing .sidebar-label-text,
-.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text,
+.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text { animation:sidebar-title-scroll var(--label-duration) 800ms ease-in-out infinite alternate; }
+/* Chat rows keep a plain right-side ellipsis instead of the marquee: the pin/archive/"…"
+   actions narrow the row on hover, and the marquee's translateX previously scrolled the
+   title's leading characters out of the clipped view (first letter appeared cut off). */
+.sidebar .chat-row:hover .sidebar-label.is-overflowing,
+.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing { text-overflow:ellipsis; mask-image:none; }
 .sidebar .chat-row:hover .sidebar-label.is-overflowing .sidebar-label-text,
-.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text { animation:sidebar-title-scroll var(--label-duration) 800ms ease-in-out infinite alternate; }
+.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text { animation:none; transform:none; }
 @keyframes sidebar-title-scroll { 0%,15% {transform:translateX(0)} 85%,100% {transform:translateX(calc(var(--label-travel) - 14px))} }
 @media(prefers-reduced-motion:reduce) {
   .sidebar .sidebar-label-text { animation:none !important; }
-  .sidebar .proj-row:hover .sidebar-label, .sidebar .proj-row:has(:focus-visible) .sidebar-label,
-  .sidebar .chat-row:hover .sidebar-label, .sidebar .chat-row:has(:focus-visible) .sidebar-label { white-space:normal; overflow:visible; mask-image:none; }
+  .sidebar .proj-row:hover .sidebar-label, .sidebar .proj-row:has(:focus-visible) .sidebar-label { white-space:normal; overflow:visible; mask-image:none; }
   .sidebar .sidebar-label-text { white-space:inherit; overflow-wrap:anywhere; }
 }
 @media(hover:none) { .sidebar-section-head .section-options {opacity:1;} }
