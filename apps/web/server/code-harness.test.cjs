@@ -611,4 +611,10 @@ test('defaultFiles refuses a link swapped in after the containment check (O_NOFO
   assert.equal(fs.existsSync(victim), false);
   assert.throws(() => defaultFiles.write(path.join(outside, 'x.txt'), 'x', root), /Outside/);
   assert.throws(() => defaultFiles.write(path.join(root, 'x.txt'), 'x'), /Outside/, 'no root, no write');
+  // mkdir -p must not follow a symlinked directory out of the worktree.
+  fs.symlinkSync(outside, path.join(root, 'dirlink'));
+  assert.throws(() => defaultFiles.write(path.join(root, 'dirlink', 'a', 'b', 'file'), 'x', root), /Outside/);
+  assert.equal(fs.existsSync(path.join(outside, 'a')), false, 'nothing created outside');
+  defaultFiles.write(path.join(root, 'new', 'deep', 'ok.txt'), 'ok', root);
+  assert.equal(fs.readFileSync(path.join(root, 'new', 'deep', 'ok.txt'), 'utf8'), 'ok');
 });

@@ -460,7 +460,24 @@ const defaultFiles = {
   },
   write(target, text, root) {
     // Create missing directories first, then judge where the parent really is.
-    if (typeof root === 'string' && root) fs.mkdirSync(nodePath.dirname(target), { recursive: true });
+    // mkdir -p follows symlinks, so vet the deepest existing ancestor before creating anything.
+    if (typeof root === 'string' && root) {
+      const refuse = () => { throw Object.assign(Error('Outside this task\u2019s workspace'), { code: -32602 }); };
+      let realRoot;
+      try { realRoot = fs.realpathSync(root); } catch { refuse(); }
+      const dir = nodePath.resolve(nodePath.dirname(target));
+      let existing = dir;
+      while (!fs.existsSync(existing)) {
+        if (fs.lstatSync(existing, { throwIfNoEntry: false })) refuse(); // a dangling link
+        const up = nodePath.dirname(existing);
+        if (up === existing) refuse();
+        existing = up;
+      }
+      if (existing !== dir && fs.lstatSync(existing).isSymbolicLink()) refuse();
+      const rel = nodePath.relative(realRoot, fs.realpathSync(existing));
+      if (rel.startsWith('..') || nodePath.isAbsolute(rel)) refuse();
+      if (existing !== dir) fs.mkdirSync(dir, { recursive: true });
+    }
     const final = pinnedParent(target, root);
     const { O_WRONLY, O_CREAT, O_TRUNC, O_NOFOLLOW } = fs.constants;
     let fd;
