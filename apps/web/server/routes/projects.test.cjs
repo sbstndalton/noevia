@@ -131,7 +131,6 @@ test('chat metas: listing, saving a normalized list and deleting one', async () 
   await f.call('POST', '/api/projects/p1/chats', { chats: [{ id: 'cw', mode: 'cowork' }] });
   assert.equal(f.sent.at(-1).status, 200);
   assert.equal('mode' in f.store.savedChats[1][0], false);
-  assert.equal('mode' in f.store.savedChats[1][1], false);
   f.sent.pop();
   await f.call('POST', '/api/projects/p1/chats', { chats: 'x' });
   assert.deepEqual(f.sent.pop(), { status: 400, body: { error: 'chats array required' } });
