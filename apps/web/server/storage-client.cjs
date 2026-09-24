@@ -32,7 +32,10 @@ function decodeXmlEntities(s) {
   return String(s).replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (m, ent) => {
     if (ent[0] === '#') {
       const code = ent[1] === 'x' || ent[1] === 'X' ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      // A hostile body can name a code point String.fromCodePoint refuses (out of range, or a
+      // lone surrogate): leave the original text alone rather than throwing and losing the listing.
+      const valid = Number.isFinite(code) && code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF);
+      return valid ? String.fromCodePoint(code) : m;
     }
     switch (ent) {
       case 'amp': return '&';

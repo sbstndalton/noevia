@@ -217,6 +217,22 @@ test('PROPFIND hrefs are XML-entity-decoded, and an href outside the browsed dir
   assert.deepEqual(entries.map((e) => e.name), ['a&b.md'], 'entity-decoded, and the foreign href is dropped');
 });
 
+test('an out-of-range or surrogate numeric entity in a hostile PROPFIND body does not crash the listing', async (t) => {
+  const xml = `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">` +
+    `<d:response><d:href>/dav/Cowork/bad&#99999999;.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `<d:response><d:href>/dav/Cowork/bad2&#xD800;.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `<d:response><d:href>/dav/Cowork/ok.md</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>1</d:getcontentlength></d:prop></d:propstat></d:response>` +
+    `</d:multistatus>`;
+  const { server, port } = await startRawPropfindServer(xml);
+  t.after(() => server.close());
+  const conn = { kind: 'webdav', baseUrl: `http://127.0.0.1:${port}/dav`, username: 'u', secret: 'p', corpusRoot: 'Cowork' };
+  const entries = await listFiles(conn, 'Cowork');
+  // The invalid entities are left as literal text (not decoded, not thrown); the listing still
+  // succeeds and includes every entry, including the well-formed one.
+  assert.ok(entries.some((e) => e.name === 'ok.md'));
+  assert.equal(entries.length, 3);
+});
+
 test('createFolder makes a directory, tolerates one that exists, and refuses S3', async (t) => {
   const { server, port } = await startFakeDav();
   t.after(() => server.close());
