@@ -215,7 +215,8 @@ Unraid Compose Manager plugin, project name **"Cowork"**. Three containers:
 - **Releases**: `/mnt/docker/appdata/cowork/releases/<git-sha>/` holds a full
   source checkout. `/mnt/docker/appdata/cowork/current` is a symlink to the active
   one. `COWORK_SOURCE_DIR` in `.env` points the compose file's `build: context:`
-  at `current`; `COWORK_VERSION` sets the image tag.
+  at `current`; `COWORK_VERSION` sets the **web** image tag. Every sidecar has its own
+  tag variable (see [Per-service image tags](#per-service-image-tags)).
 - **Env**: `/mnt/docker/appdata/cowork/config/.env`, chmod 600. Back it up before
   editing — the `.env.bak.<timestamp>` convention is already established.
 - **There are no git credentials on the server.** `git fetch` in
@@ -253,7 +254,7 @@ ssh root@100.70.173.74 "set -e
 cd /mnt/docker/appdata/cowork/releases && mkdir -p $SHA && tar -xzf $SHA.tar.gz -C $SHA && rm -f $SHA.tar.gz
 cd /mnt/docker/appdata/cowork && cp config/.env config/.env.bak.\$(date +%Y%m%d%H%M%S)
 cd /boot/config/plugins/compose.manager/projects/Cowork
-COWORK_SOURCE_DIR=/mnt/docker/appdata/cowork/releases/$SHA COWORK_VERSION=$SHA docker compose --env-file /mnt/docker/appdata/cowork/config/.env build
+COWORK_SOURCE_DIR=/mnt/docker/appdata/cowork/releases/$SHA COWORK_VERSION=$SHA docker compose --env-file /mnt/docker/appdata/cowork/config/.env build web
 # Stop here if candidate verification fails (see the image-test mounts below).
 ln -sfn /mnt/docker/appdata/cowork/releases/$SHA /mnt/docker/appdata/cowork/current
 sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=$SHA/' /mnt/docker/appdata/cowork/config/.env
@@ -263,6 +264,64 @@ bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/app
 A build takes ~10 min over the Tailscale relay. Run it in the background and poll
 for `docker ps | grep cowork-web`. Rolling back is repointing `current` and
 `COWORK_VERSION` at the previous SHA and re-running Compose up with `--no-build --wait`.
+
+## Per-service image tags
+
+Each image is tagged by what it contains and pinned by its own variable in
+`/mnt/docker/appdata/cowork/config/.env`. A release builds and bumps **one image at a
+time**; every other tag stays where it is, so no release leaves a tag nobody built.
+
+| Variable | Image | Defined in |
+| --- | --- | --- |
+| `COWORK_VERSION` | `cowork-web` | `compose.yaml`, `deploy/examples/unraid-compose-manager.yml` |
+| `DIARY_VERSION` | `cowork-diary` | `compose.yaml`, `deploy/examples/unraid-compose-manager.yml` |
+| `OCR_VERSION` | `cowork-ocr` | `compose.yaml`, `deploy/examples/unraid-compose-manager.yml` |
+| `MODEL_MANAGER_VERSION` | `cowork-model-loader` | `compose.llamacpp.yaml`, `deploy/examples/unraid-llamacpp.override.yml` |
+| `DOCLING_VERSION` | `cowork-docling` | `compose.docling.yaml` |
+| `CODE_SANDBOX_VERSION` | `cowork-code-sandbox` | `deploy/examples/code-sandbox.override.yml` |
+
+`DIARY_VERSION`, `OCR_VERSION` and `MODEL_MANAGER_VERSION` are required (`${VAR:?...}`):
+Compose refuses to start rather than silently pulling a missing tag. Fresh installs get
+`dev` for each from `.env.example`. The web-only overlay (`overlay-release.sh`) bumps
+`COWORK_VERSION` alone and refuses to run if any pinned sidecar tag has no local image;
+a Diary agent change ships with `diary-overlay.sh <SRC_SHA>`, which builds
+`cowork-diary:<SRC_SHA>` and bumps `DIARY_VERSION`.
+
+To rebuild one sidecar, build only that service with its variable set, then bump the
+matching line (take an `.env` backup first; rollback is restoring it and re-running up):
+
+```sh
+ENV=/mnt/docker/appdata/cowork/config/.env
+cp -p $ENV $ENV.bak.$(date +%Y%m%d%H%M%S)
+# e.g. DIARY_VERSION=$TAG docker compose --env-file $ENV build diary
+sed -i "s/^COWORK_VERSION=.*/COWORK_VERSION=$TAG/" $ENV
+sed -i "s/^DIARY_VERSION=.*/DIARY_VERSION=$TAG/" $ENV
+sed -i "s/^OCR_VERSION=.*/OCR_VERSION=$TAG/" $ENV
+sed -i "s/^MODEL_MANAGER_VERSION=.*/MODEL_MANAGER_VERSION=$TAG/" $ENV
+sed -i "s/^DOCLING_VERSION=.*/DOCLING_VERSION=$TAG/" $ENV
+sed -i "s/^CODE_SANDBOX_VERSION=.*/CODE_SANDBOX_VERSION=$TAG/" $ENV
+```
+
+Run only the line for the image you rebuilt, then
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file $ENV -- -d --no-build --no-deps --wait <service>`.
+
+### Migrating an existing .env
+
+An `.env` from before this change has only `COWORK_VERSION`, and the new required keys make
+`compose config` fail. Before the next Compose `up`, pin each sidecar to the tag it is
+**currently running** (the live compose files must also be switched to the new variables):
+
+```sh
+ENV=/mnt/docker/appdata/cowork/config/.env
+cp -p $ENV $ENV.bak.before-per-service-tags
+for pair in diary:DIARY_VERSION ocr:OCR_VERSION model-loader:MODEL_MANAGER_VERSION; do
+  svc=${pair%%:*}; key=${pair#*:}
+  tag=$(docker inspect --format '{{.Config.Image}}' cowork-$svc-1 | sed 's/.*://')
+  grep -q "^$key=" $ENV && sed -i "s/^$key=.*/$key=$tag/" $ENV || echo "$key=$tag" >> $ENV
+done
+grep -E '^(COWORK|DIARY|OCR|MODEL_MANAGER|DOCLING|CODE_SANDBOX)_VERSION=' $ENV
+docker compose --env-file $ENV config -q
+```
 
 ## After deploying
 

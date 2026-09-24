@@ -45,7 +45,9 @@ document extraction, model management, MCP servers — is optional and off until
 
 ## Quick start
 
-Release images are tagged with the source Git commit (`COWORK_VERSION`); `0.1.0` in the web
+The web image is tagged with its source Git commit (`COWORK_VERSION`); sidecars have their own
+tags (`DIARY_VERSION`, `OCR_VERSION`, `MODEL_MANAGER_VERSION`, `DOCLING_VERSION`,
+`CODE_SANDBOX_VERSION`; see [`docs/deployment.md`](docs/deployment.md)). `0.1.0` in the web
 package metadata is not the deployed application release number. The live release and current
 development status are recorded in [`docs/roadmap.md`](docs/roadmap.md) and
 [`docs/changelog.md`](docs/changelog.md).
