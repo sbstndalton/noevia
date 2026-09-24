@@ -1,3 +1,27 @@
+## Release 958022b — 2026-09-24 (job start controller leak, phone preview Settings, web-only)
+
+Web changes deployed: [#102](https://github.com/sbstndalton/noevia/pull/102) starting a background job no
+longer leaks a controller when the journal write fails; the phone preview on desktop collapses
+Settings panes like a real phone.
+
+CI green on `958022b`. Deployed via `git archive 958022b` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/958022b`, built as
+`cowork-web:958022b`
+(`sha256:ee934d3dc820296cd3f567ed17686ada0a07aaad6c2897295d0a805ca362e9fd`). Config and the
+live Compose Manager file were backed up as `*.bak.before-958022b`; `current`/`COWORK_VERSION`
+were repointed at `958022b`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:c3a03c7`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-BaEAos9j.js` and `index-CVYcHCIL.css` are present in the image's `dist/assets`;
+no error/unreadable lines in the startup log.
+
+Rollback: `config/.env.bak.before-958022b` and the Compose Manager
+`docker-compose.yml.bak.before-958022b` restore `current` to `releases/c3a03c7`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
 ## Release c3a03c7 — 2026-09-24 (account cleanup, job journals, research saves, code harness hardening, web-only)
 
 Web changes deployed: [#98](https://github.com/sbstndalton/noevia/pull/98) deleting a user removes their MCP
