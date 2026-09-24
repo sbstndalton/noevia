@@ -1,3 +1,25 @@
+## Release 7b6942c — 2026-09-24 (chat save races)
+
+[PR #75](https://github.com/sbstndalton/noevia/pull/75) fixes chat save races while replies
+stream. The chat list no longer drops a chat when two sends overlap; a save conflict during
+a streaming reply no longer replaces the transcript or loses the reply; and persisting was
+moved out of the React state updater. Deployed web-only via `git archive 7b6942c` (no local
+checkout modified) to `/mnt/docker/appdata/cowork/releases/7b6942c`, built as
+`cowork-web:7b6942c` (`sha256:da15caf99d8e8d3b40bbf177ea9feaf40a6a297ce6bfd5e262592b3e17ad542a`).
+Config and the live Compose Manager file were backed up as `*.bak.before-7b6942c`;
+`current`/`COWORK_VERSION` were repointed at `7b6942c`. Cutover used the guarded preflight
+`--no-build --no-deps --wait --wait-timeout 180 web` only; all 42 non-web container IDs and
+start times were identical before and after.
+
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:9ee7bb0`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-RdBcm5Rx.js` and `index-B1OLP7Ag.css` are present in the image's `dist/assets`.
+Later PRs merged to main after 7b6942c are not part of this release.
+
+Rollback: `config/.env.bak.before-7b6942c` and the Compose Manager
+`docker-compose.yml.bak.before-7b6942c` restore `current` to `releases/9ee7bb0`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release 9ee7bb0 — 2026-09-23 (Laya excluded from auto-tuner)
 
 [PR #74](https://github.com/sbstndalton/noevia/pull/74) blocks the auto-tuner from
