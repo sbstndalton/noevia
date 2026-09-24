@@ -439,6 +439,9 @@ function createChatHandler({
       const offeredIds = new Set(allToolboxes().map((b) => b.id));
       for (const id of body.turnToolboxes) if (typeof id === 'string' && offeredIds.has(id) && !CONNECTOR_BOXES.has(id) && !selectedBoxes.includes(id)) selectedBoxes.push(id);
     }
+    // Diary tools reach only accounts with the Diary add-on on, whether the project or the turn
+    // asked for them (the same predicate the permitted catalogue uses to mark Diary unavailable).
+    if (!(chatUser && authService && typeof authService.diaryEnabled === 'function' && authService.diaryEnabled(chatUser.id))) { const k = selectedBoxes.indexOf('diary'); if (k >= 0) selectedBoxes.splice(k, 1); }
     // A sign-in server's tools reach only the accounts that signed in to it themselves.
     { const oauthIds = oauthServerIds(); for (let k = selectedBoxes.length - 1; k >= 0; k--) if (oauthIds.has(selectedBoxes[k]) && !accountReady(chatUser?.id, selectedBoxes[k])) selectedBoxes.splice(k, 1); }
     const routing = await chatToolRouter.select(selectedBoxes, message);

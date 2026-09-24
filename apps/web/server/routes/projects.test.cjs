@@ -43,10 +43,10 @@ function fixture({ projects = [], diary = true } = {}) {
     getProvider: (id) => (id === 'default' ? {} : null), ensureRolesLoaded() {},
     store,
   });
-  const call = (method, path, body, search = '') => {
+  const call = (method, path, body, search = '', role = 'member') => {
     const req = Readable.from(body === undefined ? [] : [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))]);
     Object.assign(req, { method, url: path + search, headers: { cookie: 'session=x' }, socket: {} });
-    return routes(req, { writeHead() {}, end() {} }, { path, authn: { user: { id: 'u1', role: 'member' } }, url: new URL(`http://localhost${path}${search}`) });
+    return routes(req, { writeHead() {}, end() {} }, { path, authn: { user: { id: 'u1', role } }, url: new URL(`http://localhost${path}${search}`) });
   };
   return { call, sent, dispatched, store, projects };
 }
@@ -107,9 +107,15 @@ test('chat metas: listing, saving a normalized list and deleting one', async () 
   assert.equal(f.store.savedChats[1][0].title, 'New task');
   assert.equal(typeof f.store.savedChats[1][0].updatedAt, 'number');
   assert.equal('mode' in f.store.savedChats[1][0], false, 'no mode means Chat');
-  // #236: a project chat keeps its Cowork mode; anything else is dropped.
-  await f.call('POST', '/api/projects/p1/chats', { chats: [{ id: 'cw', mode: 'cowork' }, { id: 'cx', mode: 'root' }] });
+  // #236: an admin's project chat keeps its Cowork mode; anything else is dropped.
+  await f.call('POST', '/api/projects/p1/chats', { chats: [{ id: 'cw', mode: 'cowork' }, { id: 'cx', mode: 'root' }] }, '', 'admin');
   assert.equal(f.store.savedChats[1][0].mode, 'cowork');
+  assert.equal('mode' in f.store.savedChats[1][1], false);
+  f.sent.pop();
+  // A member cannot plant a Cowork mode that would fail every turn: it is coerced to Chat.
+  await f.call('POST', '/api/projects/p1/chats', { chats: [{ id: 'cw', mode: 'cowork' }] });
+  assert.equal(f.sent.at(-1).status, 200);
+  assert.equal('mode' in f.store.savedChats[1][0], false);
   assert.equal('mode' in f.store.savedChats[1][1], false);
   f.sent.pop();
   await f.call('POST', '/api/projects/p1/chats', { chats: 'x' });
