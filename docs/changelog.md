@@ -1,3 +1,30 @@
+## Release 7e8ce3a — 2026-09-24 (code-workspace and Drive hardening, web-only)
+
+Web changes deployed: [#86](https://github.com/sbstndalton/noevia/pull/86) the code-workspace
+release refuses harness-planted git hooks, filters and fsmonitor, and runs git with them
+disabled; [#88](https://github.com/sbstndalton/noevia/pull/88) caps Drive reads (Range request
+plus a streamed cap), makes autoconfig suggest only calibrator-verified context sizes, and adds
+InstructionSkills guards. [#87](https://github.com/sbstndalton/noevia/pull/87) (Diary
+index_update validation and quarantine) is merged but NOT deployed by this web-only release.
+
+CI green on `7e8ce3a`. Deployed via `git archive 7e8ce3a` (no local checkout modified; archive
+SHA-256 matched after upload) to `/mnt/docker/appdata/cowork/releases/7e8ce3a`, built as
+`cowork-web:7e8ce3a`
+(`sha256:e0400c5f93df8e60b598934c74080fb344f94736578a4a07ae5d50c870ca99e7`). Config and the
+live Compose Manager file were backed up as `*.bak.before-7e8ce3a`; `current`/`COWORK_VERSION`
+were repointed at `7e8ce3a`. Cutover used the guarded preflight `--no-build --no-deps --wait
+--wait-timeout 180 web` only, from the Compose Manager project directory. All 42 non-web
+container IDs and start times were identical before and after.
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:7ce2213`).
+Public checks: `/` returned 200 and `/api/profile` returned 401 (3/3 tries); the served
+`index-B6Wdf04v.js` and `index-B1OLP7Ag.css` are present in the image's `dist/assets`;
+`/app/server/code-workspace.cjs` loads in the running container.
+
+Rollback: `config/.env.bak.before-7e8ce3a` and the Compose Manager
+`docker-compose.yml.bak.before-7e8ce3a` restore `current` to `releases/7ce2213`, then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`
+from the Compose Manager project directory.
+
 ## Release 7ce2213 — 2026-09-24 (hardening batch, web-only)
 
 Web changes deployed: [#76](https://github.com/sbstndalton/noevia/pull/76) server error
