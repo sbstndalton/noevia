@@ -8,6 +8,37 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release d264606 — 2026-09-24 (code-actions publish/network gating, fetchJson body cap, Diary corpus_store NameError and queued-edit races)
+
+### Services
+
+- **Web:** [#233](https://github.com/sbstndalton/noevia/pull/233), [#235](https://github.com/sbstndalton/noevia/pull/235) (web side) — deployed as `cowork-web:d264606` (server/ overlay FROM `cowork-web:b5941e4`).
+- **Diary:** [#235](https://github.com/sbstndalton/noevia/pull/235) (`corpus_store.py`, `journal.py`) — deployed as `cowork-diary:d264606` (`diary-overlay.sh`, `agent/` only, FROM `cowork-diary:b5941e4`).
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-dda50c2`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** live Compose files unchanged (backed up as `*.bak.before-d264606`).
+
+Source shipped via `git archive d264606` to `releases/d264606`. All of `apps/web` outside `server/` is identical to b5941e4
+(only `code-actions.cjs`, `http.cjs` and their tests changed), so the web image is `FROM cowork-web:b5941e4` with `/app/server`
+replaced (candidate `sha256:fa337d92…`). With no network, the in-image `code-actions.cjs`/`http.cjs` SHA-256 hashes match the
+release, `node --check` passes and the two changed test files pass 30 of 30. Dist still serves `index-BsftJ7Co.js` /
+`index-CV0N4hHI.css`. The Diary diff vs b5941e4 was `agent/corpus_store.py`, `agent/journal.py` and one test (requirements.txt
+and Dockerfile identical). The overlay took appdata backup `ab_20260924_151049` (gzip verified), then recreated Diary as image
+`cb092351…`; Diary health via web returned 200. In-container `journal.py` contains `unapplied_exchange_edit` and
+`corpus_store.py` contains `errors: Optional`.
+
+Cutover used guarded `up.sh … --no-build --no-deps --wait` for `web`, then the Diary overlay (its appdata backup restarted web
+again). Web started at 19:11:03Z and Diary at 19:11:10Z. Both are healthy with zero restarts. All other cowork containers
+(code-sandbox, model-loader, laya, ocr, docling, llama, embed, kiwix) kept identical ids and start times. Public `/` returned 200
+on 3 of 3 requests, and `/api/profile` returned 401. Web logs had zero error markers over 60 s. No Diary data was read.
+Restart-alert baseline re-acked.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-d264606 config/.env` (also reverts DIARY_VERSION), `ln -sfn releases/b5941e4 current`, then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+- Diary: `sed -i 's/^DIARY_VERSION=.*/DIARY_VERSION=b5941e4/' config/.env` (or restore `config/.env.bak.before-diary-d264606`), then `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 diary`.
+
 ## Release b5941e4 — 2026-09-24 (routing/menu fixes, stale loaded summary, chat-only prompt suite, Diary polling and journal replay order, admin-gated warm-up, backup-worker backoff)
 
 ### Services
