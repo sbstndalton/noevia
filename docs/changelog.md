@@ -1,3 +1,41 @@
+## Release 9ee7bb0 — 2026-09-23 (Laya excluded from auto-tuner)
+
+[PR #74](https://github.com/sbstndalton/noevia/pull/74) blocks the auto-tuner from
+selecting or deleting `laya_multilingual_f16`. Deployed web-only via `git archive
+9ee7bb0` (no local checkout modified) to `/mnt/docker/appdata/cowork/releases/9ee7bb0`,
+built as `cowork-web:9ee7bb0` (`sha256:b0c2f0ef69c671465864ad80ed4df9456fac647aacbf5dfd33802eceb2d98ced`).
+Config and the live Compose Manager file were backed up as `*.bak.before-9ee7bb0`;
+`current`/`COWORK_VERSION` were repointed at `9ee7bb0`. Cutover used the guarded
+preflight `--no-build --no-deps --wait --wait-timeout 180 web` only; no other
+service was rebuilt or restarted.
+
+`cowork-web-1` came up healthy with zero restarts (previous image `cowork-web:6b59118`).
+Read-only, without starting a tune, `require('/app/server/model-system.cjs')` inside
+the running container confirmed `isSystemModel('laya_multilingual_f16')` returns
+`true` (reason: "System routing model — not tuned"/"not deleted"), while an ordinary
+model ID returns `false`. Locally the container answered its root path with the
+expected unauthenticated 302 redirect and the built `dist/assets` matched the served
+bundle name pattern from prior releases.
+
+**Public HTTPS verification did not complete.** `https://noevia.daserver.work/` and
+`/api/profile` both returned Cloudflare edge error 530 at cutover and on retries; the
+`CloudflaredTunnel` container logs show persistent QUIC dial timeouts to Cloudflare's
+edge starting around the same time, while `ping 1.1.1.1` from the host showed 0%
+loss, indicating an outbound tunnel/edge problem rather than home WAN loss or a web
+regression. `CloudflaredTunnel` was left untouched (out of scope for a web-only
+release) and was not restarted. Laya (`cowork-laya:0.3.5-recovery-2ffd153`), Diary,
+OCR, code-sandbox, model-loader, docling and the native llama engine kept identical
+container IDs and `StartedAt` timestamps before and after cutover. Web was not
+rolled back because the failure is isolated to the tunnel, reproducible without any
+version dependency, and the container itself is verified healthy locally; the public
+200/401 checks remain outstanding and must be reconfirmed once the tunnel recovers.
+
+Rollback (only needed if the web image itself is found to be at fault):
+`config/.env.bak.before-9ee7bb0` and the Compose Manager
+`docker-compose.yml.bak.before-9ee7bb0` restore `current` to `releases/6b59118`,
+then rerun
+`bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release 6b59118 — 2026-09-23 (Auto routing label in inference stats and saved replies)
 
 [PR #69](https://github.com/sbstndalton/noevia/pull/69) shows the Auto routing decision
