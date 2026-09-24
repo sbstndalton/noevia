@@ -10,8 +10,13 @@ test.after(() => { for (const d of temps) fs.rmSync(d, { recursive: true, force:
 const project = { id: 'p1' };
 const ORIGIN = 'https://shop.example.test/';
 
-/** A page whose only element is `#go`, an always-consequential submit button (asks every time). */
-function fakeBrowser({ url = ORIGIN, failClick = false } = {}) {
+/**
+ * A page whose only element is `#go`, an always-consequential submit button (asks every time).
+ * `elementGate`, if given, is awaited before `elementHandle()` resolves — a stand-in for the
+ * time a real page takes to locate the element, so a cancel can land before any approval card
+ * exists at all.
+ */
+function fakeBrowser({ url = ORIGIN, failClick = false, elementGate = null } = {}) {
   const submit = { tag: 'button', type: '', role: '', name: 'Send order', text: 'Send order', value: '', inForm: true, formMethod: 'post' };
   const effects = [];
   const handle = {
@@ -21,7 +26,7 @@ function fakeBrowser({ url = ORIGIN, failClick = false } = {}) {
   };
   const page = {
     url: () => url,
-    locator: () => ({ first() { return this; }, elementHandle: async () => handle, innerText: async () => 'text' }),
+    locator: () => ({ first() { return this; }, elementHandle: async () => { if (elementGate) await elementGate; return handle; }, innerText: async () => 'text' }),
     goto: async (to) => { effects.push(['goto', to]); url = to; },
     evaluate: async () => ({ inForm: false }),
     screenshot: async () => Buffer.from('png'),
@@ -172,4 +177,73 @@ test('a browser that fails to open never leaves a phantom running task', async (
   const egress = { endpoint: 'egress:8040', grant: ({ taskId }) => ({ token: `tok-${taskId}` }), revoke: () => {} };
   const svc = createBrowserService({ launch: async () => { throw Error('no browser on this host'); }, egress, timeoutMs: 60 });
   await assert.rejects(() => svc.start(workspace, project, { domains: ['shop.example.test'] }), /could not open/);
+});
+
+test('a cancel that lands before the approval card exists is not left waiting the full timeout', async () => {
+  // timeoutMs is generous here on purpose: if the fix regresses and the card is not wired to
+  // the job's own abort signal, this test would only pass by accident, after the full wait.
+  let releaseGate; const gate = new Promise((r) => { releaseGate = r; });
+  const workspace = { dir: temp('noevia-browser-cancelgate-') };
+  const fake = fakeBrowser({ elementGate: gate });
+  const egress = { endpoint: 'egress:8040', grant: ({ taskId }) => ({ token: `tok-${taskId}` }), revoke: () => {} };
+  const svc = createBrowserService({ launch: async () => fake.browser, egress, timeoutMs: 5000, idleTimeoutMs: 60000 });
+  const started = await svc.start(workspace, project, { domains: ['shop.example.test'] });
+  const actPromise = svc.act(workspace, project, started.taskId, { type: 'click', selector: '#go' });
+  // The action is still resolving the element (elementGate not released): no card exists yet.
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(svc.get(workspace, project, started.taskId).approval, null, 'no card raised yet');
+  svc.cancel(workspace, project, started.taskId);
+  releaseGate();
+  const started_at = Date.now();
+  const result = await actPromise;
+  assert.equal(result.status, 'blocked', 'the card that appears after the cancel is refused, not left open');
+  assert.ok(Date.now() - started_at < 2000, 'resolved promptly, not after the 5s approval timeout');
+  for (let i = 0; i < 100 && svc.get(workspace, project, started.taskId).status !== 'cancelled'; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(svc.get(workspace, project, started.taskId).status, 'cancelled');
+});
+
+test('start refuses up front without egress, never leaving a phantom queued job behind', async () => {
+  const workspace = { dir: temp('noevia-browser-noegress-') };
+  const fake = fakeBrowser();
+  const svc = createBrowserService({ launch: async () => fake.browser, egress: null, timeoutMs: 60 });
+  await assert.rejects(() => svc.start(workspace, project, { domains: ['shop.example.test'] }), (e) => e.status === 503);
+  // A second attempt fails the same way — not "already running" against a job that was never
+  // actually able to run.
+  await assert.rejects(() => svc.start(workspace, project, { domains: ['shop.example.test'] }), (e) => e.status === 503);
+});
+
+test('a grant that throws leaves the job cancelled, not stuck queued and blocking every later start', async () => {
+  const workspace = { dir: temp('noevia-browser-grantfail-') };
+  const fake = fakeBrowser();
+  const egress = { endpoint: 'egress:8040', grant: () => { throw Object.assign(Error('no capacity'), { publicMessage: 'The egress proxy refused this task.' }); }, revoke: () => {} };
+  const svc = createBrowserService({ launch: async () => fake.browser, egress, timeoutMs: 60 });
+  await assert.rejects(() => svc.start(workspace, project, { domains: ['shop.example.test'] }), /refused this task/);
+  const workingEgress = { endpoint: 'egress:8040', grant: ({ taskId }) => ({ token: `tok-${taskId}` }), revoke: () => {} };
+  const svc2 = createBrowserService({ launch: async () => fakeBrowser().browser, egress: workingEgress, timeoutMs: 60 });
+  const started = await svc2.start(workspace, project, { domains: ['shop.example.test'] });
+  assert.ok(started.taskId, 'the earlier failed attempt never occupies the "one task per project" slot');
+  svc2.finish(workspace, project, started.taskId, null);
+});
+
+test('an action still queued behind finish() is rejected, not left hanging forever', async () => {
+  const { svc, workspace } = service({ idleTimeoutMs: 60000 });
+  const started = await svc.start(workspace, project, { domains: ['shop.example.test'] });
+  // Both calls enqueue synchronously (act()'s Promise executor runs before any await yields),
+  // so `finish` lands ahead of `extract` in the queue whatever the loop is doing right now —
+  // exactly the ordering that leaves a trailing item behind once the loop returns on `finish`.
+  const finished = svc.finish(workspace, project, started.taskId, { ok: true });
+  const queued = svc.act(workspace, project, started.taskId, { type: 'extract' });
+  assert.deepEqual(finished, { ok: true });
+  await assert.rejects(() => queued, (e) => e.status === 409 && /ended/.test(e.message));
+  for (let i = 0; i < 100 && svc.get(workspace, project, started.taskId).status !== 'completed'; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(svc.get(workspace, project, started.taskId).status, 'completed');
+});
+
+test('finish() refuses a result over the size limit, and records nothing', async () => {
+  const { svc, workspace } = service();
+  const started = await svc.start(workspace, project, { domains: ['shop.example.test'] });
+  const big = { text: 'x'.repeat(70 * 1024) };
+  assert.throws(() => svc.finish(workspace, project, started.taskId, big), (e) => e.status === 413);
+  assert.equal(svc.get(workspace, project, started.taskId).status, 'running', 'still running: the oversized result never reached the job');
+  svc.finish(workspace, project, started.taskId, { ok: true });
 });

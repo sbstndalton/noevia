@@ -20,6 +20,10 @@ const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 // out rather than left running forever waiting on a caller that may never come back.
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const TIMEOUT_REASON = 'This browser task made no progress and timed out.';
+// A caller's own summary of what the task did, stored on the job's completion event (spec §4):
+// bounded the same way assistant output is, so a careless or hostile caller cannot grow the
+// journal file without limit.
+const MAX_RESULT_BYTES = 64 * 1024;
 
 const fail = (status, message) => Object.assign(Error(message), { status, publicMessage: message });
 
@@ -123,13 +127,23 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
       if (jobs.list({ projectId: project.id, kind: 'browser', active: true }).length) {
         throw fail(409, 'This project already has a browser task running.');
       }
+      // Refused up front, without a job: a job created and then immediately refused would sit in
+      // the store as a non-terminal, un-runnable 'queued' record — nothing ever moves it to
+      // TERMINAL, so `active: true` keeps seeing it and every later start is refused with
+      // "already running" until a restart happens to call recover() on it.
+      if (!egress && !direct) throw fail(503, 'Browser tasks need the egress proxy (D15) configured on this server.');
       const id = jobs.create({ kind: 'browser', projectId: project.id, capabilities: ['open_browser'] });
       const downloadsDir = path.join(workspace.dir, 'browser-downloads', id);
       let grant = null;
       try { grant = egress && domains.length ? egress.grant({ taskId: id, domains }) : null; }
-      catch (e) { throw fail(503, e.publicMessage || 'The egress proxy refused this task.'); }
+      catch (e) { jobs.cancel(id); throw fail(503, e.publicMessage || 'The egress proxy refused this task.'); }
+      // The grant's token outlives this task under any sane configuration: code-egress.cjs
+      // defaults CODE_EGRESS_TOKEN_TTL_MS to 6 hours, well past both IDLE_TIMEOUT_MS (10 min,
+      // above) and the approval timeout (5 min) that would otherwise end the task first. An
+      // operator who sets CODE_EGRESS_TOKEN_TTL_MS below IDLE_TIMEOUT_MS could still see a task's
+      // last action refused at the proxy after its token expires; nothing here refreshes it.
       const proxy = grant ? { server: `http://${egress.endpoint || 'egress'}`, username: 'task', password: grant.token } : null;
-      if (!proxy && !direct) throw fail(503, 'Browser tasks need the egress proxy (D15) configured on this server.');
+      if (!proxy && !direct) { jobs.cancel(id); throw fail(503, 'Browser tasks need the egress proxy (D15) configured on this server.'); }
 
       let ready, readyResolve, readyReject;
       ready = new Promise((res, rej) => { readyResolve = res; readyReject = rej; });
@@ -145,7 +159,12 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
           log: (entry) => log({ ...entry, projectId: project.id }),
           askApproval: async (card, opts) => {
             ctx.event('approval.requested', { ...card, jobId: id });
-            const answer = await askApproval({ ...card, jobId: id }, opts);
+            // The executor itself does not pass a signal (it has none of its own); this task's
+            // job signal is what a cancel actually aborts, so a card raised mid-action must be
+            // wired to it here — otherwise a cancel that lands while an action is waiting on the
+            // human leaves the card answerable for the full timeout, with the job stuck in
+            // `waiting_approval` and its egress grant unrevoked until that timer finally fires.
+            const answer = await askApproval({ ...card, jobId: id }, { ...opts, signal: ctx.signal });
             ctx.event('approval.decided', { decision: answer, action: card.action });
             return answer;
           } });
@@ -190,10 +209,23 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
         } finally {
           sessions.delete(id);
           for (const waiting of pendingAll(id)) waiting.decide('aborted');
+          // Whatever is still queued (behind a `finish`, a cancel, an idle timeout or the
+          // executor open failing) is never going to be picked up by the loop above again: the
+          // HTTP request that is awaiting each one would otherwise hang until its own client
+          // timeout instead of learning the task ended.
+          while (queue.length) { const item = queue.shift(); if (!item.finish) item.reject(fail(409, 'This task ended before this action ran.')); }
           await executor.close(sessionId).catch(() => {});
           revoke();
         }
-      }).catch((error) => log({ event: 'browser.job.error', jobId: id, error: String(error?.message || error) }));
+      }).catch((error) => {
+        // A rejection here can be the executor.open() failure already reported through
+        // readyReject below, or something earlier still (job.started's own append failing, a
+        // disk error) that never reached that catch at all — either way, a caller still awaiting
+        // `ready` must not hang forever on a job that has already given up. Settling twice is a
+        // no-op on an already-settled promise.
+        readyReject(error);
+        log({ event: 'browser.job.error', jobId: id, error: String(error?.message || error) });
+      });
 
       await ready.catch((error) => { throw fail(error.status || 502, error.publicMessage || 'The browser could not open.'); });
       return { taskId: id, domains };
@@ -225,6 +257,9 @@ function createBrowserService({ launch, egress = null, log = () => {}, now = Dat
     finish(workspace, project, taskId, result = null) {
       const job = owned(workspace, project, taskId);
       if (job.status !== 'running' && job.status !== 'waiting_approval') throw fail(409, 'This task is not running.');
+      if (result !== null && result !== undefined && Buffer.byteLength(JSON.stringify(result)) > MAX_RESULT_BYTES) {
+        throw fail(413, 'That result is too large to record.');
+      }
       const s = sessions.get(taskId);
       if (!s) throw fail(409, 'This task is not open for actions.');
       s.enqueue({ finish: true, result });

@@ -164,7 +164,8 @@ function BrowserTaskCard({ task, busy, onDecide, onCancel }: {
 }
 
 /** The gate, drawn from the same card data as Code mode's: origin, the element as it really is,
- *  the values that would be typed (masked), and the three standing answers. */
+ *  the values that would be typed (masked). Only Allow once and Decline — every action is asked
+ *  again, so there is no standing "Allow for this task" answer to offer here. */
 function BrowserApprovalCard({ approval, busy, onDecide }: {
   approval: BrowserTask['approval']; busy: boolean; onDecide: (decision: 'approve' | 'approve_all' | 'deny', approvalId: string) => void;
 }): JSX.Element | null {
