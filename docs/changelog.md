@@ -8,6 +8,73 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 89142c0 — 2026-09-24 (composer Chat/Cowork toggle, tool catalogue)
+
+### Services
+
+- **Web:** [#276](https://github.com/sbstndalton/noevia/pull/276) composer Chat/Cowork toggle and permitted tool catalogue (closes [#236](https://github.com/sbstndalton/noevia/issues/236), [#237](https://github.com/sbstndalton/noevia/issues/237)) — deployed as `cowork-web:89142c0` (full build FROM release source, `apps/web` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** merged, not yet deployed — stays `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env`/Compose backed up as `*.bak.before-89142c0`.
+
+`origin/main` was confirmed at `89142c0` and every check-run on that commit (Docling extraction
+contract, Docker images build, Node tests/typecheck/frontend build, Model manager test suite,
+offline-contract, Detect changed areas) was completed/success before release. Only `apps/web`
+changed since the live `9b532a8`. Source shipped via `git archive 89142c0` to `releases/89142c0`.
+Web required a full build (frontend changed); server/Dockerfile/package files unchanged in scope
+but the build ran end to end, producing `index-DKpCIBTO.js` / `index-DghX1G7f.css`.
+
+Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero
+restarts and reported healthy. Public `/` returned 200, `/api/profile` returned 401, and the served
+`index-*.js/css` names matched the web image's `dist/assets` byte-for-byte by filename.
+`diary`, `code-sandbox`, `model-loader`, `ocr`, `docling`, `laya`, `llama`, `embed` and `kiwix` kept
+identical container ids, `StartedAt` and zero restarts. Restart-alert baseline re-acked. No model
+runs, real Diary data, new harness installation or broader exposure were part of this release.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-89142c0 config/.env`, `ln -sfn releases/9b532a8 current`, then
+  `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+## Release 9b532a8 — 2026-09-24 (model manager guided tuning, secrets rotation, Diary tombstone/quarantine, upload/RAG/MCP hardening, code-sandbox batch A)
+
+### Services
+
+- **Web:** [#240](https://github.com/sbstndalton/noevia/pull/240) model manager filters/phone routing/calibration guard/settings headings, [#241](https://github.com/sbstndalton/noevia/pull/241) secrets key rotation UI, [#242](https://github.com/sbstndalton/noevia/pull/242) (web side) Diary tombstone/quarantine/status polling, [#243](https://github.com/sbstndalton/noevia/pull/243) uploads/offsite/pdf-reduce caps + RAG version filter + source lock + job ids, [#244](https://github.com/sbstndalton/noevia/pull/244) untrusted-prompt framing/replay/MCP hardening, [#246](https://github.com/sbstndalton/noevia/pull/246) Q5 KV-cache floor + task-aware sampling presets, [#248](https://github.com/sbstndalton/noevia/pull/248) (web side) code-sandbox batch A hardening, [#251](https://github.com/sbstndalton/noevia/pull/251) guided estimate/tuning pre-flight/Quality and Recover — deployed as `cowork-web:9b532a8` (full build FROM release source, `apps/web/src` changed).
+- **Diary:** [#242](https://github.com/sbstndalton/noevia/pull/242) tombstone, quarantine cascade, status polling, backup perf — deployed as `cowork-diary:9b532a8` (`diary-overlay.sh 9b532a8`, `agent/` only, FROM `cowork-diary:d264606`).
+- **Model manager:** merged, not yet deployed — stays `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** [#248](https://github.com/sbstndalton/noevia/pull/248) batch A hardening (harness, egress, sandbox) — deployed as `cowork-code-sandbox:pi-0.87.0-9b532a8` (`pi-acp-bridge.cjs` + `supervisor.cjs` overlay, FROM `cowork-code-sandbox:pi-0.87.0-dda50c2`).
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env`/Compose backed up as `*.bak.before-9b532a8`.
+
+Source shipped via `git archive 9b532a8` to `releases/9b532a8`. Web required a full build (frontend
+changed across `apps/web/src`); server/Dockerfile/package files unchanged in scope but the build ran
+end to end, producing `index-BJqPT_o9.js` / `index-BrNEIg3U.css`. Diary and code-sandbox diffs against
+`d264606`/`pi-0.87.0-dda50c2` were confirmed limited to `services/diary/agent` and
+`services/code-sandbox/{pi-acp-bridge.cjs,supervisor.cjs}` respectively (Dockerfiles/requirements
+identical), so both are overlays with no dependency install.
+
+Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web`, `diary-overlay.sh 9b532a8` for
+Diary (appdata backup `ab_20260924_173346` verified, `gzip -t` passed), and `up.sh --profile code
+--no-build --no-deps --wait` for `code-sandbox`. All three recreated with zero restarts and reported
+healthy/running. Public `/` returned 200, `/api/profile` returned 401, and the served `index-*.js/css`
+names matched the web image's `dist/assets` byte-for-byte by filename. `model-loader`, `laya`, `ocr`,
+`docling`, `llama`, `embed` and `kiwix` kept identical container ids, `StartedAt` and zero restarts.
+Restart-alert baseline re-acked.
+
+Rollback (from the Compose Manager project directory):
+- Web: `cp -p config/.env.bak.before-9b532a8 config/.env`, `ln -sfn releases/d264606 current`, then
+  `up.sh --env-file … -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+- Diary: `sed -i 's/^DIARY_VERSION=.*/DIARY_VERSION=d264606/' config/.env` (or restore
+  `config/.env.bak.before-diary-9b532a8`), then `up.sh --env-file … -- -d --no-build --no-deps --wait
+  --wait-timeout 180 diary`.
+- Code sandbox: `sed -i 's/^CODE_SANDBOX_VERSION=.*/CODE_SANDBOX_VERSION=pi-0.87.0-dda50c2/'
+  config/.env` (or restore `config/.env.bak.before-code-sandbox-9b532a8`), then `up.sh --env-file …
+  --profile code -- -d --no-build --no-deps --wait --wait-timeout 180 code-sandbox`.
+
 ## Release d264606 — 2026-09-24 (code-actions publish/network gating, fetchJson body cap, Diary corpus_store NameError and queued-edit races)
 
 ### Services
