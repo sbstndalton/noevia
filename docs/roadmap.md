@@ -271,7 +271,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    migration contracts are stable. A future macOS client should consume those contracts rather
    than duplicate service behavior.
 
-   Phases, in order:
+   Workstreams and dependencies:
 
    1. **Map boundaries and contracts.** After the System-One architecture review, inventory the
       existing web routes/services and sidecars; define versioned internal APIs, health/readiness,
@@ -312,7 +312,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
       per-server identity, credentials, network scope and failure isolation; individual servers
       may be containers or remote API services according to their risk and operational needs.
       Core remains the authority for account/project policy, tool exposure, write approvals and
-      call validation. Prerequisites: the phase-1 contracts and a review of Docker-socket needs;
+      call validation. Prerequisites: the boundary contracts and a review of Docker-socket needs;
       do not give a manager broad socket access as a convenience. Acceptance: one failing or
       compromised server cannot obtain another server's credentials or bypass core policy, and
       a server can be disabled without taking down unrelated tools.
@@ -336,6 +336,21 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
       separately before claiming feature parity. Acceptance: the Mac client can change without
       changing service policy or storage ownership, and reconnect/sync behavior is covered by an
       explicit migration and conflict design.
+
+### GitHub milestone map
+
+The [milestones](https://github.com/sbstndalton/noevia/milestones) group open enhancement issues
+and future architecture work. They have no due dates; the numbered **Next** list above remains the
+execution priority. Triaged bugs retain their separate priority. A milestone means planned work,
+not a shipped release.
+
+| Milestone | Roadmap scope | Existing issues |
+| --- | --- | --- |
+| [01 · Interface foundations](https://github.com/sbstndalton/noevia/milestone/1) | Composer, Chat/Cowork, projects, task progress, visual system, themes | #236, #239, #245, #247, #249, #255–#257 |
+| [02 · Settings, tools, and trust](https://github.com/sbstndalton/noevia/milestone/2) | Settings organization, tool/Skill discovery, connectors, usage | #226–#232, #237–#238, #258–#260 |
+| [03 · Model quality and guidance](https://github.com/sbstndalton/noevia/milestone/3) | Model tuning and guidance, then the evidence workstream above | #190, #194, #204 |
+| [04 · Modular platform contracts](https://github.com/sbstndalton/noevia/milestone/4) | Boundary map, versioned APIs, policy, data and rollback contracts | Future workstream; no issue assigned yet |
+| [05 · Independent services and native client](https://github.com/sbstndalton/noevia/milestone/5) | Qualified extraction, MCP management, Diary comparison, portable Skills, then macOS | Future workstreams; no issue assigned yet |
 
 ## Needs the user — in order
 
