@@ -382,6 +382,28 @@ Test without sending or moving the baseline:
 `/mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh --dry-run`.
 Offline test: `bash deploy/tools/test-sidecar-restart-alert.sh`.
 
+## Rotating the secrets key
+
+Stored credentials (storage secrets, MCP sign-in tokens and client registrations,
+directory MCP keys, shared and private provider keys) are encrypted with
+`ui-data/secrets.key`. Replacing that file without rotating makes every one of them
+unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
+
+1. Back up `ui-data/` (at least `secrets.key` and `cowork.db`).
+2. Keep the old key as the previous key: `mv ui-data/secrets.key ui-data/secrets.key.previous`
+   (or set `SECRETS_KEY_PREVIOUS` to the old key as base64 or 64 hex characters).
+3. Install the new key: copy a new 32-byte `secrets.key` in place, or let the app
+   generate one on start. Restart the web container. Both keys now decrypt.
+4. Run the rotation, either as an administrator
+   (`POST /api/admin/secrets/rotate`, CSRF token required like every admin POST) or
+   inside the container: `UI_DATA_DIR=/path/to/ui-data npm run secrets:rotate`
+   (`node server/secrets-rotate.cjs`). It prints per-table counts
+   (`current`, `rotated`, `upgraded` for legacy plaintext/v1, `empty`, `failed`) and
+   records a `secrets.rotate` audit event. The CLI exits 2 if any row failed.
+5. Verify: `totals.failed` is 0 (or each listed failure is a credential already lost,
+   which that account must re-enter), then run it again; every row should report `current`.
+6. Remove `secrets.key.previous` / `SECRETS_KEY_PREVIOUS` and restart.
+
 ## Known gaps
 
 - **`UPGRADES.md` on the server is stale.** It describes a retired
