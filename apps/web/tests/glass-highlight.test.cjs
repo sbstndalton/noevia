@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 // Runs public/glass-highlight.js against a minimal fake DOM.
-function load({ reduced = false, coarse = false, material = 'liquid', motion = 'system' } = {}) {
+function load({ reduced = false, coarse = false, family = 'glass', motion = 'system' } = {}) {
   const handlers = {};
   const frames = [];
   const el = (matches, position = 'static') => {
@@ -23,7 +23,7 @@ function load({ reduced = false, coarse = false, material = 'liquid', motion = '
   const context = {
     matchMedia: (q) => ({ matches: q.includes('reduce') ? reduced : q.includes('coarse') ? coarse : false, addEventListener() {} }),
     MutationObserver: class { observe() {} },
-    document: { documentElement: { getAttribute: k => k === 'data-material' ? material : motion }, addEventListener: (type, fn) => { handlers[type] = fn; } },
+    document: { documentElement: { getAttribute: k => k === 'data-family' ? family : motion }, addEventListener: (type, fn) => { handlers[type] = fn; } },
     getComputedStyle: (node) => ({ position: node.position }),
     requestAnimationFrame: (fn) => { frames.push(fn); return frames.length; },
     Element: Object, module: { exports: {} },
@@ -59,7 +59,7 @@ test('leaving clears the active state; already-positioned elements keep their po
 });
 
 test('touch, reduced motion and non-glass targets do nothing', () => {
-  for (const options of [{ reduced: true }, { coarse: true }, { material: 'soft' }, { material: 'material' }, { motion: 'reduced' }]) {
+  for (const options of [{ reduced: true }, { coarse: true }, { family: 'editorial' }, { family: 'contemporary' }, { motion: 'reduced' }]) {
     const { handlers, el, flush } = load(options);
     const button = el(true);
     handlers.pointermove({ target: button, clientX: 150, clientY: 60, pointerType: 'mouse' });

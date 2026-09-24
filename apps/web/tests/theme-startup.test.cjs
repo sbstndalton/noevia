@@ -80,11 +80,15 @@ test('theme-color matches the generated surface role in both modes', () => {
 // after React mounts they would flash the previous setting, which is the whole
 // reason this file exists.
 for (const [name, stored, expected] of [
-  ['saved preferences', { 'noevia:chat-font': 'serif', 'noevia:density': 'compact', 'noevia:motion': 'reduced', 'noevia:material': 'soft' },
-    { 'data-chat-font': 'serif', 'data-density': 'compact', 'data-motion': 'reduced', 'data-material': 'soft' }],
-  ['retired material falls back before paint', { 'noevia:material': 'glass' }, { 'data-material': 'soft' }],
+  ['saved preferences', { 'noevia:chat-font': 'serif', 'noevia:density': 'compact', 'noevia:motion': 'reduced', 'noevia:theme-family': 'glass' },
+    { 'data-chat-font': 'serif', 'data-density': 'compact', 'data-motion': 'reduced', 'data-family': 'glass' }],
+  ['a saved Soft material migrating to Editorial', { 'noevia:material': 'soft' }, { 'data-family': 'editorial' }],
+  ['a saved Material 3 migrating to Contemporary', { 'noevia:material': 'material' }, { 'data-family': 'contemporary' }],
+  ['a saved Liquid glass migrating to Glass', { 'noevia:material': 'liquid' }, { 'data-family': 'glass' }],
+  ['a family that wins over a leftover material', { 'noevia:material': 'liquid', 'noevia:theme-family': 'contemporary' }, { 'data-family': 'contemporary' }],
+  ['an unknown material or family', { 'noevia:material': 'glass', 'noevia:theme-family': 'brutalist' }, { 'data-family': 'editorial' }],
   ['a new installation', {},
-    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system', 'data-material': 'soft' }],
+    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system', 'data-family': 'editorial' }],
   ['values that are not offered', { 'noevia:chat-font': 'comic', 'noevia:density': '../../etc', 'noevia:motion': '1' },
     { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system' }],
 ]) {
