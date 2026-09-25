@@ -65,7 +65,7 @@ function normalizeReplayHistory(mapped, newMessage) {
 }
 
 function createChatHandler({
-  stepSupervision = null, durableChat = null, fs, path, crypto, fetch, codeTasksFor = () => [], reasoningEffort, diaryExtras, createToolExchange, rag, prefill, reduceToolResult, HISTORY_CAP, DEFAULT_PROVIDER_ID, DIARY_BASE, TOOL_RESULT_CAP, authService, toolPolicy, modelManager, requestScope, currentWorkspace, json, getProject, getProvider, providerHeaders, saveChats, endpointApproved, diaryHeaders, autoRoles, lastLoadedModel, classifyFastOrSmart, servedCatalogue, modelsInstalled, missingRoles, staleRolesError, visionProbe, visionDescriptions, skillsIndexFor, chatSkillRouter, chatToolRouter, DEFAULT_TOOLBOXES, CONNECTOR_BOXES, connectedBoxes, allToolboxes, resolveTools, isWriteTool, executeToolCall, oauthServerIds, accountReady, chatWideApproved, awaitApproval, recordUsage, recordToolUse,
+  stepSupervision = null, durableChat = null, fs, path, crypto, fetch, codeTasksFor = () => [], reasoningEffort, diaryExtras, createToolExchange, rag, prefill, reduceToolResult, HISTORY_CAP, DEFAULT_PROVIDER_ID, DIARY_BASE, TOOL_RESULT_CAP, authService, toolPolicy, modelManager, requestScope, currentWorkspace, json, getProject, getProvider, providerHeaders, saveChats, endpointApproved, diaryHeaders, autoRoles, lastLoadedModel, classifyFastOrSmart, servedCatalogue, modelsInstalled, missingRoles, staleRolesError, visionProbe, visionDescriptions, skillsIndexFor, chatSkillRouter, chatToolRouter, toolGate = null, DEFAULT_TOOLBOXES, CONNECTOR_BOXES, connectedBoxes, allToolboxes, resolveTools, isWriteTool, executeToolCall, oauthServerIds, accountReady, chatWideApproved, awaitApproval, recordUsage, recordToolUse,
 }) {
   async function handleChat(req, res, body, authn) {
     let preparation;
@@ -478,6 +478,35 @@ function createChatHandler({
       console.warn(`[tools] ${model}: ${resolved.tools.length} tools ~${resolved.estTokens} tok (cap ${resolved.cap}, budget ${resolved.budget}); dropped ${resolved.dropped.length}: ${resolved.dropped.join(', ')}`);
     }
     const runTool = createToolExchange({ allowed: allowedToolNames, isWrite: isWriteTool, signal: chatSignal.signal });
+    // Tool gate (features.toolGate, tool-gate.cjs): runs on the tools this request really offers
+    // (after policy blocks and tool routing). Off, it returns 'none' without doing anything, and
+    // the request below is exactly what it was without the gate. It never picks a write.
+    const gate = toolGate && !body.compactOnly ? await toolGate.evaluate(message, resolved.tools) : null;
+    // Returns the messages with the fetched exchange added, or null when the read could not run
+    // (the account asks before this tool, the tool failed, or the chat was cancelled).
+    async function prefetchTool({ tool, args }) {
+      const userId = requestScope.getStore()?.workspace?.userId || null;
+      if (chatSignal.signal.aborted || toolPolicy.mode(userId, tool, isWriteTool(tool)) !== 'allow') return null;
+      const call = { id: `gate-${crypto.randomUUID()}`, name: tool, args: JSON.stringify(args) };
+      const index = toolOffset;
+      send({ type: 'tool', index, name: call.name, args: call.args });
+      const outcome = { failed: false };
+      const result = String(await runTool(call, async () => {
+        const out = await executeToolCall(project, call.name, call.args, allowedToolNames, chatSignal.signal, outcome);
+        recordToolUse(chatWorkspace, call.name);
+        return out;
+      }));
+      send({ type: 'tool_result', index, name: call.name, text: result.slice(0, 300) });
+      toolOffset = index + 1;
+      if (outcome.failed === true || /^ERROR\b/.test(result)) return null;
+      const framed = frameUntrusted('tool result', call.name, reduceToolResult(result, { maxChars: TOOL_RESULT_CAP }).text);
+      const note = 'The following was fetched for you; use it.';
+      const hasSystem = roundMessages.some((m) => m.role === 'system');
+      const base = hasSystem ? roundMessages.map((m, i) => (i === roundMessages.findIndex((x) => x.role === 'system') && typeof m.content === 'string' ? { ...m, content: `${m.content}\n\n${note}` } : m))
+        : [{ role: 'system', content: note }, ...roundMessages];
+      return [...base, { role: 'assistant', content: null, tool_calls: [{ id: call.id, type: 'function', function: { name: call.name, arguments: call.args } }] },
+        { role: 'tool', tool_call_id: call.id, content: framed }];
+    }
     const context = require('./chat-context.cjs');
     const contextId=chatId || spaceId;
     let prepared,limit,limitSource,summarizeContext,requestStartedAt=Date.now();
@@ -593,6 +622,21 @@ function createChatHandler({
     let roundReasoning = '';
     let toolOffset = 0;
     let continuationCompactedAt=null,continuationCovered=0;
+    let forcedTool = null, gateRetried = false;
+    // tool_choice for the gate's required tool: the first model turn (and its one retry) only.
+    const forceChoice = (round) => (forcedTool && round === 0 && activeTools.some((t) => t.function?.name === forcedTool)
+      ? { tool_choice: { type: 'function', function: { name: forcedTool } } } : {});
+    // The gate's enforcement. prefetch: run the read now and hand the model its result as an
+    // ordinary tool exchange; if it cannot run, fall through to require. require: force that
+    // function on the first model turn only (tool_choice), retry once on a miss, then carry on.
+    if (gate && gate.decision !== 'none' && allowedToolNames.has(gate.decision.tool) && !isWriteTool(gate.decision.tool)) {
+      forcedTool = gate.decision.tool;
+      if (gate.decision.mode === 'prefetch' && gate.decision.args) {
+        const fetched = await prefetchTool(gate.decision);
+        if (fetched) { roundMessages = fetched; forcedTool = null; }
+        else toolGate.record('prefetch.failed', { tool: gate.decision.tool });
+      }
+    }
     for (let round = 0; round < 3 && !chatSignal.signal.aborted; round++) {
       let roundBudget=context.measure(roundMessages,activeTools,limit,limitSource,model),roundCompacted=false;
       if(roundBudget.used>roundBudget.threshold) {
@@ -614,7 +658,15 @@ function createChatHandler({
           method: 'POST', headers: upstreamHeaders, signal: chatSignal.signal, redirect: 'error',
         }, {model,max_tokens:prepared.maxTokens,messages:roundMessages,stream:true,stream_options:{include_usage:true},
           ...sampling.params,
-          ...(activeTools.length ? {tools:activeTools} : {})}, provider, model, effort, send);
+          ...(activeTools.length ? {tools:activeTools} : {}), ...forceChoice(round)}, provider, model, effort, send);
+        // A server that rejects the named-function form of tool_choice gets the equivalent it does
+        // accept: only that tool, and a call required.
+        if (forceChoice(round).tool_choice && upstream.status >= 400 && upstream.status < 500 && /tool_choice/i.test(await upstream.clone().text().catch(() => ''))) {
+          upstream = await reasoningEffort.requestWithEffort(fetch, upstreamUrl, {
+            method: 'POST', headers: upstreamHeaders, signal: chatSignal.signal, redirect: 'error',
+          }, {model,max_tokens:prepared.maxTokens,messages:roundMessages,stream:true,stream_options:{include_usage:true},
+            ...sampling.params, tools:activeTools.filter((t) => t.function?.name === forcedTool), tool_choice:'required'}, provider, model, effort, send);
+        }
       } catch (err) {
         if (chatSignal.signal.aborted) break; // client went away; stop quietly
 
@@ -725,7 +777,7 @@ function createChatHandler({
           roundTimings = null;
           const response = await reasoningEffort.requestWithEffort(fetch, upstreamUrl, {
             method:'POST',headers:upstreamHeaders,signal:AbortSignal.any([chatSignal.signal,AbortSignal.timeout(300000)]),redirect:'error',
-          }, {model,max_tokens:prepared.maxTokens,messages:roundMessages,stream:false,...sampling.params,...(activeTools.length ? {tools:activeTools} : {})}, provider, model, effort, send);
+          }, {model,max_tokens:prepared.maxTokens,messages:roundMessages,stream:false,...sampling.params,...(activeTools.length ? {tools:activeTools} : {}),...forceChoice(round)}, provider, model, effort, send);
           const full = {ok:response.ok,status:response.status,body:await response.json()};
           if (!full.ok) throw new Error(`Provider returned ${full.status}`);
           require('./mtp.cjs').record(chatWorkspace?.userId,model,full.body?.timings);
@@ -747,6 +799,19 @@ function createChatHandler({
         }
       }
 
+      // The gate required a tool and the model answered without one: one forced retry of this
+      // turn (what it streamed becomes narration), then accept whatever the second try gives.
+      if (forceChoice(round).tool_choice && toolCalls.size === 0 && sawAnything && !chatSignal.signal.aborted) {
+        if (!gateRetried) {
+          gateRetried = true;
+          toolGate.record('gate.retry', { tool: forcedTool });
+          if (roundContent.trim()) send({ type: 'preamble', text: roundContent });
+          roundHasContent = false; roundContent = '';
+          round--;
+          continue;
+        }
+        toolGate.record('gate.miss', { tool: forcedTool });
+      }
       if (sawAnything) turn?.output(roundContent, [...toolCalls.values()]);
 
       // Execute each requested tool and append assistant tool_calls + results.
