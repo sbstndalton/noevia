@@ -5,7 +5,8 @@ import { useT } from '../i18n';
 type Step = { ctx: number; kind: 'load' | 'long'; status: 'running' | 'passed' | 'failed' | 'skipped'; reason?: string; seconds?: number; minAvailableGib?: number; progress?: number; etaSeconds?: number; promptPerSecond?: number; promptSeconds?: number };
 type Job = { id: string; model: string; promptBudgetSeconds?: number; status: 'running' | 'passed' | 'failed' | 'cancelled' | 'interrupted'; phase: string; steps: Step[]; result?: { loadCtx?: number; verifiedCtx?: number; appliedCtx?: number; loaded?: boolean }; error?: string; restored?: boolean; memoryGuard?: string; memoryFloorGib?: number };
 type HistoryEntry = { at: number; promptBudgetSeconds?: number; loadCtx?: number; verifiedCtx?: number; appliedCtx?: number; slots?: number };
-const tokens = (n: number) => n.toLocaleString('en-US');
+import { appLocale } from '../user-preferences';
+const tokens = (n: number) => new Intl.NumberFormat(appLocale(), { maximumFractionDigits: 0 }).format(n);
 
 export function NativeCalibration({ model, onChanged, autoFocus = false }: { model: string; onChanged: () => void; autoFocus?: boolean }) {
   const [job, setJob] = useState<Job | null>(null), [history, setHistory] = useState<HistoryEntry[]>([]);

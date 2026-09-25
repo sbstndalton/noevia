@@ -37,14 +37,14 @@ test('LibraryTab Details panel hides calibration for the system routing model', 
   assert.match(src, /const system = isSystemModel\(m\.name\)/);
   calibrationSitesAreGuarded(src);
   // The same "System · routing" note used for Tune/Delete must appear for the calibration gap too.
-  assert.match(src, /system \? <p className="mm-note" role="status">\{SYSTEM_MODEL_LABEL\}/);
+  assert.match(src, /system \? <p className="mm-note" role="status">\{t\('model.systemLabel'\)\}/);
 });
 
 test('ConfigureTab (Tune settings) also hides calibration and auto-tune actions for the system routing model', () => {
   const src = read('src/components/models/ConfigureTab.tsx');
   assert.match(src, /const system = isSystemModel\(name\)/);
   calibrationSitesAreGuarded(src);
-  assert.match(src, /\{system && <p className="mm-note" role="status">\{SYSTEM_MODEL_LABEL\}/);
+  assert.match(src, /\{system && <p className="mm-note" role="status">\{t\('model.systemLabel'\)\}/);
   // "Tune for this machine" and "Auto-tune and apply" must not render for the system model either.
   assert.match(src, /\{!system && <button className="modal-btn secondary" disabled=\{tuning \|\| busy\}/);
   assert.match(src, /\{!system && <details className="mm-disclosure mm-easy-autotune"/);

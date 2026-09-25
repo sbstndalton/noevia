@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import { apiFetch } from '../../api';
 import type { InstalledModel } from '../../types';
-import { isSystemModel, SYSTEM_MODEL_LABEL } from '../../model-system';
+import { isSystemModel } from '../../model-system';
 import { EvidenceList } from './EvidenceList';
-import { ctxShort } from './mm';
+import { ctxShort, num } from './mm';
 import type { EstimateInputs, Hardware, Verdict } from './guided';
 import { belowKvFloor, budgetFor, canPromptSuite, estimateGib, KV_FLOOR, KV_GUIDED, recommend, roleOf, TUNE_STEPS, tuneMinutes, verdictFor } from './guided';
 import type { BudgetKind, Recommendation } from './guided';
@@ -20,8 +20,8 @@ const TUNE_STEP: Record<string, [MessageKey, MessageKey]> = {
 const BUDGET_SOURCE: Record<BudgetKind, MessageKey> = { configured: 'mm.fit.source.configured', gpu: 'mm.fit.source.gpu', 'gpu-shared': 'mm.fit.source.gpuShared', system: 'mm.fit.source.system', manual: 'mm.fit.source.manual' };
 /** guided.ts recommend() in the interface language (its `text` is the English original). */
 function recommendationText(t: Translate, rec: Recommendation, budgetGib: number): string {
-  if (rec.kind === 'use') return t(rec.verdict === 'tight' ? 'mm.fit.rec.useTight' : 'mm.fit.rec.use', { ctx: rec.ctx.toLocaleString('en-US'), kv: rec.kv, total: rec.totalGib, budget: budgetGib });
-  if (rec.kind === 'smaller') return t(rec.moe ? 'mm.fit.rec.smallerMoe' : 'mm.fit.rec.smaller', { floor: rec.floorGib, budget: budgetGib });
+  if (rec.kind === 'use') return t(rec.verdict === 'tight' ? 'mm.fit.rec.useTight' : 'mm.fit.rec.use', { ctx: num(rec.ctx, 0), kv: rec.kv, total: num(rec.totalGib), budget: num(budgetGib) });
+  if (rec.kind === 'smaller') return t(rec.moe ? 'mm.fit.rec.smallerMoe' : 'mm.fit.rec.smaller', { floor: num(rec.floorGib), budget: num(budgetGib) });
   return rec.reason === 'not-chat' ? t('mm.fit.rec.notChat') : t('mm.fit.rec.noLayout', { arch: rec.arch || t('mm.fit.unknownArch') });
 }
 type TuneStatus = { job: { model?: string; status?: string; error?: string; models?: { model: string; status: string; error?: string }[] } | null; history: { at: number; kv?: string; context?: number; specLabel?: string; generation?: number }[] };
@@ -38,7 +38,7 @@ export function GuidedOptimize({ model, installed, onOpenTab }: { model: string;
   const role = roleOf(model, installed?.labels || []);
   const t = useT();
   if (isSystemModel(model)) return <section className="mm-panel mm-guided" aria-label={t('mm.guided.title')}>
-    <p className="mm-note" role="status">{SYSTEM_MODEL_LABEL}{t('mm.guided.systemNote')}</p>
+    <p className="mm-note" role="status">{t('model.systemLabel')}{t('mm.guided.systemNote')}</p>
   </section>;
   return <section className="mm-panel mm-guided" aria-label={t('mm.guided.title')}>
     <div className="mm-panel-head"><h3>{t('mm.guided.title')}</h3><span className="mm-pill">{t(ROLE_KEY[role])}</span></div>
@@ -85,8 +85,8 @@ function FitStep({ model }: { model: string }): JSX.Element {
     </div>}
     {est && budget && verdict && <div className="mm-fit" data-verdict={verdict} role="status">
       <strong className="mm-fit-verdict">{t(VERDICT[verdict])}</strong>
-      <span>{t('mm.fit.aboutBefore')}<strong>{est.totalGib} GiB</strong>{t('mm.fit.aboutAfter', { budget: budget.gib, source: t(BUDGET_SOURCE[budget.kind], { gpu: budget.gpu ?? '' }) })}</span>
-      <small>{[t('mm.fit.model', { gib: inputs!.modelGib }), t('mm.fit.kv', { gib: est.kvGib }), ...(inputs!.pinnedGib ? [t('mm.fit.projector', { gib: inputs!.pinnedGib })] : []), t('mm.fit.reserve', { gib: inputs!.reserveGib })].join(' · ')}{t('mm.fit.margin')}</small>
+      <span>{t('mm.fit.aboutBefore')}<strong>{num(est.totalGib)} GiB</strong>{t('mm.fit.aboutAfter', { budget: num(budget.gib), source: t(BUDGET_SOURCE[budget.kind], { gpu: budget.gpu ?? '' }) })}</span>
+      <small>{[t('mm.fit.model', { gib: num(inputs!.modelGib) }), t('mm.fit.kv', { gib: num(est.kvGib) }), ...(inputs!.pinnedGib ? [t('mm.fit.projector', { gib: num(inputs!.pinnedGib) })] : []), t('mm.fit.reserve', { gib: num(inputs!.reserveGib) })].join(' · ')}{t('mm.fit.margin')}</small>
     </div>}
     {inputs && !budget && <p className="mm-note" role="status">{t('mm.fit.noMemory')}</p>}
     {belowKvFloor(kv) && <p className="mm-note mm-warn" role="note">{t('mm.fit.belowFloor', { floor: KV_FLOOR })}</p>}
@@ -114,10 +114,10 @@ function TuneStep({ model, sizeGB, chat }: { model: string; sizeGB: number | nul
   if (!chat) return <div className="mm-guided-step"><h4><span className="mm-step-n" aria-hidden="true">2</span>{t('mm.tune.title')}</h4><p className="mm-note">{t('mm.tune.notChat')}</p></div>;
   return <div className="mm-guided-step">
     <h4><span className="mm-step-n" aria-hidden="true">2</span>{t('mm.tune.title')} <small>{t('mm.tune.hint')}</small></h4>
-    <p className="mm-note">{t('mm.tune.time', { low: time.low, high: time.high })}{sizeGB ? ` ${t('mm.tune.fileSize', { size: `${sizeGB.toFixed(1)} GB` })}` : ''}. <strong>{t('mm.tune.chatPauses')}</strong>{t('mm.tune.pauseAfter')}</p>
+    <p className="mm-note">{t('mm.tune.time', { low: time.low, high: time.high })}{sizeGB ? ` ${t('mm.tune.fileSize', { size: `${num(sizeGB, 1)} GB` })}` : ''}. <strong>{t('mm.tune.chatPauses')}</strong>{t('mm.tune.pauseAfter')}</p>
     <ol className="mm-preflight">{TUNE_STEPS.map((s) => <li key={s.id}><strong>{TUNE_STEP[s.id] ? t(TUNE_STEP[s.id][0]) : s.label}</strong> — {TUNE_STEP[s.id] ? t(TUNE_STEP[s.id][1]) : s.what}</li>)}</ol>
     <p className="mm-note mm-warn" role="note">{t('mm.tune.floor', { floor: KV_FLOOR })}</p>
-    {last && <p className="mm-note">{t('mm.tune.last', { date: new Date(last.at).toLocaleDateString(t.locale), result: [last.specLabel || t('mm.tune.saved'), ...(last.generation ? [t('mm.tokensPerSecond', { rate: last.generation })] : []), ...(last.kv ? [t('mm.tune.kv', { kv: last.kv })] : []), ...(last.context ? [t('mm.tune.context', { tokens: last.context.toLocaleString('en-US') })] : [])].join(', ') })}{belowKvFloor(last.kv) ? ` ${t('mm.tune.lastBelowFloor')}` : ''}</p>}
+    {last && <p className="mm-note">{t('mm.tune.last', { date: new Date(last.at).toLocaleDateString(t.locale), result: [last.specLabel || t('mm.tune.saved'), ...(last.generation ? [t('mm.tokensPerSecond', { rate: num(last.generation) })] : []), ...(last.kv ? [t('mm.tune.kv', { kv: last.kv })] : []), ...(last.context ? [t('mm.tune.context', { tokens: num(last.context, 0) })] : [])].join(', ') })}{belowKvFloor(last.kv) ? ` ${t('mm.tune.lastBelowFloor')}` : ''}</p>}
     {failed && <p className="mm-note mm-warn" role="status">{t(mine!.error ? 'mm.tune.failedError' : 'mm.tune.failed', { status: stuckStatus(t, String(mine!.status)), error: mine!.error ?? '' })} {t(last ? 'mm.tune.failedKeepLast' : 'mm.tune.failedKeep')}</p>}
     <div className="mm-actions"><button type="button" className="modal-btn secondary" onClick={goTune}>{t('mm.tune.go')}</button></div>
   </div>;

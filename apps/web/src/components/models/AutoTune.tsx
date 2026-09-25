@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { apiFetch } from '../../api';
-import { isSystemModel, SYSTEM_MODEL_LABEL } from '../../model-system';
+import { isSystemModel } from '../../model-system';
 import { useT } from '../../i18n';
+import { num } from './mm';
 
 type Step = { id: string; label: string; status: string; reason?: string; generation?: number; promptPerSecond?: number; ctx?: number };
 type Extension = { id: string; action: string; why: string; from?: number; to?: number };
@@ -96,10 +97,10 @@ export function AutoTune({ model = '', onChanged }: { model?: string; onChanged:
       <button className={'modal-btn ' + (resumable ? 'secondary' : 'primary')} disabled={busy || !confirmed || (!model && !scan?.models.length)} onClick={() => void mutate('/api/models/autotune', { model, confirmPause: confirmed, untuned: !model })}>{busy ? t('mm.starting') : model ? t('mm.autotune.apply') : t('mm.autotune.applyUntuned')}</button>
     </div>
   </div>;
-  if (system) return <p className="mm-note" role="status">{SYSTEM_MODEL_LABEL}{t('mm.autotune.systemNote')}</p>;
+  if (system) return <p className="mm-note" role="status">{t('model.systemLabel')}{t('mm.autotune.systemNote')}</p>;
   return <div className="mm-autotune">
     {!model && scan && !running && <p className="mm-note" role="status">{scan.models.length ? t.plural('mm.autotune.needList', scan.models.length, { models: scan.models.join(', ') }) : t('mm.autotune.needNone', { count: 0 })} {t('mm.autotune.skipped', { count: scan.skipped.length })}</p>}
-    {last && !running && <p className="mm-note" role="status">{t('mm.autotune.lastBefore', { date: new Date(last.at).toLocaleString(t.locale) })}<strong>{last.specLabel}</strong>{', ' + [t('mm.tokensPerSecond', { rate: last.generation }), ...(last.kv ? [t('mm.tune.kv', { kv: last.kv }), t('mm.tune.context', { tokens: last.context?.toLocaleString() ?? '' })] : []), ...(last.ubatch ? [t('mm.autotune.ubatch', { size: last.ubatch })] : [])].join(', ')}.</p>}
+    {last && !running && <p className="mm-note" role="status">{t('mm.autotune.lastBefore', { date: new Date(last.at).toLocaleString(t.locale) })}<strong>{last.specLabel}</strong>{', ' + [t('mm.tokensPerSecond', { rate: last.generation }), ...(last.kv ? [t('mm.tune.kv', { kv: last.kv }), t('mm.tune.context', { tokens: last.context != null ? num(last.context, 0) : '' })] : []), ...(last.ubatch ? [t('mm.autotune.ubatch', { size: last.ubatch })] : [])].join(', ')}.</p>}
     {mine && <div>
       <div className="mm-autotune-status" aria-live="polite">
         <p className="mm-note"><strong>{mine.status === 'running' ? mine.phase : mine.status === 'passed' ? t('mm.autotune.tuned') : mine.status === 'cancelled' ? t('mm.queue.cancelled') : mine.status === 'interrupted' ? t('mm.autotune.interrupted') : t('mm.hw.status.dead')}</strong>{mine.error ? ' — ' + mine.error : ''}</p>
@@ -137,7 +138,7 @@ export function AutoTune({ model = '', onChanged }: { model?: string; onChanged:
         </li>)}</ol>
         {item.result && <div className="mm-easy-result" role="status"><div className="mm-easy-result-text">
           <p>{t('mm.autotune.savedBefore')}<strong>{item.result.specLabel}</strong>{t('mm.autotune.savedAt', { rate: item.result.generation })}{item.result.ubatch ? ', ' + t('mm.autotune.ubatch', { size: item.result.ubatch }) + ' (' + t('mm.autotune.promptRate', { rate: item.result.promptPerSecond ?? '' }) + ')' : ''}.</p>
-          <p className="mm-note">{t('mm.autotune.resultNote', { kv: item.result.kv ?? '', tokens: item.result.context?.toLocaleString() ?? '', acceptance: item.result.acceptance == null ? t('mm.autotune.notApplicable') : item.result.acceptance + '%' })}</p>
+          <p className="mm-note">{t('mm.autotune.resultNote', { kv: item.result.kv ?? '', tokens: item.result.context != null ? num(item.result.context, 0) : '', acceptance: item.result.acceptance == null ? t('mm.autotune.notApplicable') : item.result.acceptance + '%' })}</p>
         </div></div>}
       </details>)}</div>
     </div>}

@@ -10,7 +10,7 @@ import { registerNewFolderModels } from './register';
 import { useModelsChanged } from '../../models-changed';
 import { MiddleTruncate } from '../MiddleTruncate';
 import { AutoTune } from './AutoTune';
-import { isSystemModel, SYSTEM_MODEL_LABEL } from '../../model-system';
+import { isSystemModel } from '../../model-system';
 import { useT } from '../../i18n';
 import type { MessageKey } from '../../i18n';
 
@@ -137,7 +137,7 @@ function ModelCard({ model: m, file, update, busy, onToggle, onConfigure, onDele
       {m.maxContext != null && <span>{t('mm.card.trainedFor', { tokens: tokens(m.maxContext) })}</span>}
       {file?.shape && <span>{file.shape.label}</span>}
       {file?.projector && <span className="model-card-tag">{t('mm.card.vision')}</span>}
-      {system && <span className="model-card-tag" title={t('mm.card.systemTitle')}>{SYSTEM_MODEL_LABEL}</span>}
+      {system && <span className="model-card-tag" title={t('mm.card.systemTitle')}>{t('model.systemLabel')}</span>}
       {m.labels.filter(l => l !== 'vision').map(l => <span key={l} className="model-card-tag">{l}</span>)}
       {m.source && <span>{m.source === 'preset' ? t('mm.card.sourceFolder') : m.source === 'cache' ? t('mm.card.sourceCache') : m.source}</span>}
       {update?.status === 'stale' && <span className="mm-pill is-warn">{t('mm.card.update', { remote: update.remote })}</span>}
@@ -167,7 +167,7 @@ function ModelCard({ model: m, file, update, busy, onToggle, onConfigure, onDele
         {Object.entries(detail.summary.chat_template_features || {}).some(([, v]) => v) && <div><dt>{t('mm.card.template')}</dt><dd>{Object.entries(detail.summary.chat_template_features).filter(([, v]) => v).map(([k]) => k.replace(/_/g, ' ')).join(', ')}</dd></div>}
       </dl>}
       <EvidenceList model={m.name}/>
-      {system ? <p className="mm-note" role="status">{SYSTEM_MODEL_LABEL}{t('mm.card.systemNote')}</p>
+      {system ? <p className="mm-note" role="status">{t('model.systemLabel')}{t('mm.card.systemNote')}</p>
         : <NativeCalibration model={m.name} onChanged={() => {}}/>}
     </div>}
   </article>;
@@ -176,6 +176,8 @@ function ModelCard({ model: m, file, update, busy, onToggle, onConfigure, onDele
 function DeleteModel({ model: m, file, onDeleted }: { model: InstalledModel; file?: FileEntry; onDeleted: (error?: string | null) => void }) {
   const t = useT();
   const [confirming, setConfirming] = useState(false), [removeSettings, setRemoveSettings] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  // The files are gone but settings clean-up failed: say so in the interface language.
+  const cleanupText = (detail?: string) => (detail ? t('mm.delete.cleanupFailedDetail', { detail }) : t('mm.delete.cleanupFailed'));
   const run = async () => {
     setBusy(true); setError('');
     try {
@@ -184,7 +186,7 @@ function DeleteModel({ model: m, file, onDeleted }: { model: InstalledModel; fil
           const r = await apiFetch('/api/models/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: m.name }) });
           if (!r.ok) throw Error(httpErrorMessage(r.status, (await readErrorBody(r)).error));
         });
-        setConfirming(false); onDeleted(outcome.error); return;
+        setConfirming(false); onDeleted(outcome.error && cleanupText(outcome.cleanupDetail)); return;
       }
       if (file) {
         const outcome = await runDeleteModelFiles(
@@ -198,7 +200,7 @@ function DeleteModel({ model: m, file, onDeleted }: { model: InstalledModel; fil
             for (const section of file.sections) rev = (await mm<{ revision: string }>(`sections/${encodeURIComponent(section)}?baseRevision=${rev}`, { method: 'DELETE' })).revision;
           } : undefined,
         );
-        setConfirming(false); onDeleted(outcome.error); return;
+        setConfirming(false); onDeleted(outcome.error && cleanupText(outcome.cleanupDetail)); return;
       }
       throw Error(t('mm.delete.noFiles'));
     } catch (e) { setError(errorText(e, t('mm.deleteFailed'))); } finally { setBusy(false); }

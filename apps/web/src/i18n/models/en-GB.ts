@@ -55,12 +55,6 @@ export const EN_GB_MODELS = {
   'mm.route.explain3': 'If that check fails or is unclear, Fast answers — Auto never blocks a message.',
   'mm.route.explain4': 'When a message has images and Vision is set, Vision describes them first and the chosen model answers from the description.',
   'mm.route.explain5': 'When Code is set, a fenced code block or a diff goes straight to it, and the one-word check can choose it too. Without a Code model, code work goes to Smart as before.',
-  'mm.route.notConfigured': 'not configured',
-  'mm.route.notSet': 'not set',
-  'mm.route.summaryFast': 'Fast: {model}',
-  'mm.route.summarySmart': 'Smart: {model}',
-  'mm.route.summaryVision': 'Vision: {model}',
-  'mm.route.summaryCode': 'Code: {model}',
   'mm.route.loadError': 'Auto routing settings could not be loaded.',
   'mm.route.needBoth': 'Auto needs both a fast and a smart model.',
   'mm.route.saved': 'Saved. Models load on demand.',
@@ -840,6 +834,9 @@ export const EN_GB_MODELS = {
   'mm.register.foundMtp.one': 'Found {count} new model in the models folder and added it with safe defaults (8K context, MTP for {mtp}): {models}.',
   'mm.register.foundMtp.other': 'Found {count} new models in the models folder and added them with safe defaults (8K context, MTP for {mtp}): {models}.',
   'mm.register.notSetUp': 'Not set up: {files}.',
+  'mm.hw.sharedRisk': "The GPU may borrow up to {borrow} GiB of this machine's {host} GiB, leaving about {left} GiB for everything else. Several loaded models can make the server unresponsive: keep one model loaded, or cap GPU shared memory (GTT) below {cap} GiB.",
+  'mm.delete.cleanupFailed': "Deleted, but its settings could not be cleaned up.",
+  'mm.delete.cleanupFailedDetail': "Deleted, but its settings could not be cleaned up: {detail}",
 } as const;
 
 export type ModelsKey = keyof typeof EN_GB_MODELS;

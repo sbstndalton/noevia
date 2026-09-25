@@ -1,7 +1,8 @@
 // Pure rules of the guided model manager (#204): estimate math, verdict, recommendation,
 // the Q5 floor (#190), roles and the recovery list. Synthetic numbers in realistic ranges.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),ts=require('typescript');
-function load(file){const full=path.join(__dirname,'../src',file);const code=ts.transpileModule(fs.readFileSync(full,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const m={exports:{}};
+const loaded={};
+function load(file){file=path.normalize(file);if(loaded[file])return loaded[file].exports;const full=path.join(__dirname,'../src',file);const code=ts.transpileModule(fs.readFileSync(full,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const m={exports:{}};loaded[file]=m;
   const req=(id)=>id.startsWith('.')?load(path.relative(path.join(__dirname,'../src'),path.join(path.dirname(full),id))+'.ts'):require(id);
   new Function('module','exports','require',code)(m,m.exports,req);return m.exports;}
 const g=load('components/models/guided.ts');
@@ -95,4 +96,17 @@ test('the guided flow keeps the Laya guard and never starts a run by itself (#80
   assert.doesNotMatch(src,/method: 'POST'/,'estimate, pre-flight and quality only read');
   const overview=fs.readFileSync(path.join(__dirname,'../src/components/models/OverviewTab.tsx'),'utf8');
   assert.match(overview,/g\.role !== 'routing' && <button/,'no Optimize or Details button for the routing model');
+});
+
+test('the model manager phrases every recommendation kind exactly like guided.ts text (en-US), so the two cannot drift (#293)',()=>{
+  const core=load('i18n/core.ts');load('i18n/models/index.ts');
+  // en-US shares the spelling of guided.ts ("quantization"); en-GB differs only there.
+  const say=(rec,budget)=>rec.kind==='use'?core.translate('en-US',rec.verdict==='tight'?'mm.fit.rec.useTight':'mm.fit.rec.use',{ctx:rec.ctx.toLocaleString('en-US'),kv:rec.kv,total:rec.totalGib,budget})
+    :rec.kind==='smaller'?core.translate('en-US',rec.moe?'mm.fit.rec.smallerMoe':'mm.fit.rec.smaller',{floor:rec.floorGib,budget})
+    :rec.reason==='not-chat'?core.translate('en-US','mm.fit.rec.notChat'):core.translate('en-US','mm.fit.rec.noLayout',{arch:rec.arch||core.translate('en-US','mm.fit.unknownArch')});
+  const cases=[[nine,14],[nine,10.2],[{...nine,modelGib:20,moe:true},14],[{...nine,modelGib:20},14],[{...nine,chat:false},14],[{...nine,sizeable:false,rows:[]},14],[{...nine,sizeable:false,rows:[],arch:''},14]];
+  const kinds=new Set();
+  for(const [inputs,budget] of cases){const rec=g.recommend(inputs,budget);kinds.add(rec.kind+(rec.verdict||rec.reason||(rec.moe?'moe':'')));assert.equal(say(rec,budget),rec.text);}
+  assert.ok(kinds.size>=5,[...kinds].join());
+  assert.match(core.translate('en-GB','mm.fit.rec.smaller',{floor:1,budget:2}),/quantisation/);
 });

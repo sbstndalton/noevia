@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { apiFetch } from '../../api';
 import { useT } from '../../i18n';
+import { num } from './mm';
 import type { MessageKey } from '../../i18n';
 
 type Row = { category: string; state: string; value: { ctx?: number; rate?: number } | null; at: number | null; suite: { name: string; version: number } | null; limitations: string[] };
@@ -61,7 +62,7 @@ export function EvidenceList({ model }: { model: string }): JSX.Element | null {
       <h4>{t('mm.evidence.qualification')}</h4>
       <ul>{rows.map((row) => <li key={row.category} data-state={row.state}>
         <strong>{own(LABEL, row.category)}</strong>
-        <span>{own(STATE, row.state)}{row.category === 'context_capacity' && row.value?.ctx ? ` · ${t('mm.tokensCount', { tokens: row.value.ctx.toLocaleString('en-US') })}` : ''}{row.category === 'mtp_acceptance' && typeof row.value?.rate === 'number' ? ` · ${t('mm.evidence.accepted', { pct: Math.round(row.value.rate * 100) })}` : ''}{row.category === 'throughput' && typeof row.value?.rate === 'number' ? ` · ${t('mm.tokensPerSecond', { rate: row.value.rate })}` : ''}{row.at ? ` · ${new Date(row.at).toLocaleDateString(t.locale)}` : ''}</span>
+        <span>{own(STATE, row.state)}{row.category === 'context_capacity' && row.value?.ctx ? ` · ${t('mm.tokensCount', { tokens: num(row.value.ctx, 0) })}` : ''}{row.category === 'mtp_acceptance' && typeof row.value?.rate === 'number' ? ` · ${t('mm.evidence.accepted', { pct: Math.round(row.value.rate * 100) })}` : ''}{row.category === 'throughput' && typeof row.value?.rate === 'number' ? ` · ${t('mm.tokensPerSecond', { rate: num(row.value.rate) })}` : ''}{row.at ? ` · ${new Date(row.at).toLocaleDateString(t.locale)}` : ''}</span>
         {row.limitations.length > 0 && row.state !== 'unverified' && <small>{row.limitations.join(' · ')}</small>}
         {row.category === 'vision' && <button type="button" className="modal-btn secondary" disabled={checking} onClick={() => void recheck()} title={t('mm.evidence.recheckTitle')}>{checking ? t('mm.checking') : t('mm.evidence.recheck')}</button>}
       </li>)}</ul>

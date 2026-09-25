@@ -16,8 +16,9 @@ import { GuidedOptimize } from './GuidedOptimize';
 import { OverviewTab } from './OverviewTab';
 import { notifyModelsChanged } from '../../models-changed';
 import { routingViewState } from '../../routing-view-state';
+import { roleSummary } from '../../routing-copy';
 import { useT } from '../../i18n';
-import type { MessageKey, Translate } from '../../i18n';
+import type { MessageKey } from '../../i18n';
 export type { RoutingViewState } from '../../routing-view-state';
 
 export type ModelSort = 'name' | 'size' | 'modified';
@@ -35,16 +36,9 @@ const SORTS: [ModelSort, MessageKey][] = [['name', 'mm.sort.name'], ['size', 'mm
 const FILTERS: [ModelFilter, MessageKey][] = [['all', 'mm.filter.all'], ['loaded', 'mm.filter.loaded'], ['vision', 'mm.filter.vision'], ['unconfigured', 'mm.filter.unconfigured']];
 const HF_SORTS: [string, MessageKey][] = [['fit', 'mm.hfSort.fit'], ['trendingScore', 'mm.hfSort.trending'], ['downloads', 'mm.hfSort.downloads'], ['likes', 'mm.hfSort.likes'], ['lastModified', 'mm.sort.modified']];
 type RouteRole = 'fast' | 'smart' | 'vision' | 'code';
-// The Auto vocabulary of routing-copy.ts, in the interface language (the chat's model picker
-// still reads routing-copy.ts, which is in the first-load bundle).
+// Auto's role names and explanation for the Routing panel (routing-copy.ts has the summary).
 const ROUTE_ROLE: Record<RouteRole, MessageKey> = { fast: 'mm.route.role.fast', smart: 'mm.route.role.smart', vision: 'mm.route.role.vision', code: 'mm.route.role.code' };
 const AUTO_EXPLAINED: MessageKey[] = ['mm.route.explain1', 'mm.route.explain2', 'mm.route.explain3', 'mm.route.explain4', 'mm.route.explain5'];
-function roleSummary(t: Translate, roles: { fast?: string; smart?: string; vision?: string; code?: string } | null | undefined): string {
-  if (!roles) return t('mm.route.notConfigured');
-  const notSet = t('mm.route.notSet');
-  return [t('mm.route.summaryFast', { model: roles.fast || notSet }), t('mm.route.summarySmart', { model: roles.smart || notSet }),
-    ...(roles.vision ? [t('mm.route.summaryVision', { model: roles.vision })] : []), ...(roles.code ? [t('mm.route.summaryCode', { model: roles.code })] : [])].join(' · ');
-}
 
 // Settings → Models & routing. One interface rather than seven tabs.
 //
@@ -262,7 +256,7 @@ function ProjectRoutingSection({ models, routes, projects, modelsError }: {
       <tbody>{projects.map((p) => <tr key={p.id}>
         <td data-label={t('mm.projects.project')}>{p.name}</td>
         <td data-label={t('mm.projects.picks')}>{p.routing === 'auto' ? t('mm.mode.auto') : t('mm.mode.manual')}</td>
-        <td data-label={t('mm.projects.model')}>{p.routing === 'auto' ? (info?.configured ? roleSummary(t, info.roles) : t('mm.projects.autoUnconfigured')) : modelChoiceLabel(p, modelsError ? null : models)}</td>
+        <td data-label={t('mm.projects.model')}>{p.routing === 'auto' ? (info?.configured ? roleSummary(info.roles, t) : t('mm.projects.autoUnconfigured')) : modelChoiceLabel(p, modelsError ? null : models)}</td>
       </tr>)}</tbody>
       </table>
     </div> : <p className="mm-note">{t('mm.projects.none')}</p>}

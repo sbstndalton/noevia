@@ -459,3 +459,13 @@ test('every plural form of the model manager and the new Settings screens keeps 
   assert.equal(core.translatePlural('fr-FR','mm.calibration.minutes',0),'0 minute','French 0 is singular');
   assert.equal(core.translatePlural('en-GB','serviceStatus.mcp.discovered',160),'160 tools discovered');
 });
+
+test('the chat model picker, Auto summary, system label, Diary storage and file sharing use base keys only (they render outside any lazy segment)',()=>{
+  for(const file of ['components/ModelPopup.tsx','routing-copy.ts','components/StoragePicker.tsx','components/DiarySharing.tsx']){
+    const used=[...keysUsedIn(file)].filter(k=>/^[a-z][a-zA-Z]*\.[a-zA-Z]/.test(k)&&!/\.(tsx?|js|json|com|gguf)$/.test(k));
+    const missing=used.filter(k=>!inBase(k));
+    same(missing,[],`${file} uses keys outside the base catalogue: ${missing.join(', ')}`);
+  }
+  for(const file of MODELS_MODULES)assert.doesNotMatch(fs.readFileSync(path.join(SRC,file),'utf8'),/SYSTEM_MODEL_LABEL/,`${file} renders the English system label`);
+  assert.equal(core.translate('de-DE','routing.fast',{model:'m'}),'Schnell: m');
+});

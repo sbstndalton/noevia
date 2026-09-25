@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../api';
-import { isSystemModel, SYSTEM_MODEL_LABEL } from '../../model-system';
-import { bytes, ctxShort, errorText, mm, tokens } from './mm';
+import { isSystemModel } from '../../model-system';
+import { bytes, ctxShort, errorText, mm, num, tokens } from './mm';
 import { NativeCalibration } from '../NativeCalibration';
 import { AutoTune } from './AutoTune';
 import { dismissFolderModel } from './register';
@@ -151,7 +151,7 @@ function SectionEditor({ name, row, onChanged }: { name: string; row?: SectionRo
       <button className="modal-btn secondary" disabled={busy !== ''} onClick={() => void read(true)}>{t('mm.editor.reset')}</button>
       {row?.cli && <button className="modal-btn secondary" onClick={() => void navigator.clipboard?.writeText(row.cli).then(() => setMessage(t('mm.editor.cliCopied')))}>{t('mm.editor.copyCli')}</button>}
     </div>
-    {data.exists && isSystemModel(name) && <p className="mm-note" role="status">{SYSTEM_MODEL_LABEL}{t('mm.editor.systemNote')}</p>}
+    {data.exists && isSystemModel(name) && <p className="mm-note" role="status">{t('model.systemLabel')}{t('mm.editor.systemNote')}</p>}
     {data.exists && !isSystemModel(name) && <details className="mm-disclosure"><summary>{t('mm.editor.renameOrDelete')}</summary><div className="mm-form">
       <p className="mm-note">{t('mm.editor.renameNote')}</p>
       <div className="mm-row"><label className="mm-grow">{t('mm.editor.newName')}<input value={rename} onChange={e => setRename(e.target.value)} placeholder={name}/></label><button className="modal-btn secondary" disabled={!rename.trim() || rename.trim() === name || busy !== ''} onClick={() => void doRename()}>{t('mm.editor.rename')}</button></div>
@@ -223,7 +223,7 @@ function EasySettings({ name, draft, busy, onChange, onUseTuned, onAutoApplied }
       <div><strong>{t('mm.easy.context')}</strong><p className="mm-note">{draft['ctx-size'] ? t('mm.tokensCount', { tokens: ctxShort(Number(draft['ctx-size'])) }) : t('mm.easy.engineDefault')}. {verified > 0 ? t('mm.easy.measured', { tokens: ctxShort(verified) }) : t('mm.easy.notMeasured')} {t('mm.easy.tuningNote')}</p></div>
       {!system && <button className="modal-btn secondary" disabled={tuning || busy} onClick={() => void tune()}>{tuning ? t('mm.easy.estimating') : t('mm.easy.tune')}</button>}
     </div>
-    {system && <p className="mm-note" role="status">{SYSTEM_MODEL_LABEL}{t('mm.easy.systemNote')}</p>}
+    {system && <p className="mm-note" role="status">{t('model.systemLabel')}{t('mm.easy.systemNote')}</p>}
     {!system && failure && <p role="alert" className="modal-err">{failure}</p>}
     {!system && rec && !failure && <div className="mm-easy-result" role="status">
       <div className="mm-easy-result-text">
@@ -317,15 +317,15 @@ function AutoconfigPanel({ name, onFill }: { name: string; onFill: (values: Reco
             <strong>{s.label}{rec.current_spec_profile === s.key ? ` ${t('mm.current')}` : ''}</strong><small>{unusable ? t('mm.autoconfig.noHead') : s.blurb}</small></button>;
         })}</fieldset>}
         {rec.plans.map(p => <div key={p.name} className="mm-table-wrap"><table className="mm-table">
-          <caption>{t(p.fits_at_all ? 'mm.autoconfig.budgetUpTo' : 'mm.autoconfig.budgetNoFit', { name: p.name, gib: p.vram_gb.toFixed(1), tokens: ctxShort(p.max_ctx) })}</caption>
+          <caption>{t(p.fits_at_all ? 'mm.autoconfig.budgetUpTo' : 'mm.autoconfig.budgetNoFit', { name: p.name, gib: num(p.vram_gb, 1), tokens: ctxShort(p.max_ctx) })}</caption>
           <thead><tr><th scope="col">{t('mm.easy.context')}</th><th scope="col">{t('mm.autoconfig.weights')}</th><th scope="col">{t('mm.autoconfig.kv')}</th><th scope="col">{t('mm.autoconfig.totalCol')}</th><th scope="col">{t('mm.verdict.fits')}</th></tr></thead>
-          <tbody>{p.rows.filter(r => columns.includes(r.ctx)).map(r => <tr key={r.ctx}><td>{ctxShort(r.ctx)}</td><td>{r.model_gb} GiB</td><td>{r.kv_gb} GiB</td><td>{r.total_gb} GiB</td>
+          <tbody>{p.rows.filter(r => columns.includes(r.ctx)).map(r => <tr key={r.ctx}><td>{ctxShort(r.ctx)}</td><td>{num(r.model_gb)} GiB</td><td>{num(r.kv_gb)} GiB</td><td>{num(r.total_gb)} GiB</td>
             <td>{r.fits ? (r.offload_kind ? (r.offload_kind === 'ngl' ? t('mm.autoconfig.yesCpu', { pct: 100 - r.gpu_pct }) : t('mm.autoconfig.yesExperts')) : t('mm.autoconfig.yes')) : t('mm.autoconfig.no')}</td></tr>)}</tbody>
         </table></div>)}
-        {data && data.measured.n > 0 && <p className="mm-note">{t.plural(data.measured.draft_acc_p50 != null ? 'mm.autoconfig.measuredDraft' : 'mm.autoconfig.measured', data.measured.n, { gen: data.measured.gen_p50.toFixed(1), low: data.measured.gen_p25.toFixed(1), high: data.measured.gen_p75.toFixed(1), prompt: data.measured.prompt_p50.toFixed(0), accepted: data.measured.draft_acc_p50 != null ? Math.round(data.measured.draft_acc_p50 * 100) : 0 })}</p>}
+        {data && data.measured.n > 0 && <p className="mm-note">{t.plural(data.measured.draft_acc_p50 != null ? 'mm.autoconfig.measuredDraft' : 'mm.autoconfig.measured', data.measured.n, { gen: num(data.measured.gen_p50, 1), low: num(data.measured.gen_p25, 1), high: num(data.measured.gen_p75, 1), prompt: num(data.measured.prompt_p50, 0), accepted: data.measured.draft_acc_p50 != null ? Math.round(data.measured.draft_acc_p50 * 100) : 0 })}</p>}
         {data && data.history.length > 0 && <div className="mm-table-wrap"><table className="mm-table"><caption>{t('mm.autoconfig.history')}</caption>
           <thead><tr><th scope="col">{t('mm.autoconfig.differ')}</th><th scope="col">{t('mm.autoconfig.generation')}</th><th scope="col">{t('mm.autoconfig.requests')}</th></tr></thead>
-          <tbody>{data.history.map(h => <tr key={h.instance}><td>{Object.entries(h.diff).map(([k, v]) => `${k} ${v}`).join(', ') || '—'}{h.is_current ? ` ${t('mm.current')}` : ''}</td><td>{t('mm.tokensPerSecond', { rate: h.gen_p50.toFixed(1) })} ({h.rel_pct}%)</td><td>{h.n}</td></tr>)}</tbody></table></div>}
+          <tbody>{data.history.map(h => <tr key={h.instance}><td>{Object.entries(h.diff).map(([k, v]) => `${k} ${v}`).join(', ') || '—'}{h.is_current ? ` ${t('mm.current')}` : ''}</td><td>{t('mm.tokensPerSecond', { rate: num(h.gen_p50, 1) })} ({h.rel_pct}%)</td><td>{h.n}</td></tr>)}</tbody></table></div>}
         {rec.current_diff.length > 0 && <details className="mm-disclosure"><summary>{t.plural('mm.autoconfig.changes', rec.current_diff.length)}</summary><ul className="mm-hints mm-mono">{rec.current_diff.map(d => <li key={d}>{d}</li>)}</ul></details>}
         {rec.quirks.length > 0 && <details className="mm-disclosure"><summary>{t('mm.autoconfig.notes', { count: rec.quirks.length })}</summary><ul className="mm-hints">{rec.quirks.map(q => <li key={q}>{q}</li>)}</ul></details>}
         <button className="modal-btn primary" onClick={() => onFill(values, rec.displaced)}>{t('mm.autoconfig.fill')}</button>

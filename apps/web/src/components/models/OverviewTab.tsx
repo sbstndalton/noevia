@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { apiFetch, fetchAutoRoles } from '../../api';
 import type { InstalledModel } from '../../types';
-import { SYSTEM_MODEL_LABEL } from '../../model-system';
-import { errorText, mm } from './mm';
+import { errorText, mm, num } from './mm';
 import type { Stuck } from './guided';
 import { canPromptSuite, groupByRole, recoveryItems, roleOf } from './guided';
 import { useT } from '../../i18n';
@@ -67,11 +66,11 @@ function QualityPanel({ models, modelsError, roles, onOpen, onTab }: { models: I
               {m.loaded && <span className="mm-pill is-good">{t('mm.loaded')}</span>}
               {routes.map((r) => <span key={r} className="mm-pill">{t(r)}</span>)}
               {attention && <span className="mm-pill is-warn">{t('mm.overview.attention')}</span>}
-              {g.role === 'routing' && <span className="mm-pill">{SYSTEM_MODEL_LABEL}</span>}
+              {g.role === 'routing' && <span className="mm-pill">{t('model.systemLabel')}</span>}
             </span></div>
           {canPromptSuite(g.role) && <small className="mm-role-evidence">{ev === undefined ? t('mm.overview.readingEvidence') : ev === null ? t('mm.overview.noEvidence')
-            : [t('mm.overview.context', { state: ctx ? evState(ctx.state) : t('mm.overview.ev.unverified') }) + (ctx?.value?.ctx ? ` · ${t('mm.tokensCount', { tokens: ctx.value.ctx.toLocaleString('en-US') })}` : ''),
-               t('mm.overview.speed', { state: speed ? evState(speed.state) : t('mm.overview.ev.unverified') }) + (typeof speed?.value?.rate === 'number' ? ` · ${t('mm.tokensPerSecond', { rate: speed.value.rate })}` : ''),
+            : [t('mm.overview.context', { state: ctx ? evState(ctx.state) : t('mm.overview.ev.unverified') }) + (ctx?.value?.ctx ? ` · ${t('mm.tokensCount', { tokens: num(ctx.value.ctx, 0) })}` : ''),
+               t('mm.overview.speed', { state: speed ? evState(speed.state) : t('mm.overview.ev.unverified') }) + (typeof speed?.value?.rate === 'number' ? ` · ${t('mm.tokensPerSecond', { rate: num(speed.value.rate) })}` : ''),
                ...(ev.map((e) => e.at || 0).some(Boolean) ? [t('mm.overview.measured', { date: new Date(Math.max(...ev.map((e) => e.at || 0))).toLocaleDateString(t.locale) })] : [])].join(' · ')}</small>}
           {g.role !== 'routing' && <button type="button" className="modal-btn secondary" onClick={() => onOpen(m.name)}>{canPromptSuite(g.role) ? t('mm.overview.optimize') : t('mm.details')}</button>}
         </li>;
@@ -125,7 +124,7 @@ function RecoverPanel({ onTab }: { onTab: (tab: 'discover' | 'hardware') => void
       <div><span><strong>{item.kind === 'autotune' ? t('mm.recover.kind.autotune') : item.kind === 'calibration' ? t('mm.recover.kind.calibration') : t('mm.recover.kind.download')}</strong> · {item.model || t('mm.recover.unknownModel')} · {stuckStatus(t, item.status)}</span>
         {item.detail && <small>{item.detail}</small>}
         {item.kind !== 'download' && <small>{t('mm.recover.settingsStay')}</small>}
-        {!item.actions.length && <small>{t('mm.recover.systemNote', { label: SYSTEM_MODEL_LABEL })}</small>}</div>
+        {!item.actions.length && <small>{t('mm.recover.systemNote', { label: t('model.systemLabel') })}</small>}</div>
       <span className="mm-actions">{item.actions.map((a) => <button key={a} type="button" className="modal-btn secondary" disabled={!!busy || ((a === 'resume' || a === 'retry') && !confirmed)} onClick={() => void act(item, a)}>
         {busy === item.id + a ? t('mm.working') : a === 'cancel' ? t('common.cancel') : a === 'resume' ? t('mm.recover.resume') : a === 'retry' ? t('mm.recover.retry') : t('mm.recover.retryDiscover')}</button>)}</span>
     </li>)}</ul>}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ShellIcon } from '../ShellIcon';
-import { ago, errorText, mm, tokens } from './mm';
+import { ago, errorText, mm, num, tokens } from './mm';
 import { fetchInstalledModels } from '../../api';
 import { splitChatSections } from '../../model-kind';
 import { useT } from '../../i18n';
@@ -138,11 +138,11 @@ function RunView({ id, categories }: { id: number; categories: { key: string; la
     </>}
     {run.sweeps.length > 0 && <div className="mm-table-wrap"><table className="mm-table"><caption>{t('mm.bench.sweepResults')}</caption>
       <thead><tr><th scope="col">{t('mm.projects.model')}</th><th scope="col">{t('mm.bench.test')}</th><th scope="col">{t('mm.bench.depth')}</th><th scope="col">{t('mm.bench.speed')}</th></tr></thead>
-      <tbody>{run.sweeps.map(w => <tr key={w.id}><td>{w.alias}</td><td>{w.n_gen ? t('mm.bench.generate', { tokens: w.n_gen }) : t('mm.bench.read', { tokens: w.n_prompt })}</td><td>{tokens(w.n_depth)}</td><td>{w.avg_ts?.toFixed(1)} ± {w.stddev_ts?.toFixed(1)} tok/s</td></tr>)}</tbody></table></div>}
+      <tbody>{run.sweeps.map(w => <tr key={w.id}><td>{w.alias}</td><td>{w.n_gen ? t('mm.bench.generate', { tokens: w.n_gen }) : t('mm.bench.read', { tokens: w.n_prompt })}</td><td>{tokens(w.n_depth)}</td><td>{w.avg_ts != null ? num(w.avg_ts, 1) : '—'} ± {w.stddev_ts != null ? num(w.stddev_ts, 1) : '—'} tok/s</td></tr>)}</tbody></table></div>}
     {run.results.length > 0 && <div className="mm-table-wrap"><table className="mm-table"><caption>{t('mm.bench.every')}</caption>
       <thead><tr><th scope="col">{t('mm.projects.model')}</th><th scope="col">{t('mm.test.prompt')}</th><th scope="col">{t('mm.bench.firstToken')}</th><th scope="col">{t('mm.autoconfig.generation')}</th><th scope="col">{t('mm.bench.notes')}</th></tr></thead>
       <tbody>{run.results.map(r => <tr key={r.id}><td>{r.alias}</td><td>{r.prompt_name} #{r.rep}</td><td>{r.ttft_ms != null ? `${Math.round(r.ttft_ms)} ms` : '—'}{r.ttft_answer_ms && r.ttft_answer_ms !== r.ttft_ms ? <small>{t('mm.bench.answerAt', { ms: Math.round(r.ttft_answer_ms) })}</small> : null}</td>
-        <td>{r.gen_tps != null ? `${r.gen_tps.toFixed(1)} tok/s` : '—'}<small>{t('mm.tokensCount', { tokens: tokens(r.gen_n) })}{r.draft_acc != null ? ` · ${t('mm.bench.draftAccepted', { pct: Math.round(r.draft_acc * 100) })}` : ''}</small></td>
+        <td>{r.gen_tps != null ? `${num(r.gen_tps, 1)} tok/s` : '—'}<small>{t('mm.tokensCount', { tokens: tokens(r.gen_n) })}{r.draft_acc != null ? ` · ${t('mm.bench.draftAccepted', { pct: Math.round(r.draft_acc * 100) })}` : ''}</small></td>
         <td>{[r.cold ? t('mm.bench.cold') : '', r.contended ? t('mm.bench.contended') : '', r.truncated ? t('mm.bench.truncated') : '', r.err].filter(Boolean).join(' · ') || '—'}
           {r.response_text && <details><summary>{t('mm.bench.output')}</summary><pre className="mm-output">{r.response_text}</pre></details>}</td></tr>)}</tbody></table></div>}
     <h4 className="mm-subhead">{t('mm.bench.ratings')}</h4>
