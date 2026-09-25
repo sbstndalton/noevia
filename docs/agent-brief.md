@@ -107,6 +107,8 @@ come before any summarizer call, a summary commits only after the rebuilt reques
 and tool-call groups are atomic. See [spec-context-projection.md](spec-context-projection.md).
 Agent-execution boundaries (Prompt Architect, harnesses, durable jobs, execution nodes,
 browser) are in [spec-agent-execution.md](spec-agent-execution.md).
+Service boundaries, internal API contracts and migration seams are in
+[spec-service-boundaries.md](spec-service-boundaries.md).
 
 ### Settings shape
 
