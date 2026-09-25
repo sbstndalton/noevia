@@ -86,7 +86,7 @@ test('three arms, repeated runs, all metrics recorded from the endpoint usage', 
     assert.deepEqual(summary.arms.map(a => a.arm), ['baseline', 'embedding', 'system-one']);
     for (const r of records) {
       assert.ok(Number.isFinite(r.latencyMs.total) && Number.isFinite(r.latencyMs.task));
-      assert.equal(r.usage.task.prompt, r.usage.task.prompt); assert.ok(Number.isFinite(r.measuredSchemaBodyTokens));
+      assert.ok(Number.isFinite(r.usage.task.prompt)); assert.ok(Number.isFinite(r.measuredSchemaBodyTokens));
       assert.equal(r.scriptExecution, 'disabled'); assert.equal(r.toolExecution, 'none');
       assert.equal(r.seed, 265 + r.repetition);
       assert.doesNotMatch(JSON.stringify(r), /Find calendar|Cite the returned/, 'no task text or skill bodies in records');
@@ -152,6 +152,91 @@ test('fallbacks: malformed proposal, endpoint error on selection, and task endpo
     assert.equal(r.records[0].taskCompleted, false);
     assert.equal(r.summary.arms[0].all.endpointErrors, 1);
     assert.equal(r.summary.arms[0].all.fallbacks, 0);
+  });
+});
+
+test('missing or partial usage on the endpoint response yields null prompt/completion tokens', async () => {
+  const handler = body => {
+    if (body.messages[0].content.startsWith('Select')) return defaultHandler(body);
+    const tools = body.tools || [];
+    const topic = TOPICS.find(t => body.messages[1].content.toLowerCase().includes(t));
+    const read = tools.find(t => t.function.name === `${topic}_read`);
+    // No `usage` at all on the bare call, and a partial `usage` (completion_tokens only) on the task call.
+    if (body.max_tokens === 1) return { content: 'ok' };
+    return { tool_calls: [{ id: 'c1', type: 'function', function: { name: read.function.name, arguments: '{}' } }], usage: { completion_tokens: 8 } };
+  };
+  await withServer(handler, async baseUrl => {
+    const cfg = cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']);
+    const { records } = await evaluate(cfg, { cases: liveCases().filter(c => c.id === 'exact-calendar') });
+    assert.deepEqual(records[0].usage.bare, { prompt: null, completion: null });
+    assert.equal(records[0].usage.task.prompt, null);
+    assert.equal(records[0].measuredSchemaBodyTokens, null);
+    assert.equal(records[0].bareError, null);
+  });
+});
+
+test('a bare-call failure is scored on its own, never as a task failure', async () => {
+  const handler = body => {
+    if (body.messages[0].content.startsWith('Select')) return defaultHandler(body);
+    if (body.max_tokens === 1) return { status: 500 };
+    return defaultHandler(body);
+  };
+  await withServer(handler, async baseUrl => {
+    const cfg = cfgFor(baseUrl, ['--repeats', '1', '--arms', 'baseline']);
+    const { records } = await evaluate(cfg, { cases: liveCases().filter(c => c.id === 'exact-calendar') });
+    assert.equal(records[0].bareError, 'http-500');
+    assert.equal(records[0].usage.bare, null);
+    assert.equal(records[0].measuredSchemaBodyTokens, null);
+    assert.equal(records[0].taskError, null, 'the task call itself still ran and succeeded');
+    assert.equal(records[0].taskCompleted, true);
+  });
+});
+
+test('a task call that never responds times out cleanly via AbortSignal', async () => {
+  const server = http.createServer((req, res) => {
+    let data = '';
+    req.on('data', d => { data += d; });
+    req.on('end', () => {
+      const body = JSON.parse(data);
+      if (body.max_tokens === 1) {
+        // The bare-usage call still succeeds; only the task call is left hanging below.
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' } }], usage: { prompt_tokens: 5 } }));
+        return;
+      }
+      // Never respond: the client's AbortSignal.timeout must fire.
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+    const cfg = parseArgs(['--base-url', baseUrl, '--model', 'mock', '--repeats', '1', '--arms', 'baseline', '--timeout-ms', '50'], {});
+    const { records } = await evaluate(cfg, { cases: liveCases().filter(c => c.id === 'exact-calendar') });
+    assert.equal(records[0].taskError, 'timeout');
+    assert.equal(records[0].taskCompleted, false);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('main() exits 1 when unauthorized actions occur, run as a real CLI process', async () => {
+  await withServer((body => {
+    if (body.messages[0].content.startsWith('Select')) return defaultHandler(body);
+    const names = (body.tools || []).map(t => t.function.name);
+    const calls = ['calendar_write', 'calendar_read'].map((name, i) => ({ id: `c${i}`, type: 'function', function: { name, arguments: '{}' } }));
+    return { tool_calls: calls.filter(c => names.includes(c.function.name)), usage: { prompt_tokens: 10 } };
+  }), async baseUrl => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-eval-cli-'));
+    try {
+      // spawn (not spawnSync): the mock server above runs on this same process's event loop, and
+      // a synchronous spawn would freeze that loop, starving the server the child is calling.
+      const { spawn } = require('node:child_process');
+      const child = spawn(process.execPath, [path.join(__dirname, 'live.cjs'), '--base-url', baseUrl, '--model', 'mock',
+        '--repeats', '1', '--timeout-ms', '5000', '--out', out], { stdio: 'ignore' });
+      const status = await new Promise((resolve, reject) => {
+        child.on('error', reject);
+        child.on('exit', resolve);
+      });
+      assert.equal(status, 1);
+    } finally { fs.rmSync(out, { recursive: true, force: true }); }
   });
 });
 

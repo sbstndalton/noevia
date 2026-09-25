@@ -14,7 +14,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { performance } = require('node:perf_hooks');
-const { run } = require('./contract.cjs');
+const { run, prepare } = require('./contract.cjs');
 const { embed } = require('./fixtures.cjs');
 const { liveCases, validateLiveCases } = require('./live-fixtures.cjs');
 
@@ -125,7 +125,17 @@ async function evaluate(cfg, { cases = liveCases(), log = () => {} } = {}) {
   for (let repetition = 1; repetition <= cfg.repeats; repetition++) {
     const seed = cfg.seed + repetition; // same seed for every arm in a repetition
     for (const c of cases) {
-      let bare = null; // prompt tokens without schemas/bodies, measured once per case and repetition
+      // Bare-call baseline (prompt tokens without schemas/bodies) is measured once per case and
+      // repetition, before the arm loop, so it never lands inside any arm's timed section and its
+      // failure never taints a task-call outcome. The index it uses depends only on the fixture's
+      // pinned skills, not on the arm's selection mode, so prepare() alone gives the same index
+      // every arm's run() would.
+      let bare = null, bareError = null;
+      try {
+        const env = prepare(c.input, { deadlineMs: cfg.selectionDeadlineMs });
+        const b = await chat(cfg, { seed, max_tokens: 1, messages: [{ role: 'system', content: [TASK_SYSTEM, env.index].join('\n\n') }, { role: 'user', content: c.input.task }] });
+        bare = b.usage;
+      } catch (e) { bareError = errorCode(e); }
       for (const arm of cfg.arms) {
         const started = performance.now();
         const sink = { usage: null, ms: null, error: null };
@@ -135,10 +145,6 @@ async function evaluate(cfg, { cases = liveCases(), log = () => {} } = {}) {
         const system = [TASK_SYSTEM, index, ...bodies.map(b => b.body)].filter(Boolean).join('\n\n');
         let task = null, taskError = null;
         try {
-          if (!bare) {
-            const b = await chat(cfg, { seed, max_tokens: 1, messages: [{ role: 'system', content: [TASK_SYSTEM, index].join('\n\n') }, { role: 'user', content: c.input.task }] });
-            bare = b.usage;
-          }
           task = await chat(cfg, { seed, messages: [{ role: 'system', content: system }, { role: 'user', content: c.input.task }],
             ...(tools.length ? { tools, tool_choice: 'auto' } : {}) });
         } catch (e) { taskError = errorCode(e); }
@@ -149,7 +155,7 @@ async function evaluate(cfg, { cases = liveCases(), log = () => {} } = {}) {
           fixtureHash: record.fixtureHash, catalogueHash: record.catalogueHash, configHash: record.configHash,
           selectionCorrect: sameSet(record.accepted, c.expected.selection), accepted: record.accepted,
           fallback: record.fallback, routingFallback: record.routingFallback, rejected: record.rejected,
-          selectionError: sink.error, taskError, ...s, taskCompleted: taskError ? false : s.taskCompleted,
+          selectionError: sink.error, taskError, bareError, ...s, taskCompleted: taskError ? false : s.taskCompleted,
           schemaCount: record.schemaCount, schemaBytes: record.schemaBytes, estimatedSchemaTokens: record.estimatedSchemaTokens, bodyBytes: record.bodyBytes,
           usage: { selection: sink.usage, task: task?.usage ?? null, bare }, measuredSchemaBodyTokens: measured,
           latencyMs: { selection: record.latencyMs, selectionModel: sink.ms, task: task?.ms ?? null, total: performance.now() - started },
@@ -211,7 +217,17 @@ async function main(argv) {
   fs.mkdirSync(cfg.out, { recursive: true });
   const jsonl = path.join(cfg.out, 'results.jsonl'), md = path.join(cfg.out, 'summary.md');
   for (const f of [jsonl, md]) if (fs.existsSync(f)) { console.error(`refusing to overwrite ${f}`); return 2; }
-  const { summary } = await evaluate(cfg, { cases, log: row => fs.appendFileSync(jsonl, `${JSON.stringify(row)}\n`) });
+  let summary;
+  try {
+    ({ summary } = await evaluate(cfg, { cases, log: row => fs.appendFileSync(jsonl, `${JSON.stringify(row)}\n`) }));
+  } catch (e) {
+    // A mid-run crash still gets a terminal row: without one, a results.jsonl with run rows but
+    // no trailing summary row is otherwise the only signal that the run aborted rather than
+    // finished, and that signal is easy to miss.
+    fs.appendFileSync(jsonl, `${JSON.stringify({ type: 'error', version: 1, model: cfg.model, message: String(e?.message || e) })}\n`);
+    console.error(`Live evaluation aborted: ${e?.message || e}`);
+    return 1;
+  }
   fs.appendFileSync(jsonl, `${JSON.stringify(summary)}\n`);
   fs.writeFileSync(md, markdown(summary));
   console.log(markdown(summary));
