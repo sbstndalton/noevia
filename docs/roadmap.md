@@ -281,6 +281,7 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
       boundaries do not grant authority. Acceptance: a reviewed dependency/data-flow map and
       API contracts identify which existing pieces can move without changing user-visible
       behavior, with migration and rollback notes.
+      Proposed map and contracts: [spec-service-boundaries.md](spec-service-boundaries.md).
    2. **Model evidence during download ([#266](https://github.com/sbstndalton/noevia/issues/266)).** Extend the existing Models → Guidance work and the
       exact-configuration capability-database design in
       [System-One §12.6](research/system-one/12-adaptive-model-switching.md#126-model-capability-database).
