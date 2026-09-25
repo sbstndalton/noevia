@@ -358,7 +358,7 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
       if(!response.ok)tracker.rejected(checkpoint);
       return response.ok ? { ...response, body: { ...response.body, id: checkpoint, modelName: checkpoint } } : response;
     }),
-    deleteModel: model => mutate(()=>request('/models?model=' + encodeURIComponent(model), { method: 'DELETE' }, 60000)),
+    deleteModel: model => mutate(async () => { const r = await request('/models?model=' + encodeURIComponent(model), { method: 'DELETE' }, 60000); if (r.ok) identityCache.delete(model); return r; }),
     props: model => request('/props' + modelQuery(model)),
     metrics: model => model ? request('/metrics' + modelQuery(model), {}, 6000) : unsupported('Aggregate metrics'),
     stats,

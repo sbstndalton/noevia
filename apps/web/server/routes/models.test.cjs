@@ -7,11 +7,12 @@ const assert = require('node:assert/strict');
 const { Readable } = require('node:stream');
 const { createModelRoutes } = require('./models.cjs');
 
-function fixture({ env = {}, enabled = true, kind = 'llamacpp', manager = {}, workspace = { userId: 'u1' }, catalogue = [{ name: 'm' }], servedCatalogue = async () => catalogue } = {}) {
+function fixture({ env = {}, enabled = true, kind = 'llamacpp', manager = {}, workspace = { userId: 'u1' }, catalogue = [{ name: 'm' }], servedCatalogue = async () => catalogue, modelsInstalled = async () => [{ name: 'm', loaded: true }], initialRoles = null, initialLastLoaded = null } = {}) {
   const sent = [], headers = [], fetched = [];
   const scan = new Map();
   let refreshes = 0;
-  const roles = { current: null };
+  const roles = { current: initialRoles };
+  const lastLoaded = { current: initialLastLoaded };
   const modelManager = {
     enabled, kind, capabilities: { routing: true },
     stats: async () => ({ ok: true, body: { scope: 'engine', tokens_per_second: 41.5, mtp: [] } }),
@@ -39,8 +40,24 @@ function fixture({ env = {}, enabled = true, kind = 'llamacpp', manager = {}, wo
     service: {
       modelScanCache: scan, refreshModelScan: () => { refreshes += 1; },
       autoRoles: () => roles.current, setAutoRoles: (next) => { roles.current = next; }, ensureRolesLoaded: () => { roles.warmed = true; },
-      servedCatalogue, modelsInstalled: async () => [{ name: 'm', loaded: true }],
+      servedCatalogue, modelsInstalled,
       deriveUserModelName: (c) => `user.${c}`,
+      lastLoadedModel: () => lastLoaded.current,
+      clearLastLoadedModel: (name) => { if (lastLoaded.current === name) lastLoaded.current = null; },
+      clearRoleReferences: (name) => {
+        if (!roles.current) return [];
+        const next = { ...roles.current };
+        const cleared = [];
+        for (const role of ['fast', 'smart', 'vision', 'code']) {
+          if (next[role] !== name) continue;
+          cleared.push(role);
+          if (role === 'vision' || role === 'code') { delete next[role]; continue; }
+          const fallback = role === 'fast' ? 'smart' : 'fast';
+          next[role] = next[fallback] && next[fallback] !== name ? next[fallback] : '';
+        }
+        if (cleared.length) roles.current = next;
+        return cleared;
+      },
     },
   });
   const call = (method, path, body, role = 'member', search = '') => {
@@ -49,7 +66,7 @@ function fixture({ env = {}, enabled = true, kind = 'llamacpp', manager = {}, wo
     const res = { setHeader: (k, v) => headers.push([k, v]) };
     return routes(req, res, { path, authn: { user: { id: 'u1', role } }, url: new URL(`http://localhost${path}${search}`) });
   };
-  return { call, sent, headers, fetched, scan, refreshes: () => refreshes, roles };
+  return { call, sent, headers, fetched, scan, refreshes: () => refreshes, roles, lastLoaded };
 }
 
 test('every write under /api/models/ is refused for members before anything else is looked at', async () => {
@@ -291,6 +308,92 @@ test('the default model mode round-trips, and only an explicit apply switches ex
   assert.equal(saves, 1);
   await f.call('PUT', '/api/routing-default', { routing: 'fast' });
   assert.equal(f.sent.pop().status, 400);
+});
+
+test('deleting a loaded model unloads first, clears its auto-role and the last-loaded default, and reports what changed', async () => {
+  const calls = [];
+  const f = fixture({
+    manager: {
+      unload: async (name) => { calls.push(['unload', name]); return { ok: true }; },
+      deleteModel: async (name) => { calls.push(['delete', name]); return { ok: true, status: 200 }; },
+    },
+    modelsInstalled: async () => [{ name: 'm', loaded: true }, { name: 'other', loaded: false }],
+    initialRoles: { fast: 'm', smart: 'other' },
+    initialLastLoaded: 'm',
+  });
+  await f.call('POST', '/api/models/delete', { name: 'm' }, 'admin');
+  assert.deepEqual(f.sent.pop(), { status: 200, body: { ok: true, unloaded: true, rolesCleared: ['fast'] } });
+  assert.deepEqual(calls, [['unload', 'm'], ['delete', 'm']], 'unload happens before delete, in that order');
+  assert.deepEqual(f.roles.current, { fast: 'other', smart: 'other' }, 'the fast role falls back to the still-configured smart model');
+  assert.equal(f.lastLoaded.current, null, 'the deleted model is no longer the no-model-selected default');
+});
+
+test('deleting a model that is not loaded skips unload but still deletes and clears roles', async () => {
+  const calls = [];
+  const f = fixture({
+    manager: {
+      unload: async (name) => { calls.push(['unload', name]); return { ok: true }; },
+      deleteModel: async (name) => { calls.push(['delete', name]); return { ok: true, status: 200 }; },
+    },
+    modelsInstalled: async () => [{ name: 'm', loaded: false }],
+    initialRoles: { fast: 'f', smart: 'm', vision: 'm' },
+  });
+  await f.call('POST', '/api/models/delete', { name: 'm' }, 'admin');
+  assert.deepEqual(f.sent.pop(), { status: 200, body: { ok: true, unloaded: false, rolesCleared: ['smart', 'vision'] } });
+  assert.deepEqual(calls, [['delete', 'm']], 'an already-unloaded model is never sent an unload call');
+  assert.deepEqual(f.roles.current, { fast: 'f', smart: 'f' }, 'smart falls back to fast, and the optional vision role is dropped rather than left dangling');
+});
+
+test('deleting a model tolerates the manager reporting "not loaded" on unload and still deletes', async () => {
+  const f = fixture({
+    manager: {
+      unload: async () => ({ ok: false, status: 404 }),
+      deleteModel: async () => ({ ok: true, status: 200 }),
+    },
+    modelsInstalled: async () => [{ name: 'm', loaded: true }],
+  });
+  await f.call('POST', '/api/models/delete', { name: 'm' }, 'admin');
+  assert.deepEqual(f.sent.pop(), { status: 200, body: { ok: true, unloaded: false, rolesCleared: [] } });
+});
+
+test('deleting an unknown model 404s and never reaches unload or delete', async () => {
+  const calls = [];
+  const f = fixture({
+    manager: {
+      unload: async () => { calls.push('unload'); return { ok: true }; },
+      deleteModel: async () => { calls.push('delete'); return { ok: true, status: 200 }; },
+    },
+    modelsInstalled: async () => [{ name: 'other', loaded: false }],
+  });
+  await f.call('POST', '/api/models/delete', { name: 'gone' }, 'admin');
+  assert.deepEqual(f.sent.pop(), { status: 404, body: { error: 'model not found: gone' } });
+  assert.deepEqual(calls, []);
+});
+
+test('a system model is still refused before any unload or delete call, on both engine kinds', async () => {
+  const llama = fixture({ manager: { unload: async () => ({ ok: true }), deleteModel: async () => ({ ok: true, status: 200 }) } });
+  await llama.call('POST', '/api/models/delete', { name: 'laya_multilingual_f16' }, 'admin');
+  assert.deepEqual(llama.sent.pop(), { status: 400, body: { error: 'System routing model — not deleted' } });
+
+  const python = fixture({ kind: 'lemonade', manager: { unload: async () => ({ ok: true }), deleteModel: async () => ({ ok: true, status: 200 }) } });
+  await python.call('POST', '/api/models/delete', { name: 'laya_multilingual_f16' }, 'admin');
+  assert.deepEqual(python.sent.pop(), { status: 400, body: { error: 'System routing model — not deleted' } });
+});
+
+test('the python model-manager branch (no /models listing check) still unloads, deletes and clears roles', async () => {
+  const calls = [];
+  const f = fixture({
+    kind: 'lemonade',
+    manager: {
+      unload: async (name) => { calls.push(['unload', name]); return { ok: true }; },
+      deleteModel: async (name) => { calls.push(['delete', name]); return { ok: true, status: 200 }; },
+    },
+    modelsInstalled: async () => [{ name: 'm', loaded: true }],
+    initialRoles: { fast: 'm', smart: 'other' },
+  });
+  await f.call('POST', '/api/models/delete', { name: 'm' }, 'admin');
+  assert.deepEqual(f.sent.pop(), { status: 200, body: { ok: true, unloaded: true, rolesCleared: ['fast'] } });
+  assert.deepEqual(calls, [['unload', 'm'], ['delete', 'm']]);
 });
 
 test('the benchmark start proxy refuses non-chat models with 400 and forwards chat-only suites (#206)', async () => {

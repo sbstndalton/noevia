@@ -42,6 +42,12 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace }) 
   // literal per feature doc Item 0 / step 9).
   let LAST_LOADED_MODEL = null;
   const lastLoadedModel = () => LAST_LOADED_MODEL;
+  // Called after a delete: a deleted model must never keep being handed out as the
+  // no-model-selected default. Only clears it when it is still the same name (a load
+  // that happened in between is left alone).
+  function clearLastLoadedModel(name) {
+    if (LAST_LOADED_MODEL === name) LAST_LOADED_MODEL = null;
+  }
 
   // ── Auto model router (feature doc Item 4 / master step 12) ───────────────
   // Roles are config, never hardcoded model names: role→model mapping lives in
@@ -60,6 +66,30 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace }) 
     if (next.code) roles.code = String(next.code);
     currentWorkspace().autoRoles = roles;
     currentWorkspace().saveAutoRoles();
+  }
+
+  // Deleting a model must not leave a role pointing at nothing that used to exist: called by
+  // the /api/models/delete route right after a successful delete. `fast`/`smart` fall back to
+  // whichever of the other required role's model is still configured (and not itself the model
+  // being deleted); when there is no candidate left, or the role is the optional vision/code,
+  // it becomes 'none' — an empty string, same as never having been set (missingRoles never
+  // flags it, and the chat route's own fallback already treats an empty role as unset).
+  // Returns the list of role names that referenced the deleted model, in fast/smart/vision/code
+  // order, or [] when no role config exists or none pointed at it.
+  function clearRoleReferences(name) {
+    const roles = autoRoles();
+    if (!roles) return [];
+    const next = { ...roles };
+    const cleared = [];
+    for (const role of ['fast', 'smart', 'vision', 'code']) {
+      if (next[role] !== name) continue;
+      cleared.push(role);
+      if (role === 'vision' || role === 'code') { delete next[role]; continue; }
+      const fallback = role === 'fast' ? 'smart' : 'fast';
+      next[role] = next[fallback] && next[fallback] !== name ? next[fallback] : '';
+    }
+    if (cleared.length) setAutoRoles(next);
+    return cleared;
   }
 
   async function ensureModelLoaded(name) {
@@ -146,8 +176,8 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace }) 
   }
 
   return {
-    managerFetch, modelScanCache, refreshModelScan, lastLoadedModel,
-    autoRoles, setAutoRoles, ensureModelLoaded, ensureRolesLoaded,
+    managerFetch, modelScanCache, refreshModelScan, lastLoadedModel, clearLastLoadedModel,
+    autoRoles, setAutoRoles, clearRoleReferences, ensureModelLoaded, ensureRolesLoaded,
     servedCatalogue, modelsInstalled, deriveUserModelName,
   };
 }

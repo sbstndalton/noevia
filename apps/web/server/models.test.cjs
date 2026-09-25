@@ -94,6 +94,31 @@ test('the manager call carries the token and the folder scan is cached once', as
   assert.equal(unset.calls.length, 0, 'no service URL: nothing to scan');
 });
 
+test('clearRoleReferences drops the optional roles and falls the required ones back to each other', () => {
+  const f = fixture();
+  assert.deepEqual(f.service.clearRoleReferences('m'), [], 'no roles configured yet: nothing to clear');
+
+  f.service.setAutoRoles({ fast: 'm', smart: 'keep', vision: 'm', code: 'keep-code' });
+  assert.deepEqual(f.service.clearRoleReferences('m'), ['fast', 'vision']);
+  assert.deepEqual(f.service.autoRoles(), { fast: 'keep', smart: 'keep', code: 'keep-code' });
+
+  assert.deepEqual(f.service.clearRoleReferences('nope'), [], 'a model no role points at clears nothing and does not resave');
+
+  f.service.setAutoRoles({ fast: 'm', smart: 'm' });
+  assert.deepEqual(f.service.clearRoleReferences('m'), ['fast', 'smart'], 'when both required roles pointed at it, there is no candidate left');
+  assert.deepEqual(f.service.autoRoles(), { fast: '', smart: '' });
+});
+
+test('clearLastLoadedModel only clears when the name still matches (a load in between is left alone)', async () => {
+  const f = fixture({ models: [{ id: 'm' }], loaded: ['m'] });
+  await f.service.modelsInstalled();
+  assert.equal(f.service.lastLoadedModel(), 'm');
+  f.service.clearLastLoadedModel('other');
+  assert.equal(f.service.lastLoadedModel(), 'm', 'clearing a different name is a no-op');
+  f.service.clearLastLoadedModel('m');
+  assert.equal(f.service.lastLoadedModel(), null);
+});
+
 test('a checkpoint becomes a namespaced user model name', () => {
   const { service } = fixture();
   assert.equal(service.deriveUserModelName('org/Model-7B:Q4_K_M'), 'user.Model-7B-Q4_K_M');

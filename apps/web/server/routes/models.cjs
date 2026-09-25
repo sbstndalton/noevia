@@ -45,7 +45,7 @@ function clientMessage(e, fallback) {
  * @param {object} deps.service   models.cjs
  */
 function createModelRoutes({ json, readBody, readJson, fetchJson, env, modelManager, getProvider, providerHeaders, DEFAULT_PROVIDER_ID, createVisionProbe, reportedTokenRate, missingRoles, currentWorkspace, service }) {
-  const { modelScanCache, refreshModelScan, autoRoles, setAutoRoles, ensureRolesLoaded, servedCatalogue, modelsInstalled, deriveUserModelName } = service;
+  const { modelScanCache, refreshModelScan, autoRoles, setAutoRoles, ensureRolesLoaded, servedCatalogue, modelsInstalled, deriveUserModelName, lastLoadedModel, clearLastLoadedModel, clearRoleReferences } = service;
 
   async function handle(req, res, { path: p, authn, url }) {
     if (p.startsWith('/api/models/') && !['GET', 'HEAD'].includes(req.method || 'GET') && authn.user.role !== 'admin') {
@@ -373,8 +373,31 @@ function createModelRoutes({ json, readBody, readJson, fetchJson, env, modelMana
         const row = listing.body.data.find(m => m.id === body.name);
         if (row && isSystemModel(row.id, modelPathFromArgs(row.status?.args || []))) return json(res, 400, { error: SYSTEM_MODEL_DELETE_REASON });
       }
+      // Confirm the model is known before touching it: an unknown name 404s instead of
+      // forwarding a delete the manager might silently accept for anything. When the
+      // installed list cannot be read (engine unreachable) this check is skipped and the
+      // delete below is attempted anyway, same as before this existence check existed.
+      let installed = null;
+      try { installed = await modelsInstalled(); } catch { installed = null; }
+      const entry = Array.isArray(installed) ? installed.find((m) => m.name === body.name) : null;
+      if (Array.isArray(installed) && !entry) return json(res, 404, { error: `model not found: ${body.name}` });
+      // Unload first: a loaded model can refuse deletion or leave its file locked. Tolerate
+      // the manager reporting "not loaded" (or being momentarily unreachable) — the delete
+      // below still goes ahead either way.
+      let unloaded = false;
+      if (!entry || entry.loaded) {
+        const u = await modelManager.unload(body.name).catch(() => null);
+        unloaded = !!u?.ok;
+      }
       const r = await modelManager.deleteModel(body.name);
-      return json(res, r.ok ? 200 : 502, r.ok ? { ok: true } : { error: `delete failed: ${r.status}` });
+      if (!r.ok) return json(res, 502, { error: `delete failed: ${r.status}` });
+      // The model is gone: drop every auto-role that pointed at it, the shared "last loaded
+      // model" default if it was this one, and the cached folder scan, so nothing still
+      // served by this route can hand the deleted name back out.
+      const rolesCleared = clearRoleReferences(body.name);
+      if (lastLoadedModel() === body.name) clearLastLoadedModel(body.name);
+      modelScanCache.clear();
+      return json(res, 200, { ok: true, unloaded, rolesCleared });
     }
 
     for (const verb of ['load', 'unload']) {
