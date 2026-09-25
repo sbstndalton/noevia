@@ -413,6 +413,28 @@ removing the line (or setting `web`) and recreating web; to restore content, cop
 `models.ini.noevia-backup-<revision>` you want back over `models.ini`. Web's
 `/llamacpp-config` mount stays read-write until a follow-up makes it `:ro`.
 
+### Diary tenant key (M2) — first rollout
+
+`DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see
+[spec-managed-diary.md](spec-managed-diary.md#tenant-assertion-and-scoped-storage-credentials-m2-291-292)).
+Web's `DIARY_TENANT_KEY` is in `deploy/preflight/web-env-keys.txt`, so add it to the
+live Compose Manager web and diary environments (as `${DIARY_TENANT_KEY:-}`) before
+the first release that ships it. The new diary image refuses to start if
+`DIARY_AUTH_TOKEN` and `DIARY_TENANT_KEY` are both empty and `DIARY_ALLOW_OPEN` is not `1`;
+check the token is set (by name, never print it) before bumping `DIARY_VERSION`.
+
+Order, because a web-only release never restarts the sidecar:
+
+1. Ship the diary image with the key unset on diary (it accepts signed and unsigned
+   requests and logs once).
+2. Generate the key on the host (`openssl rand -hex 32`, straight into `.env`, never echoed)
+   and release web with it.
+3. Pass the key to diary and restart diary; it now requires the assertion. Verify with
+   synthetic tenants only: authenticated Diary tab loads, health passes.
+
+Rollback: remove the key from diary and restart diary first, then from web. Never roll
+the diary image back while web still has the key.
+
 ## After deploying
 
 `LEGACY_AUTH_COMPAT=false`, so there is no bearer-token path — verify from a real

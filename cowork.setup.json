@@ -56,7 +56,23 @@
       "secret": true,
       "human_required": false,
       "default": "",
-      "note": "Optional. Empty runs the internal web->diary connection unauthenticated (LAN-only mode) and just logs a warning; it does not block boot. Generate with: openssl rand -hex 32 before any network exposure."
+      "note": "Optional only together with DIARY_ALLOW_OPEN=1. With DIARY_AUTH_TOKEN and DIARY_TENANT_KEY both empty the diary sidecar refuses to start unless DIARY_ALLOW_OPEN=1 declares the LAN-only open mode. Generate with: openssl rand -hex 32."
+    },
+    {
+      "name": "DIARY_TENANT_KEY",
+      "purpose": "HMAC key for the per-request Diary tenant assertion (X-Cowork-Tenant-Assertion); shared by web and diary only",
+      "secret": true,
+      "human_required": false,
+      "default": "",
+      "note": "Recommended. Generate with: openssl rand -hex 32. When first setting it on an existing install, restart the diary sidecar before web (the sidecar accepts unsigned requests only while its own key is unset). Rollback: unset it on web first, then on diary. With it set, remote storage credentials are sent only when the sidecar asks for them."
+    },
+    {
+      "name": "DIARY_ALLOW_OPEN",
+      "purpose": "Explicitly allow the LAN-only open mode (no DIARY_AUTH_TOKEN and no DIARY_TENANT_KEY)",
+      "secret": false,
+      "human_required": false,
+      "default": "",
+      "note": "Only the literal 1 counts. Leave empty; set it only for a trusted single-machine install that deliberately runs without both secrets."
     },
     {
       "name": "INFERENCE_BASE_URL",
