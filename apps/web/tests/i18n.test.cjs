@@ -3,11 +3,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),ts=require('typescript');
 const dir=path.join(__dirname,'../src/i18n');
 const cache={},warnings=[];
+// name is relative to src/i18n ('core', 'settings/de-DE'); imports resolve from the importing file.
 function load(name){
+  name=path.posix.normalize(name);
   if(cache[name])return cache[name];
   const exports={};cache[name]=exports;
   const code=ts.transpileModule(fs.readFileSync(path.join(dir,name+'.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  vm.runInNewContext(code,{exports,Intl,console:{warn:(...a)=>warnings.push(a)},Promise,require:(m)=>{if(!m.startsWith('./'))throw Error('unexpected import '+m);return load(m.slice(2));}});
+  const here=path.posix.dirname(name);
+  vm.runInNewContext(code,{exports,Intl,console:{warn:(...a)=>warnings.push(a)},Promise,require:(m)=>{if(!/^\.\.?\//.test(m))throw Error('unexpected import '+m);const target=path.posix.join(here,m);if(target.startsWith('..'))throw Error('import outside src/i18n '+m);return load(target);}});
   return exports;
 }
 const core=load('core');
@@ -16,8 +19,39 @@ const same=(a,b,m)=>assert.equal(JSON.stringify(a),JSON.stringify(b),m);
 const EN=load('en-GB').EN_GB;
 // The app loads non-English catalogues as chunks; node registers them directly for the checks below.
 const FILES={'de-DE':'DE_DE','es-ES':'ES_ES','fr-FR':'FR_FR','it-IT':'IT_IT','nb-NO':'NB_NO','nl-NL':'NL_NL','pt-BR':'PT_BR','sv-SE':'SV_SE'};
+// One entry per lazy-view segment: its constant suffix, the chunk that registers its English part
+// (settings/index.ts etc., what the real view's chunk does), and the component(s) allowed to pull
+// its strings into their own chunk.
+const SEGMENT_DEFS={
+  settings:{suffix:'SETTINGS',owners:/^components\/(SettingsShell|ProviderForm|connectors\/)/},
+  // Diary's and Projects' child components rely on their lazy entry (DiaryView, ProjectsView)
+  // having already registered the segment, rather than each importing it themselves.
+  projects:{suffix:'PROJECTS',owners:/^components\/ProjectsView$/},
+  diary:{suffix:'DIARY',owners:/^components\/DiaryView$/},
+  // Customise (PluginsView: skills, connectors, plugins) is the only owner; it also renders
+  // ConnectorsSettings, which pulls in the settings segment on its own account.
+  customise:{suffix:'CUSTOMISE',owners:/^components\/plugins\/PluginsView$/},
+  // The model manager page (#293): only its lazy root registers the segment; every panel below
+  // it (components/models/*, NativeCalibration, MtpControl, SamplingPresetsControl) relies on that.
+  models:{suffix:'MODELS',owners:/^components\/models\/ModelManagerPage$/},
+};
+const SEGMENT_NAMES=Object.keys(SEGMENT_DEFS);
 assert.equal(Object.keys(core.CATALOGUES).join(),'en-GB,en-US','only English is bundled eagerly');
-for(const [l,name] of Object.entries(FILES))core.registerCatalogue(l,load(l)[name]);
+for(const s of SEGMENT_NAMES)assert.equal(Object.keys(core.SEGMENTS[s]).length,0,`the ${s} segment is not loaded with the core`);
+const ENSEG={};// segment => its EN_GB_<SUFFIX> object
+for(const s of SEGMENT_NAMES){
+  ENSEG[s]=load(`${s}/en-GB`)[`EN_GB_${SEGMENT_DEFS[s].suffix}`];
+  load(`${s}/index`);// what the view's chunk does: registers the English part of that segment
+}
+for(const [l,name] of Object.entries(FILES)){
+  core.registerCatalogue(l,load(l)[name]);
+  for(const s of SEGMENT_NAMES){
+    const suffix=SEGMENT_DEFS[s].suffix;
+    const mod=load(`${s}/${l}`);
+    assert.ok(mod[`${name}_${suffix}`],`${s}/${l}.ts does not export ${name}_${suffix}`);
+    core.registerSegment(s,l,mod[`${name}_${suffix}`]);
+  }
+}
 const NON_BASE=Object.keys(core.CATALOGUES).filter(l=>l!=='en-GB');
 
 test('every supported account locale has a catalogue, and nothing else does',()=>{
@@ -83,8 +117,11 @@ test('system locale: browser languages in order, bare languages and regions, Eng
 
 test('catalogues: no keys outside English, matching placeholders, and coverage reported',()=>{
   const lines=[];
+  const segTotal=SEGMENT_NAMES.reduce((n,s)=>n+Object.keys(ENSEG[s]).length,0);
   for(const locale of NON_BASE){
+    for(const part of ['base',...SEGMENT_NAMES])same(core.coverage(locale,part).extra,[],`${locale} ${part} segment has keys its English segment does not`);
     const c=core.coverage(locale);
+    assert.equal(c.total,Object.keys(EN).length+segTotal,'coverage spans the base and every segment');
     same(c.extra,[],`${locale} has keys English does not: ${c.extra.join(', ')}`);
     same(c.placeholderMismatch,[],`${locale} placeholders differ: ${c.placeholderMismatch.join(', ')}`);
     lines.push(`${locale} ${c.translated}/${c.total} (${Math.round(100*c.translated/c.total)}%)`);
@@ -92,8 +129,14 @@ test('catalogues: no keys outside English, matching placeholders, and coverage r
     if(locale!=='en-US')same(c.missing,[],`${locale} is missing: ${c.missing.join(', ')}`);
   }
   console.log('i18n coverage: '+lines.join(' · '));
-  const us=load('en-US').EN_US;
-  for(const [k,v] of Object.entries(us))assert.notEqual(v,EN[k],`en-US repeats British text for ${k}`);
+  const us={...load('en-US').EN_US};
+  for(const s of SEGMENT_NAMES){
+    const mod=load(`${s}/en-US`),key=`EN_US_${SEGMENT_DEFS[s].suffix}`;
+    assert.ok(mod[key],`${s}/en-US.ts does not export ${key}`);
+    Object.assign(us,mod[key]);
+  }
+  const englishAll={...EN,...Object.assign({},...SEGMENT_NAMES.map(s=>ENSEG[s]))};
+  for(const [k,v] of Object.entries(us))assert.notEqual(v,englishAll[k],`en-US repeats British text for ${k}`);
 });
 
 test('the completeness check really fails on an extra key and a broken placeholder',()=>{
@@ -108,15 +151,19 @@ test('the completeness check really fails on an extra key and a broken placehold
 });
 
 test('plural keys come in pairs, and catalogues are bundled, not fetched',()=>{
-  const plural=Object.keys(EN).filter(k=>/\.(one|other)$/.test(k)).map(k=>k.replace(/\.(one|other)$/,''));
-  for(const base of new Set(plural))assert.ok(EN[base+'.one']&&EN[base+'.other'],base);
-  for(const f of fs.readdirSync(dir)){
+  const ALL={...EN,...Object.assign({},...SEGMENT_NAMES.map(s=>ENSEG[s]))};
+  const plural=Object.keys(ALL).filter(k=>/\.(one|other)$/.test(k)).map(k=>k.replace(/\.(one|other)$/,''));
+  for(const base of new Set(plural))assert.ok(ALL[base+'.one']&&ALL[base+'.other'],base);
+  const files=fs.readdirSync(dir).flatMap(f=>fs.statSync(path.join(dir,f)).isDirectory()?fs.readdirSync(path.join(dir,f)).map(g=>f+'/'+g):[f]);
+  for(const s of SEGMENT_NAMES)assert.ok(files.includes(`${s}/de-DE.ts`));
+  const LOCALE_RE='(de-DE|es-ES|fr-FR|it-IT|nb-NO|nl-NL|pt-BR|sv-SE)';
+  for(const f of files){
     const src=fs.readFileSync(path.join(dir,f),'utf8');
     assert.doesNotMatch(src,/\bfetch\(/,`${f} fetches at runtime`);
     // Dynamic imports only in loaders.ts, and only literal paths to a supported catalogue.
     const imports=[...src.matchAll(/import\(([^)]*)\)/g)].map(m=>m[1]);
     if(f!=='loaders.ts'){assert.equal(imports.length,0,`${f} imports at runtime`);continue;}
-    for(const arg of imports)assert.match(arg,/^'\.\/(de-DE|es-ES|fr-FR|it-IT|nb-NO|nl-NL|pt-BR|sv-SE)'$/,`non-literal import ${arg}`);
+    for(const arg of imports)assert.match(arg,new RegExp(`^'\\./(?:(?:${SEGMENT_NAMES.join('|')})/)?${LOCALE_RE}'$`),`non-literal import ${arg}`);
   }
 });
 
@@ -131,6 +178,13 @@ test('every appearance sync status useAppearance can report has a translation in
 test('the chunk loader map holds only supported non-English ids; anything else never imports',async()=>{
   const loaders=load('loaders');
   same(Object.keys(loaders.LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.SETTINGS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.PROJECTS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.DIARY_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.CUSTOMISE_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.MODELS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  for(const bad of ['xx-XX','../en-GB','__proto__','constructor','']){assert.equal(await loaders.loadSegment('settings',bad,{}),false,bad);}
+  assert.equal(await loaders.loadSegment('__proto__','de-DE'),false,'an unknown segment loads nothing');
   let calls=0;const spy={'de-DE':()=>{calls++;return Promise.resolve({});}};
   for(const bad of ['xx-XX','../en-GB','__proto__','constructor','toString','',"de-DE'"])assert.equal(await loaders.loadCatalogue(bad,spy),false,bad);
   assert.equal(calls,0,'an unsupported id called a loader');
@@ -173,4 +227,249 @@ test('key names follow the locale: Strg in German, Maj in French, Ctrl in Englis
   }
   // The German shortcut note and the key name agree.
   assert.match(core.translate('de-DE', 'keyboard.otherNote'), /Strg/);
+});
+
+test('the Diary Markdown workspace search summary keeps its counts, in every locale',()=>{
+  // Regression: diary.workspace.matches/.linkingFiles/.filesChecked/.unreadableItems are plural
+  // pairs whose VALUES must themselves contain {count} — translatePlural only supplies the count
+  // as an interpolation variable, it does not prepend it. searchSummary composes two of these
+  // plurals through {results} and {checked}, exactly as DiaryMarkdownWorkspace.tsx does.
+  const summary=(locale,resultsKey,resultsCount,scanned)=>core.translate(locale,'diary.workspace.searchSummary',{
+    results:core.translatePlural(locale,resultsKey,resultsCount),
+    checked:core.translatePlural(locale,'diary.workspace.filesChecked',scanned),
+  });
+  for(const locale of ['en-GB',...NON_BASE]){
+    for(const [key,count] of [['diary.workspace.matches',1],['diary.workspace.matches',12],['diary.workspace.linkingFiles',1],['diary.workspace.linkingFiles',3]]){
+      const text=summary(locale,key,count,12);
+      assert.match(text,new RegExp(String(count)),`${locale} ${key}(${count}) lost its result count: ${text}`);
+      assert.match(text,/12/,`${locale} ${key}(${count}) lost its scanned-files count: ${text}`);
+    }
+    const skipped=core.translatePlural(locale,'diary.workspace.unreadableItems',3);
+    assert.match(skipped,/3/,`${locale} unreadableItems lost its count: ${skipped}`);
+  }
+});
+
+// Shell strings the first screen shows before any Settings/Projects/Diary code has loaded.
+const SHELL_ALLOW=/^(settings\.title|capabilities\.unavailable|keyboard\.(searchShortcuts|noMatch|action\..+|group\..+))$/;
+// Prefixes owned by each lazy segment, checked against the base catalogue below. account.* stays
+// in the base on purpose: the account menu renders on the first screen.
+const SEGMENT_PREFIX={
+  settings:/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers|appPasswords|diarySettings|serviceStatus)\./,
+  projects:/^projects\./,
+  diary:/^diary\./,
+  models:/^mm\./,
+};
+test('the base English catalogue holds no Settings-screen string beyond the shell allowlist',()=>{
+  const settingsInBase=Object.keys(EN).filter(k=>k.startsWith('settings.'));
+  same(settingsInBase,['settings.title'],'settings.* in the base catalogue');
+  const stray=Object.keys(EN).filter(k=>SEGMENT_PREFIX.settings.test(k)&&!SHELL_ALLOW.test(k));
+  same(stray,[],'Settings-only keys in the base catalogue');
+});
+
+// Every dotted, quoted, message-key-shaped literal in a file — this is what a t('x.y') or
+// t.plural('x.y', …) call, including inside a ternary or a variable/array of keys, looks like in
+// source; nothing else in these files is a quoted string of that shape.
+const KEY_LITERAL=/(['"`])([a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+)\1/g;
+function keysUsedIn(relPath){
+  const src=fs.readFileSync(path.join(__dirname,'../src',relPath),'utf8');
+  return new Set([...src.matchAll(KEY_LITERAL)].map(m=>m[2]));
+}
+// Modules in the first-load bundle (App.tsx's own graph — ProjectView/EditProjectModal/
+// ProjectIdentity are imported eagerly by App.tsx, not through lazy-views.tsx; AccountMenu and
+// ChatView/Sidebar/App render on the first screen; DiaryModal is where MarkdownPreview lives,
+// which ChatView also renders for ordinary chat messages).
+const EAGER_MODULES=['components/ProjectView.tsx','components/EditProjectModal.tsx','components/ProjectIdentity.tsx','components/AccountMenu.tsx','components/ChatView.tsx','components/Sidebar.tsx','App.tsx','components/DiaryModal.tsx'];
+// The lazy Diary and Projects views and every child only they render.
+const DIARY_MODULES=['components/DiaryView.tsx','components/DiaryCalendar.tsx','components/DiaryContextPanel.tsx','components/DiaryModal.tsx','components/DiaryMarkdownWorkspace.tsx','components/diary-graph/LocalGraph.tsx','components/DiaryStorageStatus.tsx','components/DiaryWorkspaceTrash.tsx','components/DiaryWorkspaceImport.tsx'];
+const PROJECTS_MODULES=['components/ProjectsView.tsx'];
+
+// A t.plural('x.y', n) call cites the bare base ('x.y'), never the '.one'/'.other' pair itself.
+const inBase=(k)=>k in EN||(`${k}.one` in EN&&`${k}.other` in EN);
+test('every projects.*/diary.*/account.* key used by an eager (first-load) module is in the base catalogue',()=>{
+  for(const file of EAGER_MODULES){
+    const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX.projects.test(k)||SEGMENT_PREFIX.diary.test(k)||k.startsWith('account.'));
+    const missing=used.filter(k=>!inBase(k));
+    same(missing,[],`${file} uses a key not in the base catalogue: ${missing.join(', ')} — it is eager, so a lazy-segment-only key would render literally until that segment's chunk loads`);
+  }
+});
+
+test('ProjectsView and DiaryView (and their lazy-only children) use only base keys or their own segment, never the other segment',()=>{
+  const check=(files,ownSegment,otherSegment)=>{
+    for(const file of files){
+      const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX[otherSegment].test(k));
+      const foreign=used.filter(k=>!inBase(k));// a base key with that prefix (e.g. diary.markdown.*) is fine anywhere
+      same(foreign,[],`${file} (in the ${ownSegment} segment) uses a ${otherSegment}.* key that is not in the base catalogue: ${foreign.join(', ')}`);
+    }
+  };
+  check(PROJECTS_MODULES,'projects','diary');
+  check(DIARY_MODULES,'diary','projects');
+});
+
+test('the base English catalogue holds no Projects- or Diary-only string (ProjectView/EditProjectModal/ProjectIdentity are not lazy, so their own keys stay in the base)',()=>{
+  const strayProjects=Object.keys(EN).filter(k=>SEGMENT_PREFIX.projects.test(k)&&Object.prototype.hasOwnProperty.call(ENSEG.projects,k));
+  same(strayProjects,[],'a projects.* key exists in both the base and the projects segment');
+  const strayDiary=Object.keys(EN).filter(k=>SEGMENT_PREFIX.diary.test(k)&&Object.prototype.hasOwnProperty.call(ENSEG.diary,k));
+  same(strayDiary,[],'a diary.* key exists in both the base and the diary segment');
+  // diary.markdown.* (MarkdownPreview) and diary.modal.closeDialog (the DiaryModal wrapper it
+  // shares a file with) stay in the base because DiaryModal.tsx is pulled into the eager chunk by
+  // the equally eager ChatView; everything else diary.* that IS lazy-only lives in the segment.
+  const DIARY_BASE_ALLOW=/^diary\.(markdown\.|modal\.closeDialog$)/;
+  const diaryInBase=Object.keys(EN).filter(k=>SEGMENT_PREFIX.diary.test(k));
+  assert.ok(diaryInBase.every(k=>DIARY_BASE_ALLOW.test(k)),`unexpected diary.* key in the base: ${diaryInBase.filter(k=>!DIARY_BASE_ALLOW.test(k)).join(', ')}`);
+});
+
+test('no key is defined in more than one segment, and the base catalogue module never imports a segment at runtime',()=>{
+  for(const s of SEGMENT_NAMES)same(Object.keys(ENSEG[s]).filter(k=>k in EN),[],`${s} segment repeats a base key`);
+  for(let i=0;i<SEGMENT_NAMES.length;i++)for(let j=i+1;j<SEGMENT_NAMES.length;j++){
+    const [a,b]=[SEGMENT_NAMES[i],SEGMENT_NAMES[j]];
+    same(Object.keys(ENSEG[a]).filter(k=>k in ENSEG[b]),[],`${a} and ${b} both define`);
+  }
+  const coreSrc=fs.readFileSync(path.join(dir,'core.ts'),'utf8');
+  for(const s of SEGMENT_NAMES)assert.doesNotMatch(coreSrc,new RegExp(`^import \\{[^}]*\\} from '\\./${s}`,'m'),`core imports the ${s} segment's strings at runtime`);
+  // Only each segment's own lazy view(s) register its English part.
+  for(const s of SEGMENT_NAMES){
+    const users=[];(function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){if(f!=='i18n')walk(p);}else if(/\.tsx?$/.test(f)&&new RegExp(`i18n/${s}['"/]`).test(fs.readFileSync(p,'utf8')))users.push(path.relative(path.join(__dirname,'../src'),p).replace(/\.tsx?$/,'').replace(/\\/g,'/'));}})(path.join(__dirname,'../src'));
+    for(const u of users)assert.match(u,SEGMENT_DEFS[s].owners,`${u} pulls the ${s} strings into its chunk`);
+  }
+});
+
+// Generic version of the Settings-specific lifecycle test below, run once per lazy segment with a
+// representative key from each (settings.back / projects.title / diary.title).
+const REP_KEY={settings:'settings.back',projects:'projects.title',diary:'diary.title',customise:'customise.title',models:'mm.title'};
+for(const s of SEGMENT_NAMES){
+  test(`${s} keys: English until the segment arrives, key by key, and the key itself if unregistered`,async()=>{
+    const key=REP_KEY[s];
+    assert.equal(core.translate('de-DE',key),core.SEGMENTS[s]['de-DE'][key]);
+    const savedDe=core.SEGMENTS[s]['de-DE'];delete core.SEGMENTS[s]['de-DE'];
+    try{
+      assert.equal(core.translate('de-DE',key),ENSEG[s][key],'absent segment falls back to English');
+      assert.equal(core.translate('de-DE','common.cancel'),'Abbrechen','the base still translates');
+    }finally{core.SEGMENTS[s]['de-DE']=savedDe;}
+    const savedEn=core.SEGMENTS[s]['en-GB'];delete core.SEGMENTS[s]['en-GB'];
+    try{
+      assert.ok(!core.activeSegments().includes(s));
+      assert.equal(core.translate('en-GB',key),key,'without the view code an unknown key renders as the key');
+    }finally{core.SEGMENTS[s]['en-GB']=savedEn;}
+    core.registerSegment(s,'xx-XX',{});assert.ok(!('xx-XX' in core.SEGMENTS[s]));
+    // A failed segment chunk logs once, is not retried, and leaves the base catalogue alone.
+    const loaders=load('loaders');
+    const savedPt=core.SEGMENTS[s]['pt-BR'];delete core.SEGMENTS[s]['pt-BR'];
+    let tries=0;const bad={'pt-BR':()=>{tries++;return Promise.reject(Error('chunk 404'));}};
+    try{
+      warnings.length=0;
+      assert.equal(loaders.catalogueSettled('pt-BR'),false);
+      assert.equal(await loaders.loadSegment(s,'pt-BR',bad),false);
+      assert.equal(await loaders.loadSegment(s,'pt-BR',bad),false);
+      assert.equal(tries,1);assert.equal(warnings.length,1);
+      assert.equal(loaders.catalogueSettled('pt-BR'),true,'a failed segment does not keep useT waiting');
+      assert.equal(core.translate('pt-BR',key),ENSEG[s][key]);
+      assert.equal(core.translate('pt-BR','common.cancel'),core.CATALOGUES['pt-BR']['common.cancel']);
+    }finally{core.SEGMENTS[s]['pt-BR']=savedPt;}
+    let ok=0;const good={'nb-NO':()=>{ok++;return Promise.resolve({[key]:'Test-NB'});}};
+    const savedNb=core.SEGMENTS[s]['nb-NO'];delete core.SEGMENTS[s]['nb-NO'];
+    try{
+      const [a,b]=await Promise.all([loaders.loadSegment(s,'nb-NO',good),loaders.loadSegment(s,'nb-NO',good)]);
+      assert.equal(a&&b,true);assert.equal(ok,1);assert.equal(core.translate('nb-NO',key),'Test-NB');
+    }finally{core.SEGMENTS[s]['nb-NO']=savedNb;}
+  });
+}
+
+test('Settings keys: partial segment falls back per key, and shell keys never depend on the segment',()=>{
+  const savedDe=core.SEGMENTS.settings['de-DE'];
+  try{
+    core.registerSegment('settings','de-DE',{'settings.search':'Einstellungen durchsuchen'});
+    assert.equal(core.translate('de-DE','settings.back'),'Back','a partial segment falls back per key');
+    assert.equal(core.translate('de-DE','settings.search'),'Einstellungen durchsuchen');
+  }finally{core.SEGMENTS.settings['de-DE']=savedDe;}
+  assert.equal(core.translate('fr-FR','settings.title'),core.CATALOGUES['fr-FR']['settings.title'],'shell keys never depend on the segment');
+});
+
+test('Settings search matches English keywords as well as the translated ones',()=>{
+  const shell=fs.readFileSync(path.join(__dirname,'../src/components/SettingsShell.tsx'),'utf8');
+  assert.match(shell,/\['connectors', 'Connected apps', '[^']*\bplugins\b[^']*'\]/,'English connector keywords include plugins');
+  // The haystack joins the English keywords, the translated ones and the English label.
+  assert.match(shell,/\[keywords, ownKeywords\.startsWith\('settings\.'\) \? '' : ownKeywords, own === label \? '' : label\.toLowerCase\(\)\]/);
+  assert.doesNotMatch(core.translate('de-DE','settings.keywords.connectors'),/^settings\./);
+});
+
+// ── Model manager segment (#293) ────────────────────────────────────────────────────────────────
+// Every module in the ModelManagerPage lazy chunk that renders text. ModelManagerPage registers
+// the segment; the rest are only reachable through it (checked below).
+const MODELS_MODULES=['components/models/ModelManagerPage.tsx','components/models/ModelsSettings.tsx','components/models/OverviewTab.tsx','components/models/LibraryTab.tsx','components/models/DownloadTab.tsx','components/models/ConfigureTab.tsx','components/models/GuidedOptimize.tsx','components/models/HardwareTab.tsx','components/models/BenchmarksTab.tsx','components/models/AutoTune.tsx','components/models/EvidenceList.tsx','components/models/TimeChart.tsx','components/models/mm-text.ts','components/models/register.ts','components/NativeCalibration.tsx','components/MtpControl.tsx','components/SamplingPresetsControl.tsx'];
+const SRC=path.join(__dirname,'../src');
+function srcFiles(){const out=[];(function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){if(f!=='i18n')walk(p);}else if(/\.tsx?$/.test(f))out.push(path.relative(SRC,p).replace(/\\/g,'/'));}})(SRC);return out;}
+const inSegment=(s,k)=>Object.prototype.hasOwnProperty.call(ENSEG[s],k)||(Object.prototype.hasOwnProperty.call(ENSEG[s],`${k}.one`)&&Object.prototype.hasOwnProperty.call(ENSEG[s],`${k}.other`));
+
+test('mm.* keys are used only inside the model manager chunk, and every one it uses exists',()=>{
+  for(const file of srcFiles()){
+    const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX.models.test(k));
+    if(!MODELS_MODULES.includes(file)){same(used,[],`${file} is outside the model manager chunk but uses ${used.join(', ')}`);continue;}
+    const missing=used.filter(k=>!inSegment('models',k));
+    same(missing,[],`${file} uses mm.* keys the models segment lacks: ${missing.join(', ')}`);
+  }
+  // Everything else a model manager module cites is a base key (settings.title, common.cancel…),
+  // never another lazy segment's key, which would render as the key when opened on its own.
+  for(const file of MODELS_MODULES){
+    const foreign=[...keysUsedIn(file)].filter(k=>!SEGMENT_PREFIX.models.test(k)&&/^[a-z]+\.[a-zA-Z]/.test(k)&&(k in ENSEG.settings||k in ENSEG.projects||k in ENSEG.diary)&&!inBase(k));
+    same(foreign,[],`${file} uses another segment's keys: ${foreign.join(', ')}`);
+  }
+});
+
+test('the model manager modules are reached only through the lazy ModelManagerPage chunk, never the first-load bundle',()=>{
+  // A static import of a model manager module from anywhere else would pull it (and its mm.*
+  // keys) into that importer's chunk, where the segment may not be registered.
+  const stems=new Set(MODELS_MODULES.map(f=>f.replace(/\.tsx?$/,'')));
+  for(const file of srcFiles()){
+    if(stems.has(file.replace(/\.tsx?$/,'')))continue;
+    const src=fs.readFileSync(path.join(SRC,file),'utf8');
+    for(const m of src.matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)){
+      if(!m[1].startsWith('.'))continue;
+      const target=path.posix.normalize(path.posix.join(path.posix.dirname(file),m[1]));
+      assert.ok(!stems.has(target),`${file} statically imports ${target}, a model manager module`);
+    }
+  }
+  const lazy=fs.readFileSync(path.join(SRC,'lazy-views.tsx'),'utf8');
+  assert.match(lazy,/lazyView\(\(\) => import\('\.\/components\/models\/ModelManagerPage'\)/,'ModelManagerPage stays a dynamic import');
+  for(const file of EAGER_MODULES){
+    const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX.models.test(k));
+    same(used,[],`${file} is in the first-load bundle but uses model manager keys`);
+  }
+  const base=Object.keys(EN).filter(k=>SEGMENT_PREFIX.models.test(k));
+  same(base,[],'mm.* keys in the base catalogue');
+});
+
+test('Diary & storage and Service status use only Settings-segment or base keys, and all of them exist',()=>{
+  for(const file of ['components/SettingsView.tsx','components/McpStatus.tsx','components/DiaryConnectors.tsx']){
+    const used=[...keysUsedIn(file)].filter(k=>/^(diarySettings|serviceStatus|settings|models)\./.test(k));
+    const missing=used.filter(k=>!inBase(k)&&!inSegment('settings',k));
+    same(missing,[],`${file} uses keys the Settings segment lacks: ${missing.join(', ')}`);
+  }
+  // Nothing outside the Settings chunk may cite these (StoragePicker and DiarySharing also render
+  // in the Diary view and the setup wizard, where the Settings segment is not registered).
+  for(const file of srcFiles()){
+    if(['components/SettingsView.tsx','components/McpStatus.tsx','components/DiaryConnectors.tsx'].includes(file))continue;
+    const used=[...keysUsedIn(file)].filter(k=>/^(diarySettings|serviceStatus)\./.test(k));
+    same(used,[],`${file} uses Diary & storage / Service status keys outside the Settings chunk`);
+  }
+});
+
+test('every plural form of the model manager and the new Settings screens keeps {count}',()=>{
+  const tables=[ENSEG.models,ENSEG.settings,...NON_BASE.flatMap(l=>[core.SEGMENTS.models[l],core.SEGMENTS.settings[l]])];
+  for(const table of tables)for(const [k,v] of Object.entries(table||{})){
+    if(!/^(mm|diarySettings|serviceStatus)\./.test(k)||!/\.(one|other)$/.test(k))continue;
+    assert.match(v,/\{count\}/,`${k} lost {count}: ${v}`);
+  }
+  assert.equal(core.translatePlural('de-DE','mm.projects.title',1),'Routing pro Projekt (1 Projekt)');
+  assert.equal(core.translatePlural('fr-FR','mm.calibration.minutes',0),'0 minute','French 0 is singular');
+  assert.equal(core.translatePlural('en-GB','serviceStatus.mcp.discovered',160),'160 tools discovered');
+});
+
+test('the chat model picker, Auto summary, system label, Diary storage and file sharing use base keys only (they render outside any lazy segment)',()=>{
+  for(const file of ['components/ModelPopup.tsx','routing-copy.ts','components/StoragePicker.tsx','components/DiarySharing.tsx']){
+    const used=[...keysUsedIn(file)].filter(k=>/^[a-z][a-zA-Z]*\.[a-zA-Z]/.test(k)&&!/\.(tsx?|js|json|com|gguf)$/.test(k));
+    const missing=used.filter(k=>!inBase(k));
+    same(missing,[],`${file} uses keys outside the base catalogue: ${missing.join(', ')}`);
+  }
+  for(const file of MODELS_MODULES)assert.doesNotMatch(fs.readFileSync(path.join(SRC,file),'utf8'),/SYSTEM_MODEL_LABEL/,`${file} renders the English system label`);
+  assert.equal(core.translate('de-DE','routing.fast',{model:'m'}),'Schnell: m');
 });

@@ -8,6 +8,152 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 2037ffd — 2026-09-25 (web-only: theme families + cursor-pull hover)
+
+### Services
+
+- **Web:** [#315](https://github.com/sbstndalton/noevia/pull/315) Three distinct theme families — Material 3 Contemporary, Liquid Glass, ruled Editorial — plus cursor-pull hover, all frontend-only (`apps/web/src`) — deployed as `cowork-web:2037ffd` (full build FROM release source; `apps/web/src` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-2037ffd`.
+
+No open PRs against `sbstndalton/noevia` were merged for this release (PR #315 was merged as part of this deploy; `gh pr list --state open` after merge showed only other unrelated work). `origin/main` was confirmed at `2037ffd` (full: `2037ffdbe211990d436b95a12b3927951b57be87`) with no trailing non-docs commits, and `git diff --stat 2037ffd origin/main -- apps/` was empty. CI on that SHA (`2037ffdbe211990d436b95a12b3927951b57be87`, workflow `CI`) completed success, including "Docker images build" (2m25s) and "Node tests, typecheck, frontend build" (1m31s).
+
+Source shipped via `git archive` of `2037ffdbe211990d436b95a12b3927951b57be87` to `releases/2037ffd`. Only `apps/web/src` changed, so a full web build was required; it produced `index-Ck6gpNmS.js` / `index-CY0nLBZh.css`.
+
+Candidate release was archived to `releases/2037ffd`, `.env` backed up to `.env.bak.before-2037ffd`, and `cowork-web:2037ffd` was built with `COWORK_VERSION=2037ffd`. Candidate verification used a synthetic in-image check: `docker run --rm --entrypoint cat cowork-web:2037ffd /app/dist/version.json` returned `{"version":"2037ffd"}` before cutover. The served `index.html` referenced `/assets/index-Ck6gpNmS.js` and `/assets/index-CY0nLBZh.css`, matching the hashes baked into `cowork-web:2037ffd`'s `/app/dist/assets`. An in-container grep confirmed the served CSS contained 335 occurrences of `data-family`, including `contemporary`, `editorial` and `glass` family selectors.
+
+Cutover used the installed host preflight: `current` repointed at `releases/2037ffd`, then `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`, followed by `tools/sidecar-restart-alert.sh --ack`. Only `cowork-web-1` was recreated (image `58b340c` → `2037ffd`); every other `cowork-*` container and all unrelated containers (Nextcloud AIO, arr stack, Jellyfin, etc.) kept their prior image, identity and start time in a before/after `docker ps`/`inspect` diff.
+
+Post-cutover verification: `cowork-web-1` healthy, 0 restarts; `https://noevia.daserver.work/` returned 200 on 3/3 requests; `/api/profile` returned 401; `/version.json` returned `{"version":"2037ffd"}`; the served `index.html` referenced `/assets/index-Ck6gpNmS.js` and `/assets/index-CY0nLBZh.css`, matching the built dist; `docker logs cowork-web-1` showed only normal startup lines (MCP discovery, UI listening), no errors.
+
+Rollback (not needed — verification passed): restore `.env.bak.before-2037ffd`, `ln -sfn releases/58b340c current`, then rerun the same `up.sh … --no-build --no-deps --wait web` command.
+
+
+
+## Release 58b340c — 2026-09-25 (favicon/app-shell cache-busting, stamp-test fix)
+
+### Services
+
+- **Web:** [#314](https://github.com/sbstndalton/noevia/pull/314) Favicon/app-shell cache-busting (`STAMP_VERSION`), stale-shell guard, `no-store` on `index.html`, and a mark in Appearance previews (#311, #312); [#318](https://github.com/sbstndalton/noevia/pull/318) fix stamp-icons tests to be independent of ambient `STAMP_VERSION` (#317) — deployed as `cowork-web:58b340c` (full build FROM release source; `apps/web/Dockerfile` and `compose.yaml` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** the live Compose file (`/boot/config/plugins/compose.manager/projects/Cowork/docker-compose.yml`) lacked `web.build.args.COWORK_VERSION`, which the Dockerfile needs to bake `STAMP_VERSION` into the image. It was backed up as `docker-compose.yml.bak.before-58b340c` and patched to add `args: COWORK_VERSION: ${COWORK_VERSION:-dev}` under `web.build`, keeping the existing `context:`. This is now required for every web release; it stays in place going forward (see the "compose-copies" note in `docs/deployment.md`). `.env` backed up as `.env.bak.before-58b340c`.
+
+Preflight: `gh pr list --repo sbstndalton/noevia --state open` showed only #315 (theme families work, not part of this release) — nothing was merged. `origin/main` was confirmed at `58b340c` (full: `58b340c1553fd42ec40a14bc9c1a6728b7f7a370`) with no trailing non-docs commits ahead of it for `apps/`, `compose.yaml`, `.github/` (`git diff --stat` empty against the prior release SHA `20a24c2`... verified against 58b340c as tip). CI on `58b340c1553fd42ec40a14bc9c1a6728b7f7a370` (workflow `CI`, run 36112669958) completed success, including "Docker images build" (2m19s) and "Node tests, typecheck, frontend build" (1m24s), plus Diary test suite, Docling extraction contract and Model manager test suite.
+
+Source shipped via `git archive` of `58b340c1553fd42ec40a14bc9c1a6728b7f7a370` to `releases/58b340c` (the stale `releases/29d2d1d` directory, left over from an aborted attempt that failed the Dockerfile's test stage — fixed by #318 — was removed first). The compose build-arg patch above was required for the `STAMP_VERSION` build arg to resolve; `docker compose ... config` was used to confirm `args: COWORK_VERSION: 20a24c2` resolved correctly before the version bump, and `COWORK_VERSION: 58b340c` after. Building `cowork-web:58b340c` with `COWORK_VERSION=58b340c` completed cleanly, with `stamp-icons: version=58b340c stamped=index.html, manifest.webmanifest wrote version.json` in the build log.
+
+Candidate verification used a synthetic in-image check: `docker run --rm --entrypoint cat cowork-web:58b340c /app/dist/version.json` returned `{"version":"58b340c"}` (not `0.2.0` or `dev`) before cutover. Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero restarts and reported healthy. Public `https://noevia.daserver.work/` returned 200 three times, `/api/profile` returned 401, `curl .../version.json` returned `{"version":"58b340c"}`, response headers carried `cache-control: no-store`, and the served `index.html` referenced `icon.svg?v=58b340c` / `icon.png?v=58b340c`. Served container asset filenames under `dist/assets` matched the built image's assets exactly. Logs since start were clean. Before/after `docker ps`/`docker inspect` snapshots of every container on the host showed only `cowork-web-1` changed (new container id, new `StartedAt`, restart count unchanged at 0); every other `cowork-*` sidecar (Laya, llama, embed, ocr, docling, kiwix, model-loader, diary, code-sandbox) and unrelated container (Nextcloud AIO stack, media stack) kept its identity and start time. Restart-alert baseline re-acked. No real tune, private Diary access, new harness installation, broader exposure or other production action was part of this release.
+
+Rollback (untaken): restore `.env.bak.before-58b340c`, point `current` at `releases/20a24c2`, then rerun the same guarded no-build `web`-only `up.sh` command. The compose build-arg patch is left in place (harmless, and required going forward).
+
+## Release 20a24c2 — 2026-09-25 (new leaf logo)
+
+### Services
+
+- **Web:** [#310](https://github.com/sbstndalton/noevia/pull/310) New noevia mark: three leaves emerging at the tip of a bare twig (#306) — deployed as `cowork-web:20a24c2` (full build FROM release source; `apps/web/src` and public icons changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-20a24c2`.
+
+No open PRs against `sbstndalton/noevia` were merged for this release (`gh pr list --state open` was empty at preflight). `origin/main` was confirmed at `20a24c2` (full: `20a24c28b34865480aa83e7075c122f9abdcc3ff`) with no trailing non-docs commits, and `git diff --stat 20a24c2 origin/main -- apps/` was empty. CI on that SHA (workflow `CI`) completed success, including "Docker images build" and "Node tests, typecheck, frontend build".
+
+Source shipped via `git archive` of `20a24c28b34865480aa83e7075c122f9abdcc3ff` to `releases/20a24c2`. `apps/web/src` and the public icon assets changed, so a full web build was required; it produced `index-3BnUMor0.js` / `index-DqhxSEgr.css`.
+
+Candidate verification used synthetic checks only, no live inference or real Diary access: the candidate image was run standalone on a scratch port and checked directly — `/` returned 200, `/icon.svg` had 12 `<path>` elements, `/icon-512.png` was 41,683 bytes (old icon was 4,725 bytes), and `/api/profile` returned 401 — before it was removed. Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero restarts and reported healthy. Public `https://noevia.daserver.work/` returned 200 three times, `/api/profile` returned 401, `/icon.svg` had 12 `<path>` elements, `/icon-512.png` was 41,683 bytes with `Content-Length` matching, the served `index.html` asset references (`index-3BnUMor0.js` / `index-DqhxSEgr.css`) matched the built dist inside the container, and logs since start were clean. Before/after `docker ps`/`docker inspect` snapshot of all 43 containers on the host showed only `cowork-web-1` changed (new container id, new `StartedAt`, restart count unchanged at 0); every other `cowork-*` sidecar and unrelated container (Laya, llama, embed, ocr, docling, kiwix, model-loader, diary, code-sandbox, Nextcloud AIO, media stack) kept its identity and start time. Restart-alert baseline re-acked. No real tune, private Diary access, new harness installation, broader exposure or other production action was part of this release.
+
+Rollback (untaken): restore `.env.bak.before-20a24c2`, point `current` at `releases/2ab7c99`, then rerun the same guarded no-build `web`-only `up.sh` command.
+
+## Release 2ab7c99 — 2026-09-25 (Settings back/close loop fix, new chats default to Auto)
+
+### Services
+
+- **Web:** [#307](https://github.com/sbstndalton/noevia/pull/307) Fix Settings back/close loop through Models & routing; new chats default to Auto when roles are configured; Back-to-app removed (#304, #305) — deployed as `cowork-web:2ab7c99` (full build FROM release source, both `apps/web/server` and `apps/web/src` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-2ab7c99`.
+
+No open PRs against `sbstndalton/noevia` were merged for this release (`gh pr list --state open` was empty at preflight). `origin/main` was confirmed at `2ab7c99` (full: `2ab7c991d81e4b52d8bc724bdbbb5e434e2f2e6c`) with no trailing docs-only commits, and `git diff --stat 2ab7c99 origin/main -- apps/` was empty. CI on that SHA ("Fix Settings back/close loop through Models & routing; new chats default to Auto (#307)", workflow `CI`, plus "Offline skills MCP contract") completed success, including "Docker images build" and the "Node tests, typecheck, frontend build" job.
+
+Source shipped via `git archive` of `2ab7c991d81e4b52d8bc724bdbbb5e434e2f2e6c` to `releases/2ab7c99`. Both `apps/web/server` and `apps/web/src` changed, so a full web build was required; it produced `index-Bwxxo8tc.js` / `index-DqhxSEgr.css`.
+
+Candidate verification used synthetic checks only, no live inference or real Diary access: an in-container grep confirmed the built image's `server/chat.cjs` contains `project ? project.routing === 'auto' : true`. Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero restarts and reported healthy. Public `/` returned 200 three times, `/api/profile` returned 401, the served `index.html` asset references matched the built dist, and logs since start were clean. `diary` and `ocr` (spot-checked; other sidecars unchanged) kept identical container ids, `StartedAt` and zero restarts (before/after `docker inspect`/`docker ps` snapshot diff showed only `cowork-web-1` changed). Restart-alert baseline re-acked. No real tune, private Diary access, new harness installation, broader exposure or other production action was part of this release.
+
+Rollback (untaken): restore `.env.bak.before-2ab7c99`, point `current` at `releases/4e19d28`, then rerun the same guarded no-build `web`-only `up.sh` command.
+
+## Release 4e19d28 — 2026-09-25 (model delete now unloads, clears auto-router roles)
+
+### Services
+
+- **Web:** [#303](https://github.com/sbstndalton/noevia/pull/303) Fix: deleting a model now unloads it, clears auto-router roles, invalidates caches, and removes the card (#302) — deployed as `cowork-web:4e19d28` (full build FROM release source, both `apps/web/server` and `apps/web/src` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-4e19d28`.
+
+No open PRs against `sbstndalton/noevia` were merged for this release (`gh pr list --state open` was empty at preflight). `origin/main` was confirmed at `4e19d28` (full: `4e19d2850f49a6671f472a0b2d24ea02aebddff4`) with no trailing docs-only commits, and `git diff --stat 4e19d28 origin/main -- apps/` was empty. CI on that SHA (workflow `CI`, plus "Offline skills MCP contract") completed success, including "Docker images build" and the "Node tests, typecheck, frontend build" job.
+
+Source shipped via `git archive` of `4e19d2850f49a6671f472a0b2d24ea02aebddff4` to `releases/4e19d28`. Both `apps/web/server` and `apps/web/src` changed, so a full web build was required; it produced `index-C3C3OjXI.js` / `index-DqhxSEgr.css`.
+
+Candidate verification used synthetic checks only, no live inference or real Diary access. Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero restarts and reported healthy. Public `/` returned 200 three times, `/api/profile` returned 401, the served `index.html` asset references matched the built dist, and an in-container grep confirmed `server/models.cjs` contains `clearRoleReferences`. Logs since start were clean. `diary`, `code-sandbox`, `model-loader`, `ocr`, `docling`, `laya`, `llama`, `embed` and `kiwix` kept identical container ids, `StartedAt` and zero restarts (before/after `docker inspect` snapshot diff showed only `cowork-web-1` changed). Restart-alert baseline re-acked. No real tune, private Diary access, new harness installation, broader exposure or other production action was part of this release.
+
+Rollback (untaken): restore `.env.bak.before-4e19d28`, point `current` at `releases/cfdb5b3`, then rerun the same guarded no-build `web`-only `up.sh` command.
+
+## Release cfdb5b3 — 2026-09-25 (Laya tool gate, experimental, off by default)
+
+### Services
+
+- **Web:** [#301](https://github.com/sbstndalton/noevia/pull/301) Tool gate: make small models use tools when the prompt needs them (experimental, off) — deployed as `cowork-web:cfdb5b3` (full build FROM release source, both `apps/web/server` and `apps/web/src` changed).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-cfdb5b3`.
+
+No open PRs against `sbstndalton/noevia` were merged for this release (`gh pr list --state open` was empty at preflight). `origin/main` was confirmed at `cfdb5b3` (full: `cfdb5b30c483cfe39596cd80ccd8e7b43bd2231f`) with no trailing docs-only commits, and `git diff --stat cfdb5b3 origin/main -- apps/` was empty. CI on that SHA ("Tool gate: make small models use tools when the prompt needs them (experimental, off) (#301)", workflow `CI`, plus "Offline skills MCP contract") completed success, including "Docker images build" and the Node tests/typecheck/frontend-build job.
+
+Source shipped via `git archive` of `cfdb5b30c483cfe39596cd80ccd8e7b43bd2231f` to `releases/cfdb5b3`. Both `apps/web/server` and `apps/web/src` changed, so a full web build was required; it produced `index-C8b5Zts7.js` / `index-DqhxSEgr.css` (unchanged locale chunks).
+
+Candidate verification ran the built image standalone: an in-container listing confirmed `server/tool-gate.cjs` was present, and `server/features.cjs` showed the `toolGate` feature flag defaults to `enabled: false` (`NOEVIA_FEATURE_TOOL_GATE` was left unset in `.env`) — synthetic checks only, no live inference or real Diary access. Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero restarts and reported healthy. Public `/` returned 200 three times, `/api/profile` returned 401, the served `index.html` asset references matched the built dist, and logs since start were clean. `diary`, `code-sandbox`, `model-loader`, `ocr`, `docling`, `laya`, `llama`, `embed` and `kiwix` kept identical container ids, `StartedAt` and zero restarts (before/after `docker inspect` snapshot diff showed only `cowork-web-1` changed). Restart-alert baseline re-acked. `NOEVIA_FEATURE_TOOL_GATE` was not set — the tool gate stays off. No real tune, private Diary access, new harness installation, broader exposure or other production action was part of this release.
+
+Rollback (untaken): restore `.env.bak.before-cfdb5b3`, point `current` at `releases/8454694`, then rerun the same guarded no-build `web`-only `up.sh` command.
+
+## Release 8454694 — 2026-09-25 (i18n catalogues, QA scripts, docs)
+
+### Services
+
+- **Web:** [#287](https://github.com/sbstndalton/noevia/pull/287) live browser-service Chromium QA run and dark-mode task banner check, [#288](https://github.com/sbstndalton/noevia/pull/288) i18n Settings catalogue chunk and remaining Settings screens, [#289](https://github.com/sbstndalton/noevia/pull/289) i18n translate account menu, Projects and Diary screens, [#290](https://github.com/sbstndalton/noevia/pull/290) docs: versioned service boundaries and migration contracts, [#299](https://github.com/sbstndalton/noevia/pull/299) i18n Customise segment, chat-shell footer, Thinking control and view loading names, [#300](https://github.com/sbstndalton/noevia/pull/300) i18n model manager segment, Diary & storage and Service status — deployed as `cowork-web:8454694` (full build FROM release source, `apps/web/src` changed; no `apps/web/server` or sidecar changes).
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-8454694`.
+
+No open PRs against `sbstndalton/noevia` were merged for this release (`gh pr list --state open` was empty at preflight). `origin/main` was confirmed at `8454694` (full: `84546946e4b3460e95e1f608ab5d75c77b117549`). CI on that SHA (`i18n: model manager segment, Diary & storage and Service status (#300)`, workflow `CI`) completed success.
+
+Source shipped via `git archive origin/main` to `releases/8454694`. Only `apps/web/src` changed, so a full web build was required (no server changes); it produced `index-C5ea3Cp-.js` plus refreshed locale chunks (e.g. `de-DE-CJsuIpcy.js`).
+
+Candidate verification ran the built image standalone: `dist/index.html` referenced the freshly built `index-C5ea3Cp-.js`, an in-container listing confirmed the de-DE locale chunks were present, and every pinned sidecar tag (`cowork-diary:9b532a8`, `cowork-ocr:5004b50`, `cowork-model-loader:5b6d9b6`, `cowork-code-sandbox:pi-0.87.0-9b532a8`, `cowork-docling:2026-09-21`) already existed locally — synthetic checks only, no live inference or real Diary access. Cutover used the guarded `up.sh --no-build --no-deps --wait` for `web` only. It recreated with zero restarts and reported healthy. Public `/` returned 200 three times, `/api/profile` returned 401, the served `index.html` asset reference matched the built dist, a locale chunk (`de-DE-CJsuIpcy.js`) served 200, and logs since start were clean. `diary`, `code-sandbox`, `model-loader`, `ocr`, `docling`, `laya`, `llama`, `embed` and `kiwix` kept identical container ids, `StartedAt` and zero restarts (before/after `docker ps`/`inspect` snapshot diff showed only `cowork-web-1` changed). Restart-alert baseline re-acked. No model runs, real Diary data, new harness installation or broader exposure were part of this release.
+
+Rollback (untaken): restore `.env.bak.before-8454694`, point `current` at `releases/5a47942`, then rerun the same guarded no-build `web`-only `up.sh` command.
+
 ## Release 5a47942 — 2026-09-24 (Projects/Cowork task status, connector permissions, usage drilldown, Customise UI; MCP custom-server preview)
 
 ### Services

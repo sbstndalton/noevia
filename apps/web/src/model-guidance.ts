@@ -18,6 +18,11 @@ export function matchesModelUse(labels: string[], use: ModelUse): boolean {
   return labels.some(label=>allowed[use].test(label));
 }
 
+/** modelChoiceLabel's fallback when nothing is loaded. This file is loaded in isolation by
+ *  tests/model-guidance.test.cjs (no module resolution there), so it stays free of the i18n
+ *  module; callers that display it to a person (StatsBar) translate this exact sentinel. */
+export const LOCAL_MODEL_FALLBACK = 'local model';
+
 /** Composer/header label for a project or chat's model choice. `installed` is
  *  null while the local catalogue is unknown (not fetched, manager disabled or
  *  failing) — only a successfully fetched list may declare a model missing.
@@ -25,21 +30,32 @@ export function matchesModelUse(labels: string[], use: ModelUse): boolean {
 export function modelChoiceLabel(
   choice: { routing?: string; model?: string; provider?: string } | null | undefined,
   installed: { name: string; loaded?: boolean }[] | null,
+  // Whether Auto routing (Fast/Smart) is actually configured server-side (fetchAutoRoles().configured).
+  // Defaults true: most callers (a project) never reach the branch this guards, and existing tests
+  // exercise the null-choice case explicitly either way.
+  autoRolesConfigured = true,
 ): string {
   if (choice?.routing === 'auto') return 'Auto (Fast/Smart)';
   if (choice?.model) {
     if (!choice.provider && installed && !installed.some(m => m.name === choice.model)) return 'No model selected';
     return choice.model;
   }
-  return installed?.find(m => m.loaded)?.name ?? 'local model';
+  // No choice at all means a free chat (no project): it starts on Auto rather than whatever
+  // happens to be loaded (#305) — loading a specific model for every quick chat wastes a load
+  // and energy, and it is not a choice the person made for this chat. But only when the server
+  // would really route it that way: without Fast/Smart roles configured it falls back to the
+  // loaded model server-side too (chat.cjs), and the label must not promise a routing decision
+  // that will not happen.
+  if (!choice) return autoRolesConfigured ? 'Auto (Fast/Smart)' : (installed?.find(m => m.loaded)?.name ?? LOCAL_MODEL_FALLBACK);
+  return installed?.find(m => m.loaded)?.name ?? LOCAL_MODEL_FALLBACK;
 }
 
-/** On unified-memory GPUs the kernel lets the GPU borrow system RAM (GTT) outside any container
+/** On unified-memory GPUs (message is English; borrowGB/hostGB/capGB let the UI phrase it per locale) the kernel lets the GPU borrow system RAM (GTT) outside any container
  *  limit. When that ceiling leaves the host less than `reserveGB`, loading several models can
  *  starve the server itself (DaServer outage, 2026-09-17). Unknown host size never warns. */
-export function sharedMemoryRisk({ unified, sharedTotalGB, hostTotalGB, reserveGB = 8 }: { unified: boolean; sharedTotalGB: number; hostTotalGB: number | null | undefined; reserveGB?: number }): { risky: boolean; leftGB: number | null; message: string } {
+export function sharedMemoryRisk({ unified, sharedTotalGB, hostTotalGB, reserveGB = 8 }: { unified: boolean; sharedTotalGB: number; hostTotalGB: number | null | undefined; reserveGB?: number }): { risky: boolean; leftGB: number | null; message: string; borrowGB?: number; hostGB?: number; capGB?: number } {
   if (!unified || typeof hostTotalGB !== 'number' || !Number.isFinite(hostTotalGB) || hostTotalGB <= 0 || !(sharedTotalGB > 0)) return { risky: false, leftGB: null, message: '' };
   const leftGB = Math.round((hostTotalGB - sharedTotalGB) * 10) / 10;
   if (leftGB >= reserveGB) return { risky: false, leftGB, message: '' };
-  return { risky: true, leftGB, message: `The GPU may borrow up to ${Math.round(sharedTotalGB)} GiB of this machine's ${Math.round(hostTotalGB)} GiB, leaving about ${Math.max(0, leftGB)} GiB for everything else. Several loaded models can make the server unresponsive: keep one model loaded, or cap GPU shared memory (GTT) below ${Math.round(hostTotalGB - reserveGB)} GiB.` };
+  return { risky: true, leftGB, borrowGB: Math.round(sharedTotalGB), hostGB: Math.round(hostTotalGB), capGB: Math.round(hostTotalGB - reserveGB), message: `The GPU may borrow up to ${Math.round(sharedTotalGB)} GiB of this machine's ${Math.round(hostTotalGB)} GiB, leaving about ${Math.max(0, leftGB)} GiB for everything else. Several loaded models can make the server unresponsive: keep one model loaded, or cap GPU shared memory (GTT) below ${Math.round(hostTotalGB - reserveGB)} GiB.` };
 }

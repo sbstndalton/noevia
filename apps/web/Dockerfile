@@ -2,6 +2,16 @@
 # Staged 2026-09-03; first build/deploy is gated per MIGRATION.md Step F.
 FROM node:22-alpine AS build
 WORKDIR /app
+# COWORK_VERSION is the release tag Compose already builds with
+# (compose.yaml `web.build.args`, set from the COWORK_VERSION env var the
+# deploy runbook exports — docs/deployment.md). STAMP_VERSION is what
+# scripts/stamp-icons.cjs and the __NOEVIA_BUILD__ vite define actually read;
+# it defaults to package.json's version there, which never changes between
+# releases and would leave the stale-shell guard and favicon cache-busting
+# permanently inert in this build (issue #311). "dev" is compose's own
+# default for local/no-arg builds, so it is treated the same as unset.
+ARG COWORK_VERSION
+ENV STAMP_VERSION=$COWORK_VERSION
 COPY package.json package-lock.json ./
 # Prefer IPv4 for registry lookups: hosts with a broken IPv6 route otherwise time out.
 RUN NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit

@@ -222,6 +222,61 @@ a privacy permission the agent's shell lacks. Nothing about noevia was measured.
 mount **read-only**, since it only writes to class-2 (LOCK) servers and noevia advertises `DAV: 1`
 (D6). The real check is the user's: Finder → Go → Connect to Server with an app password.
 
+### Interoperability run 3 — 2026-09-25 (client emulation)
+
+`apps/web/qa/dav-clients.cjs`: raw HTTP (Node's `fetch`/`http`, no Playwright) against the real web
+server and real Diary companion on a throwaway tenant, approximating the HTTP pattern of each
+client that can be exercised without the user's own device — macOS Finder (WebDAVFS), Windows
+Explorer (Mini-Redirector) and WinSCP, and iOS Files. These are approximations built from public
+documentation and prior interop reports, not a faithful reproduction of any client's exact wire
+behavior; the script cites a source per header where one exists (RFC 4918/4437/9110/9112, Apache
+mod_dav_fs, Microsoft KB831981), and marks the rest "approximated". A row is a PASS only when the
+server's actual status matches that row's expected status — any other status, including a `500`,
+is a FAIL — and a write that must always be refused (LOCK, PROPPATCH, a protected path) answering
+with any `2xx` additionally fails the whole run. The admin bootstrap (setup, sharing scope, app
+password) is also plain `fetch` with a hand-rolled cookie jar, so nothing in this run needs a
+browser. Obsidian sync is unchanged and not rerun; see the row below for its run-2 result.
+
+| Client / version emulated | Environment | Result | Evidence |
+|---|---|---|---|
+| rclone v1.75.1 | run 1/2 fixture (real web + real companion) | **pass** (18/18) | run 1/2 above, not rerun |
+| Obsidian (Remotely Save, `webdav` npm client v5) | run 2 fixture (real web + real companion) | **pass** (17/17, one fix shipped) | `apps/web/qa/dav-obsidian.cjs`, not rerun |
+| macOS Finder (WebDAVFS) — HTTP pattern (approximated) | this sandbox, real web + real companion, raw HTTP | **pass** (11/11 assertions) | `dav-clients.cjs`: OPTIONS; PROPFIND Depth 0/1 with a Finder-like property set (`getlastmodified`, `getcontentlength`, `executable`, `resourcetype`, `getetag`, `getcontenttype` — the `executable` namespace is Apache mod_dav_fs's, WebDAVFS's exact set is not publicly documented); unconditional `._name` AppleDouble sidecar and `.DS_Store` PUT (`400`, dot-prefixed names are refused — harmless); LOCK/UNLOCK (`405`, no class 2 — Finder would then mount read-only, as already predicted below); PUT with `Expect: 100-continue` + chunked body (RFC 9110/9112, approximated for WebDAVFS specifically); MOVE with `Overwrite: F`; DELETE; PROPFIND on a non-existent path (`404`, not a `207` shape) |
+| macOS Finder (WebDAVFS) — actual mount | **blocked**, needs the user's Mac | The 2026-09-22 attempt below still applies: `mount_webdav` refused locally before sending any request. User steps: Finder → Go → Connect to Server → `http://<host>:<dav-port>/dav/<username>/` with the app password; expect a read-only mount (no class 2); try create, rename, delete and the AppleDouble/`.DS_Store` writes on disposable files only |
+| Windows Explorer (Mini-Redirector) / WinSCP — HTTP pattern (approximated) | this sandbox, real web + real companion, raw HTTP | **pass** (10/10 assertions) | `dav-clients.cjs`: OPTIONS (`MS-Author-Via: DAV`, RFC 4437 §5, not sent by this server — harmless, Explorer falls back to its own probe); PROPFIND `Depth: 1` + `translate: f` (Microsoft KB831981); PROPPATCH of Win32 timestamps (`405`, no dead properties stored); Explorer's two-step create (zero-length PUT, then a second, *unconditional* content PUT — it does not send `If-Match` on step 2, same as every other overwrite in this run); `desktop.ini`/`Thumbs.db` writes (`415`, not `.md` — harmless); MOVE with no `Overwrite` header (defaults to `T` per RFC 4918 §10.6); DELETE; HEAD |
+| Windows Explorer / WinSCP — actual mount | **blocked**, needs the user's Windows device | Map a network drive or WinSCP "New Site" (WebDAV) to `http://<host>:<dav-port>/dav/<username>/` with the app password; expect the `desktop.ini`/`Thumbs.db` writes above to silently fail without breaking browsing; disposable files only |
+| iOS Files (Files app / a Documents-app-style client) — HTTP pattern (approximated) | this sandbox, real web + real companion, raw HTTP | **pass** (7/7 assertions) | `dav-clients.cjs`: PUT with `If-None-Match: *` for create; plain PROPFIND `Depth: 1` (no `Brief: t` — that header belongs to the Mini-Redirector, not iOS Files); conditional GET with `If-None-Match` (matching ETag → `304`, stale → `200`); GET with `Range` (ignored, full body via `200` — no `Range`/`Accept-Ranges` support is in this file's "Supported" list, so a `500` here would be a FAIL, not a pass); MOVE; DELETE |
+| iOS Files — actual app | **blocked**, needs the user's iPhone/iPad | Add a WebDAV connection in Files (or a Documents-app-style client) to `http(s)://<host>:<dav-port>/dav/<username>/` with the app password; try opening, editing, renaming and deleting a disposable note, and re-downloading after a Wi-Fi drop (exercises the `Range` fallback for real) |
+
+**Server defect found and fixed here:** the protected-month-file regex in
+`services/diary/agent/workspace_ops.py`'s `protected()` substituted every template field
+(`{year}`, `{month}`, `{month02}`, `{month_name}`) with the unconstrained wildcard `[^/]+`. With
+the default template `{year}-{month02}.md` that matches *any* two-part hyphenated `.md` filename
+at the corpus root, not just a real `YYYY-MM.md` month file — so Finder/Explorer/iOS Files'
+create/rename patterns (`finder-upload.md`, `explorer-renamed.md`, `ios-note.md`) were wrongly
+refused as protected. Fixed to substitute digits (`[0-9]`, matched with `re.ASCII` so unicode
+digits behave the same in both places) for `{year}`/`{month}`/`{month02}`, and a `{month_name}`
+alternative built from `calendar.month_name[1..12]` — i.e. the actual locale-dependent values
+`month_filename()`'s `day.strftime("%B")` produces (a blanket `[A-Za-z]+` would silently drop
+protection for a locale month name such as "März" or "août") — via a shared
+`corpus_store.month_name_pattern()` helper that both `protected()` and `list_months()` now call,
+so the two can never drift apart again. [Issue #324](https://github.com/sbstndalton/noevia/issues/324)
+(closed by this PR); regression tests:
+`services/diary/tests/test_workspace_ops.py::test_ordinary_hyphenated_filename_is_not_mistaken_for_a_month_file`
+and `::test_month_file_protection_across_templates_and_locales` (parametrized over the default,
+a human-named, and a nested month-file template); end to end over real DAV:
+`apps/web/qa/dav-clients.cjs`'s "real month filename (2026-09.md)" and "ordinary hyphenated
+filename" rows below. Full diary suite: 415/415 pass.
+
+Every invariant `dav-clients.cjs` asserts across all three client emulations held: the protected
+`INDEX.md` stayed byte-identical through every attempted write/move/delete; a real month filename
+(`2026-09.md`) got the same protection — `428` on an unconditional overwrite, `403` on DELETE —
+while an ordinary hyphenated name at the same path was created, overwritten and deleted normally;
+every unconditional overwrite (the only mode these clients use), now checked on two independent
+files, preserved the previous version in Trash; `428`/`403` were returned only for protected
+paths, never for an ordinary file; and a wrong app password got `401` with the `noevia diary
+files` realm.
+
 ### Decision (D6, 2026-09-17)
 
 Protected set confirmed — capture files, month files, the index — plus `AI Memory/**`.

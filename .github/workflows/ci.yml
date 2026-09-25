@@ -41,6 +41,7 @@ jobs:
               - 'tsconfig*.json'
               - '.nvmrc'
               - '.npmrc'
+              - 'compose.*.yaml'
             diary:
               - 'services/diary/**'
             model_manager:
@@ -55,6 +56,7 @@ jobs:
               - 'services/docling/**'
             deploy:
               - 'compose.yaml'
+              - 'compose.*.yaml'
               - 'deploy/**'
               - 'docs/deployment.md'
             docs:
@@ -97,6 +99,15 @@ jobs:
       - run: npm run typecheck
         if: env.RUN_JOB == 'true'
       - run: npm test
+        if: env.RUN_JOB == 'true'
+      # `npm test` alone never sets STAMP_VERSION, so it never covered the
+      # Docker release path: apps/web/Dockerfile exports STAMP_VERSION from
+      # the COWORK_VERSION build arg (the release SHA) before running its own
+      # `node --test`, and tests that assumed the STAMP_VERSION-less fallback
+      # broke every real release build (issue #317). Re-run just the tests
+      # that read STAMP_VERSION with a SHA-shaped value set, matching what a
+      # release build actually does.
+      - run: STAMP_VERSION=ci1234567 node --test tests/stamp-icons.test.cjs tests/build-version-stamp.test.cjs
         if: env.RUN_JOB == 'true'
       - run: npm run build
         if: env.RUN_JOB == 'true'

@@ -19,7 +19,7 @@ function keepAlongside() {
   return [...(e && e !== 'default' ? [e] : []), ...(r ? [r] : [])];
 }
 
-function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloadStatePath, fetchStream, autoconfig = {}, calibrationStatePath, calibrationOptions = {}, evidenceDir, autotuneStatePath, autotuneTablePath, autotuneOptions = {} }) {
+function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloadStatePath, fetchStream, autoconfig = {}, calibrationStatePath, calibrationOptions = {}, evidenceDir, autotuneStatePath, autotuneTablePath, autotuneOptions = {}, presetWriter = null }) {
   const base = String(baseUrl || '').replace(/\/+$/, '').replace(/\/v1$/, '');
   const url = new URL(base);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw Error('Invalid llama.cpp router URL');
@@ -35,7 +35,7 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
   // presets/evidence require the request() helper this closure also builds.
   let onDownloadCompleted=null;
   const tracker=require('./llamacpp-downloads.cjs').createDownloadTracker({base,headers,file:downloadStatePath,fetchStream,onCompleted:model=>onDownloadCompleted?.(model)});
-  const presets=presetPath ? require('./llamacpp-presets.cjs').createPresetStore(presetPath) : null;
+  const presets=presetPath ? require('./llamacpp-presets.cjs').createPresetStore(presetPath,{writer:presetWriter}) : null;
   const maintenance=require('./inference-maintenance.cjs').createMaintenanceGate();
   async function mutate(fn) {const leave=maintenance.enter();try{return await fn();}finally{leave();}}
   async function listModels() {
@@ -149,14 +149,14 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
     if(!models.some(m=>m.id===body.model))return {ok:false,status:404,body:{error:'Choose an installed model'}};
     if(models.some(m=>!['unloaded'].includes(m.status?.value)))return {ok:false,status:409,body:{error:'Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.'}};
     const candidate=presets.prepare(body);
-    presets.commit(candidate);
+    await presets.commit(candidate);
     try {
       const result=await request('/models?reload=1',{},120000);
       if(!result.ok)throw Error('Native reload failed');
       return {ok:true,status:200,body:{...presets.get(body.model),applied:true,qualification:'unqualified; load and test this profile before relying on its capacity'}};
     } catch {
       // Restore only our own version; never overwrite an operator's later edit.
-      try {presets.commit({baseRevision:candidate.revision,text:candidate.before});}
+      try {await presets.commit({baseRevision:candidate.revision,text:candidate.before});}
       catch {return {ok:false,status:503,body:{error:'Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.'}};}
       try {await request('/models?reload=1',{},120000);}catch {}
       return {ok:false,status:503,body:{error:'Reload failed or timed out. Previous preset file restored; check router health before retrying.'}};
@@ -358,7 +358,25 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
       if(!response.ok)tracker.rejected(checkpoint);
       return response.ok ? { ...response, body: { ...response.body, id: checkpoint, modelName: checkpoint } } : response;
     }),
-    deleteModel: model => mutate(()=>request('/models?model=' + encodeURIComponent(model), { method: 'DELETE' }, 60000)),
+    deleteModel: model => mutate(async () => { const r = await request('/models?model=' + encodeURIComponent(model), { method: 'DELETE' }, 60000); if (r.ok) identityCache.delete(model); return r; }),
+    // Unload-then-delete as ONE mutate() gate, so an on-demand load triggered by another
+    // request cannot slip in between the two the way it could with separate unload()/
+    // deleteModel() calls. If the delete is still refused (busy, or a load raced in despite
+    // the gate — the router itself can start one outside this process's control), retry the
+    // unload once more and try the delete again before giving up.
+    removeModel: model => mutate(async () => {
+      let unloaded = !!(await post('/models/unload', { model }).catch(() => null))?.ok;
+      let del = await request('/models?model=' + encodeURIComponent(model), { method: 'DELETE' }, 60000);
+      if (!del.ok) {
+        if ((await post('/models/unload', { model }).catch(() => null))?.ok) unloaded = true;
+        del = await request('/models?model=' + encodeURIComponent(model), { method: 'DELETE' }, 60000);
+      }
+      if (del.ok) identityCache.delete(model);
+      return { ...del, unloaded };
+    }),
+    // Exposed so callers that delete a model's files through a different path (the raw
+    // model-manager folder-scan proxy, routes/models.cjs) can still drop its cached identity.
+    forgetIdentity: model => identityCache.delete(model),
     props: model => request('/props' + modelQuery(model)),
     metrics: model => model ? request('/metrics' + modelQuery(model), {}, 6000) : unsupported('Aggregate metrics'),
     stats,
