@@ -246,6 +246,51 @@ contain it. Verify the arg resolves with:
 `docker compose --env-file /mnt/docker/appdata/cowork/config/.env config 2>/dev/null | grep -A3 'args:'`
 before building.
 
+## `compose.embed.yaml` reproduces the live `embed` service
+
+`compose.embed.yaml` (repo overlay, added to close #298) now reproduces the
+live `embed` sidecar recorded below under "Release ea57c83" and flagged as a
+gap in `docs/spec-service-boundaries.md` §2 and §7 finding 8 — previously it
+existed only in the live Compose Manager override, so the repo could not
+stand the stack up the way it actually runs on DaServer. The release note
+below only says "pinned llama.cpp image" with no tag/digest recorded, so the
+overlay openly pins `embed` to the same image digest as `compose.llamacpp.yaml`'s
+`llama` service (the `server-vulkan` build), relying on `--device none` to run
+it CPU-only — this is **not** confirmed to be the live embed image. Fields the
+release note below did not pin down (exact image digest, model filename/path,
+restart policy, memswap_limit, healthcheck interval/timeout/retries,
+depends_on condition, whether the live `default` network is this project's
+own default or the external `lemonade_default` network, CPU limit) are marked
+`[live: verify]` in the overlay file itself; confirm each against the live
+copy before treating the overlay as authoritative, and correct either side if
+they disagree.
+
+To reconcile the three unsynced copies (above) onto this overlay's shape
+**without restarting the `llama`, `diary`, `ocr`, `docling` or `laya`
+sidecars** during a web-only release:
+
+1. Diff the live `embed:` block (`docker-compose.yml` and its
+   `docker-compose.override.yml`) against `compose.embed.yaml` field by
+   field, resolving every `[live: verify]` marker in the repo file to match
+   what is actually running (or, if the live definition is wrong, planning a
+   separate change to fix it — do not silently change live behavior as a
+   side effect of a docs sync).
+2. Back up the live file first (`cp docker-compose.yml
+   docker-compose.yml.bak.$(date +%Y%m%d%H%M%S)`), then edit only the
+   `embed:` service block and the `web.environment.EMBEDDING_BASE_URL` line
+   in the live copy — the same two things this overlay touches. Leave every
+   other service's block untouched so the same-release web rollout in "The
+   deploy" below does not recreate them.
+3. Validate with `docker compose --env-file /mnt/docker/appdata/cowork/config/.env
+   config` before applying; a whitespace-only diff on every other service's
+   rendered config is the signal that only `embed` and `web`'s env would change.
+4. Apply with the installed preflight `up.sh … --no-deps --wait embed web`
+   (the same `--no-deps`-scoped pattern already used above for the Laya
+   recovery rollout and the docling/code-sandbox additions) so
+   llama/diary/ocr/docling/laya are never recreated by an unrelated web release.
+5. Update `deploy/examples/unraid-compose-manager.yml` to match, so future
+   fresh Unraid installs pick the overlay up too.
+
 ## The deploy
 
 Before any Compose `up` on Unraid, validate resolved writable mounts with the
@@ -353,6 +398,43 @@ grep -E '^(COWORK|DIARY|OCR|MODEL_MANAGER|DOCLING|CODE_SANDBOX)_VERSION=' $ENV
 docker compose --env-file $ENV config -q
 ```
 
+### models.ini writer (`MODELS_INI_WRITER`, #295)
+
+`MODELS_INI_WRITER` (web env, `compose.llamacpp.yaml`) picks who writes `models.ini`:
+`web` (default, the historical in-process atomic rename) or `model-loader` (web sends the
+prepared file to model-loader's `PUT /api/v1/models-ini`; model-loader is the single writer).
+Order: first bump `MODEL_MANAGER_VERSION` to an image that has the endpoint, then add
+`MODELS_INI_WRITER=model-loader` to the `.env` and recreate web. With an older or stopped
+model-loader, preset saves, calibration and autotune fail with an explicit 503 and leave the
+file unchanged. A token mismatch gets its own 503 ("check MODEL_LOADER_TOKEN"). Each replace
+leaves `models.ini.noevia-backup-<baseRevision>` (0600, never pruned) plus a rotating
+`models.ini.bak-<timestamp>` in the config dir; a failed backup aborts the write. Rollback is
+removing the line (or setting `web`) and recreating web; to restore content, copy the
+`models.ini.noevia-backup-<revision>` you want back over `models.ini`. Web's
+`/llamacpp-config` mount stays read-write until a follow-up makes it `:ro`.
+
+### Diary tenant key (M2) — first rollout
+
+`DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see
+[spec-managed-diary.md](spec-managed-diary.md#tenant-assertion-and-scoped-storage-credentials-m2-291-292)).
+Web's `DIARY_TENANT_KEY` is in `deploy/preflight/web-env-keys.txt`, so add it to the
+live Compose Manager web and diary environments (as `${DIARY_TENANT_KEY:-}`) before
+the first release that ships it. The new diary image refuses to start if
+`DIARY_AUTH_TOKEN` and `DIARY_TENANT_KEY` are both empty and `DIARY_ALLOW_OPEN` is not `1`;
+check the token is set (by name, never print it) before bumping `DIARY_VERSION`.
+
+Order, because a web-only release never restarts the sidecar:
+
+1. Ship the diary image with the key unset on diary (it accepts signed and unsigned
+   requests and logs once).
+2. Generate the key on the host (`openssl rand -hex 32`, straight into `.env`, never echoed)
+   and release web with it.
+3. Pass the key to diary and restart diary; it now requires the assertion. Verify with
+   synthetic tenants only: authenticated Diary tab loads, health passes.
+
+Rollback: remove the key from diary and restart diary first, then from web. Never roll
+the diary image back while web still has the key.
+
 ## After deploying
 
 `LEGACY_AUTH_COMPAT=false`, so there is no bearer-token path — verify from a real
@@ -436,6 +518,28 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
 
 ## Known gaps
 
+- **`CODE_EGRESS_BIND` (#296).** The Code-mode egress proxy (`code-egress.cjs`,
+  `CODE_EGRESS_PORT`/`CODE_EGRESS_HOST`, see "Release 9611580" above) no longer defaults to
+  `0.0.0.0`. At start it resolves web's own address on the internal `code` network by looking
+  up its `CODE_EGRESS_HOST` alias (`egress` — the same name `code-sandbox.override.yml` gives
+  the sandbox to reach it) and binds only that address, so the proxy no longer also listens on
+  `default` or any other network web joins. Set `CODE_EGRESS_BIND` explicitly to override; a
+  deployment that sets `CODE_EGRESS_PORT` without the code-sandbox override (so the alias does
+  not resolve) falls back to `127.0.0.1` rather than every interface, and logs
+  `egress.bind_fallback_loopback` with the reason when it does. Not yet deployed live — verify
+  the resolved bind address (`docker logs cowork-web-1 | grep egress`) after the next web release
+  that includes it: a successful start logs `egress.listening` with the bind and port, and a
+  failed one (e.g. `EADDRNOTAVAIL`) logs `egress.bind_failed` and crashes the process.
+- **`UI_AUTH_TOKEN` / `DIARY_AUTH_TOKEN` (#294).** These are independent now
+  (`auth-tokens.cjs`); `UI_AUTH_TOKEN` no longer falls back to `DIARY_AUTH_TOKEN`. A deployment
+  that relied on the fallback (set `DIARY_AUTH_TOKEN` only, expecting `LEGACY_AUTH_COMPAT=true`
+  to also accept it as the UI token) must now set `UI_AUTH_TOKEN` explicitly. Not yet deployed
+  live.
+- **`GET /api/ready` (#297).** New unauthenticated readiness endpoint
+  (`routes/health.cjs` `createReadyRoutes`), returning only `{ready, version}`. The Dockerfile
+  `HEALTHCHECK` still probes `/api/setup/status`, which is at least as strong a liveness check
+  (it already succeeds only once the process is serving JSON) and was not changed for this
+  addition — see the code review notes on this PR.
 - **`UPGRADES.md` on the server is stale.** It describes a retired
   AnythingLLM + LiteLLM stack. Ignore it.
 - **`/mnt/docker` has no redundancy** — the single-device pool now has daily

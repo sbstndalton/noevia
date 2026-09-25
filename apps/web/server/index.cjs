@@ -55,9 +55,13 @@ const DEFAULT_PROVIDER_LABEL = process.env.DEFAULT_PROVIDER_LABEL || 'Local infe
 const MODEL_MANAGER_KIND = process.env.MODEL_MANAGER_KIND || (process.env.LEMONADE_BASE_URL ? 'lemonade' : 'none');
 const MODEL_MANAGER_BASE = process.env.MODEL_MANAGER_BASE_URL || process.env.LEMONADE_BASE_URL || INFERENCE_BASE;
 const DIARY_BASE = process.env.DIARY_BASE_URL || 'http://cowork-diary-companion:8010';
-const DIARY_TOKEN = process.env.DIARY_AUTH_TOKEN || '';
+// Per-request Diary tenant assertion key (M2, docs/spec-managed-diary.md). Deploy the sidecar first.
+const DIARY_TENANT_KEY = (process.env.DIARY_TENANT_KEY || '').trim();
 const DIARY_SOURCE = process.env.DIARY_SOURCE || 'sidecar';
-const UI_AUTH_TOKEN = (process.env.UI_AUTH_TOKEN || DIARY_TOKEN).trim();
+// #294: DIARY_AUTH_TOKEN and UI_AUTH_TOKEN are independent — see auth-tokens.cjs.
+const authTokens = require('./auth-tokens.cjs').resolveAuthTokens(process.env);
+const DIARY_TOKEN = authTokens.diaryToken;
+const UI_AUTH_TOKEN = authTokens.uiAuthToken;
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 const DATA_DIR = process.env.UI_DATA_DIR || path.join(__dirname, 'ui-data');
 // Messages offered to the context projection per request. Compaction summarizes whatever does not
@@ -74,7 +78,7 @@ const authService = createAuth({
   publicOrigin: process.env.PUBLIC_ORIGIN || '',
   rpId: process.env.WEBAUTHN_RP_ID || '',
   legacyToken: UI_AUTH_TOKEN,
-  legacyCompat: process.env.LEGACY_AUTH_COMPAT === 'true',
+  legacyCompat: authTokens.legacyCompat,
   secrets: secretStore,
   trustProxy: process.env.TRUST_PROXY === 'true',
   // Lets password/session login also work from e.g. a bare LAN IP alongside
@@ -190,6 +194,8 @@ const folderSync = process.env.MODEL_LOADER_URL ? require('./model-folder-sync.c
 const modelManager = createModelManager({
   kind: MODEL_MANAGER_KIND,
   presetPath: process.env.LLAMACPP_PRESET_PATH,
+  // MODELS_INI_WRITER=model-loader makes the sidecar the single models.ini writer (#295).
+  presetWriter: require('./models-ini-writer.cjs').createModelsIniWriter({ mode: process.env.MODELS_INI_WRITER, url: process.env.MODEL_LOADER_URL, token: process.env.MODEL_LOADER_TOKEN, fetchJson }),
   autoconfig: {
     modelsPath: process.env.LLAMACPP_MODELS_PATH || '',
     budgetGib: Number(process.env.LLAMACPP_AUTOCONFIG_MEMORY_GIB) || require('./llamacpp-autoconfig.cjs').parseMemoryLimit(process.env.LLAMACPP_MEMORY_LIMIT) || 0,
@@ -227,8 +233,8 @@ function inferenceHeaders(extra) {
 // The member-origin policy for providers, storage connections and the Diary corpus (ssrf.cjs).
 const endpointApproved = createEndpointApproved();
 // The Diary sidecar client: tenant headers, the corpus reads and the connector file bridge (diary.cjs).
-const diary = require('./diary.cjs').createDiary({ fs, path, fetchJson, DIARY_BASE, DIARY_TOKEN, DIARY_SOURCE, requestScope, authService, endpointApproved, workspaceStore });
-const { diaryHeaders } = diary;
+const diary = require('./diary.cjs').createDiary({ fs, path, fetchJson, DIARY_BASE, DIARY_TOKEN, DIARY_TENANT_KEY, DIARY_SOURCE, requestScope, authService, endpointApproved, workspaceStore });
+const { diaryHeaders, diaryFetchJson } = diary;
 const PROJECTS = arrayProxy('projects');
 
 const PROVIDERS = arrayProxy('providers');
@@ -541,7 +547,7 @@ const { handleChat } = require('./chat.cjs').createChatHandler({
   fs, path, crypto, fetch: (...args) => globalThis.fetch(...args), reasoningEffort, diaryExtras, createToolExchange, rag, prefill, reduceToolResult,
   HISTORY_CAP, DEFAULT_PROVIDER_ID, DIARY_BASE, TOOL_RESULT_CAP,
   authService, toolPolicy, modelManager, requestScope, currentWorkspace, json,
-  getProject, getProvider, providerHeaders, saveChats, endpointApproved, diaryHeaders,
+  getProject, getProvider, providerHeaders, saveChats, endpointApproved, diaryHeaders, diaryStorageRetry: diary.withStorageCredential,
   autoRoles, lastLoadedModel, classifyFastOrSmart, servedCatalogue, modelsInstalled, missingRoles, staleRolesError,
   visionProbe, visionDescriptions, skillsIndexFor, chatSkillRouter, chatToolRouter, toolGate,
   DEFAULT_TOOLBOXES, CONNECTOR_BOXES, connectedBoxes, allToolboxes, resolveTools, isWriteTool, executeToolCall,
@@ -590,7 +596,7 @@ const publicAuthRoutes = new Set([
   '/api/auth/invitations/accept', '/api/auth/recovery/complete',
 ]);
 const authRoutes = require('./routes/auth.cjs').createAuthRoutes({
-  json, authResult, readJson, authService, publicAuthRoutes, davSettings, davConfig, workspaceStore, driveAccounts, fetchJson, DIARY_BASE, DIARY_TOKEN, env: process.env,
+  json, authResult, readJson, authService, publicAuthRoutes, davSettings, davConfig, workspaceStore, driveAccounts, fetchJson, DIARY_BASE, DIARY_TOKEN, diaryTenantHeaders: diary.tenantHeaders, env: process.env,
   mcpOAuth, directoryMcp,
   // POST /api/admin/secrets/rotate (CSRF-checked by the router like every signed-in POST).
   rotateSecrets: (actorId) => require('./secrets-rotate.cjs').runRotation({ secrets: secretStore, db: authService.db, dataDir: DATA_DIR, audit: authService.audit, actorId }),
@@ -613,6 +619,11 @@ const reasoningSettingsRoutes = require('./routes/reasoning-settings.cjs').creat
 const samplingSettingsRoutes = require('./routes/sampling-settings.cjs').createSamplingSettingsRoutes({ json, readBody, authService });
 // GET /api/health: the default provider, the Diary sidecar and retrieval (routes/health.cjs).
 const healthRoutes = require('./routes/health.cjs').createHealthRoutes({ json, fetchJson, getProvider, providerHeaders, DEFAULT_PROVIDER_ID, DIARY_BASE, diaryHeaders, authService, rag });
+// GET /api/ready (#297): unauthenticated, mounted before the session gate below alongside the
+// sign-in routes. isReady is set once startup wiring under require.main finishes (see below).
+const readyRoutes = require('./routes/health.cjs').createReadyRoutes({
+  json, isReady: () => processReady, version: process.env.STAMP_VERSION || require('../package.json').version,
+});
 // GET /api/toolboxes: the picker view (routes/toolboxes.cjs). MCP state is read at call time.
 const toolboxRoutes = require('./routes/toolboxes.cjs').createToolboxRoutes({
   discoverMcpTools: () => discoverMcpTools(), toolboxSummaries, json,
@@ -663,6 +674,7 @@ async function handleRequestScoped(req, res) {
     if (await diaryRoutes.connector(req, res, { path: p })) return;
     if ((p === '/api/instance' || p === '/.well-known/webauthn') && await webAddressRoutes(req, res, { path: p, authn: null })) return;
     if (await authRoutes.open(req, res, { path: p })) return;
+    if (await readyRoutes(req, res, { path: p })) return;
 
     const authn = p.startsWith('/api/') ? authService.authenticate(req) : null;
     if (p.startsWith('/api/') && !publicAuthRoutes.has(p) && !authn) return unauthorized(res);
@@ -737,11 +749,13 @@ async function handleRequest(req,res) {
   try {return await handleRequestInner(req,res);}finally{if(leave && (res.writableEnded||res.destroyed))leave();}
 }
 
+// #297: GET /api/ready flips true once startup wiring below has run and the server is listening.
+let processReady = false;
+
 if (require.main === module) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!UI_AUTH_TOKEN) {
-    console.warn('WARNING: Set DIARY_AUTH_TOKEN to protect the internal diary connection. Browser accounts remain authenticated.');
-  }
+  authTokens.warnings.forEach((w) => console.warn(w));
+  if (!DIARY_TENANT_KEY) console.warn('WARNING: DIARY_TENANT_KEY is unset; Diary calls carry no tenant assertion and remote storage secrets ride on every call.');
   const server = http.createServer((req, res) => { handleRequest(req, res).catch(() => { if (!res.destroyed) res.destroy(); }); });
   staticFiles.warm();
   // A chat waiting on a write approval is a legitimately long request. Node's
@@ -756,7 +770,7 @@ if (require.main === module) {
       const workspace = workspaceStore.get(userId);
       const user = authService.publicUser(authService.db.prepare('SELECT * FROM users WHERE id=?').get(userId));
       return requestScope.run({ workspace, authn: { user, legacy: false } }, async () => {
-        const r = await fetchJson(`${DIARY_BASE}/api${endpoint}`, { method, headers: diaryHeaders(), body: body === undefined ? undefined : JSON.stringify(body) }, 15000);
+        const r = await diaryFetchJson(`${DIARY_BASE}/api${endpoint}`, { method, body: body === undefined ? undefined : JSON.stringify(body) }, 15000);
         if (!r.ok) throw Object.assign(Error(r.body?.detail || 'Diary file request failed'), { status: r.status });
         return r.body;
       });
@@ -796,7 +810,7 @@ if (require.main === module) {
       diary: async (endpoint) => {
         const userId = requestScope.getStore()?.workspace?.userId;
         if (!userId || !authService.diaryEnabled(userId)) throw new Error('the Diary add-on is not enabled for this account');
-        const r = await fetchJson(`${DIARY_BASE}/api${endpoint}`, { headers: diaryHeaders() }, 15000);
+        const r = await diaryFetchJson(`${DIARY_BASE}/api${endpoint}`, {}, 15000);
         if (!r.ok) throw new Error(String(r.body?.detail || r.body?.error || `diary sidecar ${r.status}`));
         return r.body || {};
       },
@@ -804,7 +818,7 @@ if (require.main === module) {
         const userId = requestScope.getStore()?.workspace?.userId;
         if (!userId || !authService.diaryEnabled(userId)) throw new Error('the Diary add-on is not enabled for this account');
         const body = { text, title, requestId: crypto.randomUUID(), entryTime: require('./mcp-internal-tools.cjs').isoWithOffset(new Date(), timezone) };
-        const r = await fetchJson(`${DIARY_BASE}/api/entries/append`, { method: 'POST', headers: diaryHeaders(), body: JSON.stringify(body) }, 30000);
+        const r = await diaryFetchJson(`${DIARY_BASE}/api/entries/append`, { method: 'POST', body: JSON.stringify(body) }, 30000);
         if (!r.ok) throw new Error(String(r.body?.error || r.body?.detail || `diary sidecar ${r.status}`));
         authService.audit('diary.append', userId, userId, { xid: r.body.xid, chars: text.length });
         return r.body;
@@ -842,7 +856,10 @@ if (require.main === module) {
     // 3 s; DIARY_BACKUP_WORKER_INTERVAL_MS keeps the old cadence available for tests.
     interval: Number(process.env.DIARY_BACKUP_WORKER_INTERVAL_MS) > 0 ? Number(process.env.DIARY_BACKUP_WORKER_INTERVAL_MS) : 30000,
     run: user => requestScope.run({ workspace: workspaceStore.get(user.id), authn: { user, legacy: false } }, async () => {
-      const r = await fetchJson(`${DIARY_BASE}/api/storage-backup`, { method: 'POST', headers: diaryHeaders() }, 300000);
+      // The backup copies to the remote destination on every run, so it is the one call that
+      // always carries the storage secret (#292); every other call sends only its ref.
+      const target = `${DIARY_BASE}/api/storage-backup`;
+      const r = await fetchJson(target, { method: 'POST', headers: diaryHeaders('POST', target, { secret: true }) }, 300000);
       if (!r.ok) throw new Error(`storage-backup failed: ${r.status}`);
       return r.body;
     }),
@@ -855,6 +872,7 @@ if (require.main === module) {
     console.error('[noevia] unhandled promise rejection:', reason?.stack || reason);
   });
   server.listen(PORT, HOST, () => {
+    processReady = true;
     console.log(`cowork-ui listening on http://${HOST}:${PORT} (inference: ${INFERENCE_BASE}, manager: ${modelManager.kind}, diary: ${DIARY_BASE}, mcp: ${mcpWiring.enabled() ? MCP_SERVERS.map((sv) => sv.id).join('+') : 'disabled'})`);
     // Warm the tool catalogue so the first chat does not pay for discovery.
     // Never blocks startup: a side-car that is still booting must not stop

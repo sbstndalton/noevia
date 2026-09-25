@@ -167,7 +167,7 @@ Additional listeners in the same process, started under `require.main === module
 | Main UI/API | `UI_HOST:UI_PORT` (`0.0.0.0:8021`) | session cookie + CSRF | `index.cjs` |
 | DAV file sharing | `COWORK_DAV_PORT` (default 0 = off) | per-user app passwords; `X-Cowork-Dav-Proxy-Token` behind HTTPS | `dav.cjs`, `dav-settings.cjs` |
 | noevia's own MCP | `127.0.0.1:MCP_INTERNAL_PORT` (default 0 = off) | 30-second HMAC token from `secretStore.derive('mcp-internal-token')` | `mcp-internal.cjs`, `mcp-internal-tools.cjs` |
-| Code egress proxy | `CODE_EGRESS_BIND:CODE_EGRESS_PORT` (default bind `0.0.0.0`; off unless the port is set) | per-task grant token | `code-egress.cjs` (`startEgressFromEnv`) |
+| Code egress proxy | `CODE_EGRESS_BIND:CODE_EGRESS_PORT` (default bind: web's own address on the `code` network, resolved at start via its `CODE_EGRESS_HOST` alias; loopback if that does not resolve; off unless the port is set) | per-task grant token | `code-egress.cjs` (`startEgressFromEnv`, `resolveEgressBind`) |
 
 Background work in the same process: `offsiteBackup.schedule()` (`offsite-service.cjs`), the Diary
 backup worker (`diary-backup-worker.cjs`, `POST /api/storage-backup` every 30 s per enabled
@@ -410,7 +410,7 @@ section says so.
 
 | Component | Liveness today | Readiness today | Contract |
 | --- | --- | --- | --- |
-| web | Dockerfile `HEALTHCHECK` on `/api/setup/status` (`apps/web/Dockerfile`) | none unauthenticated; `/api/health` is per-user and behind the session gate (`routes/health.cjs`) | Keep `/api/setup/status` as liveness. Proposed: unauthenticated `GET /api/ready` returning only booleans (DB open, `secrets.key` loaded, static build present) and the API major — no tenant data, no upstream detail |
+| web | Dockerfile `HEALTHCHECK` on `/api/setup/status` (`apps/web/Dockerfile`) | **Fixed (#297).** Unauthenticated `GET /api/ready`, mounted before the session gate (`routes/health.cjs`), returns only `{ ready, version }` — no tenant data, no upstream detail; `ready` is true once the process has finished startup wiring. `/api/health` remains per-user and behind the session gate | Keep `/api/setup/status` as liveness; `/api/ready` covers the proposed readiness contract |
 | diary | `/api/health`, bearer-gated, no tenant needed (`app.py`, `compose.yaml` healthcheck) | tenant detail only with a valid tenant header | Keep; add `api: 1` to the body |
 | model-loader | `/api/v1/health`, token-exempt (`main.py`) | — | Keep token exemption for health only |
 | ocr, docling, laya | `/health` (each `server.py`, Dockerfile `HEALTHCHECK`) | — | Keep |
@@ -545,8 +545,23 @@ Each is a proposal for its issue; none is authorised here.
 - **Verification:** concurrent calibration plus a section edit cannot interleave; an interrupted
   write leaves the previous file; `docker compose config` still renders; model-manager pytest
   and the web suite pass.
-- **Rollback:** previous image tags and the saved `models.ini`.
+- **Rollback:** previous image tags and the saved `models.ini` (`models.ini.noevia-backup-<baseRevision>` in the config dir; see the decision below).
 - **Gate:** System-One architecture review first ([§9](#9-what-this-does-not-authorise)).
+- **Decision (#295, 2026-09-25, proceeding ahead of the review by owner decision):** model-loader
+  is the single writer. It already has the authenticated `/api/v1` sections API, backup rotation
+  and the llama reload role; web keeps preset semantics (validation, calibration, autotune,
+  restore-on-failure) and reads the file, but sends each prepared whole file to the new
+  `PUT /api/v1/models-ini` compare-and-swap instead of renaming it in place. Routing, provider and
+  lifecycle behaviour are unchanged. Rollout: ship the model-loader image with the endpoint, then
+  set `MODELS_INI_WRITER=model-loader` for web (default `web` keeps the old path; an older or
+  unreachable sidecar gives an explicit 503 and no write); once live-verified, a follow-up makes
+  web's `/llamacpp-config` mount `:ro` and retires the `web` value. Rollback: flip the flag back.
+  Durability matches web's old path: every model-loader write of `models.ini` (whole-file replace
+  and the sections API) holds one process lock around the revision check and the write, fails
+  if its backup copy fails, fsyncs the temp file and then the directory after the rename. The
+  replace endpoint also keeps an immutable `models.ini.noevia-backup-<baseRevision>` (0600, never
+  pruned) next to the rotating `models.ini.bak-<timestamp>` copies (last 10 kept); that immutable
+  file is "the saved `models.ini`" for rollback.
 
 ### 6.4 M4 — Browser executor sandbox
 
@@ -575,18 +590,23 @@ Recorded for follow-up; none is fixed by this document.
    connection** in `X-Cowork-Storage` (`diary.cjs`, `auth.cjs` `getStorage(…, true)`); blocked and
    local descriptors carry no secret. Contained by the network today; it matters for
    any Diary move to another host or repository.
-3. **`UI_AUTH_TOKEN` defaults to `DIARY_AUTH_TOKEN`** (`index.cjs`). With `LEGACY_AUTH_COMPAT=true`
-   the legacy bearer authenticates as the first enabled admin (`auth.cjs` `authenticate`) on the
-   tunnelled port 8021, so the Diary service token would work as a web admin credential. Harmless
-   while `LEGACY_AUTH_COMPAT=false` **[live: verify]**. Also, the startup warning about an
-   unprotected Diary connection fires only when `UI_AUTH_TOKEN` is empty (`index.cjs`), so it is
-   skipped when only `UI_AUTH_TOKEN` is set and `DIARY_AUTH_TOKEN` is empty.
+3. **Fixed (#294).** `UI_AUTH_TOKEN` used to default to `DIARY_AUTH_TOKEN` (`index.cjs`), so with
+   `LEGACY_AUTH_COMPAT=true` the Diary service token would also work as a web admin credential via
+   the legacy bearer (`auth.cjs` `authenticate`) on the tunnelled port 8021. The two tokens are now
+   independent (`auth-tokens.cjs` `resolveAuthTokens`): `UI_AUTH_TOKEN` is never derived from
+   `DIARY_AUTH_TOKEN`. Startup warnings are independent too — an empty `DIARY_AUTH_TOKEN` always
+   warns (open Diary connection), and `LEGACY_AUTH_COMPAT=true` with an empty `UI_AUTH_TOKEN` warns
+   separately (the legacy bearer path is enabled with nothing to check it against).
 4. **`models.ini` has two writers** (§6.3): web through `/llamacpp-config` (rw) and model-loader
    through `/config` (rw); llama only reads it (`/config:ro`, `compose.llamacpp.yaml`).
 5. **The browser executor runs in the web process** (§6.4). Not deployed.
-6. **The egress proxy binds `0.0.0.0` by default** (`code-egress.cjs`), so it listens on every
-   network web joins, not only `code`. Grants still gate it; `CODE_EGRESS_BIND` exists to narrow it.
-7. **No unauthenticated readiness endpoint** for web (§5.2).
+6. **Fixed (#296).** The egress proxy used to bind `0.0.0.0` by default (`code-egress.cjs`), so it
+   listened on every network web joins, not only `code`. It now resolves web's own address on the
+   `code` network at start (by looking up its `CODE_EGRESS_HOST` alias, `egress` — the same name
+   the sandbox is given) and binds only there; an explicit `CODE_EGRESS_BIND` still wins, and a
+   deployment without the code-sandbox override falls back to loopback instead of every interface.
+7. **Fixed (#297).** `GET /api/ready` is now mounted unauthenticated, before the session gate,
+   returning only `{ ready, version }` — no tenant data, no upstream detail.
 8. **The `embed` service is defined only in the live override** (§2), so the repo cannot
    reproduce the live stack.
 
