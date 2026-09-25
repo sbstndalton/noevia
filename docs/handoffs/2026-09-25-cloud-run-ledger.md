@@ -106,3 +106,14 @@ Merged this phase: f5a4392 (#320), d738f8e (#319), e2be0b5 (#321), 7c2593c (#322
 Mac deploy sequence: (1) web-only release from main (carries #322, #320 docs, #319 web side with flag default web, #321 web side inert until DIARY_TENANT_KEY set); (2) M2: add DIARY_TENANT_KEY to diary+web env, release diary sidecar image, verify, then web release again with key; (3) M3: release model-loader image, flip MODELS_INI_WRITER=model-loader, verify preset save; (4) reconcile the three compose copies for the embed overlay ([live: verify] fields).
 Remote branches to delete on the Mac: claude/qa-c i18n-b arch-267 i18n-a i18n-d i18n-c models-owner embed-overlay diary-tenant web-hardening skill-eval-harness.
 Run approvals: #261 approved; #264 approved with Gemma 12B Q4 QAT; #265 harness merged, live run approval pending.
+
+## MERGE: PR #325 Docling: storage-path QA, header-safe document names, #262 verification handoff (Closes #327; #262 stays open)
+- Head 6975e71 -> squash ac12f19 on main. CI 8/8 green. Bug found+fixed: non-Latin-1/control chars in a file name crashed extractDocument before sending (headerSafeName). qa/docling-storage-path.cjs proves the 2026-09-21 storage-path fix on synthetic nested/space/unicode paths.
+- DEPLOY NOTE (Mac): web-only. Then run docs/handoffs/2026-09-25-verify-262-docling.md on the next authorised project open; close #262 only after that.
+
+## MERGE: PR #326 DAV: client-emulation matrix + month-file protection fix (Closes #324; #263 device rows remain)
+- Head d8de95f -> squash fb0b739 on main. CI 7/7 green (diary pytest 415). qa/dav-clients.cjs: 45 checks, strict pass/fail model, Finder/Explorer-WinSCP/iOS HTTP patterns approximated with cited headers; docs/dav.md run 3 matrix.
+- Bug #324 (services/diary workspace_ops.protected() treated any word-word.md as a month file; fix shares month_name_pattern() with corpus_store.list_months(), locale-aware, ASCII digits). Diary sidecar change: ship with the M2 diary release.
+
+## PHASE THREE COMPLETE. main = fb0b739. Live still 2037ffd. Session stop: task boundary (no usage meter available here).
+Handoff for the Mac: docs/handoffs/2026-09-25-local-continuation.md on claude/exciting-babbage-7x0g5n.
