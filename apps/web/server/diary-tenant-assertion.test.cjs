@@ -9,30 +9,43 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { AsyncLocalStorage } = require('node:async_hooks');
-const { signTenantAssertion, storageSecretRef, canonical, ASSERTION_HEADER } = require('./diary-tenant-assertion.cjs');
+const { signTenantAssertion, storageSecretRef, canonical, pathOf, ASSERTION_HEADER } = require('./diary-tenant-assertion.cjs');
 const { createDiary } = require('./diary.cjs');
 
 const A = '11111111-1111-4111-8111-111111111111';
 const KEY = 'synthetic-tenant-key';
 
 test('golden vector matches the sidecar reference signer', () => {
-  const value = signTenantAssertion({ key: 'k', method: 'post', url: 'http://diary:8010/api/file?path=x', headers: { 'X-Cowork-User-ID': A, 'X-Cowork-Storage': 'eyJraW5kIjoibG9jYWwifQ' }, now: 1700000000000, nonce: '0'.repeat(32) });
-  assert.equal(value, `v1.1700000000.${'0'.repeat(32)}.SKVLLLpFOwR9z2CH_t4blm0RnYVH054n4XK7oDtntyA`);
-  assert.equal(storageSecretRef('k', A, 's3cret'), '6304dc8ee941b84350fc0af01b0c77c5');
+  const value = signTenantAssertion({ key: 'k', method: 'post', url: 'http://diary:8010/api/file?path=x', headers: { 'X-Cowork-User-ID': A, 'X-Cowork-Storage': 'eyJraW5kIjoibG9jYWwifQ' }, body: '{"path":"a"}', now: 1700000000000, nonce: '0'.repeat(32) });
+  assert.equal(value, `v2.1700000000.${'0'.repeat(32)}.nfewKW0P1sYJ_oPynPoP1cOgZio8VF0OmX3Q5gIvQbc`);
+  assert.equal(storageSecretRef('k', A, 's3cret'), '3bc946714e8992b28033c5c925ede7b1');
 });
 
-test('the assertion binds tenant, method, path (not query), storage and markers, with a fresh nonce', () => {
+test('the assertion binds tenant, method, path, query, body, storage and markers, with a fresh nonce', () => {
   const headers = { 'X-Cowork-User-ID': A, 'X-Cowork-Storage': 'abc' };
   const one = signTenantAssertion({ key: KEY, method: 'GET', url: 'http://d/api/day?month=2026-09', headers, now: 1e12 });
   const two = signTenantAssertion({ key: KEY, method: 'GET', url: 'http://d/api/day?month=2026-09', headers, now: 1e12 });
-  assert.match(one, /^v1\.1000000000\.[0-9a-f]{32}\.[A-Za-z0-9_-]{43}$/);
+  assert.match(one, /^v2\.1000000000\.[0-9a-f]{32}\.[A-Za-z0-9_-]{43}$/);
   assert.notEqual(one, two);
   const base = { userId: A, ts: 1, nonce: 'n', method: 'GET', path: '/api/day', storage: 'abc' };
   const sig = (m) => crypto.createHmac('sha256', KEY).update(canonical(m)).digest('base64url');
-  for (const changed of [{ userId: '22222222-2222-4222-8222-222222222222' }, { method: 'DELETE' }, { path: '/api/internal/tenant' }, { storage: 'xyz' }, { legacyOwner: '1' }, { blocked: '1' }]) {
+  for (const changed of [{ userId: '22222222-2222-4222-8222-222222222222' }, { method: 'DELETE' }, { path: '/api/internal/tenant' }, { queryHash: 'q' }, { bodyHash: 'stream' }, { storage: 'xyz' }, { legacyOwner: '1' }, { blocked: '1' }]) {
     assert.notEqual(sig({ ...base, ...changed }), sig(base));
   }
   assert.equal(sig({ ...base, userId: A.toUpperCase() }), sig(base));
+  const at = (over) => signTenantAssertion({ key: KEY, method: 'POST', url: 'http://d/api/file?path=a', headers: { 'X-Cowork-User-ID': A, 'Content-Type': 'application/json' }, body: '{"a":1}', now: 1e12, nonce: '1'.repeat(32), ...over });
+  assert.notEqual(at({ url: 'http://d/api/file?path=b' }), at({}));
+  assert.notEqual(at({ body: '{"a":2}' }), at({}));
+  assert.equal(at({ body: Buffer.from('{"a":1}') }), at({}), 'string and Buffer of the same bytes sign alike');
+  // A non-JSON body signs the "stream" marker: its bytes are not covered.
+  const zip = (body) => at({ headers: { 'X-Cowork-User-ID': A, 'Content-Type': 'application/zip' }, body });
+  assert.equal(zip('one'), zip('two'));
+});
+
+test('the signed path is the percent-encoded wire path (sidecar signs ASGI raw_path)', () => {
+  // Same invariant as test_path_is_signed_percent_encoded_as_on_the_wire in the sidecar tests.
+  assert.equal(pathOf('http://d/api/a%20b?x=1'), '/api/a%20b');
+  assert.equal(pathOf('http://d/api/a b'), '/api/a%20b');
 });
 
 function fixture({ key = KEY, storage, approved = true, reply } = {}) {
@@ -102,6 +115,36 @@ test('tenant deletion headers are signed for DELETE and carry no storage', () =>
   assert.equal(h['X-Cowork-User-ID'], A);
   assert.equal(h.Authorization, 'Bearer sidecar-token');
   assert.equal(h['X-Cowork-Storage'], undefined);
-  assert.ok(h[ASSERTION_HEADER].startsWith('v1.'));
+  assert.ok(h[ASSERTION_HEADER].startsWith('v2.'));
   assert.equal(fixture({ key: '' }).diary.tenantHeaders(A, 'DELETE', 'x')[ASSERTION_HEADER], undefined);
+});
+
+test('the 428 retry re-signs the same buffered body and query with a fresh nonce', async () => {
+  const f = fixture({ storage: remote, reply: (url, init, n) => (n === 1 ? { ok: false, status: 428, body: {} } : { ok: true, status: 200, body: {} }) });
+  const body = JSON.stringify({ path: 'notes.md' });
+  await f.asUser(() => f.diary.diaryFetchJson('http://diary:8010/api/file?v=1', { method: 'POST', body }, 1000));
+  for (const { url, init } of f.fetched) {
+    const [, ts, nonce] = init.headers[ASSERTION_HEADER].split('.');
+    const expected = signTenantAssertion({ key: KEY, method: 'POST', url, headers: init.headers, body: init.body, now: Number(ts) * 1000, nonce });
+    assert.equal(init.headers[ASSERTION_HEADER], expected);
+    assert.equal(init.body, body);
+  }
+  assert.notEqual(f.fetched[0].init.headers[ASSERTION_HEADER].split('.')[2], f.fetched[1].init.headers[ASSERTION_HEADER].split('.')[2]);
+});
+
+test('every Diary call made inside a workspace scope names the tenant and is signed', async () => {
+  const f = fixture({ storage: remote, reply: () => ({ ok: true, status: 200, body: { months: [], files: [] } }) });
+  await f.asUser(async () => {
+    await f.diary.corpusSource.listMonths();
+    await f.diary.corpusSource.readMonth('2026-09');
+    await f.diary.diaryFetchJson('http://diary:8010/api/storage-status', {}, 1000);
+  });
+  await f.diary.connectorFiles.list(A, 'x');
+  await f.diary.connectorFiles.read(A, 'x');
+  await f.diary.connectorFiles.write(A, { path: 'x', content: 'y' });
+  assert.equal(f.fetched.length, 6);
+  for (const { init } of f.fetched) {
+    assert.equal(init.headers['X-Cowork-User-ID'], A);
+    assert.match(init.headers[ASSERTION_HEADER], /^v2\./);
+  }
 });

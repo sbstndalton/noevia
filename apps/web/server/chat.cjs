@@ -210,10 +210,12 @@ function createChatHandler({
       let job;
       if(body.exchangeId){try{job=require('./diary-jobs.cjs').start(chatWorkspace,{entryDay:body.entryDay,exchangeId:body.exchangeId,message,preparationId:body.preparationId});}catch(e){return json(res,e.status||500,{error:e.status?e.message:'Could not create recovery record; no diary request was sent.'});}}
       const diaryUrl = `${DIARY_BASE}/v1/chat/completions`;
-      return require('./diary-stream.cjs').proxyDiaryStream(res, diaryUrl, {
-        method: 'POST', headers: (secret) => diaryHeaders('POST', diaryUrl, { secret }), body: JSON.stringify({stream:true, diary_events:true, messages:msgs,
+      // The request body is buffered and signed as sent (tenant assertion v2); only the reply streams.
+      const diaryBody = JSON.stringify({stream:true, diary_events:true, messages:msgs,
           session_id:body.sessionId, entryTime:body.entryTime, entryDay:body.entryDay,
-          extrasEnabled:body.extrasEnabled === true, extraContext:diaryExtras.reference(body)})
+          extrasEnabled:body.extrasEnabled === true, extraContext:diaryExtras.reference(body)});
+      return require('./diary-stream.cjs').proxyDiaryStream(res, diaryUrl, {
+        method: 'POST', headers: (secret) => diaryHeaders('POST', diaryUrl, { secret, body: diaryBody }), body: diaryBody
       }, {job,withStorageCredential:diaryStorageRetry,onEvent:event=>{if(event.type==='mtp')require('./mtp.cjs').record(chatWorkspace?.userId,event.model,event.timings);}});
     }
 

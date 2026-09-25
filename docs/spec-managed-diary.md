@@ -170,15 +170,30 @@ separate decisions; neither happened while implementing this candidate.
 ## Tenant assertion and scoped storage credentials (M2, #291, #292)
 
 `DIARY_TENANT_KEY` (shared by web and diary only) turns on a per-request tenant
-assertion. Web adds `X-Cowork-Tenant-Assertion: v1.<ts>.<nonce>.<hmac>` to every
+assertion. Web adds `X-Cowork-Tenant-Assertion: v2.<ts>.<nonce>.<hmac>` to every
 tenant-scoped call (`apps/web/server/diary-tenant-assertion.cjs`); the HMAC binds
-the tenant id, timestamp, a single-use nonce, method, path and the exact
-`X-Cowork-Storage`, `X-Cowork-Legacy-Owner` and `X-Cowork-Storage-Blocked`
-values. The sidecar (`services/diary/agent/tenant_assertion.py`) checks it in
-constant time, within a 60 s clock window, and refuses a replayed nonce. With the
-key set, a request naming a tenant without a valid assertion gets 401, and
-`DELETE /api/internal/tenant` always needs one. The existing `X-Cowork-*` headers
-keep their names and meaning.
+the tenant id, timestamp, a single-use nonce, method, the percent-encoded wire
+path, `sha256` of the raw query string, the body (`sha256` of the exact bytes for
+JSON or Content-Type-less requests, the literal `stream` for other media types
+such as the ZIP import) and the exact `X-Cowork-Storage`,
+`X-Cowork-Legacy-Owner` and `X-Cowork-Storage-Blocked` values. Only `v2` is
+accepted (the earlier `v1` format was never deployed). The sidecar
+(`services/diary/agent/tenant_assertion.py`) checks it in constant time, within a
+60 s clock window, and refuses a replayed nonce; if its nonce cache is full of
+unexpired nonces it answers 503 rather than evicting one. With the key set, a
+request naming a tenant without a valid assertion gets 401, the header-less
+`DIARY_LEGACY_USER_ID` fallback is refused (401) even with a valid bearer (web
+always names and signs the tenant; unsigned legacy direct clients stop working
+once the key is set), and `DELETE /api/internal/tenant` always needs one. The
+existing `X-Cowork-*` headers keep their names and meaning.
+
+Threat model: the assertion covers passive capture of web-to-diary traffic (a
+captured bearer alone cannot act as another tenant), replay (single-use nonce,
+60 s window) and tampering with the tenant, method, path, query or body of JSON
+calls. It does not cover in-flight tampering of bodies signed as `stream`
+(non-JSON uploads such as the workspace ZIP import): an on-path attacker could
+alter such a body within the one request it rides on. It is not a substitute for
+keeping the sidecar on an internal network.
 
 With neither `DIARY_AUTH_TOKEN` nor `DIARY_TENANT_KEY` set the sidecar refuses
 to start unless `DIARY_ALLOW_OPEN=1` declares the LAN-only open mode.

@@ -30,7 +30,7 @@ const PASS = Symbol('unhandled');
 function createDiaryRoutes({ json, readBody, readJson, fetchJson, DIARY_BASE, authService, currentWorkspace, rateLimited, connectorRate, diaryConnectors, diary, clientAddress = (req) => req.socket?.remoteAddress }) {
   const { diaryHeaders, corpusSource, connectorFiles } = diary;
   // Older fakes pass only diaryHeaders; fall back to a single send without the 428 retry.
-  const diaryFetchJson = diary.diaryFetchJson || ((url, { method = 'GET', body } = {}, timeoutMs) => fetchJson(url, { method, headers: diaryHeaders(method, url), body }, timeoutMs));
+  const diaryFetchJson = diary.diaryFetchJson || ((url, { method = 'GET', body } = {}, timeoutMs) => fetchJson(url, { method, headers: diaryHeaders(method, url, { body }), body }, timeoutMs));
 
   async function connector(req, res, { path: p }) {
     if(p==='/api/diary-connector') {
@@ -78,7 +78,7 @@ function createDiaryRoutes({ json, readBody, readJson, fetchJson, DIARY_BASE, au
       if (!authService.diaryEnabled(authn.user.id)) return json(res, 404, { error: 'Diary add-on is disabled' });
       if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
       const target = `${DIARY_BASE}/api/workspace-import${url.search}`;
-      return require('../workspace-import.cjs').proxyWorkspaceImport(req, res, target, (secret) => diaryHeaders('POST', target, { secret }), diary.withStorageCredential);
+      return require('../workspace-import.cjs').proxyWorkspaceImport(req, res, target, (secret) => diaryHeaders('POST', target, { secret, contentType: 'application/zip' }), diary.withStorageCredential);
     }
 
     if (p === '/api/diary/workspace-export') {
@@ -109,7 +109,7 @@ function createDiaryRoutes({ json, readBody, readJson, fetchJson, DIARY_BASE, au
       if (local && parsed?.stream === true) {
         const target = `${DIARY_BASE}/api${suffix}`;
         return require('../diary-stream.cjs').proxyDiaryStream(res, target, {
-          method:'POST', headers:(secret)=>diaryHeaders('POST', target, { secret }), body,
+          method:'POST', headers:(secret)=>diaryHeaders('POST', target, { secret, body }), body,
         }, {withStorageCredential:diary.withStorageCredential, onEvent:event=>{if(event.type==='mtp')require('../mtp.cjs').record(authn.user.id,event.model,event.timings);}});
       }
       const r = await diaryFetchJson(`${DIARY_BASE}/api${suffix}`, { method: req.method, body }, local ? 600000 : 60000);

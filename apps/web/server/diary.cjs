@@ -42,20 +42,25 @@ function createDiary({ fs, path, fetchJson, DIARY_BASE, DIARY_TOKEN, DIARY_TENAN
     return includeSecret && secret ? { ...rest, secretRef: ref, secret } : { ...rest, secretRef: ref };
   }
 
-  function sign(h, method, url) {
-    if (DIARY_TENANT_KEY && h['X-Cowork-User-ID']) h[ASSERTION_HEADER] = signTenantAssertion({ key: DIARY_TENANT_KEY, method, url, headers: h });
+  function sign(h, method, url, body) {
+    if (DIARY_TENANT_KEY && h['X-Cowork-User-ID']) h[ASSERTION_HEADER] = signTenantAssertion({ key: DIARY_TENANT_KEY, method, url, headers: h, body });
     return h;
   }
 
   /**
    * Headers for one Diary request. Pass the method and URL actually requested:
-   * with DIARY_TENANT_KEY set, the tenant assertion is bound to them.
+   * with DIARY_TENANT_KEY set, the tenant assertion (v2) is bound to them, to
+   * the query and, for JSON, to `body`: pass the exact buffered string/Buffer
+   * that fetch will send. A non-JSON `contentType` (ZIP upload) signs "stream".
+   * Inside a request scope every call names the tenant: the sidecar refuses
+   * the header-less DIARY_LEGACY_USER_ID fallback when keyed.
    * @param {string} [method]
    * @param {string} [url]
-   * @param {{ secret?: boolean }} [opts]  attach the remote storage secret (428 retry, backup)
+   * @param {{ secret?: boolean, body?: string|Buffer, contentType?: string }} [opts]
+   *   secret: attach the remote storage secret (428 retry, backup)
    */
-  function diaryHeaders(method = 'GET', url = '', { secret = false } = {}) {
-    const h = { 'Content-Type': 'application/json' };
+  function diaryHeaders(method = 'GET', url = '', { secret = false, body, contentType = 'application/json' } = {}) {
+    const h = { 'Content-Type': contentType };
     if (DIARY_TOKEN) h.Authorization = `Bearer ${DIARY_TOKEN}`;
     const workspace = requestScope.getStore()?.workspace;
     if (workspace) {
@@ -67,11 +72,11 @@ function createDiary({ fs, path, fetchJson, DIARY_BASE, DIARY_TOKEN, DIARY_TENAN
         // resolve a legacy remote or send credentials to this rejected endpoint.
         h['X-Cowork-Storage-Blocked'] = '1';
         h['X-Cowork-Storage'] = Buffer.from(JSON.stringify({ kind: 'blocked' })).toString('base64url');
-        return sign(h, method, url);
+        return sign(h, method, url, body);
       }
       h['X-Cowork-Storage'] = Buffer.from(JSON.stringify(storageDescriptor(workspace.userId, storage, secret))).toString('base64url');
     }
-    return sign(h, method, url);
+    return sign(h, method, url, body);
   }
 
   /** Bearer, tenant id and assertion only: for calls that must not carry storage (tenant deletion). */
@@ -84,7 +89,8 @@ function createDiary({ fs, path, fetchJson, DIARY_BASE, DIARY_TOKEN, DIARY_TENAN
   /**
    * Run `send(withSecret)` once without the storage secret and, when the
    * sidecar answers 428 (no cached state for this credential ref), once more
-   * with it. Works for fetchJson results and fetch Responses alike.
+   * with it. `send` must rebuild its headers each time: the retry is re-signed
+   * with a fresh nonce over the same buffered body. Works for fetchJson results and fetch Responses alike.
    */
   async function withStorageCredential(send) {
     const first = await send(!DIARY_TENANT_KEY);
@@ -95,7 +101,7 @@ function createDiary({ fs, path, fetchJson, DIARY_BASE, DIARY_TOKEN, DIARY_TENAN
 
   /** fetchJson against the sidecar with tenant headers and the 428 retry. */
   function diaryFetchJson(url, { method = 'GET', body } = {}, timeoutMs) {
-    return withStorageCredential((secret) => fetchJson(url, { method, headers: diaryHeaders(method, url, { secret }), body }, timeoutMs));
+    return withStorageCredential((secret) => fetchJson(url, { method, headers: diaryHeaders(method, url, { secret, body }), body }, timeoutMs));
   }
 
   // ── Corpus-source adapter (Diary tab reads) ────────────────────────────────
