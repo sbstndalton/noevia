@@ -8,6 +8,47 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release f6444b4 — 2026-09-25 (web-only: fix boot crash from 0d602d6 retry)
+
+### Services
+
+- **Web:** [#338](https://github.com/sbstndalton/noevia/pull/338) copies `/app/package.json` into the runtime image and adds a CI boot smoke test; also carries [#322](https://github.com/sbstndalton/noevia/pull/322) `/api/ready` + independent auth tokens + egress bind, [#325](https://github.com/sbstndalton/noevia/pull/325) Docling header-safe names, [#319](https://github.com/sbstndalton/noevia/pull/319) `MODELS_INI_WRITER` at default, [#321](https://github.com/sbstndalton/noevia/pull/321) inert without `DIARY_TENANT_KEY`, [#320](https://github.com/sbstndalton/noevia/pull/320) docs, i18n [#288](https://github.com/sbstndalton/noevia/pull/288)/[#289](https://github.com/sbstndalton/noevia/pull/289)/[#299](https://github.com/sbstndalton/noevia/pull/299)/[#300](https://github.com/sbstndalton/noevia/pull/300), QA [#332](https://github.com/sbstndalton/noevia/pull/332)/[#334](https://github.com/sbstndalton/noevia/pull/334) — deployed as `cowork-web:f6444b4`.
+- **Diary:** no change — `cowork-diary:9b532a8`.
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no change to live Compose files; `.env` backed up as `.env.bak.before-f6444b4`; compose files backed up as `docker-compose.yml.bak.before-f6444b4` / `docker-compose.override.yml.bak.before-f6444b4`.
+
+This is a retry of an earlier same-day attempt to deploy `0d602d6`, which crash-looped on a missing
+`/app/package.json` in the built image and was rolled back to `2037ffd`; `f6444b4` fixes that build
+regression and CI now boots the image before merge.
+
+Source shipped via `git archive` of `origin/main` at `f6444b4` (full:
+`f6444b42538d362336b78da0d77d385bb097095a`) to `releases/f6444b4`. Only `cowork-web:f6444b4` was
+built; no other image was touched. Candidate verification: `docker run --rm --entrypoint ls
+cowork-web:f6444b4 /app/package.json` returned the file (the exact defect that broke `0d602d6`).
+
+Cutover used the installed host preflight: `current` repointed at `releases/f6444b4`, `COWORK_VERSION`
+set to `f6444b4`, then `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait
+--wait-timeout 180 web`. Only `cowork-web-1` was recreated (image `2037ffd` → `f6444b4`, healthy,
+`RestartCount=0`); every other `cowork-*` container and all unrelated containers (Nextcloud AIO, arr
+stack, Jellyfin, Cloudflared, etc.) kept identical container ID and `StartedAt` in a before/after
+`docker ps`/`inspect` diff. `cowork-embed-1` remained in its pre-existing restart loop (known, issue
+#336, untouched).
+
+Verification: internal `GET /api/ready` on the container's `UI_PORT` (8021) returned `200
+{"ready":true,"version":"0.2.0"}`; logs since deploy showed `egress.listening` on `172.28.0.4:8040`
+and the expected `DIARY_TENANT_KEY` warning, no auth-token warnings; `https://noevia.daserver.work/`
+returned 200 and `/api/profile` returned 401; the served `index-pLXervss.js` / `index-CY0nLBZh.css`
+matched the hashes in `cowork-web:f6444b4`'s `/app/dist/assets`.
+
+Rollback (not needed — deploy succeeded): restore `current` to `releases/2037ffd`, restore
+`config/.env` from `.env.bak.before-f6444b4`, restore the two compose file backups, then re-run
+`tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+---
+
 ## Release 2037ffd — 2026-09-25 (web-only: theme families + cursor-pull hover)
 
 ### Services
