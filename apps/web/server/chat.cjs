@@ -485,21 +485,33 @@ function createChatHandler({
     // Returns the messages with the fetched exchange added, or null when the read could not run
     // (the account asks before this tool, the tool failed, or the chat was cancelled).
     async function prefetchTool({ tool, args }) {
-      const userId = requestScope.getStore()?.workspace?.userId || null;
+      // The policy is read for the signed-in account (chatUser, the same one whose blocked tools
+      // were hidden above). The request's workspace is that account's own (index.cjs builds it
+      // from the same user id); if the two ever disagree, nothing is pre-run.
+      const userId = chatUser?.id || null;
+      const workspaceUserId = requestScope.getStore()?.workspace?.userId || null;
+      if (!userId || (workspaceUserId && workspaceUserId !== userId)) return null;
       if (chatSignal.signal.aborted || toolPolicy.mode(userId, tool, isWriteTool(tool)) !== 'allow') return null;
       const call = { id: `gate-${crypto.randomUUID()}`, name: tool, args: JSON.stringify(args) };
       const index = toolOffset;
+      // Journaled exactly like a model-requested call (output -> started -> result), so a resumed
+      // or replayed turn rebuilds the same chip and tool message.
+      turn?.output('', [call]);
       send({ type: 'tool', index, name: call.name, args: call.args });
       const outcome = { failed: false };
       const result = String(await runTool(call, async () => {
+        turn?.started(call.id);
         const out = await executeToolCall(project, call.name, call.args, allowedToolNames, chatSignal.signal, outcome);
         recordToolUse(chatWorkspace, call.name);
         return out;
       }));
       send({ type: 'tool_result', index, name: call.name, text: result.slice(0, 300) });
       toolOffset = index + 1;
-      if (outcome.failed === true || /^ERROR\b/.test(result)) return null;
       const framed = frameUntrusted('tool result', call.name, reduceToolResult(result, { maxChars: TOOL_RESULT_CAP }).text);
+      // A read has no side effects, so a failed prefetch has a known outcome: it is recorded as
+      // resolved with its error text rather than 'outcome_unknown', which would halt the turn.
+      turn?.result(call.id, framed, { failed: false, originalBytes: Buffer.byteLength(result) });
+      if (outcome.failed === true || /^ERROR\b/.test(result)) return null;
       const note = 'The following was fetched for you; use it.';
       const hasSystem = roundMessages.some((m) => m.role === 'system');
       const base = hasSystem ? roundMessages.map((m, i) => (i === roundMessages.findIndex((x) => x.role === 'system') && typeof m.content === 'string' ? { ...m, content: `${m.content}\n\n${note}` } : m))

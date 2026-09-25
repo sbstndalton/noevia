@@ -123,3 +123,40 @@ test('helpers: query stripping and diary months', () => {
   assert.equal(diaryMonth('on 3 March 2025', () => NOW), '2025-03');
   assert.equal(diaryMonth('nothing dated here', () => NOW), null);
 });
+
+test('search prefetch only for a short single-line message; long, multi-line or quoted text is require', async () => {
+  const { g } = gate();
+  const short = await g.evaluate('latest news on synthetic widgets', all);
+  assert.deepEqual(short.decision, { tool: 'tavily_search', args: { query: 'latest news on synthetic widgets' }, mode: 'prefetch' });
+  const pasted = 'What is the latest on this? ' + 'Synthetic pasted paragraph with private detail. '.repeat(6);
+  assert.deepEqual((await g.evaluate(pasted, all)).decision, { tool: 'tavily_search', mode: 'require' });
+  assert.deepEqual((await g.evaluate('latest news\nsecond line', all)).decision, { tool: 'tavily_search', mode: 'require' });
+  assert.deepEqual((await g.evaluate('latest ```code```', all)).decision, { tool: 'tavily_search', mode: 'require' });
+  assert.deepEqual((await g.evaluate('> quoted latest news', all)).decision, { tool: 'tavily_search', mode: 'require' });
+});
+
+test('Stage 2 never prefetches a search, even for a short message', async () => {
+  const { g } = gate({ decide: async () => ({ selected: 'tavily_search', scores: { tavily_search: 0.9, none: 0.1 }, source: 'configured' }) });
+  const r = await g.evaluate('synthetic widgets', [TOOLS.search]);
+  assert.deepEqual(r.decision, { tool: 'tavily_search', mode: 'require' });
+  assert.equal(r.source, 'decision');
+});
+
+test('URL prefetch only for public http(s) hosts; private, loopback, link-local, .local and other schemes are require', async () => {
+  const { g } = gate({ decide: async () => ({ selected: 'none', scores: { none: 1 }, source: 'configured' }) });
+  for (const url of ['http://10.69.0.130/x', 'http://localhost:3000', 'http://169.254.1.1', 'http://foo.local', 'http://127.0.0.1/a', 'http://[::1]/a', 'http://192.168.1.4', 'http://laya:8040/', 'http://user:pw@example.invalid/']) {
+    const r = await g.evaluate(`Summarise ${url}`, [TOOLS.extract]);
+    assert.deepEqual(r.decision, { tool: 'tavily_extract', mode: 'require' }, url);
+  }
+  // A ftp:// link is not a URL match at all; a public host is prefetched.
+  assert.equal((await g.evaluate('Summarise ftp://example.invalid/file', [TOOLS.extract])).decision, 'none');
+  assert.equal((await g.evaluate('Summarise https://example.com/post', [TOOLS.extract])).decision.mode, 'prefetch');
+});
+
+test('a tool name offered by two boxes is one option and one decision', async () => {
+  let seen = null;
+  const { g } = gate({ decide: async (request) => { seen = request; return { selected: 'core_time', scores: { core_time: 0.9, none: 0.1 }, source: 'configured' }; } });
+  const r = await g.evaluate('How long until the synthetic meeting?', [TOOLS.time, fn('core_time', {}, [], 'duplicate from another box')]);
+  assert.deepEqual(seen.options.map((o) => o.id), ['core_time', 'none']);
+  assert.equal(r.decision.tool, 'core_time');
+});

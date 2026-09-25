@@ -40,6 +40,29 @@ const NAMED_DATE_RE = new RegExp(`\\b(?:(\\d{1,2})(?:st|nd|rd|th)?\\s+)?(${MONTH
 const DRIVE_RE = /\b(my\s+files?|a\s+file|the\s+file|files|folder|folders|document\s+named|drive|google\s+drive|nextcloud)\b/i;
 const FILLER_RE = /\b(please|can\s+you|could\s+you|would\s+you|will\s+you|for\s+me|search(?:\s+the\s+web)?(?:\s+for)?|look\s*up|google|find\s+out|tell\s+me|what(?:'s|\s+is|\s+are)|who(?:'s|\s+is)|show\s+me|i\s+want\s+to\s+know|quickly|hey|hi)\b/gi;
 
+// A search prefetch sends the query to an external service. Only a short, single-line message
+// is sent that way; anything longer (pasted text, code, quotes) makes the model write the query.
+const SEARCH_PREFETCH_MAX_CHARS = 120;
+function prefetchableSearch(message) {
+  const text = String(message || '');
+  return text.trim().length <= SEARCH_PREFETCH_MAX_CHARS && !/[\r\n]/.test(text) && !/```|~~~/.test(text) && !/^\s*>/.test(text);
+}
+
+// A URL is pre-fetched only when it plainly names a public web host: http(s), no credentials,
+// no IP literal in a private/loopback/link-local range, no local-only or single-label name.
+// Pattern only, no DNS: anything else falls back to 'require', where the tool's own checks apply.
+const LOCAL_SUFFIX_RE = /(^|\.)(localhost|local|internal|lan|home\.arpa|intranet|corp)$/i;
+function publicUrlPattern(raw) {
+  let url;
+  try { url = new URL(raw); } catch { return false; }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+  if (!host) return false;
+  if (require('node:net').isIP(host)) return !require('./ssrf.cjs').isPrivateIp(host);
+  if (!host.includes('.') || LOCAL_SUFFIX_RE.test(host)) return false;
+  return true;
+}
+
 const pad = (n) => String(n).padStart(2, '0');
 const monthKey = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
 
@@ -70,17 +93,19 @@ const requiredOf = (tool) => (Array.isArray(paramsOf(tool).required) ? paramsOf(
 const propsOf = (tool) => paramsOf(tool).properties || {};
 
 /** Arguments for a prefetch, or null when they cannot be derived safely from the message. */
-function deriveArgs(kind, tool, message, now) {
+function deriveArgs(kind, tool, message, now, stage = 'rule') {
   const props = propsOf(tool), required = requiredOf(tool);
   const fits = (args) => required.every((k) => Object.hasOwn(args, k)) && Object.keys(args).every((k) => Object.hasOwn(props, k) || !Object.keys(props).length) ? args : null;
   if (kind === 'url') {
     const url = String(message).match(URL_RE)?.[0].replace(/[.,;:!?]+$/, '');
-    if (!url) return null;
+    if (!url || !publicUrlPattern(url)) return null;
     if (props.urls) return fits({ urls: [url] });
     if (props.url) return fits({ url });
     return null;
   }
   if (kind === 'search') {
+    // The decision service never triggers a search prefetch: only the explicit rule, on a short message.
+    if (stage !== 'rule' || !prefetchableSearch(message)) return null;
     if (props.query) return fits({ query: searchQuery(message) });
     if (props.q) return fits({ q: searchQuery(message) });
     return null;
@@ -149,7 +174,7 @@ function createToolGate({ enabled, decide, boxes = DEFAULT_BOXES, isWriteTool, l
     const confidence = confidenceOf(result, selected);
     if (!(confidence >= value(minConfidence))) return { reason: 'low-confidence', confidence };
     const kind = Object.keys(boxes).find((k) => k !== 'drive' && (boxes[k] || []).includes(selected));
-    const args = kind ? deriveArgs(kind, offered.get(selected), message, now) : null;
+    const args = kind ? deriveArgs(kind, offered.get(selected), message, now, 'decision') : null;
     return { confidence, decision: args ? { tool: selected, args, mode: 'prefetch' } : { tool: selected, mode: 'require' } };
   }
 
@@ -195,4 +220,4 @@ function confidenceOf(result, id) {
   return Number.isFinite(result?.confidence) ? result.confidence : null;
 }
 
-module.exports = { createToolGate, searchQuery, diaryMonth, DEFAULT_BOXES, DEFAULT_MIN_CONFIDENCE };
+module.exports = { createToolGate, searchQuery, diaryMonth, publicUrlPattern, prefetchableSearch, DEFAULT_BOXES, DEFAULT_MIN_CONFIDENCE };

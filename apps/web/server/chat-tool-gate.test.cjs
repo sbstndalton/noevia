@@ -20,7 +20,7 @@ const sse = (...frames) => ({ ok: true, status: 200, body: (async function* () {
 const text = (t) => sse({ choices: [{ delta: { content: t } }] });
 const call = (name, args) => sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name, arguments: JSON.stringify(args) } }] } }] });
 
-async function run(t, { message, replies, gate, policy = () => 'allow', execute = async () => 'SYNTHETIC RESULT' }) {
+async function run(t, { message, replies, gate, policy = () => 'allow', execute = async () => 'SYNTHETIC RESULT', durableChat = null, boxes = BOXES }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-tool-gate-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const events = [];
   const res = new EventEmitter(); res.writeHead = () => {}; res.end = () => { res.writableEnded = true; res.emit('finish'); };
@@ -38,24 +38,24 @@ async function run(t, { message, replies, gate, policy = () => 'allow', execute 
     reasoningEffort: require('./reasoning-effort.cjs'), authService: { audit() {}, diaryEnabled: () => false },
     crypto: require('node:crypto'), path, fs, fetch, HISTORY_CAP: 20, DEFAULT_PROVIDER_ID: 'default', createToolExchange,
     currentWorkspace: () => ({ userId: 'synthetic-user', dir, assetDir: () => '/synthetic-only' }),
-    getProject: () => ({ id: 'fixture-project', model: 'answer-model', assets: [], toolboxes: ['web-search', 'files'] }),
+    getProject: () => ({ id: 'fixture-project', model: 'answer-model', assets: [], toolboxes: boxes.map((b) => b.id) }),
     skillsIndexFor: () => [], getProvider: () => ({ id: 'default', baseUrl: 'http://fixture.invalid' }), providerHeaders: () => ({}), autoRoles: () => null,
     visionDescriptions: new Map(), visionProbe: createVisionProbe({ fetchImpl: fetch }),
     chatSkillRouter: { select: async () => ({ loaded: [] }) }, oauthServerIds: () => new Set(), accountReady: () => false,
     chatToolRouter: { select: async (ids) => ({ ids, routed: false }) }, DEFAULT_TOOLBOXES: [], CONNECTOR_BOXES: new Set(), connectedBoxes: () => [],
     toolPolicy: { mode: (_u, name, write) => (write ? 'ask' : policy(name)) },
     requestScope: { getStore: () => ({ authn: { user: { id: 'synthetic-user', role: 'member' } }, workspace: { userId: 'synthetic-user' } }) },
-    resolveTools: (project, _model, blocked) => ({ tools: BOXES.filter((b) => project.toolboxes.includes(b.id)).flatMap((b) => b.tools).filter((x) => !blocked(x.function.name)), dropped: [] }),
+    resolveTools: (project, _model, blocked) => ({ tools: boxes.filter((b) => project.toolboxes.includes(b.id)).flatMap((b) => b.tools).filter((x) => !blocked(x.function.name)), dropped: [] }),
     isWriteTool: (name) => name === 'nc_webdav_write_file',
     rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: (r) => ({ text: String(r) }), diaryExtras: require('./diary-extras.cjs'),
     DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: () => {}, saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
     lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
-    allToolboxes: () => BOXES, chatWideApproved: () => false, awaitApproval: async () => 'deny', recordUsage() {}, recordToolUse() {},
+    allToolboxes: () => boxes, chatWideApproved: () => false, awaitApproval: async () => 'deny', recordUsage() {}, recordToolUse() {},
     executeToolCall: async (_p, name, args, _allowed, _signal, outcome) => { executed.push({ name, args: JSON.parse(args) }); return execute(name, outcome); },
-    ...(gate === undefined ? {} : { toolGate: gate }),
+    ...(gate === undefined ? {} : { toolGate: gate }), ...(durableChat ? { durableChat } : {}),
   });
   await handleChat({}, res, { projectId: 'fixture-project', chatId: 'fixture-chat', message });
-  return { bodies, executed, events };
+  return { bodies, executed, events, dir };
 }
 
 function fakeGate({ enabled = true, decide = async () => ({ selected: 'none', scores: { none: 1 }, source: 'configured' }) } = {}) {
@@ -67,8 +67,12 @@ function fakeGate({ enabled = true, decide = async () => ({ selected: 'none', sc
 test('flag off: the model request is byte-identical to a chat with no gate at all', async (t) => {
   const message = 'Search the latest synthetic widget news';
   const without = await run(t, { message, replies: [text('plain')] });
-  const { gate, logs } = fakeGate({ enabled: false, decide: async () => { throw Error('must not run'); } });
+  let decided = 0;
+  const { gate, logs } = fakeGate({ enabled: false, decide: async () => { decided++; throw Error('must not run'); } });
   const off = await run(t, { message, replies: [text('plain')], gate });
+  const vague = await run(t, { message: 'Take care of the synthetic thing', replies: [text('plain')], gate });
+  assert.equal(decided, 0, 'the decision service is never called with the flag off');
+  assert.equal(vague.executed.length, 0);
   assert.equal(JSON.stringify(off.bodies), JSON.stringify(without.bodies));
   assert.equal(off.bodies.length, 1);
   assert.equal(off.executed.length, 0);
@@ -148,4 +152,40 @@ test('decision stage: a write chosen by the service is never forced; an error fa
   const b = await run(t, { message: 'Take care of the synthetic thing', gate: broken.gate, replies: [text('ok')] });
   assert.equal(b.bodies.length, 1); assert.equal('tool_choice' in b.bodies[0], false);
   assert.ok(b.events.some((e) => e.type === 'done'));
+});
+
+test('decision stage: a read the account asks about is required, never pre-run', async (t) => {
+  const boxes = [...BOXES, { id: 'synthetic-diary-reads', tools: [fn('diary_read_today')] }];
+  const { gate, logs } = fakeGate({ decide: async () => ({ selected: 'diary_read_today', scores: { diary_read_today: 0.95, none: 0.05 }, source: 'configured' }) });
+  const r = await run(t, { message: 'What was on for the synthetic plan', gate, boxes, policy: (name) => (name === 'diary_read_today' ? 'ask' : 'allow'), replies: [text('prose'), text('prose again')] });
+  assert.equal(logs[0].mode, 'prefetch', 'the gate proposed a prefetch');
+  assert.equal(r.executed.length, 0, 'but an "ask" tool is never run without the approval card');
+  assert.deepEqual(r.bodies[0].tool_choice, { type: 'function', function: { name: 'diary_read_today' } });
+});
+
+test('a tool offered by two boxes is sent once in the forced choice and runs once', async (t) => {
+  const search = fn('tavily_search', { query: { type: 'string' } }, ['query']);
+  const boxes = [...BOXES, { id: 'research', tools: [search] }];
+  const { gate } = fakeGate();
+  const r = await run(t, { message: 'latest news on synthetic widgets', gate, boxes, replies: [text('answer')] });
+  assert.deepEqual(r.executed, [{ name: 'tavily_search', args: { query: 'latest news on synthetic widgets' } }]);
+});
+
+test('durable journal: the prefetched call is recorded like a model call and comes back on restore', async (t) => {
+  const { createChatTurns } = require('./chat-turns.cjs');
+  const real = createChatTurns({ enabled: true });
+  let started = null;
+  const durableChat = { enabled: true, start: (...args) => (started = real.start(...args)) };
+  const { gate } = fakeGate();
+  const r = await run(t, { message: 'latest news on synthetic widgets', gate, durableChat, replies: [text('answer from results')] });
+  const restored = createChatTurns({ enabled: true }).restore({ userId: 'synthetic-user', dir: r.dir }, started.id);
+  const call = restored.state.calls.find((c) => c.name === 'tavily_search');
+  assert.ok(call, 'prefetched call journaled');
+  assert.equal(call.status, 'completed');
+  assert.match(call.result, /SYNTHETIC RESULT/);
+  const toolMsg = restored.state.messages.find((m) => m.role === 'tool' && m.tool_call_id === call.id);
+  assert.ok(toolMsg, 'the tool_result message is rebuilt from the journal');
+  const asked = restored.state.messages.find((m) => m.tool_calls?.[0]?.id === call.id);
+  assert.equal(asked.tool_calls[0].function.name, 'tavily_search');
+  assert.equal(restored.next, 'completed');
 });
