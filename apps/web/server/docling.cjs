@@ -29,6 +29,19 @@ function documentName(name) {
   return last.length > 200 ? last.slice(-200) : last;
 }
 
+/**
+ * Header values are ByteStrings (fetch/undici): a name outside Latin-1 — any
+ * storage path can carry one, since names come from whatever the user or
+ * their storage server calls a file — throws a TypeError before a byte
+ * reaches the network, not an HTTP error the retry/permanent split below
+ * knows how to read. Percent-encoding keeps the trailing dot-suffix intact
+ * (server.py reads only that) and is always representable as a header value.
+ */
+function headerSafeName(name) {
+  const safe = /^[\x00-\xff]*$/.test(name) ? name : encodeURIComponent(name);
+  return safe.length > 200 ? safe.slice(-200) : safe;
+}
+
 async function extractDocument(name, bytes, { url = process.env.DOCLING_BASE_URL, fetchImpl = fetch } = {}) {
   if (!url) throw new Error('Document extraction is not configured.');
   const response = await fetchImpl(`${url.replace(/\/+$/, '')}/extract`, {
@@ -39,7 +52,7 @@ async function extractDocument(name, bytes, { url = process.env.DOCLING_BASE_URL
     // ("Documents/Tax Return 2024/W-2.pdf"), so send the last segment. Sending the whole path
     // made every document in a folder fail with HTTP 400 while a bare filename worked, which
     // is why a synthetic test did not catch it (2026-09-21).
-    headers: { 'Content-Type': 'application/octet-stream', 'X-Document-Name': documentName(name) },
+    headers: { 'Content-Type': 'application/octet-stream', 'X-Document-Name': headerSafeName(documentName(name)) },
     body: bytes,
     // Measured on DaServer (2 CPUs, CPU-only torch), not assumed:
     //   scanned prose, OCR   3.4 s/page
@@ -68,4 +81,4 @@ async function extractDocument(name, bytes, { url = process.env.DOCLING_BASE_URL
   return body;
 }
 
-module.exports = { extractDocument, supports, enabled, documentName, VERSION, FORMATS };
+module.exports = { extractDocument, supports, enabled, documentName, headerSafeName, VERSION, FORMATS };
