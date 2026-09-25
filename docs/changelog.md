@@ -8,6 +8,40 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release diary f6444b4 — 2026-09-25 (M2: Diary tenant assertion + month-file protection)
+
+### Services
+
+- **Web:** no code change — `cowork-web:f6444b4` recreated once so it holds `DIARY_TENANT_KEY` ([#321](https://github.com/sbstndalton/noevia/pull/321) web side now active).
+- **Diary:** [#321](https://github.com/sbstndalton/noevia/pull/321) per-request tenant assertion + scoped storage credentials (M2, closes #291 #292), [#326](https://github.com/sbstndalton/noevia/pull/326) month-file protection fix (closes #324) — deployed as `cowork-diary:f6444b4` via `deploy/examples/diary-overlay.sh f6444b4` (agent/ overlay on the running image; `requirements.txt` and `Dockerfile` unchanged since `9b532a8`).
+- **Model manager:** no change — `cowork-model-loader:5b6d9b6`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** live Compose Manager `docker-compose.yml` gained `DIARY_TENANT_KEY: ${DIARY_TENANT_KEY:-}` on both the `diary` and `web` services; `DIARY_TENANT_KEY` (32 random bytes, hex, generated on the host, never printed) added to `config/.env`. Backups: `.env.bak.before-m2`, `.env.bak.before-m2-key`, `.env.bak.before-diary-f6444b4`, `docker-compose.yml.bak.before-m2`, `docker-compose.override.yml.bak.before-m2`; image `cowork-diary:rollback-before-diary-overlay`.
+
+Order followed per docs/deployment.md "Diary tenant key (M2)": (1) compose wiring added, `compose config` clean
+with the key empty; (2) diary overlay to `f6444b4` with the key unset (appdata backup
+`ab_20260925_170701` verified first; diary logged "DIARY_TENANT_KEY is unset: accepting tenant requests
+without X-Cowork-Tenant-Assertion"; health via web 200); (3) key generated into `.env`, `web` recreated
+(healthy, `RestartCount=0`, env contains the key, no tenant warning); (4) `diary` recreated with the key.
+
+Verification after step 4: `cowork-diary-1` healthy, `RestartCount=0`; an unsigned tenant request from the
+web container (`GET /api/diary/status` with only the bearer + `X-Cowork-User-ID`) returned **401** and diary
+logged "tenant assertion rejected: missing or malformed assertion"; `/api/health` via web 200; every other
+`cowork-*` container and Cloudflared kept identical container IDs; public `/` 200, `/api/profile` 401.
+Not verified here (needs an authenticated browser session, `LEGACY_AUTH_COMPAT=false`): a real Diary tab
+read/write through the signed path, covered by the unit suites (diary pytest 415, web
+`diary-tenant-assertion.test.cjs`). Direct sidecar clients using `DIARY_LEGACY_USER_ID` stop working now that
+the key is set.
+
+Rollback, in this order only: remove `DIARY_TENANT_KEY` from `config/.env` (or restore
+`.env.bak.before-m2-key`) and recreate `diary` with `tools/preflight/up.sh ... diary`; then recreate `web` the
+same way. Never roll the diary image back to `9b532a8` while web still holds the key; once the key is gone,
+`.env.bak.before-diary-f6444b4` + `up.sh ... diary` returns the previous image.
+
+---
+
 ## Release f6444b4 — 2026-09-25 (web-only: fix boot crash from 0d602d6 retry)
 
 ### Services
