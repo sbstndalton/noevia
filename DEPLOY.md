@@ -53,6 +53,8 @@ credentials and model management, which the wizard does not cover.
 | Variable | Purpose | How to obtain | Secret | Status |
 | --- | --- | --- | --- | --- |
 | `DIARY_AUTH_TOKEN` | Shared bearer token: web→diary API calls, used by the web server to authenticate to the sidecar | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HAS-SAFE-DEFAULT` (empty runs the internal web→diary link unauthenticated in LAN-only mode with a log warning; set it before any network exposure) |
+| `DIARY_TENANT_KEY` | HMAC key for the per-request web→diary tenant assertion (`X-Cowork-Tenant-Assertion`); with it set, remote storage credentials travel only when the sidecar needs them | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HAS-SAFE-DEFAULT` (recommended; on an existing install restart diary before web when first setting it) |
+| `DIARY_ALLOW_OPEN` | `1` declares the LAN-only open mode | Leave empty | no | With `DIARY_AUTH_TOKEN` and `DIARY_TENANT_KEY` both empty the diary refuses to start unless this is `1` |
 | `INFERENCE_BASE_URL` | OpenAI-compatible chat endpoint used by both containers (chat completions + embeddings). Should end in `/v1` | Ask the human for their endpoint, e.g. `http://host.docker.internal:11434/v1` (Ollama), a LAN llama.cpp server, or a hosted OpenAI-compatible API | no | `HAS-SAFE-DEFAULT` (the wizard's provider step collects this in-app; setting it here only pre-seeds the default) |
 | `INFERENCE_API_KEY` | Bearer key for that endpoint, if it requires one | Ask the human | **yes** | `HUMAN-REQUIRED` if the endpoint authenticates; otherwise leave empty |
 | `PUBLIC_ORIGIN` | The URL humans type into the browser (scheme + host + port). Locks the auth origin allow-list and derives the passkey ID | The wizard prefills it from the address the operator loaded the app at and writes what they confirm; set it here only to pre-seed. `https://` is recommended; a private-network `http://` address (LAN IP, bare LAN hostname, localhost) is accepted with a warning, a public `http://` domain is not | no | `HAS-SAFE-DEFAULT` (`http://localhost:8021`) |
@@ -113,8 +115,10 @@ Then fill in only the rows the operator actually chose, e.g.:
 
 ```sh
 TOKEN="$(openssl rand -hex 32)"   # confirm with the human that generating is OK
+TENANT_KEY="$(openssl rand -hex 32)"
 cat >> .env <<EOF
 DIARY_AUTH_TOKEN=${TOKEN}
+DIARY_TENANT_KEY=${TENANT_KEY}
 INFERENCE_BASE_URL=<optional-pre-seed>
 INFERENCE_API_KEY=<ask-the-human-if-needed>
 PUBLIC_ORIGIN=<optional-pre-seed; the wizard sets this otherwise>
@@ -289,6 +293,9 @@ docker compose exec -T diary find /app/data/users -path '*/corpus/*' -name '*.md
 - **Auth disabled warning in logs** (`API authentication is disabled`):
   `DIARY_AUTH_TOKEN` is empty. Browser login is still required, but the internal
   diary connection is unprotected. Set the service token before network exposure.
+- **Diary exits with `Refusing to start: DIARY_AUTH_TOKEN and DIARY_TENANT_KEY are
+  both empty`**: set both (preferred), or set `DIARY_ALLOW_OPEN=1` to run the
+  LAN-only open mode deliberately.
 
 ## 6. Non-goals — things an agent must never do
 
