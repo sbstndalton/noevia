@@ -6,6 +6,7 @@ import { ShellIcon } from '../ShellIcon';
 import { Switch } from '../Switch';
 import { MODE_LABEL, PermissionControl } from './PermissionControl';
 import type { ToolMode } from './PermissionControl';
+import '../../i18n/settings';
 
 interface Tool { name: string; label: string; write: boolean; mode: ToolMode }
 interface Nextcloud {

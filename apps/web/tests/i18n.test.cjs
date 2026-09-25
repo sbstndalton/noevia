@@ -3,11 +3,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),ts=require('typescript');
 const dir=path.join(__dirname,'../src/i18n');
 const cache={},warnings=[];
+// name is relative to src/i18n ('core', 'settings/de-DE'); imports resolve from the importing file.
 function load(name){
+  name=path.posix.normalize(name);
   if(cache[name])return cache[name];
   const exports={};cache[name]=exports;
   const code=ts.transpileModule(fs.readFileSync(path.join(dir,name+'.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  vm.runInNewContext(code,{exports,Intl,console:{warn:(...a)=>warnings.push(a)},Promise,require:(m)=>{if(!m.startsWith('./'))throw Error('unexpected import '+m);return load(m.slice(2));}});
+  const here=path.posix.dirname(name);
+  vm.runInNewContext(code,{exports,Intl,console:{warn:(...a)=>warnings.push(a)},Promise,require:(m)=>{if(!/^\.\.?\//.test(m))throw Error('unexpected import '+m);const target=path.posix.join(here,m);if(target.startsWith('..'))throw Error('import outside src/i18n '+m);return load(target);}});
   return exports;
 }
 const core=load('core');
@@ -17,7 +20,10 @@ const EN=load('en-GB').EN_GB;
 // The app loads non-English catalogues as chunks; node registers them directly for the checks below.
 const FILES={'de-DE':'DE_DE','es-ES':'ES_ES','fr-FR':'FR_FR','it-IT':'IT_IT','nb-NO':'NB_NO','nl-NL':'NL_NL','pt-BR':'PT_BR','sv-SE':'SV_SE'};
 assert.equal(Object.keys(core.CATALOGUES).join(),'en-GB,en-US','only English is bundled eagerly');
-for(const [l,name] of Object.entries(FILES))core.registerCatalogue(l,load(l)[name]);
+assert.equal(Object.keys(core.SEGMENTS.settings).length,0,'the Settings segment is not loaded with the core');
+const ENS=load('settings/en-GB').EN_GB_SETTINGS;
+load('settings/index');// what the Settings chunk does: registers the English Settings segment
+for(const [l,name] of Object.entries(FILES)){core.registerCatalogue(l,load(l)[name]);core.registerSegment('settings',l,load('settings/'+l)[name+'_SETTINGS']);}
 const NON_BASE=Object.keys(core.CATALOGUES).filter(l=>l!=='en-GB');
 
 test('every supported account locale has a catalogue, and nothing else does',()=>{
@@ -84,7 +90,9 @@ test('system locale: browser languages in order, bare languages and regions, Eng
 test('catalogues: no keys outside English, matching placeholders, and coverage reported',()=>{
   const lines=[];
   for(const locale of NON_BASE){
+    for(const part of ['base','settings'])same(core.coverage(locale,part).extra,[],`${locale} ${part} segment has keys its English segment does not`);
     const c=core.coverage(locale);
+    assert.equal(c.total,Object.keys(EN).length+Object.keys(ENS).length,'coverage spans both segments');
     same(c.extra,[],`${locale} has keys English does not: ${c.extra.join(', ')}`);
     same(c.placeholderMismatch,[],`${locale} placeholders differ: ${c.placeholderMismatch.join(', ')}`);
     lines.push(`${locale} ${c.translated}/${c.total} (${Math.round(100*c.translated/c.total)}%)`);
@@ -92,8 +100,8 @@ test('catalogues: no keys outside English, matching placeholders, and coverage r
     if(locale!=='en-US')same(c.missing,[],`${locale} is missing: ${c.missing.join(', ')}`);
   }
   console.log('i18n coverage: '+lines.join(' · '));
-  const us=load('en-US').EN_US;
-  for(const [k,v] of Object.entries(us))assert.notEqual(v,EN[k],`en-US repeats British text for ${k}`);
+  const us={...load('en-US').EN_US,...load('settings/en-US').EN_US_SETTINGS};
+  for(const [k,v] of Object.entries(us))assert.notEqual(v,EN[k]??ENS[k],`en-US repeats British text for ${k}`);
 });
 
 test('the completeness check really fails on an extra key and a broken placeholder',()=>{
@@ -108,15 +116,18 @@ test('the completeness check really fails on an extra key and a broken placehold
 });
 
 test('plural keys come in pairs, and catalogues are bundled, not fetched',()=>{
-  const plural=Object.keys(EN).filter(k=>/\.(one|other)$/.test(k)).map(k=>k.replace(/\.(one|other)$/,''));
-  for(const base of new Set(plural))assert.ok(EN[base+'.one']&&EN[base+'.other'],base);
-  for(const f of fs.readdirSync(dir)){
+  const ALL={...EN,...ENS};
+  const plural=Object.keys(ALL).filter(k=>/\.(one|other)$/.test(k)).map(k=>k.replace(/\.(one|other)$/,''));
+  for(const base of new Set(plural))assert.ok(ALL[base+'.one']&&ALL[base+'.other'],base);
+  const files=fs.readdirSync(dir).flatMap(f=>fs.statSync(path.join(dir,f)).isDirectory()?fs.readdirSync(path.join(dir,f)).map(g=>f+'/'+g):[f]);
+  assert.ok(files.includes('settings/de-DE.ts'));
+  for(const f of files){
     const src=fs.readFileSync(path.join(dir,f),'utf8');
     assert.doesNotMatch(src,/\bfetch\(/,`${f} fetches at runtime`);
     // Dynamic imports only in loaders.ts, and only literal paths to a supported catalogue.
     const imports=[...src.matchAll(/import\(([^)]*)\)/g)].map(m=>m[1]);
     if(f!=='loaders.ts'){assert.equal(imports.length,0,`${f} imports at runtime`);continue;}
-    for(const arg of imports)assert.match(arg,/^'\.\/(de-DE|es-ES|fr-FR|it-IT|nb-NO|nl-NL|pt-BR|sv-SE)'$/,`non-literal import ${arg}`);
+    for(const arg of imports)assert.match(arg,/^'\.\/(settings\/)?(de-DE|es-ES|fr-FR|it-IT|nb-NO|nl-NL|pt-BR|sv-SE)'$/,`non-literal import ${arg}`);
   }
 });
 
@@ -131,6 +142,9 @@ test('every appearance sync status useAppearance can report has a translation in
 test('the chunk loader map holds only supported non-English ids; anything else never imports',async()=>{
   const loaders=load('loaders');
   same(Object.keys(loaders.LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.SETTINGS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  for(const bad of ['xx-XX','../en-GB','__proto__','constructor','']){assert.equal(await loaders.loadSegment('settings',bad,{}),false,bad);}
+  assert.equal(await loaders.loadSegment('__proto__','de-DE'),false,'an unknown segment loads nothing');
   let calls=0;const spy={'de-DE':()=>{calls++;return Promise.resolve({});}};
   for(const bad of ['xx-XX','../en-GB','__proto__','constructor','toString','',"de-DE'"])assert.equal(await loaders.loadCatalogue(bad,spy),false,bad);
   assert.equal(calls,0,'an unsupported id called a loader');
@@ -173,4 +187,58 @@ test('key names follow the locale: Strg in German, Maj in French, Ctrl in Englis
   }
   // The German shortcut note and the key name agree.
   assert.match(core.translate('de-DE', 'keyboard.otherNote'), /Strg/);
+});
+
+// Shell strings the first screen shows before any Settings code has loaded.
+const SHELL_ALLOW=/^(settings\.title|capabilities\.unavailable|keyboard\.(searchShortcuts|noMatch|action\..+|group\..+))$/;
+test('the base English catalogue holds no Settings-screen string beyond the shell allowlist',()=>{
+  const settingsInBase=Object.keys(EN).filter(k=>k.startsWith('settings.'));
+  same(settingsInBase,['settings.title'],'settings.* in the base catalogue');
+  const stray=Object.keys(EN).filter(k=>/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers)\./.test(k)&&!SHELL_ALLOW.test(k));
+  same(stray,[],'Settings-only keys in the base catalogue');
+  // No key is defined in both segments, and the base catalogue module never imports the segment.
+  same(Object.keys(ENS).filter(k=>k in EN),[]);
+  assert.doesNotMatch(fs.readFileSync(path.join(dir,'core.ts'),'utf8'),/^import \{[^}]*\} from '\.\/settings/m,'core imports Settings strings at runtime');
+  // Only the Settings and Customise code registers the English segment.
+  const users=[];(function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){if(f!=='i18n')walk(p);}else if(/\.tsx?$/.test(f)&&/i18n\/settings['\/]/.test(fs.readFileSync(p,'utf8')))users.push(path.relative(path.join(__dirname,'../src'),p));}})(path.join(__dirname,'../src'));
+  for(const u of users)assert.match(u,/^components\/(SettingsShell|connectors\/|models\/)/,`${u} pulls the Settings strings into its chunk`);
+});
+
+test('Settings keys: English until the segment arrives, key by key, and the key itself if unregistered',async()=>{
+  assert.equal(core.translate('de-DE','settings.backToApp'),'Zurück zur App');
+  const savedDe=core.SEGMENTS.settings['de-DE'];delete core.SEGMENTS.settings['de-DE'];
+  try{
+    assert.equal(core.translate('de-DE','settings.backToApp'),'Back to app','absent segment falls back to English');
+    assert.equal(core.translate('de-DE','common.cancel'),'Abbrechen','the base still translates');
+    core.registerSegment('settings','de-DE',{'settings.search':'Einstellungen durchsuchen'});
+    assert.equal(core.translate('de-DE','settings.backToApp'),'Back to app','a partial segment falls back per key');
+    assert.equal(core.translate('de-DE','settings.search'),'Einstellungen durchsuchen');
+  }finally{core.SEGMENTS.settings['de-DE']=savedDe;}
+  const savedEn=core.SEGMENTS.settings['en-GB'];delete core.SEGMENTS.settings['en-GB'];
+  try{
+    same(core.activeSegments(),[]);
+    assert.equal(core.translate('fr-FR','settings.title'),core.CATALOGUES['fr-FR']['settings.title'],'shell keys never depend on the segment');
+    assert.equal(core.translate('en-GB','settings.backToApp'),'settings.backToApp','without the Settings code an unknown key renders as the key');
+  }finally{core.SEGMENTS.settings['en-GB']=savedEn;}
+  core.registerSegment('settings','xx-XX',{});assert.ok(!('xx-XX' in core.SEGMENTS.settings));
+  // A failed segment chunk logs once, is not retried, and leaves the base catalogue alone.
+  const loaders=load('loaders');
+  const savedPt=core.SEGMENTS.settings['pt-BR'];delete core.SEGMENTS.settings['pt-BR'];
+  let tries=0;const bad={'pt-BR':()=>{tries++;return Promise.reject(Error('chunk 404'));}};
+  try{
+    warnings.length=0;
+    assert.equal(loaders.catalogueSettled('pt-BR'),false);
+    assert.equal(await loaders.loadSegment('settings','pt-BR',bad),false);
+    assert.equal(await loaders.loadSegment('settings','pt-BR',bad),false);
+    assert.equal(tries,1);assert.equal(warnings.length,1);
+    assert.equal(loaders.catalogueSettled('pt-BR'),true,'a failed segment does not keep useT waiting');
+    assert.equal(core.translate('pt-BR','settings.backToApp'),'Back to app');
+    assert.equal(core.translate('pt-BR','common.cancel'),core.CATALOGUES['pt-BR']['common.cancel']);
+  }finally{core.SEGMENTS.settings['pt-BR']=savedPt;}
+  let ok=0;const good={'nb-NO':()=>{ok++;return Promise.resolve({'settings.search':'Søk'});}};
+  const savedNb=core.SEGMENTS.settings['nb-NO'];delete core.SEGMENTS.settings['nb-NO'];
+  try{
+    const [a,b]=await Promise.all([loaders.loadSegment('settings','nb-NO',good),loaders.loadSegment('settings','nb-NO',good)]);
+    assert.equal(a&&b,true);assert.equal(ok,1);assert.equal(core.translate('nb-NO','settings.search'),'Søk');
+  }finally{core.SEGMENTS.settings['nb-NO']=savedNb;}
 });
