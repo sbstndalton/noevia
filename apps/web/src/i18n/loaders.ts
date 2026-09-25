@@ -52,6 +52,19 @@ export const DIARY_LOADERS: Record<string, () => Promise<Catalogue>> = {
   'pt-BR': () => import('./diary/pt-BR').then((m) => m.PT_BR_DIARY),
   'sv-SE': () => import('./diary/sv-SE').then((m) => m.SV_SE_DIARY),
 };
+
+/** The Customise segment of each locale (#293). Requested only once PluginsView has loaded and
+ *  registered its English part (customise/index.ts), never on the first screen. */
+export const CUSTOMISE_LOADERS: Record<string, () => Promise<Catalogue>> = {
+  'de-DE': () => import('./customise/de-DE').then((m) => m.DE_DE_CUSTOMISE),
+  'es-ES': () => import('./customise/es-ES').then((m) => m.ES_ES_CUSTOMISE),
+  'fr-FR': () => import('./customise/fr-FR').then((m) => m.FR_FR_CUSTOMISE),
+  'it-IT': () => import('./customise/it-IT').then((m) => m.IT_IT_CUSTOMISE),
+  'nb-NO': () => import('./customise/nb-NO').then((m) => m.NB_NO_CUSTOMISE),
+  'nl-NL': () => import('./customise/nl-NL').then((m) => m.NL_NL_CUSTOMISE),
+  'pt-BR': () => import('./customise/pt-BR').then((m) => m.PT_BR_CUSTOMISE),
+  'sv-SE': () => import('./customise/sv-SE').then((m) => m.SV_SE_CUSTOMISE),
+};
 /** The model manager segment of each locale (#293). Requested only once ModelManagerPage has
  *  loaded and registered its English part (models/index.ts), never on the first screen. */
 export const MODELS_LOADERS: Record<string, () => Promise<Catalogue>> = {
@@ -64,7 +77,7 @@ export const MODELS_LOADERS: Record<string, () => Promise<Catalogue>> = {
   'pt-BR': () => import('./models/pt-BR').then((m) => m.PT_BR_MODELS),
   'sv-SE': () => import('./models/sv-SE').then((m) => m.SV_SE_MODELS),
 };
-const SEGMENT_LOADERS: Record<Segment, Record<string, () => Promise<Catalogue>>> = { settings: SETTINGS_LOADERS, projects: PROJECTS_LOADERS, diary: DIARY_LOADERS, models: MODELS_LOADERS };
+const SEGMENT_LOADERS: Record<Segment, Record<string, () => Promise<Catalogue>>> = { settings: SETTINGS_LOADERS, projects: PROJECTS_LOADERS, diary: DIARY_LOADERS, customise: CUSTOMISE_LOADERS, models: MODELS_LOADERS };
 
 const pending = new Map<string, Promise<boolean>>();
 const failed = new Set<string>();
