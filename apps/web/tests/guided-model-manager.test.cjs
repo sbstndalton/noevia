@@ -29,7 +29,9 @@ test('verdict: fits with headroom, tight within 10% (at least 1 GiB), no when ov
 test('budget prefers the configured budget, then the largest GPU incl. shared memory, then RAM',()=>{
   assert.equal(g.budgetFor(14,null).gib,14);
   const hw={systemGB:64,gpus:[{name:'Synthetic iGPU',capacityGB:4,sharedGB:28},{name:'Small',capacityGB:8,sharedGB:null}]};
-  assert.deepEqual(g.budgetFor(null,hw),{gib:32,source:'Synthetic iGPU (dedicated + shared memory)'});
+  assert.deepEqual(g.budgetFor(null,hw),{gib:32,source:'Synthetic iGPU (dedicated + shared memory)',kind:'gpu-shared',gpu:'Synthetic iGPU'});
+  // kind (and gpu) let the panel phrase the source in the interface language (#293).
+  assert.equal(g.budgetFor(14,null).kind,'configured');assert.equal(g.budgetFor(null,{systemGB:32,gpus:[]}).kind,'system');
   assert.equal(g.budgetFor(null,{systemGB:32,gpus:[]}).gib,32);
   assert.equal(g.budgetFor(null,{systemGB:null,gpus:[]}),null);
 });
@@ -44,7 +46,7 @@ test('recommendation keeps q8_0 at the largest comfortable context and never goe
   const q5=g.recommend(nine,tightBudget,want);assert.ok(['q5_1','q5_0'].includes(q5.kv),q5.text);assert.ok(q5.ctx>=want);
   for(const budget of [8.8,9,9.5,10,12,20,40])for(const want of [0,65536,262144]){const x=g.recommend(nine,budget,want);if(x.kind==='use')assert.ok(!g.belowKvFloor(x.kv),`${budget}/${want}: ${x.kv}`);}
   const huge=g.recommend({...nine,modelGib:20,moe:true},14);
-  assert.equal(huge.kind,'smaller');assert.match(huge.text,/smaller quantization or configure CPU expert offload/);
+  assert.equal(huge.kind,'smaller');assert.match(huge.text,/smaller quantization or configure CPU expert offload/);assert.equal(huge.moe,true);assert.ok(huge.floorGib>14);
   assert.equal(g.recommend({...nine,chat:false},14).kind,'unknown');
   assert.match(g.recommend({...nine,sizeable:false,rows:[]},14).text,/Measure context/);
 });

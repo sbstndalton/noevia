@@ -54,5 +54,5 @@ test('rename/remove stays available for an ordinary (non-system) model in Config
   const src = read('src/components/models/ConfigureTab.tsx');
   // Regression guard for #81: the gate is `!isSystemModel(name)`, so any model whose id does not
   // start with "laya" must still see the Rename or delete disclosure once its settings exist.
-  assert.match(src, /\{data\.exists && !isSystemModel\(name\) && <details className="mm-disclosure"><summary>Rename or delete<\/summary>/);
+  assert.match(src, /\{data\.exists && !isSystemModel\(name\) && <details className="mm-disclosure"><summary>\{t\('mm.editor.renameOrDelete'\)\}<\/summary>/);
 });
