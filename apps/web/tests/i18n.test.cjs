@@ -334,8 +334,8 @@ test('no key is defined in more than one segment, and the base catalogue module 
 });
 
 // Generic version of the Settings-specific lifecycle test below, run once per lazy segment with a
-// representative key from each (settings.backToApp / projects.title / diary.title).
-const REP_KEY={settings:'settings.backToApp',projects:'projects.title',diary:'diary.title',customise:'customise.title',models:'mm.title'};
+// representative key from each (settings.back / projects.title / diary.title).
+const REP_KEY={settings:'settings.back',projects:'projects.title',diary:'diary.title',customise:'customise.title',models:'mm.title'};
 for(const s of SEGMENT_NAMES){
   test(`${s} keys: English until the segment arrives, key by key, and the key itself if unregistered`,async()=>{
     const key=REP_KEY[s];
@@ -378,7 +378,7 @@ test('Settings keys: partial segment falls back per key, and shell keys never de
   const savedDe=core.SEGMENTS.settings['de-DE'];
   try{
     core.registerSegment('settings','de-DE',{'settings.search':'Einstellungen durchsuchen'});
-    assert.equal(core.translate('de-DE','settings.backToApp'),'Back to app','a partial segment falls back per key');
+    assert.equal(core.translate('de-DE','settings.back'),'Back','a partial segment falls back per key');
     assert.equal(core.translate('de-DE','settings.search'),'Einstellungen durchsuchen');
   }finally{core.SEGMENTS.settings['de-DE']=savedDe;}
   assert.equal(core.translate('fr-FR','settings.title'),core.CATALOGUES['fr-FR']['settings.title'],'shell keys never depend on the segment');

@@ -36,6 +36,10 @@ export function modelChoiceLabel(
     if (!choice.provider && installed && !installed.some(m => m.name === choice.model)) return 'No model selected';
     return choice.model;
   }
+  // No choice at all means a free chat (no project): it starts on Auto rather than whatever
+  // happens to be loaded (#305) — loading a specific model for every quick chat wastes a load
+  // and energy, and it is not a choice the person made for this chat.
+  if (!choice) return 'Auto (Fast/Smart)';
   return installed?.find(m => m.loaded)?.name ?? LOCAL_MODEL_FALLBACK;
 }
 

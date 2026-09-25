@@ -64,6 +64,7 @@ import { mergeTranscripts } from './transcript-merge';
 import { adoptMergedTranscript, enqueueKeyed, latestGate, resolveLoadedHistory, shouldSaveChat, upsertChatMeta } from './chat-save';
 import { readLastPlace, writeLastPlace, clearLastPlace } from './last-view';
 import { currentRoutingDecision } from './current-routing';
+import { initialNavState, nextNavState, resolveSettingsClose, type NavState } from './settings-nav';
 import { useT } from './i18n';
 
 type View =
@@ -88,12 +89,14 @@ export default function App(): JSX.Element {
   const [settingsKey, setSettingsKey] = useState(0);
   const openSettings = (section: SettingsSection = 'general') => {
     // Connecting services moved to Plugins (user review, 2026-09-19); old links land there.
-    if (section === 'connectors') { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'plugins' }); return; }
+    if (section === 'connectors') { pendingFromSettingsRef.current = 'connectors'; setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'plugins' }); return; }
     setSettingsSection(section); setSettingsKey((k) => k + 1); setSettingsOpen(true); };
-  // `model` opens that model's tuning view directly; without it, the model list.
-  const openModelManager = (model?: string) => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'models', model }); };
+  // `model` opens that model's tuning view directly; without it, the model list. Models &
+  // routing is always treated as a Settings page (it has its own "back to Settings" control),
+  // so it never becomes the view Settings' close returns to, regardless of how it was opened.
+  const openModelManager = (model?: string) => { pendingFromSettingsRef.current = 'models'; setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'models', model }); };
   useEffect(() => { const open = () => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'plugins' }); }; window.addEventListener('noevia:open-customise', open); return () => window.removeEventListener('noevia:open-customise', open); }, []);
-  useEffect(() => { const open = (e: Event) => { const model = (e as CustomEvent<{ model?: string }>).detail?.model; setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'models', model }); }; window.addEventListener('noevia:open-model-settings', open); return () => window.removeEventListener('noevia:open-model-settings', open); }, []);
+  useEffect(() => { const open = (e: Event) => { const model = (e as CustomEvent<{ model?: string }>).detail?.model; pendingFromSettingsRef.current = 'models'; setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'models', model }); }; window.addEventListener('noevia:open-model-settings', open); return () => window.removeEventListener('noevia:open-model-settings', open); }, []);
   const [settingsOpen, setSettingsOpen] = useState(() => { const fresh = !!sessionStorage.getItem('cowork-new-account'); sessionStorage.removeItem('cowork-new-account'); return fresh || !!readLastPlace()?.settings; });
   const [appMode, setAppMode] = useState<'chat'|'code'>('chat');
   // The Code page is chosen in the shared sidebar, so it lives here rather than in the workspace.
@@ -125,6 +128,18 @@ export default function App(): JSX.Element {
   // Latest view for async callbacks (a delete resolving after the person moved elsewhere).
   const viewRef = useRef(view);
   viewRef.current = view;
+  // #304: Settings-launched detours (Models & routing, Customise, Archived, Diary) must never
+  // become the view Settings' close/back returns to — otherwise closing Settings from one of
+  // them just re-shows the detour, and its own "back to Settings" affordance re-opens Settings,
+  // looping forever. `pendingFromSettingsRef` is set immediately before a detour's setView so
+  // the effect below can tell it apart from a real navigation.
+  const navRef = useRef<NavState<View>>(initialNavState(view));
+  const pendingFromSettingsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (view.kind === 'preview') return;
+    navRef.current = nextNavState(navRef.current, view, { fromSettingsSection: pendingFromSettingsRef.current });
+    pendingFromSettingsRef.current = null;
+  }, [view]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1304,11 +1319,19 @@ export default function App(): JSX.Element {
           initialSection={settingsSection}
           onSection={setSettingsSection}
           appearanceStatus={appearanceStatus} appearanceError={appearanceError} retryAppearance={retryAppearance}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            // #304: land back where the user actually was, not on a Settings-launched detour
+            // (Models & routing, Customise, Archived, Diary) — forgetting it now means a second
+            // close never re-shows it, even if a detour's own "back" re-opened Settings.
+            const { view: target, next } = resolveSettingsClose(navRef.current);
+            navRef.current = next;
+            setView(target);
+            setSettingsOpen(false);
+          }}
           onClosing={() => { if (view.kind !== 'preview') writeLastPlace({ user: accountId, view, settings: null }); }}
           onStartChat={startFreeChatWith}
-          onOpenArchived={() => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'archived' }); }}
-          onOpenDiary={diaryEnabled ? () => { setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'diary' }); } : undefined}
+          onOpenArchived={() => { pendingFromSettingsRef.current = 'data'; setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'archived' }); }}
+          onOpenDiary={diaryEnabled ? () => { pendingFromSettingsRef.current = 'diary'; setSettingsOpen(false); setAppMode('chat'); setView({ kind: 'diary' }); } : undefined}
           theme={theme}
           onTheme={setTheme}
           preference={preference}
