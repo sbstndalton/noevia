@@ -28,6 +28,9 @@ const SEGMENT_DEFS={
   // having already registered the segment, rather than each importing it themselves.
   projects:{suffix:'PROJECTS',owners:/^components\/ProjectsView$/},
   diary:{suffix:'DIARY',owners:/^components\/DiaryView$/},
+  // Customise (PluginsView: skills, connectors, plugins) is the only owner; it also renders
+  // ConnectorsSettings, which pulls in the settings segment on its own account.
+  customise:{suffix:'CUSTOMISE',owners:/^components\/plugins\/PluginsView$/},
 };
 const SEGMENT_NAMES=Object.keys(SEGMENT_DEFS);
 assert.equal(Object.keys(core.CATALOGUES).join(),'en-GB,en-US','only English is bundled eagerly');
@@ -175,6 +178,7 @@ test('the chunk loader map holds only supported non-English ids; anything else n
   same(Object.keys(loaders.SETTINGS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   same(Object.keys(loaders.PROJECTS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   same(Object.keys(loaders.DIARY_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.CUSTOMISE_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   for(const bad of ['xx-XX','../en-GB','__proto__','constructor','']){assert.equal(await loaders.loadSegment('settings',bad,{}),false,bad);}
   assert.equal(await loaders.loadSegment('__proto__','de-DE'),false,'an unknown segment loads nothing');
   let calls=0;const spy={'de-DE':()=>{calls++;return Promise.resolve({});}};
@@ -326,7 +330,7 @@ test('no key is defined in more than one segment, and the base catalogue module 
 
 // Generic version of the Settings-specific lifecycle test below, run once per lazy segment with a
 // representative key from each (settings.backToApp / projects.title / diary.title).
-const REP_KEY={settings:'settings.backToApp',projects:'projects.title',diary:'diary.title'};
+const REP_KEY={settings:'settings.backToApp',projects:'projects.title',diary:'diary.title',customise:'customise.title'};
 for(const s of SEGMENT_NAMES){
   test(`${s} keys: English until the segment arrives, key by key, and the key itself if unregistered`,async()=>{
     const key=REP_KEY[s];
