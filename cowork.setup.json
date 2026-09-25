@@ -10,6 +10,26 @@
     "fresh_storage": "Docker-managed web-data and diary-data volumes; initializer refuses existing deployments",
     "existing_storage": "Preserve .env and COWORK_STATE_DIR bindings; no implicit migration"
   },
+  "overlays": [
+    {
+      "compose_file": "compose.llamacpp.yaml",
+      "adds": ["llama", "model-loader"],
+      "required_env": ["LLAMACPP_RENDER_DEVICE", "LLAMACPP_CARD_DEVICE", "LLAMACPP_MODELS_DIR",
+        "LLAMACPP_CONFIG_DIR", "LLAMACPP_CACHE_DIR", "LLAMACPP_EMBED_MODEL", "LLAMACPP_CHAT_MODEL",
+        "LLAMACPP_AUX_MODEL", "MODEL_MANAGER_VERSION", "MODEL_LOADER_TOKEN"]
+    },
+    {
+      "compose_file": "compose.docling.yaml",
+      "adds": ["docling"],
+      "required_env": []
+    },
+    {
+      "compose_file": "compose.embed.yaml",
+      "adds": ["embed"],
+      "required_env": ["LLAMACPP_MODELS_DIR", "EMBED_MODEL_FILE"],
+      "note": "Reproduces the live embed service (docs/deployment.md 'Release ea57c83'; docs/spec-service-boundaries.md finding 8). Self-wires EMBEDDING_BASE_URL=http://embed:8080/v1. Fields marked [live: verify] in the file need confirming against the live box."
+    }
+  ],
   "preconditions": [
     {
       "check": "docker --version",
@@ -36,7 +56,23 @@
       "secret": true,
       "human_required": false,
       "default": "",
-      "note": "Optional. Empty runs the internal web->diary connection unauthenticated (LAN-only mode) and just logs a warning; it does not block boot. Generate with: openssl rand -hex 32 before any network exposure."
+      "note": "Optional only together with DIARY_ALLOW_OPEN=1. With DIARY_AUTH_TOKEN and DIARY_TENANT_KEY both empty the diary sidecar refuses to start unless DIARY_ALLOW_OPEN=1 declares the LAN-only open mode. Generate with: openssl rand -hex 32."
+    },
+    {
+      "name": "DIARY_TENANT_KEY",
+      "purpose": "HMAC key for the per-request Diary tenant assertion (X-Cowork-Tenant-Assertion); shared by web and diary only",
+      "secret": true,
+      "human_required": false,
+      "default": "",
+      "note": "Recommended. Generate with: openssl rand -hex 32. When first setting it on an existing install, restart the diary sidecar before web (the sidecar accepts unsigned requests only while its own key is unset). Rollback: unset it on web first, then on diary. With it set, remote storage credentials are sent only when the sidecar asks for them."
+    },
+    {
+      "name": "DIARY_ALLOW_OPEN",
+      "purpose": "Explicitly allow the LAN-only open mode (no DIARY_AUTH_TOKEN and no DIARY_TENANT_KEY)",
+      "secret": false,
+      "human_required": false,
+      "default": "",
+      "note": "Only the literal 1 counts. Leave empty; set it only for a trusted single-machine install that deliberately runs without both secrets."
     },
     {
       "name": "INFERENCE_BASE_URL",

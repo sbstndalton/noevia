@@ -53,6 +53,8 @@ credentials and model management, which the wizard does not cover.
 | Variable | Purpose | How to obtain | Secret | Status |
 | --- | --- | --- | --- | --- |
 | `DIARY_AUTH_TOKEN` | Shared bearer token: web→diary API calls, used by the web server to authenticate to the sidecar | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HAS-SAFE-DEFAULT` (empty runs the internal web→diary link unauthenticated in LAN-only mode with a log warning; set it before any network exposure) |
+| `DIARY_TENANT_KEY` | HMAC key for the per-request web→diary tenant assertion (`X-Cowork-Tenant-Assertion`); with it set, remote storage credentials travel only when the sidecar needs them | Generate on the Docker host: `openssl rand -hex 32` | **yes** | `HAS-SAFE-DEFAULT` (recommended; on an existing install restart diary before web when first setting it) |
+| `DIARY_ALLOW_OPEN` | `1` declares the LAN-only open mode | Leave empty | no | With `DIARY_AUTH_TOKEN` and `DIARY_TENANT_KEY` both empty the diary refuses to start unless this is `1` |
 | `INFERENCE_BASE_URL` | OpenAI-compatible chat endpoint used by both containers (chat completions + embeddings). Should end in `/v1` | Ask the human for their endpoint, e.g. `http://host.docker.internal:11434/v1` (Ollama), a LAN llama.cpp server, or a hosted OpenAI-compatible API | no | `HAS-SAFE-DEFAULT` (the wizard's provider step collects this in-app; setting it here only pre-seeds the default) |
 | `INFERENCE_API_KEY` | Bearer key for that endpoint, if it requires one | Ask the human | **yes** | `HUMAN-REQUIRED` if the endpoint authenticates; otherwise leave empty |
 | `PUBLIC_ORIGIN` | The URL humans type into the browser (scheme + host + port). Locks the auth origin allow-list and derives the passkey ID | The wizard prefills it from the address the operator loaded the app at and writes what they confirm; set it here only to pre-seed. `https://` is recommended; a private-network `http://` address (LAN IP, bare LAN hostname, localhost) is accepted with a warning, a public `http://` domain is not | no | `HAS-SAFE-DEFAULT` (`http://localhost:8021`) |
@@ -60,7 +62,7 @@ credentials and model management, which the wizard does not cover.
 | `COWORK_STATE_DIR` | Existing/explicit host bind root, used when storage overrides are empty | Preserve the current path on upgrades | no | Compatibility fallback: `./state` |
 | `COWORK_WEB_STORAGE`, `COWORK_DIARY_STORAGE` | Explicit generic Compose mount sources, taking precedence over `COWORK_STATE_DIR` | Fresh initializer selects `web-data` and `diary-data`; never point existing state at empty volumes | no | Managed volumes for initialized fresh installs |
 | `DIARY_CHAT_MODEL`, `DIARY_AUX_MODEL`, `EMBEDDING_MODEL` | Model names the inference endpoint serves | Ask the human which models their endpoint exposes | no | `HAS-SAFE-DEFAULT` (`default`) |
-| `EMBEDDING_BASE_URL` | Optional separate OpenAI-compatible embeddings endpoint (e.g. CPU-only llama-server) so retrieval doesn't evict the chat model | Leave unset to use the inference endpoint | no | `HAS-SAFE-DEFAULT` (unset) |
+| `EMBEDDING_BASE_URL` | Optional separate OpenAI-compatible embeddings endpoint (e.g. CPU-only llama-server) so retrieval doesn't evict the chat model | Leave unset to use the inference endpoint, or set to `http://embed:8080/v1` when running `compose.embed.yaml` (see "Optional overlays" below) | no | `HAS-SAFE-DEFAULT` (unset) |
 | `UI_AUTH_TOKEN` | Legacy bearer token accepted at the API when `LEGACY_AUTH_COMPAT=true`; independent of `DIARY_AUTH_TOKEN` (#294, no fallback either way) | Leave empty unless migrating a trusted legacy client that needs it | **yes** | `HAS-SAFE-DEFAULT` (empty; a log warning fires if `LEGACY_AUTH_COMPAT=true` and this is empty) |
 | `WEBAUTHN_RP_ID` | Passkey identifier; must match the browser's hostname | Derived from `PUBLIC_ORIGIN` when empty; override only for unusual proxy setups | no | `HAS-SAFE-DEFAULT` (derived) |
 | `TRUST_PROXY` | Set `true` only behind a reverse proxy so rate limiting/audit logs see real client IPs | Depends on deployment shape — ask if unclear | no | `HAS-SAFE-DEFAULT` (`false`) |
@@ -113,8 +115,10 @@ Then fill in only the rows the operator actually chose, e.g.:
 
 ```sh
 TOKEN="$(openssl rand -hex 32)"   # confirm with the human that generating is OK
+TENANT_KEY="$(openssl rand -hex 32)"
 cat >> .env <<EOF
 DIARY_AUTH_TOKEN=${TOKEN}
+DIARY_TENANT_KEY=${TENANT_KEY}
 INFERENCE_BASE_URL=<optional-pre-seed>
 INFERENCE_API_KEY=<ask-the-human-if-needed>
 PUBLIC_ORIGIN=<optional-pre-seed; the wizard sets this otherwise>
@@ -207,6 +211,29 @@ Discover tab; list other existing folders in `MODEL_DOWNLOAD_TARGETS=archive,...
 model-loader service. Only folders directly inside `/models` are accepted, and the engine and
 scanner read up to four folders deep, so `/models/archive/<model>/<file>.gguf` works.
 
+## Optional overlays
+
+Three Compose overlays add opt-in sidecars on top of `compose.yaml`; none is
+required for a healthy stack. Add `-f <overlay>` to every `docker compose`
+call once one is in use (`up`, `config`, `ps`, ...):
+
+- **`compose.llamacpp.yaml`** — a native GPU-backed `llama` chat/inference
+  engine plus `model-loader`, on their own `models` network. Requires
+  `LLAMACPP_RENDER_DEVICE`, `LLAMACPP_CARD_DEVICE`, `LLAMACPP_MODELS_DIR`,
+  `LLAMACPP_CONFIG_DIR`, `LLAMACPP_CACHE_DIR`, `LLAMACPP_EMBED_MODEL`,
+  `LLAMACPP_CHAT_MODEL`, `LLAMACPP_AUX_MODEL`, `MODEL_MANAGER_VERSION`, and a
+  random `MODEL_LOADER_TOKEN`.
+- **`compose.docling.yaml`** — a CPU-only document-extraction sidecar for
+  table- and layout-aware PDF/Office parsing. No required variables; set
+  `DOCLING_VERSION` to pin its image and it self-wires `DOCLING_BASE_URL`.
+- **`compose.embed.yaml`** — a second, CPU-only llama.cpp server dedicated to
+  embeddings, reproducing the live `embed` service (docs/deployment.md,
+  "Release ea57c83"; docs/spec-service-boundaries.md §2, finding 8). It
+  reuses `LLAMACPP_MODELS_DIR` and self-wires `EMBEDDING_BASE_URL`; set
+  `EMBED_MODEL_FILE` to the embedding gguf filename. Several fields are
+  marked `[live: verify]` in the file itself pending confirmation against the
+  live box.
+
 ## 4. Verification
 
 Run the applicable checks and compare against the expected results.
@@ -294,6 +321,9 @@ docker compose exec -T diary find /app/data/users -path '*/corpus/*' -name '*.md
   against. Set `UI_AUTH_TOKEN` or leave `LEGACY_AUTH_COMPAT=false`. The two warnings
   are independent (#294): each token's own warning fires on its own, regardless of
   the other token's state.
+- **Diary exits with `Refusing to start: DIARY_AUTH_TOKEN and DIARY_TENANT_KEY are
+  both empty`**: set both (preferred), or set `DIARY_ALLOW_OPEN=1` to run the
+  LAN-only open mode deliberately.
 
 ## 6. Non-goals — things an agent must never do
 
