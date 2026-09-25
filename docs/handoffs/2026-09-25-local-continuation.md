@@ -10,14 +10,14 @@ Paste into the local Claude Code session on the Mac:
 - The cloud session could not ssh, deploy, or delete remote branches (egress proxy 403).
 
 ## 1. Deploy, in this order (docs/deployment.md is the runbook; deploy-noevia skill applies)
-1. **Web-only release from main.** Before: confirm `UI_AUTH_TOKEN` is set explicitly in the live `.env` if `LEGACY_AUTH_COMPAT=true` (#322 removed its fallback to `DIARY_AUTH_TOKEN`). After: `/api/ready` returns 200; `docker logs cowork-web-1 | grep egress` shows `egress.listening` on the code-network address; i18n screens render in the account locale.
-2. **M2 (#321):** generate `DIARY_TENANT_KEY` (32+ random bytes, hex), add it to BOTH the diary and web env in all three Compose copies (`deploy/preflight/web-env-keys.txt` lists it). Release the diary sidecar image from main (`cowork-diary:<sha>`), verify a diary read and write, then release web again. Never roll the diary image back while web holds the key. Direct sidecar clients using `DIARY_LEGACY_USER_ID` stop working once the key is set.
+1. **Web-only release from main** (carries #322, #325 docling header fix, #320 docs, #319 web side with the flag at its default, #321 web side inert until the key is set). Before: confirm `UI_AUTH_TOKEN` is set explicitly in the live `.env` if `LEGACY_AUTH_COMPAT=true` (#322 removed its fallback to `DIARY_AUTH_TOKEN`). After: `/api/ready` returns 200; `docker logs cowork-web-1 | grep egress` shows `egress.listening` on the code-network address; i18n screens render in the account locale.
+2. **M2 (#321):** generate `DIARY_TENANT_KEY` (32+ random bytes, hex), add it to BOTH the diary and web env in all three Compose copies (`deploy/preflight/web-env-keys.txt` lists it). Release the diary sidecar image from main (`cowork-diary:<sha>`; this image also carries #326's month-file protection fix, so run `qa/dav-clients.cjs` locally first), verify a diary read and write, then release web again. Never roll the diary image back while web holds the key. Direct sidecar clients using `DIARY_LEGACY_USER_ID` stop working once the key is set.
 3. **M3 (#319):** release a model-loader image from main (has `PUT /api/v1/models-ini`), then set `MODELS_INI_WRITER=model-loader`, recreate web, verify a preset save and a calibration run; `models.ini.noevia-backup-<rev>` is the rollback file. Follow-up PR: web's `/llamacpp-config` mount to `:ro`.
 4. **Embed overlay (#320):** confirm every `[live: verify]` field in `compose.embed.yaml` against the box (image digest, healthcheck, depends_on, network incl. `lemonade_default`), then reconcile the three compose copies per the new docs/deployment.md section; `--no-deps --wait embed web` only.
 5. Changelog entry per release; rollback line per release.
 
 ## 2. Branch cleanup
-`git push origin --delete claude/qa-c claude/i18n-b claude/arch-267 claude/i18n-a claude/i18n-d claude/i18n-c claude/models-owner claude/embed-overlay claude/diary-tenant claude/web-hardening claude/skill-eval-harness` plus `claude/dav-clients` and `claude/docling-verify` once merged. Never delete ChatGPT's branches.
+`git push origin --delete claude/qa-c claude/i18n-b claude/arch-267 claude/i18n-a claude/i18n-d claude/i18n-c claude/models-owner claude/embed-overlay claude/diary-tenant claude/web-hardening claude/skill-eval-harness` `claude/dav-clients` `claude/docling-verify` (both merged). Never delete ChatGPT's branches.
 
 ## 3. Approved runs (per-run approvals already given by the owner; smoke test first each time)
 - **#261** approved: `docs/handoffs/2026-09-25-run-plan-261.md`. Confirm the live `DATA_DIR` mount first. Output: counts and classes only, no prompt content; comment on #261, link from roadmap.
@@ -25,8 +25,8 @@ Paste into the local Claude Code session on the Mac:
 - **#265**: harness merged (#323, `experiments/system-one/skills-mcp/live.cjs`, README has the commands). The live run still needs a separate approval from the owner (model, window) and must not overlap #264.
 
 ## 4. Verifications only the host can do
-- **#262**: follow `docs/handoffs/2026-09-25-verify-262-docling.md` (from the docling-verify PR) on the next authorised project open; record any failure as a separate bug with contents excluded.
-- **#263**: device rows (Finder, Windows Explorer/WinSCP, iOS Files) per the steps in docs/dav.md run 3; disposable files only; live DAV sharing stays off.
+- **#262**: follow `docs/handoffs/2026-09-25-verify-262-docling.md` (merged in #325, on main) on the next authorised project open; record any failure as a separate bug with contents excluded.
+- **#263**: the emulation rows are done (#326, docs/dav.md run 3, 45 checks); the device rows (Finder, Windows Explorer/WinSCP, iOS Files) remain, per the exact steps in run 3; disposable files only; live DAV sharing stays off.
 - Spec Appendix A of docs/spec-service-boundaries.md: read-only checks that confirm the map's `[live: verify]` assumptions.
 - QA scripts that failed only in the sandbox on unmodified main (Chrome channel): models-settings, mtp, mcp-status, native-model-picker, storage-accessibility, passkey-rename, onboarding. Run them locally; file issues if any fails for real.
 
