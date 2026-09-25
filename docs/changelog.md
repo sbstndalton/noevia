@@ -8,6 +8,33 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release model-loader f6444b4 — 2026-09-25 (M3: model-loader is the single writer of models.ini)
+
+### Services
+
+- **Web:** no code change — `cowork-web:f6444b4` recreated once with `MODELS_INI_WRITER=model-loader` ([#319](https://github.com/sbstndalton/noevia/pull/319) web side now active: preset saves, calibration and autotune go through model-loader's CAS endpoint).
+- **Diary:** no change — `cowork-diary:f6444b4` (M2, earlier today).
+- **Model manager:** [#319](https://github.com/sbstndalton/noevia/pull/319) `PUT /api/v1/models-ini` compare-and-swap endpoint, WRITE_LOCK, immutable `models.ini.noevia-backup-<rev>`, dir fsync (closes #295) — deployed as `cowork-model-loader:f6444b4` (built on the box from `releases/f6444b4/services/model-manager`).
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** `MODEL_MANAGER_VERSION=f6444b4` and `MODELS_INI_WRITER=model-loader` in `config/.env` (backup `.env.bak.before-m3`); the live Compose Manager override gained `MODELS_INI_WRITER: ${MODELS_INI_WRITER:-web}` on the `web` service (it was not passed through before; backup `docker-compose.override.yml.bak.before-m3`). Web's `/llamacpp-config` mount is still read-write; the `:ro` follow-up PR is pending.
+
+Order per docs/deployment.md "models.ini writer": model-loader recreated first (healthy, `RestartCount=0`;
+from the web container an unauthenticated `PUT /api/v1/models-ini` returned **401**, proving the endpoint
+exists and is token-gated; the previous `5b6d9b6` image had no such route), then the flag added and `web`
+recreated (healthy; `MODELS_INI_WRITER=model-loader` confirmed inside the container). Every other `cowork-*`
+container and Cloudflared kept identical container IDs; public `/` 200. `cowork-embed-1` stays in its
+pre-existing restart loop (#336, untouched).
+
+Not verified here (needs an authenticated session): a preset save through the UI and the resulting
+`models.ini.noevia-backup-<rev>` file. No calibration or autotune run was started.
+
+Rollback: set `MODELS_INI_WRITER=web` (or delete the line) in `config/.env` and recreate `web`; to return the
+sidecar, restore `.env.bak.before-m3` and recreate `model-loader` with `tools/preflight/up.sh ... model-loader`.
+
+---
+
 ## Release diary f6444b4 — 2026-09-25 (M2: Diary tenant assertion + month-file protection)
 
 ### Services
