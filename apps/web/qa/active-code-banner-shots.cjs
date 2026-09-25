@@ -24,7 +24,7 @@ const TASKS = [
   const browser = await chromium.launch({ headless: true, channel: process.env.QA_CHANNEL || undefined });
   const errors = [];
   const checks = [];
-  const check = (name, fn) => { try { fn(); checks.push([name, null]); } catch (e) { checks.push([name, e]); } };
+  const check = async (name, fn) => { try { await fn(); checks.push([name, null]); } catch (e) { checks.push([name, e]); } };
   try {
     for (const [width, height] of [[375, 812], [1440, 900]]) {
       for (const theme of ['light', 'dark']) {
@@ -41,18 +41,42 @@ const TASKS = [
         await banner.locator('summary').click();
         await page.getByText(LONG_NAME).first().waitFor();
 
-        check(`${width}x${height} ${theme}: banner is in normal document flow, not floating over the header`, async () => {
-          const overlap = await page.evaluate(() => {
+        await check(`${width}x${height} ${theme}: banner is in normal document flow, not floating over the header`, async () => {
+          const found = await page.evaluate(() => {
             const b = document.querySelector('.active-code-entry');
-            const header = document.querySelector('header, .app-header, .shell-header');
-            if (!b || !header) return false;
+            const header = document.querySelector('.chat-header, header, .app-header, .shell-header');
+            if (!b || !header) return null;
             const br = b.getBoundingClientRect(), hr = header.getBoundingClientRect();
-            return !(br.bottom <= hr.top || br.top >= hr.bottom) && getComputedStyle(b).position !== 'static' && getComputedStyle(b).position !== 'relative';
+            const overlaps = !(br.bottom <= hr.top || br.top >= hr.bottom);
+            const floating = getComputedStyle(b).position !== 'static' && getComputedStyle(b).position !== 'relative';
+            return { overlap: overlaps && floating };
           });
-          assert.equal(overlap, false);
+          // Neither element existing is itself a failure, not a silent pass: the check would
+          // otherwise report "ok" without ever having looked at anything.
+          assert.ok(found, 'could not find both .active-code-entry and a header element to compare');
+          assert.equal(found.overlap, false);
         });
-        check(`${width}x${height} ${theme}: no horizontal overflow`, () => {});
-        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `horizontal overflow at ${width} ${theme}`);
+        await check(`${width}x${height} ${theme}: no horizontal overflow`, async () => {
+          const noOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+          assert.ok(noOverflow, `horizontal overflow at ${width} ${theme}`);
+        });
+        // The screenshot itself is viewport-sized (not full-page), so a tall expanded task list
+        // can look "cut off" at the bottom of the shot even when it is entirely fine: the list
+        // has its own scroll region. Distinguish that from a genuine clip (overflow:hidden or a
+        // hard-clipped fixed height, which would silently swallow content with no way to reach
+        // it) rather than just eyeballing the PNG.
+        await check(`${width}x${height} ${theme}: an overflowing task list scrolls, it is not clipped`, async () => {
+          const info = await page.evaluate(() => {
+            const list = document.querySelector('.active-code-entry ul');
+            if (!list) return null;
+            const style = getComputedStyle(list);
+            return { scrollHeight: list.scrollHeight, clientHeight: list.clientHeight, overflowY: style.overflowY };
+          });
+          assert.ok(info, 'could not find the .active-code-entry task list to check');
+          if (info.scrollHeight > info.clientHeight) {
+            assert.ok(['auto', 'scroll'].includes(info.overflowY), `task list content overflows its box but overflow-y is "${info.overflowY}": content is clipped, not reachable by scrolling`);
+          }
+        });
 
         await page.screenshot({ path: `${OUT}/active-code-banner-${width}x${height}-${theme}.png` });
         await page.close();
