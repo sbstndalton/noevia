@@ -60,7 +60,7 @@ credentials and model management, which the wizard does not cover.
 | `COWORK_STATE_DIR` | Existing/explicit host bind root, used when storage overrides are empty | Preserve the current path on upgrades | no | Compatibility fallback: `./state` |
 | `COWORK_WEB_STORAGE`, `COWORK_DIARY_STORAGE` | Explicit generic Compose mount sources, taking precedence over `COWORK_STATE_DIR` | Fresh initializer selects `web-data` and `diary-data`; never point existing state at empty volumes | no | Managed volumes for initialized fresh installs |
 | `DIARY_CHAT_MODEL`, `DIARY_AUX_MODEL`, `EMBEDDING_MODEL` | Model names the inference endpoint serves | Ask the human which models their endpoint exposes | no | `HAS-SAFE-DEFAULT` (`default`) |
-| `EMBEDDING_BASE_URL` | Optional separate OpenAI-compatible embeddings endpoint (e.g. CPU-only llama-server) so retrieval doesn't evict the chat model | Leave unset to use the inference endpoint | no | `HAS-SAFE-DEFAULT` (unset) |
+| `EMBEDDING_BASE_URL` | Optional separate OpenAI-compatible embeddings endpoint (e.g. CPU-only llama-server) so retrieval doesn't evict the chat model | Leave unset to use the inference endpoint, or set to `http://embed:8080/v1` when running `compose.embed.yaml` (see "Optional overlays" below) | no | `HAS-SAFE-DEFAULT` (unset) |
 | `UI_AUTH_TOKEN` | Optional UI API token; falls back to `DIARY_AUTH_TOKEN` when empty | Leave empty unless the human wants it distinct | **yes** | `HAS-SAFE-DEFAULT` (empty = reuse `DIARY_AUTH_TOKEN`) |
 | `WEBAUTHN_RP_ID` | Passkey identifier; must match the browser's hostname | Derived from `PUBLIC_ORIGIN` when empty; override only for unusual proxy setups | no | `HAS-SAFE-DEFAULT` (derived) |
 | `TRUST_PROXY` | Set `true` only behind a reverse proxy so rate limiting/audit logs see real client IPs | Depends on deployment shape — ask if unclear | no | `HAS-SAFE-DEFAULT` (`false`) |
@@ -206,6 +206,29 @@ read-write for `model-loader`). Folders that are mount points appear under **Sav
 Discover tab; list other existing folders in `MODEL_DOWNLOAD_TARGETS=archive,...` on the
 model-loader service. Only folders directly inside `/models` are accepted, and the engine and
 scanner read up to four folders deep, so `/models/archive/<model>/<file>.gguf` works.
+
+## Optional overlays
+
+Three Compose overlays add opt-in sidecars on top of `compose.yaml`; none is
+required for a healthy stack. Add `-f <overlay>` to every `docker compose`
+call once one is in use (`up`, `config`, `ps`, ...):
+
+- **`compose.llamacpp.yaml`** — a native GPU-backed `llama` chat/inference
+  engine plus `model-loader`, on their own `models` network. Requires
+  `LLAMACPP_RENDER_DEVICE`, `LLAMACPP_CARD_DEVICE`, `LLAMACPP_MODELS_DIR`,
+  `LLAMACPP_CONFIG_DIR`, `LLAMACPP_CACHE_DIR`, `LLAMACPP_EMBED_MODEL`,
+  `LLAMACPP_CHAT_MODEL`, `LLAMACPP_AUX_MODEL`, `MODEL_MANAGER_VERSION`, and a
+  random `MODEL_LOADER_TOKEN`.
+- **`compose.docling.yaml`** — a CPU-only document-extraction sidecar for
+  table- and layout-aware PDF/Office parsing. No required variables; set
+  `DOCLING_VERSION` to pin its image and it self-wires `DOCLING_BASE_URL`.
+- **`compose.embed.yaml`** — a second, CPU-only llama.cpp server dedicated to
+  embeddings, reproducing the live `embed` service (docs/deployment.md,
+  "Release ea57c83"; docs/spec-service-boundaries.md §2, finding 8). It
+  reuses `LLAMACPP_MODELS_DIR` and self-wires `EMBEDDING_BASE_URL`; set
+  `EMBED_MODEL_FILE` to the embedding gguf filename. Several fields are
+  marked `[live: verify]` in the file itself pending confirmation against the
+  live box.
 
 ## 4. Verification
 
