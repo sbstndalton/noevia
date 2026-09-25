@@ -265,6 +265,27 @@ A build takes ~10 min over the Tailscale relay. Run it in the background and pol
 for `docker ps | grep cowork-web`. Rolling back is repointing `current` and
 `COWORK_VERSION` at the previous SHA and re-running Compose up with `--no-build --wait`.
 
+### Favicon/app-shell cache-busting (issue #311)
+
+`COWORK_VERSION` from the `build web` step above is threaded into the web image
+as `STAMP_VERSION` (`compose.yaml` `web.build.args` → `apps/web/Dockerfile` `ARG
+COWORK_VERSION` / `ENV STAMP_VERSION`), which `apps/web/scripts/stamp-icons.cjs`
+uses to version the favicon/manifest icon URLs and `apps/web/src/stale-shell-guard.ts`
+uses to detect a stale cached shell. Nothing extra to do here — this is
+automatic as long as `COWORK_VERSION=$SHA` is set on the `build` command, as
+it already is above.
+
+Ordinary desktop/Android browsers pick up a fresh favicon and app shell on the
+next load automatically (the guard force-reloads once if the running bundle's
+`__NOEVIA_BUILD__` disagrees with `/version.json`). **iOS home-screen shortcuts
+are the one exception**: iOS reads `apple-touch-icon`/manifest icons only at
+the moment the user taps "Add to Home Screen" and does not re-read them for an
+icon already on the home screen. If a user reports the home-screen icon itself
+is still the old mark after a release that changed it, the in-app content
+should already be current (the stale-shell guard covers that); tell them to
+remove and re-add the home-screen shortcut to pick up the new icon — there is
+no way to push that from the server.
+
 ## Per-service image tags
 
 Each image is tagged by what it contains and pinned by its own variable in
