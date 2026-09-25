@@ -62,7 +62,7 @@ function withFamily(values, family, mode) {
     const under = hex(over);
     return toHex(rgb.map((c, i) => c * a + under[i] * (1 - a)));
   };
-  return { get: (name) => resolve(name, resolve('bg-app')) };
+  return { get: (name) => resolve(name, resolve('bg-app')), over: (name, ground) => resolve(name, ground) };
 }
 
 for (const family of ['editorial', 'contemporary', 'glass']) for (const mode of ['light', 'dark']) for (const accent of palette.PALETTE_NAMES) {
@@ -73,6 +73,37 @@ for (const family of ['editorial', 'contemporary', 'glass']) for (const mode of 
       assert.ok(contrast(t.get('text-primary'), g) >= 7, `${ground} ${g} text-primary ${contrast(t.get('text-primary'), g).toFixed(2)}`);
       for (const fg of ['text-secondary', 'accent-text']) assert.ok(contrast(t.get(fg), g) >= 4.5, `${ground} ${fg} ${contrast(t.get(fg), g).toFixed(2)}`);
       for (const fg of ['focus-ring', 'control-border']) assert.ok(contrast(t.get(fg), g) >= 3, `${ground} ${fg} ${contrast(t.get(fg), g).toFixed(2)}`);
+    }
+  });
+}
+
+// #313: the grounds each family adds. Contemporary's accent-tinted surface containers; Glass's
+// translucent chrome, reading plane and sheets composited over the strongest bloom of the
+// atmosphere behind them (the worst case for text), in both modes and every accent.
+const GROUNDS = {
+  editorial: [],
+  contemporary: ['m3-surface', 'm3-container-low', 'm3-container', 'm3-container-high', 'm3-container-highest'],
+  glass: [],
+};
+for (const family of ['editorial', 'contemporary', 'glass']) for (const mode of ['light', 'dark']) for (const accent of palette.PALETTE_NAMES) {
+  test(`${family} · ${mode} · ${accent}: text keeps AA on the #313 family grounds`, () => {
+    const t = withFamily(base(mode, accent), family, mode);
+    const grounds = GROUNDS[family].map((name) => [name, t.get(name)]);
+    if (family === 'glass') {
+      for (const peak of ['glass-canvas-peak', 'glass-canvas-peak-2', 'glass-canvas-peak-3']) {
+        const under = t.get(peak);
+        for (const layer of ['bg-chrome', 'glass-plane', 'glass-sheet']) grounds.push([`${layer} over ${peak}`, t.over(layer, under)]);
+      }
+    }
+    if (family === 'editorial') grounds.push(['bg-app', t.get('bg-app')]);
+    for (const [name, g] of grounds) {
+      assert.ok(contrast(t.get('text-primary'), g) >= 7, `${name} ${g} text-primary ${contrast(t.get('text-primary'), g).toFixed(2)}`);
+      for (const fg of ['text-secondary', 'accent-text']) assert.ok(contrast(t.get(fg), g) >= 4.5, `${name} ${g} ${fg} ${contrast(t.get(fg), g).toFixed(2)}`);
+      assert.ok(contrast(t.get('focus-ring'), g) >= 3, `${name} focus-ring ${contrast(t.get('focus-ring'), g).toFixed(2)}`);
+    }
+    // M3 roles used as containers keep their on-colours readable.
+    for (const [bg, fg] of [['md-primary-container', 'md-on-primary-container'], ['md-secondary-container', 'md-on-secondary-container'], ['md-primary', 'md-on-primary']]) {
+      assert.ok(contrast(t.get(fg), t.get(bg)) >= 4.5, `${fg} on ${bg} ${contrast(t.get(fg), t.get(bg)).toFixed(2)}`);
     }
   });
 }
