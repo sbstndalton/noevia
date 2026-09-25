@@ -7,20 +7,21 @@ const code = ts.transpileModule(
 
 // Loads the module fresh into a small sandbox with __NOEVIA_BUILD__ and
 // globals (fetch/location/sessionStorage) stubbed per test.
-function load({ build = '0.2.0', fetchImpl, storage, replaced = [] } = {}) {
+function load({ build = '0.2.0', fetchImpl, storage, replaced = [], href = 'https://noevia.example/settings', historyReplaced = [] } = {}) {
   const exports_ = {};
   const store = storage || new Map();
   const sandbox = {
     exports: exports_,
     __NOEVIA_BUILD__: build,
     fetch: fetchImpl,
-    location: { href: 'https://noevia.example/settings', replace: (url) => replaced.push(url) },
+    location: { href, replace: (url) => replaced.push(url) },
+    history: { state: null, replaceState: (_state, _title, url) => historyReplaced.push(url) },
     sessionStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, v) },
     URL,
     Date,
   };
   vm.runInNewContext(code, sandbox);
-  return { checkStaleShell: exports_.checkStaleShell, replaced, store };
+  return { checkStaleShell: exports_.checkStaleShell, replaced, store, historyReplaced };
 }
 
 test('matching build: no reload', async () => {
@@ -75,6 +76,27 @@ test('network failure or non-ok response: never reloads', async () => {
     await checkStaleShell();
     assert.deepEqual(replaced, []);
   }
+});
+
+test('lands with a leftover ?_shell= param (the reload itself): strips it via history.replaceState, no second navigation', async () => {
+  const { checkStaleShell, replaced, historyReplaced } = load({
+    build: '0.3.0',
+    href: 'https://noevia.example/settings?_shell=0.3.0&foo=bar',
+    fetchImpl: async () => ({ ok: true, json: async () => ({ version: '0.3.0' }) }),
+  });
+  await checkStaleShell();
+  assert.deepEqual(replaced, []); // build now matches: no reload triggered
+  assert.equal(historyReplaced.length, 1);
+  assert.equal(historyReplaced[0], 'https://noevia.example/settings?foo=bar');
+});
+
+test('no leftover ?_shell= param: does not touch history', async () => {
+  const { checkStaleShell, historyReplaced } = load({
+    build: '0.2.0',
+    fetchImpl: async () => ({ ok: true, json: async () => ({ version: '0.2.0' }) }),
+  });
+  await checkStaleShell();
+  assert.deepEqual(historyReplaced, []);
 });
 
 test('no build stamp on this bundle: skips the check entirely (no fetch)', async () => {

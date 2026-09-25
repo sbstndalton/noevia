@@ -16,8 +16,23 @@
 // at most one reload per tab per detected mismatch, so a flaky network or an
 // in-flight deploy cannot cause a reload loop.
 const GUARD_KEY = 'noevia:shell-reload-guard';
+const RELOAD_PARAM = '_shell';
+
+// The reload itself lands on a URL carrying `?_shell=<version>` (the
+// cache-busting query that forced a real network fetch); once we're running
+// again there is nothing left for it to do, so drop it from the visible URL
+// without another navigation or history entry.
+function stripReloadParam(): void {
+  try {
+    const url = new URL(location.href);
+    if (!url.searchParams.has(RELOAD_PARAM)) return;
+    url.searchParams.delete(RELOAD_PARAM);
+    history.replaceState(history.state, '', url.toString());
+  } catch { /* no History API, or a non-browser sandbox running this module */ }
+}
 
 export async function checkStaleShell(): Promise<void> {
+  stripReloadParam();
   const build = __NOEVIA_BUILD__;
   if (!build || typeof fetch !== 'function') return;
   try {
@@ -31,7 +46,7 @@ export async function checkStaleShell(): Promise<void> {
     if (already === guardValue) return; // already tried reloading for this exact mismatch
     try { sessionStorage.setItem(GUARD_KEY, guardValue); } catch { /* ignore */ }
     const url = new URL(location.href);
-    url.searchParams.set('_shell', data.version);
+    url.searchParams.set(RELOAD_PARAM, data.version);
     location.replace(url.toString());
   } catch {
     // Offline, or the request failed: keep running the current shell rather
