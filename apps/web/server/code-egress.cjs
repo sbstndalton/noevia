@@ -269,12 +269,12 @@ function defaultConnect({ address, port }) { return net.connect(port, address); 
  * a misconfigured deployment fails closed instead of wide open.
  */
 async function resolveEgressBind(env, host, { lookup = (h) => dns.promises.lookup(h) } = {}) {
-  if (env.CODE_EGRESS_BIND) return String(env.CODE_EGRESS_BIND).trim();
+  if (env.CODE_EGRESS_BIND) return { address: String(env.CODE_EGRESS_BIND).trim(), fallback: false };
   try {
     const { address } = await lookup(host);
-    return address;
-  } catch {
-    return '127.0.0.1';
+    return { address, fallback: false };
+  } catch (err) {
+    return { address: '127.0.0.1', fallback: true, reason: String((err && err.message) || err) };
   }
 }
 
@@ -290,10 +290,22 @@ function startEgressFromEnv(env = process.env, { log = () => {}, create = create
   if (!/^[a-z0-9.-]+$/i.test(host)) throw Error(`CODE_EGRESS_HOST should be a host name, not "${host}"`);
   const ttlMs = Number(env.CODE_EGRESS_TOKEN_TTL_MS) > 0 ? Number(env.CODE_EGRESS_TOKEN_TTL_MS) : DEFAULT_TOKEN_TTL_MS;
   const proxy = create({ log, ttlMs });
-  resolveEgressBind(env, host, { lookup }).then(
-    (bind) => proxy.server.listen(port, bind),
-    (err) => { log({ event: 'egress.bind_failed', error: String((err && err.message) || err) }); proxy.server.listen(port, '127.0.0.1'); },
-  );
+  // A failed listen (e.g. the port is already taken, or EADDRNOTAVAIL on a bind that does not
+  // exist on this host) must not fail silently: it is reported the same way any other startup
+  // failure is — logged, then rethrown so the process crashes with it rather than limping on
+  // with no working egress proxy.
+  proxy.server.on('error', (err) => {
+    log({ event: 'egress.bind_failed', error: String((err && err.message) || err) });
+    throw err;
+  });
+  proxy.server.on('listening', () => {
+    const addr = proxy.server.address();
+    log({ event: 'egress.listening', bind: addr && addr.address, port: addr && addr.port });
+  });
+  resolveEgressBind(env, host, { lookup }).then(({ address, fallback, reason }) => {
+    if (fallback) log({ event: 'egress.bind_fallback_loopback', host, reason });
+    proxy.server.listen(port, address);
+  });
   if (typeof proxy.sweep === 'function') {
     const timer = setInterval(() => proxy.sweep(), Math.min(ttlMs, 60_000));
     timer.unref?.();

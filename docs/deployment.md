@@ -443,9 +443,11 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
   the sandbox to reach it) and binds only that address, so the proxy no longer also listens on
   `default` or any other network web joins. Set `CODE_EGRESS_BIND` explicitly to override; a
   deployment that sets `CODE_EGRESS_PORT` without the code-sandbox override (so the alias does
-  not resolve) falls back to `127.0.0.1` rather than every interface. Not yet deployed live —
-  verify the resolved bind address (`docker logs cowork-web-1 | grep egress`) after the next
-  web release that includes it.
+  not resolve) falls back to `127.0.0.1` rather than every interface, and logs
+  `egress.bind_fallback_loopback` with the reason when it does. Not yet deployed live — verify
+  the resolved bind address (`docker logs cowork-web-1 | grep egress`) after the next web release
+  that includes it: a successful start logs `egress.listening` with the bind and port, and a
+  failed one (e.g. `EADDRNOTAVAIL`) logs `egress.bind_failed` and crashes the process.
 - **`UI_AUTH_TOKEN` / `DIARY_AUTH_TOKEN` (#294).** These are independent now
   (`auth-tokens.cjs`); `UI_AUTH_TOKEN` no longer falls back to `DIARY_AUTH_TOKEN`. A deployment
   that relied on the fallback (set `DIARY_AUTH_TOKEN` only, expecting `LEGACY_AUTH_COMPAT=true`
