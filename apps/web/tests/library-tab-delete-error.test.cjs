@@ -10,13 +10,18 @@ test('DeleteModel forwards the cleanup error through onDeleted instead of a loca
   const calls = [...src.matchAll(/setConfirming\(false\);\s*onDeleted\((.*?)\); return;/g)].map(m => m[1]);
   assert.equal(calls.length, 2, 'expected both delete branches to forward via onDeleted(...)');
   // The English outcome.error gates it; the banner shows the translated cleanup sentence (#293).
-  for (const arg of calls) assert.match(arg, /^outcome\.error && cleanupText\(outcome\.cleanupDetail\)$/);
+  // The primary (files) delete branch also forwards the roles the server cleared off the deleted
+  // model (#302), so its second argument may be present; the cache-only branch never has one.
+  for (const arg of calls) assert.match(arg, /^outcome\.error && cleanupText\(outcome\.cleanupDetail\)(, outcome\.rolesCleared)?$/);
 });
 
-test('LibraryTab surfaces a forwarded delete error on its persistent error banner before refreshing', () => {
-  assert.match(src, /onDeleted=\{\(err\) => \{ if \(err\) setError\(err\); onChanged\(\); \}\}/);
+test('LibraryTab surfaces a forwarded delete error on its persistent error banner, removes the card optimistically, and surfaces cleared roles, before refreshing', () => {
+  assert.match(src, /onDeleted=\{\(err, rolesCleared\) => \{/);
+  assert.match(src, /if \(err\) setError\(err\);/);
+  assert.match(src, /setModels\(prev => \(prev \|\| \[\]\)\.filter\(x => x\.name !== m\.name\)\);/);
+  assert.match(src, /if \(rolesCleared && rolesCleared\.length\) setMessage\(t\('mm\.delete\.rolesCleared'/);
 });
 
-test('ModelCard/DeleteModel onDeleted signature accepts an optional error', () => {
-  assert.match(src, /onDeleted:\s*\(error\?:\s*string\s*\|\s*null\)\s*=>\s*void/g);
+test('ModelCard/DeleteModel onDeleted signature accepts an optional error and the roles the server cleared', () => {
+  assert.match(src, /onDeleted:\s*\(error\?:\s*string\s*\|\s*null,\s*rolesCleared\?:\s*string\[\]\)\s*=>\s*void/g);
 });
