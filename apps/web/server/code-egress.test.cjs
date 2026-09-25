@@ -218,6 +218,24 @@ test('a client that disconnects mid-check does not take the proxy down with it',
   }
 });
 
+test('the egress bind narrows to the code-network alias, not every interface (#296)', async () => {
+  const { resolveEgressBind } = require('./code-egress.cjs');
+  // An explicit CODE_EGRESS_BIND always wins.
+  assert.equal(
+    await resolveEgressBind({ CODE_EGRESS_BIND: '10.0.0.5' }, 'egress', { lookup: async () => { throw Error('should not be called'); } }),
+    '10.0.0.5',
+  );
+  // No override: resolve web's own address on the `code` network by looking up the same alias
+  // (`egress`) the sandbox is given, rather than binding 0.0.0.0 across every network web joins.
+  assert.equal(
+    await resolveEgressBind({}, 'egress', { lookup: async (h) => (h === 'egress' ? { address: '172.20.0.3' } : Promise.reject(Error('wrong host'))) }),
+    '172.20.0.3',
+  );
+  // No compose override at all (CODE_EGRESS_PORT set without the code-sandbox override): the
+  // alias does not resolve, so this fails closed to loopback instead of wide open.
+  assert.equal(await resolveEgressBind({}, 'egress', { lookup: async () => { throw Error('ENOTFOUND'); } }), '127.0.0.1');
+});
+
 test('the deployment proxy starts only when a port is configured', async () => {
   const { startEgressFromEnv } = require('./code-egress.cjs');
   assert.equal(startEgressFromEnv({}), null);

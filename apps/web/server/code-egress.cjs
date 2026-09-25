@@ -259,18 +259,41 @@ async function defaultLookup(host) {
 function defaultConnect({ address, port }) { return net.connect(port, address); }
 
 /**
+ * The narrowest default bind (#296): web joins two networks — `default` and the internal `code`
+ * network the sandbox is confined to — and binding `0.0.0.0` listens on both, exposing the proxy
+ * on `default` for no reason (the sandbox cannot reach it there). The compose override that wires
+ * Code mode gives web an alias on `code` (`aliases: [egress]`, the same name `CODE_EGRESS_HOST`
+ * hands the sandbox), so web can resolve that same name to learn *its own* address on that one
+ * network and bind only there. An explicit `CODE_EGRESS_BIND` always wins; without the override
+ * (no such alias to resolve) this falls back to loopback rather than every interface web has —
+ * a misconfigured deployment fails closed instead of wide open.
+ */
+async function resolveEgressBind(env, host, { lookup = (h) => dns.promises.lookup(h) } = {}) {
+  if (env.CODE_EGRESS_BIND) return String(env.CODE_EGRESS_BIND).trim();
+  try {
+    const { address } = await lookup(host);
+    return address;
+  } catch {
+    return '127.0.0.1';
+  }
+}
+
+/**
  * The proxy as a deployment runs it: on `CODE_EGRESS_PORT` inside the web process, reached by the
  * sandbox as `CODE_EGRESS_HOST` (a network alias on the internal code network). Unset, there is
  * no proxy, and Code mode keeps network and installs unavailable rather than pretending.
  */
-function startEgressFromEnv(env = process.env, { log = () => {}, create = createEgressProxy } = {}) {
+function startEgressFromEnv(env = process.env, { log = () => {}, create = createEgressProxy, lookup } = {}) {
   const port = Number(env.CODE_EGRESS_PORT);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
   const host = String(env.CODE_EGRESS_HOST || 'egress').trim();
   if (!/^[a-z0-9.-]+$/i.test(host)) throw Error(`CODE_EGRESS_HOST should be a host name, not "${host}"`);
   const ttlMs = Number(env.CODE_EGRESS_TOKEN_TTL_MS) > 0 ? Number(env.CODE_EGRESS_TOKEN_TTL_MS) : DEFAULT_TOKEN_TTL_MS;
   const proxy = create({ log, ttlMs });
-  proxy.server.listen(port, env.CODE_EGRESS_BIND || '0.0.0.0');
+  resolveEgressBind(env, host, { lookup }).then(
+    (bind) => proxy.server.listen(port, bind),
+    (err) => { log({ event: 'egress.bind_failed', error: String((err && err.message) || err) }); proxy.server.listen(port, '127.0.0.1'); },
+  );
   if (typeof proxy.sweep === 'function') {
     const timer = setInterval(() => proxy.sweep(), Math.min(ttlMs, 60_000));
     timer.unref?.();
@@ -279,4 +302,4 @@ function startEgressFromEnv(env = process.env, { log = () => {}, create = create
   return Object.assign(proxy, { endpoint: `${host}:${port}` });
 }
 
-module.exports = { DEFAULT_TOKEN_TTL_MS, createEgressProxy, hostAllowed, parseTarget, startEgressFromEnv };
+module.exports = { DEFAULT_TOKEN_TTL_MS, createEgressProxy, hostAllowed, parseTarget, startEgressFromEnv, resolveEgressBind };

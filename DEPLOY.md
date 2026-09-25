@@ -61,7 +61,7 @@ credentials and model management, which the wizard does not cover.
 | `COWORK_WEB_STORAGE`, `COWORK_DIARY_STORAGE` | Explicit generic Compose mount sources, taking precedence over `COWORK_STATE_DIR` | Fresh initializer selects `web-data` and `diary-data`; never point existing state at empty volumes | no | Managed volumes for initialized fresh installs |
 | `DIARY_CHAT_MODEL`, `DIARY_AUX_MODEL`, `EMBEDDING_MODEL` | Model names the inference endpoint serves | Ask the human which models their endpoint exposes | no | `HAS-SAFE-DEFAULT` (`default`) |
 | `EMBEDDING_BASE_URL` | Optional separate OpenAI-compatible embeddings endpoint (e.g. CPU-only llama-server) so retrieval doesn't evict the chat model | Leave unset to use the inference endpoint | no | `HAS-SAFE-DEFAULT` (unset) |
-| `UI_AUTH_TOKEN` | Optional UI API token; falls back to `DIARY_AUTH_TOKEN` when empty | Leave empty unless the human wants it distinct | **yes** | `HAS-SAFE-DEFAULT` (empty = reuse `DIARY_AUTH_TOKEN`) |
+| `UI_AUTH_TOKEN` | Legacy bearer token accepted at the API when `LEGACY_AUTH_COMPAT=true`; independent of `DIARY_AUTH_TOKEN` (#294, no fallback either way) | Leave empty unless migrating a trusted legacy client that needs it | **yes** | `HAS-SAFE-DEFAULT` (empty; a log warning fires if `LEGACY_AUTH_COMPAT=true` and this is empty) |
 | `WEBAUTHN_RP_ID` | Passkey identifier; must match the browser's hostname | Derived from `PUBLIC_ORIGIN` when empty; override only for unusual proxy setups | no | `HAS-SAFE-DEFAULT` (derived) |
 | `TRUST_PROXY` | Set `true` only behind a reverse proxy so rate limiting/audit logs see real client IPs | Depends on deployment shape — ask if unclear | no | `HAS-SAFE-DEFAULT` (`false`) |
 | `LLM_RATE_LIMIT` | Per-user requests/minute cap on model-backed routes (chat and diary conversations) — all users share one inference endpoint | Raise it only if the inference host has headroom | no | `HAS-SAFE-DEFAULT` (`60`) |
@@ -289,6 +289,11 @@ docker compose exec -T diary find /app/data/users -path '*/corpus/*' -name '*.md
 - **Auth disabled warning in logs** (`API authentication is disabled`):
   `DIARY_AUTH_TOKEN` is empty. Browser login is still required, but the internal
   diary connection is unprotected. Set the service token before network exposure.
+- **Legacy bearer warning in logs**: `LEGACY_AUTH_COMPAT=true` with `UI_AUTH_TOKEN`
+  empty. The legacy bearer sign-in path is enabled with no token to check requests
+  against. Set `UI_AUTH_TOKEN` or leave `LEGACY_AUTH_COMPAT=false`. The two warnings
+  are independent (#294): each token's own warning fires on its own, regardless of
+  the other token's state.
 
 ## 6. Non-goals — things an agent must never do
 

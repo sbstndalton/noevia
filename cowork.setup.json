@@ -99,11 +99,11 @@
     },
     {
       "name": "UI_AUTH_TOKEN",
-      "purpose": "Optional distinct UI API token",
+      "purpose": "Legacy bearer token accepted at the API when LEGACY_AUTH_COMPAT=true",
       "secret": true,
       "human_required": false,
       "default": "",
-      "note": "Empty falls back to DIARY_AUTH_TOKEN."
+      "note": "Independent of DIARY_AUTH_TOKEN (#294); it does not fall back to it. Leave empty unless migrating a trusted legacy client."
     },
     {
       "name": "WEBAUTHN_RP_ID",

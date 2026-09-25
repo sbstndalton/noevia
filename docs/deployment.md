@@ -436,6 +436,26 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
 
 ## Known gaps
 
+- **`CODE_EGRESS_BIND` (#296).** The Code-mode egress proxy (`code-egress.cjs`,
+  `CODE_EGRESS_PORT`/`CODE_EGRESS_HOST`, see "Release 9611580" above) no longer defaults to
+  `0.0.0.0`. At start it resolves web's own address on the internal `code` network by looking
+  up its `CODE_EGRESS_HOST` alias (`egress` — the same name `code-sandbox.override.yml` gives
+  the sandbox to reach it) and binds only that address, so the proxy no longer also listens on
+  `default` or any other network web joins. Set `CODE_EGRESS_BIND` explicitly to override; a
+  deployment that sets `CODE_EGRESS_PORT` without the code-sandbox override (so the alias does
+  not resolve) falls back to `127.0.0.1` rather than every interface. Not yet deployed live —
+  verify the resolved bind address (`docker logs cowork-web-1 | grep egress`) after the next
+  web release that includes it.
+- **`UI_AUTH_TOKEN` / `DIARY_AUTH_TOKEN` (#294).** These are independent now
+  (`auth-tokens.cjs`); `UI_AUTH_TOKEN` no longer falls back to `DIARY_AUTH_TOKEN`. A deployment
+  that relied on the fallback (set `DIARY_AUTH_TOKEN` only, expecting `LEGACY_AUTH_COMPAT=true`
+  to also accept it as the UI token) must now set `UI_AUTH_TOKEN` explicitly. Not yet deployed
+  live.
+- **`GET /api/ready` (#297).** New unauthenticated readiness endpoint
+  (`routes/health.cjs` `createReadyRoutes`), returning only `{ready, version}`. The Dockerfile
+  `HEALTHCHECK` still probes `/api/setup/status`, which is at least as strong a liveness check
+  (it already succeeds only once the process is serving JSON) and was not changed for this
+  addition — see the code review notes on this PR.
 - **`UPGRADES.md` on the server is stale.** It describes a retired
   AnythingLLM + LiteLLM stack. Ignore it.
 - **`/mnt/docker` has no redundancy** — the single-device pool now has daily
