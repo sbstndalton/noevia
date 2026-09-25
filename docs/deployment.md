@@ -1,44 +1,5 @@
 # Deploying noevia to daserver
 
-## Release 2037ffd — 2026-09-25 (web-only: theme families + cursor-pull hover)
-
-PR #315 (issue #313) added three distinct theme families — Material 3
-Contemporary, Liquid Glass, ruled Editorial — plus cursor-pull hover, all
-frontend-only (`apps/web/src`). CI on `2037ffdbe211990d436b95a12b3927951b57be87`
-was green, including "Docker images build" and "Node tests, typecheck, frontend
-build". No open PRs were merged as part of this deploy; `origin/main` at 2037ffd
-had an empty `apps/`/`compose.yaml` diff against the deployed SHA.
-
-Candidate release was archived to `releases/2037ffd`, `.env` backed up to
-`.env.bak.before-2037ffd`, and `cowork-web:2037ffd` was built with
-`COWORK_VERSION=2037ffd`. `docker run --rm --entrypoint cat cowork-web:2037ffd
-/app/dist/version.json` showed `{"version":"2037ffd"}` before cutover. Sidecar
-`*_VERSION` vars and the existing `web.build.args.COWORK_VERSION` compose patch
-(live since 58b340c) were left untouched.
-
-Cutover used the installed host preflight: `current` repointed at
-`releases/2037ffd`, then `tools/preflight/up.sh --env-file config/.env -- -d
---no-build --no-deps --wait --wait-timeout 180 web`, followed by
-`tools/sidecar-restart-alert.sh --ack`. Only `cowork-web-1` was recreated
-(image `58b340c` → `2037ffd`); every other `cowork-*` container and all
-unrelated containers (Nextcloud AIO, arr stack, Jellyfin, etc.) kept their
-prior image, identity and start time in a before/after `docker ps`/`inspect`
-diff.
-
-Post-cutover verification: `cowork-web-1` healthy, 0 restarts;
-`https://noevia.daserver.work/` returned 200 on 3/3 requests; `/api/profile`
-returned 401; `/version.json` returned `{"version":"2037ffd"}`; the served
-`index.html` referenced `/assets/index-Ck6gpNmS.js` and
-`/assets/index-CY0nLBZh.css`, matching the hashes baked into
-`cowork-web:2037ffd`'s `/app/dist/assets`; the served CSS contained 335
-occurrences of `data-family`, including `contemporary`, `editorial` and
-`glass` family selectors. `docker logs cowork-web-1` showed only normal
-startup lines (MCP discovery, UI listening), no errors.
-
-Rollback (not needed — verification passed): restore
-`.env.bak.before-2037ffd`, `ln -sfn releases/58b340c current`, then rerun the
-same `up.sh … --no-build --no-deps --wait web` command.
-
 ## Laya-only recovery rollout — 2026-09-23
 
 Issue #70 / draft PR #71 implemented automatic replacement of Laya's CPU worker
