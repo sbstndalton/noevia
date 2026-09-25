@@ -31,6 +31,9 @@ const SEGMENT_DEFS={
   // Customise (PluginsView: skills, connectors, plugins) is the only owner; it also renders
   // ConnectorsSettings, which pulls in the settings segment on its own account.
   customise:{suffix:'CUSTOMISE',owners:/^components\/plugins\/PluginsView$/},
+  // The model manager page (#293): only its lazy root registers the segment; every panel below
+  // it (components/models/*, NativeCalibration, MtpControl, SamplingPresetsControl) relies on that.
+  models:{suffix:'MODELS',owners:/^components\/models\/ModelManagerPage$/},
 };
 const SEGMENT_NAMES=Object.keys(SEGMENT_DEFS);
 assert.equal(Object.keys(core.CATALOGUES).join(),'en-GB,en-US','only English is bundled eagerly');
@@ -179,6 +182,7 @@ test('the chunk loader map holds only supported non-English ids; anything else n
   same(Object.keys(loaders.PROJECTS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   same(Object.keys(loaders.DIARY_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   same(Object.keys(loaders.CUSTOMISE_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.MODELS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   for(const bad of ['xx-XX','../en-GB','__proto__','constructor','']){assert.equal(await loaders.loadSegment('settings',bad,{}),false,bad);}
   assert.equal(await loaders.loadSegment('__proto__','de-DE'),false,'an unknown segment loads nothing');
   let calls=0;const spy={'de-DE':()=>{calls++;return Promise.resolve({});}};
@@ -250,9 +254,10 @@ const SHELL_ALLOW=/^(settings\.title|capabilities\.unavailable|keyboard\.(search
 // Prefixes owned by each lazy segment, checked against the base catalogue below. account.* stays
 // in the base on purpose: the account menu renders on the first screen.
 const SEGMENT_PREFIX={
-  settings:/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers|appPasswords)\./,
+  settings:/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers|appPasswords|diarySettings|serviceStatus)\./,
   projects:/^projects\./,
   diary:/^diary\./,
+  models:/^mm\./,
 };
 test('the base English catalogue holds no Settings-screen string beyond the shell allowlist',()=>{
   const settingsInBase=Object.keys(EN).filter(k=>k.startsWith('settings.'));
@@ -330,7 +335,7 @@ test('no key is defined in more than one segment, and the base catalogue module 
 
 // Generic version of the Settings-specific lifecycle test below, run once per lazy segment with a
 // representative key from each (settings.backToApp / projects.title / diary.title).
-const REP_KEY={settings:'settings.backToApp',projects:'projects.title',diary:'diary.title',customise:'customise.title'};
+const REP_KEY={settings:'settings.backToApp',projects:'projects.title',diary:'diary.title',customise:'customise.title',models:'mm.title'};
 for(const s of SEGMENT_NAMES){
   test(`${s} keys: English until the segment arrives, key by key, and the key itself if unregistered`,async()=>{
     const key=REP_KEY[s];
@@ -385,4 +390,86 @@ test('Settings search matches English keywords as well as the translated ones',(
   // The haystack joins the English keywords, the translated ones and the English label.
   assert.match(shell,/\[keywords, ownKeywords\.startsWith\('settings\.'\) \? '' : ownKeywords, own === label \? '' : label\.toLowerCase\(\)\]/);
   assert.doesNotMatch(core.translate('de-DE','settings.keywords.connectors'),/^settings\./);
+});
+
+// ── Model manager segment (#293) ────────────────────────────────────────────────────────────────
+// Every module in the ModelManagerPage lazy chunk that renders text. ModelManagerPage registers
+// the segment; the rest are only reachable through it (checked below).
+const MODELS_MODULES=['components/models/ModelManagerPage.tsx','components/models/ModelsSettings.tsx','components/models/OverviewTab.tsx','components/models/LibraryTab.tsx','components/models/DownloadTab.tsx','components/models/ConfigureTab.tsx','components/models/GuidedOptimize.tsx','components/models/HardwareTab.tsx','components/models/BenchmarksTab.tsx','components/models/AutoTune.tsx','components/models/EvidenceList.tsx','components/models/TimeChart.tsx','components/models/mm-text.ts','components/models/register.ts','components/NativeCalibration.tsx','components/MtpControl.tsx','components/SamplingPresetsControl.tsx'];
+const SRC=path.join(__dirname,'../src');
+function srcFiles(){const out=[];(function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){if(f!=='i18n')walk(p);}else if(/\.tsx?$/.test(f))out.push(path.relative(SRC,p).replace(/\\/g,'/'));}})(SRC);return out;}
+const inSegment=(s,k)=>Object.prototype.hasOwnProperty.call(ENSEG[s],k)||(Object.prototype.hasOwnProperty.call(ENSEG[s],`${k}.one`)&&Object.prototype.hasOwnProperty.call(ENSEG[s],`${k}.other`));
+
+test('mm.* keys are used only inside the model manager chunk, and every one it uses exists',()=>{
+  for(const file of srcFiles()){
+    const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX.models.test(k));
+    if(!MODELS_MODULES.includes(file)){same(used,[],`${file} is outside the model manager chunk but uses ${used.join(', ')}`);continue;}
+    const missing=used.filter(k=>!inSegment('models',k));
+    same(missing,[],`${file} uses mm.* keys the models segment lacks: ${missing.join(', ')}`);
+  }
+  // Everything else a model manager module cites is a base key (settings.title, common.cancel…),
+  // never another lazy segment's key, which would render as the key when opened on its own.
+  for(const file of MODELS_MODULES){
+    const foreign=[...keysUsedIn(file)].filter(k=>!SEGMENT_PREFIX.models.test(k)&&/^[a-z]+\.[a-zA-Z]/.test(k)&&(k in ENSEG.settings||k in ENSEG.projects||k in ENSEG.diary)&&!inBase(k));
+    same(foreign,[],`${file} uses another segment's keys: ${foreign.join(', ')}`);
+  }
+});
+
+test('the model manager modules are reached only through the lazy ModelManagerPage chunk, never the first-load bundle',()=>{
+  // A static import of a model manager module from anywhere else would pull it (and its mm.*
+  // keys) into that importer's chunk, where the segment may not be registered.
+  const stems=new Set(MODELS_MODULES.map(f=>f.replace(/\.tsx?$/,'')));
+  for(const file of srcFiles()){
+    if(stems.has(file.replace(/\.tsx?$/,'')))continue;
+    const src=fs.readFileSync(path.join(SRC,file),'utf8');
+    for(const m of src.matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)){
+      if(!m[1].startsWith('.'))continue;
+      const target=path.posix.normalize(path.posix.join(path.posix.dirname(file),m[1]));
+      assert.ok(!stems.has(target),`${file} statically imports ${target}, a model manager module`);
+    }
+  }
+  const lazy=fs.readFileSync(path.join(SRC,'lazy-views.tsx'),'utf8');
+  assert.match(lazy,/lazyView\(\(\) => import\('\.\/components\/models\/ModelManagerPage'\)/,'ModelManagerPage stays a dynamic import');
+  for(const file of EAGER_MODULES){
+    const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX.models.test(k));
+    same(used,[],`${file} is in the first-load bundle but uses model manager keys`);
+  }
+  const base=Object.keys(EN).filter(k=>SEGMENT_PREFIX.models.test(k));
+  same(base,[],'mm.* keys in the base catalogue');
+});
+
+test('Diary & storage and Service status use only Settings-segment or base keys, and all of them exist',()=>{
+  for(const file of ['components/SettingsView.tsx','components/McpStatus.tsx','components/DiaryConnectors.tsx']){
+    const used=[...keysUsedIn(file)].filter(k=>/^(diarySettings|serviceStatus|settings|models)\./.test(k));
+    const missing=used.filter(k=>!inBase(k)&&!inSegment('settings',k));
+    same(missing,[],`${file} uses keys the Settings segment lacks: ${missing.join(', ')}`);
+  }
+  // Nothing outside the Settings chunk may cite these (StoragePicker and DiarySharing also render
+  // in the Diary view and the setup wizard, where the Settings segment is not registered).
+  for(const file of srcFiles()){
+    if(['components/SettingsView.tsx','components/McpStatus.tsx','components/DiaryConnectors.tsx'].includes(file))continue;
+    const used=[...keysUsedIn(file)].filter(k=>/^(diarySettings|serviceStatus)\./.test(k));
+    same(used,[],`${file} uses Diary & storage / Service status keys outside the Settings chunk`);
+  }
+});
+
+test('every plural form of the model manager and the new Settings screens keeps {count}',()=>{
+  const tables=[ENSEG.models,ENSEG.settings,...NON_BASE.flatMap(l=>[core.SEGMENTS.models[l],core.SEGMENTS.settings[l]])];
+  for(const table of tables)for(const [k,v] of Object.entries(table||{})){
+    if(!/^(mm|diarySettings|serviceStatus)\./.test(k)||!/\.(one|other)$/.test(k))continue;
+    assert.match(v,/\{count\}/,`${k} lost {count}: ${v}`);
+  }
+  assert.equal(core.translatePlural('de-DE','mm.projects.title',1),'Routing pro Projekt (1 Projekt)');
+  assert.equal(core.translatePlural('fr-FR','mm.calibration.minutes',0),'0 minute','French 0 is singular');
+  assert.equal(core.translatePlural('en-GB','serviceStatus.mcp.discovered',160),'160 tools discovered');
+});
+
+test('the chat model picker, Auto summary, system label, Diary storage and file sharing use base keys only (they render outside any lazy segment)',()=>{
+  for(const file of ['components/ModelPopup.tsx','routing-copy.ts','components/StoragePicker.tsx','components/DiarySharing.tsx']){
+    const used=[...keysUsedIn(file)].filter(k=>/^[a-z][a-zA-Z]*\.[a-zA-Z]/.test(k)&&!/\.(tsx?|js|json|com|gguf)$/.test(k));
+    const missing=used.filter(k=>!inBase(k));
+    same(missing,[],`${file} uses keys outside the base catalogue: ${missing.join(', ')}`);
+  }
+  for(const file of MODELS_MODULES)assert.doesNotMatch(fs.readFileSync(path.join(SRC,file),'utf8'),/SYSTEM_MODEL_LABEL/,`${file} renders the English system label`);
+  assert.equal(core.translate('de-DE','routing.fast',{model:'m'}),'Schnell: m');
 });

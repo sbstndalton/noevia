@@ -1,7 +1,8 @@
 // Pure rules of the guided model manager (#204): estimate math, verdict, recommendation,
 // the Q5 floor (#190), roles and the recovery list. Synthetic numbers in realistic ranges.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),ts=require('typescript');
-function load(file){const full=path.join(__dirname,'../src',file);const code=ts.transpileModule(fs.readFileSync(full,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const m={exports:{}};
+const loaded={};
+function load(file){file=path.normalize(file);if(loaded[file])return loaded[file].exports;const full=path.join(__dirname,'../src',file);const code=ts.transpileModule(fs.readFileSync(full,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const m={exports:{}};loaded[file]=m;
   const req=(id)=>id.startsWith('.')?load(path.relative(path.join(__dirname,'../src'),path.join(path.dirname(full),id))+'.ts'):require(id);
   new Function('module','exports','require',code)(m,m.exports,req);return m.exports;}
 const g=load('components/models/guided.ts');
@@ -29,7 +30,9 @@ test('verdict: fits with headroom, tight within 10% (at least 1 GiB), no when ov
 test('budget prefers the configured budget, then the largest GPU incl. shared memory, then RAM',()=>{
   assert.equal(g.budgetFor(14,null).gib,14);
   const hw={systemGB:64,gpus:[{name:'Synthetic iGPU',capacityGB:4,sharedGB:28},{name:'Small',capacityGB:8,sharedGB:null}]};
-  assert.deepEqual(g.budgetFor(null,hw),{gib:32,source:'Synthetic iGPU (dedicated + shared memory)'});
+  assert.deepEqual(g.budgetFor(null,hw),{gib:32,source:'Synthetic iGPU (dedicated + shared memory)',kind:'gpu-shared',gpu:'Synthetic iGPU'});
+  // kind (and gpu) let the panel phrase the source in the interface language (#293).
+  assert.equal(g.budgetFor(14,null).kind,'configured');assert.equal(g.budgetFor(null,{systemGB:32,gpus:[]}).kind,'system');
   assert.equal(g.budgetFor(null,{systemGB:32,gpus:[]}).gib,32);
   assert.equal(g.budgetFor(null,{systemGB:null,gpus:[]}),null);
 });
@@ -44,7 +47,7 @@ test('recommendation keeps q8_0 at the largest comfortable context and never goe
   const q5=g.recommend(nine,tightBudget,want);assert.ok(['q5_1','q5_0'].includes(q5.kv),q5.text);assert.ok(q5.ctx>=want);
   for(const budget of [8.8,9,9.5,10,12,20,40])for(const want of [0,65536,262144]){const x=g.recommend(nine,budget,want);if(x.kind==='use')assert.ok(!g.belowKvFloor(x.kv),`${budget}/${want}: ${x.kv}`);}
   const huge=g.recommend({...nine,modelGib:20,moe:true},14);
-  assert.equal(huge.kind,'smaller');assert.match(huge.text,/smaller quantization or configure CPU expert offload/);
+  assert.equal(huge.kind,'smaller');assert.match(huge.text,/smaller quantization or configure CPU expert offload/);assert.equal(huge.moe,true);assert.ok(huge.floorGib>14);
   assert.equal(g.recommend({...nine,chat:false},14).kind,'unknown');
   assert.match(g.recommend({...nine,sizeable:false,rows:[]},14).text,/Measure context/);
 });
@@ -93,4 +96,17 @@ test('the guided flow keeps the Laya guard and never starts a run by itself (#80
   assert.doesNotMatch(src,/method: 'POST'/,'estimate, pre-flight and quality only read');
   const overview=fs.readFileSync(path.join(__dirname,'../src/components/models/OverviewTab.tsx'),'utf8');
   assert.match(overview,/g\.role !== 'routing' && <button/,'no Optimize or Details button for the routing model');
+});
+
+test('the model manager phrases every recommendation kind exactly like guided.ts text (en-US), so the two cannot drift (#293)',()=>{
+  const core=load('i18n/core.ts');load('i18n/models/index.ts');
+  // en-US shares the spelling of guided.ts ("quantization"); en-GB differs only there.
+  const say=(rec,budget)=>rec.kind==='use'?core.translate('en-US',rec.verdict==='tight'?'mm.fit.rec.useTight':'mm.fit.rec.use',{ctx:rec.ctx.toLocaleString('en-US'),kv:rec.kv,total:rec.totalGib,budget})
+    :rec.kind==='smaller'?core.translate('en-US',rec.moe?'mm.fit.rec.smallerMoe':'mm.fit.rec.smaller',{floor:rec.floorGib,budget})
+    :rec.reason==='not-chat'?core.translate('en-US','mm.fit.rec.notChat'):core.translate('en-US','mm.fit.rec.noLayout',{arch:rec.arch||core.translate('en-US','mm.fit.unknownArch')});
+  const cases=[[nine,14],[nine,10.2],[{...nine,modelGib:20,moe:true},14],[{...nine,modelGib:20},14],[{...nine,chat:false},14],[{...nine,sizeable:false,rows:[]},14],[{...nine,sizeable:false,rows:[],arch:''},14]];
+  const kinds=new Set();
+  for(const [inputs,budget] of cases){const rec=g.recommend(inputs,budget);kinds.add(rec.kind+(rec.verdict||rec.reason||(rec.moe?'moe':'')));assert.equal(say(rec,budget),rec.text);}
+  assert.ok(kinds.size>=5,[...kinds].join());
+  assert.match(core.translate('en-GB','mm.fit.rec.smaller',{floor:1,budget:2}),/quantisation/);
 });

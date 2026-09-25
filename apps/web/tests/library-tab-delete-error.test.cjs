@@ -7,9 +7,10 @@ const fs = require('node:fs'), path = require('node:path');
 const src = fs.readFileSync(path.join(__dirname, '../src/components/models/LibraryTab.tsx'), 'utf8');
 
 test('DeleteModel forwards the cleanup error through onDeleted instead of a local error branch', () => {
-  const calls = [...src.matchAll(/setConfirming\(false\);\s*onDeleted\(([^)]*)\);/g)].map(m => m[1]);
+  const calls = [...src.matchAll(/setConfirming\(false\);\s*onDeleted\((.*?)\); return;/g)].map(m => m[1]);
   assert.equal(calls.length, 2, 'expected both delete branches to forward via onDeleted(...)');
-  for (const arg of calls) assert.match(arg, /outcome\.error/);
+  // The English outcome.error gates it; the banner shows the translated cleanup sentence (#293).
+  for (const arg of calls) assert.match(arg, /^outcome\.error && cleanupText\(outcome\.cleanupDetail\)$/);
 });
 
 test('LibraryTab surfaces a forwarded delete error on its persistent error banner before refreshing', () => {

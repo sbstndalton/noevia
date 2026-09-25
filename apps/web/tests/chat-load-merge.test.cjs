@@ -30,7 +30,7 @@ test('only the latest stats request may apply',()=>{
 test('configure tab hides rename and remove for the system routing model',()=>{
  assert.equal(sys.isSystemModel('laya_multilingual_f16'),true);
  const src=fs.readFileSync(path.join(__dirname,'../src/components/models/ConfigureTab.tsx'),'utf8');
- assert.match(src,/data\.exists && !isSystemModel\(name\) && <details className="mm-disclosure"><summary>Rename or delete/);
+ assert.match(src,/data\.exists && !isSystemModel\(name\) && <details className="mm-disclosure"><summary>\{t\('mm.editor.renameOrDelete'\)\}/);
  assert.match(src,/const doDelete = async \(\) => \{\n\s*if \(!data \|\| isSystemModel\(name\)\) return;/);
  assert.match(src,/const doRename = async \(\) => \{\n\s*if \(!data \|\| isSystemModel\(name\)\) return;/);
 });
