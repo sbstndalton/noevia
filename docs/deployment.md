@@ -398,6 +398,21 @@ grep -E '^(COWORK|DIARY|OCR|MODEL_MANAGER|DOCLING|CODE_SANDBOX)_VERSION=' $ENV
 docker compose --env-file $ENV config -q
 ```
 
+### models.ini writer (`MODELS_INI_WRITER`, #295)
+
+`MODELS_INI_WRITER` (web env, `compose.llamacpp.yaml`) picks who writes `models.ini`:
+`web` (default, the historical in-process atomic rename) or `model-loader` (web sends the
+prepared file to model-loader's `PUT /api/v1/models-ini`; model-loader is the single writer).
+Order: first bump `MODEL_MANAGER_VERSION` to an image that has the endpoint, then add
+`MODELS_INI_WRITER=model-loader` to the `.env` and recreate web. With an older or stopped
+model-loader, preset saves, calibration and autotune fail with an explicit 503 and leave the
+file unchanged. A token mismatch gets its own 503 ("check MODEL_LOADER_TOKEN"). Each replace
+leaves `models.ini.noevia-backup-<baseRevision>` (0600, never pruned) plus a rotating
+`models.ini.bak-<timestamp>` in the config dir; a failed backup aborts the write. Rollback is
+removing the line (or setting `web`) and recreating web; to restore content, copy the
+`models.ini.noevia-backup-<revision>` you want back over `models.ini`. Web's
+`/llamacpp-config` mount stays read-write until a follow-up makes it `:ro`.
+
 ## After deploying
 
 `LEGACY_AUTH_COMPAT=false`, so there is no bearer-token path — verify from a real
