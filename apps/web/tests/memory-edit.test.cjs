@@ -15,7 +15,7 @@ test('an emptied edit asks before forgetting; a real edit is normalised',()=>{
  assert.deepEqual({...ex.editOutcome('  I keep   bees ')},{kind:'save',text:'I keep bees'});
 });
 test('Forget on a single line and an emptied edit both go through the confirm dialog',()=>{
- assert.match(src,/aria-label=\{`Forget “\$\{m\}”`\} onClick=\{\(\) => askForget\(i, m\)\}/);
- assert.match(src,/aria-label=\{`Forget “\$\{m\}” in \$\{p\.name\}`\} onClick=\{\(\) => setConfirm\(/);
+ assert.match(src,/aria-label=\{t\('memory\.forgetLine', \{ line: m \}\)\} onClick=\{\(\) => askForget\(i, m\)\}/);
+ assert.match(src,/aria-label=\{t\('memory\.forgetLineIn', \{ line: m, project: p\.name \}\)\} onClick=\{\(\) => setConfirm\(/);
  assert.match(src,/outcome\.kind === 'confirm-forget'\) \{ askForget\(/);
 });
