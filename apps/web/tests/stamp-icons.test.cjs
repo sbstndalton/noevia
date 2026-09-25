@@ -5,6 +5,19 @@ const { spawnSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
 const pkgVersion = require('../package.json').version;
 
+// These tests assert against a specific stamped version, so they must not be
+// at the mercy of whatever STAMP_VERSION happens to be set in the ambient
+// environment (issue #317: the Docker build sets STAMP_VERSION to the
+// release SHA for the real `npm run build`/`node --test` step, which broke
+// every test here that assumed the STAMP_VERSION-less fallback). Each spawn
+// below passes its own explicit env, deleting any inherited STAMP_VERSION
+// unless a test means to exercise the override.
+function envWithout(extra) {
+  const env = { ...process.env };
+  delete env.STAMP_VERSION;
+  return { ...env, ...extra };
+}
+
 function fixtureDist() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stamp-icons-'));
   fs.writeFileSync(path.join(dir, 'index.html'), [
@@ -28,7 +41,7 @@ function fixtureDist() {
 
 test('stamps a version query onto every icon/manifest URL, leaving other filenames alone', () => {
   const dir = fixtureDist();
-  const run = spawnSync(process.execPath, [path.join(root, 'scripts', 'stamp-icons.cjs'), dir], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [path.join(root, 'scripts', 'stamp-icons.cjs'), dir], { encoding: 'utf8', env: envWithout() });
   assert.equal(run.status, 0, run.stderr);
 
   const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
@@ -47,7 +60,7 @@ test('stamps a version query onto every icon/manifest URL, leaving other filenam
 
 test('writes version.json with the same version used to stamp the URLs', () => {
   const dir = fixtureDist();
-  spawnSync(process.execPath, [path.join(root, 'scripts', 'stamp-icons.cjs'), dir]);
+  spawnSync(process.execPath, [path.join(root, 'scripts', 'stamp-icons.cjs'), dir], { env: envWithout() });
   const version = JSON.parse(fs.readFileSync(path.join(dir, 'version.json'), 'utf8'));
   assert.equal(version.version, pkgVersion);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -56,8 +69,9 @@ test('writes version.json with the same version used to stamp the URLs', () => {
 test('is idempotent: running twice does not double-stamp the query string', () => {
   const dir = fixtureDist();
   const script = path.join(root, 'scripts', 'stamp-icons.cjs');
-  spawnSync(process.execPath, [script, dir]);
-  spawnSync(process.execPath, [script, dir]);
+  const env = envWithout();
+  spawnSync(process.execPath, [script, dir], { env });
+  spawnSync(process.execPath, [script, dir], { env });
   const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
   assert.equal((html.match(/\?v=/g) || []).length, 2); // icon.svg + apple-touch-icon.png, once each
   fs.rmSync(dir, { recursive: true, force: true });
@@ -66,7 +80,7 @@ test('is idempotent: running twice does not double-stamp the query string', () =
 test('honours STAMP_VERSION as an override', () => {
   const dir = fixtureDist();
   const run = spawnSync(process.execPath, [path.join(root, 'scripts', 'stamp-icons.cjs'), dir], {
-    encoding: 'utf8', env: { ...process.env, STAMP_VERSION: '20a24c2' },
+    encoding: 'utf8', env: envWithout({ STAMP_VERSION: '20a24c2' }),
   });
   assert.equal(run.status, 0, run.stderr);
   const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
