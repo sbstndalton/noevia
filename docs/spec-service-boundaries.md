@@ -53,7 +53,9 @@ diagram is repeated as a table so the document still reads where Mermaid does no
   code (code-sandbox), a different runtime and irreplaceable state (Diary), or a separate model
   (Laya, embed). None of them should be merged back.
 - **No new container is justified by the code today**, with one exception: the browser executor
-  (`browser-service.cjs`) launches Chromium *inside the web process*. If it is ever enabled it
+  launches Chromium *inside the web process* — `index.cjs` passes a `launch` that calls
+  `playwright.chromium.launch` into `browser-service.cjs` — whenever the operator has installed
+  Playwright (an operator-installed module, not a package dependency). If it is ever enabled it
   needs the same sandbox treatment as Code mode. That is a boundary the code demonstrates.
 - **The weakest existing contract is web → Diary.** The sidecar trusts `X-Cowork-User-ID` from any
   holder of one shared token, `DIARY_AUTH_TOKEN` may be empty (open mode), and each request carries
@@ -75,56 +77,34 @@ Base stack: `compose.yaml` (web, diary, ocr, laya under a profile). Overlays:
 (docling), `deploy/examples/kiwix.override.yml` (kiwix), `deploy/examples/code-sandbox.override.yml`
 (code-sandbox, the `code` network). The live `embed` service exists only in the live Compose
 Manager override (recorded in [deployment.md](deployment.md), "Release ea57c83"); no repo file
-defines it **[live: verify]**. The roadmap lists ten live containers ([roadmap.md](roadmap.md),
+defines it **[live: verify]**. The live Compose Manager project also has a
+`docker-compose.override.yml` attaching the external `lemonade_default` network
+([deployment.md](deployment.md) "Three copies of the compose config"); its members are not in any
+repo file **[live: verify]** (Appendix A2). The roadmap lists ten live containers ([roadmap.md](roadmap.md),
 "Where things stand").
 
 ```mermaid
 flowchart LR
   browser((Browser)) -->|HTTPS via tunnel, :8021| web
-  subgraph default[network: default]
-    web
-    diary
-    llama
-    embed
-  end
-  subgraph models[network: models]
-    web
-    llama
-    loader[model-loader<br/>Docker socket]
-  end
-  subgraph ocrnet[network: ocr, internal]
-    web
-    ocr
-    docling
-  end
-  subgraph layanet[network: laya, internal]
-    web
-    laya
-  end
-  subgraph kiwixnet[network: kiwix, internal]
-    web
-    kiwix
-  end
-  subgraph codenet[network: code, internal]
-    web
-    sandbox[code-sandbox]
-  end
-  web -->|/v1 chat| llama
-  web -->|/v1 embeddings| embed
-  web -->|/api/* + X-Cowork-*| diary
-  diary -->|/v1 chat, embeddings| llama
-  web -->|/api/v1 + X-Model-Loader-Token| loader
+  web -->|"/v1 chat (default, models)"| llama
+  web -->|"/v1 embeddings (default)"| embed
+  web -->|"/api/* + X-Cowork-* (default)"| diary
+  diary -->|"/v1 chat, embeddings (default)"| llama
+  web -->|"/api/v1 + X-Model-Loader-Token (models)"| loader[model-loader]
   loader -->|restart, logs, run| dock[(docker.sock)]
-  web -->|OCR| ocr
-  web -->|extract| docling
-  web -->|decide| laya
-  web -->|search| kiwix
-  web -->|ACP over TCP| sandbox
-  sandbox -->|CONNECT via egress alias| web
+  web -->|"OCR (ocr, internal)"| ocr
+  web -->|"extract (ocr, internal)"| docling
+  web -->|"decide (laya, internal)"| laya
+  web -->|"search (kiwix, internal)"| kiwix
+  web -->|"ACP over TCP (code, internal)"| sandbox[code-sandbox]
+  sandbox -->|"CONNECT via egress alias (code)"| web
   web -->|WebDAV / S3| storage[(Nextcloud / S3)]
   diary -->|WebDAV / S3| storage
   web -->|MCP JSON-RPC| mcpx[(remote MCP servers)]
 ```
+
+Edge labels name the network each hop uses. The table below is authoritative for network
+membership (a Mermaid node can sit in only one subgraph, so the diagram does not draw networks).
 
 | Service | Image and pin | Networks | Published port | Privilege or resource boundary | Defined in |
 | --- | --- | --- | --- | --- | --- |
@@ -233,7 +213,7 @@ keeps it together.
 | Edge | Caller file | Target | Auth | Timeout |
 | --- | --- | --- | --- | --- |
 | Chat completions | `chat.cjs`, `research` tools in `index.cjs`, `auto-router.cjs` | provider base (`INFERENCE_BASE_URL`, live `http://llama:8080/v1` per `compose.llamacpp.yaml`) | `Authorization: Bearer INFERENCE_API_KEY` unless `local` (`providerHeaders`, `providers.cjs`) | 180 s / 300 s (`chat.cjs`), 120 s research |
-| Embeddings | `rag.cjs` | `EMBEDDING_BASE_URL` (live `http://embed:8080/v1` **[live: verify]**) or inference base | same headers (`inferenceHeaders`, `index.cjs`) | in `rag.cjs` |
+| Embeddings | `rag.cjs` | `EMBEDDING_BASE_URL` (live `http://embed:8080/v1` **[live: verify]**) or inference base | **no** `Authorization` when `EMBEDDING_BASE_URL` is set (`rag.cjs`, `rag-embedding-endpoint.test.cjs`); `inferenceHeaders` (`index.cjs`) only on fallback to the inference base | in `rag.cjs` |
 | Router lifecycle (load, unload, presets, calibration, autotune) | `llamacpp-manager.cjs` via `model-manager.cjs` (`MODEL_MANAGER_KIND=llamacpp`) | `MODEL_MANAGER_BASE_URL` = `http://llama:8080` | bearer as above | 60–120 s per verb |
 | Preset file | `llamacpp-presets.cjs` (atomic temp-file rename) | `LLAMACPP_PRESET_PATH` = `/llamacpp-config/models.ini` (bind of `LLAMACPP_CONFIG_DIR`) | filesystem | — |
 | Model-loader JSON API | `models.cjs` `managerFetch`, `routes/models.cjs` `/api/model-manager/*` proxy (admin only, path allowlist, system-model guards) | `MODEL_LOADER_URL` = `http://model-loader:8090/api/v1/*` | `X-Model-Loader-Token: MODEL_LOADER_TOKEN` (`services/model-manager/app/main.py` middleware; `/api/v1/health` exempt) | via `fetchJson` |
@@ -243,7 +223,10 @@ keeps it together.
 | Maintenance gate | `modelManager.enterInference` (`llamacpp-manager.cjs` `maintenance.enter`), taken in `handleRequest` and in research/RAG | in memory | — | — |
 
 The web container mounts `LLAMACPP_MODELS_DIR` read-only and `LLAMACPP_CACHE_DIR` read-only for
-header reads and sizing; model-loader mounts both read-write (`compose.llamacpp.yaml`). Evidence,
+header reads and sizing, and `LLAMACPP_CONFIG_DIR` read-write at `/llamacpp-config`. Model-loader
+mounts `/models`, `/config` and `/data` read-write plus `docker.sock`, but not the cache; llama
+mounts `/config` read-only (`compose.llamacpp.yaml`). So the two `models.ini` writers are web
+(`/llamacpp-config`) and model-loader (`/config`). Evidence,
 calibration, autotune and download state live in web's `DATA_DIR`, keyed by a hash of
 `MODEL_MANAGER_BASE_URL` (`index.cjs`).
 
@@ -273,9 +256,9 @@ reads go to the sidecar with `diaryHeaders()`; `diary_append` exists only with
 
 | Direction | Endpoint(s) | Caller file | Headers | Timeout |
 | --- | --- | --- | --- | --- |
-| web → diary | `/api/months`, `/api/day` | `diary.cjs` corpus adapter | `Authorization: Bearer DIARY_AUTH_TOKEN` (if set), `X-Cowork-User-ID`, `X-Cowork-Storage` (base64url JSON **including the decrypted secret**, from `authService.getStorage(userId, true)`), `X-Cowork-Legacy-Owner`, or `X-Cowork-Storage-Blocked` | 15 s |
+| web → diary | `/api/months`, `/api/day` | `diary.cjs` corpus adapter | `Authorization: Bearer DIARY_AUTH_TOKEN` (if set), `X-Cowork-User-ID`, `X-Cowork-Storage` (base64url JSON; for a remote connection **including the decrypted secret**, from `authService.getStorage(userId, true)`), `X-Cowork-Legacy-Owner`, or `X-Cowork-Storage-Blocked` | 15 s |
 | web → diary | `/v1/chat/completions` (streamed capture) | `chat.cjs` → `diary-stream.cjs` | same | stream |
-| web → diary | `/api/files`, `/api/file`, `/api/directory`, `/api/workspace-ops`, trash, import/export, `/api/storage-status` | `routes/diary.cjs`, `dav.cjs` via `index.cjs` `call()` | same | 15 s |
+| web → diary | `/api/files`, `/api/file`, `/api/directory`, `/api/workspace-ops`, trash, import/export, `/api/storage-status` | `routes/diary.cjs`, connector bridge in `diary.cjs`, `dav.cjs` via `index.cjs` `call()` | same | 60 s file routes and connector (`routes/diary.cjs`, `diary.cjs`); 15 s DAV `call()` (`index.cjs`); 600 s local exchange |
 | web → diary | `/api/entries/append` | `index.cjs` internal MCP `diaryAppend` | same | 30 s |
 | web → diary | `/api/storage-backup` | `diary-backup-worker.cjs` via `index.cjs` | same | 300 s |
 | web → diary | `DELETE /api/internal/tenant` | `routes/auth.cjs` user deletion | bearer + `X-Cowork-User-ID` only | 15 s |
@@ -301,7 +284,7 @@ State: `/app/data` (`COWORK_DIARY_STORAGE` or `COWORK_STATE_DIR/diary`), holding
 | Kiwix | `kiwix.cjs` (off unless `features.kiwix` and `KIWIX_URL`) | kiwix-serve HTTP, `redirect: 'error'` | none; internal `kiwix` network | 10 s | Third-party image, read-only data |
 | Laya | `decision-endpoint.cjs` via `decision-settings.cjs` | `/health` and decision calls (`services/laya/server.py`) | none; internal `laya` network | 1.5 s default | Separate CPU model, 6 GiB |
 | code-sandbox | `code-acp.cjs` `createAcpTransport` with `CODE_HARNESS_ENDPOINT` | one line naming the worktree, then the ACP stream (`services/code-sandbox/supervisor.cjs`) | none by design; reachability is the control (`services/code-sandbox/README.md`) | connection lifetime | Runs untrusted agent code; only exit is web's egress proxy |
-| Browser executor | `browser-service.cjs` (`playwright.chromium.launch` **in the web process**), `browser-executor.cjs`, `browser-policy.cjs` | in-process | per-task egress token | — | **Not separated** (see [§7](#7-findings-the-map-surfaced)) |
+| Browser executor | `index.cjs` (`launch` → `playwright.chromium.launch` **in the web process**, only if the operator installs `playwright`), injected into `browser-service.cjs`, `browser-executor.cjs`, `browser-policy.cjs` | in-process | per-task egress token | — | **Not separated** (see [§7](#7-findings-the-map-surfaced)) |
 
 `code-acp.cjs` also supports `CODE_HARNESS_COMMAND`, which spawns the harness as a child of the web
 process; `deploy/examples/code-sandbox.override.yml` warns against it.
@@ -394,7 +377,7 @@ section says so.
 | S13 | Kiwix, Laya | HTTP on internal networks | Third-party image / separate model | **Already separate; keep.** |
 | S14 | Code sandbox | ACP over TCP; shared `/workspaces`; egress via web | Untrusted code isolation | **Already separate; keep.** |
 | S15 | Code egress proxy (`code-egress.cjs`) | Listens inside web, reachable from the `code` network as `egress` | A smaller process on the `code` network would stop a sandbox escape from talking to the web process's listener directly; the grants still come from core | **In-process for now; candidate.** Only worth doing together with S16 |
-| S16 | Browser executor (`browser-service.cjs`) | Chromium launched in the web process | **Security boundary demonstrated**: untrusted pages render in the process that holds `secrets.key`, `cowork.db` and every session | **Extract before enabling** ([§6.4](#64-m4--browser-executor-sandbox)) |
+| S16 | Browser executor (`browser-service.cjs`, launcher in `index.cjs`) | Chromium launched in the web process when the operator has installed `playwright` | **Security boundary demonstrated**: untrusted pages render in the process that holds `secrets.key`, `cowork.db` and every session | **Extract before enabling** ([§6.4](#64-m4--browser-executor-sandbox)) |
 | S17 | DAV listener (`dav.cjs`) | Second port in web; calls Diary via `index.cjs` `call()` | Nothing; it authenticates against `cowork.db` | **In-process.** |
 | S18 | Background workers (offsite, Diary backup, folder sync) | In-process timers using `requestScope.run` | Nothing | **In-process.** |
 
@@ -446,7 +429,7 @@ section says so.
 | web → diary | shared bearer (optional) + bare tenant header | Bearer becomes required outside a declared LAN-only mode; add a signed tenant assertion ([§6.2](#62-m2--diary-tenant-assertion)) |
 | web → model-loader | `X-Model-Loader-Token`, required by Compose | Unchanged; the web proxy remains admin-only |
 | web → engine | optional bearer | Unchanged |
-| web → OCR/Docling/Kiwix/Laya/sandbox | none; internal networks with only web and that service | Unchanged; reachability is the control, and each network must stay two-member (Appendix A checks it) |
+| web → OCR/Docling/Kiwix/Laya/sandbox | none; internal networks with only web and that service | Unchanged; reachability is the control, and each internal network contains only web and the sidecars that serve it (for `ocr`: web, ocr and, with the overlay, docling — `compose.yaml`, `compose.docling.yaml`; Appendix A checks it) |
 | web → MCP servers | per-mode credential ([§3.4](#34-mcp)) | Unchanged; a server only ever receives its own credential |
 | internal MCP | 30 s HMAC token | Unchanged |
 
@@ -494,7 +477,8 @@ parsing) is welcome; it never replaces core's.
 | Web restart | pending approvals and chat-wide grants are lost and re-asked (`approvals.cjs`), rate-limit windows reset, calibration/autotune recover (`index.cjs`) | Re-asking is the intended behaviour and must survive any split |
 
 Timeout budget (all `AbortSignal.timeout` or `fetchJson` arguments in the cited files): Diary 15 s
-reads, 30 s append, 300 s backup; OCR 610 s; Docling 3,900 s; Kiwix 10 s; MCP 30 s per RPC;
+corpus reads and DAV calls, 60 s file routes and connector, 30 s append, 300 s backup, 600 s local
+exchange; OCR 610 s; Docling 3,900 s; Kiwix 10 s; MCP 30 s per RPC;
 provider 180–300 s; approvals 5 min; `server.requestTimeout` 20 min so a waiting approval is not
 cut. A new hop must declare its timeout and what the caller shows when it fires.
 
@@ -519,6 +503,11 @@ Each is a proposal for its issue; none is authorised here.
 - **Change:** add `X-Noevia-API: 1` and `/api/ready`; document every `/api/*` route the SPA uses
   from the §3.1 table; optionally build the SPA into its own static image served at the same
   origin by a front proxy, with core serving `/api/*`.
+- **Live path: the UI container is out of scope** until a front proxy and the Cloudflare tunnel
+  target are designed. Today the tunnel points at `http://10.69.0.130:8021`, i.e. web directly
+  ([deployment.md](deployment.md) "Release f0ea80b"). A UI container would need a front proxy, a
+  fourth Compose service in all three Compose copies, a new tunnel target, and a release/rollback
+  flow that bumps two images instead of one. Until that design exists, M1 is the contract work only.
 - **State/secrets:** none move. The UI container holds no secret and no state; cookies stay
   host-only on the same origin.
 - **Verification:** the SPA refuses a mismatched major; the full authenticated browser checks in
@@ -549,7 +538,10 @@ Each is a proposal for its issue; none is authorised here.
   model-loader for file operations (downloads, safe defaults). A narrow option: web keeps writing,
   model-loader's section writes go through a web-owned endpoint — or the reverse, with web calling
   `/api/v1/sections`. Either way, one lock and one atomic rename.
-- **State/secrets:** no new secret; take a copy of `models.ini` before the switch.
+- **State/secrets:** no new secret; take a copy of `models.ini` before the switch. Today's writers
+  are web (`LLAMACPP_CONFIG_DIR` at `/llamacpp-config`, rw) and model-loader (same dir at `/config`,
+  rw); llama mounts it read-only (`compose.llamacpp.yaml`). The loser of the decision gets its
+  mount changed to `:ro`.
 - **Verification:** concurrent calibration plus a section edit cannot interleave; an interrupted
   write leaves the previous file; `docker compose config` still renders; model-manager pytest
   and the web suite pass.
@@ -579,12 +571,18 @@ Recorded for follow-up; none is fixed by this document.
 1. **Diary tenant trust is a shared token.** With `DIARY_AUTH_TOKEN` empty the sidecar is open
    (`check_auth`, `app.py`); `cowork.setup.json` documents empty as a supported LAN-only mode.
    Anything on the `default` network (llama, embed) can then act as any tenant.
-2. **Decrypted storage credentials travel on every Diary call** in `X-Cowork-Storage`
-   (`diary.cjs`, `auth.cjs` `getStorage(…, true)`). Contained by the network today; it matters for
+2. **Decrypted storage credentials travel on every tenant-scoped Diary call for a remote storage
+   connection** in `X-Cowork-Storage` (`diary.cjs`, `auth.cjs` `getStorage(…, true)`); blocked and
+   local descriptors carry no secret. Contained by the network today; it matters for
    any Diary move to another host or repository.
-3. **`UI_AUTH_TOKEN` defaults to `DIARY_AUTH_TOKEN`** (`index.cjs`). Harmless while
-   `LEGACY_AUTH_COMPAT=false` **[live: verify]**; it couples two secrets that should be independent.
-4. **`models.ini` has two writers** (§6.3).
+3. **`UI_AUTH_TOKEN` defaults to `DIARY_AUTH_TOKEN`** (`index.cjs`). With `LEGACY_AUTH_COMPAT=true`
+   the legacy bearer authenticates as the first enabled admin (`auth.cjs` `authenticate`) on the
+   tunnelled port 8021, so the Diary service token would work as a web admin credential. Harmless
+   while `LEGACY_AUTH_COMPAT=false` **[live: verify]**. Also, the startup warning about an
+   unprotected Diary connection fires only when `UI_AUTH_TOKEN` is empty (`index.cjs`), so it is
+   skipped when only `UI_AUTH_TOKEN` is set and `DIARY_AUTH_TOKEN` is empty.
+4. **`models.ini` has two writers** (§6.3): web through `/llamacpp-config` (rw) and model-loader
+   through `/config` (rw); llama only reads it (`/config:ro`, `compose.llamacpp.yaml`).
 5. **The browser executor runs in the web process** (§6.4). Not deployed.
 6. **The egress proxy binds `0.0.0.0` by default** (`code-egress.cjs`), so it listens on every
    network web joins, not only `code`. Grants still gate it; `CODE_EGRESS_BIND` exists to narrow it.
@@ -651,13 +649,17 @@ readlink -f /mnt/docker/appdata/cowork/current
 docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | grep cowork
 
 # A2. Networks per container (confirms §2: model-loader only on models; diary not on models;
-#     ocr, laya, kiwix, code networks are internal and two-member).
+#     each internal network (ocr, laya, kiwix, code) contains only web and the sidecars that
+#     serve it; ocr holds web, ocr and docling).
 for c in $(docker ps --format '{{.Names}}' | grep cowork); do
   printf '%s\t' "$c"; docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c"
 done
 for n in $(docker network ls --format '{{.Name}}' | grep -i cowork); do
   printf '%s internal=' "$n"; docker network inspect -f '{{.Internal}} {{range .Containers}}{{.Name}} {{end}}' "$n"
 done
+
+# A2b. Members of the external lemonade_default network from the live override (§2).
+docker network inspect -f '{{.Name}} internal={{.Internal}} {{range .Containers}}{{.Name}} {{end}}' lemonade_default
 
 # A3. Published ports (expect only web's 8021; no MCP_INTERNAL_PORT, no DAV unless enabled).
 docker ps --format '{{.Names}}\t{{.Ports}}' | grep cowork
@@ -676,6 +678,7 @@ done
 for k in DIARY_AUTH_TOKEN MODEL_LOADER_TOKEN UI_AUTH_TOKEN; do
   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' cowork-web-1 | grep -q "^$k=." && echo "$k set" || echo "$k empty/unset"
 done
+# These six are non-secret configuration and are deliberately printed with their values.
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' cowork-web-1 | grep -E '^(LEGACY_AUTH_COMPAT|MODEL_MANAGER_KIND|CODE_EGRESS_BIND|CODE_EGRESS_PORT|MCP_INTERNAL_PORT|COWORK_DAV_PORT)='
 
 # A7. Health endpoints (unauthenticated ones only).
