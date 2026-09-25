@@ -1,10 +1,11 @@
 import hashlib
 from contextlib import contextmanager
+from datetime import date
 from types import SimpleNamespace
 import pytest
 from agent.managed_storage import ManagedCorpusBackend
 from agent.corpus_store import CorpusStore
-from agent.workspace_ops import OpError, operate, stat, MAX_ENTRIES
+from agent.workspace_ops import OpError, operate, stat, protected, MAX_ENTRIES
 from agent.workspace_trash import change, list_trash, PREFIX
 from tests.test_dedicated_storage import B, volume  # noqa: F401 (fixture)
 
@@ -84,6 +85,50 @@ def test_ordinary_hyphenated_filename_is_not_mistaken_for_a_month_file(store):
     month_version = stat(store, '2026-09.md')['version']
     expect(403, lambda: operate(store, {'op': 'delete', 'path': '2026-09.md', 'version': month_version}))
     assert '2026-09.md' in files(store)
+
+
+MONTH_TEMPLATES = ['{year}-{month02}.md', 'Diary - {month_name} {year}.md', '{year}/{month}.md']
+
+# Decoy names that must never be mistaken for a real month file under ANY template:
+# an ordinary client upload, an unpadded (single-digit) month for the {month02} template,
+# an unrelated hyphenated name, and a real month name with an extra suffix.
+UNPROTECTED_DECOYS = ['finder-upload.md', '2026-9.md', 'abcd-ef.md', '2026-09.md.bak']
+
+
+def _cfg(template):
+    return SimpleNamespace(get=lambda key, default=None: {
+        'corpus.entry_layout': 'monthly', 'corpus.month_file_template': template,
+    }.get(key, default))
+
+
+def _monthly_store(tmp_path, template, files):
+    backend = ManagedCorpusBackend(tmp_path / 'managed', B)
+    backend.activate(files, {})
+    return CorpusStore(_cfg(template), backend, None)
+
+
+@pytest.mark.parametrize('template', MONTH_TEMPLATES)
+def test_month_file_protection_across_templates_and_locales(tmp_path, template):
+    # September's real filename for this template, computed the same way month_filename()
+    # (hence list_months()'s and protected()'s {month_name} alternative) would: via
+    # calendar.month_name / day.strftime("%B") under the current locale, so this test also
+    # exercises non-ASCII month names (e.g. "März", "août") when run under such a locale.
+    protected_name = CorpusStore(_cfg(template), SimpleNamespace(), None).month_filename(date(2026, 9, 1))
+    files = {protected_name: b'# month\n', **{d: b'# decoy\n' for d in UNPROTECTED_DECOYS if d != protected_name}}
+    st = _monthly_store(tmp_path, template, files)
+
+    assert protected(st, st._join(st.monthly_prefix, protected_name)) is True
+    for decoy in UNPROTECTED_DECOYS:
+        if decoy == protected_name:
+            continue
+        assert protected(st, st._join(st.monthly_prefix, decoy)) is False, decoy
+
+    if '/' not in template:
+        # list_dir() on the monthly prefix only sees its immediate children, so a template
+        # nesting the month file under a subdirectory (e.g. "{year}/{month}.md") isn't
+        # listable this way; the flat templates must return exactly the protected month.
+        months = st.list_months()
+        assert [m['id'] for m in months] == ['2026-09']
 
 
 def test_folder_delete_is_all_or_nothing(store):
