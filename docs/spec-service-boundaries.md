@@ -545,7 +545,7 @@ Each is a proposal for its issue; none is authorised here.
 - **Verification:** concurrent calibration plus a section edit cannot interleave; an interrupted
   write leaves the previous file; `docker compose config` still renders; model-manager pytest
   and the web suite pass.
-- **Rollback:** previous image tags and the saved `models.ini`.
+- **Rollback:** previous image tags and the saved `models.ini` (`models.ini.noevia-backup-<baseRevision>` in the config dir; see the decision below).
 - **Gate:** System-One architecture review first ([§9](#9-what-this-does-not-authorise)).
 - **Decision (#295, 2026-09-25, proceeding ahead of the review by owner decision):** model-loader
   is the single writer. It already has the authenticated `/api/v1` sections API, backup rotation
@@ -556,6 +556,12 @@ Each is a proposal for its issue; none is authorised here.
   set `MODELS_INI_WRITER=model-loader` for web (default `web` keeps the old path; an older or
   unreachable sidecar gives an explicit 503 and no write); once live-verified, a follow-up makes
   web's `/llamacpp-config` mount `:ro` and retires the `web` value. Rollback: flip the flag back.
+  Durability matches web's old path: every model-loader write of `models.ini` (whole-file replace
+  and the sections API) holds one process lock around the revision check and the write, fails
+  if its backup copy fails, fsyncs the temp file and then the directory after the rename. The
+  replace endpoint also keeps an immutable `models.ini.noevia-backup-<baseRevision>` (0600, never
+  pruned) next to the rotating `models.ini.bak-<timestamp>` copies (last 10 kept); that immutable
+  file is "the saved `models.ini`" for rollback.
 
 ### 6.4 M4 — Browser executor sandbox
 

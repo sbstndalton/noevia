@@ -8,7 +8,8 @@ const sha=text=>crypto.createHash('sha256').update(text).digest('hex');
 function fixture(t){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ini-writer-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));const file=path.join(dir,'models.ini');fs.writeFileSync(file,'version = 1\n[*]\ncache-type-k = q8_0\n[synthetic]\n; operator note\nmodel = /models/s.gguf\nctx-size = 8192\n');return {dir,file};}
 // Fake sidecar: same compare-and-swap semantics as PUT /api/v1/models-ini, writing the shared file.
 function fakeSidecar(file,{status}={}){const calls=[];return {calls,fetchJson:async(url,opts)=>{calls.push({url,opts,body:JSON.parse(opts.body)});
-  if(status==='down')throw Error('ECONNREFUSED');if(status)return {ok:false,status,body:{detail:'Not Found'}};
+  if(status==='parse'){const {text}=JSON.parse(opts.body);if(/^\s*\[[^\]]*$/m.test(text))return {ok:false,status:400,body:{detail:'models.ini text does not parse'}};}
+  else if(status==='down')throw Error('ECONNREFUSED');if(status)return {ok:false,status,body:{detail:'Not Found'}};
   const {baseRevision,text}=JSON.parse(opts.body);if(baseRevision!==sha(fs.readFileSync(file,'utf8')))return {ok:false,status:409,body:{detail:'changed'}};
   fs.writeFileSync(file,text);return {ok:true,status:200,body:{ok:true,revision:sha(text)}};}};}
 
@@ -34,7 +35,7 @@ test('model-loader mode sends the prepared file through the sidecar with the tok
 });
 
 test('sidecar down, older sidecar and conflicts fail explicitly without changing the file',async t=>{
-  for(const status of ['down',404,405,401,500]){
+  for(const status of ['down',404,405,500]){
     const {file}=fixture(t),before=fs.readFileSync(file,'utf8'),side=fakeSidecar(file,{status});
     const store=createPresetStore(file,{writer:createModelsIniWriter({mode:'model-loader',url:'http://ml',fetchJson:side.fetchJson})});
     const c=store.prepare({model:'synthetic',baseRevision:store.get('synthetic').revision,options:{parallel:'2'}});
@@ -66,4 +67,36 @@ test('failed reload restores the previous file through the sidecar too',async t=
     presetWriter:createModelsIniWriter({mode:'model-loader',url:'http://ml',fetchJson:side.fetchJson})});
   const r=await manager.applyPreset({model:'synthetic',baseRevision:sha(before),options:{parallel:'2'},confirmReload:true});
   assert.equal(r.status,503);assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(side.calls.length,2);
+});
+
+test('401/403 get their own token message without echoing the token',async t=>{
+  for(const status of [401,403]){
+    const {file}=fixture(t),before=fs.readFileSync(file,'utf8'),side=fakeSidecar(file,{status});
+    const writer=createModelsIniWriter({mode:'model-loader',url:'http://ml',token:'fixture-secret',fetchJson:side.fetchJson});
+    const err=await writer.write({baseRevision:sha(before),text:before}).catch(e=>e);
+    assert.equal(err.status,503);assert.match(err.message,/rejected the token; check MODEL_LOADER_TOKEN/);assert.doesNotMatch(err.message,/fixture-secret/);
+    assert.equal(fs.readFileSync(file,'utf8'),before);
+  }
+});
+
+test('unparseable text maps to 400 with the sidecar detail and no write',async t=>{
+  const {file}=fixture(t),before=fs.readFileSync(file,'utf8'),side=fakeSidecar(file,{status:'parse'});
+  const writer=createModelsIniWriter({mode:'model-loader',url:'http://ml',fetchJson:side.fetchJson});
+  await assert.rejects(writer.write({baseRevision:sha(before),text:'[broken\nx = 1\n'}),{status:400,message:/rejected the preset file: models.ini text does not parse/});
+  assert.equal(fs.readFileSync(file,'utf8'),before);
+});
+
+test('no token configured: the token header is omitted',async t=>{
+  const {file}=fixture(t),side=fakeSidecar(file),before=fs.readFileSync(file,'utf8');
+  const writer=createModelsIniWriter({mode:'model-loader',url:'http://ml',fetchJson:side.fetchJson});
+  await writer.write({baseRevision:sha(before),text:before+'; x\n'});
+  assert.equal('X-Model-Loader-Token' in side.calls[0].opts.headers,false);
+});
+
+test('preamble before the first section round-trips through the sidecar',async t=>{
+  const {file}=fixture(t),side=fakeSidecar(file);
+  const store=createPresetStore(file,{writer:createModelsIniWriter({mode:'model-loader',url:'http://ml',fetchJson:side.fetchJson})});
+  await store.commit(store.prepare({model:'synthetic',baseRevision:store.get('synthetic').revision,options:{parallel:'2'}}));
+  const after=fs.readFileSync(file,'utf8');
+  assert.match(after,/^version = 1\n\[\*\]\n/);assert.match(after,/cache-type-k = q8_0/);assert.equal(store.get('synthetic').options.parallel,'2');
 });
