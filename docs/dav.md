@@ -222,6 +222,44 @@ a privacy permission the agent's shell lacks. Nothing about noevia was measured.
 mount **read-only**, since it only writes to class-2 (LOCK) servers and noevia advertises `DAV: 1`
 (D6). The real check is the user's: Finder → Go → Connect to Server with an app password.
 
+### Interoperability run 3 — 2026-09-25 (client emulation)
+
+`apps/web/qa/dav-clients.cjs`: raw HTTP (Node's `fetch`/`http`, no Playwright) against the real web
+server and real Diary companion on a throwaway tenant, driving the documented request pattern of
+each client that can be exercised without the user's own device — macOS Finder (WebDAVFS), Windows
+Explorer (Mini-Redirector) and WinSCP, and iOS Files. The admin bootstrap (setup, sharing scope,
+app password) is also plain `fetch` with a hand-rolled cookie jar, so nothing in this run needs a
+browser. Obsidian sync is unchanged and not rerun; see the row below for its run-2 result.
+
+| Client / version emulated | Environment | Result | Evidence |
+|---|---|---|---|
+| rclone v1.75.1 | run 1/2 fixture (real web + real companion) | **pass** (18/18) | run 1/2 above, not rerun |
+| Obsidian (Remotely Save, `webdav` npm client v5) | run 2 fixture (real web + real companion) | **pass** (17/17, one fix shipped) | `apps/web/qa/dav-obsidian.cjs`, not rerun |
+| macOS Finder (WebDAVFS) — HTTP pattern | this sandbox, real web + real companion, raw HTTP | **pass** (12/12 assertions) | `dav-clients.cjs`: OPTIONS; PROPFIND Depth 0/1 with Finder's property set (`getlastmodified`, `getcontentlength`, `executable`, `resourcetype`, `getetag`, `getcontenttype`); `._name` AppleDouble sidecar and `.DS_Store` PUT (`400`, dot-prefixed names are refused — documented, harmless); LOCK/UNLOCK (`405`, no class 2 — Finder would then mount read-only, as already predicted below); PUT with `Expect: 100-continue` + chunked body; MOVE with `Overwrite: F`; DELETE; PROPFIND on a non-existent path (`404`, not a `207` shape) |
+| macOS Finder (WebDAVFS) — actual mount | **blocked**, needs the user's Mac | The 2026-09-22 attempt below still applies: `mount_webdav` refused locally before sending any request. User steps: Finder → Go → Connect to Server → `http://<host>:<dav-port>/dav/<username>/` with the app password; expect a read-only mount (no class 2); try create, rename, delete and the AppleDouble/`.DS_Store` writes on disposable files only |
+| Windows Explorer (Mini-Redirector) / WinSCP — HTTP pattern | this sandbox, real web + real companion, raw HTTP | **pass** (10/10 assertions) | `dav-clients.cjs`: OPTIONS (`MS-Author-Via: DAV` is not sent — documented, harmless, Explorer falls back to its own probe); PROPFIND `Depth: 1` + `translate: f`; PROPPATCH of Win32 timestamps (`405`, no dead properties stored — documented); Explorer's two-step create (zero-length PUT, then content PUT); `desktop.ini`/`Thumbs.db` writes (`415`, not `.md` — documented, harmless); MOVE with no `Overwrite` header (defaults to `T` per RFC 4918 §10.6); DELETE; HEAD |
+| Windows Explorer / WinSCP — actual mount | **blocked**, needs the user's Windows device | Map a network drive or WinSCP "New Site" (WebDAV) to `http://<host>:<dav-port>/dav/<username>/` with the app password; expect the `desktop.ini`/`Thumbs.db` writes above to silently fail without breaking browsing; disposable files only |
+| iOS Files (Files app / a Documents-app-style client) — HTTP pattern | this sandbox, real web + real companion, raw HTTP | **pass** (7/7 assertions) | `dav-clients.cjs`: PUT with `If-None-Match: *` for create; PROPFIND `Depth: 1` + `Brief: t`; conditional GET with `If-None-Match` (matching ETag → `304`, stale → `200`); GET with `Range` (ignored, full body via `200` — no `Range`/`Accept-Ranges` support is documented in this file's "Supported" list — documented, harmless); MOVE; DELETE |
+| iOS Files — actual app | **blocked**, needs the user's iPhone/iPad | Add a WebDAV connection in Files (or a Documents-app-style client) to `http(s)://<host>:<dav-port>/dav/<username>/` with the app password; try opening, editing, renaming and deleting a disposable note, and re-downloading after a Wi-Fi drop (exercises the `Range` fallback for real) |
+
+**Server defect found and fixed here:** the protected-month-file regex in
+`services/diary/agent/workspace_ops.py`'s `protected()` substituted every template field
+(`{year}`, `{month}`, `{month02}`, `{month_name}`) with the unconstrained wildcard `[^/]+`. With
+the default template `{year}-{month02}.md` that matches *any* two-part hyphenated `.md` filename
+at the corpus root, not just a real `YYYY-MM.md` month file — so Finder/Explorer/iOS Files'
+create/rename patterns (`finder-upload.md`, `explorer-renamed.md`, `ios-note.md`) were wrongly
+refused as protected. Fixed to substitute digits for `{year}`/`{month}`/`{month02}` and letters
+for `{month_name}`, matching the pattern `corpus_store.py`'s `list_months()` already used to find
+real month files. [Issue #324](https://github.com/sbstndalton/noevia/issues/324) (closed by this
+PR); regression test: `services/diary/tests/test_workspace_ops.py::test_ordinary_hyphenated_filename_is_not_mistaken_for_a_month_file`.
+Full diary suite: 412/412 pass.
+
+Every invariant `dav-clients.cjs` asserts across all three client emulations held: the protected
+`INDEX.md` stayed byte-identical through every attempted write/move/delete; every unconditional
+overwrite (the only mode these clients use) preserved the previous version in Trash; `428` was
+returned only for the protected path, never for an ordinary file; and a wrong app password got
+`401` with the `noevia diary files` realm.
+
 ### Decision (D6, 2026-09-17)
 
 Protected set confirmed — capture files, month files, the index — plus `AI Memory/**`.

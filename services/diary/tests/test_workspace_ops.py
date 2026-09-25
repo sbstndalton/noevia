@@ -18,6 +18,7 @@ def store(tmp_path):
         'notes/a.md': b'# A\n', 'notes/sub/b.md': b'# B\n', 'solo/only.md': b'# only\n',
         'AI Memory/profile.md': b'# memory\n', 'Entries/2026/September/September 14, 2026.md': b'raw',
         'INDEX.md': b'# index\n', 'capture.md': b'text <!-- xid:1234abcd-0000 -->\n', 'notes/image.bin': b'\x00',
+        'finder-upload.md': b'# not a month file\n', '2026-09.md': b'# a real month file\n',
     }, {})
     cfg = SimpleNamespace(get=lambda key, default=None: {'corpus.entry_layout': 'daily'}.get(key, default))
     return CorpusStore(cfg, backend, None)
@@ -69,6 +70,20 @@ def test_protected_destinations(store, destination):
     expect(403, lambda: operate(store, {'op': 'move', 'path': 'solo/only.md', 'destination': destination, 'version': sha(b'# only\n'), 'overwrite': True}))
     expect(403, lambda: operate(store, {'op': 'copy', 'path': 'solo/only.md', 'destination': destination}))
     assert files(store) == before
+
+
+def test_ordinary_hyphenated_filename_is_not_mistaken_for_a_month_file(store):
+    # The default month_file_template "{year}-{month02}.md" must only match a real YYYY-MM.md
+    # name. A blanket "[^/]+" substitution for {year}/{month02} previously made ANY two-part
+    # "word-word.md" filename at the corpus root look like a protected month file, wrongly
+    # refusing DELETE/MOVE/overwrite on ordinary client-created files (e.g. Finder/Explorer/iOS
+    # Files two-step-create names like "finder-upload.md").
+    ordinary = stat(store, 'finder-upload.md')['version']
+    operate(store, {'op': 'delete', 'path': 'finder-upload.md', 'version': ordinary})
+    assert 'finder-upload.md' not in files(store)
+    month_version = stat(store, '2026-09.md')['version']
+    expect(403, lambda: operate(store, {'op': 'delete', 'path': '2026-09.md', 'version': month_version}))
+    assert '2026-09.md' in files(store)
 
 
 def test_folder_delete_is_all_or_nothing(store):

@@ -48,9 +48,15 @@ def protected(store, full):
     """True when ``full`` (a backend key) is a path clients may never delete, move or replace."""
     entries = store._join(store.entries_prefix).rstrip('/')
     memory = store._join(MEMORY_FOLDER).rstrip('/')
+    # Field-specific substitutions (digits for year/month, letters for month_name), matching
+    # corpus_store.py's list_months() regex. A blanket "[^/]+" here previously made any
+    # "word-word.md" filename at the corpus root match the default "{year}-{month02}.md"
+    # template, wrongly protecting ordinary files from DELETE/MOVE/overwrite.
     pattern = re.escape(store._join(store.monthly_prefix, store.month_file_template))
-    for field in ('year', 'month', 'month02', 'month_name'):
-        pattern = pattern.replace(re.escape('{' + field + '}'), '[^/]+')
+    pattern = pattern.replace(re.escape('{year}'), r'\d{4}')
+    pattern = pattern.replace(re.escape('{month02}'), r'\d{2}')
+    pattern = pattern.replace(re.escape('{month}'), r'\d{1,2}')
+    pattern = pattern.replace(re.escape('{month_name}'), r'[A-Za-z]+')
     return (full == store.index_path() or full in (entries, memory) or full.startswith(entries + '/')
             or full.startswith(memory + '/') or re.fullmatch(pattern, full) is not None)
 
