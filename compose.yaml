@@ -69,7 +69,14 @@ services:
 
   web:
     networks: [default, ocr, laya]
-    build: ./apps/web
+    build:
+      context: ./apps/web
+      # Threaded through to STAMP_VERSION (apps/web/Dockerfile), which stamps
+      # the favicon/manifest cache-busting query and the stale-shell-guard
+      # version (issue #311): without this, every release from this compose
+      # file built the same untagged bundle and the cache never refreshed.
+      args:
+        COWORK_VERSION: ${COWORK_VERSION:-dev}
     image: cowork-web:${COWORK_VERSION:-dev}
     restart: unless-stopped
     ports:
