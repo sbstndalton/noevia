@@ -19,11 +19,33 @@ const same=(a,b,m)=>assert.equal(JSON.stringify(a),JSON.stringify(b),m);
 const EN=load('en-GB').EN_GB;
 // The app loads non-English catalogues as chunks; node registers them directly for the checks below.
 const FILES={'de-DE':'DE_DE','es-ES':'ES_ES','fr-FR':'FR_FR','it-IT':'IT_IT','nb-NO':'NB_NO','nl-NL':'NL_NL','pt-BR':'PT_BR','sv-SE':'SV_SE'};
+// One entry per lazy-view segment: its constant suffix, the chunk that registers its English part
+// (settings/index.ts etc., what the real view's chunk does), and the component(s) allowed to pull
+// its strings into their own chunk.
+const SEGMENT_DEFS={
+  settings:{suffix:'SETTINGS',owners:/^components\/(SettingsShell|ProviderForm|connectors\/)/},
+  // Diary's and Projects' child components rely on their lazy entry (DiaryView, ProjectsView)
+  // having already registered the segment, rather than each importing it themselves.
+  projects:{suffix:'PROJECTS',owners:/^components\/ProjectsView$/},
+  diary:{suffix:'DIARY',owners:/^components\/DiaryView$/},
+};
+const SEGMENT_NAMES=Object.keys(SEGMENT_DEFS);
 assert.equal(Object.keys(core.CATALOGUES).join(),'en-GB,en-US','only English is bundled eagerly');
-assert.equal(Object.keys(core.SEGMENTS.settings).length,0,'the Settings segment is not loaded with the core');
-const ENS=load('settings/en-GB').EN_GB_SETTINGS;
-load('settings/index');// what the Settings chunk does: registers the English Settings segment
-for(const [l,name] of Object.entries(FILES)){core.registerCatalogue(l,load(l)[name]);core.registerSegment('settings',l,load('settings/'+l)[name+'_SETTINGS']);}
+for(const s of SEGMENT_NAMES)assert.equal(Object.keys(core.SEGMENTS[s]).length,0,`the ${s} segment is not loaded with the core`);
+const ENSEG={};// segment => its EN_GB_<SUFFIX> object
+for(const s of SEGMENT_NAMES){
+  ENSEG[s]=load(`${s}/en-GB`)[`EN_GB_${SEGMENT_DEFS[s].suffix}`];
+  load(`${s}/index`);// what the view's chunk does: registers the English part of that segment
+}
+for(const [l,name] of Object.entries(FILES)){
+  core.registerCatalogue(l,load(l)[name]);
+  for(const s of SEGMENT_NAMES){
+    const suffix=SEGMENT_DEFS[s].suffix;
+    const mod=load(`${s}/${l}`);
+    assert.ok(mod[`${name}_${suffix}`],`${s}/${l}.ts does not export ${name}_${suffix}`);
+    core.registerSegment(s,l,mod[`${name}_${suffix}`]);
+  }
+}
 const NON_BASE=Object.keys(core.CATALOGUES).filter(l=>l!=='en-GB');
 
 test('every supported account locale has a catalogue, and nothing else does',()=>{
@@ -89,10 +111,11 @@ test('system locale: browser languages in order, bare languages and regions, Eng
 
 test('catalogues: no keys outside English, matching placeholders, and coverage reported',()=>{
   const lines=[];
+  const segTotal=SEGMENT_NAMES.reduce((n,s)=>n+Object.keys(ENSEG[s]).length,0);
   for(const locale of NON_BASE){
-    for(const part of ['base','settings'])same(core.coverage(locale,part).extra,[],`${locale} ${part} segment has keys its English segment does not`);
+    for(const part of ['base',...SEGMENT_NAMES])same(core.coverage(locale,part).extra,[],`${locale} ${part} segment has keys its English segment does not`);
     const c=core.coverage(locale);
-    assert.equal(c.total,Object.keys(EN).length+Object.keys(ENS).length,'coverage spans both segments');
+    assert.equal(c.total,Object.keys(EN).length+segTotal,'coverage spans the base and every segment');
     same(c.extra,[],`${locale} has keys English does not: ${c.extra.join(', ')}`);
     same(c.placeholderMismatch,[],`${locale} placeholders differ: ${c.placeholderMismatch.join(', ')}`);
     lines.push(`${locale} ${c.translated}/${c.total} (${Math.round(100*c.translated/c.total)}%)`);
@@ -100,8 +123,14 @@ test('catalogues: no keys outside English, matching placeholders, and coverage r
     if(locale!=='en-US')same(c.missing,[],`${locale} is missing: ${c.missing.join(', ')}`);
   }
   console.log('i18n coverage: '+lines.join(' · '));
-  const us={...load('en-US').EN_US,...load('settings/en-US').EN_US_SETTINGS};
-  for(const [k,v] of Object.entries(us))assert.notEqual(v,EN[k]??ENS[k],`en-US repeats British text for ${k}`);
+  const us={...load('en-US').EN_US};
+  for(const s of SEGMENT_NAMES){
+    const mod=load(`${s}/en-US`),key=`EN_US_${SEGMENT_DEFS[s].suffix}`;
+    assert.ok(mod[key],`${s}/en-US.ts does not export ${key}`);
+    Object.assign(us,mod[key]);
+  }
+  const englishAll={...EN,...Object.assign({},...SEGMENT_NAMES.map(s=>ENSEG[s]))};
+  for(const [k,v] of Object.entries(us))assert.notEqual(v,englishAll[k],`en-US repeats British text for ${k}`);
 });
 
 test('the completeness check really fails on an extra key and a broken placeholder',()=>{
@@ -116,18 +145,19 @@ test('the completeness check really fails on an extra key and a broken placehold
 });
 
 test('plural keys come in pairs, and catalogues are bundled, not fetched',()=>{
-  const ALL={...EN,...ENS};
+  const ALL={...EN,...Object.assign({},...SEGMENT_NAMES.map(s=>ENSEG[s]))};
   const plural=Object.keys(ALL).filter(k=>/\.(one|other)$/.test(k)).map(k=>k.replace(/\.(one|other)$/,''));
   for(const base of new Set(plural))assert.ok(ALL[base+'.one']&&ALL[base+'.other'],base);
   const files=fs.readdirSync(dir).flatMap(f=>fs.statSync(path.join(dir,f)).isDirectory()?fs.readdirSync(path.join(dir,f)).map(g=>f+'/'+g):[f]);
-  assert.ok(files.includes('settings/de-DE.ts'));
+  for(const s of SEGMENT_NAMES)assert.ok(files.includes(`${s}/de-DE.ts`));
+  const LOCALE_RE='(de-DE|es-ES|fr-FR|it-IT|nb-NO|nl-NL|pt-BR|sv-SE)';
   for(const f of files){
     const src=fs.readFileSync(path.join(dir,f),'utf8');
     assert.doesNotMatch(src,/\bfetch\(/,`${f} fetches at runtime`);
     // Dynamic imports only in loaders.ts, and only literal paths to a supported catalogue.
     const imports=[...src.matchAll(/import\(([^)]*)\)/g)].map(m=>m[1]);
     if(f!=='loaders.ts'){assert.equal(imports.length,0,`${f} imports at runtime`);continue;}
-    for(const arg of imports)assert.match(arg,/^'\.\/(settings\/)?(de-DE|es-ES|fr-FR|it-IT|nb-NO|nl-NL|pt-BR|sv-SE)'$/,`non-literal import ${arg}`);
+    for(const arg of imports)assert.match(arg,new RegExp(`^'\\./(?:(?:${SEGMENT_NAMES.join('|')})/)?${LOCALE_RE}'$`),`non-literal import ${arg}`);
   }
 });
 
@@ -143,6 +173,8 @@ test('the chunk loader map holds only supported non-English ids; anything else n
   const loaders=load('loaders');
   same(Object.keys(loaders.LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   same(Object.keys(loaders.SETTINGS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.PROJECTS_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
+  same(Object.keys(loaders.DIARY_LOADERS).sort(),core.SUPPORTED.filter(l=>!l.startsWith('en-')).sort());
   for(const bad of ['xx-XX','../en-GB','__proto__','constructor','']){assert.equal(await loaders.loadSegment('settings',bad,{}),false,bad);}
   assert.equal(await loaders.loadSegment('__proto__','de-DE'),false,'an unknown segment loads nothing');
   let calls=0;const spy={'de-DE':()=>{calls++;return Promise.resolve({});}};
@@ -189,58 +221,158 @@ test('key names follow the locale: Strg in German, Maj in French, Ctrl in Englis
   assert.match(core.translate('de-DE', 'keyboard.otherNote'), /Strg/);
 });
 
-// Shell strings the first screen shows before any Settings code has loaded.
+test('the Diary Markdown workspace search summary keeps its counts, in every locale',()=>{
+  // Regression: diary.workspace.matches/.linkingFiles/.filesChecked/.unreadableItems are plural
+  // pairs whose VALUES must themselves contain {count} — translatePlural only supplies the count
+  // as an interpolation variable, it does not prepend it. searchSummary composes two of these
+  // plurals through {results} and {checked}, exactly as DiaryMarkdownWorkspace.tsx does.
+  const summary=(locale,resultsKey,resultsCount,scanned)=>core.translate(locale,'diary.workspace.searchSummary',{
+    results:core.translatePlural(locale,resultsKey,resultsCount),
+    checked:core.translatePlural(locale,'diary.workspace.filesChecked',scanned),
+  });
+  for(const locale of ['en-GB',...NON_BASE]){
+    for(const [key,count] of [['diary.workspace.matches',1],['diary.workspace.matches',12],['diary.workspace.linkingFiles',1],['diary.workspace.linkingFiles',3]]){
+      const text=summary(locale,key,count,12);
+      assert.match(text,new RegExp(String(count)),`${locale} ${key}(${count}) lost its result count: ${text}`);
+      assert.match(text,/12/,`${locale} ${key}(${count}) lost its scanned-files count: ${text}`);
+    }
+    const skipped=core.translatePlural(locale,'diary.workspace.unreadableItems',3);
+    assert.match(skipped,/3/,`${locale} unreadableItems lost its count: ${skipped}`);
+  }
+});
+
+// Shell strings the first screen shows before any Settings/Projects/Diary code has loaded.
 const SHELL_ALLOW=/^(settings\.title|capabilities\.unavailable|keyboard\.(searchShortcuts|noMatch|action\..+|group\..+))$/;
+// Prefixes owned by each lazy segment, checked against the base catalogue below. account.* stays
+// in the base on purpose: the account menu renders on the first screen.
+const SEGMENT_PREFIX={
+  settings:/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers|appPasswords)\./,
+  projects:/^projects\./,
+  diary:/^diary\./,
+};
 test('the base English catalogue holds no Settings-screen string beyond the shell allowlist',()=>{
   const settingsInBase=Object.keys(EN).filter(k=>k.startsWith('settings.'));
   same(settingsInBase,['settings.title'],'settings.* in the base catalogue');
-  const stray=Object.keys(EN).filter(k=>/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers|appPasswords)\./.test(k)&&!SHELL_ALLOW.test(k));
+  const stray=Object.keys(EN).filter(k=>SEGMENT_PREFIX.settings.test(k)&&!SHELL_ALLOW.test(k));
   same(stray,[],'Settings-only keys in the base catalogue');
-  // No key is defined in both segments, and the base catalogue module never imports the segment.
-  same(Object.keys(ENS).filter(k=>k in EN),[]);
-  assert.doesNotMatch(fs.readFileSync(path.join(dir,'core.ts'),'utf8'),/^import \{[^}]*\} from '\.\/settings/m,'core imports Settings strings at runtime');
-  // Only the Settings and Customise code registers the English segment.
-  const users=[];(function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){if(f!=='i18n')walk(p);}else if(/\.tsx?$/.test(f)&&/i18n\/settings['\/]/.test(fs.readFileSync(p,'utf8')))users.push(path.relative(path.join(__dirname,'../src'),p));}})(path.join(__dirname,'../src'));
-  for(const u of users)assert.match(u,/^components\/(SettingsShell|ProviderForm|connectors\/)/,`${u} pulls the Settings strings into its chunk`);
 });
 
-test('Settings keys: English until the segment arrives, key by key, and the key itself if unregistered',async()=>{
-  assert.equal(core.translate('de-DE','settings.backToApp'),'Zurück zur App');
-  const savedDe=core.SEGMENTS.settings['de-DE'];delete core.SEGMENTS.settings['de-DE'];
+// Every dotted, quoted, message-key-shaped literal in a file — this is what a t('x.y') or
+// t.plural('x.y', …) call, including inside a ternary or a variable/array of keys, looks like in
+// source; nothing else in these files is a quoted string of that shape.
+const KEY_LITERAL=/(['"`])([a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+)\1/g;
+function keysUsedIn(relPath){
+  const src=fs.readFileSync(path.join(__dirname,'../src',relPath),'utf8');
+  return new Set([...src.matchAll(KEY_LITERAL)].map(m=>m[2]));
+}
+// Modules in the first-load bundle (App.tsx's own graph — ProjectView/EditProjectModal/
+// ProjectIdentity are imported eagerly by App.tsx, not through lazy-views.tsx; AccountMenu and
+// ChatView/Sidebar/App render on the first screen; DiaryModal is where MarkdownPreview lives,
+// which ChatView also renders for ordinary chat messages).
+const EAGER_MODULES=['components/ProjectView.tsx','components/EditProjectModal.tsx','components/ProjectIdentity.tsx','components/AccountMenu.tsx','components/ChatView.tsx','components/Sidebar.tsx','App.tsx','components/DiaryModal.tsx'];
+// The lazy Diary and Projects views and every child only they render.
+const DIARY_MODULES=['components/DiaryView.tsx','components/DiaryCalendar.tsx','components/DiaryContextPanel.tsx','components/DiaryModal.tsx','components/DiaryMarkdownWorkspace.tsx','components/diary-graph/LocalGraph.tsx','components/DiaryStorageStatus.tsx','components/DiaryWorkspaceTrash.tsx','components/DiaryWorkspaceImport.tsx'];
+const PROJECTS_MODULES=['components/ProjectsView.tsx'];
+
+// A t.plural('x.y', n) call cites the bare base ('x.y'), never the '.one'/'.other' pair itself.
+const inBase=(k)=>k in EN||(`${k}.one` in EN&&`${k}.other` in EN);
+test('every projects.*/diary.*/account.* key used by an eager (first-load) module is in the base catalogue',()=>{
+  for(const file of EAGER_MODULES){
+    const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX.projects.test(k)||SEGMENT_PREFIX.diary.test(k)||k.startsWith('account.'));
+    const missing=used.filter(k=>!inBase(k));
+    same(missing,[],`${file} uses a key not in the base catalogue: ${missing.join(', ')} — it is eager, so a lazy-segment-only key would render literally until that segment's chunk loads`);
+  }
+});
+
+test('ProjectsView and DiaryView (and their lazy-only children) use only base keys or their own segment, never the other segment',()=>{
+  const check=(files,ownSegment,otherSegment)=>{
+    for(const file of files){
+      const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX[otherSegment].test(k));
+      const foreign=used.filter(k=>!inBase(k));// a base key with that prefix (e.g. diary.markdown.*) is fine anywhere
+      same(foreign,[],`${file} (in the ${ownSegment} segment) uses a ${otherSegment}.* key that is not in the base catalogue: ${foreign.join(', ')}`);
+    }
+  };
+  check(PROJECTS_MODULES,'projects','diary');
+  check(DIARY_MODULES,'diary','projects');
+});
+
+test('the base English catalogue holds no Projects- or Diary-only string (ProjectView/EditProjectModal/ProjectIdentity are not lazy, so their own keys stay in the base)',()=>{
+  const strayProjects=Object.keys(EN).filter(k=>SEGMENT_PREFIX.projects.test(k)&&Object.prototype.hasOwnProperty.call(ENSEG.projects,k));
+  same(strayProjects,[],'a projects.* key exists in both the base and the projects segment');
+  const strayDiary=Object.keys(EN).filter(k=>SEGMENT_PREFIX.diary.test(k)&&Object.prototype.hasOwnProperty.call(ENSEG.diary,k));
+  same(strayDiary,[],'a diary.* key exists in both the base and the diary segment');
+  // diary.markdown.* (MarkdownPreview) and diary.modal.closeDialog (the DiaryModal wrapper it
+  // shares a file with) stay in the base because DiaryModal.tsx is pulled into the eager chunk by
+  // the equally eager ChatView; everything else diary.* that IS lazy-only lives in the segment.
+  const DIARY_BASE_ALLOW=/^diary\.(markdown\.|modal\.closeDialog$)/;
+  const diaryInBase=Object.keys(EN).filter(k=>SEGMENT_PREFIX.diary.test(k));
+  assert.ok(diaryInBase.every(k=>DIARY_BASE_ALLOW.test(k)),`unexpected diary.* key in the base: ${diaryInBase.filter(k=>!DIARY_BASE_ALLOW.test(k)).join(', ')}`);
+});
+
+test('no key is defined in more than one segment, and the base catalogue module never imports a segment at runtime',()=>{
+  for(const s of SEGMENT_NAMES)same(Object.keys(ENSEG[s]).filter(k=>k in EN),[],`${s} segment repeats a base key`);
+  for(let i=0;i<SEGMENT_NAMES.length;i++)for(let j=i+1;j<SEGMENT_NAMES.length;j++){
+    const [a,b]=[SEGMENT_NAMES[i],SEGMENT_NAMES[j]];
+    same(Object.keys(ENSEG[a]).filter(k=>k in ENSEG[b]),[],`${a} and ${b} both define`);
+  }
+  const coreSrc=fs.readFileSync(path.join(dir,'core.ts'),'utf8');
+  for(const s of SEGMENT_NAMES)assert.doesNotMatch(coreSrc,new RegExp(`^import \\{[^}]*\\} from '\\./${s}`,'m'),`core imports the ${s} segment's strings at runtime`);
+  // Only each segment's own lazy view(s) register its English part.
+  for(const s of SEGMENT_NAMES){
+    const users=[];(function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){if(f!=='i18n')walk(p);}else if(/\.tsx?$/.test(f)&&new RegExp(`i18n/${s}['"/]`).test(fs.readFileSync(p,'utf8')))users.push(path.relative(path.join(__dirname,'../src'),p).replace(/\.tsx?$/,'').replace(/\\/g,'/'));}})(path.join(__dirname,'../src'));
+    for(const u of users)assert.match(u,SEGMENT_DEFS[s].owners,`${u} pulls the ${s} strings into its chunk`);
+  }
+});
+
+// Generic version of the Settings-specific lifecycle test below, run once per lazy segment with a
+// representative key from each (settings.backToApp / projects.title / diary.title).
+const REP_KEY={settings:'settings.backToApp',projects:'projects.title',diary:'diary.title'};
+for(const s of SEGMENT_NAMES){
+  test(`${s} keys: English until the segment arrives, key by key, and the key itself if unregistered`,async()=>{
+    const key=REP_KEY[s];
+    assert.equal(core.translate('de-DE',key),core.SEGMENTS[s]['de-DE'][key]);
+    const savedDe=core.SEGMENTS[s]['de-DE'];delete core.SEGMENTS[s]['de-DE'];
+    try{
+      assert.equal(core.translate('de-DE',key),ENSEG[s][key],'absent segment falls back to English');
+      assert.equal(core.translate('de-DE','common.cancel'),'Abbrechen','the base still translates');
+    }finally{core.SEGMENTS[s]['de-DE']=savedDe;}
+    const savedEn=core.SEGMENTS[s]['en-GB'];delete core.SEGMENTS[s]['en-GB'];
+    try{
+      assert.ok(!core.activeSegments().includes(s));
+      assert.equal(core.translate('en-GB',key),key,'without the view code an unknown key renders as the key');
+    }finally{core.SEGMENTS[s]['en-GB']=savedEn;}
+    core.registerSegment(s,'xx-XX',{});assert.ok(!('xx-XX' in core.SEGMENTS[s]));
+    // A failed segment chunk logs once, is not retried, and leaves the base catalogue alone.
+    const loaders=load('loaders');
+    const savedPt=core.SEGMENTS[s]['pt-BR'];delete core.SEGMENTS[s]['pt-BR'];
+    let tries=0;const bad={'pt-BR':()=>{tries++;return Promise.reject(Error('chunk 404'));}};
+    try{
+      warnings.length=0;
+      assert.equal(loaders.catalogueSettled('pt-BR'),false);
+      assert.equal(await loaders.loadSegment(s,'pt-BR',bad),false);
+      assert.equal(await loaders.loadSegment(s,'pt-BR',bad),false);
+      assert.equal(tries,1);assert.equal(warnings.length,1);
+      assert.equal(loaders.catalogueSettled('pt-BR'),true,'a failed segment does not keep useT waiting');
+      assert.equal(core.translate('pt-BR',key),ENSEG[s][key]);
+      assert.equal(core.translate('pt-BR','common.cancel'),core.CATALOGUES['pt-BR']['common.cancel']);
+    }finally{core.SEGMENTS[s]['pt-BR']=savedPt;}
+    let ok=0;const good={'nb-NO':()=>{ok++;return Promise.resolve({[key]:'Test-NB'});}};
+    const savedNb=core.SEGMENTS[s]['nb-NO'];delete core.SEGMENTS[s]['nb-NO'];
+    try{
+      const [a,b]=await Promise.all([loaders.loadSegment(s,'nb-NO',good),loaders.loadSegment(s,'nb-NO',good)]);
+      assert.equal(a&&b,true);assert.equal(ok,1);assert.equal(core.translate('nb-NO',key),'Test-NB');
+    }finally{core.SEGMENTS[s]['nb-NO']=savedNb;}
+  });
+}
+
+test('Settings keys: partial segment falls back per key, and shell keys never depend on the segment',()=>{
+  const savedDe=core.SEGMENTS.settings['de-DE'];
   try{
-    assert.equal(core.translate('de-DE','settings.backToApp'),'Back to app','absent segment falls back to English');
-    assert.equal(core.translate('de-DE','common.cancel'),'Abbrechen','the base still translates');
     core.registerSegment('settings','de-DE',{'settings.search':'Einstellungen durchsuchen'});
     assert.equal(core.translate('de-DE','settings.backToApp'),'Back to app','a partial segment falls back per key');
     assert.equal(core.translate('de-DE','settings.search'),'Einstellungen durchsuchen');
   }finally{core.SEGMENTS.settings['de-DE']=savedDe;}
-  const savedEn=core.SEGMENTS.settings['en-GB'];delete core.SEGMENTS.settings['en-GB'];
-  try{
-    same(core.activeSegments(),[]);
-    assert.equal(core.translate('fr-FR','settings.title'),core.CATALOGUES['fr-FR']['settings.title'],'shell keys never depend on the segment');
-    assert.equal(core.translate('en-GB','settings.backToApp'),'settings.backToApp','without the Settings code an unknown key renders as the key');
-  }finally{core.SEGMENTS.settings['en-GB']=savedEn;}
-  core.registerSegment('settings','xx-XX',{});assert.ok(!('xx-XX' in core.SEGMENTS.settings));
-  // A failed segment chunk logs once, is not retried, and leaves the base catalogue alone.
-  const loaders=load('loaders');
-  const savedPt=core.SEGMENTS.settings['pt-BR'];delete core.SEGMENTS.settings['pt-BR'];
-  let tries=0;const bad={'pt-BR':()=>{tries++;return Promise.reject(Error('chunk 404'));}};
-  try{
-    warnings.length=0;
-    assert.equal(loaders.catalogueSettled('pt-BR'),false);
-    assert.equal(await loaders.loadSegment('settings','pt-BR',bad),false);
-    assert.equal(await loaders.loadSegment('settings','pt-BR',bad),false);
-    assert.equal(tries,1);assert.equal(warnings.length,1);
-    assert.equal(loaders.catalogueSettled('pt-BR'),true,'a failed segment does not keep useT waiting');
-    assert.equal(core.translate('pt-BR','settings.backToApp'),'Back to app');
-    assert.equal(core.translate('pt-BR','common.cancel'),core.CATALOGUES['pt-BR']['common.cancel']);
-  }finally{core.SEGMENTS.settings['pt-BR']=savedPt;}
-  let ok=0;const good={'nb-NO':()=>{ok++;return Promise.resolve({'settings.search':'Søk'});}};
-  const savedNb=core.SEGMENTS.settings['nb-NO'];delete core.SEGMENTS.settings['nb-NO'];
-  try{
-    const [a,b]=await Promise.all([loaders.loadSegment('settings','nb-NO',good),loaders.loadSegment('settings','nb-NO',good)]);
-    assert.equal(a&&b,true);assert.equal(ok,1);assert.equal(core.translate('nb-NO','settings.search'),'Søk');
-  }finally{core.SEGMENTS.settings['nb-NO']=savedNb;}
+  assert.equal(core.translate('fr-FR','settings.title'),core.CATALOGUES['fr-FR']['settings.title'],'shell keys never depend on the segment');
 });
 
 test('Settings search matches English keywords as well as the translated ones',()=>{
