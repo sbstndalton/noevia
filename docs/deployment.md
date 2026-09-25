@@ -237,6 +237,15 @@ A new env var must be added to **all three** by hand:
 Back the live one up first:
 `cp docker-compose.yml docker-compose.yml.bak.$(date +%Y%m%d%H%M%S)`
 
+As of release `58b340c` (2026-09-25), the live copy also needs `web.build.args.COWORK_VERSION:
+${COWORK_VERSION:-dev}` (kept alongside the existing `context:`) so the Dockerfile's `STAMP_VERSION`
+build arg — used for favicon/app-shell cache-busting (issue #311) — resolves. A backup taken before
+that patch is retained as `docker-compose.yml.bak.before-58b340c`; older backups with names like
+`docker-compose.yml.bak.before-29d2d1d` predate the patch and should not be assumed to already
+contain it. Verify the arg resolves with:
+`docker compose --env-file /mnt/docker/appdata/cowork/config/.env config 2>/dev/null | grep -A3 'args:'`
+before building.
+
 ## The deploy
 
 Before any Compose `up` on Unraid, validate resolved writable mounts with the
