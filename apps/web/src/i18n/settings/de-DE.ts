@@ -531,7 +531,7 @@ export const DE_DE_SETTINGS: SettingsCatalogue = {
   'connectors.notAvailable': "Nicht verfügbar",
   'connectors.notConnected': "Nicht verbunden",
   'connectors.needsAttention': "Braucht Aufmerksamkeit",
-  'connectors.title': "Connectors",
+  'connectors.title': "Verbundene Apps",
   'connectors.intro': "Dienste, die noevia in deinem Namen nutzen kann. Jede Verbindung gehört nur dir: Andere auf diesem Server erreichen sie nie.",
   'connectors.tryAgain': "Erneut versuchen",
   'connectors.disconnect': "Trennen",

@@ -16,7 +16,7 @@ export const FR_FR_SETTINGS: SettingsCatalogue = {
   'settings.clearSearch': "Effacer la recherche",
   'settings.allSettings': "Tous les réglages",
   'settings.close': "Fermer les réglages",
-  'settings.group.personal': "Personnel",
+  'settings.group.personal': "Préférences personnelles",
   'settings.group.account': "Compte et connexions",
   'settings.group.admin': "Administration du serveur",
   'settings.section.appearance': "Apparence et langue",

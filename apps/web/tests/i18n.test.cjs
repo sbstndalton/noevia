@@ -242,3 +242,11 @@ test('Settings keys: English until the segment arrives, key by key, and the key 
     assert.equal(a&&b,true);assert.equal(ok,1);assert.equal(core.translate('nb-NO','settings.search'),'Søk');
   }finally{core.SEGMENTS.settings['nb-NO']=savedNb;}
 });
+
+test('Settings search matches English keywords as well as the translated ones',()=>{
+  const shell=fs.readFileSync(path.join(__dirname,'../src/components/SettingsShell.tsx'),'utf8');
+  assert.match(shell,/\['connectors', 'Connected apps', '[^']*\bplugins\b[^']*'\]/,'English connector keywords include plugins');
+  // The haystack joins the English keywords, the translated ones and the English label.
+  assert.match(shell,/\[keywords, ownKeywords\.startsWith\('settings\.'\) \? '' : ownKeywords, own === label \? '' : label\.toLowerCase\(\)\]/);
+  assert.doesNotMatch(core.translate('de-DE','settings.keywords.connectors'),/^settings\./);
+});

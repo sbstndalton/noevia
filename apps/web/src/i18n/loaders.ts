@@ -71,7 +71,8 @@ export function catalogueSettled(locale: string): boolean {
 
 /** Loads the base and every active segment for the locale; true when anything new arrived. */
 export function loadEverything(locale: string): Promise<boolean> {
-  const jobs = [CATALOGUES[locale] ? Promise.resolve(false) : loadCatalogue(locale),
-    ...activeSegments().map((s) => (SEGMENTS[s][locale] ? Promise.resolve(false) : loadSegment(s, locale)))];
+  const has = (table: Record<string, Catalogue>) => Object.prototype.hasOwnProperty.call(table, locale);
+  const jobs = [has(CATALOGUES) ? Promise.resolve(false) : loadCatalogue(locale),
+    ...activeSegments().map((s) => (has(SEGMENTS[s]) ? Promise.resolve(false) : loadSegment(s, locale)))];
   return Promise.all(jobs).then((results) => results.some(Boolean));
 }
