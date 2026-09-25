@@ -16,18 +16,27 @@
 # this service is `default`-network only — it does not need `models`, since
 # it is not managed by model-loader.
 #
+# The live embed image's tag/digest is not recorded, so this overlay pins the
+# `embed` service to the SAME image digest as compose.llamacpp.yaml's `llama`
+# service (the `server-vulkan` build) — the only llama.cpp digest this repo
+# has on record — and relies on `--device none` to run it CPU-only. This is
+# openly the same image as llama by design, not the plain `server` variant.
+#
 # Several fields are not fully recorded in docs/deployment.md. Each is
 # marked "[live: verify]" below with the safest value chosen in its place;
 # see the PR body for the full list to confirm against the live box.
 
 services:
   embed:
-    # Live notes say only "pinned llama.cpp image" (no tag/digest recorded).
-    # CPU-only ("--device none"), so the plain `server` build rather than
-    # compose.llamacpp.yaml's `server-vulkan` variant. [live: verify] confirm
-    # the live tag/digest — it may predate compose.llamacpp.yaml's current pin.
-    image: ghcr.io/ggml-org/llama.cpp:server@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41 # [live: verify]
-    restart: unless-stopped
+    # Live notes say only "pinned llama.cpp image" (no tag/digest recorded), and
+    # no plain `server`-tag digest is recorded anywhere in this repo to pin
+    # against. Rather than invent one, this reuses compose.llamacpp.yaml's
+    # `server-vulkan` digest — the only pinned llama.cpp digest this repo has
+    # on record — and relies on `--device none` below to keep this instance
+    # CPU-only. # same image as llama by design [live: verify] confirm the
+    # live embed image's actual tag/digest; it may not match this one.
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41 # [live: verify]
+    restart: unless-stopped # [live: verify] restart policy is not recorded in deployment.md
     command:
       - "--device"
       - "none"
@@ -50,22 +59,30 @@ services:
       # default since it needs no extra operator-provided variable.
       - ${LLAMACPP_MODELS_DIR:?Set the existing public models directory}:/models:ro
     mem_limit: ${EMBED_MEMORY_LIMIT:-1g}
-    memswap_limit: ${EMBED_MEMORY_LIMIT:-1g}
+    memswap_limit: ${EMBED_MEMORY_LIMIT:-1g} # [live: verify] not recorded in deployment.md; set equal to mem_limit to disable swap
     cpus: ${EMBED_CPUS:-1.0}  # [live: verify] not recorded; chosen to leave headroom next to docling/ocr
     healthcheck:
       # Path is recorded ("healthcheck `/health`"); the exact runner inside
-      # the llama.cpp image is not. [live: verify]
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      # the llama.cpp image is not. The upstream llama.cpp server image ships
+      # curl (and its own HEALTHCHECK uses curl), not wget, so this uses curl
+      # to match. [live: verify] interval/timeout/retries below are not
+      # recorded; chosen to match the other services' healthchecks.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks: [default]
     # No published ports: web (and, if ever pointed at it, diary) reach it
     # only over the default network, matching docs/spec-service-boundaries.md §2.
+    # [live: verify] whether the live `default` network here is this project's
+    # own default or the external `lemonade_default` network (docs/deployment.md).
 
   web:
     environment:
       EMBEDDING_BASE_URL: http://embed:8080/v1
     depends_on:
+      # [live: verify] deployment.md does not record the live depends_on
+      # condition; service_started is used here so a healthcheck runner
+      # mismatch on the live box cannot block web from starting at all.
       embed:
-        condition: service_healthy
+        condition: service_started

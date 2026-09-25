@@ -249,14 +249,21 @@ before building.
 ## `compose.embed.yaml` reproduces the live `embed` service
 
 `compose.embed.yaml` (repo overlay, added to close #298) now reproduces the
-live `embed` sidecar recorded above under "Release ea57c83" and flagged as a
+live `embed` sidecar recorded below under "Release ea57c83" and flagged as a
 gap in `docs/spec-service-boundaries.md` §2 and §7 finding 8 — previously it
 existed only in the live Compose Manager override, so the repo could not
-stand the stack up the way it actually runs on DaServer. Fields the release
-note above did not pin down (exact image digest, model filename/path,
-healthcheck runner, CPU limit) are marked `[live: verify]` in the overlay
-file itself; confirm each against the live copy before treating the overlay
-as authoritative, and correct either side if they disagree.
+stand the stack up the way it actually runs on DaServer. The release note
+below only says "pinned llama.cpp image" with no tag/digest recorded, so the
+overlay openly pins `embed` to the same image digest as `compose.llamacpp.yaml`'s
+`llama` service (the `server-vulkan` build), relying on `--device none` to run
+it CPU-only — this is **not** confirmed to be the live embed image. Fields the
+release note below did not pin down (exact image digest, model filename/path,
+restart policy, memswap_limit, healthcheck interval/timeout/retries,
+depends_on condition, whether the live `default` network is this project's
+own default or the external `lemonade_default` network, CPU limit) are marked
+`[live: verify]` in the overlay file itself; confirm each against the live
+copy before treating the overlay as authoritative, and correct either side if
+they disagree.
 
 To reconcile the three unsynced copies (above) onto this overlay's shape
 **without restarting the `llama`, `diary`, `ocr`, `docling` or `laya`
