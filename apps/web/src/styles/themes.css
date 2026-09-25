@@ -122,11 +122,11 @@
   --surface-overlay: var(--glass-sheet);
 }
 [data-family='glass'][data-theme='light'] {
-  --glass-canvas-peak: color-mix(in srgb, var(--md-primary) 48%, var(--md-surface));
+  --glass-canvas-peak: color-mix(in srgb, var(--md-primary) 36%, var(--md-surface));
   --glass-canvas-peak-2: color-mix(in srgb, var(--md-tertiary) 42%, var(--md-surface));
   --glass-canvas-peak-3: color-mix(in srgb, var(--md-secondary) 34%, var(--md-surface));
-  --bg-chrome: color-mix(in srgb, var(--md-surface-container-lowest) 56%, transparent);
-  --glass-plane: color-mix(in srgb, var(--md-surface-container-lowest) 58%, transparent);
+  --bg-chrome: color-mix(in srgb, var(--md-surface-container-lowest) 70%, transparent);
+  --glass-plane: color-mix(in srgb, var(--md-surface-container-lowest) 68%, transparent);
   --glass-sheet: color-mix(in srgb, var(--md-surface-container-lowest) 74%, transparent);
   --glass-specular-edge: rgba(255, 255, 255, .95);
   --glass-inner-border: rgba(255, 255, 255, .45);

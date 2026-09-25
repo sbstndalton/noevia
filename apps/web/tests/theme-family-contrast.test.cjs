@@ -77,6 +77,29 @@ for (const family of ['editorial', 'contemporary', 'glass']) for (const mode of 
   });
 }
 
+
+// Glass pane optics as declared in families.css; the test below keeps these in sync.
+const GLASS = { backdropSaturate: 1.8, edgeMix: .70, refractionOpacity: .3, refractionSaturate: 1.4, userRowMix: .72 };
+const over = (fg, alpha, bg) => toHex(hex(fg).map((c, i) => c * alpha + hex(bg)[i] * (1 - alpha)));
+/** CSS saturate(s) — the Filter Effects feColorMatrix saturate matrix, in sRGB, clamped. */
+function saturate(color, s) {
+  const [r, g, b] = hex(color);
+  const m = [
+    [.213 + .787 * s, .715 - .715 * s, .072 - .072 * s],
+    [.213 - .213 * s, .715 + .285 * s, .072 - .072 * s],
+    [.213 - .213 * s, .715 - .715 * s, .072 + .928 * s],
+  ];
+  return toHex(m.map(([x, y, z]) => Math.min(255, Math.max(0, x * r + y * g + z * b))));
+}
+
+test('the glass optics the contrast test models match families.css', () => {
+  const fam = fs.readFileSync(path.join(__dirname, '../src/styles/families.css'), 'utf8');
+  assert.match(fam, /color-mix\(in srgb, var\(--glass-canvas-peak\) 70%, transparent\)/, 'edge gradient mix');
+  assert.match(fam, /opacity: \.3;\s*filter: blur\(6px\) saturate\(1\.4\);/, 'refraction layer');
+  assert.match(fs.readFileSync(path.join(__dirname, '../src/styles/themes.css'), 'utf8'), /--glass-panel-saturate: 1\.8;/, 'backdrop saturate');
+  assert.match(fam, /color-mix\(in srgb, var\(--md-primary-container\) 72%, transparent\)/, 'user row mix');
+});
+
 // #313: the grounds each family adds. Contemporary's accent-tinted surface containers; Glass's
 // translucent chrome, reading plane and sheets composited over the strongest bloom of the
 // atmosphere behind them (the worst case for text), in both modes and every accent.
@@ -92,7 +115,20 @@ for (const family of ['editorial', 'contemporary', 'glass']) for (const mode of 
     if (family === 'glass') {
       for (const peak of ['glass-canvas-peak', 'glass-canvas-peak-2', 'glass-canvas-peak-3']) {
         const under = t.get(peak);
-        for (const layer of ['bg-chrome', 'glass-plane', 'glass-sheet']) grounds.push([`${layer} over ${peak}`, t.over(layer, under)]);
+        // Pane stack, bottom to top (families.css): the colour field through backdrop-filter
+        // saturate(1.8) → the edge gradient (--glass-canvas-peak at 70%) → the pane fill →
+        // the refraction ::after (the field saturated 1.4 at opacity .55) → text.
+        const backdrop = saturate(under, GLASS.backdropSaturate);
+        const edge = over(t.get('glass-canvas-peak'), GLASS.edgeMix, backdrop);
+        for (const layer of ['bg-chrome', 'glass-plane', 'glass-sheet']) {
+          const fill = t.over(layer, edge);
+          grounds.push([`${layer} over ${peak}`, fill]);
+          grounds.push([`${layer} + refraction over ${peak}`, over(saturate(under, GLASS.refractionSaturate), GLASS.refractionOpacity, fill)]);
+        }
+        // The user's message row: primary-container at 72% over the reading plane.
+        const plane = over(saturate(under, GLASS.refractionSaturate), GLASS.refractionOpacity, t.over('glass-plane', edge));
+        const row = over(t.get('md-primary-container'), GLASS.userRowMix, plane);
+        assert.ok(contrast(t.get('md-on-primary-container'), row) >= 4.5, `user row over ${peak} ${row} on-primary-container ${contrast(t.get('md-on-primary-container'), row).toFixed(2)}`);
       }
     }
     if (family === 'editorial') grounds.push(['bg-app', t.get('bg-app')]);

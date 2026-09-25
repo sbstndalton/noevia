@@ -9,11 +9,9 @@
      Glass         Liquid Glass: translucent, blurred, saturated panes over a coloured
                    atmosphere, a specular edge, an inner border and a refraction band.
 
-   The hover pull (src/hover-pull.ts) is behaviour, not styling; the only rule it needs is the
-   3D context below so its tilt reads as a lean rather than a skew. */
+   The hover pull (src/hover-pull.ts) is behaviour, not styling: a ≤3px translate, no tilt. */
 
-/* ── Hover pull: a shallow 3D context for the tilt (every family). ── */
-[data-pulling] { transform-style: flat; will-change: translate, rotate; }
+[data-pulling] { will-change: translate; }
 
 /* ════════════════════════════ Editorial ════════════════════════════ */
 /* The page is one sheet of paper: sidebar and content share the ground, separated by a rule. */
@@ -205,7 +203,7 @@
   background-size: 106% 106%;
   -webkit-mask: radial-gradient(130% 110% at 50% 50%, transparent 70%, #000 100%);
   mask: radial-gradient(130% 110% at 50% 50%, transparent 70%, #000 100%);
-  opacity: .55;
+  opacity: .3;
   filter: blur(6px) saturate(1.4);
 }
 /* Sticky strips inside the sidebar blur what scrolls beneath rather than painting a slab. */

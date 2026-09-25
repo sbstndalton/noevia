@@ -5,7 +5,7 @@
 // open, the model sheet, and Settings → Appearance with the family previews. 768 is checked for
 // overflow only. #313 adds per-family signatures (Contemporary: tonal, shadowless composer and
 // pill buttons; Glass: blurred translucent panes over a coloured atmosphere; Editorial: flat,
-// ruled paper) and the hover pull (capped, not clinging, off for touch and reduced motion).
+// ruled paper) and the hover pull (translate ≤ 3px, no tilt, not clinging, off for touch and reduced motion).
 // Contact sheet afterwards: node qa/families-contact-sheet.cjs <shots-dir>
 const os = require('node:os');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || `${os.homedir()}/noevia-local-test/node_modules/playwright-core`);
@@ -127,13 +127,14 @@ const DISPLAY = { editorial: 'Fraunces', contemporary: 'Geist', glass: 'Sora' };
       if (await sheet.isVisible()) await page.mouse.click(5, 5);
       await sheet.waitFor({ state: 'hidden' }).catch(() => {});
 
-      // Hover pull: on desktop a sidebar row leans ≤ 3px toward the pointer, then settles back.
+      // Hover pull: on desktop a sidebar row shifts ≤ 3px toward the pointer (no tilt), then settles back.
       if (!touch) {
         const row = page.locator('.app .sidebar.pane .side-nav .nav-item').first();
         const b = await row.boundingBox();
         await page.mouse.move(b.x + b.width - 2, b.y + b.height / 2);
         await page.waitForTimeout(260);
-        const pulled = await row.evaluate((e) => ({ translate: getComputedStyle(e).translate, pulling: e.hasAttribute('data-pulling') }));
+        const pulled = await row.evaluate((e) => ({ translate: getComputedStyle(e).translate, rotate: getComputedStyle(e).rotate, pulling: e.hasAttribute('data-pulling') }));
+        assert.equal(pulled.rotate, 'none', 'the pull is a translate only, no tilt');
         assert.ok(pulled.pulling, 'row marked as pulling');
         const [tx] = pulled.translate.split(' ').map(parseFloat);
         assert.ok(tx > 0 && tx <= 3, `row pulls toward the pointer by ≤ 3px: ${pulled.translate}`);
