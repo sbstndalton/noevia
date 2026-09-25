@@ -13,6 +13,7 @@ import { EmptyState } from './EmptyState';
 import { readTextSources, describeRejection } from '../sources';
 import { useT } from '../i18n';
 import type { Translate } from '../i18n';
+import '../i18n/projects';
 
 interface ProjectsViewProps {
   projects: Project[];

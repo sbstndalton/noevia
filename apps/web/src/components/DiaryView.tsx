@@ -26,6 +26,7 @@ import type { DiaryFile, DirectoryHandle, FileEntry } from '../diary-workspace';
 import { DiaryModal, MarkdownPreview } from './DiaryModal';
 import { StoragePicker } from './StoragePicker';
 import { useT } from '../i18n';
+import '../i18n/diary';
 
 import { diaryExchangeTarget } from '../diary-conversation';
 import type { DiaryTurn as Turn } from '../diary-conversation';
