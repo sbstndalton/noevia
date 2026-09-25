@@ -5,6 +5,7 @@
 //   PLAYWRIGHT_MODULE=... node qa/customise-footer-i18n.cjs
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), http = require('node:http');
+const { withLocale } = require('./qa-locale.cjs');
 const origin = 'http://localhost:31611', web = path.resolve(__dirname, '..');
 const out = process.env.QA_SCREENSHOTS || '/tmp/customise-footer-i18n-shots';
 
@@ -61,7 +62,7 @@ async function checkNoOverflow(page, width, label) {
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });
   try {
     for (let i = 0; i < 100; i++) { try { if ((await fetch(origin + '/api/setup/status')).ok) break; } catch { } await new Promise((r) => setTimeout(r, 50)); }
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await browser.newPage(withLocale({ viewport: { width: 1440, height: 900 } }));
     await page.goto(origin);
     assert.equal((await api(page, '/api/setup/complete', { setupCode: fs.readFileSync(path.join(dir, 'first-run-setup-code'), 'utf8').trim(), publicOrigin: origin, username: 'i18nqa', displayName: 'Synthetic i18n QA', password: 'synthetic i18n qa password', diaryEnabled: false })).status, 201);
     await api(page, '/api/profile/onboarding', {});
@@ -95,8 +96,8 @@ async function checkNoOverflow(page, width, label) {
         // Chat-shell status footer: translated dt labels ("Speed", "First token", "Engine total", "GPU").
         // On a phone the footer starts collapsed to one line; open it before checking the details.
         if (phone) {
-          const stillClosed = await page.getByText(l.speed, { exact: true }).first().isVisible().catch(() => false);
-          if (!stillClosed) await page.locator('.stats-bar').first().click();
+          const alreadyOpen = await page.getByText(l.speed, { exact: true }).first().isVisible().catch(() => false);
+          if (!alreadyOpen) await page.locator('.stats-bar').first().click();
         }
         await page.getByText(l.speed, { exact: true }).first().waitFor();
         await page.getByText(l.firstToken, { exact: true }).first().waitFor();

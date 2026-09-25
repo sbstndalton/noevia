@@ -43,12 +43,12 @@ export function PluginsView({ onStartChat, embedded = false, projects = [], onPr
     <header className="plugins-head">
       <h1>{t('customise.title')}</h1>
       <p>{t('customise.intro')}</p>
-      <SegmentedControl label={t('customise.title')} value={tab} onChange={setTab} options={[['skills', t('customise.tab.skills')], ['connectors', t('customise.tab.connectors')], ['plugins', t('customise.tab.plugins')]]}/>
+      <SegmentedControl label={t('customise.title')} value={tab} onChange={setTab} options={[['skills', t('customise.tab.skills')], ['connectors', t('connectors.title')], ['plugins', t('customise.tab.plugins')]]}/>
     </header>
     {tab === 'connectors'
       ? <div className="plugins-connected"><h2 className="plugins-subhead">{t('customise.connectedTitle')}</h2><ConnectorsSettings hideTitle isAdmin={isAdmin} onStartChat={onStartChat}/></div>
       : tab === 'plugins'
-        ? <div className="plugins-connected"><h2 className="plugins-subhead">{t('customise.installedTitle')}</h2><SignInServers/><KeyServers/><p className="plugins-note">{t('customise.mcpNote')}{isAdmin ? '' : t('customise.mcpAdminNote')}</p><h2 className="plugins-subhead">{t('customise.library')}</h2><Directory key="mcp" kind="mcp" projects={projects} onProjectsChanged={onProjectsChanged} isAdmin={isAdmin}/></div>
+        ? <div className="plugins-connected"><h2 className="plugins-subhead">{t('customise.installedTitle')}</h2><SignInServers/><KeyServers/><p className="plugins-note">{t('customise.mcpNote')}{!isAdmin && <> {t('customise.mcpAdminNote')}</>}</p><h2 className="plugins-subhead">{t('customise.library')}</h2><Directory key="mcp" kind="mcp" projects={projects} onProjectsChanged={onProjectsChanged} isAdmin={isAdmin}/></div>
         : <><p className="plugins-note">{t('customise.skillsNote')}</p><h2 className="plugins-subhead">{t('customise.library')}</h2><Directory key="skills" kind="skills" projects={projects} onProjectsChanged={onProjectsChanged} isAdmin={isAdmin}/></>}
   </div>;
   return embedded ? body : <main className="main plugins-view">{body}</main>;
@@ -63,10 +63,11 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     if (kind !== 'mcp' || !isAdmin) return;
     let live = true;
     setAddedStatus('loading');
-    apiFetch('/api/admin/mcp-directory').then(async (r) => { if (!r.ok) throw new Error('Could not load added servers.'); return r.json(); })
+    apiFetch('/api/admin/mcp-directory').then(async (r) => { if (!r.ok) throw new Error(t('customise.loadAddedError')); return r.json(); })
       .then((d) => { if (live) { setAdded(d.servers || []); setAddedStatus('ready'); } })
       .catch(() => { if (live) setAddedStatus('error'); });
     return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, isAdmin, addedAttempt]);
   const [mode, setMode] = useState<'yours' | 'discover'>('yours');
   const [yourQuery, setYourQuery] = useState('');
@@ -83,10 +84,11 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     if (kind !== 'skills' || !skillProject) return;
     let live = true; setSkillsStatus('loading');
     apiFetch(`/api/projects/${encodeURIComponent(skillProject)}/instruction-skills`)
-      .then(async (r) => { const data = await r.json(); if (!r.ok || !Array.isArray(data.skills)) throw new Error(data.error || 'Could not load skills.'); return data.skills as ProjectSkill[]; })
+      .then(async (r) => { const data = await r.json(); if (!r.ok || !Array.isArray(data.skills)) throw new Error(data.error || t('customise.couldNotLoadSkills')); return data.skills as ProjectSkill[]; })
       .then((skills) => { if (live) { setProjectSkills(skills); setSkillsStatus('ready'); } })
       .catch(() => { if (live) setSkillsStatus('error'); });
     return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, skillProject, skillsAttempt]);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Item[] | null>(null);
@@ -107,10 +109,11 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
     const timer = window.setTimeout(() => {
       setItems(null); setError('');
       apiFetch(`/api/plugins/directory?kind=${kind}&q=${encodeURIComponent(query.trim())}`)
-        .then(async (r) => { const data = await r.json().catch(() => ({})); if (!live) return; setSource(data.source ?? null); if (!r.ok) throw new Error(data.error || 'The directory could not be reached.'); setItems(data.items); })
+        .then(async (r) => { const data = await r.json().catch(() => ({})); if (!live) return; setSource(data.source ?? null); if (!r.ok) throw new Error(data.error || t('customise.directoryUnreachable')); setItems(data.items); })
         .catch((e) => { if (live) { setError((e as Error).message); setItems([]); } });
     }, query ? 300 : 0);
     return () => { live = false; window.clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, mode, query, attempt]);
   const matchingSkills = [...projectSkills].filter((skill) => `${skill.name} ${skill.file} ${skill.description}`.toLocaleLowerCase().includes(yourQuery.trim().toLocaleLowerCase())).sort((a, b) => (a.name || a.file).localeCompare(b.name || b.file) || a.file.localeCompare(b.file));
   const matchingAdded = [...added].filter((a) => `${a.title} ${a.registryName}`.toLocaleLowerCase().includes(yourQuery.trim().toLocaleLowerCase())).sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
@@ -123,7 +126,7 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
           {i.description && <small>{i.description}</small>}
         </span>
         <span className="plugin-card-actions">
-          {i.url && <a className="btn btn-secondary btn-sm plugin-card-link" href={i.url} target="_blank" rel="noreferrer noopener" aria-label={`View ${i.name}`}>View</a>}
+          {i.url && <a className="btn btn-secondary btn-sm plugin-card-link" href={i.url} target="_blank" rel="noreferrer noopener" aria-label={t('customise.viewAria', { name: i.name })}>{t('customise.view')}</a>}
           {kind === 'skills' && <AddSkill skill={i} projects={projects} installedIn={(skillsStatus === 'ready' ? projectSkills : []).filter((s) => s.file === `${i.id}/SKILL.md`).map(() => skillProject)} onAdded={() => { setSkillsAttempt((n) => n + 1); onProjectsChanged?.(); }}/>}
           {kind === 'mcp' && isAdmin && <AddServer item={i} added={added.find((a) => a.registryName === i.id)} onChange={setAdded}/>}
         </span>
@@ -198,7 +201,7 @@ function AddSkill({ skill, projects, installedIn = [], onAdded }: { skill: Item;
     } catch (e) { setNote({ text: (e as Error).message, error: true }); } finally { setBusy(false); }
   };
   return <span className="plugin-add">
-    <select aria-label={`Project for ${skill.name}`} value={project} onChange={(e) => setProject(e.target.value)} disabled={busy}>
+    <select aria-label={t('customise.projectForAria', { name: skill.name })} value={project} onChange={(e) => setProject(e.target.value)} disabled={busy}>
       <option value="">{t('customise.chooseProjectOption')}</option>
       {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
     </select>
@@ -209,9 +212,7 @@ function AddSkill({ skill, projects, installedIn = [], onAdded }: { skill: Item;
 }
 
 /** Administrators add or remove a hosted server from the registry. The server re-reads its URL from
- *  the registry, checks it is public, and makes sure it answers before saving. This admin-only
- *  key/OAuth management flow is not yet translated (#293 gap); it is reached only from Plugins, by
- *  administrators, after the Directory and SignInServers/KeyServers strings above. */
+ *  the registry, checks it is public, and makes sure it answers before saving. */
 function AddServer({ item, added, onChange }: { item: Item; added?: Added; onChange: (servers: Added[]) => void }): JSX.Element | null {
   const t = useT();
   const [busy, setBusy] = useState(false);
@@ -230,9 +231,9 @@ function AddServer({ item, added, onChange }: { item: Item; added?: Added; onCha
     try {
       const r = await apiFetch(`/api/admin/mcp-directory/${encodeURIComponent(id)}/oauth-client`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId, clientSecret }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setNote({ text: d.error || 'The app was not accepted.', error: true }); return null; }
+      if (!r.ok) { setNote({ text: d.error || t('customise.appNotAccepted'), error: true }); return null; }
       onChange(d.servers || []); setAppForm(null); setClientSecret('');
-      setNote({ text: 'Finish signing in in the new tab.' }); pollAdded();
+      setNote({ text: t('customise.finishSigningIn') }); pollAdded();
       return d.signIn;
     } finally { setBusy(false); }
   }).catch((e) => setNote({ text: (e as Error).message, error: true }));
@@ -244,13 +245,13 @@ function AddServer({ item, added, onChange }: { item: Item; added?: Added; onCha
       const payload = method === 'POST' ? { registryName: item.id, headers: values, keyMode } : method === 'PUT' ? { headers: values } : undefined;
       let data: any = {};
       let status = 0;
-      const send = async () => { const r = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: payload ? JSON.stringify(payload) : undefined }); status = r.status; data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || 'That did not work.'); return data.signIn || null; };
+      const send = async () => { const r = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: payload ? JSON.stringify(payload) : undefined }); status = r.status; data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || t('customise.genericError')); return data.signIn || null; };
       // Adding may turn out to need a sign-in; the tab has to open inside this click.
       if (method === 'POST' && !fields.length) await signInTab(send); else await send();
       if (status === 202 && data.needsClient) { onChange(data.servers || []); setAppForm({ issuer: data.issuer, redirectUri: data.redirectUri }); return; }
-      if (status === 202) { onChange(data.servers || []); setNote({ text: 'Finish signing in in the new tab. The server’s tools appear here once you have.' }); pollAdded(); return; }
+      if (status === 202) { onChange(data.servers || []); setNote({ text: t('customise.finishSigningInToolsNote') }); pollAdded(); return; }
       onChange(data.servers || []); setForm(false); setValues({});
-      setNote({ text: method === 'POST' ? `Added with ${tools(t, data.server?.toolCount ?? 0)}. Choose it under a project’s Tools to use it.` : method === 'PUT' ? 'Key updated.' : 'Removed.' });
+      setNote({ text: method === 'POST' ? t('customise.addedWithTools', { tools: tools(t, data.server?.toolCount ?? 0) }) : method === 'PUT' ? t('customise.keyUpdated') : t('customise.removedStatus') });
     } catch (e) { setNote({ text: (e as Error).message, error: true }); } finally { setBusy(false); }
   };
   // After an OAuth add, wait for the admin's sign-in to land and the tools to be listed.
@@ -261,51 +262,51 @@ function AddServer({ item, added, onChange }: { item: Item; added?: Added; onCha
       const d = await apiFetch('/api/admin/mcp-directory').then((r) => r.json()).catch(() => null);
       const me = d?.servers?.find((x: Added) => x.registryName === item.id);
       if (d?.servers) onChange(d.servers);
-      if ((me && me.toolCount) || n > 60) { window.clearInterval(timer); if (me?.toolCount) setNote({ text: `Signed in. ${tools(t, me.toolCount)} available; choose it under a project’s Tools. Everyone else signs in with their own account from Plugins → Connected.` }); }
+      if ((me && me.toolCount) || n > 60) { window.clearInterval(timer); if (me?.toolCount) setNote({ text: t('customise.oauthCompleteNote', { tools: tools(t, me.toolCount), plugins: t('customise.tab.plugins'), connected: t('customise.connectedTitle') }) }); }
     }, 3000);
   };
   const msg = note && <small role={note.error ? 'alert' : 'status'} className={note.error ? 'plugin-add-error' : ''}>{note.text}</small>;
   const keyForm = (submitLabel: string, method: 'POST' | 'PUT') => <form className="plugin-key-form" onSubmit={(e) => { e.preventDefault(); void call(method); }}>
     {fields.map((h) => <label key={h.name}>
-      <span>{h.name}{h.required ? '' : ' (optional)'}</span>
+      <span>{h.name}{h.required ? '' : t('customise.optionalSuffix')}</span>
       {h.description && <small>{h.description}</small>}
       <input type={h.secret ? 'password' : 'text'} autoComplete="off" spellCheck={false} required={h.required}
         placeholder={h.template ? h.template.replace(/\{([^}]+)\}/, '$1') : ''} value={values[h.name] || ''}
         onChange={(e) => setValues((v) => ({ ...v, [h.name]: e.target.value }))}/>
     </label>)}
-    {method === 'POST' && <fieldset className="plugin-key-mode"><legend>Who uses this key</legend>
-      <label><input type="radio" name={`mode-${item.id}`} checked={keyMode === 'personal'} onChange={() => setKeyMode('personal')}/> Each person uses their own key <small>(yours is used to list the tools; others add theirs in Plugins → Connected)</small></label>
-      <label><input type="radio" name={`mode-${item.id}`} checked={keyMode === 'shared'} onChange={() => setKeyMode('shared')}/> Everyone uses this key</label>
+    {method === 'POST' && <fieldset className="plugin-key-mode"><legend>{t('customise.whoUsesKey')}</legend>
+      <label><input type="radio" name={`mode-${item.id}`} checked={keyMode === 'personal'} onChange={() => setKeyMode('personal')}/> {t('customise.eachPersonOwnKey')} <small>{t('customise.eachPersonOwnKeyHint', { plugins: t('customise.tab.plugins'), connected: t('customise.connectedTitle') })}</small></label>
+      <label><input type="radio" name={`mode-${item.id}`} checked={keyMode === 'shared'} onChange={() => setKeyMode('shared')}/> {t('customise.everyoneUsesKey')}</label>
     </fieldset>}
-    <small className="plugin-key-note">Stored encrypted on this server and sent only to this MCP server. {method === 'POST' ? (keyMode === 'shared' ? 'Everyone who uses its toolbox uses this key.' : 'Only you use this key.') : added?.personal ? 'This is your own key.' : 'Everyone who uses its toolbox uses this key.'}</small>
+    <small className="plugin-key-note">{t('customise.keyStoredNote')} {method === 'POST' ? (keyMode === 'shared' ? t('customise.keyUsedByEveryone') : t('customise.keyUsedByYouOnly')) : added?.personal ? t('customise.keyIsYourOwn') : t('customise.keyUsedByEveryone')}</small>
     <span className="plugin-key-actions"><button className="btn btn-primary btn-sm" disabled={busy}>{busy ? t('common.checking') : submitLabel}</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setForm(false); setValues({}); }}>{t('common.cancel')}</button></span>
   </form>;
   const appFormView = (id: string) => appForm && <form className="plugin-key-form" onSubmit={(e) => { e.preventDefault(); saveApp(id); }}>
-    <small className="plugin-key-note">This service does not let apps register themselves. Register an app{appForm.issuer ? <> with <b>{appForm.issuer}</b></> : null} (in its developer or OAuth settings) and give it this return address:</small>
-    <span className="plugin-copy"><code>{appForm.redirectUri}</code><button type="button" className="btn btn-ghost btn-sm" onClick={() => void navigator.clipboard?.writeText(appForm.redirectUri || '')}>Copy</button></span>
-    <label><span>Client ID</span><input autoComplete="off" spellCheck={false} required value={clientId} onChange={(e) => setClientId(e.target.value)}/></label>
-    <label><span>Client secret (if the service gave one)</span><input type="password" autoComplete="off" spellCheck={false} value={clientSecret} onChange={(e) => setClientSecret(e.target.value)}/></label>
-    <small className="plugin-key-note">Stored encrypted and never shown again. Changing the app later signs everyone out of this server.</small>
-    <span className="plugin-key-actions"><button className="btn btn-primary btn-sm" disabled={busy || !clientId.trim()}>{busy ? t('common.checking') : 'Save and sign in'}</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setAppForm(null)}>{t('common.cancel')}</button></span>
+    <small className="plugin-key-note">{appForm.issuer ? t('customise.registerAppWithIssuer', { issuer: appForm.issuer }) : t('customise.registerAppNote')}</small>
+    <span className="plugin-copy"><code>{appForm.redirectUri}</code><button type="button" className="btn btn-ghost btn-sm" onClick={() => void navigator.clipboard?.writeText(appForm.redirectUri || '')}>{t('customise.copy')}</button></span>
+    <label><span>{t('customise.clientId')}</span><input autoComplete="off" spellCheck={false} required value={clientId} onChange={(e) => setClientId(e.target.value)}/></label>
+    <label><span>{t('customise.clientSecretOptional')}</span><input type="password" autoComplete="off" spellCheck={false} value={clientSecret} onChange={(e) => setClientSecret(e.target.value)}/></label>
+    <small className="plugin-key-note">{t('customise.appSecretNote')}</small>
+    <span className="plugin-key-actions"><button className="btn btn-primary btn-sm" disabled={busy || !clientId.trim()}>{busy ? t('common.checking') : t('customise.saveAndSignIn')}</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setAppForm(null)}>{t('common.cancel')}</button></span>
   </form>;
   if (added) return <span className="plugin-add">
-    <span className="badge ok">{added.error ? (added.oauth ? 'Waiting for sign-in' : 'Not answering') : `Added · ${tools(t, added.toolCount)}`}</span>
-    {added.keyHeaders?.length ? <span className="badge count">Shared key set</span> : null}
-    {added.personal && <span className="badge count">Each person adds a key</span>}
-    {added.oauth && <span className="badge count">Each person signs in</span>}
-    {added.oauth && added.oauthClient?.manual && <span className="badge count">App: {added.oauthClient.clientId}</span>}
-    {added.oauth && !appForm && (!added.oauthClient || added.oauthClient.manual) && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setClientId(added.oauthClient?.clientId || ''); setAppForm({ issuer: added.oauthClient?.issuer, redirectUri: added.redirectUri }); }}>{added.oauthClient ? 'App settings' : 'Set up app'}</button>}
+    <span className="badge ok">{added.error ? (added.oauth ? t('customise.waitingForSignIn') : t('customise.notAnswering')) : t('customise.badgeAdded', { tools: tools(t, added.toolCount) })}</span>
+    {added.keyHeaders?.length ? <span className="badge count">{t('customise.sharedKeySet')}</span> : null}
+    {added.personal && <span className="badge count">{t('customise.eachPersonAddsKey')}</span>}
+    {added.oauth && <span className="badge count">{t('customise.eachPersonSignsIn')}</span>}
+    {added.oauth && added.oauthClient?.manual && <span className="badge count">{t('customise.appLabel', { clientId: added.oauthClient.clientId || '' })}</span>}
+    {added.oauth && !appForm && (!added.oauthClient || added.oauthClient.manual) && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setClientId(added.oauthClient?.clientId || ''); setAppForm({ issuer: added.oauthClient?.issuer, redirectUri: added.redirectUri }); }}>{added.oauthClient ? t('customise.appSettings') : t('customise.setUpApp')}</button>}
     {appFormView(added.id)}
-    {added.oauth && added.oauthClient && added.error && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void signInTab(async () => { const r = await apiFetch(`/api/mcp-oauth/${encodeURIComponent(added.id)}/connect`, { method: 'POST' }); const d = await r.json(); if (!r.ok) { setNote({ text: d.error || 'Could not start sign-in.', error: true }); return null; } pollAdded(); return d.signIn; })}>Sign in</button>}
-    {fields.length > 0 && !form && <button className="btn btn-ghost btn-sm" disabled={busy} aria-label={`Change key for ${item.name}`} onClick={() => setForm(true)}>Change key</button>}
-    <button className="btn btn-ghost btn-sm" disabled={busy} aria-label={`Remove ${item.name}`} onClick={() => void call('DELETE')}>{busy && !form ? 'Removing…' : 'Remove'}</button>
-    {form && keyForm('Save key', 'PUT')}{msg}
+    {added.oauth && added.oauthClient && added.error && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void signInTab(async () => { const r = await apiFetch(`/api/mcp-oauth/${encodeURIComponent(added.id)}/connect`, { method: 'POST' }); const d = await r.json(); if (!r.ok) { setNote({ text: d.error || t('customise.couldNotStartSignIn'), error: true }); return null; } pollAdded(); return d.signIn; })}>{t('customise.signIn')}</button>}
+    {fields.length > 0 && !form && <button className="btn btn-ghost btn-sm" disabled={busy} aria-label={t('customise.changeKeyAria', { name: item.name })} onClick={() => setForm(true)}>{t('customise.changeKey')}</button>}
+    <button className="btn btn-ghost btn-sm" disabled={busy} aria-label={t('customise.removeAria', { name: item.name })} onClick={() => void call('DELETE')}>{busy && !form ? t('customise.removing') : t('customise.remove')}</button>
+    {form && keyForm(t('customise.saveKey'), 'PUT')}{msg}
   </span>;
-  if (!item.installable) return <span className="plugin-add"><small>{item.notInstallable || 'Cannot be added'}</small></span>;
-  if (form) return <span className="plugin-add">{keyForm('Add', 'POST')}{msg}</span>;
+  if (!item.installable) return <span className="plugin-add"><small>{item.notInstallable || t('customise.cannotBeAdded')}</small></span>;
+  if (form) return <span className="plugin-add">{keyForm(t('customise.add'), 'POST')}{msg}</span>;
   return <span className="plugin-add">
-    {item.needsKey && <span className="badge count">Needs a key</span>}
-    <button className="btn btn-secondary btn-sm plugin-card-link" disabled={busy} aria-label={`Add ${item.name} to noevia`} onClick={() => (fields.length ? setForm(true) : void call('POST'))}>{busy ? t('common.checking') : 'Add'}</button>{msg}
+    {item.needsKey && <span className="badge count">{t('customise.needsKeyBadge')}</span>}
+    <button className="btn btn-secondary btn-sm plugin-card-link" disabled={busy} aria-label={t('customise.addAria', { name: item.name })} onClick={() => (fields.length ? setForm(true) : void call('POST'))}>{busy ? t('common.checking') : t('customise.add')}</button>{msg}
   </span>;
 }
 
@@ -381,7 +382,7 @@ function KeyServers(): JSX.Element | null {
             {s.hasKey && <button className="btn btn-ghost btn-sm" aria-label={t('customise.removeYourKeyAria', { name: s.title })} onClick={() => void remove(s.id)}>{t('customise.removeKey')}</button>}
           </span>}
           {open === s.id && <form className="plugin-key-form" onSubmit={(e) => { e.preventDefault(); void save(s.id); }}>
-            {s.headers.map((h) => <label key={h.name}><span>{h.name}{h.required ? '' : ' (optional)'}</span>{h.description && <small>{h.description}</small>}
+            {s.headers.map((h) => <label key={h.name}><span>{h.name}{h.required ? '' : t('customise.optionalSuffix')}</span>{h.description && <small>{h.description}</small>}
               <input type={h.secret ? 'password' : 'text'} autoComplete="off" spellCheck={false} required={h.required} placeholder={h.template ? h.template.replace(/\{([^}]+)\}/, '$1') : ''}
                 value={values[h.name] || ''} onChange={(e) => setValues((v) => ({ ...v, [h.name]: e.target.value }))}/></label>)}
             <span className="plugin-key-actions"><button className="btn btn-primary btn-sm" disabled={busy}>{busy ? t('common.checking') : t('customise.saveKey')}</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setOpen(null)}>{t('common.cancel')}</button></span>
@@ -393,8 +394,7 @@ function KeyServers(): JSX.Element | null {
   </section>;
 }
 
-/** Administrators add any MCP server by its address, with an optional sign-in header. Not yet
- *  translated (#293 gap): admin-only, reached from the Plugins tab's Library section. */
+/** Administrators add any MCP server by its address, with an optional sign-in header. */
 function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.Element {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -413,7 +413,7 @@ function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.E
       const r = await apiFetch('/api/admin/mcp-directory/custom/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       const data = await r.json().catch(() => ({}));
       if (current !== revision.current) return;
-      if (!r.ok) throw new Error(data.error || 'Could not preview this server.');
+      if (!r.ok) throw new Error(data.error || t('customise.previewFailed'));
       setPreview(data); setReview(true);
     } catch (e) { if (current === revision.current) setNote({ text: (e as Error).message, error: true }); }
     finally { setBusy(false); }
@@ -423,11 +423,11 @@ function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.E
     try {
       const r = await apiFetch('/api/admin/mcp-directory/custom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, previewToken: preview?.previewToken }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { if (r.status === 409) resetReview(); setNote({ text: d.error || 'That did not work.', error: true }); return null; }
+      if (!r.ok) { if (r.status === 409) resetReview(); setNote({ text: d.error || t('customise.genericError'), error: true }); return null; }
       onChange(d.servers || []);
-      if (d.signIn) { setNote({ text: 'Sign in with this server in the new tab. Its tools will be discovered after sign-in; review the available tools before selecting its toolbox in a project.' }); return d.signIn; }
-      if (d.needsClient) { setNote({ text: 'This server needs an app registered by hand. Use “Set up app” on its card below.', error: true }); setOpen(false); return null; }
-      setNote({ text: `Connected. noevia discovered ${tools(t, d.server?.toolCount ?? 0)}. Review its toolbox before selecting it in a project; each tool call still asks for approval.` });
+      if (d.signIn) { setNote({ text: t('customise.signInWithServerNote') }); return d.signIn; }
+      if (d.needsClient) { setNote({ text: t('customise.manualAppNeeded'), error: true }); setOpen(false); return null; }
+      setNote({ text: t('customise.connectedDiscovered', { tools: tools(t, d.server?.toolCount ?? 0) }) });
       setOpen(false); resetReview(); setForm({ title: '', url: '', headerName: '', headerValue: '', keyMode: 'personal' });
       return null;
     } finally { setBusy(false); }
@@ -435,24 +435,24 @@ function AddByUrl({ onChange }: { onChange: (servers: Added[]) => void }): JSX.E
   if (!open) return <p className="plugins-note"><button className="btn btn-secondary btn-sm" onClick={() => { setOpen(true); setNote(null); }}>{t('customise.addServerByUrl')}</button>{note && <> <span role={note.error ? 'alert' : 'status'} className={note.error ? 'plugin-add-error' : ''}>{note.text}</span></>}</p>;
   return <form className="plugin-key-form plugin-url-form" onSubmit={(e) => { e.preventDefault(); if (busy) return; if (review && preview) submit(); else void check(); }}>
     <fieldset className="plugin-url-fields" disabled={busy}>
-    <label><span>Name</span><input required value={form.title} onChange={set('title')} placeholder="What this server is"/></label>
-    <label><span>Address</span><input required type="url" inputMode="url" autoComplete="off" spellCheck={false} value={form.url} onChange={set('url')} placeholder="https://example.com/mcp"/></label>
-    <label><span>Sign-in header (optional)</span><input autoComplete="off" spellCheck={false} value={form.headerName} onChange={set('headerName')} placeholder="Authorization"/></label>
-    {form.headerName && <label><span>Its value</span><input type="password" autoComplete="off" value={form.headerValue} onChange={set('headerValue')} placeholder="Bearer …"/></label>}
-    {form.headerName && <fieldset className="plugin-key-mode"><legend>Who uses this key</legend>
-      <label><input type="radio" name="url-mode" checked={form.keyMode === 'personal'} onChange={() => { resetReview(); setForm((f) => ({ ...f, keyMode: 'personal' })); }}/> Each person uses their own key</label>
-      <label><input type="radio" name="url-mode" checked={form.keyMode === 'shared'} onChange={() => { resetReview(); setForm((f) => ({ ...f, keyMode: 'shared' })); }}/> Everyone uses this key</label>
+    <label><span>{t('customise.field.name')}</span><input required value={form.title} onChange={set('title')} placeholder={t('customise.field.namePlaceholder')}/></label>
+    <label><span>{t('customise.field.address')}</span><input required type="url" inputMode="url" autoComplete="off" spellCheck={false} value={form.url} onChange={set('url')} placeholder={t('customise.field.addressPlaceholder')}/></label>
+    <label><span>{t('customise.field.signInHeaderOptional')}</span><input autoComplete="off" spellCheck={false} value={form.headerName} onChange={set('headerName')} placeholder={t('customise.field.headerNamePlaceholder')}/></label>
+    {form.headerName && <label><span>{t('customise.field.headerValue')}</span><input type="password" autoComplete="off" value={form.headerValue} onChange={set('headerValue')} placeholder={t('customise.field.headerValuePlaceholder')}/></label>}
+    {form.headerName && <fieldset className="plugin-key-mode"><legend>{t('customise.whoUsesKey')}</legend>
+      <label><input type="radio" name="url-mode" checked={form.keyMode === 'personal'} onChange={() => { resetReview(); setForm((f) => ({ ...f, keyMode: 'personal' })); }}/> {t('customise.eachPersonOwnKey')}</label>
+      <label><input type="radio" name="url-mode" checked={form.keyMode === 'shared'} onChange={() => { resetReview(); setForm((f) => ({ ...f, keyMode: 'shared' })); }}/> {t('customise.everyoneUsesKey')}</label>
     </fieldset>}
     </fieldset>
-    {review ? <div className="plugin-url-review" role="group" aria-label="Review server access">
-      <b>Review before connecting</b>
-      <p><strong>Server:</strong> {form.title} · <span className="plugin-url-address">{form.url}</span></p>
-      <p><strong>Data access:</strong> Requests to this external server can send conversation context and tool arguments when its toolbox is selected.</p>
-      {preview?.requiresSignIn ? <p>The server requires sign-in. Tool details are unavailable until sign-in completes.</p> : <><p><strong>Discovered tools:</strong> {preview?.toolCount ?? 0}{preview?.toolsTruncated ? ' (first 40 shown)' : ''}</p><ul className="plugin-preview-tools">{preview?.tools.map((tool) => <li key={tool.name}><strong>{tool.name}</strong>{tool.description && <span>{tool.description}</span>}</li>)}</ul></>}
-      <p><strong>Credential:</strong> {form.headerName ? `${form.headerName} header; ${form.keyMode === 'shared' ? 'shared with everyone who uses this toolbox' : 'used only for your requests'}.` : 'No header supplied. The server may ask you to sign in.'}</p>
-      <p><strong>Control:</strong> A project must select the toolbox. Tools may change later; every call still asks for approval.</p>
-    </div> : <small className="plugin-key-note">Preview checks the public HTTPS address and asks the server for its tools without saving it. Review the destination and discovered tools before connecting.</small>}
-    <span className="plugin-key-actions"><button className="btn btn-primary btn-sm" disabled={busy}>{busy ? (review ? 'Connecting…' : t('common.checking')) : review ? 'Connect reviewed server' : 'Preview tools'}</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setOpen(false); resetReview(); }}>{t('common.cancel')}</button></span>
+    {review ? <div className="plugin-url-review" role="group" aria-label={t('customise.reviewAccessAria')}>
+      <b>{t('customise.reviewBeforeConnecting')}</b>
+      <p><strong>{t('customise.reviewServerLabel')}</strong> {form.title} · <span className="plugin-url-address">{form.url}</span></p>
+      <p><strong>{t('customise.dataAccessLabel')}</strong> {t('customise.dataAccessNote')}</p>
+      {preview?.requiresSignIn ? <p>{t('customise.signInRequiredNote')}</p> : <><p><strong>{t('customise.discoveredToolsLabel')}</strong> {preview?.toolCount ?? 0}{preview?.toolsTruncated ? t('customise.firstShown') : ''}</p><ul className="plugin-preview-tools">{preview?.tools.map((tool) => <li key={tool.name}><strong>{tool.name}</strong>{tool.description && <span>{tool.description}</span>}</li>)}</ul></>}
+      <p><strong>{t('customise.credentialLabel')}</strong> {form.headerName ? t(form.keyMode === 'shared' ? 'customise.credentialHeaderShared' : 'customise.credentialHeaderPersonal', { header: form.headerName }) : t('customise.credentialNone')}</p>
+      <p><strong>{t('customise.controlLabel')}</strong> {t('customise.controlNote')}</p>
+    </div> : <small className="plugin-key-note">{t('customise.previewNote')}</small>}
+    <span className="plugin-key-actions"><button className="btn btn-primary btn-sm" disabled={busy}>{busy ? (review ? t('customise.connecting') : t('common.checking')) : review ? t('customise.connectReviewed') : t('customise.previewTools')}</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setOpen(false); resetReview(); }}>{t('common.cancel')}</button></span>
     {note && <small role={note.error ? 'alert' : 'status'} className={note.error ? 'plugin-add-error' : ''}>{note.text}</small>}
   </form>;
 }

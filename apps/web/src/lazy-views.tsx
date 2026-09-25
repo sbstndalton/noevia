@@ -4,7 +4,7 @@
 // so opening one later is still instant.
 import { lazy } from 'react';
 import type { ComponentType } from 'react';
-import { t, useT } from './i18n';
+import { useT } from './i18n';
 import type { MessageKey } from './i18n';
 
 type Loader<P> = () => Promise<ComponentType<P>>;
@@ -25,6 +25,7 @@ export function lazyView<P extends object>(load: Loader<P>) {
 }
 
 function UpdatedNotice() {
+  const t = useT();
   return (
     <div className="save-error" role="alert">
       <span>{t('viewLoading.updatedText')}</span>

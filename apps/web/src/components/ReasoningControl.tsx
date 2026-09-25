@@ -62,16 +62,16 @@ export function ReasoningControl({ project, disabled, onChanged, global = false 
       {error && <span role="alert">{error}</span>}
     </span>;
   }
+  // Only reached with global=true: !global already returned the composer pill above.
   return <span className="reasoning-control">
-    <label><span className={global ? '' : 'sr-only'}>{global?'Default thinking effort':'Thinking effort'}</span>
-      <select aria-label={global?'Default thinking effort':'Thinking effort'} value={value} disabled={disabled || saving || (global && !settings.admin)} onChange={e=>void save(e.target.value)}
-        title={global ? undefined : `How much the model thinks before answering. ${settings.mode === 'real' ? 'Sent as a request parameter.' : settings.mode === 'hint' ? 'Sent as a hint.' : 'This provider decides.'} The mode used is shown with each reply.`}>
-        {global
-          ? <><option value="default">Standard</option><option value="low">Low</option><option value="high">High</option></>
-          : <><option value="inherit">Thinking: auto</option><option value="default">Thinking: standard</option><option value="low">Thinking: low</option><option value="high">Thinking: high</option></>}
+    <label><span>{t('reasoning.defaultLabel')}</span>
+      <select aria-label={t('reasoning.defaultLabel')} value={value} disabled={disabled || saving || !settings.admin} onChange={e=>void save(e.target.value)}>
+        <option value="default">{t('composer.thinking.standard')}</option>
+        <option value="low">{t('composer.thinking.low')}</option>
+        <option value="high">{t('composer.thinking.high')}</option>
       </select>
     </label>
-    {global && <small>Applies unless a project overrides it. Local Qwen: Low turns thinking off; High turns it on. Other providers may use effort parameters or hints. High hints request an 8,192-token budget.</small>}
+    <small>{t('reasoning.globalNote')}</small>
     {error && <span role="alert">{error}</span>}
   </span>;
 }

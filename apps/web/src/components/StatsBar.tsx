@@ -4,6 +4,7 @@ import type { LiveStats, ReplyTelemetry, RoutingDecision } from '../types';
 import { Icon } from './icons/Icon';
 import { RoutingDetails } from './ChatView';
 import { useT } from '../i18n';
+import { LOCAL_MODEL_FALLBACK } from '../model-guidance';
 
 interface StatsBarProps {
   stats: LiveStats | null; // App polls /api/stats and passes it down (single poller)
@@ -82,8 +83,8 @@ export function StatsBar({ stats, reply, routingDecision, modelLabel }: StatsBar
   // poll waits): say nothing is known rather than report an outage that has not happened.
   const unknown = stats === null && !active;
   // modelChoiceLabel (model-guidance.ts, loaded outside React so it stays translation-free)
-  // falls back to the literal 'local model'; translate that one sentinel here.
-  const displayModel = reply?.model || (modelLabel === 'local model' ? t('stats.localModel') : modelLabel) || 'Inference';
+  // falls back to the LOCAL_MODEL_FALLBACK sentinel; translate that one case here.
+  const displayModel = reply?.model || (modelLabel === LOCAL_MODEL_FALLBACK ? t('stats.localModel') : modelLabel) || t('stats.inference');
   // Once this chat has request-local telemetry, never substitute an
   // engine-wide sample that may belong to another request or account.
   const replyRate = reply ? reply.tokensPerSecond : stats?.tokensPerSecond ?? null;
