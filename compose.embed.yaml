@@ -1,0 +1,71 @@
+# CPU-only embeddings sidecar — an OVERLAY, not part of the base stack.
+#
+#   docker compose -f compose.yaml -f compose.embed.yaml up -d
+#
+# Reproduces the live `embed` service recorded in docs/deployment.md
+# ("Release ea57c83 — 2026-09-17 afternoon") and flagged as a gap in
+# docs/spec-service-boundaries.md §2 and §7 finding 8: "The `embed` service
+# is defined only in the live override, so the repo cannot reproduce the
+# live stack." It is a second, CPU-only llama.cpp server dedicated to
+# embeddings, so retrieval and tool-routing calls never evict the chat model
+# from the GPU-backed `llama` service (compose.llamacpp.yaml).
+#
+# `EMBEDDING_BASE_URL` is the only switch web reads (apps/web/server/rag.cjs):
+# point it at this service to use it; leave it unset to embed against the
+# main inference endpoint instead. Per docs/spec-service-boundaries.md §2,
+# this service is `default`-network only — it does not need `models`, since
+# it is not managed by model-loader.
+#
+# Several fields are not fully recorded in docs/deployment.md. Each is
+# marked "[live: verify]" below with the safest value chosen in its place;
+# see the PR body for the full list to confirm against the live box.
+
+services:
+  embed:
+    # Live notes say only "pinned llama.cpp image" (no tag/digest recorded).
+    # CPU-only ("--device none"), so the plain `server` build rather than
+    # compose.llamacpp.yaml's `server-vulkan` variant. [live: verify] confirm
+    # the live tag/digest — it may predate compose.llamacpp.yaml's current pin.
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41 # [live: verify]
+    restart: unless-stopped
+    command:
+      - "--device"
+      - "none"
+      - "--embedding"  # [live: verify] not spelled out in deployment.md; required for /v1/embeddings
+      - "--model"
+      - "/models/${EMBED_MODEL_FILE:?Set the nomic-embed-text-v1 Q8_0 gguf filename}"  # [live: verify] exact filename
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "-c"
+      - "4096"
+      - "-ub"
+      - "2048"
+      - "--parallel"
+      - "2"
+    volumes:
+      # [live: verify] deployment.md does not record whether embed shares
+      # LLAMACPP_MODELS_DIR or has its own folder; sharing is the safest
+      # default since it needs no extra operator-provided variable.
+      - ${LLAMACPP_MODELS_DIR:?Set the existing public models directory}:/models:ro
+    mem_limit: ${EMBED_MEMORY_LIMIT:-1g}
+    memswap_limit: ${EMBED_MEMORY_LIMIT:-1g}
+    cpus: ${EMBED_CPUS:-1.0}  # [live: verify] not recorded; chosen to leave headroom next to docling/ocr
+    healthcheck:
+      # Path is recorded ("healthcheck `/health`"); the exact runner inside
+      # the llama.cpp image is not. [live: verify]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks: [default]
+    # No published ports: web (and, if ever pointed at it, diary) reach it
+    # only over the default network, matching docs/spec-service-boundaries.md §2.
+
+  web:
+    environment:
+      EMBEDDING_BASE_URL: http://embed:8080/v1
+    depends_on:
+      embed:
+        condition: service_healthy

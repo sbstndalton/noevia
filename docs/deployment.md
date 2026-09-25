@@ -246,6 +246,44 @@ contain it. Verify the arg resolves with:
 `docker compose --env-file /mnt/docker/appdata/cowork/config/.env config 2>/dev/null | grep -A3 'args:'`
 before building.
 
+## `compose.embed.yaml` reproduces the live `embed` service
+
+`compose.embed.yaml` (repo overlay, added to close #298) now reproduces the
+live `embed` sidecar recorded above under "Release ea57c83" and flagged as a
+gap in `docs/spec-service-boundaries.md` §2 and §7 finding 8 — previously it
+existed only in the live Compose Manager override, so the repo could not
+stand the stack up the way it actually runs on DaServer. Fields the release
+note above did not pin down (exact image digest, model filename/path,
+healthcheck runner, CPU limit) are marked `[live: verify]` in the overlay
+file itself; confirm each against the live copy before treating the overlay
+as authoritative, and correct either side if they disagree.
+
+To reconcile the three unsynced copies (above) onto this overlay's shape
+**without restarting the `llama`, `diary`, `ocr`, `docling` or `laya`
+sidecars** during a web-only release:
+
+1. Diff the live `embed:` block (`docker-compose.yml` and its
+   `docker-compose.override.yml`) against `compose.embed.yaml` field by
+   field, resolving every `[live: verify]` marker in the repo file to match
+   what is actually running (or, if the live definition is wrong, planning a
+   separate change to fix it — do not silently change live behavior as a
+   side effect of a docs sync).
+2. Back up the live file first (`cp docker-compose.yml
+   docker-compose.yml.bak.$(date +%Y%m%d%H%M%S)`), then edit only the
+   `embed:` service block and the `web.environment.EMBEDDING_BASE_URL` line
+   in the live copy — the same two things this overlay touches. Leave every
+   other service's block untouched so the same-release web rollout in "The
+   deploy" below does not recreate them.
+3. Validate with `docker compose --env-file /mnt/docker/appdata/cowork/config/.env
+   config` before applying; a whitespace-only diff on every other service's
+   rendered config is the signal that only `embed` and `web`'s env would change.
+4. Apply with the installed preflight `up.sh … --no-deps --wait embed web`
+   (the same `--no-deps`-scoped pattern already used above for the Laya
+   recovery rollout and the docling/code-sandbox additions) so
+   llama/diary/ocr/docling/laya are never recreated by an unrelated web release.
+5. Update `deploy/examples/unraid-compose-manager.yml` to match, so future
+   fresh Unraid installs pick the overlay up too.
+
 ## The deploy
 
 Before any Compose `up` on Unraid, validate resolved writable mounts with the
