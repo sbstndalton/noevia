@@ -25,7 +25,26 @@ test('a model deleted from the local catalogue reads as No model selected',()=>{
  assert.equal(label({model:'Kept'},installed),'Kept');
  assert.equal(label({routing:'auto',model:'Gone'},installed),'Auto (Fast/Smart)');
  assert.equal(label({},installed),'Hot');
- assert.equal(label(null,[]),'local model');
+});
+test('a free chat (no project, no per-chat choice) starts on Auto, not whatever is loaded (#305)',()=>{
+ // autoRolesConfigured defaults true, matching the server treating Fast/Smart-configured as Auto.
+ assert.equal(label(null,[{name:'Hot',loaded:true}]),'Auto (Fast/Smart)');
+ assert.equal(label(undefined,[{name:'Hot',loaded:true}]),'Auto (Fast/Smart)');
+ assert.equal(label(null,[]),'Auto (Fast/Smart)');
+ assert.equal(label(null,null),'Auto (Fast/Smart)');
+ // A project stays whatever it is explicitly set to (manual, no model chosen yet): unaffected.
+ assert.equal(label({},[{name:'Hot',loaded:true}]),'Hot');
+});
+test('a free chat only says Auto when the server would really route it that way (Opus review, #305)',()=>{
+ // Without Fast/Smart roles configured, chat.cjs falls back to the loaded model server-side —
+ // the label must match, not promise a routing decision that will not happen.
+ assert.equal(label(null,[{name:'Hot',loaded:true}],false),'Hot');
+ assert.equal(label(null,[],false),'local model');
+ assert.equal(label(undefined,null,false),'local model');
+ assert.equal(label(null,[{name:'Hot',loaded:true}],true),'Auto (Fast/Smart)');
+ // An explicit choice (a project, or a free chat's own context project) is unaffected either way.
+ assert.equal(label({routing:'auto',model:'Gone'},[{name:'Hot',loaded:true}],false),'Auto (Fast/Smart)');
+ assert.equal(label({model:'Kept'},[{name:'Kept'}],false),'Kept');
 });
 test('an unknown catalogue or another provider never declares a model missing',()=>{
  assert.equal(label({model:'Gone'},null),'Gone');
