@@ -65,6 +65,47 @@ require('node:fs').mkdirSync(shots,{recursive:true});
   }
   console.log('PASS settings-back-loop: Models & routing -> back -> Settings -> close -> chat, 3 iterations, no loop (#304).');
 
+  // ── #304 (HIGH, Opus review): reloading mid-detour must not turn the loop back on. Opening
+  // Models & routing, then reloading without ever closing Settings, used to persist the detour
+  // itself as "last place" — so the very first Settings close after the reload resolved right
+  // back into it. Reload now restores the chat underneath instead (persistedView, App.tsx).
+  await page.getByTitle('Settings',{exact:true}).click();
+  await page.getByRole('region',{name:'Settings',exact:true}).getByRole('button',{name:'Models & routing',exact:true}).click();
+  await page.getByRole('region',{name:'Settings',exact:true}).getByRole('button',{name:'Open model manager'}).click();
+  await page.locator('.model-manager-page').waitFor();
+  await page.reload();
+  await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();
+  assert.equal(await page.locator('.model-manager-page').count(),0,'a reload from mid-detour lands in chat, not Models & routing');
+  console.log('PASS settings-back-loop: a reload from mid-detour restores the chat underneath, not the detour (#304).');
+
+  // ── #304 (HIGH, defensive fallback): data written before this fix (or any other stale record)
+  // can still hand back a detour view directly on restore. Force exactly that and confirm
+  // Settings' own back/close still never loops — restoreNavState's fresh fallback.
+  await page.evaluate(() => localStorage.setItem('noevia:last-view', JSON.stringify({ user: 'qa', view: { kind: 'models' }, settings: null })));
+  await page.reload();
+  await page.locator('.model-manager-page').waitFor();
+  for(let i=0;i<2;i++){
+   await page.locator('.model-manager-page').getByRole('button',{name:'Settings',exact:true}).click();
+   // Wait for the section heading first (admin status resolves async — see the #304 loop test
+   // above): only once it is stable is the region locator itself unambiguous.
+   await page.getByRole('heading',{name:'Models & routing',exact:true}).waitFor();
+   const settingsFromStale=page.getByRole('region',{name:'Settings',exact:true});
+   await settingsFromStale.getByRole('heading',{name:'Models & routing',exact:true}).waitFor();
+   await settingsFromStale.getByRole('button',{name:'Close settings'}).click();
+   await settingsFromStale.waitFor({state:'detached'}).catch(()=>{});
+   await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();
+   assert.equal(await page.locator('.model-manager-page').count(),0,`stale-data iteration ${i}: must not re-show Models & routing`);
+   if(i===0){
+    // Reopen the same way a person would (composer -> model settings), so the second close is a
+    // real repeat of the same scenario, not just an already-empty page.
+    await page.getByTitle('Settings',{exact:true}).click();
+    await page.getByRole('region',{name:'Settings',exact:true}).getByRole('button',{name:'Models & routing',exact:true}).click();
+    await page.getByRole('region',{name:'Settings',exact:true}).getByRole('button',{name:'Open model manager'}).click();
+    await page.locator('.model-manager-page').waitFor();
+   }
+  }
+  console.log('PASS settings-back-loop: a stale last-place record naming a detour view resolves to a fresh chat, not a loop (#304).');
+
   // ── #305: a new chat starts on Auto, not whatever happens to be loaded. StatsBar is hidden
   // until the first reply on a blank chat (#239), so this reads the composer's own model pill.
   await page.getByRole('button',{name:'New chat',exact:true}).click();

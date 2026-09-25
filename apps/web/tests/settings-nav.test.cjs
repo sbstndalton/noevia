@@ -12,7 +12,7 @@ const exports_ = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/settings-nav.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, { exports: exports_ });
-const { initialNavState, nextNavState, resolveSettingsClose } = exports_;
+const { initialNavState, nextNavState, resolveSettingsClose, restoreNavState, persistedView, withoutChat, withoutProject } = exports_;
 
 // vm.runInNewContext runs the module in a separate realm, so objects it constructs (state,
 // resolveSettingsClose's result) have a different Object prototype than literals written in this
@@ -71,4 +71,56 @@ test('three Back/close round trips through Models & routing never regress the re
     assert.equal(j(view), j(chat('start')), `iteration ${i}`);
     state = next;
   }
+});
+
+// #304 (HIGH, Opus review): a reload used to restore the app straight into a detour view with no
+// return target recorded for it, so the very first Settings close resolved right back into the
+// same detour, forever — reload turned the loop back on.
+test('restoring straight into a detour (a reload mid-loop, or data written before this fix) resolves to the fresh fallback, not the detour', () => {
+  const fresh = chat('fresh');
+  const state = restoreNavState(models('m'), fresh);
+  assert.equal(j(state), j({ returnView: fresh, cameFromSettings: null }));
+  const { view } = resolveSettingsClose(state);
+  assert.equal(j(view), j(fresh));
+});
+
+test('restoring into a real view is unaffected', () => {
+  const state = restoreNavState(chat('a'), chat('fresh'));
+  assert.equal(j(state), j({ returnView: chat('a'), cameFromSettings: null }));
+});
+
+// #304 (HIGH): what gets written as "last place" for the next reload must never itself be a
+// detour Settings launched — otherwise the very next reload hits the case above again.
+test('the persisted view is the return target while a Settings-launched detour is showing, and the view itself otherwise', () => {
+  let state = initialNavState(chat('a'));
+  state = nextNavState(state, models('m'), { fromSettingsSection: 'models' });
+  assert.equal(j(persistedView(state, models('m'))), j(chat('a')));
+  const direct = initialNavState({ kind: 'archived' });
+  assert.equal(j(persistedView(direct, { kind: 'archived' })), j({ kind: 'archived' }));
+});
+
+// #304 (MED, Opus review): a deleted chat/project must never remain the return target, even when
+// it is not the view on screen (Models & routing was opened from it, then it was deleted from
+// Archived chats or another tab).
+test('a deleted chat is dropped as the return target and replaced with the given fallback', () => {
+  let state = initialNavState(chat('doomed'));
+  state = nextNavState(state, models('m'), { fromSettingsSection: 'models' });
+  state = withoutChat(state, 'doomed', chat('fresh'));
+  assert.equal(j(state.returnView), j(chat('fresh')));
+  assert.equal(state.cameFromSettings, 'models', 'the pending detour section is untouched');
+  // A different chat's deletion never touches an unrelated return target.
+  const other = withoutChat(initialNavState(chat('kept')), 'doomed', chat('fresh'));
+  assert.equal(j(other.returnView), j(chat('kept')));
+});
+
+test('a deleted project is dropped as the return target, and so is any chat inside it', () => {
+  const project = { kind: 'project', id: 'doomed' };
+  assert.equal(j(withoutProject(initialNavState(project), 'doomed', { kind: 'projects' }).returnView), j({ kind: 'projects' }));
+  const chatInProject = { kind: 'chat', chatId: 'c1', projectId: 'doomed' };
+  assert.equal(j(withoutProject(initialNavState(chatInProject), 'doomed', { kind: 'projects' }).returnView), j({ kind: 'projects' }));
+  // An unrelated project or a free chat (projectId null) is untouched.
+  const unrelated = { kind: 'project', id: 'kept' };
+  assert.equal(j(withoutProject(initialNavState(unrelated), 'doomed', { kind: 'projects' }).returnView), j(unrelated));
+  const free = { kind: 'chat', chatId: 'c2', projectId: null };
+  assert.equal(j(withoutProject(initialNavState(free), 'doomed', { kind: 'projects' }).returnView), j(free));
 });

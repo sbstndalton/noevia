@@ -18,6 +18,48 @@ export function initialNavState<V>(view: V): NavState<V> {
   return { returnView: view, cameFromSettings: null };
 }
 
+/** Views Settings can launch as a detour: never a valid return target (see module doc). */
+export const SETTINGS_LAUNCHABLE_KINDS: ReadonlySet<string> = new Set(['models', 'plugins', 'archived', 'diary']);
+
+/** Bootstraps nav state for a *restored* view (a reload). Reloading is the same as calling
+ *  initialNavState with whatever `readLastPlace()` returned — normally a real chat/project view,
+ *  since #304's fix also stops a detour from ever being written as the last place. But data
+ *  written before that fix (or any other stale/corrupted record) can still hand back a detour
+ *  kind directly; treating that as the return target would resolve Settings' close right back
+ *  into the same detour forever. `freshFallback` (a brand new chat) is used instead whenever the
+ *  restored view is a detour. */
+export function restoreNavState<V extends { kind: string }>(view: V, freshFallback: V): NavState<V> {
+  return { returnView: SETTINGS_LAUNCHABLE_KINDS.has(view.kind) ? freshFallback : view, cameFromSettings: null };
+}
+
+/** What to persist as "last place" (#304 reload loop): a Settings-launched detour is never
+ *  written as-is — the return target underneath it is, so a reload never restores mid-loop. A
+ *  detour reached directly (not from Settings) is unaffected: `cameFromSettings` is only set for
+ *  the former. */
+export function persistedView<V>(state: NavState<V>, view: V): V {
+  return state.cameFromSettings ? state.returnView : view;
+}
+
+type ChatLike = { kind: string; chatId?: string; projectId?: string | null };
+type ProjectLike = { kind: string; id?: string; projectId?: string | null };
+
+/** A deleted chat must never remain the return target (Settings' close would resolve back into
+ *  it) even when it is not the view currently on screen — e.g. it was open, Models & routing was
+ *  opened from there, and the chat was then deleted from Archived chats elsewhere. */
+export function withoutChat<V extends ChatLike>(state: NavState<V>, chatId: string, fallback: V): NavState<V> {
+  return state.returnView.kind === 'chat' && state.returnView.chatId === chatId
+    ? { ...state, returnView: fallback }
+    : state;
+}
+
+/** As withoutChat, for a deleted project — and any chat inside it, whose project no longer
+ *  exists either. */
+export function withoutProject<V extends ProjectLike>(state: NavState<V>, projectId: string, fallback: V): NavState<V> {
+  const target = state.returnView;
+  const stale = (target.kind === 'project' && target.id === projectId) || (target.kind === 'chat' && target.projectId === projectId);
+  return stale ? { ...state, returnView: fallback } : state;
+}
+
 /** Call this whenever the app's main view changes. `fromSettingsSection`, when set, means the
  *  new view is a Settings-launched detour (e.g. Models & routing) — the return target is left
  *  untouched so it keeps pointing at the real chat/project view underneath. Any other view
