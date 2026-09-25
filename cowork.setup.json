@@ -10,6 +10,26 @@
     "fresh_storage": "Docker-managed web-data and diary-data volumes; initializer refuses existing deployments",
     "existing_storage": "Preserve .env and COWORK_STATE_DIR bindings; no implicit migration"
   },
+  "overlays": [
+    {
+      "compose_file": "compose.llamacpp.yaml",
+      "adds": ["llama", "model-loader"],
+      "required_env": ["LLAMACPP_RENDER_DEVICE", "LLAMACPP_CARD_DEVICE", "LLAMACPP_MODELS_DIR",
+        "LLAMACPP_CONFIG_DIR", "LLAMACPP_CACHE_DIR", "LLAMACPP_EMBED_MODEL", "LLAMACPP_CHAT_MODEL",
+        "LLAMACPP_AUX_MODEL", "MODEL_MANAGER_VERSION", "MODEL_LOADER_TOKEN"]
+    },
+    {
+      "compose_file": "compose.docling.yaml",
+      "adds": ["docling"],
+      "required_env": []
+    },
+    {
+      "compose_file": "compose.embed.yaml",
+      "adds": ["embed"],
+      "required_env": ["LLAMACPP_MODELS_DIR", "EMBED_MODEL_FILE"],
+      "note": "Reproduces the live embed service (docs/deployment.md 'Release ea57c83'; docs/spec-service-boundaries.md finding 8). Self-wires EMBEDDING_BASE_URL=http://embed:8080/v1. Fields marked [live: verify] in the file need confirming against the live box."
+    }
+  ],
   "preconditions": [
     {
       "check": "docker --version",
