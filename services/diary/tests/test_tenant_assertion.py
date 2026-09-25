@@ -26,11 +26,12 @@ def fresh_nonces():
     ta._reset_for_tests()
 
 
-def signed(user, method, path, extra=None, key=KEY, ts=None, nonce=None):
+def signed(user, method, path, extra=None, key=KEY, ts=None, nonce=None, query=b'', body=b''):
     headers = {'X-Cowork-User-ID': user, **(extra or {})}
     ts = int(time.time()) if ts is None else ts
     nonce = nonce or secrets.token_hex(16)
-    headers[ta.HEADER] = ta.sign(key, user, method, path, headers, ts, nonce)
+    body_hash = ta.sha256_hex(body) if ta.body_is_hashed(headers.get('Content-Type', '')) else ta.STREAM
+    headers[ta.HEADER] = ta.sign(key, user, method, path, headers, ts, nonce, query, body_hash)
     return headers
 
 
@@ -52,7 +53,8 @@ def test_valid_assertion_verifies_once_and_replay_is_refused():
     lambda h: {**h, 'X-Cowork-Legacy-Owner': '1'},                # added legacy-owner marker
     lambda h: {**h, ta.HEADER: h[ta.HEADER][:-2] + 'AA'},         # forged signature
     lambda h: {k: v for k, v in h.items() if k != ta.HEADER},     # missing
-    lambda h: {**h, ta.HEADER: 'v1.garbage'},                     # malformed
+    lambda h: {**h, ta.HEADER: 'v2.garbage'},                     # malformed
+    lambda h: {**h, ta.HEADER: 'v1' + h[ta.HEADER][2:]},          # v1 is not accepted
 ])
 def test_tampered_or_missing_assertion_is_refused(mutate):
     h = signed(A, 'GET', '/api/day', {'X-Cowork-Storage': b64({'kind': 'webdav', 'secretRef': 'a' * 32})})
@@ -66,6 +68,51 @@ def test_assertion_is_bound_to_method_path_and_key():
     assert ta.verify('another-key', h, 'GET', '/api/day') == 'bad signature'
 
 
+def test_assertion_is_bound_to_query_and_body():
+    h = signed(A, 'POST', '/api/file', query=b'path=a', body=b'{"path":"a"}')
+    assert ta.verify(KEY, h, 'POST', '/api/file', query=b'path=b', body_hash=ta.sha256_hex(b'{"path":"a"}')) == 'bad signature'
+    assert ta.verify(KEY, h, 'POST', '/api/file', query=b'path=a', body_hash=ta.sha256_hex(b'{"path":"b"}')) == 'bad signature'
+    assert ta.verify(KEY, h, 'POST', '/api/file', query=b'path=a', body_hash=ta.STREAM) == 'bad signature'
+    assert ta.verify(KEY, h, 'POST', '/api/file', query=b'path=a', body_hash=ta.sha256_hex(b'{"path":"a"}')) is None
+
+
+def test_json_bodies_are_hashed_and_other_media_types_sign_stream():
+    assert ta.body_is_hashed('') and ta.body_is_hashed('application/json; charset=utf-8')
+    assert not ta.body_is_hashed('application/zip') and not ta.body_is_hashed('multipart/form-data; boundary=x')
+
+
+def test_full_nonce_cache_purges_expired_then_refuses_instead_of_evicting(monkeypatch):
+    monkeypatch.setattr(ta, '_nonce_cap', 2)
+    now = 1_000_000.0
+    assert ta._remember_nonce('a' * 32, now)
+    assert ta._remember_nonce('b' * 32, now + 1)
+    with pytest.raises(ta.NonceCacheFull):
+        ta._remember_nonce('c' * 32, now + 2)
+    assert not ta._remember_nonce('a' * 32, now + 3), 'a live nonce was evicted'
+    # Once the oldest expires it is purged and there is room again.
+    assert ta._remember_nonce('c' * 32, now + 2 * ta.SKEW_S + 0.5)
+
+
+def test_full_nonce_cache_answers_503_and_logs_once(keyed, monkeypatch, caplog):
+    monkeypatch.setattr(ta, '_nonce_cap', 1)
+    monkeypatch.setattr(appmod, '_nonce_full_logged', False)
+    assert keyed.get('/api/storage-status', headers=signed(B, 'GET', '/api/storage-status')).status_code == 200
+    with caplog.at_level('ERROR', logger='diary'):
+        for _ in range(2):
+            assert keyed.get('/api/storage-status', headers=signed(B, 'GET', '/api/storage-status')).status_code == 503
+    assert sum('nonce cache full' in r.getMessage() for r in caplog.records) == 1
+
+
+def test_path_is_signed_percent_encoded_as_on_the_wire():
+    # Invariant shared with diary-tenant-assertion.test.cjs: the signed path is the
+    # encoded request-target path (ASGI raw_path / URL.pathname), never the decoded one.
+    assert ta.wire_path({'path': '/api/a b', 'raw_path': b'/api/a%20b'}) == '/api/a%20b'
+    assert ta.wire_path({'path': '/api/x'}) == '/api/x'
+    h = signed(A, 'GET', '/api/a%20b')
+    assert ta.verify(KEY, h, 'GET', '/api/a b') == 'bad signature'
+    assert ta.verify(KEY, h, 'GET', ta.wire_path({'path': '/api/a b', 'raw_path': b'/api/a%20b'})) is None
+
+
 def test_clock_skew_window():
     now = time.time()
     assert ta.verify(KEY, signed(A, 'GET', '/x', ts=int(now) - ta.SKEW_S - 5), 'GET', '/x', now=now) == 'outside clock window'
@@ -76,13 +123,13 @@ def test_clock_skew_window():
 def test_web_and_sidecar_derive_the_same_signature():
     # Golden vector shared with apps/web/server/diary-tenant-assertion.test.cjs.
     h = {'X-Cowork-User-ID': A, 'X-Cowork-Storage': 'eyJraW5kIjoibG9jYWwifQ'}
-    assert ta.sign('k', A, 'post', '/api/file', h, 1700000000, '0' * 32) == \
-        'v1.1700000000.00000000000000000000000000000000.' + GOLDEN_SIG
+    assert ta.sign('k', A, 'post', '/api/file', h, 1700000000, '0' * 32, b'path=x', ta.sha256_hex(b'{"path":"a"}')) == \
+        'v2.1700000000.00000000000000000000000000000000.' + GOLDEN_SIG
     assert ta.storage_secret_ref('k', A, 's3cret') == GOLDEN_REF
 
 
-GOLDEN_SIG = 'SKVLLLpFOwR9z2CH_t4blm0RnYVH054n4XK7oDtntyA'
-GOLDEN_REF = '6304dc8ee941b84350fc0af01b0c77c5'
+GOLDEN_SIG = 'nfewKW0P1sYJ_oPynPoP1cOgZio8VF0OmX3Q5gIvQbc'
+GOLDEN_REF = '3bc946714e8992b28033c5c925ede7b1'
 
 
 # ── the running app ─────────────────────────────────────────────────────────
@@ -104,6 +151,22 @@ def test_key_set_refuses_tenant_requests_without_a_valid_assertion(keyed):
     replay = signed(B, 'GET', '/api/storage-status')
     assert keyed.get('/api/storage-status', headers=replay).status_code == 200
     assert keyed.get('/api/storage-status', headers=replay).status_code == 401
+
+
+def test_signed_query_and_json_body_are_enforced_end_to_end(keyed):
+    body = b'{"path":"notes.md"}'
+    ct = {'Content-Type': 'application/json'}
+    ok = keyed.get('/api/storage-status?x=1', headers=signed(B, 'GET', '/api/storage-status', query=b'x=1'))
+    assert ok.status_code == 200
+    swapped = signed(B, 'GET', '/api/storage-status', query=b'x=1')
+    assert keyed.get('/api/storage-status?x=2', headers=swapped).status_code == 401
+    tampered = signed(B, 'POST', '/api/file', ct, body=body)
+    assert keyed.post('/api/file', content=b'{"path":"other.md"}', headers=tampered).status_code == 401
+    # A JSON call cannot downgrade to the unhashed "stream" marker.
+    downgraded = signed(B, 'POST', '/api/file', {'Content-Type': 'application/zip'}, body=body)
+    assert keyed.post('/api/file', content=body, headers={**downgraded, **ct}).status_code == 401
+    # The genuine body reaches the handler (replayed after hashing): not an auth failure.
+    assert keyed.post('/api/file', content=body, headers=signed(B, 'POST', '/api/file', ct, body=body)).status_code not in (401, 503)
 
 
 def test_health_without_tenant_still_passes_with_key(keyed):
@@ -129,12 +192,24 @@ def test_in_handler_backstop_refuses_unasserted_tenant(volume, monkeypatch):  # 
     assert exc.value.status_code == 401
 
 
-def test_legacy_fallback_without_bearer_needs_assertion_when_keyed(volume, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize('bearer', ['', 'synthetic-service-token'])
+def test_header_less_legacy_fallback_is_refused_when_keyed(volume, monkeypatch, bearer):  # noqa: F811
+    # With a bearer set the fallback used to act as DIARY_LEGACY_USER_ID unsigned.
     monkeypatch.setenv('DIARY_TENANT_KEY', KEY)
     monkeypatch.setenv('DIARY_LEGACY_USER_ID', B)
+    monkeypatch.setattr(appmod.get_state(), 'auth_token', bearer)
     with pytest.raises(HTTPException) as exc:
         appmod._tenant_state(Request({'type': 'http', 'headers': []}))
     assert exc.value.status_code == 401
+
+
+def test_header_less_legacy_route_is_401_with_bearer_and_key(keyed, monkeypatch):
+    monkeypatch.setenv('DIARY_LEGACY_USER_ID', B)
+    monkeypatch.setattr(appmod.get_state(), 'auth_token', 'synthetic-service-token')
+    auth = {'Authorization': 'Bearer synthetic-service-token'}
+    assert keyed.get('/api/storage-status', headers=auth).status_code == 401
+    assert keyed.get('/api/day', headers=auth).status_code == 401
+    assert keyed.get('/api/health', headers=auth).status_code == 200  # probe, no tenant detail
 
 
 def test_key_unset_accepts_unasserted_requests_and_logs_once(volume, monkeypatch, caplog):  # noqa: F811

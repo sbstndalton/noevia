@@ -260,14 +260,16 @@ def _require_tenant_assertion(request: Request) -> None:
     """With DIARY_TENANT_KEY set, acting as a tenant needs a verified assertion.
 
     TenantAssertionMiddleware verifies any request that names a tenant; this is
-    the in-handler backstop, and it also closes the DIARY_LEGACY_USER_ID
-    fallback (no tenant header) when no bearer token protects it."""
+    the in-handler backstop. It refuses every unasserted tenant resolution,
+    including the header-less DIARY_LEGACY_USER_ID fallback even when a bearer
+    token is set: the bearer proves "web server", not which tenant, and web
+    always names the tenant (and signs it), so a header-less tenant call can
+    only come from an unsigned legacy client."""
     if not tenant_assertion.tenant_key():
         return
     if getattr(request.state, "tenant_asserted", False):
         return
-    if request.headers.get("X-Cowork-User-ID", "") or not get_state().auth_token:
-        raise HTTPException(status_code=401, detail="tenant assertion required")
+    raise HTTPException(status_code=401, detail="tenant assertion required")
 
 
 def enforce_open_mode_policy(auth_token: str) -> None:
@@ -282,26 +284,72 @@ def enforce_open_mode_policy(auth_token: str) -> None:
         "Set them, or set DIARY_ALLOW_OPEN=1 to run the LAN-only open mode deliberately.")
 
 
+MAX_SIGNED_BODY = 64 * 1024 * 1024
+_nonce_full_logged = False
+
+
 class TenantAssertionMiddleware:
-    """Pure ASGI (streams pass through untouched): verify X-Cowork-Tenant-Assertion
-    on every request that names a tenant, when DIARY_TENANT_KEY is set."""
+    """Pure ASGI: verify X-Cowork-Tenant-Assertion on every request that names a
+    tenant, when DIARY_TENANT_KEY is set.
+
+    JSON bodies are covered by the signature, so they are buffered here, hashed
+    and replayed to the app; other media types (ZIP import) sign "stream" and
+    pass through unbuffered (tenant_assertion.body_is_hashed). Responses are
+    never touched, so streamed replies still stream."""
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        global _open_tenant_logged
+        global _open_tenant_logged, _nonce_full_logged
         if scope.get("type") == "http":
             headers = Headers(scope=scope)
             if headers.get("x-cowork-user-id", ""):
                 key = tenant_assertion.tenant_key()
                 if key:
-                    reason = tenant_assertion.verify(key, headers, scope.get("method", "GET"), scope.get("path", ""))
+                    if tenant_assertion.body_is_hashed(headers.get("content-type", "")):
+                        chunks, size, more = [], 0, True
+                        while more:
+                            message = await receive()
+                            if message.get("type") != "http.request":
+                                break
+                            chunk = message.get("body", b"")
+                            size += len(chunk)
+                            if size > MAX_SIGNED_BODY:
+                                await JSONResponse({"detail": "request body too large"}, status_code=413)(scope, receive, send)
+                                return
+                            chunks.append(chunk)
+                            more = message.get("more_body", False)
+                        body = b"".join(chunks)
+                        body_hash = tenant_assertion.sha256_hex(body)
+                        replayed = False
+
+                        async def receive_buffered():
+                            nonlocal replayed
+                            if not replayed:
+                                replayed = True
+                                return {"type": "http.request", "body": body, "more_body": False}
+                            return await receive()
+
+                        downstream_receive = receive_buffered
+                    else:
+                        body_hash, downstream_receive = tenant_assertion.STREAM, receive
+                    try:
+                        reason = tenant_assertion.verify(key, headers, scope.get("method", "GET"), tenant_assertion.wire_path(scope),
+                                                         query=scope.get("query_string", b""), body_hash=body_hash)
+                    except tenant_assertion.NonceCacheFull:
+                        if not _nonce_full_logged:
+                            _nonce_full_logged = True
+                            log.error("tenant assertion nonce cache full of unexpired nonces: refusing requests (503)")
+                        await JSONResponse({"detail": "tenant assertion capacity exhausted"}, status_code=503)(scope, receive, send)
+                        return
                     if reason:
                         log.warning("tenant assertion rejected: %s", reason)
                         await JSONResponse({"detail": "invalid tenant assertion"}, status_code=401)(scope, receive, send)
                         return
                     scope.setdefault("state", {})["tenant_asserted"] = True
+                    await self.app(scope, downstream_receive, send)
+                    return
                 elif not _open_tenant_logged:
                     _open_tenant_logged = True
                     log.warning("DIARY_TENANT_KEY is unset: accepting tenant requests without X-Cowork-Tenant-Assertion")
