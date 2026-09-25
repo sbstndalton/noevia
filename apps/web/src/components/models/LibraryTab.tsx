@@ -203,8 +203,13 @@ function DeleteModel({ model: m, file, onDeleted }: { model: InstalledModel; fil
       if (file) {
         const outcome = await runDeleteModelFiles(
           async () => {
-            const v = await mm<{ results: { ok: boolean; message: string }[] }>('models/delete', { body: { models: [file.key] } });
+            // Folder-configured (source: 'preset') models take this path: the proxy also
+            // unloads the engine model(s) the deleted file backed and clears any auto-role
+            // that named them (#302), reporting back the same rolesCleared shape as the
+            // primary /api/models/delete path above.
+            const v = await mm<{ results: { ok: boolean; message: string }[]; rolesCleared?: string[] }>('models/delete', { body: { models: [file.key] } });
             if (!v.results[0]?.ok) throw Error(v.results[0]?.message || t('mm.deleteFailed'));
+            return Array.isArray(v.rolesCleared) ? v.rolesCleared : [];
           },
           removeSettings && file.sections.length ? async () => {
             const { revision } = await mm<{ revision: string }>('sections');
@@ -212,7 +217,7 @@ function DeleteModel({ model: m, file, onDeleted }: { model: InstalledModel; fil
             for (const section of file.sections) rev = (await mm<{ revision: string }>(`sections/${encodeURIComponent(section)}?baseRevision=${rev}`, { method: 'DELETE' })).revision;
           } : undefined,
         );
-        setConfirming(false); onDeleted(outcome.error && cleanupText(outcome.cleanupDetail)); return;
+        setConfirming(false); onDeleted(outcome.error && cleanupText(outcome.cleanupDetail), outcome.rolesCleared); return;
       }
       throw Error(t('mm.delete.noFiles'));
     } catch (e) { setError(errorText(e, t('mm.deleteFailed'))); } finally { setBusy(false); }

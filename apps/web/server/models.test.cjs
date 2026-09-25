@@ -7,9 +7,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createModelService } = require('./models.cjs');
 
-function fixture({ enabled = true, routing = false, models = [], loaded = [], env = {}, fetchJson } = {}) {
+function makeWorkspace(autoRoles = null) {
+  return { autoRoles, saves: 0, saveAutoRoles() { this.saves += 1; } };
+}
+
+function fixture({ enabled = true, routing = false, models = [], loaded = [], env = {}, fetchJson, otherWorkspaces = [] } = {}) {
   const calls = [];
-  const workspace = { autoRoles: null, saves: 0, saveAutoRoles() { this.saves += 1; } };
+  const workspace = makeWorkspace();
   const modelManager = {
     enabled, capabilities: { routing },
     requireEnabled() { if (!enabled) throw new Error('model management is disabled'); },
@@ -20,6 +24,7 @@ function fixture({ enabled = true, routing = false, models = [], loaded = [], en
   const service = createModelService({
     fetchJson: fetchJson || (async (url, init) => { calls.push(['fetch', url, init]); return { ok: true, status: 200, body: { unregistered: ['x'] } }; }),
     env, modelManager, currentWorkspace: () => workspace,
+    listWorkspaces: () => [workspace, ...otherWorkspaces],
   });
   return { service, workspace, calls, modelManager };
 }
@@ -103,10 +108,31 @@ test('clearRoleReferences drops the optional roles and falls the required ones b
   assert.deepEqual(f.service.autoRoles(), { fast: 'keep', smart: 'keep', code: 'keep-code' });
 
   assert.deepEqual(f.service.clearRoleReferences('nope'), [], 'a model no role points at clears nothing and does not resave');
+});
 
+test('when both required roles would end up empty, the whole config is unset rather than saved as fast:\'\' smart:\'\'', () => {
+  const f = fixture();
   f.service.setAutoRoles({ fast: 'm', smart: 'm' });
-  assert.deepEqual(f.service.clearRoleReferences('m'), ['fast', 'smart'], 'when both required roles pointed at it, there is no candidate left');
-  assert.deepEqual(f.service.autoRoles(), { fast: '', smart: '' });
+  const savesBefore = f.workspace.saves;
+  assert.deepEqual(f.service.clearRoleReferences('m'), ['fast', 'smart'], 'both required roles pointed at the deleted model, with no candidate left');
+  assert.equal(f.service.autoRoles(), null, 'unset (null), not { fast: "", smart: "" } — chat.cjs reads this as "not configured yet"');
+  assert.equal(f.workspace.saves, savesBefore + 1);
+});
+
+test('clearRoleReferences fixes every workspace it can see, not just the current one, and reports only the current workspace\'s cleared roles', () => {
+  const other1 = makeWorkspace({ fast: 'm', smart: 'other-smart' });
+  const other2 = makeWorkspace({ fast: 'untouched', smart: 'also-untouched', vision: 'm' });
+  const f = fixture({ otherWorkspaces: [other1, other2] });
+  f.service.setAutoRoles({ fast: 'keep-fast', smart: 'm' });
+
+  const cleared = f.service.clearRoleReferences('m');
+
+  assert.deepEqual(cleared, ['smart'], 'the return value only describes the current (requesting) workspace');
+  assert.deepEqual(f.service.autoRoles(), { fast: 'keep-fast', smart: 'keep-fast' }, 'current workspace: smart falls back to fast');
+  assert.deepEqual(other1.autoRoles, { fast: 'other-smart', smart: 'other-smart' }, 'other workspace 1 is fixed silently: fast falls back to smart');
+  assert.equal(other1.saves, 1);
+  assert.deepEqual(other2.autoRoles, { fast: 'untouched', smart: 'also-untouched' }, 'other workspace 2: the optional vision role referencing it is dropped');
+  assert.equal(other2.saves, 1);
 });
 
 test('clearLastLoadedModel only clears when the name still matches (a load in between is left alone)', async () => {

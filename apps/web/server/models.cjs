@@ -16,7 +16,7 @@
  * @param {object} deps.modelManager         model-manager.cjs adapter
  * @param {() => object} deps.currentWorkspace
  */
-function createModelService({ fetchJson, env, modelManager, currentWorkspace }) {
+function createModelService({ fetchJson, env, modelManager, currentWorkspace, listWorkspaces }) {
   // One call to the model management service, with its token. Same path the proxy route uses.
   function managerFetch(rest, method = 'GET') {
     return fetchJson(`${env.MODEL_LOADER_URL.replace(/\/+$/, '')}/api/v1/${rest}`,
@@ -68,17 +68,18 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace }) 
     currentWorkspace().saveAutoRoles();
   }
 
-  // Deleting a model must not leave a role pointing at nothing that used to exist: called by
-  // the /api/models/delete route right after a successful delete. `fast`/`smart` fall back to
-  // whichever of the other required role's model is still configured (and not itself the model
-  // being deleted); when there is no candidate left, or the role is the optional vision/code,
-  // it becomes 'none' — an empty string, same as never having been set (missingRoles never
-  // flags it, and the chat route's own fallback already treats an empty role as unset).
-  // Returns the list of role names that referenced the deleted model, in fast/smart/vision/code
-  // order, or [] when no role config exists or none pointed at it.
-  function clearRoleReferences(name) {
-    const roles = autoRoles();
-    if (!roles) return [];
+  // Deleting a model must not leave a role pointing at nothing that used to exist. `fast`/`smart`
+  // fall back to whichever of the other required role's model is still configured (and not
+  // itself the model being deleted); when there is no candidate left, or the role is the
+  // optional vision/code, it becomes 'none' — an empty string, same as never having been set.
+  // When BOTH required roles would end up empty, the whole config is unset (null) rather than
+  // saved as { fast: '', smart: '' }: autoRoles() then reads as "not configured", which is what
+  // sends the chat route down its existing `!roles` path ("pick Fast and Smart models first")
+  // instead of trying to route to an empty model name.
+  // Returns { cleared, roles } — `roles` is the value to persist (an object, or null to unset)
+  // — or null when nothing in `roles` pointed at `name`.
+  function clearedRoles(roles, name) {
+    if (!roles) return null;
     const next = { ...roles };
     const cleared = [];
     for (const role of ['fast', 'smart', 'vision', 'code']) {
@@ -88,8 +89,32 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace }) 
       const fallback = role === 'fast' ? 'smart' : 'fast';
       next[role] = next[fallback] && next[fallback] !== name ? next[fallback] : '';
     }
-    if (cleared.length) setAutoRoles(next);
-    return cleared;
+    if (!cleared.length) return null;
+    return { cleared, roles: next.fast === '' && next.smart === '' ? null : next };
+  }
+
+  // Called by the /api/models/delete and /api/model-manager/models/delete routes right after a
+  // successful delete. Auto-roles are saved per workspace (workspace.cjs, auto-roles.json under
+  // each user's data dir) — a role in ANY workspace can reference the deleted model, not just
+  // whoever ran the delete — so every workspace `listWorkspaces` can see is checked and, if
+  // affected, resaved through its own `saveAutoRoles()`. The return value is only the roles
+  // cleared in the *current* (requesting) workspace: that is what the response body and the
+  // client's status line describe; other workspaces are fixed silently, the same way a role
+  // whose model vanished from under it already degraded silently before this existed.
+  function clearRoleReferences(name) {
+    const current = currentWorkspace();
+    const currentResult = clearedRoles(current.autoRoles, name);
+    if (currentResult) { current.autoRoles = currentResult.roles; current.saveAutoRoles(); }
+    if (typeof listWorkspaces === 'function') {
+      for (const ws of listWorkspaces()) {
+        if (!ws || ws === current) continue;
+        const result = clearedRoles(ws.autoRoles, name);
+        if (!result) continue;
+        ws.autoRoles = result.roles;
+        ws.saveAutoRoles();
+      }
+    }
+    return currentResult ? currentResult.cleared : [];
   }
 
   async function ensureModelLoaded(name) {

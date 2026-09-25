@@ -22,9 +22,14 @@ require('node:fs').mkdirSync(shots, { recursive: true });
     let installed = [
       { name: 'Fast-Model', labels: [], loaded: true, sizeGB: 4, maxContext: 32768, source: 'cache', canDelete: true, status: 'loaded' },
       { name: 'Smart-Model', labels: [], loaded: false, sizeGB: 6, maxContext: 32768, source: 'cache', canDelete: true, status: 'unloaded' },
+      // Folder-configured (source: 'preset'): LibraryTab's DeleteModel routes this through the
+      // /api/model-manager/models/delete proxy instead of /api/models/delete (#302 follow-up —
+      // the proxy path was left unfixed while only the direct route got the unload/roles
+      // cleanup, so most real llama.cpp models — folder models — stayed broken).
+      { name: 'Folder-Model', labels: [], loaded: true, sizeGB: 3, maxContext: 32768, source: 'preset', canDelete: false, status: 'loaded' },
     ];
-    let roles = { fast: 'Fast-Model', smart: 'Smart-Model' };
-    let deleteCalls = 0;
+    let roles = { fast: 'Fast-Model', smart: 'Smart-Model', code: 'Folder-Model' };
+    let deleteCalls = 0, proxyDeleteCalls = 0;
 
     await page.route('**/api/**', (route) => {
       const req = route.request(), url = new URL(req.url()), p = url.pathname, m = req.method();
@@ -44,6 +49,16 @@ require('node:fs').mkdirSync(shots, { recursive: true });
       }
       if (!p.startsWith('/api/model-manager/')) return p.startsWith('/api/models/') ? json([]) : route.continue();
       const r = p.slice('/api/model-manager/'.length);
+      if (r === 'models/delete' && m === 'POST') {
+        proxyDeleteCalls += 1;
+        const key = body().models[0];
+        const mo = installed.find((x) => `f/${x.name}.gguf` === key);
+        const name = mo?.name;
+        if (name) deletedNames.push(name);
+        const rolesCleared = [];
+        if (name) for (const role of ['fast', 'smart', 'vision', 'code']) if (roles[role] === name) { rolesCleared.push(role); delete roles[role]; }
+        return json({ results: [{ key, ok: true, message: 'deleted', freed: 3e9, freedH: '3.0 GB' }], unloaded: true, rolesCleared });
+      }
       if (r === 'models') return json({ models: installed.filter((mo) => !deletedNames.includes(mo.name)).map((mo) => ({ key: `f/${mo.name}.gguf`, name: `${mo.name}.gguf`, subdir: 'f', bytes: mo.sizeGB * 1e9, size: `${mo.sizeGB.toFixed(1)} GB`, modified: '2026-09-01', sharded: false, parts: 1, projector: null, sections: [mo.name], modelId: mo.name, file: `f/${mo.name}.gguf`, shape: null, loadedOn: [], fit: [], badges: [] })), unregistered: [], revision: 'r1' });
       if (r === 'overview') return json({ modelsDir: { path: '/models', hostPath: '/mnt/models', exists: true, disk: { total: 1e11, free: 5e10, usedPct: 50, totalH: '100 GB', freeH: '50 GB' } }, models: installed.length, sections: installed.length, backends: [], activeDownloads: 0, revision: 'r1' });
       if (r === 'models/updates') return json({ status: {} });
@@ -88,6 +103,23 @@ require('node:fs').mkdirSync(shots, { recursive: true });
     await dialog.getByText(/Also cleared from auto-routing: Fast/).waitFor();
 
     assert.equal(await page.evaluate(() => window.__modelsChangedFired), true, 'noevia:models-changed did not fire on delete');
+
+    // A folder-configured (source: 'preset') model deletes through the
+    // /api/model-manager/models/delete proxy, not /api/models/delete — and must get the same
+    // treatment: card gone without reload, exactly one proxy delete call, cleared role reported.
+    await page.evaluate(() => {
+      window.__modelsChangedFired = false;
+      window.addEventListener('noevia:models-changed', () => { window.__modelsChangedFired = true; }, { once: true });
+    });
+    const folderCard = dialog.getByRole('article', { name: 'Folder-Model' });
+    await folderCard.waitFor();
+    await folderCard.getByRole('button', { name: 'Delete', exact: true }).click();
+    await folderCard.getByRole('button', { name: 'Delete files' }).click();
+    await dialog.getByRole('article', { name: 'Folder-Model' }).waitFor({ state: 'detached', timeout: 2000 });
+    assert.equal(proxyDeleteCalls, 1, 'exactly one proxy delete call reached the server for the folder model');
+    assert.equal(deleteCalls, 1, 'the folder model never went through the direct /api/models/delete route');
+    await dialog.getByText(/Also cleared from auto-routing: Code/).waitFor();
+    assert.equal(await page.evaluate(() => window.__modelsChangedFired), true, 'noevia:models-changed did not fire for the folder-model delete');
 
     for (const [width, label] of [[375, '375'], [1440, '1440']]) {
       await page.setViewportSize({ width, height: 950 });

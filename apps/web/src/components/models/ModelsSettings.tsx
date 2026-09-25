@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ShellIcon } from '../ShellIcon';
 import type { JSX } from 'react';
 import type { InstalledModel, Project, RouteRule } from '../../types';
@@ -136,9 +136,13 @@ function RoutingSection({ models, modelsError }: { models: InstalledModel[]; mod
 
   // A deleted model can drop out of a role (or fall back to another one) on the server without
   // this tab remounting — refetch whenever the shared model list changes, same as a save here
-  // already does for ModelsSummary.tsx.
+  // already does for ModelsSummary.tsx. `live` guards both this and the mount effect below
+  // against setting state after the tab (or the whole page) has unmounted — a models-changed
+  // event can easily fire while the fetch it triggered is still in flight.
+  const liveRef = useRef(true);
+  useEffect(() => { liveRef.current = true; return () => { liveRef.current = false; }; }, []);
   const loadRoles = useCallback(() => {
-    fetchAutoRoles().then(setInfo).catch(() => setError(t('mm.route.loadError')));
+    fetchAutoRoles().then((v) => { if (liveRef.current) setInfo(v); }).catch(() => { if (liveRef.current) setError(t('mm.route.loadError')); });
   }, [t]);
   useEffect(() => { let live = true; fetchAutoRoles().then((v) => { if (live) setInfo(v); }).catch(() => { if (live) setError(t('mm.route.loadError')); }); return () => { live = false; }; }, []);
   useModelsChanged(loadRoles);
