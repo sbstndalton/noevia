@@ -223,8 +223,44 @@ jobs:
         with:
           context: apps/web
           push: false
+          load: true
+          tags: noevia-web:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # #337: the build above only proved the image compiles; it never proved the
+      # container boots. Run it once with synthetic env (no real secrets, no sidecars)
+      # and poll /api/ready so a runtime-only crash (e.g. a file the runtime stage
+      # never copied) fails CI instead of the next production rollout.
+      - name: Boot web image and check /api/ready
+        if: env.RUN_JOB == 'true'
+        run: |
+          set -e
+          docker run -d --name noevia-web-ci \
+            -p 8021:8021 \
+            -e UI_PORT=8021 \
+            -e UI_AUTH_TOKEN=ci-synthetic-token-$RANDOM \
+            -e DIARY_AUTH_TOKEN=ci-synthetic-diary-token-$RANDOM \
+            -e DIARY_TENANT_KEY=$(openssl rand -hex 32) \
+            -e INFERENCE_BASE_URL=http://127.0.0.1:1 \
+            -e DIARY_BASE_URL=http://127.0.0.1:1 \
+            noevia-web:ci
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8021/api/ready -o /tmp/ready.json; then
+              echo "Response: $(cat /tmp/ready.json)"
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "web image never became ready; container logs follow:"
+            docker logs noevia-web-ci || true
+            docker rm -f noevia-web-ci || true
+            exit 1
+          fi
+          docker logs noevia-web-ci || true
+          docker rm -f noevia-web-ci
       - name: Build diary image
         if: env.RUN_JOB == 'true'
         uses: docker/build-push-action@v6
