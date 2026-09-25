@@ -188,6 +188,15 @@ test('headerSafeName only encodes when needed, and keeps the worker\'s 200-char 
   assert.ok(docling.headerSafeName('é'.repeat(500) + '.pdf').length <= 200);
 });
 
+test('headerSafeName encodes control characters that would make undici throw', () => {
+  // CR/LF in a header value is request smuggling territory; undici (and any
+  // spec-compliant client) rejects it with a TypeError rather than send it.
+  assert.equal(docling.headerSafeName('a\nb.pdf'), encodeURIComponent('a\nb.pdf'));
+  assert.equal(docling.headerSafeName('a\r\nb.pdf'), encodeURIComponent('a\r\nb.pdf'));
+  // NUL is below 0x20 too, and just as fatal to send raw.
+  assert.equal(docling.headerSafeName('a\0b.pdf'), encodeURIComponent('a\0b.pdf'));
+});
+
 test('a refusal noevia caused is named as that, and never cached as permanent', async () => {
   // Permanent means "this document cannot be read". A 400 means noevia sent it wrongly, and
   // caching that would outlive the fix -- which is exactly what happened when every document

@@ -38,7 +38,12 @@ function documentName(name) {
  * (server.py reads only that) and is always representable as a header value.
  */
 function headerSafeName(name) {
-  const safe = /^[\x00-\xff]*$/.test(name) ? name : encodeURIComponent(name);
+  // A raw header value must never carry a control character: undici (and any
+  // spec-compliant HTTP client) throws a TypeError on CR, LF, NUL, DEL and
+  // similar bytes below 0x20 or at 0x7f, not just on anything outside
+  // Latin-1. Encode the whole name whenever one of those sneaks in, rather
+  // than passing it through and letting the request itself throw.
+  const safe = /^[\x20-\x7e\x80-\xff\t]*$/.test(name) ? name : encodeURIComponent(name);
   return safe.length > 200 ? safe.slice(-200) : safe;
 }
 

@@ -10,7 +10,6 @@
 //
 // Part of #262 -- see docs/handoffs/2026-09-25-verify-262-docling.md for what
 // only a live run against the real worker and the real tax folder can prove.
-'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -147,7 +146,7 @@ async function main() {
   const docling = await startFakeDocling();
   const origin = 'http://127.0.0.1:31249';
   const server = spawn(process.execPath, ['server/index.cjs'], {
-    cwd: web, stdio: 'inherit',
+    cwd: web, stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env, UI_DATA_DIR: dir, UI_PORT: '31249', UI_HOST: '127.0.0.1', PUBLIC_ORIGIN: origin,
       LEGACY_AUTH_COMPAT: 'false', DIARY_AUTH_TOKEN: 'synthetic', DIARY_BASE_URL: 'http://127.0.0.1:1',
@@ -155,6 +154,24 @@ async function main() {
       DOCLING_BASE_URL: `http://127.0.0.1:${docling.port}`,
     },
   });
+  let serverStderr = '';
+  server.stderr.on('data', (c) => { serverStderr += c; });
+  server.stdout.on('data', () => {});
+
+  // Every request against the spawned server carries its own hard timeout,
+  // so a server that stops answering (rather than refusing the connection)
+  // fails fast instead of hanging the script -- this is what left the
+  // reviewer's run at exit 143 after a 120s external timeout.
+  const REQUEST_TIMEOUT_MS = 10000;
+  const DEADLINE_MS = 60000;
+  const deadlineAt = Date.now() + DEADLINE_MS;
+  const deadlineTimer = setTimeout(() => {
+    console.error(`FAIL docling-storage-path: overall ${DEADLINE_MS}ms deadline exceeded`);
+    if (serverStderr) console.error('server stderr:\n' + serverStderr);
+    process.exit(1);
+  }, DEADLINE_MS);
+  deadlineTimer.unref();
+
   let session = '', csrf = '';
   function cookieHeader() { return `cowork_session=${session}; cowork_csrf=${csrf}`; }
   function absorbCookies(res) {
@@ -167,6 +184,7 @@ async function main() {
     const res = await fetch(origin + urlPath, {
       method, headers: { 'Content-Type': 'application/json', Cookie: cookieHeader(), 'X-CSRF-Token': csrf },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     absorbCookies(res);
     const text = await res.text();
@@ -174,14 +192,24 @@ async function main() {
     return { status: res.status, body: parsed };
   }
   try {
-    for (let i = 0; i < 200; i++) {
-      try { if ((await fetch(origin + '/api/setup/status')).ok) break; } catch { /* still booting */ }
+    let booted = false;
+    while (Date.now() < deadlineAt) {
+      try {
+        if ((await fetch(origin + '/api/setup/status', { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })).ok) { booted = true; break; }
+      } catch { /* still booting */ }
+      if (server.exitCode !== null) break;
       await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!booted) {
+      throw new Error(
+        `server never answered /api/setup/status (exitCode=${server.exitCode})\nserver stderr:\n${serverStderr || '(empty)'}`,
+      );
     }
     const setupCode = fs.readFileSync(path.join(dir, 'first-run-setup-code'), 'utf8').trim();
     let res = await fetch(origin + '/api/setup/complete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ setupCode, publicOrigin: origin, username: 'doclingqa', displayName: 'Synthetic Docling QA', password: 'synthetic docling password', diaryEnabled: false }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     assert.equal(res.status, 201, 'setup');
     absorbCookies(res);
@@ -289,6 +317,7 @@ async function main() {
 
     console.log('PASS nested/space/unicode storage paths reach Docling without a 400, per-file extracted/partial status, failed+stale reaches the API, and re-sync re-reads only changed files.');
   } finally {
+    clearTimeout(deadlineTimer);
     server.kill('SIGTERM');
     await once(server, 'exit').catch(() => {});
     await new Promise((r) => dav.server.close(r));

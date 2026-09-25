@@ -35,12 +35,25 @@ here; stop and say so rather than checking the wrong pipeline.
 
 ## 2. Trigger the re-read
 
-Open the tax project in the UI (the "next authorized project open" the issue
-asks for) and use its existing "Sources" → re-sync action (or just open the
-project; a sync fires automatically on the existing schedule/whichever
-mechanism is live — check `docs/deployment.md`/`docs/spec-service-boundaries.md`
-if unsure which). Do not open, preview, or ask the model to read any
-individual document's content as part of this check.
+Open the tax project in the UI. There is no separate "re-sync" button to
+press: opening a project (or changing its attached folders) is what fires the
+re-read. Confirmed by reading the actual call path:
+
+- `POST /api/projects/:id/sources/sync` (server: `apps/web/server/routes/projects.cjs`)
+  re-reads every attached folder and refreshes the project's sources.
+- The frontend calls it from exactly two places in `apps/web/src/App.tsx`:
+  - `syncProjectSources` inside the `sourceRefresher` effect (around line 453)
+    fires automatically while the project tab is open, visible, online, and
+    not mid-inference — this is what a plain "open the project" triggers.
+  - `saveProjectAndSync` (around line 1161) calls it synchronously whenever
+    `sourceFolders` is part of a saved patch — i.e. attaching, detaching, or
+    otherwise editing the project's folder list.
+
+So: opening the tax project and leaving its tab visible for a few seconds is
+enough to trigger the automatic re-read; touching its source-folder list in
+Settings triggers it immediately and synchronously. Do not open, preview, or
+ask the model to read any individual document's content as part of this
+check.
 
 ## 3. Logs — what they will and will not show
 
@@ -82,19 +95,27 @@ docker logs --since 10m cowork-web-1 | grep -E '\[documents\]|\[uploads\]|\[noev
 The per-file extraction status is visible without exposing content in two
 places:
 
-- **UI**: the project's Sources tab lists each file with a status chip/row
-  (ready / partial / failed / stale) — this is the `problem()`/`notice()`
-  text built in `apps/web/server/document-sources.cjs` from `file.document`,
-  which never includes `file.content`.
+- **UI**: in the project view (`apps/web/src/components/ProjectView.tsx`,
+  around line 328), each source file's row renders a `<small
+  className="source-status">` built by `sourceStatus(f)` from
+  `apps/web/src/source-status.ts`, which reads `file.document` (state,
+  stale, error) — never `file.content`. There is no separate "Sources tab";
+  this status line is part of the project's own file list.
 - **API** (same data the UI reads, useful for a precise grep): as the signed-in
   admin, from a machine that can reach the host,
 
   ```sh
   curl -s -b <session-cookie-jar> https://noevia.daserver.work/api/workspace \
-    | jq '.projects[] | select(.name == "<the tax project name>")
+    | jq --arg id "<the tax project id>" \
+         '.projects[] | select(.id == $id)
           | .files[] | {name, state: .document.state, stale: .document.stale,
                          pages: .document.pages, error: .document.error}'
   ```
+
+  Select the project by its `id`, not by `.name` — a project can be renamed,
+  and matching by name silently returns nothing (or the wrong project) if it
+  has been. Get the id once with an unfiltered
+  `.projects[] | {id, name}` listing from the same endpoint.
 
   (Get a cookie jar the normal way — sign in once in a browser, or use
   whatever session token the deployment runbook already uses for read-only API
