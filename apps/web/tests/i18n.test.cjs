@@ -194,14 +194,14 @@ const SHELL_ALLOW=/^(settings\.title|capabilities\.unavailable|keyboard\.(search
 test('the base English catalogue holds no Settings-screen string beyond the shell allowlist',()=>{
   const settingsInBase=Object.keys(EN).filter(k=>k.startsWith('settings.'));
   same(settingsInBase,['settings.title'],'settings.* in the base catalogue');
-  const stray=Object.keys(EN).filter(k=>/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers)\./.test(k)&&!SHELL_ALLOW.test(k));
+  const stray=Object.keys(EN).filter(k=>/^(settings|appearance|profile|capabilities|language|notifications|keyboard|style|models|connectors|data|memory|usage|security|users|providers|appPasswords)\./.test(k)&&!SHELL_ALLOW.test(k));
   same(stray,[],'Settings-only keys in the base catalogue');
   // No key is defined in both segments, and the base catalogue module never imports the segment.
   same(Object.keys(ENS).filter(k=>k in EN),[]);
   assert.doesNotMatch(fs.readFileSync(path.join(dir,'core.ts'),'utf8'),/^import \{[^}]*\} from '\.\/settings/m,'core imports Settings strings at runtime');
   // Only the Settings and Customise code registers the English segment.
   const users=[];(function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){if(f!=='i18n')walk(p);}else if(/\.tsx?$/.test(f)&&/i18n\/settings['\/]/.test(fs.readFileSync(p,'utf8')))users.push(path.relative(path.join(__dirname,'../src'),p));}})(path.join(__dirname,'../src'));
-  for(const u of users)assert.match(u,/^components\/(SettingsShell|connectors\/|models\/)/,`${u} pulls the Settings strings into its chunk`);
+  for(const u of users)assert.match(u,/^components\/(SettingsShell|ProviderForm|connectors\/)/,`${u} pulls the Settings strings into its chunk`);
 });
 
 test('Settings keys: English until the segment arrives, key by key, and the key itself if unregistered',async()=>{
