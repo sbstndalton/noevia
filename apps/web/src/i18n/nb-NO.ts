@@ -285,6 +285,7 @@ export const NB_NO: Catalogue = {
   'diary.markdown.noFileOfThatName': "Ingen fil med det navnet her",
   'diary.markdown.properties': "Egenskaper",
   'diary.markdown.empty': "tom",
+  'diary.modal.closeDialog': "Lukk dialogboks",
   'settings.title': "Innstillinger",
 
   'capabilities.unavailable': "Utilgjengelig",

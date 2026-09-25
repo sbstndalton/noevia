@@ -288,6 +288,7 @@ export const EN_GB = {
   'diary.markdown.noFileOfThatName': 'No file of that name here',
   'diary.markdown.properties': 'Properties',
   'diary.markdown.empty': 'empty',
+  'diary.modal.closeDialog': 'Close dialog',
   'settings.title': 'Settings',
 
   'capabilities.unavailable': 'Unavailable',

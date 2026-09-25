@@ -285,6 +285,7 @@ export const SV_SE: Catalogue = {
   'diary.markdown.noFileOfThatName': "Ingen fil med det namnet här",
   'diary.markdown.properties': "Egenskaper",
   'diary.markdown.empty': "tom",
+  'diary.modal.closeDialog': "Stäng dialogruta",
   'settings.title': "Inställningar",
 
   'capabilities.unavailable': "Otillgänglig",

@@ -42,7 +42,8 @@ for(const [l,name] of Object.entries(FILES)){
   for(const s of SEGMENT_NAMES){
     const suffix=SEGMENT_DEFS[s].suffix;
     const mod=load(`${s}/${l}`);
-    if(mod[`${name}_${suffix}`])core.registerSegment(s,l,mod[`${name}_${suffix}`]);
+    assert.ok(mod[`${name}_${suffix}`],`${s}/${l}.ts does not export ${name}_${suffix}`);
+    core.registerSegment(s,l,mod[`${name}_${suffix}`]);
   }
 }
 const NON_BASE=Object.keys(core.CATALOGUES).filter(l=>l!=='en-GB');
@@ -123,7 +124,11 @@ test('catalogues: no keys outside English, matching placeholders, and coverage r
   }
   console.log('i18n coverage: '+lines.join(' · '));
   const us={...load('en-US').EN_US};
-  for(const s of SEGMENT_NAMES){const mod=load(`${s}/en-US`);if(mod)Object.assign(us,mod[`EN_US_${SEGMENT_DEFS[s].suffix}`]||{});}
+  for(const s of SEGMENT_NAMES){
+    const mod=load(`${s}/en-US`),key=`EN_US_${SEGMENT_DEFS[s].suffix}`;
+    assert.ok(mod[key],`${s}/en-US.ts does not export ${key}`);
+    Object.assign(us,mod[key]);
+  }
   const englishAll={...EN,...Object.assign({},...SEGMENT_NAMES.map(s=>ENSEG[s]))};
   for(const [k,v] of Object.entries(us))assert.notEqual(v,englishAll[k],`en-US repeats British text for ${k}`);
 });
@@ -216,6 +221,26 @@ test('key names follow the locale: Strg in German, Maj in French, Ctrl in Englis
   assert.match(core.translate('de-DE', 'keyboard.otherNote'), /Strg/);
 });
 
+test('the Diary Markdown workspace search summary keeps its counts, in every locale',()=>{
+  // Regression: diary.workspace.matches/.linkingFiles/.filesChecked/.unreadableItems are plural
+  // pairs whose VALUES must themselves contain {count} — translatePlural only supplies the count
+  // as an interpolation variable, it does not prepend it. searchSummary composes two of these
+  // plurals through {results} and {checked}, exactly as DiaryMarkdownWorkspace.tsx does.
+  const summary=(locale,resultsKey,resultsCount,scanned)=>core.translate(locale,'diary.workspace.searchSummary',{
+    results:core.translatePlural(locale,resultsKey,resultsCount),
+    checked:core.translatePlural(locale,'diary.workspace.filesChecked',scanned),
+  });
+  for(const locale of ['en-GB',...NON_BASE]){
+    for(const [key,count] of [['diary.workspace.matches',1],['diary.workspace.matches',12],['diary.workspace.linkingFiles',1],['diary.workspace.linkingFiles',3]]){
+      const text=summary(locale,key,count,12);
+      assert.match(text,new RegExp(String(count)),`${locale} ${key}(${count}) lost its result count: ${text}`);
+      assert.match(text,/12/,`${locale} ${key}(${count}) lost its scanned-files count: ${text}`);
+    }
+    const skipped=core.translatePlural(locale,'diary.workspace.unreadableItems',3);
+    assert.match(skipped,/3/,`${locale} unreadableItems lost its count: ${skipped}`);
+  }
+});
+
 // Shell strings the first screen shows before any Settings/Projects/Diary code has loaded.
 const SHELL_ALLOW=/^(settings\.title|capabilities\.unavailable|keyboard\.(searchShortcuts|noMatch|action\..+|group\..+))$/;
 // Prefixes owned by each lazy segment, checked against the base catalogue below. account.* stays
@@ -232,15 +257,56 @@ test('the base English catalogue holds no Settings-screen string beyond the shel
   same(stray,[],'Settings-only keys in the base catalogue');
 });
 
+// Every dotted, quoted, message-key-shaped literal in a file — this is what a t('x.y') or
+// t.plural('x.y', …) call, including inside a ternary or a variable/array of keys, looks like in
+// source; nothing else in these files is a quoted string of that shape.
+const KEY_LITERAL=/(['"`])([a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+)\1/g;
+function keysUsedIn(relPath){
+  const src=fs.readFileSync(path.join(__dirname,'../src',relPath),'utf8');
+  return new Set([...src.matchAll(KEY_LITERAL)].map(m=>m[2]));
+}
+// Modules in the first-load bundle (App.tsx's own graph — ProjectView/EditProjectModal/
+// ProjectIdentity are imported eagerly by App.tsx, not through lazy-views.tsx; AccountMenu and
+// ChatView/Sidebar/App render on the first screen; DiaryModal is where MarkdownPreview lives,
+// which ChatView also renders for ordinary chat messages).
+const EAGER_MODULES=['components/ProjectView.tsx','components/EditProjectModal.tsx','components/ProjectIdentity.tsx','components/AccountMenu.tsx','components/ChatView.tsx','components/Sidebar.tsx','App.tsx','components/DiaryModal.tsx'];
+// The lazy Diary and Projects views and every child only they render.
+const DIARY_MODULES=['components/DiaryView.tsx','components/DiaryCalendar.tsx','components/DiaryContextPanel.tsx','components/DiaryModal.tsx','components/DiaryMarkdownWorkspace.tsx','components/diary-graph/LocalGraph.tsx','components/DiaryStorageStatus.tsx','components/DiaryWorkspaceTrash.tsx','components/DiaryWorkspaceImport.tsx'];
+const PROJECTS_MODULES=['components/ProjectsView.tsx'];
+
+// A t.plural('x.y', n) call cites the bare base ('x.y'), never the '.one'/'.other' pair itself.
+const inBase=(k)=>k in EN||(`${k}.one` in EN&&`${k}.other` in EN);
+test('every projects.*/diary.*/account.* key used by an eager (first-load) module is in the base catalogue',()=>{
+  for(const file of EAGER_MODULES){
+    const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX.projects.test(k)||SEGMENT_PREFIX.diary.test(k)||k.startsWith('account.'));
+    const missing=used.filter(k=>!inBase(k));
+    same(missing,[],`${file} uses a key not in the base catalogue: ${missing.join(', ')} — it is eager, so a lazy-segment-only key would render literally until that segment's chunk loads`);
+  }
+});
+
+test('ProjectsView and DiaryView (and their lazy-only children) use only base keys or their own segment, never the other segment',()=>{
+  const check=(files,ownSegment,otherSegment)=>{
+    for(const file of files){
+      const used=[...keysUsedIn(file)].filter(k=>SEGMENT_PREFIX[otherSegment].test(k));
+      const foreign=used.filter(k=>!inBase(k));// a base key with that prefix (e.g. diary.markdown.*) is fine anywhere
+      same(foreign,[],`${file} (in the ${ownSegment} segment) uses a ${otherSegment}.* key that is not in the base catalogue: ${foreign.join(', ')}`);
+    }
+  };
+  check(PROJECTS_MODULES,'projects','diary');
+  check(DIARY_MODULES,'diary','projects');
+});
+
 test('the base English catalogue holds no Projects- or Diary-only string (ProjectView/EditProjectModal/ProjectIdentity are not lazy, so their own keys stay in the base)',()=>{
   const strayProjects=Object.keys(EN).filter(k=>SEGMENT_PREFIX.projects.test(k)&&Object.prototype.hasOwnProperty.call(ENSEG.projects,k));
   same(strayProjects,[],'a projects.* key exists in both the base and the projects segment');
   const strayDiary=Object.keys(EN).filter(k=>SEGMENT_PREFIX.diary.test(k)&&Object.prototype.hasOwnProperty.call(ENSEG.diary,k));
   same(strayDiary,[],'a diary.* key exists in both the base and the diary segment');
-  // diary.markdown.* used by MarkdownPreview (shared with the eager ChatView) stays in the base;
-  // everything else diary.* that IS lazy-only lives in the diary segment, not the base.
+  // diary.markdown.* (MarkdownPreview) and diary.modal.closeDialog (the DiaryModal wrapper it
+  // shares a file with) stay in the base because DiaryModal.tsx is pulled into the eager chunk by
+  // the equally eager ChatView; everything else diary.* that IS lazy-only lives in the segment.
+  const DIARY_BASE_ALLOW=/^diary\.(markdown\.|modal\.closeDialog$)/;
   const diaryInBase=Object.keys(EN).filter(k=>SEGMENT_PREFIX.diary.test(k));
-  assert.ok(diaryInBase.every(k=>k.startsWith('diary.markdown.')),`unexpected diary.* key in the base: ${diaryInBase.filter(k=>!k.startsWith('diary.markdown.')).join(', ')}`);
+  assert.ok(diaryInBase.every(k=>DIARY_BASE_ALLOW.test(k)),`unexpected diary.* key in the base: ${diaryInBase.filter(k=>!DIARY_BASE_ALLOW.test(k)).join(', ')}`);
 });
 
 test('no key is defined in more than one segment, and the base catalogue module never imports a segment at runtime',()=>{

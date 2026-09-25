@@ -285,6 +285,7 @@ export const FR_FR: Catalogue = {
   'diary.markdown.noFileOfThatName': "Aucun fichier de ce nom ici",
   'diary.markdown.properties': "Propriétés",
   'diary.markdown.empty': "vide",
+  'diary.modal.closeDialog': "Fermer la boîte de dialogue",
   'settings.title': "Réglages",
 
   'capabilities.unavailable': "Indisponible",
