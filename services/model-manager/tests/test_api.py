@@ -339,3 +339,23 @@ def test_hub_errors_are_not_echoed(client, monkeypatch):
     monkeypatch.setattr(hf.httpx, "AsyncClient", Boom)
     r = client.get("/api/v1/search?q=x-unique-query").json()
     assert "secret-internal-detail" not in r["error"] and "Could not reach" in r["error"] and r["results"] == []
+
+
+def test_models_ini_replace_is_verbatim_and_revision_pinned(client):
+    path = ROOT / "models" / "models.ini"
+    base = client.get("/api/v1/sections").json()["revision"]
+    text = INI + "; operator comment kept\nparallel = 2\n"
+    ok = client.put("/api/v1/models-ini", json={"baseRevision": base, "text": text})
+    assert ok.status_code == 200 and path.read_text() == text
+    import hashlib
+    assert ok.json()["revision"] == hashlib.sha256(text.encode()).hexdigest()
+    # Stale revision, missing revision, unparsable text and oversize text never write.
+    assert client.put("/api/v1/models-ini", json={"baseRevision": base, "text": INI}).status_code == 409
+    assert client.put("/api/v1/models-ini", json={"text": INI}).status_code == 400
+    current = ok.json()["revision"]
+    assert client.put("/api/v1/models-ini", json={"baseRevision": current, "text": "[broken\nx"}).status_code == 400
+    assert client.put("/api/v1/models-ini", json={"baseRevision": current, "text": "x" * (1024 * 1024 + 1)}).status_code == 413
+    assert client.put("/api/v1/models-ini", json={"baseRevision": current, "text": ""}).status_code == 400
+    assert path.read_text() == text
+    assert not list(path.parent.glob("models.ini.tmp-*"))
+    assert any(b[0].startswith("models.ini.bak-") for b in client.get("/api/v1/sections").json()["backups"])

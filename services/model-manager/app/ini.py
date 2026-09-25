@@ -656,6 +656,41 @@ def _atomic_write(cp: configparser.ConfigParser) -> None:
     os.replace(tmp, path)
 
 
+def write_raw_text(text: str) -> None:
+    """Replace models.ini with caller-supplied text verbatim (comments and layout kept).
+    Same backup rotation as _atomic_write; the temp file is fsynced, keeps the file mode and
+    is renamed over the original so the llama router always sees a whole file."""
+    path = settings.models_ini_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = 0o644
+    if path.exists():
+        mode = path.stat().st_mode & 0o777
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        backup = path.with_suffix(path.suffix + f".bak-{ts}")
+        n = 1
+        while backup.exists():
+            backup = path.with_suffix(path.suffix + f".bak-{ts}-{n}")
+            n += 1
+        try:
+            shutil.copy(path, backup)
+        except OSError:
+            pass
+        _prune_backups()
+    tmp = path.with_suffix(path.suffix + f".tmp-{os.getpid()}-{time.monotonic_ns()}")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _prune_backups() -> None:
     path = settings.models_ini_path
     pattern = f"{path.name}.bak-*"

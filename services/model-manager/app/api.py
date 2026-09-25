@@ -207,6 +207,27 @@ def save_section(name: str, body: dict = Body(...)) -> dict:
     return {"ok": True, "revision": revision(), "section": ini.get_section(name)}
 
 
+MODELS_INI_MAX_BYTES = 1024 * 1024
+
+
+@router.put("/models-ini")
+def replace_models_ini(body: dict = Body(...)) -> dict:
+    """Whole-file compare-and-swap used by noevia web (MODELS_INI_WRITER=model-loader), so this
+    sidecar stays the only process that writes models.ini. The text is stored verbatim."""
+    text = body.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise HTTPException(400, "text is required")
+    if len(text.encode("utf-8")) > MODELS_INI_MAX_BYTES:
+        raise HTTPException(413, "models.ini exceeds the editor limit")
+    try:
+        ini.parse_ini_text(text)
+    except Exception:
+        raise HTTPException(400, "models.ini text does not parse")
+    _require_revision(body.get("baseRevision"))
+    ini.write_raw_text(text)
+    return {"ok": True, "revision": revision()}
+
+
 SAFE_DEFAULT_CTX = 8192
 
 

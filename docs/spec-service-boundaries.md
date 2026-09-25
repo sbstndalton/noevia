@@ -547,6 +547,15 @@ Each is a proposal for its issue; none is authorised here.
   and the web suite pass.
 - **Rollback:** previous image tags and the saved `models.ini`.
 - **Gate:** System-One architecture review first ([§9](#9-what-this-does-not-authorise)).
+- **Decision (#295, 2026-09-25, proceeding ahead of the review by owner decision):** model-loader
+  is the single writer. It already has the authenticated `/api/v1` sections API, backup rotation
+  and the llama reload role; web keeps preset semantics (validation, calibration, autotune,
+  restore-on-failure) and reads the file, but sends each prepared whole file to the new
+  `PUT /api/v1/models-ini` compare-and-swap instead of renaming it in place. Routing, provider and
+  lifecycle behaviour are unchanged. Rollout: ship the model-loader image with the endpoint, then
+  set `MODELS_INI_WRITER=model-loader` for web (default `web` keeps the old path; an older or
+  unreachable sidecar gives an explicit 503 and no write); once live-verified, a follow-up makes
+  web's `/llamacpp-config` mount `:ro` and retires the `web` value. Rollback: flip the flag back.
 
 ### 6.4 M4 — Browser executor sandbox
 

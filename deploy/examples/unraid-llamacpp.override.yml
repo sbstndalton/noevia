@@ -61,6 +61,8 @@ services:
       LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB: ${LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB:-4}
       MODEL_LOADER_URL: http://model-loader:8090
       MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN}
+      # Who writes models.ini: web (default) or model-loader (single writer, #295).
+      MODELS_INI_WRITER: ${MODELS_INI_WRITER:-web}
     volumes:
       - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config
       - ${LLAMACPP_MODELS_DIR}:/models:ro
