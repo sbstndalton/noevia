@@ -192,15 +192,26 @@ function RoutingSection({ models, modelsError }: { models: InstalledModel[]; mod
     {!!info?.missing?.length && <p className="mm-note warn" role="alert">{t(info.missing.length === 1 ? 'mm.route.missingOne' : 'mm.route.missingSeveral', { models: info.missing.map((m) => `${t(ROUTE_ROLE[m.role])} (${m.model})`).join(', ') })}</p>}
     {view !== 'loading' && view !== 'error' && <>
     <div className="mm-form route-roles">
-      {(['fast', 'smart', 'vision', 'code'] as const).map((role) => { const roleModels = role === 'vision' ? visionModels : chatModels; return <label key={role}>
+      {(['fast', 'smart', 'vision', 'code'] as const).map((role) => { const roleModels = role === 'vision' ? visionModels : chatModels;
+        const saved = info?.roles?.[role];
+        // A saved role can name a model that either (a) no longer exists, or (b) — #442 follow-up
+        // — is still installed but no longer fits this role's filter: Vision was narrowed to
+        // chat + vision-labelled models, so a role saved before that change (or naming Laya, or a
+        // chat model with no vision label) has no matching <option> here even though the model is
+        // real. Without this fallback the controlled <select> silently falls back to "— none —"
+        // while valueFor(role) still sends the stale name on Save, which the server's #442 guard
+        // then 400s with no visible explanation. Keep it selectable either way, but say which case
+        // it is: "not installed" (gone) vs "not suitable for this role" (installed, wrong kind).
+        const savedUnavailable = !!saved && !roleModels.some((m) => m.name === saved);
+        const savedInstalled = savedUnavailable && models.some((m) => m.name === saved);
+        return <label key={role}>
         {t(ROUTE_ROLE[role])}
         <select value={valueFor(role)} disabled={busy} onChange={(e) => setPending((prev) => ({ ...prev, [role]: e.target.value }))}>
           <option value="">{role === 'vision' || role === 'code' ? t('mm.route.none') : t('mm.route.pick')}</option>
           {roleModels.map((m) => <option key={m.name} value={m.name}>{m.loaded ? t('mm.route.loadedOption', { model: m.name }) : m.name}</option>)}
-          {/* A role can name a model that is no longer installed; keep it
-              selectable so saving does not silently drop it. */}
-          {info?.roles?.[role] && !models.some((m) => m.name === info.roles?.[role]) && <option value={info.roles[role]}>{t('mm.route.notInstalledOption', { model: info.roles[role] ?? '' })}</option>}
+          {savedUnavailable && <option value={saved}>{t(savedInstalled ? 'mm.route.unsuitableOption' : 'mm.route.notInstalledOption', { model: saved ?? '' })}</option>}
         </select>
+        {savedInstalled && <p className="mm-note warn" role="alert">{t('mm.route.unsuitableWarning', { model: saved ?? '' })}</p>}
       </label>; })}
     </div>
     <div className="mm-actions">

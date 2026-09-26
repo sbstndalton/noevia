@@ -60,13 +60,21 @@ const MODELS = [
     // ── Part B: Settings > Models & routing ─────────────────────────────────────────────────
     const settingsPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     settingsPage.on('pageerror', (e) => errors.push(e.message));
+    // Orchestrator follow-up (2026-09-26): the saved vision role starts pointed at Laya — an
+    // installed model that #442 now excludes from the Vision <select>'s normal option list. The
+    // select must still show it (with a "not suitable" label, not silently fall back to
+    // "— none —" while still sending "laya_multilingual_f16" on Save), and switching it to none
+    // must actually clear the saved value.
+    let visionRole = 'laya_multilingual_f16';
+    const autoRolesPuts = [];
     await settingsPage.route('**/api/**', (route) => {
       const req = route.request(), url = new URL(req.url()), p = url.pathname, m = req.method();
       const json = (body, status = 200) => route.fulfill({ status, json: body });
       if (p === '/api/profile' || p === '/api/auth/session') return json({ user: { id: 'qa', username: 'admin', displayName: 'Synthetic admin', role: 'admin', diaryEnabled: true, onboarded: true }, passkeys: [] });
       if (p === '/api/models/capabilities') return json({ kind: 'llamacpp', admin: true, presets: false, download: false, runtimeOptions: false, modelManagement: true });
       if (p === '/api/models/installed') return json(MODELS);
-      if (p === '/api/auto-roles' && m === 'GET') return json({ configured: true, roles: { fast: 'chat-fast', smart: 'chat-fast' }, missing: [] });
+      if (p === '/api/auto-roles' && m === 'GET') return json({ configured: true, roles: { fast: 'chat-fast', smart: 'chat-fast', vision: visionRole }, missing: [] });
+      if (p === '/api/auto-roles' && m === 'PUT') { const body = req.postDataJSON(); autoRolesPuts.push(body); visionRole = body.vision || ''; return json({ configured: true }); }
       if (p === '/api/stats') return json({ up: true, tokensPerSecond: null, requestCount: 0, cpuPercent: null, gpuPercent: null, vramGb: null });
       if (!p.startsWith('/api/model-manager/')) return p.startsWith('/api/models/') ? json([]) : route.continue();
       const r = p.slice('/api/model-manager/'.length);
@@ -99,13 +107,28 @@ const MODELS = [
     assert.match(cardSize, /GB$/, `Your-models card size string missing a unit: "${cardSize}"`);
     assert.equal(cardSize, composerSize, `composer ("${composerSize}") and Your-models card ("${cardSize}") disagree on gemma-4-E2B_q4_0-it's size`);
 
-    // Routing tab: Vision has no Laya option, but does offer the vision-capable chat model.
+    // Routing tab: Vision has no NORMAL Laya option, but does offer the vision-capable chat model.
     await manager.getByRole('tab', { name: 'Routing', exact: true }).click();
+    const routingPanel = manager.locator('.route-roles');
     const visionSelect = manager.getByLabel(/^Vision/);
     await visionSelect.waitFor();
     const visionOptions = await visionSelect.locator('option').allTextContents();
-    assert.ok(!visionOptions.some((t) => t.includes('laya_multilingual_f16')), `Vision select offers Laya: ${JSON.stringify(visionOptions)}`);
     assert.ok(visionOptions.some((t) => t.includes('vision-chat')), `Vision select is missing the vision-capable model: ${JSON.stringify(visionOptions)}`);
+
+    // The saved role (Laya) is still selectable — as the "not suitable" fallback, never as a
+    // plain, unlabelled option (which would mean it slipped back into the normal chat/vision
+    // list) — and it is genuinely the SELECTED option, not a silent fall-back to "— none —".
+    assert.ok(!visionOptions.includes('laya_multilingual_f16'), `Vision select offers Laya as a normal option: ${JSON.stringify(visionOptions)}`);
+    assert.ok(visionOptions.some((t) => t === 'laya_multilingual_f16 · not suitable for this role'), `Vision select has no "not suitable" fallback for Laya: ${JSON.stringify(visionOptions)}`);
+    assert.equal(await visionSelect.inputValue(), 'laya_multilingual_f16', 'the Vision select silently fell back to none instead of showing the saved (unsuitable) value');
+    await routingPanel.getByText('laya_multilingual_f16 is not suitable for this role. Choose another model or set it to none, then save.').waitFor();
+
+    // Switching it to none and saving must actually clear the saved value — not resend Laya.
+    await visionSelect.selectOption({ label: '— none —' });
+    await manager.getByRole('button', { name: 'Save routing' }).click();
+    await manager.getByText('Saved. Models load on demand.').waitFor();
+    assert.equal(autoRolesPuts.length, 1, `expected exactly one PUT /api/auto-roles, got ${autoRolesPuts.length}`);
+    assert.equal(autoRolesPuts[0].vision, '', `Save sent vision=${JSON.stringify(autoRolesPuts[0].vision)} instead of clearing it`);
     await settingsPage.close();
 
     assert.deepEqual(errors, []);
