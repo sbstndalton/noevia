@@ -517,6 +517,7 @@
      Compact density (below) trims the vertical steps only; the inline inset and 44px targets
      stay. Families never retune these (tests/family-geometry). */
   --group-inset-block: var(--space-4);    /* row top/bottom inside a group */
+  --group-row-min: calc(var(--space-12) + var(--space-4)); /* a row's minimum height (64) */
   --group-inset-inline: var(--space-5);   /* row start/end inside a group */
   --settings-title-gap: var(--space-8);   /* page title and intro → first group */
   --settings-group-gap: var(--space-10);  /* one group → the next group's heading */
@@ -678,6 +679,7 @@ html:root[data-motion='reduced'], html:root[data-motion='reduced'][data-family] 
    scale. Inline insets and 44px targets are unchanged, so nothing touches an edge. */
 :root[data-density='compact'] {
   --group-inset-block: var(--space-3);
+  --group-row-min: var(--space-12);
   --settings-title-gap: var(--space-6);
   --settings-group-gap: var(--space-8);
   --settings-content-gap: var(--space-2);

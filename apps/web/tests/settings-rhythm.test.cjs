@@ -51,10 +51,10 @@ test('the spacing roles exist, and compact density steps the vertical ones down 
   const css = fs.readFileSync(path.join(root, 'tokens.css'), 'utf8');
   const base = tokenBlock(css, ':root, .theme-scope');
   const compact = tokenBlock(css, ":root[data-density='compact']");
-  for (const name of ['--group-inset-block', '--group-inset-inline', '--settings-title-gap', '--settings-group-gap', '--settings-content-gap', '--settings-heading-gap']) {
-    assert.match(token(base, name) || '', /^var\(--space-\d+\)$/, `${name} is a step on the 4pt --space-* scale`);
+  for (const name of ['--group-inset-block', '--group-inset-inline', '--group-row-min', '--settings-title-gap', '--settings-group-gap', '--settings-content-gap', '--settings-heading-gap']) {
+    assert.match(token(base, name) || '', /^(?:var\(--space-\d+\)|calc\(var\(--space-\d+\) \+ var\(--space-\d+\)\))$/, `${name} is a step on the 4pt --space-* scale`);
   }
-  for (const name of ['--group-inset-block', '--settings-group-gap']) {
+  for (const name of ['--group-inset-block', '--group-row-min', '--settings-group-gap']) {
     assert.ok(token(compact, name), `compact density sets ${name}`);
     assert.notEqual(token(compact, name), token(base, name), `compact ${name} differs from comfortable`);
   }

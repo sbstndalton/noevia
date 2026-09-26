@@ -123,7 +123,7 @@ label.select > svg { position: absolute; right: 10px; pointer-events: none; colo
 /* A group of rows is one surface; rows divide with hairlines. */
 .settings-stage .set-rows, .settings-stage .group { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden; }
 .settings-stage .set-rows + .set-rows { margin-top: var(--space-4); }
-.settings-stage .set-row, .settings-stage .group > .row, .settings-stage .group .row { display: flex; align-items: center; gap: var(--space-6); min-height: 64px; padding: var(--group-inset-block) var(--group-inset-inline); margin: 0; border: 0; }
+.settings-stage .set-row, .settings-stage .group > .row, .settings-stage .group .row { display: flex; align-items: center; gap: var(--space-6); min-height: var(--group-row-min); padding: var(--group-inset-block) var(--group-inset-inline); margin: 0; border: 0; }
 .settings-stage .set-row + .set-row, .settings-stage .group .row + .row { border-top: 1px solid var(--border-subtle); }
 .settings-stage :is(.set-row-text, .row-text) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .settings-stage :is(.set-row-label, .row-label) { font-size: var(--text-callout); font-weight: 500; color: var(--text-primary); }

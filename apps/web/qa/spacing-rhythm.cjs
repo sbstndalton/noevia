@@ -229,9 +229,13 @@ async function run(browser, cfg, surfaces, report) {
   const report = [];
   const everything = ['home', 'chat', 'popover', 'settings:all', 'models', 'customise', 'projects', 'diary'];
   const core = ['home', 'chat', 'settings:appearance', 'settings:connectors', 'settings:usage', 'customise', 'projects'];
-  const plan = QUICK ? [
+  const plan = process.argv.includes('final') ? [
+    [{ width: 1440, height: 900, theme: 'dark', family: 'editorial' }, ['chat', 'popover', 'settings:all', 'customise', 'projects', 'diary']],
+    [{ width: 1440, height: 900, theme: 'dark', family: 'editorial', density: 'compact' }, ['chat', 'settings:appearance', 'settings:personalization', 'settings:usage', 'customise']],
+    [{ width: 390, height: 844, theme: 'light', family: 'editorial', phone: true }, ['home', 'chat', 'popover', 'settings:list', 'settings:appearance', 'settings:personalization', 'customise', 'projects', 'diary']],
+  ] : QUICK ? [
     [{ width: 1440, height: 900, theme: 'dark', family: 'editorial' }, ['settings:appearance', 'settings:users', 'chat']],
-    [{ width: 390, height: 844, theme: 'light', family: 'editorial', phone: true }, ['settings:list', 'settings:appearance', 'projects']],
+    [{ width: 390, height: 844, theme: 'light', family: 'editorial', phone: true }, ['settings:list', 'settings:appearance', 'projects', 'chat']],
   ] : [
     [{ width: 1440, height: 900, theme: 'dark', family: 'editorial' }, everything],
     [{ width: 1440, height: 900, theme: 'light', family: 'editorial' }, everything],

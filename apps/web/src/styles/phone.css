@@ -723,12 +723,12 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .plugins-directory > .glass-seg { align-self: flex-start; width: max-content; }
 .plugin-grid-installed summary, .plugin-tool-detail summary { font-size: var(--text-footnote); }
 
-/* Touch targets (#380; PRODUCT.md: 44px on phones). The Chat/Cowork toggle, segmented controls, the
+/* Touch targets (#380; PRODUCT.md: 44px on phones). The Chat/Cowork toggle, segmented controls, message actions, the
    code block's Copy and a project chat's delete stay visually compact; on a touch screen an
    invisible hit area centred on each grows it to 44px without moving anything around it. */
 @media (pointer: coarse) {
-  :is(.glass-seg > button, .composer-mode-toggle button, .md-code-bar button, .recents-del) { position: relative; }
-  :is(.glass-seg > button, .composer-mode-toggle button, .md-code-bar button, .recents-del)::after {
+  :is(.glass-seg > button, .composer-mode-toggle button, .md-code-bar button, .msg-action-btn, .recents-del) { position: relative; }
+  :is(.glass-seg > button, .composer-mode-toggle button, .md-code-bar button, .msg-action-btn, .recents-del)::after {
     content: ''; position: absolute; left: 0; right: 0; top: 50%; height: max(100%, var(--target-min)); transform: translateY(-50%);
   }
   .recents-del::after { left: 50%; right: auto; width: max(100%, var(--target-min)); transform: translate(-50%, -50%); }
