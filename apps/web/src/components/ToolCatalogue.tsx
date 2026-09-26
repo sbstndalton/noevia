@@ -6,6 +6,7 @@ import type { ChatMode } from '../chat-mode';
 import { ShellIcon } from './ShellIcon';
 import { useT } from '../i18n';
 import type { MessageKey } from '../i18n';
+import { keepFocusOnMouseDown, shouldClosePanelOnBlur } from '../tool-catalogue-focus';
 
 const PERMISSION_LABEL: Record<CatalogueEntry['permission'], MessageKey> = {
   allowed: 'tools.allowed', 'needs-approval': 'tools.asksFirst', unavailable: 'capabilities.unavailable',
@@ -57,7 +58,7 @@ export function ToolCatalogue({ open, onOpenChange, projectId, mode, toggled, on
   // keyboard focus leaves it, matching ContextMenu's "Tab closes" contract (#345).
   const onBlurRoot = (event: FocusEvent<HTMLDivElement>) => {
     if (!open) return;
-    if (!root.current?.contains(event.relatedTarget as Node | null)) onOpenChange(false);
+    if (shouldClosePanelOnBlur(root.current, event.relatedTarget as Node | null)) onOpenChange(false);
   };
   const rows = useMemo(() => filterCatalogue(boxes ?? [], query), [boxes, query]);
   useEffect(() => { setActive(0); }, [query]);
@@ -92,7 +93,8 @@ export function ToolCatalogue({ open, onOpenChange, projectId, mode, toggled, on
       <p className="tool-catalogue-boundary">{t(projectId ? 'tools.boundaryProject' : 'tools.boundaryAccount')}</p>
       {!boxes && !error && <p className="tool-catalogue-note" role="status">{t('composer.loadingTools')}</p>}
       {error && <p className="tool-catalogue-note" role="alert">{error.kind === 'server' ? error.text : t('tools.loadError')}</p>}
-      {boxes && <ul id={`${id}-list`} className="tool-catalogue-list" role="listbox" aria-label={t('tools.trigger')}>
+      {boxes && <ul id={`${id}-list`} className="tool-catalogue-list" role="listbox" aria-label={t('tools.trigger')}
+        onMouseDown={keepFocusOnMouseDown}>
         {rows.map((row, i) => {
           const on = row.kind === 'box' && (row.active || toggled.includes(row.boxId));
           return <li key={row.key} id={`${id}-opt-${i}`} role="option" aria-selected={i === active}
