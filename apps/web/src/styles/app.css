@@ -1070,11 +1070,9 @@ button:disabled { cursor: not-allowed; }
 
 /* ── Phase 5: projects ────────────────────────────────────────────────────
    The grid used to stretch the full width of a wide screen, leaving small
-   cards adrift. It is now a constrained, centred column. */
-.projects-hero { max-width: 1160px; margin-inline: auto; padding: 30px 34px 0; }
-.projects-hero h1 { margin: 0; font-size: var(--text-title1); font-weight: 700; letter-spacing: -0.03em; }
-.projects-hero-sub { margin: 6px 0 0; font-size: var(--text-footnote); color: var(--text-secondary); }
-
+   cards adrift. It is now a constrained, centred column. Its title (#413) is
+   .settings-title, styled with every other page's header — see noevia.css and
+   primitives.css — not its own rules here. */
 .projects-head {
   max-width: 1160px; margin-inline: auto;
   display: flex; align-items: center; gap: 12px; padding: 18px 34px 6px;
@@ -1119,7 +1117,7 @@ button:disabled { cursor: not-allowed; }
 .project-card-time { margin-left: auto; font-size: var(--text-caption2); color: var(--text-faint); }
 
 @media (max-width: 640px) {
-  .projects-hero, .projects-head, .projects-grid { padding-left: 18px; padding-right: 18px; }
+  .projects-head, .projects-grid { padding-left: 18px; padding-right: 18px; }
   .projects-head { flex-wrap: wrap; }
   .projects-grid { grid-template-columns: 1fr; }
   .projects-head .btn-primary { margin-left: 0; }
