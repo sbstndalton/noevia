@@ -8,6 +8,68 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web b84b3b8 — 2026-09-26 (merge #445, deploy #445)
+
+### Services
+
+- **Web:** [#445](https://github.com/sbstndalton/noevia/pull/445) closes #442, #443 — the Vision
+  routing role now only offers vision-capable chat models in its picker; the server-side `PUT
+  /api/auto-roles` handler rejects a Vision role assignment for a non-chat model (for example
+  Laya) instead of silently accepting it. A role that was previously saved with a model that is no
+  longer suitable for that role (removed, or no longer chat/vision-capable) now renders with a
+  labelled, disabled placeholder instead of a blank/empty selector. Model sizes are now formatted
+  with a single shared one-decimal-GB formatter (`apps/web/src/model-size.ts`) used consistently
+  across the composer model picker, the Library tab and the Your Models settings list, closing the
+  size-unit mismatch between those surfaces — deployed as `cowork-web:b84b3b8`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup
+  `.env.bak.before-b84b3b8`. Image tag and release directory use the 7-character short SHA
+  (`b84b3b8`), matching the existing convention.
+
+PR #445 (`fix/442-443-vision-role-size-units`) was draft with CI green (8/8, including "CI
+required") at head `210c451a766200f8756d6e1b4938bdf556d5807a`, which already included `main` after
+#444 (`origin/main` was still at `6d7f8e7`, the Batch 14 changelog commit, when this release
+began — no re-merge was needed). Diff limited to `apps/web` (server routes + frontend), no
+`services/`, so this was a web-only release; no other sidecar was touched. Marked ready and
+squash-merged (`--match-head-commit 210c451a766200f8756d6e1b4938bdf556d5807a`) to `b84b3b8`;
+`main`'s tree hash was confirmed identical to the PR head's tree hash post-merge
+(`cad4f0554a4858032fbd309fbcf2b640418936dd`). Remote branch `fix/442-443-vision-role-size-units`
+and its local worktree (`/tmp/noevia-fix-442`, registered under
+`~/.noevia-deps/noevia-base/.git/worktrees`) deleted/removed after merge.
+
+Archived `main`@`b84b3b8` with `git archive`, scp'd to `releases/b84b3b8` (no git creds on the
+box); built only `cowork-web:b84b3b8` with `COWORK_VERSION=b84b3b8`. `.env` backed up to
+`.env.bak.before-b84b3b8` first. Candidate verification used synthetic in-image checks before
+cutover: `docker run --rm --entrypoint cat cowork-web:b84b3b8 /app/dist/version.json` returned
+`{"version":"b84b3b8"}`, and the built `index.html`'s asset references
+(`index-CIjrmDNW.js`, `index-Cd6S8biF.css`) were confirmed present in the same image's
+`/app/dist/assets`. `current` symlink and `COWORK_VERSION` updated; every other `*_VERSION` left
+untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`, `MODEL_MANAGER_VERSION=1c87ab0`,
+`DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Applied with the
+installed preflight, web-only: `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+`cowork-web-1` came up healthy, `RestartCount` 0, `Image=cowork-web:b84b3b8`,
+`StartedAt=2026-09-26T13:24:11Z`. `cowork-diary-1`, `cowork-ocr-1`, `cowork-model-loader-1`,
+`cowork-code-sandbox-1`, `cowork-laya-1`, `cowork-docling-1`, `cowork-llama-1` and `cowork-kiwix-1`
+all kept their pre-release container `Id` and `StartedAt` unchanged, confirming `--no-deps` did
+not recreate them. (`cowork-embed-1` was already crash-looping before this deploy, unrelated and
+untouched — its `Id` is unchanged; its `RestartCount` continued climbing during the deploy window
+consistent with its ongoing restart loop, not this release.) `https://noevia.daserver.work/`
+returned `200`, `/api/profile` returned `401`, and the served `index.html` referenced
+`index-CIjrmDNW.js`/`index-Cd6S8biF.css`, both confirmed present in the deployed image's
+`dist/assets` via `docker exec`. A read-only, unauthenticated `GET /api/auto-roles` from inside
+`cowork-web-1` (`docker exec cowork-web-1 curl … http://localhost:8021/api/auto-roles`) returned
+`401`; no `PUT` was issued against the endpoint.
+
+Rollback (not needed — release succeeded): `ln -sfn /mnt/docker/appdata/cowork/releases/97bf1eb
+/mnt/docker/appdata/cowork/current`, restore `.env` from `.env.bak.before-b84b3b8`, then re-run
+the same guarded `up.sh --no-build --no-deps --wait web`.
+
 ## Release web 97bf1eb — 2026-09-26 (merge #444, deploy #444)
 
 ### Services
