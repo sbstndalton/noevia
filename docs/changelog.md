@@ -8,6 +8,51 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 7a72713 — 2026-09-26 (five reviewed fixes: #339–#343)
+
+### Services
+
+- **Web:** [#344](https://github.com/sbstndalton/noevia/pull/344) fix #339 (models-ini-writer.cjs, llamacpp-manager.cjs), [#349](https://github.com/sbstndalton/noevia/pull/349) fix #340 (rag.cjs, routes/health.cjs, GeneralSettings/SettingsView, i18n settings, css), [#350](https://github.com/sbstndalton/noevia/pull/350) fix #343 + #336 guard (routes/models.cjs, models.cjs, model-system.cjs, LibraryTab.tsx, i18n models), [#348](https://github.com/sbstndalton/noevia/pull/348) web half — fix #341 (HardwareTab.tsx, i18n models) — deployed as `cowork-web:7a72713`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** [#347](https://github.com/sbstndalton/noevia/pull/347) fix #342 (discover.py stops offering imatrix files as models) and [#348](https://github.com/sbstndalton/noevia/pull/348) model-loader half — fix #341 (services.py/config.py: probe llama on its real port, honest unknown-model state) — merged, not yet deployed; still `cowork-model-loader:f6444b4`. A model-loader release needs the owner's go.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-7a72713`, live `docker-compose.yml` backup `docker-compose.yml.bak.before-7a72713`.
+
+All five PRs merged one at a time into `main` from base `cfe2fae`, each re-merged with the moving
+`origin/main` tip and re-verified before squash-merge: #344→`a2cfb16`, #349→`3a10074`, #350→`9908192`,
+#348→`791a17d`, #347→`7a72713` (final `main` SHA). Node/TS/build/lint:design green on every merge
+(2052→2091 tests passing as files were added); model-manager pytest green on #348 (91 passed) and #347
+(102 passed). Clean i18n-model-file and `noevia.css`/`app.css` auto-merges across #348/#350/#347, no
+conflict markers. One local-only false alarm: `apps/web` `npm test` hung/failed intermittently on
+`rag.test.cjs` in the #347 worktree due to a concurrent unrelated agent process contending for the
+same Mac (a `noevia-fix-366` test run observed live); isolated GitHub Actions CI for #347 (unaffected by
+local contention) passed clean, including the actually-changed Model manager suite, and was treated as
+authoritative.
+
+Built `cowork-web:7a72713` on DaServer from `releases/7a72713` (git archive of `main`@`7a72713`, scp'd —
+no git creds on the box). Candidate verified before cutover with a synthetic read-only check
+(`docker run --env-file config/.env cowork-web:7a72713`): `model-system.cjs`'s
+`isSidecarModel('nomic-embed-text-v1')` is `true` and `routes/health.cjs` loads. `current` symlink and
+`COWORK_VERSION` updated; every other `*_VERSION` left untouched. Deployed with the guarded
+`tools/preflight/up.sh --no-build --no-deps --wait web` (web only).
+
+Verification: `cowork-web-1` recreated, healthy, `RestartCount=0`; every other `cowork-*` container and
+`CloudflaredTunnel` kept identical container `Id` and `State.StartedAt` (model-loader, diary,
+code-sandbox, laya, ocr, docling, llama, kiwix). `cowork-embed-1` remains in its pre-existing crash loop
+(#336, unrelated, untouched — `RestartCount` rose from 560→562 across the deploy window from its own
+ongoing restarts, same container `Id`, not recreated). `https://noevia.daserver.work/` **200**,
+`/api/profile` **401**; served `index-Cg--Likw.js`/`index-CbJQZWX2.css` match the image's `dist/assets`.
+Re-ran the same `isSidecarModel`/`routes/health.cjs` check inside the live `cowork-web-1` container:
+same result. No chat sends, model tunes, or model operations were performed.
+
+Rollback if needed: `ln -sfn releases/f6444b4 current`, restore `.env.bak.before-7a72713`
+(`COWORK_VERSION=f6444b4`), re-run
+`tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+---
+
 ## Release model-loader f6444b4 — 2026-09-25 (M3: model-loader is the single writer of models.ini)
 
 ### Services
