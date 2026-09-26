@@ -150,12 +150,18 @@ function RoutingSection({ models, modelsError }: { models: InstalledModel[]; mod
 
   // Fast/Smart/Code route chat-generation prompts — an embedding, reranking or routing model
   // (Laya) there fails every request through it, matching the server-side guard on save
-  // (chat-model-kind.cjs's nonChatAliases, PUT /api/auto-roles, #343/#409). Vision keeps its own
-  // allowed-kind rule below (a vision/multimodal label, not this chat-generation check):
-  // matchesModelUse('all') only excludes embedding/reranking labels, which is what a vision
-  // model is judged by, not isChatGenerationModel.
+  // (chat-model-kind.cjs's nonChatAliases, PUT /api/auto-roles, #343/#409).
   const chatModels = models.filter((m) => isChatGenerationModel(m.name, m.labels));
-  const visionModels = models.filter((m) => matchesModelUse(m.labels, 'all'));
+  // #442: Vision used matchesModelUse(labels, 'all'), which only excludes embedding/reranking
+  // labels and has no concept of a system/routing model — Laya (labels: []) passed straight
+  // through. The 'vision' label itself is reliable, not a guess: it comes from the model's own
+  // GGUF architecture metadata (server/llamacpp-manager.cjs's nativeLabels(), which reads
+  // model.architecture.input_modalities from the native router regardless of load state — see
+  // "native loaded and cold capability labels" in llamacpp-manager.test.cjs) rather than a
+  // name/size heuristic, so requiring it — on top of the same isChatGenerationModel filter as
+  // the other roles — both excludes Laya and narrows to models the server actually reported as
+  // able to read images.
+  const visionModels = chatModels.filter((m) => matchesModelUse(m.labels, 'vision'));
   const valueFor = (role: 'fast' | 'smart' | 'vision' | 'code') => pending[role] ?? info?.roles?.[role] ?? '';
 
   const save = async () => {

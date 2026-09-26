@@ -7,6 +7,11 @@
 // (SYSTEM_NAME = /^laya(?:[_.-]|$)/i in src/model-kind.ts) — the same helper BenchmarksTab,
 // LibraryTab and guided.ts already use (see library-tab-non-chat-models.test.cjs for the same
 // source-pattern approach; this repo has no jsdom/@testing-library to render these components).
+//
+// #442: the Vision role selector was left on the old matchesModelUse(labels, 'all') rule and
+// still listed Laya (labels: []) — that filter has no name-based exclusion either. Vision now
+// filters chatModels (so Laya and any embedding/reranking model are already gone) down further
+// to models carrying an actual 'vision' label.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path');
 
@@ -25,8 +30,10 @@ test('ModelsSettings (Routing tab) filters Fast/Smart/Code with isChatGeneration
   assert.match(modelsSettingsSrc, /const chatModels = models\.filter\(\(m\) => isChatGenerationModel\(m\.name, m\.labels\)\);/);
 });
 
-test('ModelsSettings keeps the vision selector on its own matchesModelUse rule, not isChatGenerationModel', () => {
-  assert.match(modelsSettingsSrc, /const visionModels = models\.filter\(\(m\) => matchesModelUse\(m\.labels, 'all'\)\);/);
+test("#442: ModelsSettings' vision selector is chat-generation models further narrowed to an actual vision label", () => {
+  // Laya has labels: [] and is excluded from chatModels already; requiring matchesModelUse(...,
+  // 'vision') on TOP of chatModels (not models) also keeps out any other non-vision chat model.
+  assert.match(modelsSettingsSrc, /const visionModels = chatModels\.filter\(\(m\) => matchesModelUse\(m\.labels, 'vision'\)\);/);
   assert.match(modelsSettingsSrc, /const roleModels = role === 'vision' \? visionModels : chatModels;/);
 });
 
