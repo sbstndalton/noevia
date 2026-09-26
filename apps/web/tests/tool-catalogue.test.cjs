@@ -2,7 +2,7 @@
 // #237: the composer catalogue's search filter and what a turn adds. Synthetic boxes only.
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript');
 const load = (file) => { const exports = {}; vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, { exports, require }); return exports; };
-const { filterCatalogue, mentionedTools, turnBoxesFor, insertMention } = load('src/tool-catalogue.ts');
+const { filterCatalogue, mentionedTools, turnBoxesFor, insertMention, placeCatalogue } = load('src/tool-catalogue.ts');
 const tool = (name, permission = 'allowed', description = '') => ({ name, description, write: permission === 'needs-approval', permission, reason: permission === 'unavailable' ? 'nope' : null });
 const BOXES = [
   { id: 'core', label: 'Core', description: 'Clock and project files', source: 'builtin', state: 'available', reason: null, active: true, tools: [tool('get_current_time', 'allowed', 'The server clock')] },
@@ -44,4 +44,30 @@ test('inserting a mention replaces the "/" that opened the catalogue', () => {
   assert.equal(insertMention('/', 'tavily_search'), '@tavily_search ');
   assert.equal(insertMention('look this up', 'tavily_search'), 'look this up @tavily_search ');
   assert.equal(insertMention('look /', 'x'), 'look @x ');
+});
+
+// #353: an empty new chat can put the trigger high enough that opening the panel upward
+// (its usual direction) pushes the header off the top of the viewport.
+test('flips below the trigger when there is little room above but more below', () => {
+  const rect = { top: 40, bottom: 76 }; // near the top of a short viewport
+  const placed = placeCatalogue(rect, 700);
+  assert.equal(placed.top, 'calc(100% + 8px)');
+  assert.equal(placed.bottom, 'auto');
+  assert.equal(placed.maxHeight, 440);
+});
+// The reported bug (#353): a trigger at y≈276 in an empty new chat opened the panel with its
+// top at y≈-164 (276 - 440), because the fixed max-height ignored the ~268px actually free
+// above. Staying above is still right here (more room above than below); the height must clamp.
+test('stays above the trigger but clamps to what actually fits, matching the reported regression', () => {
+  const placed = placeCatalogue({ top: 276, bottom: 312 }, 900);
+  assert.equal(placed.bottom, 'calc(100% + 8px)');
+  assert.equal(placed.top, 'auto');
+  assert.equal(placed.maxHeight, 268);
+  assert.ok(276 - placed.maxHeight >= 0, 'the panel top must not go above the viewport');
+});
+test('with little room on both sides, still picks whichever is larger and never clamps below a usable minimum', () => {
+  const placed = placeCatalogue({ top: 30, bottom: 60 }, 120);
+  assert.equal(placed.top, 'calc(100% + 8px)');
+  assert.equal(placed.bottom, 'auto');
+  assert.equal(placed.maxHeight, 120);
 });
