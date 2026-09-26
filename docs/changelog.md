@@ -8,6 +8,53 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 592c4d3 — 2026-09-26 (three reviewed fixes: #400, #395, #402)
+
+### Services
+
+- **Web:** [#400](https://github.com/sbstndalton/noevia/pull/400) fix #392 (repair stale `qa/` phone/sidebar/workspace scripts only, no app code), [#395](https://github.com/sbstndalton/noevia/pull/395) fix #393 (per-chat composer drafts via `chat-drafts.ts`, `ChatView.tsx`, tests), [#402](https://github.com/sbstndalton/noevia/pull/402) fix #396 #397 #398 (`EditProjectModal` focus restore, `ProjectView` delete-chat confirm, project name length shared by `server/project-limits.json` and the client, `ProjectsView`, `noevia.css`, i18n) — deployed as `cowork-web:592c4d3`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-592c4d3`, live `docker-compose.yml` backup `docker-compose.yml.bak.before-592c4d3`, live `docker-compose.override.yml` backup `docker-compose.override.yml.bak.before-592c4d3`.
+
+All three PRs were draft with CI green against `origin/main` at `ff0d4ea` at the start of this release.
+#400 (`74bb630`) merged `origin/main` cleanly (`ort` auto-merge, no conflicts) to `e67370e`; `npm test`
+2221/2221, `typecheck`, `build`, `lint:design` clean; CI green; squash-merged to `edcf18d`. #395 (`9cab4ca`)
+then merged `origin/main` (now carrying #400): the expected `ChatView.tsx` conflict materialized as a
+two-line import-order conflict against #394's already-merged `edit-focus.ts` import — resolved by keeping
+both import lines (`chat-drafts.ts` and `edit-focus.ts`), no logic conflict, to `10d6f8a`; `npm test`
+2240/2240, `typecheck`, `build`, `lint:design` clean; CI green; squash-merged to `fff2a02`. #402 (`c284a4d`)
+then merged `origin/main` (now carrying #395's `chat-drafts.ts`): clean `ort` auto-merge, no conflicts, to
+`e37d7d8`; `npm test` 2262/2262, `typecheck`, `build`, `lint:design` clean; CI green (including
+`offline-contract`); squash-merged to `592c4d3` (final `main` SHA). `git diff --quiet <head> origin/main`
+confirmed tree-identical after each squash. All three worktrees and their local+remote branches were
+deleted after merge. The pre-existing spacing branch and the #399 QA PR were left untouched, as scoped.
+
+Built `cowork-web:592c4d3` on DaServer from `releases/592c4d3` (git archive of `main`@`592c4d3`, scp'd — no
+git creds on the box). Candidate image confirmed to contain `server/project-limits.json` and the served
+`dist/assets/index-*.js`/`index-*.css` bundle before cutover. `current` symlink and `COWORK_VERSION`
+updated; every other `*_VERSION` left untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`,
+`MODEL_MANAGER_VERSION=1c87ab0`, `DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`).
+Deployed with the guarded `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait
+--wait-timeout 180 web`.
+
+Verification: `cowork-web-1` recreated, healthy, `RestartCount=0`; `https://noevia.daserver.work/` **200**
+`text/html`; `/api/profile` **401**; `/c/abc123` **200** `text/html`. Served `index-C2mIAJXk.js` /
+`index-CW-35hg6.css` match both the public page and the image's `dist/assets`. Every other `cowork-*`
+container and `CloudflaredTunnel` kept identical container `Id` and `State.StartedAt` (model-loader, diary,
+code-sandbox, laya, ocr, docling, llama, kiwix). `cowork-embed-1` remains in its pre-existing crash loop
+(#336, unrelated, untouched — same container `Id`, `RestartCount` rose 700→701 from its own ongoing
+restarts, not recreated). No chat sends, model tunes, or Diary access were performed; no other container
+was rebuilt or recreated.
+
+Rollback: `ln -sfn releases/f70e969 current`, restore `.env.bak.before-592c4d3` (`COWORK_VERSION=f70e969`),
+re-run `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+---
+
 ## Release web f70e969 — 2026-09-26 (two reviewed fixes: #394, #391)
 
 ### Services
