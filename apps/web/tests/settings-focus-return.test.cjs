@@ -1,10 +1,10 @@
 'use strict';
 // #401: closing Settings (Escape or the Close button) must hand focus back to the control that
 // opened it, not to <body>. This repo has no jsdom (see tests/menu-focus.test.cjs for the same
-// approach), so the pure decision (settings-focus.ts) is unit-tested directly here, and the
-// wiring that feeds it — App.tsx capturing an opener before Settings mounts, AccountMenu.tsx
-// capturing its trigger before it unmounts its own popover, SettingsShell.tsx using both plus
-// the composer fallback — is pinned by reading the source, the same technique
+// approach), so the pure decision (settings-focus.ts, focus-utils.ts) is unit-tested directly
+// here, and the wiring that feeds it — App.tsx capturing an opener before Settings mounts,
+// AccountMenu.tsx capturing its trigger before it unmounts its own popover, SettingsShell.tsx
+// using both plus a fallback chain — is pinned by reading the source, the same technique
 // tests/edit-project-modal-focus.test.cjs uses for EditProjectModal's initial-focus wiring.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -13,30 +13,89 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-const exports_ = {};
+function loadModule(relPath, sandboxExtra = {}) {
+  const exports_ = {};
+  const sandbox = { exports: exports_, require, module: { exports: exports_ }, ...sandboxExtra };
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, relPath), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, sandbox);
+  return sandbox.exports;
+}
+
+const focusUtils = loadModule('../src/focus-utils.ts');
+const { isFocusable, pickFocusable } = focusUtils;
+
+// settings-focus.ts does `import { isFocusable } from './focus-utils'`; transpileModule turns
+// that into a `require('./focus-utils')` the sandbox needs to resolve to the module already
+// loaded above, since there is no real module loader (or filesystem `.ts` resolution) here.
+const settingsFocusExports = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/settings-focus.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText, { exports: exports_ });
-const { closeFocusTarget } = exports_;
+}).outputText, {
+  exports: settingsFocusExports,
+  require: (id) => (id === './focus-utils' ? focusUtils : require(id)),
+});
+const { closeFocusTarget } = settingsFocusExports;
 
-const el = (connected = true) => ({ isConnected: connected });
+// A visible, connected, non-inert element: getClientRects reports a layout box and closest never
+// matches `[inert]`.
+const el = (connected = true, rects = 1, inert = false) => ({
+  isConnected: connected,
+  getClientRects: () => new Array(rects).fill(0),
+  closest: (sel) => (inert && sel === '[inert]' ? {} : null),
+});
+const hidden = () => el(true, 0);
+const inertEl = () => el(true, 1, true);
 
-test('a still-connected opener (Escape from the ⌘, path, or an ordinary trigger click) gets focus back', () => {
+// ── isFocusable / pickFocusable (focus-utils.ts) ────────────────────────────────────────────
+
+test('isFocusable: a connected, visible, non-inert element is focusable', () => {
+  assert.equal(isFocusable(el()), true);
+});
+test('isFocusable: null/undefined is not focusable', () => {
+  assert.equal(isFocusable(null), false);
+  assert.equal(isFocusable(undefined), false);
+});
+test('isFocusable: a disconnected element is not focusable', () => {
+  assert.equal(isFocusable(el(false)), false);
+});
+test('#401 reopened: isFocusable rejects a connected element with no client rects (display:none on itself or an ancestor — a collapsed drawer)', () => {
+  assert.equal(isFocusable(hidden()), false);
+});
+test('isFocusable rejects an element inside an inert region even though it has rects', () => {
+  assert.equal(isFocusable(inertEl()), false);
+});
+test('pickFocusable returns the first focusable candidate and skips the rest', () => {
+  const target = el();
+  assert.equal(pickFocusable(hidden(), target, el()), target);
+});
+test('pickFocusable returns null when nothing in the list is focusable', () => {
+  assert.equal(pickFocusable(hidden(), null, inertEl()), null);
+});
+
+// ── closeFocusTarget (settings-focus.ts) ────────────────────────────────────────────────────
+
+test('a still-connected, visible opener (Escape from the ⌘, path, or an ordinary trigger click) gets focus back', () => {
   const opener = el(true);
   assert.equal(closeFocusTarget(opener, el(true)), opener);
 });
 
-test('#401 regression: an opener the caller already unmounted (the account menu\'s own popover button) falls through to the composer, not <body>', () => {
-  const composer = el(true);
-  assert.equal(closeFocusTarget(el(false), composer), composer);
+test('#401 regression: an opener the caller already unmounted (the account menu\'s own popover button) falls through to the fallback, not <body>', () => {
+  const fallback = el(true);
+  assert.equal(closeFocusTarget(el(false), fallback), fallback);
 });
 
-test('no opener at all (nothing was focused, e.g. a fresh page load into Settings) also falls through to the composer', () => {
-  const composer = el(true);
-  assert.equal(closeFocusTarget(null, composer), composer);
+test('#401 reopened: an opener that is still connected but sits inside a display:none drawer also falls through to the fallback', () => {
+  const fallback = el(true);
+  assert.equal(closeFocusTarget(hidden(), fallback), fallback);
 });
 
-test('no composer either (an exotic entry with neither) resolves to null rather than throwing', () => {
+test('no opener at all (nothing was focused, e.g. a fresh page load into Settings) also falls through to the fallback', () => {
+  const fallback = el(true);
+  assert.equal(closeFocusTarget(null, fallback), fallback);
+});
+
+test('no fallback either (an exotic entry with neither) resolves to null rather than throwing', () => {
   assert.equal(closeFocusTarget(null, null), null);
   assert.equal(closeFocusTarget(el(false), null), null);
 });
@@ -50,8 +109,14 @@ const sidebarSrc = fs.readFileSync(path.join(__dirname, '../src/components/Sideb
 
 test('SettingsShell reads the opener from a prop rather than capturing document.activeElement on its own mount', () => {
   assert.match(settingsShellSrc, /import \{ closeFocusTarget \} from '\.\.\/settings-focus';/);
+  assert.match(settingsShellSrc, /import \{ afterLayoutSettles, pickFocusable \} from '\.\.\/focus-utils';/);
   assert.match(settingsShellSrc, /const previous = opener\?\.current \?\? \(document\.activeElement as HTMLElement \| null\);/);
-  assert.match(settingsShellSrc, /closeFocusTarget\(previous, document\.querySelector<HTMLElement>\('\.composer-input'\)\)\?\.focus\(\{ preventScroll: true \}\);/);
+});
+
+test('#401 reopened: the close-time fallback is computed after layout settles (rAF + a timer, for a hidden tab) and re-queries the account trigger, a main-region heading and the composer, in that order', () => {
+  assert.match(settingsShellSrc, /afterLayoutSettles\(\(\) => \{/);
+  assert.match(settingsShellSrc, /pickFocusable<HTMLElement>\(\s*\n\s*document\.querySelector<HTMLElement>\('\.account-trigger'\),\s*\n\s*document\.querySelector<HTMLElement>\('\.app-main h1, \.app-main h2'\),\s*\n\s*document\.querySelector<HTMLElement>\('\.composer-input'\),\s*\n\s*\);/);
+  assert.match(settingsShellSrc, /closeFocusTarget\(previous, fallback\)\?\.focus\(\{ preventScroll: true \}\);/);
 });
 
 test('#401 regression: AccountMenu captures its own (still-mounted) trigger before closing its popover, not after', () => {

@@ -20,6 +20,7 @@ import { KeyboardSettings } from './shortcuts/KeyboardSettings';
 import { useT } from '../i18n';
 import { SETTINGS_SECTION_ALIASES } from '../routes';
 import { closeFocusTarget } from '../settings-focus';
+import { afterLayoutSettles, pickFocusable } from '../focus-utils';
 import '../i18n/settings';
 import type { MessageKey, Translate } from '../i18n';
 
@@ -150,7 +151,23 @@ export function SettingsShell(props: SettingsViewProps & {initialSection?:Settin
     const root = stage.current;
     (root?.querySelector<HTMLElement>('.settings-navigation nav [aria-current="page"]') ?? root?.querySelector<HTMLElement>('.settings-navigation nav button'))?.focus({ preventScroll: true });
     return () => {
-      closeFocusTarget(previous, document.querySelector<HTMLElement>('.composer-input'))?.focus({ preventScroll: true });
+      // #401 reopened: at the narrow nav/detail width, opening Settings from the account menu
+      // collapses the sidebar drawer (`display: none`) and it stays collapsed — the drawer does
+      // not reopen on its own when Settings closes — so `previous` (the account trigger) can be
+      // `.isConnected` and still unfocusable for the rest of the session. Re-querying the DOM at
+      // close time (instead of only the two things captured at mount) lets the fallback notice a
+      // drawer that *did* become visible again by the time Settings actually unmounts, and skip
+      // straight to the composer when it did not. `afterLayoutSettles` waits a frame (with a
+      // timer fallback for a hidden tab, where rAF never fires) so this reads the drawer's class
+      // toggle after it has actually taken visual effect, not mid-commit.
+      afterLayoutSettles(() => {
+        const fallback = pickFocusable<HTMLElement>(
+          document.querySelector<HTMLElement>('.account-trigger'),
+          document.querySelector<HTMLElement>('.app-main h1, .app-main h2'),
+          document.querySelector<HTMLElement>('.composer-input'),
+        );
+        closeFocusTarget(previous, fallback)?.focus({ preventScroll: true });
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
