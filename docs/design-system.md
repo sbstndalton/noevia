@@ -42,7 +42,9 @@ reading text is 15px with 1.8 line height. Avoid making every label bold.
 - Chat: 800px reading column and 744px composer; an empty chat centers its
   invitation and composer. User messages align right; assistant text is unboxed.
 - Projects: a centered 1000px library, simple folder icons, plain metadata,
-  restrained card outlines, and a distinct New project action in the header.
+  restrained card outlines, and a New project action beside the tab/search/sort
+  row (#413: no page title carries an inline control — see
+  `docs/design-notes/page-headers.md`).
 - Settings: one dialog with category navigation, switching to a native category
   selector on phones. Dialog focus handling and Escape behavior are preserved.
 - Diary: matching composer and typography, plain month links, and memory/storage
