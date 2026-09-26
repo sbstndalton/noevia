@@ -187,12 +187,23 @@ export interface HealthState {
   diaryUp: boolean | null;
   /** Project RAG readiness — false means native deps are missing (keyword-only context). */
   ragAvailable?: boolean | null;
+  /**
+   * Tri-state retrieval readiness (#340): 'available' the embedding probe answered; 'degraded'
+   * the index is installed but the configured embedding endpoint could not be reached (small
+   * files and source excerpts still reach the model, semantic search does not); 'unavailable'
+   * native index deps are missing. Older/newer mixed deployments may omit this field.
+   */
+  retrieval?: 'available' | 'degraded' | 'unavailable' | null;
 }
 
 export interface InstalledModel {
   status?: string;
   failed?: boolean;
   canDelete?: boolean;
+  /** True when a live sidecar (embedding or reranking) depends on this exact model right now
+   *  (#336) — distinct from canDelete, which keeps the manager's own can_remove meaning and the
+   *  client's existing folder-scan-delete fallback when it is false. */
+  sidecarProtected?: boolean;
   source?: string | null;
   mtp?: {supported:boolean;enabled:boolean;reason:string};
   name: string;
