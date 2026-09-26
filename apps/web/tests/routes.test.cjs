@@ -107,7 +107,7 @@ test('old and alternative spellings land on the canonical place', () => {
 
 test('junk, truncated and hostile paths read as a new chat and never throw', () => {
   const junk = [
-    '', 'c/abc', '/c', '/c/', '/c/a/b', '/c/<script>', '/c/a%20b', '/c/%E0%A4%A', '/p', '/p/../x', '/p/proj-1/new/x',
+    '', 'c/abc', '/c', '/c/', '/c/a/b', '/c/<script>', '/c/a%20b', '/c/%E0%A4%A', '/p', '/p/', '/p/../x', '/p/proj-1/new/x',
     '/p/proj-1/unknown', '/settings/UPPER', '/settings/a/b', '/settings/%00', '/customise/nope', '/models/a/b',
     `/models/${'x'.repeat(300)}`, '/models/%0Aevil', '//evil.example/c/abc', '/\\evil.example', '/api/workspace',
     '/assets/index.js', '/nope', '/diary/2026-09-26', '/a//b', `/${'a'.repeat(600)}`, '/%', '/c/%2e%2e',
@@ -191,6 +191,13 @@ test('the server serves index.html for every path the client can produce', () =>
   // Every alternative spelling the client accepts is also served, so an old link still loads.
   for (const p of ['/chat', '/settings', '/settings/general', '/customise', '/customize/skills', '/customise/mcp', '/plugins', '/p/proj-1/chats', '/c/abc/']) {
     assert.ok(isClientRoute(p), p);
+  }
+  // #406: a truncated/stripped-id chat or project link (`/c`, `/p`, and their trailing-slash
+  // forms) is also served the shell rather than a raw JSON 404 — the client already reads these
+  // as a new chat (see the junk-path test above), so this only has to get it past the fallback.
+  for (const p of ['/c', '/c/', '/p', '/p/']) {
+    assert.ok(isClientRoute(p), p);
+    assert.equal(j(parsePath(p)), j({ kind: 'new' }), p);
   }
 });
 
