@@ -8,6 +8,47 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 778f855 — 2026-09-26 (merge #427, deploy #427: header/container parity #413 #414 #415)
+
+### Services
+
+- **Web:** [#427](https://github.com/sbstndalton/noevia/pull/427) closes #413, #414, #415 (#426 already closed) — one shared `.settings-title` page header across Settings, Customise and Projects (Diary keeps its compact top bar via a new `--diary-gutter` token); the four remaining borderless `.card-list` panels that logically belong to a grouped settings list (Service status, the Diary toggle, Users, Models summary) now render on `.set-rows`; `CodingSidebarLists`/`useActiveCodeTasks` list real workspace Code tasks in the sidebar instead of a placeholder hint; and `/api/models/*` responses missing an expected array/record field (`downloads`, `models/updates`, `backends`, `host`) now default to `[]`/`{}` instead of crashing on the partial body — deployed as `cowork-web:778f855`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-778f855`.
+
+PR #427 (head `215d400`) was draft with CI green (7/7) against `origin/main` at `6db20fc`. No
+`services/` changes, so this was a web-only release. Marked ready, squash-merged (`--match-head-commit
+215d400`) to `778f855`; `origin/main` was still at `6db20fc` at merge time so GitHub applied the
+PR's own 27-file diff cleanly (`mergeStateStatus: CLEAN`) with no unrelated main advancement to
+reconcile. Worktree `/tmp/noevia-fix-413` and both copies of `fix/413-415-headers-containers`
+deleted after merge.
+
+Built `cowork-web:778f855` on DaServer from `releases/778f855` (git archive of `main`@`778f855`,
+scp'd — no git creds on the box). `current` symlink and `COWORK_VERSION` updated; every other
+`*_VERSION` left untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`,
+`MODEL_MANAGER_VERSION=1c87ab0`, `DOCLING_VERSION=2026-09-21`,
+`CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Applied with the installed preflight, web-only: `bash
+/mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env
+-- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+`cowork-web-1` came up healthy, `RestartCount` 0, `Image=cowork-web:778f855`,
+`Started=2026-09-26T10:59:27Z`. `cowork-diary-1`, `cowork-ocr-1` and `cowork-model-loader-1` kept
+their pre-release `Id` and `StartedAt` unchanged, confirming `--no-deps` did not recreate them.
+`https://noevia.daserver.work/` returned `200`, `/api/profile` returned `401`, and the served
+`index.html` referenced `index-B47VqTZu.js`/`index-Dq9bnOZC.css`, both present in the built
+image's `dist/assets`.
+
+Rollback: `ssh daserver 'ln -sfn /mnt/docker/appdata/cowork/releases/39bf823
+/mnt/docker/appdata/cowork/current && cp /mnt/docker/appdata/cowork/config/.env.bak.before-778f855
+/mnt/docker/appdata/cowork/config/.env && bash
+/mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web'`,
+then re-verify health, `RestartCount` and the `39bf823` asset hashes.
+
 ## Release web 39bf823 — 2026-09-26 (a11y focus/labels #418–#421 #345 #362; settings nav/summary/dedup #374 #422 #423)
 
 ### Services
