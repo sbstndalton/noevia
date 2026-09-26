@@ -136,7 +136,10 @@ const activeElement = (page) => page.evaluate(() => {
     assert.ok(marks.every((m) => m.toLowerCase() === 'audit'), `every mark must be the matched text itself: ${JSON.stringify(marks)}`);
     pass('the matched substring is wrapped in <mark>, case-insensitively');
 
-    const resultCount = page.locator('[role="status"][aria-live="polite"].sr-only');
+    // Scoped to .sidebar: ChatView also renders its own (unrelated, #437 drop-hint) sr-only
+    // polite status span in .chat-workspace, so the bare selector matches two elements once
+    // #441's merge is in (merge conflict adjacent-collision, not a text conflict).
+    const resultCount = page.locator('.sidebar [role="status"][aria-live="polite"].sr-only');
     await resultCount.waitFor();
     assert.match((await resultCount.textContent()) || '', /result/, 'the live region announces a result count');
     pass('a polite live region announces the result count');
