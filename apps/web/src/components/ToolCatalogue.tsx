@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { JSX, KeyboardEvent } from 'react';
+import type { FocusEvent, JSX, KeyboardEvent } from 'react';
 import { fetchPermittedTools } from '../api';
 import { filterCatalogue, type CatalogueEntry, type PermittedBox } from '../tool-catalogue';
 import type { ChatMode } from '../chat-mode';
@@ -52,6 +52,13 @@ export function ToolCatalogue({ open, onOpenChange, projectId, mode, toggled, on
     document.addEventListener('pointerdown', outside);
     return () => document.removeEventListener('pointerdown', outside);
   }, [open, onOpenChange]);
+  // Only the search input is focusable inside the panel, so Tab always moves focus to
+  // somewhere outside the root — closing here is how the panel stops floating once
+  // keyboard focus leaves it, matching ContextMenu's "Tab closes" contract (#345).
+  const onBlurRoot = (event: FocusEvent<HTMLDivElement>) => {
+    if (!open) return;
+    if (!root.current?.contains(event.relatedTarget as Node | null)) onOpenChange(false);
+  };
   const rows = useMemo(() => filterCatalogue(boxes ?? [], query), [boxes, query]);
   useEffect(() => { setActive(0); }, [query]);
   const choose = (row: CatalogueEntry | undefined) => {
@@ -71,12 +78,14 @@ export function ToolCatalogue({ open, onOpenChange, projectId, mode, toggled, on
   };
   useEffect(() => { document.getElementById(`${id}-opt-${active}`)?.scrollIntoView({ block: 'nearest' }); }, [active, id]);
   const turnCount = toggled.length;
-  return <div className="tool-catalogue" ref={root}>
+  return <div className="tool-catalogue" ref={root} onBlur={onBlurRoot}>
     <button ref={trigger} type="button" className="tool-catalogue-trigger btn btn-ghost" aria-haspopup="listbox" aria-expanded={open}
       aria-controls={open ? `${id}-list` : undefined} disabled={disabled} onClick={() => onOpenChange(!open)} title={t('tools.browse')}>
       <ShellIcon name="tools" size={16}/><span>{t('tools.trigger')}{turnCount ? ` · ${t('tools.forMessage', { count: turnCount })}` : ''}</span>
     </button>
-    {open && <div className="tool-catalogue-panel overlay" role="dialog" aria-label={t('tools.catalogue')}>
+    {/* No dialog role: this is a combobox (the search input) plus a listbox (below), not a
+        modal — a dialog role here would contradict the trigger's aria-haspopup="listbox" (#345). */}
+    {open && <div className="tool-catalogue-panel overlay" aria-label={t('tools.catalogue')}>
       <input ref={input} className="tool-catalogue-search" type="search" role="combobox" aria-expanded="true" aria-autocomplete="list"
         aria-controls={`${id}-list`} aria-activedescendant={rows.length ? `${id}-opt-${active}` : undefined}
         placeholder={t('tools.search')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onKey} />
