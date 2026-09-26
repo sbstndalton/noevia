@@ -1,0 +1,34 @@
+'use strict';
+// #358: while editing a message, Save & re-run and Cancel must render with the shared button
+// classes (so they follow the theme) rather than a browser default or a dead "secondary" class
+// that matches no CSS rule. A render test needs a live SSE stream and streaming state that isn't
+// worth mocking here, so this asserts directly on the markup ChatView emits for the edit actions.
+const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
+const src = fs.readFileSync(path.join(__dirname, '../src/components/ChatView.tsx'), 'utf8');
+const block = src.slice(src.indexOf('msg-edit-actions'), src.indexOf('Everything after this message is replaced'));
+
+test('the edit actions block exists and is scoped correctly for the assertions below', () => {
+  assert.ok(block.includes('Save'), 'msg-edit-actions block not found as expected');
+});
+test('Save & re-run uses the shared primary button classes', () => {
+  const save = block.slice(0, block.indexOf('Save &amp; re-run'));
+  assert.match(save, /className="btn btn-primary"/);
+});
+test('Cancel uses the shared secondary button class, not the dead "secondary" class', () => {
+  const cancel = block.slice(block.indexOf('Save &amp; re-run'));
+  assert.match(cancel, /className="btn btn-secondary"/);
+  assert.doesNotMatch(cancel, /className="secondary"/);
+});
+
+// #355: cancelling a message edit (Escape or the Cancel button) must not drop focus to <body>.
+test('cancelling a message edit returns focus to that message\'s own Edit button, both from Escape and the Cancel button', () => {
+  const editRegion = src.slice(src.indexOf("const [editingId, setEditingId]"), src.indexOf('msg-edit-actions'));
+  assert.match(editRegion, /const cancelEdit = \(id: string\) => \{ setEditingId\(null\); editTriggers\.current\.get\(id\)\?\.focus\(\); \};/);
+  assert.match(editRegion, /if \(e\.key === 'Escape'\) \{ cancelEdit\(m\.id\); return; \}/);
+  assert.match(block, /onClick=\{\(\) => cancelEdit\(m\.id\)\}/);
+});
+test("the message's Edit button is tracked so cancelEdit can find it back", () => {
+  const editButton = src.slice(src.indexOf('msg-edit-btn') - 200, src.indexOf('msg-edit-btn') + 50);
+  assert.match(editButton, /editTriggers\.current\.set\(m\.id, ?el\)/);
+});
+
