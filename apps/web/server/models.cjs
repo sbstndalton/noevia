@@ -16,6 +16,8 @@
  * @param {object} deps.modelManager         model-manager.cjs adapter
  * @param {() => object} deps.currentWorkspace
  */
+const { isSidecarModel } = require('./model-system.cjs');
+
 function createModelService({ fetchJson, env, modelManager, currentWorkspace, listWorkspaces }) {
   // One call to the model management service, with its token. Same path the proxy route uses.
   function managerFetch(rest, method = 'GET') {
@@ -178,7 +180,10 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace, li
         suggested: !!m.suggested,
         status: m.status?.value || (loadedNames.has(m.id || m.model_name) ? 'loaded' : 'unloaded'),
         failed: m.status?.failed === true,
-        canDelete: m.can_remove !== false,
+        // #336: the manager's own can_remove says nothing about noevia's embedding/reranking
+        // sidecars — a model it reports removable can still be the one EMBEDDING_MODEL/RERANK_MODEL
+        // names, and deleting that file crash-loops the sidecar with no fallback to fall back to.
+        canDelete: m.can_remove !== false && !isSidecarModel(m.id || m.model_name, env),
         source: m.source || null,
       }));
     if (!LAST_LOADED_MODEL) {

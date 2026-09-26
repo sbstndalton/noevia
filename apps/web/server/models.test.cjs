@@ -45,6 +45,19 @@ test('modelsInstalled hides hash duplicates, marks loaded models and remembers t
   assert.deepEqual(await f.service.servedCatalogue(), installed);
 });
 
+test('#336: canDelete is false for the configured embedding model even when the manager reports can_remove true', async () => {
+  const f = fixture({
+    env: { EMBEDDING_MODEL: 'nomic-embed-text-v1' },
+    models: [
+      { id: 'nomic-embed-text-v1', labels: ['embedding'], size: 0.27, can_remove: true },
+      { id: 'chat-7b', size: 4.26, can_remove: true },
+    ],
+  });
+  const installed = await f.service.modelsInstalled();
+  assert.equal(installed.find((m) => m.name === 'nomic-embed-text-v1').canDelete, false);
+  assert.equal(installed.find((m) => m.name === 'chat-7b').canDelete, true, 'an unrelated model is unaffected');
+});
+
 test('a disabled or unreachable manager reads as null from servedCatalogue and throws from modelsInstalled', async () => {
   const off = fixture({ enabled: false });
   assert.equal(await off.service.servedCatalogue(), null);
