@@ -8,6 +8,64 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 63d1187 — 2026-09-26 (merge #432 #433, deploy #432 #433)
+
+### Services
+
+- **Web:** [#432](https://github.com/sbstndalton/noevia/pull/432) closes #362, refs #355 (kept open — the
+  project-row rename Escape/Enter focus fix is hardened defensively but not confirmed reproduced/fixed
+  live) — `returnFocusToRow` now forces the CSS properties that actually gate `.row-actions` visibility
+  (`opacity`/`pointer-events` at desktop width, `width`/`overflow` at `<=700px`) instead of the irrelevant
+  `display`, and falls back to the row's own always-visible button so focus can never silently drop to
+  `<body>`, across all three inline-rename call sites; the row's own "…" menu **Archive** item now routes
+  through the same `archiveChat()` + undo-toast path as the hover quick-archive icon at every width, not
+  just desktop, fixing the only reachable archive path on narrow/touch layouts. [#433](https://github.com/sbstndalton/noevia/pull/433)
+  closes #428, #316, #429, #430, #333 — the Projects toolbar's filter/Sort/New row is vertically centered
+  and the tab-row divider has clearance at every width again (`.projects-head`'s `padding-bottom:0` had
+  zeroed it); the no-active-project model sheet's "Open a project…" text no longer clips its first glyph
+  (`.mp-col`'s inset now also applies to the no-project early-return path); the home (`/`) empty state is
+  promoted to a real `<h1>`, and `/models` gained a visually-hidden `<h2>` ("Your models") so neither page
+  skips a heading level; and `qa/mtp.cjs` no longer fails against Diary — its MTP-acceptance check now
+  sends one synthetic message first instead of asserting on a footer that #365 deliberately hides until a
+  chat has content — deployed together as `cowork-web:63d1187`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-63d1187`.
+
+Both PRs were draft with CI green (7/7 each) against `origin/main` at `e8123c9`; `gh pr diff --name-only`
+confirmed disjoint files (#432: `Sidebar.tsx` + its qa script/test; #433: `ChatView.tsx`, `LibraryTab.tsx`,
+CSS, four qa scripts) and neither touched `services/`, so this was a web-only release. Marked ready and
+squash-merged #432 first (`--match-head-commit 122ad7e`) to `c35266f`, which auto-closed #362 and left
+#355 open as intended. #433's worktree (`/tmp/noevia-fix-428`) then merged `origin/main` (`c35266f`) with
+no conflicts (disjoint files), pushed the new head `af10341`, waited for CI green again, then squash-merged
+(`--match-head-commit af10341`) to `63d1187`. Remote/local branches for both and worktrees
+`/tmp/noevia-fix-355b` and `/tmp/noevia-fix-428` deleted after merge.
+
+Built `cowork-web:63d1187` on DaServer from `releases/63d1187` (git archive of `main`@`63d1187`, scp'd —
+no git creds on the box). `current` symlink and `COWORK_VERSION` updated; every other `*_VERSION` left
+untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`, `MODEL_MANAGER_VERSION=1c87ab0`,
+`DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Applied with the installed
+preflight, web-only: `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+`cowork-web-1` came up healthy, `RestartCount` 0, `Image=cowork-web:63d1187`,
+`Started=2026-09-26T11:53:07Z`. `cowork-diary-1`, `cowork-ocr-1`, `cowork-model-loader-1`,
+`cowork-code-sandbox-1`, `cowork-laya-1`, `cowork-docling-1`, `cowork-llama-1` and `cowork-kiwix-1` all
+kept their pre-release `Id` and `StartedAt` unchanged, confirming `--no-deps` did not recreate them.
+(`cowork-embed-1` was already crash-looping before this deploy, unrelated and untouched.)
+`https://noevia.daserver.work/` returned `200`, `/api/profile` returned `401`, and the served
+`index.html` referenced `index-Ny00E2FY.js`/`index-jJp6eGxJ.css`, both present in the built image's
+`dist/assets`.
+
+Rollback (not needed — all checks passed): `ssh daserver 'ln -sfn /mnt/docker/appdata/cowork/releases/778f855
+/mnt/docker/appdata/cowork/current && cp /mnt/docker/appdata/cowork/config/.env.bak.before-63d1187
+/mnt/docker/appdata/cowork/config/.env && cd /boot/config/plugins/compose.manager/projects/Cowork &&
+bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env
+-- -d --no-build --no-deps --wait --wait-timeout 180 web'`.
+
 ## Release web 778f855 — 2026-09-26 (merge #427, deploy #427: header/container parity #413 #414 #415)
 
 ### Services
