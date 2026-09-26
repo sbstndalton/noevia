@@ -637,10 +637,14 @@ async def search_repo(repo: str = Query(...)) -> dict:
             total = sum(x.size for x in files)
             is_gguf = files[0].path.lower().endswith(".gguf")
             projector = "mmproj" in files[0].path.lower()
-            # Imatrix calibration data and other strays (no quant token, or too small to be
-            # real weights) are not models: they must not be offered for download, chosen as
-            # the header probe below, or given fit/context estimates. mmproj is unaffected.
-            if is_gguf and not projector and not discover.is_model_weight_file(base, total):
+            # Imatrix calibration data and other tiny strays are not models: excluded before
+            # grouping, before header-probe selection, and before fit/context estimates are
+            # attached. Unlike Discover's search results (build_options / is_model_weight_file),
+            # this does NOT require a recognised quant token — a repo can ship a plain
+            # "model.gguf" or a quant scheme our regex doesn't know, and it is still real,
+            # loadable weights that must stay visible when a user opens this specific repo.
+            # mmproj is unaffected.
+            if is_gguf and not projector and discover.is_stray_gguf(base, total):
                 continue
             groups.append({"shardBase": base, "shards": files[0].shard_total if files[0].shard_index else None,
                            "bytes": total, "size": human_bytes(total),

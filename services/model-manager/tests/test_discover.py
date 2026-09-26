@@ -163,3 +163,17 @@ def test_is_model_weight_file_rejects_imatrix_regardless_of_size_or_naming():
     # already rejected them — the helper must not loosen that.
     assert discover.is_model_weight_file("x/index.gguf", 10_000) is False
     assert discover.is_model_weight_file("x/no-quant-token.gguf", 5_000_000_000) is False
+
+
+def test_is_stray_gguf_does_not_require_a_quant_token_unlike_is_model_weight_file():
+    """The repo-detail view (search_repo) uses this looser check: a real, big file with no
+    recognised quant token (a plain "model.gguf", or a scheme our regex doesn't know) is a
+    model, not a stray — only imatrix and genuinely tiny files are excluded."""
+    assert discover.is_stray_gguf("x/model.gguf", 2_000_000_000) is False
+    assert discover.is_stray_gguf("x/model-TQ1_0.gguf", 2_000_000_000) is False
+    assert discover.is_stray_gguf("x/model-imatrix.gguf", 3_500_000) is True
+    assert discover.is_stray_gguf("x/model-IMatrix.GGUF", 5_000_000_000) is True, \
+        "imatrix disqualifies a file regardless of size"
+    assert discover.is_stray_gguf("x/extras/stray.gguf", 5_000_000) is True
+    # is_model_weight_file is strictly stronger: it additionally requires a quant token.
+    assert discover.is_model_weight_file("x/model.gguf", 2_000_000_000) is False

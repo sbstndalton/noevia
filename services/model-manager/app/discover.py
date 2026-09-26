@@ -56,6 +56,24 @@ def is_model_weight_file(path: str, size_bytes: int) -> bool:
     return quant_of(path) is not None and (size_bytes / 1e9) >= MIN_MODEL_GB
 
 
+def is_stray_gguf(path: str, size_bytes: int) -> bool:
+    """True if this GGUF must never be shown as a model, full stop: imatrix calibration data, or
+    too small to be real weights at all.
+
+    Deliberately looser than `is_model_weight_file`: it does NOT require a recognised
+    quantisation token. Discover's search results can afford that stricter bar because there are
+    always other repos to rank; the repo-detail view shows the one repo a user actually opened,
+    and a plain "model.gguf" or a quant scheme our regex doesn't know (TQ1_0, FP8, a future
+    scheme...) is still a real, loadable model that must not disappear from it. Use this where a
+    repo's file list is shown as-is (repo-detail), and `is_model_weight_file` where files compete
+    to be ranked as a search result.
+    """
+    name = path.rsplit("/", 1)[-1]
+    if IMATRIX.search(name):
+        return True
+    return (size_bytes / 1e9) < MIN_MODEL_GB
+
+
 @dataclass
 class Candidate:
     id: str
