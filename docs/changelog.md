@@ -8,6 +8,53 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 3cf7233 — 2026-09-26 (two reviewed fixes: #412, #416)
+
+### Services
+
+- **Web:** [#412](https://github.com/sbstndalton/noevia/pull/412) fix #410 (`server/routes/plugin-directory.cjs` gives MCP starter servers distinct, readable titles instead of a shared fallback; test), [#416](https://github.com/sbstndalton/noevia/pull/416) fix #355 #362 #406 (`Sidebar.tsx` restores focus into hover-hidden row actions after search Escape and inline rename Escape/Enter, and fires a `workspace-changed` event after archive/Undo so other mounted readers refresh; `server/spa-routes.cjs` serves the SPA shell for `/c`, `/c/`, `/p`, `/p/` instead of a raw 404; new `qa/sidebar-focus-undo.cjs`, extended `qa/url-history.cjs`; tests) — deployed as `cowork-web:3cf7233`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-3cf7233`, live `docker-compose.yml`/`docker-compose.override.yml` backups `*.bak.before-3cf7233`.
+
+Both PRs were draft with CI green against `origin/main` at `2c7488d` at the start of this release.
+#412 (`c70ce3d`) merged `origin/main` cleanly (`ort` auto-merge, no conflicts) to `0639102`; `npm test`
+2291/2291, `typecheck`, `build`, `lint:design` clean; CI green; squash-merged to `4b38263`. #416
+(`faa6b1c`) then merged `origin/main` (the merge had been started against `2c7488d`, before #412 landed)
+cleanly — `ort` auto-merge, no conflicts, only `docs/changelog.md` — to `39ee9a6`; `npm test` 2289/2289,
+`typecheck`, `build`, `lint:design` clean; `qa/sidebar-focus-undo.cjs` (4/4) and `qa/url-history.cjs`
+(11/11, including the `/c`, `/c/`, `/p`, `/p/` SPA-shell fallback) both **PASS** against the built `dist`
+with `PLAYWRIGHT_MODULE`; CI green (including `offline-contract`); squash-merged to `3cf7233` (final
+`main` SHA — this squash lands cleanly on top of #412's already-merged `plugin-directory.cjs` change,
+which is why `git diff` against `origin/main` shows exactly that file). All worktrees and their
+local+remote branches were deleted after merge. The pre-existing spacing branch (`fix/spacing-apple-rhythm`)
+was left untouched, as scoped.
+
+Built `cowork-web:3cf7233` on DaServer from `releases/3cf7233` (git archive of `main`@`3cf7233`, scp'd —
+no git creds on the box). A disposable, network-isolated candidate container confirmed `/` **200**,
+`/api/profile` **401**, `/c` and `/p/` **200** `text/html`, `/api/nope` JSON, and that the image's
+`dist/assets` contains the exact `index-CfeaRzvk.js` / `index-CW-35hg6.css` referenced by `index.html`
+and `version.json` reporting `3cf7233`, before cutover. `current` symlink and `COWORK_VERSION` updated;
+every other `*_VERSION` left untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`,
+`MODEL_MANAGER_VERSION=1c87ab0`, `DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`).
+Deployed with the guarded `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait
+--wait-timeout 180 web`.
+
+Verification: `cowork-web-1` recreated, healthy, `RestartCount=0`; `https://noevia.daserver.work/` **200**
+`text/html`; `/api/profile` **401**; `/c` and `/p/` **200** `text/html`; `/api/nope` JSON. Served
+`index-CfeaRzvk.js` / `index-CW-35hg6.css` match both the public page and the image's `dist/assets`.
+Every other `cowork-*` container and `CloudflaredTunnel` kept identical container `Id` and
+`State.StartedAt` (model-loader, diary, code-sandbox, laya, ocr, docling, llama, kiwix). `cowork-embed-1`
+remains in its pre-existing crash loop (#336, unrelated, untouched — same container `Id`, `RestartCount`
+rose 762→776 from its own ongoing restarts, not recreated). No chat sends, model tunes, or Diary access
+were performed; no other container was rebuilt or recreated.
+
+Rollback: `ln -sfn releases/0a8cc31 current`, restore `.env.bak.before-3cf7233` (`COWORK_VERSION=0a8cc31`),
+re-run `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
 ## Release web 0a8cc31 — 2026-09-26 (three reviewed fixes: #407, #411, #408)
 
 ### Services
