@@ -623,7 +623,7 @@ async def _repo_files_cached(repo: str) -> list[dict]:
 @router.get("/search/repo")
 async def search_repo(repo: str = Query(...)) -> dict:
     import httpx
-    from . import hf
+    from . import discover, hf
     from .main import _preset_estimates
     groups: list[dict] = []
     gated = ""
@@ -635,11 +635,18 @@ async def search_repo(repo: str = Query(...)) -> dict:
         for base, files in by_base.items():
             files.sort(key=lambda x: (x.shard_index or 0, x.path))
             total = sum(x.size for x in files)
+            is_gguf = files[0].path.lower().endswith(".gguf")
+            projector = "mmproj" in files[0].path.lower()
+            # Imatrix calibration data and other strays (no quant token, or too small to be
+            # real weights) are not models: they must not be offered for download, chosen as
+            # the header probe below, or given fit/context estimates. mmproj is unaffected.
+            if is_gguf and not projector and not discover.is_model_weight_file(base, total):
+                continue
             groups.append({"shardBase": base, "shards": files[0].shard_total if files[0].shard_index else None,
                            "bytes": total, "size": human_bytes(total),
                            "quant": next((x.quant for x in files if x.quant), None),
                            "fit": services.vram_fit_chips(total),
-                           "projector": "mmproj" in files[0].path.lower(),
+                           "projector": projector,
                            "files": [{"path": x.path, "bytes": x.size, "size": human_bytes(x.size), "quant": x.quant} for x in files]})
         groups.sort(key=lambda g: (0 if g["files"][0]["path"].lower().endswith(".gguf") else 1, g["projector"], g["shardBase"].lower()))
         probe = next((g for g in groups if g["files"][0]["path"].lower().endswith(".gguf") and not g["projector"]), None)
@@ -726,7 +733,7 @@ async def download_draft_head(name: str, body: dict = Body(...)) -> dict:
 @router.post("/downloads")
 async def start_download(body: dict = Body(...)) -> dict:
     import httpx
-    from . import hf
+    from . import discover, hf
     from .main import _dest_for_companion, _dest_for_main, _model_stem
     repo, path, url = str(body.get("repo") or ""), str(body.get("path") or ""), str(body.get("url") or "").strip()
     target = str(body.get("target") or "")
@@ -741,6 +748,8 @@ async def start_download(body: dict = Body(...)) -> dict:
         name = str(body.get("filename") or "").strip() or unquote(urlparse(url).path.rsplit("/", 1)[-1])
         if not name or "/" in name or ".." in name:
             raise HTTPException(400, "Set a plain file name for this URL")
+        if discover.IMATRIX.search(name):
+            raise HTTPException(400, "That is an imatrix calibration file, not a model — it cannot be downloaded as one")
         total = 0
         try:
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
@@ -762,6 +771,8 @@ async def start_download(body: dict = Body(...)) -> dict:
         if (not any(f.shard_base == shard_base for f in detail.files)
                 or subdir in ("", ".", "..") or "/" in subdir or "\\" in subdir):
             raise HTTPException(400, "That shard set is not in the repository")
+        if discover.IMATRIX.search(shard_base):
+            raise HTTPException(400, "That is an imatrix calibration file, not a model — it cannot be downloaded as one")
         for f in detail.files:
             if f.shard_base == shard_base:
                 plan.append(dict(hf_path=f.path, filename=prefix + f"{subdir}/{Path(f.path).name}", total_bytes=f.size))
@@ -772,6 +783,8 @@ async def start_download(body: dict = Body(...)) -> dict:
         if match is None:
             raise HTTPException(404, "That file is not in the repository")
         base = Path(path).name
+        if discover.IMATRIX.search(base):
+            raise HTTPException(400, "That is an imatrix calibration file, not a model — it cannot be downloaded as one")
         if "mmproj" in base.lower():
             plan.append(dict(hf_path=path, filename=prefix + f"{_model_stem(base)}/{base}", total_bytes=match.size))
             _enqueue_all(repo, plan)
