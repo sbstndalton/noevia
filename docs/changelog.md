@@ -8,6 +8,56 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web + model-loader 1c87ab0 — 2026-09-26 (five reviewed a11y/UX fixes: #345 #346 #352–#363 #366–#368, and deploying #347/#348)
+
+### Services
+
+- **Web:** [#351](https://github.com/sbstndalton/noevia/pull/351) fix #345 #346 (AccountMenu/ToolCatalogue menu semantics, onBlur + mousedown keep-focus, `menu-nav.ts`, scrim tokens, lint rule), [#370](https://github.com/sbstndalton/noevia/pull/370) fix #353 #355 #358 #360 #362 #363 (ToolCatalogue placement via `placeCatalogue()`, Sidebar focus/rename/undo toast, ChatView edit buttons + focus, `useModalDialog` initial focus), [#369](https://github.com/sbstndalton/noevia/pull/369) fix #352 #354 #357 (projects routing heal, selectedToolboxIds, toolbox summaries with connected connectors, ModelPopup/ComposerActions, reply-telemetry fallback, ChatView label), [#364](https://github.com/sbstndalton/noevia/pull/364) fix #361 (Diary active flag; App.tsx `Diary.View` active prop), [#382](https://github.com/sbstndalton/noevia/pull/382) fix #366 #367 #368 (mcp-status directory flag, Sidebar MCP label via `mcp-summary.ts`, PluginsView empty state, CodingWorkspace project picker, App.tsx wiring, i18n) — deployed as `cowork-web:1c87ab0`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** [#347](https://github.com/sbstndalton/noevia/pull/347) fix #342 (discover.py stops offering imatrix files as models) and [#348](https://github.com/sbstndalton/noevia/pull/348) model-loader half — fix #341 (services.py/config.py: probe llama on its real port, honest unknown-model state), both already on `main` since `7a72713` but undeployed — deployed now as `cowork-model-loader:1c87ab0` (built on the box from `releases/1c87ab0/services/model-manager`).
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION` and `MODEL_MANAGER_VERSION`; `.env` backup `.env.bak.before-1c87ab0`, live `docker-compose.yml` backup `docker-compose.yml.bak.before-1c87ab0`, live `docker-compose.override.yml` backup `docker-compose.override.yml.bak.before-1c87ab0`.
+
+All five PRs merged one at a time into `main` from base `31973d5`, each re-merged with the moving
+`origin/main` tip and re-verified before squash-merge: #351→`74436e1`, #370→`b13250f` (conflict in
+`ToolCatalogue.tsx` — kept #351's no-dialog-role/keepFocusOnMouseDown behaviour together with #370's
+inline `placeCatalogue()` layout style), #369→`0b0b88e` (ChatView.tsx auto-merged both edit-action and
+reply-telemetry/label changes cleanly), #364→`98641b0`, #382→`1c87ab0` (final `main` SHA; auto-merged
+cleanly). Node/TS/build/lint:design green on every merge (2105→2155 tests passing as files were added);
+`npm run typecheck` and `npm run lint:design` clean on every merge. GitHub Actions CI green on every
+head before merge and again on every re-merged commit before squash.
+
+Built `cowork-web:1c87ab0` and `cowork-model-loader:1c87ab0` on DaServer from `releases/1c87ab0` (git
+archive of `main`@`1c87ab0`, scp'd — no git creds on the box). Candidates verified before cutover:
+web — `isSidecarModel('nomic-embed-text-v1')` is `true` with `--env-file config/.env`, `routes/health.cjs`
+loads; model-loader — `app.api`/`app.main`/`app.services`/`app.discover` import cleanly and the router
+exposes `/api/v1/models-ini`, `/api/v1/backends`, `/api/v1/search/repo`. `current` symlink and
+`COWORK_VERSION`/`MODEL_MANAGER_VERSION` updated; every other `*_VERSION` left untouched. Deployed with
+the guarded `tools/preflight/up.sh --no-build --no-deps --wait`, model-loader first per docs/deployment.md
+("models.ini writer"), then web.
+
+Verification: `cowork-model-loader-1` recreated, healthy, `RestartCount=0`; from inside `cowork-web-1`
+(the `models` network), `GET /api/v1/backends` reports `cowork-llama-1` `loaded_model:
+"gemma-4-E2B_q4_0-it"`; `GET /api/v1/search/repo?repo=bartowski/Qwen_Qwen3.5-4B-GGUF` returned 26 groups,
+none an imatrix file; an unauthenticated `PUT /api/v1/models-ini` returned **401** (single-writer endpoint
+intact). `cowork-web-1` recreated, healthy, `RestartCount=0`; `https://noevia.daserver.work/` **200**,
+`/api/profile` **401**; served `index-ADr6npT9.js`/`index-zUZs3-6Q.css` match the image's `dist/assets`.
+Every other `cowork-*` container and `CloudflaredTunnel` kept identical container `Id` and
+`State.StartedAt` (diary, code-sandbox, laya, ocr, docling, llama, kiwix). `cowork-embed-1` remains in its
+pre-existing crash loop (#336, unrelated, untouched — `RestartCount` rose 584→587 across the deploy window
+from its own ongoing restarts, same container `Id`, not recreated). No chat sends, model tunes, or model
+operations were performed; no other container was rebuilt or recreated.
+
+Rollback (web): `ln -sfn releases/7a72713 current`, restore `.env.bak.before-1c87ab0`
+(`COWORK_VERSION=7a72713`, `MODEL_MANAGER_VERSION=f6444b4`), re-run
+`tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+Rollback (model-loader only): restore `.env.bak.before-1c87ab0`'s `MODEL_MANAGER_VERSION=f6444b4` line and
+re-run the same `up.sh ... model-loader`.
+
+---
+
 ## Release web 7a72713 — 2026-09-26 (five reviewed fixes: #339–#343)
 
 ### Services
