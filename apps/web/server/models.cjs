@@ -180,10 +180,13 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace, li
         suggested: !!m.suggested,
         status: m.status?.value || (loadedNames.has(m.id || m.model_name) ? 'loaded' : 'unloaded'),
         failed: m.status?.failed === true,
-        // #336: the manager's own can_remove says nothing about noevia's embedding/reranking
-        // sidecars — a model it reports removable can still be the one EMBEDDING_MODEL/RERANK_MODEL
-        // names, and deleting that file crash-loops the sidecar with no fallback to fall back to.
-        canDelete: m.can_remove !== false && !isSidecarModel(m.id || m.model_name, env),
+        canDelete: m.can_remove !== false,
+        // #336: distinct from canDelete (which the client falls back to a different delete path
+        // for, when false — see routes/models.cjs). A model can_remove reports removable is still
+        // the one EMBEDDING_MODEL/RERANK_MODEL names, and deleting that file crash-loops its
+        // sidecar with nothing to fall back to; sidecarProtected is the client's own signal to
+        // hide Delete entirely rather than trying the fallback path.
+        sidecarProtected: isSidecarModel(m.id || m.model_name, env),
         source: m.source || null,
       }));
     if (!LAST_LOADED_MODEL) {

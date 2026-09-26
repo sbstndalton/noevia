@@ -9,10 +9,11 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path');
 const src = fs.readFileSync(path.join(__dirname, '../src/components/models/LibraryTab.tsx'), 'utf8');
 
-test('ModelCard imports the chat-generation-model check and derives protectedModel from server-computed canDelete', () => {
+test('ModelCard imports the chat-generation-model check and derives protectedModel from the distinct sidecarProtected field, not canDelete', () => {
   assert.match(src, /import \{ isChatGenerationModel \} from '\.\.\/\.\.\/model-kind';/);
   assert.match(src, /const chatModel = isChatGenerationModel\(m\.name, m\.labels\);/);
-  assert.match(src, /const protectedModel = !system && m\.canDelete === false;/);
+  assert.match(src, /const protectedModel = !system && m\.sidecarProtected === true;/);
+  assert.doesNotMatch(src, /const protectedModel = .*canDelete/, 'protectedModel must not be derived from canDelete: canDelete can be false for unrelated reasons and DeleteModel already falls back to the folder-scan path in that case');
 });
 
 test('Tune is hidden for any non-chat (embedding/reranking) model, not just Laya', () => {
@@ -30,6 +31,10 @@ test('the meta row shows a short "protected" tag (with a title explaining why) f
 test('the expanded detail note distinguishes system, sidecar-protected, and merely non-chat models', () => {
   assert.match(src, /protectedModel \? <p className="mm-note" role="status">\{t\('mm\.card\.protectedLabel'\)\}\{t\('mm\.card\.protectedNote'\)\}<\/p>/);
   assert.match(src, /!chatModel \? <p className="mm-note" role="status">\{t\('mm\.card\.nonChatNote'\)\}<\/p>/);
+});
+
+test('DeleteModel\'s own canDelete fallback (folder-scan delete path) is untouched by the sidecarProtected guard', () => {
+  assert.match(src, /if \(m\.canDelete !== false && m\.source !== 'preset'\) \{/, 'a model with canDelete:false but sidecarProtected:false must still be able to delete through the folder-scan fallback');
 });
 
 test('every new mm.card.* key referenced by LibraryTab is defined in the English base catalogue', () => {

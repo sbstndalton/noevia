@@ -143,10 +143,13 @@ function ModelCard({ model: m, file, update, busy, onToggle, onConfigure, onDele
   const system = isSystemModel(m.name);
   // #343/#336: tuning is a chat-model concept (the Overview copy says so) — hide it for any
   // embedding/reranking model, not just Laya. Delete stays hidden only for models a live sidecar
-  // actually depends on right now (server-computed canDelete, model-system.cjs isSidecarModel);
-  // an unused embedding install stays deletable.
+  // actually depends on right now (server-computed sidecarProtected, model-system.cjs
+  // isSidecarModel) — deliberately NOT canDelete: canDelete can be false for other reasons (the
+  // manager's own can_remove), and DeleteModel's run() already falls back to the folder-scan
+  // delete path in exactly that case, so hiding the button on canDelete alone would hide a delete
+  // path that still works and mislabel the model as sidecar-protected when it just isn't one.
   const chatModel = isChatGenerationModel(m.name, m.labels);
-  const protectedModel = !system && m.canDelete === false;
+  const protectedModel = !system && m.sidecarProtected === true;
   return <article className={`model-card surface${open ? ' is-open' : ''}`} data-state={state} aria-label={m.name}>
     <header className="model-card-head"><h3 className="model-card-name"><MiddleTruncate text={m.name}/></h3><span className="model-card-state">{m.failed ? t('mm.card.failed') : m.loaded ? t('mm.loaded') : t('mm.card.unloaded')}</span></header>
     <p className="model-card-meta">
