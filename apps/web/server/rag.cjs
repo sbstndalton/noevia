@@ -131,16 +131,18 @@ const RETRIEVAL_PROBE_TTL_MS = clampInt(process.env.RETRIEVAL_PROBE_TTL_MS, 4500
 let retrievalProbeCache = null; // { status: 'available'|'degraded', at: number }
 let retrievalProbeInFlight = null; // shared promise while a probe is in flight
 
-async function probeEmbeddingEndpoint() {
-  const base = embeddingBase || inferenceBase;
-  if (!base) return false;
-  const leave = enterInference();
+const HELD_BY_MAINTENANCE = Symbol('retrieval-probe-held-by-maintenance');
+
+// A dedicated embedding sidecar (EMBEDDING_BASE_URL set) is not the shared inference router: it
+// never holds the router's maintenance gate, and a tiny synthetic embedding request there cannot
+// load or evict the chat model. Safe to call directly, with no inference guard at all.
+async function probeEmbeddingSidecar(base) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), RETRIEVAL_PROBE_TIMEOUT_MS);
   try {
     const res = await fetch(`${base.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1/embeddings`, {
       method: 'POST',
-      headers: embeddingBase ? { 'Content-Type': 'application/json' } : inferenceHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: EMBED_MODEL, input: RETRIEVAL_PROBE_TEXT }),
       signal: ctrl.signal,
     });
@@ -150,10 +152,52 @@ async function probeEmbeddingEndpoint() {
     return items.length >= 1 && Array.isArray(items[0]?.embedding) && items[0].embedding.length > 0;
   } catch {
     // Network failure, non-2xx thrown by a stub, JSON error, or the timeout's abort — all mean
-    // the same thing to a caller: the embedder cannot be reached right now.
+    // the same thing to a caller: the sidecar cannot be reached right now.
     return false;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// No dedicated sidecar: embeddings share the chat engine. A live embedding request here would
+// hit the same single-slot router chat uses, which can load the embed model and evict whatever
+// chat model is loaded — every TTL window, triggered by nothing more than a health poll (e.g.
+// someone with Settings open). GET /v1/models is side-effect-free and answers the same question:
+// is EMBED_MODEL actually available there right now.
+async function probeEmbeddingRouter(base) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RETRIEVAL_PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1/models`, {
+      headers: inferenceHeaders(),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return false;
+    const body = await res.json();
+    const ids = Array.isArray(body?.data) ? body.data.map((m) => m?.id) : [];
+    return ids.includes(EMBED_MODEL);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function probeEmbeddingEndpoint() {
+  if (embeddingBase) return probeEmbeddingSidecar(embeddingBase);
+  if (!inferenceBase) return false;
+  // The router's maintenance gate (autotune, preset apply) is a "a human is mid-change" signal,
+  // never an outage — reporting 'degraded' every time someone tunes the model would be a false
+  // alarm distinct from an actually unreachable embedder.
+  let leave;
+  try {
+    leave = enterInference();
+  } catch {
+    return HELD_BY_MAINTENANCE;
+  }
+  try {
+    return await probeEmbeddingRouter(inferenceBase);
+  } finally {
     leave();
   }
 }
@@ -163,7 +207,8 @@ async function probeEmbeddingEndpoint() {
 //   'degraded'    — the index is installed but the configured embedding endpoint/model did not
 //                    answer the probe within the timeout; small files and source excerpts still
 //                    reach the model (filesContext's direct-injection path), semantic search does not.
-//   'available'   — the probe got a real embedding back within the timeout.
+//   'available'   — the probe found the embedder answering (sidecar) or the embed model listed
+//                    (router) within the timeout.
 // Never throws; never issues more than one live probe per RETRIEVAL_PROBE_TTL_MS window.
 async function retrievalStatus() {
   if (!ragAvailable()) return 'unavailable';
@@ -173,7 +218,12 @@ async function retrievalStatus() {
   }
   if (!retrievalProbeInFlight) {
     retrievalProbeInFlight = probeEmbeddingEndpoint()
-      .then((ok) => (ok ? 'available' : 'degraded'))
+      .then((result) => {
+        // Model maintenance holding the gate is not itself a finding — nothing was actually
+        // probed, so keep whatever the last real probe found, or assume available until one runs.
+        if (result === HELD_BY_MAINTENANCE) return retrievalProbeCache ? retrievalProbeCache.status : 'available';
+        return result ? 'available' : 'degraded';
+      })
       .catch(() => 'degraded')
       .then((status) => {
         retrievalProbeCache = { status, at: Date.now() };
