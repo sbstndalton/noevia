@@ -68,6 +68,23 @@ test('motion rules: no transition-all and no literal durations outside the contr
   assert.deepEqual(rules('a { transition: opacity 120ms ease; }', 'x.tsx'), []);
 });
 
+// #346: every dialog's ::backdrop reads --scrim / --scrim-blur instead of its own literal
+// rgba()/blur(), so Reduce transparency and Increase contrast can flatten every scrim at once.
+test('a ::backdrop must use --scrim and --scrim-blur, not a literal color or blur', () => {
+  const rules = (css) => lint(css, 'a.css').map((f) => f.rule);
+  assert.deepEqual(rules('.confirm-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(var(--scrim-blur)); }'), []);
+  assert.deepEqual(rules('.confirm-dialog::backdrop { background: rgba(0,0,0,.5); }'), ['backdrop-scrim']);
+  assert.deepEqual(rules('.confirm-dialog::backdrop { background: #000; }'), ['backdrop-scrim']);
+  assert.deepEqual(rules('.confirm-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(2px); }'), ['backdrop-scrim']);
+  assert.deepEqual(rules('.confirm-dialog::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(2px); }').length, 2);
+  // A fully transparent backdrop (a native <dialog> that draws its own chrome) is not a scrim.
+  assert.deepEqual(rules('.native-modal::backdrop { background: transparent; }'), []);
+  // Family/theme overrides layered onto an already-tokenized base rule are a separate, existing
+  // system (#249) and stay out of scope for this fix.
+  assert.deepEqual(rules("[data-family='contemporary'] dialog.dialog-sheet::backdrop { background: rgba(0,0,0,.32); }"), []);
+  assert.deepEqual(rules('dialog:has(> .dialog-sheet)::backdrop { background: rgba(0,0,6,.38); }'), []);
+});
+
 test('a weight may come from a --*-weight token, which is itself held to four steps', () => {
   const rules = (css) => lint(css, 'a.css').map((f) => f.rule);
   assert.deepEqual(rules('h1 { font-weight: var(--display-weight, 600); }'), []);
