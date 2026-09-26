@@ -36,6 +36,10 @@ function init({ dataDir, embedModel, inferenceUrl, headersFn, userDataDirFn, inf
   if (headersFn) inferenceHeaders = headersFn;
   if (inferenceGuard) enterInference = inferenceGuard;
   initRerank();
+  // A new init() (endpoint/model swap, or a test isolating scenarios) invalidates whatever the
+  // last readiness probe found — never serve a cached verdict from before the reconfiguration.
+  retrievalProbeCache = null;
+  retrievalProbeInFlight = null;
 }
 // Chunk sizing starts from diary-companion's shape (subsection-scale bodies).
 // ~1200 chars with a 150-char overlap keeps chunks coherent.
@@ -106,8 +110,78 @@ function loadDeps() {
   return depsCache;
 }
 
+// "Index support installed": native sqlite-vec/better-sqlite3 deps loaded. Unchanged meaning —
+// callers that only care whether the index CAN run (filesContext, the internal MCP tool, the
+// #340 tri-state below) keep using this. It says nothing about whether the embedding endpoint
+// configured for this deployment is actually reachable right now.
 function ragAvailable() {
   return !loadDeps().broken;
+}
+
+// Bounded, cached probe of the configured embedding endpoint (#340): "index support installed"
+// does not mean "search works" — a restarting or misconfigured embedder leaves the index able to
+// store text but never gains vectors, and search silently returns nothing (see indexProjectFileNow
+// and searchProject above). /api/health polls every few seconds, so this must be cheap: a fixed,
+// synthetic probe string (never real project or chat content), a short timeout so one slow health
+// poll cannot stall behind it, and a short cache so concurrent/rapid polls share one probe instead
+// of hammering the embedder.
+const RETRIEVAL_PROBE_TEXT = ['noevia health probe'];
+const RETRIEVAL_PROBE_TIMEOUT_MS = clampInt(process.env.RETRIEVAL_PROBE_TIMEOUT_MS, 2500, 200, 5000);
+const RETRIEVAL_PROBE_TTL_MS = clampInt(process.env.RETRIEVAL_PROBE_TTL_MS, 45000, 200, 300000);
+let retrievalProbeCache = null; // { status: 'available'|'degraded', at: number }
+let retrievalProbeInFlight = null; // shared promise while a probe is in flight
+
+async function probeEmbeddingEndpoint() {
+  const base = embeddingBase || inferenceBase;
+  if (!base) return false;
+  const leave = enterInference();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RETRIEVAL_PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1/embeddings`, {
+      method: 'POST',
+      headers: embeddingBase ? { 'Content-Type': 'application/json' } : inferenceHeaders(),
+      body: JSON.stringify({ model: EMBED_MODEL, input: RETRIEVAL_PROBE_TEXT }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return false;
+    const body = await res.json();
+    const items = Array.isArray(body?.data) ? body.data : [];
+    return items.length >= 1 && Array.isArray(items[0]?.embedding) && items[0].embedding.length > 0;
+  } catch {
+    // Network failure, non-2xx thrown by a stub, JSON error, or the timeout's abort — all mean
+    // the same thing to a caller: the embedder cannot be reached right now.
+    return false;
+  } finally {
+    clearTimeout(timer);
+    leave();
+  }
+}
+
+// Tri-state retrieval readiness for /api/health and the Settings/Capabilities UI:
+//   'unavailable' — native index deps are missing; retrieval cannot run at all (unchanged case).
+//   'degraded'    — the index is installed but the configured embedding endpoint/model did not
+//                    answer the probe within the timeout; small files and source excerpts still
+//                    reach the model (filesContext's direct-injection path), semantic search does not.
+//   'available'   — the probe got a real embedding back within the timeout.
+// Never throws; never issues more than one live probe per RETRIEVAL_PROBE_TTL_MS window.
+async function retrievalStatus() {
+  if (!ragAvailable()) return 'unavailable';
+  const now = Date.now();
+  if (retrievalProbeCache && now - retrievalProbeCache.at < RETRIEVAL_PROBE_TTL_MS) {
+    return retrievalProbeCache.status;
+  }
+  if (!retrievalProbeInFlight) {
+    retrievalProbeInFlight = probeEmbeddingEndpoint()
+      .then((ok) => (ok ? 'available' : 'degraded'))
+      .catch(() => 'degraded')
+      .then((status) => {
+        retrievalProbeCache = { status, at: Date.now() };
+        retrievalProbeInFlight = null;
+        return status;
+      });
+  }
+  return retrievalProbeInFlight;
 }
 
 function chunkText(text, pagePart = false) {
@@ -454,4 +528,4 @@ async function filesContext(projectId, files, query, userId) {
 // of the wrong dimensionality scores silently rather than failing.
 function embedModel() { return EMBED_MODEL; }
 
-module.exports = { init, indexProjectFile, deleteProjectFile, searchProject, filesContext, chunkText, ragAvailable, embed, embedModel, rerankPool };
+module.exports = { init, indexProjectFile, deleteProjectFile, searchProject, filesContext, chunkText, ragAvailable, retrievalStatus, embed, embedModel, rerankPool };
