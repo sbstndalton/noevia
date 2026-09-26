@@ -48,9 +48,25 @@ test("the app's own scroll-to-bottom write never changes the follow state either
   assert.equal(nextFollowState(true, false, false), true, 'still following, even if a programmatic write briefly reports "not at bottom" mid-scroll');
 });
 
-test('a fresh chat (scope change) is not exercised by these pure functions, but the hook resets following=true on scope change — asserted at the source level', () => {
+test('a fresh chat (scope change) is not exercised by these pure functions, but the hook resets following=true (and its own scrollTop memory) on scope change — asserted at the source level', () => {
   const src = fs.readFileSync(path.join(__dirname, '../src/useChatScroll.ts'), 'utf8');
-  assert.match(src, /useLayoutEffect\(\(\) => \{ following\.current = true; setAtBottom\(true\); \}, \[scope\]\)/);
+  assert.match(src, /useLayoutEffect\(\(\) => \{ following\.current = true; setAtBottom\(true\); lastWrittenScrollTop\.current = null; \}, \[scope\]\)/);
+});
+
+test('#387 (reopened): the auto-scroll effect compares the live scrollTop against its own last write, synchronously, before deciding whether to pin again — not just the async `scroll` event, which a fast enough stream can outrace', () => {
+  // A real wheel/touch/keyboard/scrollbar-drag scroll changes `el.scrollTop` immediately, as part of
+  // the browser's own synchronous handling of that input, well before the (coalesced, can lag a fast
+  // stream) native `scroll` event `onScroll` reads ever fires. Comparing the live value directly, right
+  // here, closes that race for every input method — including a scrollbar drag, which has no dedicated
+  // JS event of its own to listen for.
+  const src = fs.readFileSync(path.join(__dirname, '../src/useChatScroll.ts'), 'utf8');
+  assert.match(src, /lastWrittenScrollTop\.current !== null && el\.scrollTop !== lastWrittenScrollTop\.current/);
+  assert.match(src, /following\.current = nextFollowState\(following\.current, atBottomNow, true\);/);
+});
+
+test('#387 (reopened): onScroll also records the position it just reconciled, so the synchronous compare above does not re-litigate a scroll the async handler already accounted for against a since-grown scrollHeight (this was a regression caught by qa/diary-reading.cjs — a scripted return-to-bottom scroll event got immediately re-disengaged by the next streamed chunk)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../src/useChatScroll.ts'), 'utf8');
+  assert.match(src, /if \(causedByUser\) \{[\s\S]*?lastWrittenScrollTop\.current = el\.scrollTop;[\s\S]*?\}/);
 });
 
 test('the hook exposes atBottom so a caller can render a "jump to latest" control, and follow() jumps back down', () => {
