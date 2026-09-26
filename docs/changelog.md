@@ -8,6 +8,83 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 97bf1eb — 2026-09-26 (merge #444, deploy #444)
+
+### Services
+
+- **Web:** [#444](https://github.com/sbstndalton/noevia/pull/444) closes #439, #440 — the sidebar
+  search field now supports arrow-key navigation through its results (`ArrowDown` from the field
+  moves into the list, `ArrowDown`/`ArrowUp` move between results), `Enter` opens the active
+  result, and `Escape` from a result returns focus to the search field rather than closing search
+  outright (a second `Escape`, from the field itself, keeps the existing clear/close behaviour); a
+  polite `aria-live` region announces the result count, and the matched substring is highlighted
+  (`<mark class="sidebar-search-highlight">`), including queries built from regex metacharacters,
+  which match literally rather than throwing; nested (in-project) chat rows now open the same
+  right-click context menu as top-level rows, including the archive+undo path from #432 — deployed
+  as `cowork-web:97bf1eb`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup
+  `.env.bak.before-97bf1eb`. Image tag and release directory use the 7-character short SHA
+  (`97bf1eb`), matching the existing convention.
+
+PR #444 (`fix/439-440-sidebar-search-nested-menu`) was draft with CI green (7/7) at head
+`e7d9b87c852c2c4cc948bf50d66c06c888a68c50`, based on `origin/main` at `8b07148` — by the time of
+this release `origin/main` had advanced to `7fc3fa5` (Batch 13's #441, which also touched every
+`apps/web/src/i18n/*.ts` file). `git merge origin/main` in the PR worktree resolved automatically
+with no manual conflict markers (the two PRs' `i18n` key additions and CSS landed on different
+lines; #441 touched `ChatView.tsx`/`ComposerActions.tsx`/`ComposerTextarea.tsx`, #444 touched only
+`Sidebar.tsx`, so neither PR's component edits overlapped) — merge commit `2029b90`. Full
+verification against a fresh `npm run build` of the merged tree (`apps/web`) found one adjacency
+regression the file-level merge couldn't catch: `qa/composer-434.cjs` passed, but
+`qa/sidebar-search-nested-menu.cjs` failed a strict-mode Playwright assertion because #441 added
+its own `sr-only role="status" aria-live="polite"` span to `ChatView` (#437's drop-hint
+announcement) that now coexists with #444's sidebar result-count live region, and the QA suite's
+locator matched both. Fixed by scoping the suite's locator to `.sidebar` (commit `3c54c3d`,
+QA-only, no application code changed) rather than changing either live region's behaviour. `npm
+test` (2368/2368), `npm run typecheck`, `npm run build` and `npm run lint:design` all passed on
+the final tree; `qa/sidebar-search-nested-menu.cjs` (11/11) and `qa/composer-434.cjs` (8/8) both
+passed against a fresh build of the final commit. CI went green (7/7) again at the new head after
+pushing the QA fix. Marked ready and squash-merged (`--match-head-commit
+3c54c3d9d908eb7838d131e5761933ac886c2f82`) to `97bf1eb`; `main`'s tree hash was confirmed identical
+to the PR head's tree hash post-merge. Remote branch `fix/439-440-sidebar-search-nested-menu` and
+its local worktree (`/tmp/noevia-fix-439-440`) deleted after merge. The already-stale
+`/tmp/noevia-fix-434` worktree entry (Batch 13 had already merged and removed the directory, but
+left a dangling `git worktree` registration) was pruned in the same pass.
+
+Built `cowork-web:97bf1eb` on DaServer from `releases/97bf1eb` (git archive of `main`@`97bf1eb`,
+scp'd — no git creds on the box); the Dockerfile's own `node --test tests/*.test.cjs` gate passed
+before `vite build`. Before cutover, the freshly built candidate image was smoke-tested standalone
+(`docker run`, loopback-only port, no production volumes/network): `/api/setup/status` → `200`,
+`/api/profile` → `401`, and the served index referenced `index-BeW2mCs9.js`, matching the build
+output; the candidate container was then removed without touching any live container. `current`
+symlink and `COWORK_VERSION` updated; every other `*_VERSION` left untouched
+(`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`, `MODEL_MANAGER_VERSION=1c87ab0`,
+`DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Applied with the installed
+preflight, web-only: `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+`cowork-web-1` came up healthy, `RestartCount` 0, `Image=cowork-web:97bf1eb`,
+`Started=2026-09-26T13:00:23Z`. `cowork-diary-1`, `cowork-ocr-1`, `cowork-model-loader-1`,
+`cowork-code-sandbox-1`, `cowork-laya-1`, `cowork-docling-1`, `cowork-llama-1` and `cowork-kiwix-1`
+all kept their pre-release container `Id` and `StartedAt` unchanged, confirming `--no-deps` did
+not recreate them. (`cowork-embed-1` was already crash-looping before this deploy, unrelated and
+untouched — its `Id` is unchanged; its `RestartCount` continued climbing during the deploy window
+consistent with its ongoing restart loop, not this release.) `https://noevia.daserver.work/`
+returned `200`, `/api/profile` returned `401`, and the served `index.html` referenced
+`index-BeW2mCs9.js`/`index-Cd6S8biF.css`, both confirmed present in the deployed image's
+`dist/assets` via `docker exec`.
+
+Rollback (not needed — all checks passed): `ssh daserver 'ln -sfn
+/mnt/docker/appdata/cowork/releases/69712fb /mnt/docker/appdata/cowork/current && cp
+/mnt/docker/appdata/cowork/config/.env.bak.before-97bf1eb
+/mnt/docker/appdata/cowork/config/.env && cd /boot/config/plugins/compose.manager/projects/Cowork
+&& bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web'`.
+
 ## Release web 69712fb — 2026-09-26 (merge #441, deploy #441)
 
 ### Services
