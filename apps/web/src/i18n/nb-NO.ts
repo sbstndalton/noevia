@@ -292,6 +292,9 @@ export const NB_NO: Catalogue = {
   'diary.markdown.noFileOfThatName': "Ingen fil med det navnet her",
   'diary.markdown.properties': "Egenskaper",
   'diary.markdown.empty': "tom",
+  'diary.markdown.image.alt': "Bilde",
+  'diary.markdown.image.load': "Klikk for å laste inn",
+  'diary.markdown.image.ariaLabel': "Last inn bilde: {alt} fra {host}",
   'diary.modal.closeDialog': "Lukk dialogboks",
   'settings.title': "Innstillinger",
 
@@ -375,6 +378,7 @@ export const NB_NO: Catalogue = {
   'chat.empty.projectIntro': "Filene og instruksjonene i prosjektet er klare.",
   'chat.noModel': "Ingen modell er installert på denne serveren ennå, så svar kan ikke starte.",
   'chat.openModels': "Åpne Modeller og ruting",
+  'chat.jumpToLatest': "Hopp til siste",
   'msg.copy': "Kopier",
   'msg.copied': "Kopiert",
   'msg.regenerate': "Generer på nytt",
