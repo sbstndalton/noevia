@@ -13,6 +13,10 @@ export const FR_FR: Catalogue = {
   'common.off': "Désactivé",
   'common.system': "Système",
   'common.newChat': "Nouvelle discussion",
+  'nav.notFound.chatTitle': "Cette discussion n’est pas disponible",
+  'nav.notFound.chatBody': "Elle a peut-être été supprimée, ou le lien appartient à un autre compte.",
+  'nav.notFound.projectTitle': "Ce projet n’est pas disponible",
+  'nav.notFound.projectBody': "Il a peut-être été supprimé, ou le lien appartient à un autre compte.",
 
   'sidebar.newTask': "Nouvelle tâche",
   'sidebar.code.pullRequests': "Pull requests",
@@ -292,6 +296,9 @@ export const FR_FR: Catalogue = {
   'diary.markdown.noFileOfThatName': "Aucun fichier de ce nom ici",
   'diary.markdown.properties': "Propriétés",
   'diary.markdown.empty': "vide",
+  'diary.markdown.image.alt': "Image",
+  'diary.markdown.image.load': "S'ouvre dans un nouvel onglet",
+  'diary.markdown.image.ariaLabel': "Ouvrir l'image : {alt} depuis {host} — s'ouvre dans un nouvel onglet",
   'diary.modal.closeDialog': "Fermer la boîte de dialogue",
   'settings.title': "Réglages",
 
@@ -375,6 +382,7 @@ export const FR_FR: Catalogue = {
   'chat.empty.projectIntro': "Les fichiers et instructions de votre projet sont prêts.",
   'chat.noModel': "Aucun modèle n’est encore installé sur ce serveur : les réponses ne peuvent pas démarrer.",
   'chat.openModels': "Ouvrir Modèles et routage",
+  'chat.jumpToLatest': "Aller au dernier message",
   'msg.copy': "Copier",
   'msg.copied': "Copié",
   'msg.regenerate': "Régénérer",

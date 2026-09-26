@@ -16,6 +16,10 @@ export const EN_GB = {
   'common.off': 'Off',
   'common.system': 'System',
   'common.newChat': 'New chat',
+  'nav.notFound.chatTitle': 'This chat isn\'t available',
+  'nav.notFound.chatBody': 'It may have been deleted, or the link belongs to a different account.',
+  'nav.notFound.projectTitle': 'This project isn\'t available',
+  'nav.notFound.projectBody': 'It may have been deleted, or the link belongs to a different account.',
 
   'sidebar.newTask': 'New task',
   'sidebar.code.pullRequests': 'Pull requests',
@@ -297,6 +301,9 @@ export const EN_GB = {
   'diary.markdown.noFileOfThatName': 'No file of that name here',
   'diary.markdown.properties': 'Properties',
   'diary.markdown.empty': 'empty',
+  'diary.markdown.image.alt': 'Image',
+  'diary.markdown.image.load': 'Opens in a new tab',
+  'diary.markdown.image.ariaLabel': 'Open image: {alt} from {host} — opens in a new tab',
   'diary.modal.closeDialog': 'Close dialog',
   'settings.title': 'Settings',
 
@@ -380,6 +387,7 @@ export const EN_GB = {
   'chat.empty.projectIntro': 'Your project’s files and instructions are ready.',
   'chat.noModel': 'No model is installed on this server yet, so replies cannot start.',
   'chat.openModels': 'Open Models & routing',
+  'chat.jumpToLatest': 'Jump to latest',
   'msg.copy': 'Copy',
   'msg.copied': 'Copied',
   'msg.regenerate': 'Regenerate',

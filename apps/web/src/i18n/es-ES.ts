@@ -13,6 +13,10 @@ export const ES_ES: Catalogue = {
   'common.off': "Desactivado",
   'common.system': "Sistema",
   'common.newChat': "Nuevo chat",
+  'nav.notFound.chatTitle': "Este chat no está disponible",
+  'nav.notFound.chatBody': "Puede que se haya eliminado o que el enlace pertenezca a otra cuenta.",
+  'nav.notFound.projectTitle': "Este proyecto no está disponible",
+  'nav.notFound.projectBody': "Puede que se haya eliminado o que el enlace pertenezca a otra cuenta.",
 
   'sidebar.newTask': "Nueva tarea",
   'sidebar.code.pullRequests': "Pull requests",
@@ -292,6 +296,9 @@ export const ES_ES: Catalogue = {
   'diary.markdown.noFileOfThatName': "No hay ningún archivo con ese nombre aquí",
   'diary.markdown.properties': "Propiedades",
   'diary.markdown.empty': "vacío",
+  'diary.markdown.image.alt': "Imagen",
+  'diary.markdown.image.load': "Se abre en una pestaña nueva",
+  'diary.markdown.image.ariaLabel': "Abrir imagen: {alt} desde {host} — se abre en una pestaña nueva",
   'diary.modal.closeDialog': "Cerrar diálogo",
   'settings.title': "Ajustes",
 
@@ -375,6 +382,7 @@ export const ES_ES: Catalogue = {
   'chat.empty.projectIntro': "Los archivos y las instrucciones de tu proyecto están listos.",
   'chat.noModel': "Aún no hay ningún modelo instalado en este servidor, así que no pueden empezar las respuestas.",
   'chat.openModels': "Abrir Modelos y enrutamiento",
+  'chat.jumpToLatest': "Ir a lo último",
   'msg.copy': "Copiar",
   'msg.copied': "Copiado",
   'msg.regenerate': "Regenerar",

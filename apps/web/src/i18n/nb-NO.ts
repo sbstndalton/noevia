@@ -13,6 +13,10 @@ export const NB_NO: Catalogue = {
   'common.off': "Av",
   'common.system': "System",
   'common.newChat': "Ny chat",
+  'nav.notFound.chatTitle': "Denne chatten er ikke tilgjengelig",
+  'nav.notFound.chatBody': "Den kan ha blitt slettet, eller lenken tilhører en annen konto.",
+  'nav.notFound.projectTitle': "Dette prosjektet er ikke tilgjengelig",
+  'nav.notFound.projectBody': "Det kan ha blitt slettet, eller lenken tilhører en annen konto.",
 
   'sidebar.newTask': "Ny oppgave",
   'sidebar.code.pullRequests': "Pull-forespørsler",
@@ -292,6 +296,9 @@ export const NB_NO: Catalogue = {
   'diary.markdown.noFileOfThatName': "Ingen fil med det navnet her",
   'diary.markdown.properties': "Egenskaper",
   'diary.markdown.empty': "tom",
+  'diary.markdown.image.alt': "Bilde",
+  'diary.markdown.image.load': "Åpnes i en ny fane",
+  'diary.markdown.image.ariaLabel': "Åpne bilde: {alt} fra {host} — åpnes i en ny fane",
   'diary.modal.closeDialog': "Lukk dialogboks",
   'settings.title': "Innstillinger",
 
@@ -375,6 +382,7 @@ export const NB_NO: Catalogue = {
   'chat.empty.projectIntro': "Filene og instruksjonene i prosjektet er klare.",
   'chat.noModel': "Ingen modell er installert på denne serveren ennå, så svar kan ikke starte.",
   'chat.openModels': "Åpne Modeller og ruting",
+  'chat.jumpToLatest': "Hopp til siste",
   'msg.copy': "Kopier",
   'msg.copied': "Kopiert",
   'msg.regenerate': "Generer på nytt",
