@@ -17,7 +17,8 @@ test('ModelCard imports the chat-generation-model check and derives protectedMod
 });
 
 test('Tune is hidden for any non-chat (embedding/reranking) model, not just Laya', () => {
-  assert.match(src, /\{!system && chatModel && <button className="popup-tab" onClick=\{onConfigure\}>\{t\('mm\.card\.tune'\)\}<\/button>\}/);
+  // #421: the button also carries a per-model aria-label now, between className and onClick.
+  assert.match(src, /\{!system && chatModel && <button className="popup-tab" aria-label=\{t\('mm\.card\.tuneNamed', \{ model: m\.name \}\)\} onClick=\{onConfigure\}>\{t\('mm\.card\.tune'\)\}<\/button>\}/);
 });
 
 test('Delete is hidden for a model a live sidecar depends on (protectedModel), matching the system-model treatment', () => {

@@ -25,13 +25,24 @@ test('committing or cancelling a list rename returns focus to that row (#355)', 
 });
 test('quick-archive goes through the undo-toast path, not a bare patch call (#362)', () => {
   const archiveButton = src.slice(src.indexOf('sidebar.archiveNamed'), src.indexOf('sidebar.archiveNamed') + 300);
-  assert.match(archiveButton, /onClick=\{\(\)=>archiveChat\(c,projectId\)\}/);
+  // #362 (reopened again): archiveChat also takes whether the click was keyboard-activated
+  // (event.detail === 0), so a keyboard-initiated archive can put focus straight on the toast's
+  // Undo button rather than relying on the ordinary Tab order to find it in time.
+  assert.match(archiveButton, /onClick=\{\(e\)=>archiveChat\(c,projectId,e\.detail===0\)\}/);
 });
 test('the archive-undo toast offers Undo and is announced politely, not as an alert (#362)', () => {
-  const toast = src.slice(src.indexOf('archiveUndo &&'), src.indexOf('archiveUndo &&') + 400);
+  const toast = src.slice(src.indexOf('archiveUndo &&'), src.indexOf('archiveUndo &&') + 600);
   assert.match(toast, /role="status"/);
   assert.match(toast, /onClick=\{undoArchive\}/);
   assert.match(toast, /common\.undo/);
+});
+test('a keyboard-initiated archive focuses the toast\'s Undo button, and the auto-dismiss pauses while the toast holds focus (#362)', () => {
+  const toast = src.slice(src.indexOf('archiveUndo &&'), src.indexOf('archiveUndo &&') + 600);
+  assert.match(toast, /ref=\{undoButtonRef\}/);
+  assert.match(toast, /onFocus=\{/);
+  assert.match(toast, /onBlur=\{/);
+  const effect = src.slice(src.indexOf('archiveUndo?.keyboardInitiated'), src.indexOf('archiveUndo?.keyboardInitiated') + 200);
+  assert.match(effect, /undoButtonRef\.current\?\.focus\(\)/);
 });
 test('undo restores the same chat without touching its position-determining fields (#362)', () => {
   const undo = src.slice(src.indexOf('const undoArchive'), src.indexOf('const undoArchive') + 300);
