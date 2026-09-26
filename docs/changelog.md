@@ -8,6 +8,63 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 69712fb — 2026-09-26 (merge #441, deploy #441)
+
+### Services
+
+- **Web:** [#441](https://github.com/sbstndalton/noevia/pull/441) closes #434, #435, #436, #437 —
+  the composer textarea now syncs its own height to content on every value change (typing, draft
+  restore, edit-message load, and the clear right after send), growing up to each surface's own
+  CSS `max-height` and then scrolling internally, and shrinking back down after send; focus now
+  returns to the composer textarea after Stop and after a completed Send on desktop, without
+  stealing focus the user has since moved elsewhere (not on touch, where nothing was disabled);
+  "Jump to latest" gets a `min-height: 44px` touch target under `@media (pointer: coarse)`, with
+  the fine-pointer pill unchanged; and dropping files onto the composer or the whole chat pane now
+  runs through the existing attachment pipeline (`uploadAttachments`, extracted out of
+  `ComposerActions` so there is one implementation, not two), with the same size limits and error
+  copy as the picker, a visible drag-over state, and an `aria-live` announcement in every locale —
+  deployed as `cowork-web:69712fb`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup
+  `.env.bak.before-69712fb`. Image tag and release directory use the 7-character short SHA
+  (`69712fb`), matching the convention from before release 11911da07a6512a39f2aa6347dda5ee5ac8bbd03
+  (Batch 12), which had used the full 40-character SHA.
+
+PR #441 was draft with CI green (7/7) at head `8894080`, based on `origin/main` at `8b07148`
+(already current, so no main-merge or worktree rebase was needed). Marked ready and squash-merged
+(`--match-head-commit 88940809a164df61652d0ee00ea7c260def7644e`) to `69712fb`. Remote branch
+`fix/434-437-composer` and its local worktree/clone (`/tmp/noevia-fix-434`) deleted after merge.
+
+Built `cowork-web:69712fb` on DaServer from `releases/69712fb` (git archive of `main`@`69712fb`,
+scp'd — no git creds on the box). The build ran all 687 server/unit tests (687 pass, 0 fail) before
+`vite build`. `current` symlink and `COWORK_VERSION` updated; every other `*_VERSION` left
+untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`, `MODEL_MANAGER_VERSION=1c87ab0`,
+`DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Applied with the installed
+preflight, web-only: `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+`cowork-web-1` came up healthy, `RestartCount` 0, `Image=cowork-web:69712fb`,
+`Started=2026-09-26T12:37:40Z`. `cowork-diary-1`, `cowork-ocr-1`, `cowork-model-loader-1`,
+`cowork-code-sandbox-1`, `cowork-laya-1`, `cowork-docling-1`, `cowork-llama-1` and `cowork-kiwix-1`
+all kept their pre-release container `Id` and `StartedAt` unchanged, confirming `--no-deps` did
+not recreate them. (`cowork-embed-1` was already crash-looping before this deploy, unrelated and
+untouched — its `Id` is unchanged; its `StartedAt` moved during the deploy window consistent with
+its ongoing restart loop, not this release.) `https://noevia.daserver.work/` returned `200`,
+`/api/profile` returned `401`, and the served `index.html` referenced
+`index-Cny5uga5.js`/`index-s3O06YwV.css`, both present in the built image's `dist/assets`.
+
+Rollback (not needed — all checks passed): `ssh daserver 'ln -sfn
+/mnt/docker/appdata/cowork/releases/11911da07a6512a39f2aa6347dda5ee5ac8bbd03
+/mnt/docker/appdata/cowork/current && cp
+/mnt/docker/appdata/cowork/config/.env.bak.before-69712fb
+/mnt/docker/appdata/cowork/config/.env && cd /boot/config/plugins/compose.manager/projects/Cowork
+&& bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web'`.
+
 ## Release web 11911da — 2026-09-26 (merge #438, deploy #438)
 
 ### Services
