@@ -20,12 +20,23 @@ test('Cancel uses the shared secondary button class, not the dead "secondary" cl
   assert.doesNotMatch(cancel, /className="secondary"/);
 });
 
-// #355: cancelling a message edit (Escape or the Cancel button) must not drop focus to <body>.
-test('cancelling a message edit returns focus to that message\'s own Edit button, both from Escape and the Cancel button', () => {
+// #355 (reopened): cancelling a message edit (Escape or the Cancel button) must not drop focus to
+// <body>. The previous fix called `editTriggers.current.get(id)?.focus()` synchronously from
+// cancelEdit — but the trigger is unmounted (and deleted from that map) the instant editing
+// starts, and only remounts on the *next* render, after that synchronous call already returned.
+// A source-text match on the old one-liner was passing while the real behaviour stayed broken
+// (see the issue's live-repro evidence), so this now checks the actual fix: the focus call is
+// deferred to a layout effect keyed on `editingId`, through the pure, independently-tested
+// `edit-focus.ts` helpers (see tests/edit-focus.test.cjs for the race itself).
+test('cancelling a message edit defers focus to a layout effect through the tested edit-focus helpers, both from Escape and the Cancel button', () => {
   const editRegion = src.slice(src.indexOf("const [editingId, setEditingId]"), src.indexOf('msg-edit-actions'));
-  assert.match(editRegion, /const cancelEdit = \(id: string\) => \{ setEditingId\(null\); editTriggers\.current\.get\(id\)\?\.focus\(\); \};/);
+  assert.match(editRegion, /const cancelEdit = \(id: string\) => \{ editFocus\.current = onCancelEdit\(id\); setEditingId\(null\); \};/);
+  assert.match(editRegion, /useLayoutEffect\(\(\) => \{\s*const \{ focusId, next \} = focusAfterRender\(editingId, editFocus\.current\);/);
   assert.match(editRegion, /if \(e\.key === 'Escape'\) \{ cancelEdit\(m\.id\); return; \}/);
   assert.match(block, /onClick=\{\(\) => cancelEdit\(m\.id\)\}/);
+});
+test('ChatView imports the edit-focus helpers rather than reimplementing the race fix inline', () => {
+  assert.match(src, /import \{ onCancelEdit, focusAfterRender, type EditFocusState \} from '\.\.\/edit-focus';/);
 });
 test("the message's Edit button is tracked so cancelEdit can find it back", () => {
   const editButton = src.slice(src.indexOf('msg-edit-btn') - 200, src.indexOf('msg-edit-btn') + 50);
