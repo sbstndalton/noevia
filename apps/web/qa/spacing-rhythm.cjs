@@ -66,7 +66,7 @@ function probe(phone) {
   for (const el of document.querySelectorAll('[aria-current="page"], .is-active, [aria-checked="true"], [aria-selected="true"]')) {
     if (!visible(el)) continue;
     const cs = getComputedStyle(el);
-    const ring = (cs.outlineStyle !== 'none' ? parseFloat(cs.outlineWidth) + Math.max(0, parseFloat(cs.outlineOffset)) : 0)
+    const ring = (cs.outlineStyle !== 'none' ? Math.max(0, parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset)) : 0)
       + Math.max(0, ...[...cs.boxShadow.matchAll(/(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px/g)].filter((m) => !/inset/.test(cs.boxShadow)).map((m) => parseFloat(m[4])));
     if (!ring) continue;
     const r = el.getBoundingClientRect();
@@ -177,31 +177,29 @@ async function run(browser, cfg, surfaces, report) {
       await page.keyboard.press('Escape');
     });
     const cats = CATEGORIES.filter(([id]) => surfaces.includes('settings:all') || surfaces.includes(`settings:${id}`));
-    if (phone && surfaces.includes('settings:list')) await safe('settings-list', async () => { await home(); await openSettings(page, phone); await shot('settings-list'); });
-    for (const [id, label] of cats) await safe(`settings-${id}`, async () => {
-      await home();
-      const nav = await openSettings(page, phone);
-      await nav.getByRole('button', { name: new RegExp(`^${label.replace(/[()&]/g, (c) => '\\' + c)}`) }).first().click();
-      await page.waitForTimeout(500);
+    // Every surface has its own address (#359), so each shot starts from a clean load of it.
+    const visit = async (route, ready) => { await page.goto(`http://localhost:${PORT}${route}`); await page.locator(ready).first().waitFor(); await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(500); };
+    if (phone && surfaces.includes('settings:list')) await safe('settings-list', async () => {
+      await visit('/settings/appearance', '.settings-detail-scroll');
+      await page.getByRole('button', { name: 'All settings' }).first().click();
+      await page.getByRole('navigation', { name: 'Settings categories' }).waitFor();
+      await shot('settings-list');
+    });
+    for (const [id] of cats) await safe(`settings-${id}`, async () => {
+      await visit(`/settings/${id}`, '.settings-detail-scroll');
       await shot(`settings-${id}`);
       // Long pages: a second frame from further down.
       const more = await page.evaluate(() => { const s = document.querySelector('.settings-detail-scroll'); if (!s || s.scrollHeight <= s.clientHeight + 40) return false; s.scrollTop = s.clientHeight - 80; return true; });
       if (more && !QUICK) await shot(`settings-${id}-2`);
     });
     if (surfaces.includes('models')) for (const tab of ['Overview', 'Your models', 'Discover', 'Routing', 'Hardware']) await safe(`models-${tab}`, async () => {
-      await home(); const nav = await openSettings(page, phone);
-      await nav.getByRole('button', { name: /^Models & routing/ }).first().click();
-      await page.getByRole('button', { name: /Open model manager/ }).first().click().catch(() => {});
-      const t = page.getByRole('tab', { name: new RegExp(`^${tab}`) }).first();
-      await t.waitFor({ timeout: 8000 }); await t.click(); await page.waitForTimeout(400);
+      await visit('/models', '[role="tab"]');
+      await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).first().click(); await page.waitForTimeout(400);
       await shot(`models-${tab.toLowerCase().replace(/\s+/g, '-')}`);
     });
-    if (surfaces.includes('customise')) for (const tab of ['Skills', 'Connectors', 'Plugins']) await safe(`customise-${tab}`, async () => {
-      await home(); await navClick('Customise');
-      await page.locator('.plugins-page').waitFor({ timeout: 8000 });
-      await page.locator('.plugins-page').getByRole('radio', { name: tab, exact: true }).or(page.locator('.plugins-page').getByRole('button', { name: tab, exact: true })).first().click();
-      await page.waitForTimeout(400);
-      await shot(`customise-${tab.toLowerCase()}`);
+    if (surfaces.includes('customise')) for (const tab of ['skills', 'connectors', 'plugins']) await safe(`customise-${tab}`, async () => {
+      await visit(`/customise/${tab}`, '.plugins-page');
+      await shot(`customise-${tab}`);
     });
     if (surfaces.includes('projects')) await safe('projects', async () => {
       await home(); await navClick('Projects');
