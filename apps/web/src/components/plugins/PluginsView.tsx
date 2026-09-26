@@ -34,9 +34,15 @@ async function signInTab(get: () => Promise<string | null>): Promise<boolean> {
 /** Customise (#238, formerly "Plugins"): Skills, Connectors and Plugins as three tabs. Connectors
  *  are accounts you link (Google Drive and friends); Plugins are MCP servers, installed first and
  *  then the public directory. The view id stays `plugins`, so saved places and links still resolve. */
-export function PluginsView({ onStartChat, embedded = false, projects = [], onProjectsChanged, initialTab }: { onStartChat?: (prompt: string) => void; embedded?: boolean; projects?: { id: string; name: string }[]; onProjectsChanged?: () => void; initialTab?: string }): JSX.Element {
+export function PluginsView({ onStartChat, embedded = false, projects = [], onProjectsChanged, initialTab, onTabChange }: { onStartChat?: (prompt: string) => void; embedded?: boolean; projects?: { id: string; name: string }[]; onProjectsChanged?: () => void; initialTab?: string; onTabChange?: (tab: CustomiseTab) => void }): JSX.Element {
   const t = useT();
   const [tab, setTab] = useState<CustomiseTab>(() => customiseTab(initialTab));
+  // The address bar follows the tab and Back/Forward hand it back in (#359); the echo of our own
+  // report is a no-op.
+  useEffect(() => { if (initialTab) setTab(customiseTab(initialTab)); }, [initialTab]);
+  const reportTab = useRef(onTabChange);
+  reportTab.current = onTabChange;
+  useEffect(() => { reportTab.current?.(tab); }, [tab]);
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => { let live = true; fetchProfile().then((p) => { if (live) setIsAdmin(p.user.role === 'admin'); }).catch(() => undefined); return () => { live = false; }; }, []);
   const body = <div className="plugins-page">
@@ -159,7 +165,7 @@ function Directory({ kind, projects, onProjectsChanged, isAdmin }: { kind: 'mcp'
               </details></span>
             <span className="plugin-card-actions"><AddServer item={{ id: a.registryName, name: a.title, publisher: '', description: '', version: '', url: '', remote: true, installable: true, headers: a.declaredHeaders }} added={a} onChange={setAdded}/></span>
           </li>)}</ul>
-        : <p className="plugins-note" role="status">{yourQuery ? t('customise.noAddedServersMatch', { query: yourQuery }) : t('customise.noAddedServers')}</p>}
+        : <p className="plugins-note" role="status">{yourQuery ? t('customise.noAddedServersMatch', { query: yourQuery }) : <>{t('customise.noAddedServers')} {t('customise.builtInServersNote')} <button type="button" className="link-button" onClick={() => window.dispatchEvent(new Event('noevia:open-service-status'))}>{t('customise.viewServiceStatus')}</button></>}</p>}
     </> : <>
       <div className="settings-search plugins-search"><ShellIcon name="search" size={16}/><input aria-label={kind === 'mcp' ? t('customise.searchMcpPlaceholder') : t('customise.searchSkillsDiscoverPlaceholder')} placeholder={kind === 'mcp' ? t('customise.searchMcpPlaceholder') : t('customise.searchSkillsDiscoverPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)}/></div>
     <p className="plugins-note">{kind === 'mcp'

@@ -70,8 +70,9 @@ const HISTORY_CAP = 1000;
 // The saved transcript is the record, not the model window: keep it whole within generous bounds.
 const STORED_HISTORY_CAP = 5000;
 const STORED_HISTORY_BYTES = 32 * 1024 * 1024;
-const SPAFallbacks = ['/', '/chat', '/diary', '/projects', '/settings'];
 const staticFiles = require('./static-files.cjs').createStaticFiles(DIST_DIR);
+// The build, with index.html for the client's own places (/c/<id>, /p/<id>, /settings/<section>…, #359).
+const serveStatic = require('./spa-routes.cjs').createStaticFallback({ staticFiles, indexFile: path.join(DIST_DIR, 'index.html'), json });
 const secretStore = createSecretStore(DATA_DIR);
 const authService = createAuth({
   dataDir: DATA_DIR,
@@ -626,7 +627,7 @@ const readyRoutes = require('./routes/health.cjs').createReadyRoutes({
 });
 // GET /api/toolboxes: the picker view (routes/toolboxes.cjs). MCP state is read at call time.
 const toolboxRoutes = require('./routes/toolboxes.cjs').createToolboxRoutes({
-  discoverMcpTools: () => discoverMcpTools(), toolboxSummaries, json,
+  discoverMcpTools: () => discoverMcpTools(), toolboxSummaries, connectedBoxes, json,
   prefill: { targetMs: TOOL_PREFILL_TARGET_MS, stats: () => prefill.stats() },
   mcp: () => ({ enabled: mcpWiring.enabled(), state: mcpState, servers: MCP_SERVERS, manifest: MCP_TOOLBOX_MANIFEST }),
   // The per-turn catalogue (#237). getProject is scoped to the signed-in account's workspace.
@@ -717,16 +718,8 @@ async function handleRequestScoped(req, res) {
 
     if (await chatRoutes(req, res, { path: p, authn })) return;
 
-    // Static files with SPA fallback.
-    const found = staticFiles.resolve(p);
-    if (found && found.forbidden) return json(res, 403, { error: 'forbidden' });
-    if (!found && !SPAFallbacks.includes(p)) return json(res, 404, { error: 'not found' });
-    try {
-      return staticFiles.send(req, res, found ? found.filePath : path.join(DIST_DIR, 'index.html'), found ? p : '/');
-    } catch {
-      if (!res.headersSent) return json(res, 500, { error: 'read error' });
-      return res.end();
-    }
+    // Static files with SPA fallback (spa-routes.cjs).
+    return serveStatic(req, res, p);
   } catch (err) {
     if (res.destroyed || res.writableEnded) return;
     if (res.headersSent) {

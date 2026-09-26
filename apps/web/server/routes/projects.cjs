@@ -13,6 +13,9 @@ const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'
 const IMAGE_UPLOAD_CAP = 8 * 1024 * 1024;
 const DOCUMENT_UPLOAD_CAP = 25 * 1024 * 1024;
 const MAX_PROJECT_IMAGES = 12;
+// Shared with projects.cjs's createProject and the create/edit dialogs (src/project-limits.ts,
+// #398) so a name is capped identically everywhere it can be set.
+const { nameMaxLength: PROJECT_NAME_MAX_LENGTH } = require('../project-limits.json');
 
 const PASS = Symbol('unhandled');
 
@@ -80,7 +83,11 @@ function createProjectRoutes({
       if (!id) return json(res, 400, { error: 'Invalid chat identifier' });
       let project = getProject(id);
       if (!project && req.method === 'POST') {
-        project = { ...diaryExtras.newProject(), id, name: 'Chat attachments ' + freeContext[1], instructions: '', toolboxes: [...DEFAULT_TOOLBOXES] };
+        // diaryExtras.newProject() is written for the Diary project, which really does default
+        // to manual — a standalone chat's shadow context must not inherit that (#352). It starts
+        // on Auto like any other free chat with no explicit choice, until routingChosen (below)
+        // records that a person actually picked one.
+        project = { ...diaryExtras.newProject(), id, name: 'Chat attachments ' + freeContext[1], instructions: '', toolboxes: [...DEFAULT_TOOLBOXES], routing: 'auto' };
         PROJECTS.push(project); saveProjects(PROJECTS);
       }
       return json(res, 200, { project });
@@ -183,10 +190,20 @@ function createProjectRoutes({
       const project = { ...storedProject, ...appearance };
       if (patch.reasoningEffort === null) delete project.reasoningEffort;
       else if (patch.reasoningEffort !== undefined) project.reasoningEffort = patch.reasoningEffort;
-      if (typeof patch.name === 'string' && patch.name.trim()) project.name = patch.name.trim().slice(0, 120);
+      if (typeof patch.name === 'string' && patch.name.trim()) project.name = patch.name.trim().slice(0, PROJECT_NAME_MAX_LENGTH);
       if (typeof patch.goal === 'string') project.goal = patch.goal.slice(0, 2000);
       if (typeof patch.instructions === 'string') project.instructions = patch.instructions.slice(0, 8000);
       if (typeof patch.model === 'string' && patch.model) project.model = patch.model;
+      // Picking a model is a manual choice even when the caller only sent `model` — the picker
+      // row itself now sends `routing: 'manual'` alongside it (#384), but older/other callers
+      // that patch `model` alone must not have the pick silently auto-routed away on the next
+      // send. An explicit `routing` in the same patch is a deliberate combination (e.g. picking
+      // a model while staying on Auto) and always wins — handled by the block below, which runs
+      // after this one.
+      if (typeof patch.model === 'string' && patch.model && typeof patch.routing !== 'string') {
+        project.routing = 'manual';
+        project.routingChosen = true;
+      }
       // Pin and archive are plain booleans rather than a status enum: a project
       // can be both pinned and archived, and collapsing them would lose that.
       if (typeof patch.pinned === 'boolean') project.pinned = patch.pinned;
@@ -209,6 +226,10 @@ function createProjectRoutes({
           return json(res, 400, { error: "routing must be 'auto' or 'manual'" });
         }
         project.routing = patch.routing;
+        // Marks this value as a person's own choice, never the template default a project or
+        // shadow chat-context object was created with (#352). getProject()'s migration only
+        // self-heals a stale 'manual' when this is absent.
+        project.routingChosen = true;
         if (patch.routing === 'auto') ensureRolesLoaded(); // no-op if unconfigured
       }
       if (typeof patch.provider === 'string' && patch.provider) {

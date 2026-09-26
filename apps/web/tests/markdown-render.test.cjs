@@ -1,0 +1,127 @@
+// #388/#389/#390: MarkdownPreview (apps/web/src/components/DiaryModal.tsx), loaded through Vite's
+// SSR pipeline (same technique as message-actions-render.test.cjs and customise-i18n-render.test.cjs)
+// so JSX and the import graph resolve exactly as in the app, then rendered to static markup.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+async function withSsr(run) {
+  const { createServer } = await import('vite');
+  const server = await createServer({
+    configFile: false,
+    root: path.resolve(__dirname, '..'),
+    server: { middlewareMode: true },
+    appType: 'custom',
+    plugins: [(await import('@vitejs/plugin-react')).default()],
+  });
+  global.window = { matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }), addEventListener() {}, removeEventListener() {} };
+  global.document = { documentElement: { dataset: {} } };
+  global.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+  global.navigator = { language: 'en-GB', languages: ['en-GB'], clipboard: { writeText: () => Promise.resolve() } };
+  try {
+    await run(server);
+  } finally {
+    delete global.window; delete global.document; delete global.localStorage; delete global.navigator;
+    await server.close();
+  }
+}
+
+async function renderMarkdown(server, text, props = {}) {
+  const React = require('react');
+  const { renderToStaticMarkup } = require('react-dom/server');
+  const { MarkdownPreview } = await server.ssrLoadModule('/src/components/DiaryModal.tsx');
+  return renderToStaticMarkup(React.createElement(MarkdownPreview, { text, ...props }));
+}
+
+test('#388: all six heading levels render as distinguishable headings, not two colliding on <h4> and two not rendering at all', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, [
+      '# Level1 heading', '## Level2 heading', '### Level3 heading',
+      '#### Level4 heading', '##### Level5 heading', '###### Level6 heading',
+    ].join('\n'));
+    assert.match(html, /<h2>Level1 heading<\/h2>/);
+    assert.match(html, /<h3>Level2 heading<\/h3>/);
+    assert.match(html, /<h4>Level3 heading<\/h4>/);
+    assert.match(html, /<h5>Level4 heading<\/h5>/, 'level 4 must no longer share <h4> with level 3');
+    assert.match(html, /<h6[^>]*>Level5 heading<\/h6>/, 'level 5 must render as a heading, not leak "#####" as text');
+    assert.match(html, /<h6 class="md-h6-2">Level6 heading<\/h6>/, 'level 6 gets its own modifier so it stays visually below level 5');
+    assert.doesNotMatch(html, /#####/, 'no literal hash marks should reach the page');
+  });
+});
+
+test('#389: two consecutive blockquote lines merge into a single <blockquote>, not two separately-bordered boxes', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '> Quote line one\n> Quote line two');
+    const boxes = [...html.matchAll(/<blockquote>/g)];
+    assert.equal(boxes.length, 1, 'expected exactly one <blockquote> for the whole quoted passage');
+    assert.match(html, /<blockquote>Quote line one<br\/>Quote line two<\/blockquote>/);
+  });
+});
+
+test('#389: a blank line still separates two distinct quotes into two boxes', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '> First quote\n\n> Second quote');
+    const boxes = [...html.matchAll(/<blockquote>/g)];
+    assert.equal(boxes.length, 2);
+  });
+});
+
+test('#390: a data: image (nothing to fetch) renders as a real <img> immediately', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '![pic](data:image/png;base64,iVBORw0KGgo=)');
+    assert.match(html, /<img class="md-image" src="data:image\/png;base64,iVBORw0KGgo=" alt="pic"/);
+  });
+});
+
+test('#390: a safe https image never auto-loads, and never becomes an <img> even on request — the server CSP (img-src \'self\' data:) would block it; it opens as a real link in a new tab instead', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '![real image](https://picsum.photos/40)');
+    assert.doesNotMatch(html, /<img\b/, 'must never be a live <img> src — the CSP blocks it and this renderer must not pretend otherwise');
+    assert.doesNotMatch(html, /!real image|!<a/, 'the old bug leaked a literal "!" in front of a plain link');
+    assert.match(html, /<a href="https:\/\/picsum\.photos\/40" target="_blank" rel="noopener noreferrer nofollow" class="md-image-chip" aria-label="Open image: real image from picsum\.photos — opens in a new tab">/);
+    assert.match(html, />real image</, 'the alt text is visible on the chip');
+    assert.match(html, />picsum\.photos ·/, 'the host is visible before the reader decides to open it');
+  });
+});
+
+test('#390: an image with no alt text still gets a sensible chip label instead of an empty one', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '![](https://example.com/x.png)');
+    assert.match(html, /aria-label="Open image: Image from example\.com — opens in a new tab"/);
+  });
+});
+
+test('#390 sanitisation regression: a javascript: image source is never rendered live, exactly like an unsafe link', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '![x](javascript:alert(1))');
+    assert.doesNotMatch(html, /<img\b/);
+    assert.doesNotMatch(html, /<a\b/);
+    assert.doesNotMatch(html, /javascript:alert\(1\)"/, 'the scheme must never end up in a live src/href attribute');
+  });
+});
+
+test('sanitisation regression: existing link handling is untouched — a safe https link still renders <a>, an unsafe scheme still falls back to plain text', async () => {
+  await withSsr(async (server) => {
+    const safe = await renderMarkdown(server, '[docs](https://example.com/docs)');
+    assert.match(safe, /<a href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer nofollow">docs<\/a>/);
+    const unsafe = await renderMarkdown(server, '[click me](javascript:alert(1))');
+    assert.doesNotMatch(unsafe, /<a\b/);
+    assert.match(unsafe, /click me \(javascript:alert\(1\)\)/);
+  });
+});
+
+test('#390: the server CSP this decision depends on is still img-src \'self\' data: — if that ever loosens, MarkdownImage\'s "remote can never be an <img>" reasoning needs re-checking, not silent staleness', () => {
+  const fs = require('node:fs');
+  const serverSrc = fs.readFileSync(path.resolve(__dirname, '../server/index.cjs'), 'utf8');
+  const csp = serverSrc.match(/Content-Security-Policy'\s*,\s*"([^"]+)"/);
+  assert.ok(csp, 'could not find the CSP header to check');
+  assert.match(csp[1], /img-src 'self' data:/);
+});
+
+test('sanitisation regression: raw HTML in a reply is still never interpreted', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '<img src=x onerror=alert(1)>');
+    assert.doesNotMatch(html, /<img src=x/);
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  });
+});

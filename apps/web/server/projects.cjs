@@ -10,6 +10,11 @@
 // builds over the current workspace; everything else is injected so the
 // store can be exercised with fakes (projects.test.cjs).
 
+// The name length cap (#398) lives in one JSON file so the create/edit dialogs
+// (src/project-limits.ts) enforce the same limit the server applies here and in
+// routes/projects.cjs's PATCH handler.
+const { nameMaxLength: PROJECT_NAME_MAX_LENGTH } = require('./project-limits.json');
+
 /**
  * @param {object} deps
  * @param {object} deps.fs
@@ -43,6 +48,15 @@ function createProjectStore({
 
   function getProject(id) {
     const project = PROJECTS.find((p) => p.id === id) || null;
+    // One-time self-heal for a standalone chat's shadow context project created before #352 was
+    // fixed: it always inherited Diary's routing:'manual' template, with no person ever choosing
+    // it (a real choice is only ever recorded by the routing PATCH, which now also sets
+    // routingChosen). Once healed, or once a person picks a routing explicitly, this never
+    // reruns — routingChosen is set either way.
+    if (project && !project.routingChosen && project.routing === 'manual' && typeof project.id === 'string' && project.id.startsWith('cowork-chat-context-')) {
+      project.routing = 'auto';
+      currentWorkspace().saveProjects();
+    }
     if (project && require('./instruction-skills.cjs').reconcile(project)) currentWorkspace().saveProjects();
     return project;
   }
@@ -117,7 +131,7 @@ function createProjectStore({
   // invalid input. Shared by POST /api/projects and conversation import.
   async function createProject(body) {
     if (body.reasoningEffort !== undefined && !reasoningEffort.validEffort(body.reasoningEffort)) throw Object.assign(Error('Invalid reasoning effort'), { status: 400 });
-    const name = String(body.name || '').trim().slice(0, 120);
+    const name = String(body.name || '').trim().slice(0, PROJECT_NAME_MAX_LENGTH);
     if (!name) throw Object.assign(Error('name required'), { status: 400 });
     let modes = ['chat'];
     if (body.modes !== undefined) { try { modes = require('./project-modes.cjs').sanitize(body.modes); } catch (e) { throw Object.assign(Error(e.message), { status: 400 }); } }

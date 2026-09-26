@@ -1,5 +1,6 @@
 // Isolated UI fixture: every API is synthetic, no inference/storage/network calls.
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path');
+const { isClientRoute } = require('../server/spa-routes.cjs');
 const fixtureNcModes={};
 function createFixture(port = 31239) {
   let syntheticUser='synthetic-diary-only';
@@ -15,7 +16,9 @@ function createFixture(port = 31239) {
     if (!url.pathname.startsWith('/api/')) {
       // QA_DIST serves a build written elsewhere (npm run build -- --outDir X) instead of ../dist.
       const dist = path.resolve(process.env.QA_DIST || path.join(__dirname,'../dist'));
-      const file = path.join(dist,url.pathname === '/'?'index.html':url.pathname);
+      let file = path.join(dist,url.pathname === '/'?'index.html':url.pathname);
+      // The client's own places (/c/<id>, /settings/<section>…) get the shell, as the real server does (#359).
+      if ((!file.startsWith(dist+'/') || !fs.existsSync(file)) && isClientRoute(url.pathname)) file = path.join(dist,'index.html');
       if (!file.startsWith(dist+'/') || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
       if(process.env.LOCAL_RECOVERY_QA==='1' && url.pathname==='/') {
         res.setHeader('Content-Type','text/html');

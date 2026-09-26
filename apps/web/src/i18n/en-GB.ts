@@ -5,6 +5,8 @@
 // as parameters and never translated.
 export const EN_GB = {
   'common.cancel': 'Cancel',
+  'common.undo': 'Undo',
+  'common.dismiss': 'Dismiss',
   'common.save': 'Save',
   'common.saving': 'Saving…',
   'common.saved': 'Saved.',
@@ -14,6 +16,10 @@ export const EN_GB = {
   'common.off': 'Off',
   'common.system': 'System',
   'common.newChat': 'New chat',
+  'nav.notFound.chatTitle': 'This chat isn\'t available',
+  'nav.notFound.chatBody': 'It may have been deleted, or the link belongs to a different account.',
+  'nav.notFound.projectTitle': 'This project isn\'t available',
+  'nav.notFound.projectBody': 'It may have been deleted, or the link belongs to a different account.',
 
   'sidebar.newTask': 'New task',
   'sidebar.code.pullRequests': 'Pull requests',
@@ -37,6 +43,7 @@ export const EN_GB = {
   'sidebar.projectOrdering': 'Project ordering',
   'sidebar.projectName': 'Project name',
   'sidebar.chatName': 'Chat name',
+  'sidebar.renameChatLabel': 'Rename chat',
   'sidebar.expandChatsIn': 'Expand chats in {name}',
   'sidebar.collapseChatsIn': 'Collapse chats in {name}',
   'sidebar.openNamed': 'Open {name}',
@@ -52,12 +59,18 @@ export const EN_GB = {
   'sidebar.showFewer': 'Show fewer',
   'sidebar.viewAll': 'View all {count} chats',
   'sidebar.archivedChats': 'Archived chats',
+  'sidebar.chatArchivedToast': 'Chat archived',
   'sidebar.navigation': 'Navigation',
   'sidebar.openNavigation': 'Open navigation',
   'sidebar.closeNavigation': 'Close navigation',
   'sidebar.expandNavigation': 'Expand navigation',
   'sidebar.collapseNavigation': 'Collapse navigation',
   'sidebar.diary': 'Diary',
+  // #366: the footer's server count and Plugins → Added count different things — say so rather
+  // than let them look contradictory. Always shown with more than one server, so no singular form.
+  'sidebar.mcpServersBuiltIn': '{count} servers (built-in)',
+  'sidebar.mcpServersPartlyAdded': '{count} servers ({added} added)',
+  'sidebar.mcpBuiltInTooltip': 'Configured for this deployment. Plugins → Added lists only servers an administrator added there.',
   'sidebar.lastUsed': 'Last used',
   'sidebar.manualOrder': 'Manual order',
   'sidebar.moveUp': 'Move up',
@@ -141,6 +154,10 @@ export const EN_GB = {
   'projects.edit.dialogLabel': 'Edit {name}',
   'projects.edit.title': 'Edit project',
   'projects.edit.nameLabel': 'Project name',
+  // #398: mirrors projects.nameLengthCounter/-Label (the create dialog), kept in this
+  // catalogue because the rest of the edit dialog's strings live here too.
+  'projects.edit.nameLengthCounter': '{count}/{max}',
+  'projects.edit.nameLengthCounterLabel': '{count} of {max} characters used',
   'projects.edit.availableIn': 'Available in',
   'projects.edit.notBuiltYet': 'not built yet',
   'projects.edit.preview': 'preview',
@@ -288,6 +305,9 @@ export const EN_GB = {
   'diary.markdown.noFileOfThatName': 'No file of that name here',
   'diary.markdown.properties': 'Properties',
   'diary.markdown.empty': 'empty',
+  'diary.markdown.image.alt': 'Image',
+  'diary.markdown.image.load': 'Opens in a new tab',
+  'diary.markdown.image.ariaLabel': 'Open image: {alt} from {host} — opens in a new tab',
   'diary.modal.closeDialog': 'Close dialog',
   'settings.title': 'Settings',
 
@@ -371,6 +391,10 @@ export const EN_GB = {
   'chat.empty.projectIntro': 'Your project’s files and instructions are ready.',
   'chat.noModel': 'No model is installed on this server yet, so replies cannot start.',
   'chat.openModels': 'Open Models & routing',
+  'chat.jumpToLatest': 'Jump to latest',
+  'msg.copy': 'Copy',
+  'msg.copied': 'Copied',
+  'msg.regenerate': 'Regenerate',
   'tools.trigger': 'Tools',
   'tools.forMessage': '{count} for this message',
   'tools.browse': 'Browse tools (type / in an empty message)',
