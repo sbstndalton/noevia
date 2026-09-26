@@ -125,3 +125,78 @@ test('sanitisation regression: raw HTML in a reply is still never interpreted', 
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
   });
 });
+
+test('#431: a flat bulleted list renders as a real <ul> of <li>, not one <p class="md-bullet"> per line', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '- Item A\n- Item B\n- Item C');
+    assert.doesNotMatch(html, /md-bullet/, 'the old flat-paragraph rendering must be gone');
+    assert.match(html, /<ul class="md-list"><li>Item A<\/li><li>Item B<\/li><li>Item C<\/li><\/ul>/);
+  });
+});
+
+test('#431: nested bullets become a real nested <ul> inside the parent <li>, not a flatter list with padding', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '- Item A\n  - Sub item A1\n  - Sub item A2\n- Item B');
+    const outer = [...html.matchAll(/<ul class="md-list">/g)];
+    assert.equal(outer.length, 2, 'one outer list, one nested list');
+    assert.match(html, /<li>Item A<ul class="md-list"><li>Sub item A1<\/li><li>Sub item A2<\/li><\/ul><\/li><li>Item B<\/li>/);
+  });
+});
+
+test('#431: an ordered list renders as a real <ol> and keeps the model\'s own starting number', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '5. First\n6. Second');
+    assert.match(html, /<ol class="md-list" start="5"><li>First<\/li><li>Second<\/li><\/ol>/);
+  });
+});
+
+test('#431: a nested ordered list under a bulleted item nests correctly and keeps its own start number', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '1. First\n2. Second\n   1. Nested second');
+    assert.match(html, /<ol class="md-list" start="1"><li>First<\/li><li>Second<ol class="md-list" start="1"><li>Nested second<\/li><\/ol><\/li><\/ol>/);
+  });
+});
+
+test('#431: a task list keeps checkbox state as a real, disabled checkbox — checked for "[x]", unchecked for "[ ]"', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '- [ ] Not done yet\n- [x] Already done');
+    assert.match(html, /<li class="md-task"><label class="md-task-label"><input type="checkbox" class="md-task-box" disabled="" readOnly=""\/>Not done yet<\/label><\/li>/);
+    assert.match(html, /<li class="md-task md-task-done"><label class="md-task-label"><input type="checkbox" class="md-task-box" disabled="" readOnly="" checked=""\/>Already done<\/label><\/li>/);
+  });
+});
+
+test('#431: a marker-type change at the same indent starts a new list instead of mixing bullets and numbers in one', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '- A bullet\n1. Then a number');
+    const lists = [...html.matchAll(/<(ul|ol) class="md-list"/g)].map((m) => m[1]);
+    assert.deepEqual(lists, ['ul', 'ol'], 'two separate lists, not one mixed list');
+  });
+});
+
+test('#431: a list still streaming (no closing content on its last line) renders without crashing, and grows in place', async () => {
+  await withSsr(async (server) => {
+    const partial = await renderMarkdown(server, '- Item A\n- Item B is still str');
+    assert.match(partial, /<li>Item B is still str<\/li><\/ul>/, 'the still-streaming last item renders whatever text has arrived so far');
+    const grown = await renderMarkdown(server, '- Item A\n- Item B is still streaming in');
+    assert.match(grown, /<li>Item B is still streaming in<\/li><\/ul>/);
+  });
+});
+
+test('#431: a list correctly hands control back to the rest of the renderer — a paragraph before and after a list, and a heading right after it, all still render', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, 'Intro paragraph.\n- Item A\n- Item B\n## Heading after\nOutro paragraph.');
+    assert.match(html, /<p>Intro paragraph\.<\/p>/);
+    assert.match(html, /<ul class="md-list"><li>Item A<\/li><li>Item B<\/li><\/ul>/);
+    assert.match(html, /<h3>Heading after<\/h3>/);
+    assert.match(html, /<p>Outro paragraph\.<\/p>/);
+  });
+});
+
+test('#431: the Copy action still copies raw Markdown, not the rendered list HTML (#356)', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.resolve(__dirname, '../src/components/ChatView.tsx'), 'utf8');
+  // The copy handler must read the message's own raw `content` (the Markdown source this renderer
+  // consumes), never anything read back off the rendered DOM — the same guarantee #356 already
+  // established, now re-checked so #431's rewrite of the list branches did not disturb it.
+  assert.match(src, /navigator\.clipboard\?\.writeText\(content\)/, 'Copy must still hand the raw message content to the clipboard, never the rendered list HTML');
+});
