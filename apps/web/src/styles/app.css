@@ -1084,7 +1084,9 @@ button:disabled { cursor: not-allowed; }
 }
 .projects-search::placeholder { color: var(--text-faint); }
 .projects-search:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.projects-head .btn-primary { margin-left: auto; }
+/* .projects-search already carries margin-left:auto (noevia.css), which is what pushes the
+   filter/sort/new-project cluster to the right of the tabs — a second auto margin here split
+   New project away from Sort instead of grouping with it (orchestrator review on #427). */
 
 .projects-grid {
   max-width: 1160px; margin-inline: auto;
@@ -1120,7 +1122,6 @@ button:disabled { cursor: not-allowed; }
   .projects-head, .projects-grid { padding-left: 18px; padding-right: 18px; }
   .projects-head { flex-wrap: wrap; }
   .projects-grid { grid-template-columns: 1fr; }
-  .projects-head .btn-primary { margin-left: 0; }
 }
 
 /* The telemetry strip only gained overflow-x below 640px, so between there and

@@ -178,9 +178,14 @@ button:disabled { opacity: .5; cursor: default; }
    page-headers.md) — the title's own size and top inset come from .settings-title, generalised
    to .settings-scroll pages in primitives.css; only the content column's own width stays 1000px. */
 .projects-workspace .settings-scroll { padding: var(--space-10) 36px 0; }
-.projects-head, .projects-grid { max-width: 1000px; padding-left: 0; padding-right: 0; }
+/* app.css's .projects-head/.projects-grid rules are left over from the old centred-hero layout
+   and still carry margin-inline:auto — reset it here so the tab row and card grid sit flush left
+   in the same content column as .projects-title, instead of centring within a wider .settings-scroll. */
+.projects-head, .projects-grid { max-width: 1000px; margin-inline: 0; padding-left: 0; padding-right: 0; }
 .projects-title { max-width: 1000px; }
-.projects-head { padding-bottom: 18px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+/* padding-top:0 removes app.css's redundant 18px — .settings-title's own margin-bottom already
+   supplies the standard title→content gap every other .settings-scroll page uses. */
+.projects-head { padding-top: 0; padding-bottom: 18px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .projects-head .projects-search { margin-left: auto; flex: 0 1 230px; min-width: 130px; border-radius: 9px; background: transparent; }
 .seg { background: transparent; border: 0; padding: 0; gap: 5px; }
 .seg button { color: var(--text-secondary); font-size: var(--text-footnote); font-weight: 400; padding: 8px 12px; }
@@ -600,7 +605,10 @@ dialog.folder-picker::backdrop { background:var(--scrim); backdrop-filter:blur(v
 .projects-head .seg button.is-selected { background:none;border-bottom-color:var(--text-primary);color:var(--text-primary);font-weight:600;border-radius:0; }
 .projects-head .projects-search { border:0;border-radius:0;background:none;width:210px;padding:12px 0;box-shadow:none; }
 .projects-head .projects-search:focus { outline:2px solid var(--focus-ring);outline-offset:2px; }
-.projects-sort { box-sizing:border-box; min-height:38px; margin-bottom:8px; padding:0 30px 0 12px; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--control-border); border-radius:var(--radius-sm); font-family:var(--font-ui); font-size:var(--text-footnote); }
+/* No margin-bottom here (removed on #427 review): .projects-head's own flex gap already spaces
+   wrapped rows, and a per-child bottom margin was inflating this control's cross-axis share of
+   its wrapped line, offsetting it a few px above New project instead of centring with it. */
+.projects-sort { box-sizing:border-box; min-height:38px; padding:0 30px 0 12px; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--control-border); border-radius:var(--radius-sm); font-family:var(--font-ui); font-size:var(--text-footnote); }
 /* Same control size as the filter field beside it: 38px, 44px on touch and narrow screens. */
 @media (pointer: coarse), (max-width: 640px) { .projects-sort { min-height:44px; } }
 [data-family='contemporary'] .projects-sort { background:transparent; border-color:var(--md-outline); border-radius:4px; }

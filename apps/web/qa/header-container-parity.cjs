@@ -24,6 +24,27 @@ const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebK
 // 76px inset, an 85px+ miss) still fails while the modal/page difference does not.
 const HEADER_TOLERANCE = 20;
 const DIARY_LEFT_TOLERANCE = 2;
+// Orchestrator review on #427: the title, tabs row and card grid must share one left edge and
+// content column, and (once Sort/New project wrap onto their own row at phone width) the two
+// must share a vertical centre and neither may run into the tab-row divider beneath them.
+const COLUMN_TOLERANCE = 1;
+const VCENTER_TOLERANCE = 2;
+
+function probeProjectsLayout() {
+  const rect = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, bottom: r.bottom, right: r.right };
+  };
+  return {
+    h1: rect(document.querySelector('.projects-title h1')),
+    firstTab: rect(document.querySelector('.seg [role=tab]')),
+    firstCard: rect(document.querySelector('.project-card, .projects-grid > *')),
+    sort: rect(document.querySelector('.projects-sort')),
+    newBtn: rect(document.querySelector('.projects-new')),
+    head: rect(document.querySelector('.projects-head')),
+  };
+}
 
 function probeHeaders(phone) {
   const rect = (el) => el ? el.getBoundingClientRect() : null;
@@ -104,6 +125,7 @@ async function run(browser, cfg, report) {
   Object.assign(settingsHeader, await page.evaluate(probeHeaders, phone));
   await visit('/projects', '.projects-title, .projects-grid');
   Object.assign(settingsHeader, await page.evaluate(probeHeaders, phone));
+  const layout = await page.evaluate(probeProjectsLayout);
   await page.screenshot({ path: path.join(out, `${tag}-header-projects.png`) });
 
   const present = ['settings', 'customise', 'projects'].filter((k) => settingsHeader[k]);
@@ -114,6 +136,35 @@ async function run(browser, cfg, report) {
   const tops = present.map((k) => settingsHeader[k].top);
   if (tops.length > 1 && Math.max(...tops) - Math.min(...tops) > HEADER_TOLERANCE) {
     findings.push({ kind: 'top-offset-mismatch', tag, values: Object.fromEntries(present.map((k) => [k, settingsHeader[k].top])), tolerance: HEADER_TOLERANCE });
+  }
+
+  // The title, the first tab and the first project card must share one left edge/content column
+  // (they previously drifted apart when .projects-head/.projects-grid centred within a wider
+  // .settings-scroll instead of sitting flush with .projects-title).
+  if (!layout.h1 || !layout.firstTab || !layout.firstCard) {
+    findings.push({ kind: 'projects-column-missing', tag, layout });
+  } else {
+    const lefts = { h1: layout.h1.left, firstTab: layout.firstTab.left, firstCard: layout.firstCard.left };
+    if (Math.max(...Object.values(lefts)) - Math.min(...Object.values(lefts)) > COLUMN_TOLERANCE) {
+      findings.push({ kind: 'projects-column-mismatch', tag, lefts, tolerance: COLUMN_TOLERANCE });
+    }
+  }
+  // Once Sort and New project wrap onto their own row at phone width, they must read as one row:
+  // matching vertical centres, and neither may overlap the tab-row divider beneath them.
+  if (phone) {
+    if (!layout.sort || !layout.newBtn || !layout.head) {
+      findings.push({ kind: 'projects-sort-new-missing', tag, layout });
+    } else {
+      const center = (r) => (r.top + r.bottom) / 2;
+      const dCenter = Math.abs(center(layout.sort) - center(layout.newBtn));
+      if (dCenter > VCENTER_TOLERANCE) {
+        findings.push({ kind: 'projects-sort-new-vcenter-mismatch', tag, sort: layout.sort, newBtn: layout.newBtn, delta: dCenter, tolerance: VCENTER_TOLERANCE });
+      }
+      const dividerY = layout.head.bottom;
+      if (layout.sort.bottom > dividerY + 0.5 || layout.newBtn.bottom > dividerY + 0.5) {
+        findings.push({ kind: 'projects-sort-new-overlaps-divider', tag, sort: layout.sort, newBtn: layout.newBtn, dividerY });
+      }
+    }
   }
 
   await visit('/diary', '.chat-header');
