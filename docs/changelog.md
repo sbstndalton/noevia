@@ -8,6 +8,50 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 5430d25 — 2026-09-26 (two reviewed fixes: #384, #365/#356)
+
+### Services
+
+- **Web:** [#386](https://github.com/sbstndalton/noevia/pull/386) fix #384 [P1] (`ModelPopup.tsx` sends `{model, routing:'manual'}`; `routes/projects.cjs` model-only PATCH now pins `routing:'manual'` and sets `routingChosen`, so picking a model from the popup atomically pins it instead of leaving it on Auto), [#385](https://github.com/sbstndalton/noevia/pull/385) fix #365 + feat #356 (StatsBar scoped to chat views only via `statsbar-visibility.ts`; Regenerate + Copy reply added to `ChatView` message actions via `regenerate.ts`, `App.tsx` wiring, i18n) — deployed as `cowork-web:5430d25`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-5430d25`, live `docker-compose.yml` backup `docker-compose.yml.bak.before-5430d25`, live `docker-compose.override.yml` backup `docker-compose.override.yml.bak.before-5430d25`.
+
+Both PRs were draft with CI green and `MERGEABLE` at the start of this release (`origin/main` unmoved at
+`16ba52d` since the orchestrator's review). #386 (`f599869`) already had `16ba52d` as an ancestor, so no
+merge commit was needed; #385 (`1bc6756`) merged `origin/main` cleanly (auto-merge, no conflicts) to pick
+up #386's `ModelPopup.tsx`/`routes/projects.cjs` changes, producing `e9c5c53`. `npm test`
+(2162→2181 passing), `npm run typecheck` and `npm run build`/`lint:design` were green on both worktrees;
+GitHub Actions CI was green on both heads and re-verified after #385's merge commit was pushed. Squash-merged
+in order: #386→`443396d`, #385→`5430d25` (final `main` SHA). `git diff --quiet <head> origin/main` confirmed
+tree-identical after each squash. Both worktrees and their local+remote branches were deleted after merge.
+
+Built `cowork-web:5430d25` on DaServer from `releases/5430d25` (git archive of `main`@`5430d25`, scp'd — no
+git creds on the box). Candidate verified before cutover: `version.json` reports `5430d25`; the built
+`dist/assets/*.js` contain the new `msg.regenerate` i18n key; `server/routes/projects.cjs` in the image
+contains `routingChosen`. `current` symlink and `COWORK_VERSION` updated; every other `*_VERSION` left
+untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`, `MODEL_MANAGER_VERSION=1c87ab0`,
+`DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Deployed with the guarded
+`tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+Verification: `cowork-web-1` recreated, healthy, `RestartCount=0`; `https://noevia.daserver.work/` **200**,
+`/api/profile` **401**; served `index-N4RSCO_q.js`/`index-Bj6_HXWs.css` match the image's `dist/assets`
+(confirmed both from the public page and inside the running container). In-container check: the built
+bundle contains `msg.regenerate` and the live `server/routes/projects.cjs` contains `routingChosen`. Every
+other `cowork-*` container and `CloudflaredTunnel` kept identical container `Id` and `State.StartedAt`
+(model-loader, diary, code-sandbox, laya, ocr, docling, llama, kiwix). `cowork-embed-1` remains in its
+pre-existing crash loop (#336, unrelated, untouched — `RestartCount` rose 611→617 across the deploy window
+from its own ongoing restarts, same container `Id`, not recreated). No chat sends, model tunes, or Diary
+access were performed; no other container was rebuilt or recreated.
+
+Rollback: `ln -sfn releases/1c87ab0 current`, restore `.env.bak.before-5430d25` (`COWORK_VERSION=1c87ab0`),
+re-run `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+---
+
 ## Release web + model-loader 1c87ab0 — 2026-09-26 (five reviewed a11y/UX fixes: #345 #346 #352–#363 #366–#368, and deploying #347/#348)
 
 ### Services
