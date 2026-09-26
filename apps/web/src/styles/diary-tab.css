@@ -77,12 +77,13 @@
 .md-code code { font-size:var(--text-caption); line-height:1.6; }
 
 /* A Markdown image (#390): a `data:` source is already fully inside the message, so it renders
-   directly; a remote source shows this chip instead of fetching anything until the reader asks
-   for it (PRODUCT.md: nothing leaves the server unasked). Sized and bordered like the code
-   block's own bar above so it reads as the same family of "content the model referenced but
-   this renderer is holding back a step". */
+   directly. A remote source cannot become an <img> even on request — the server's CSP is
+   `img-src 'self' data:`, so the browser would block it — so this chip is a real link that opens
+   the image in a new tab instead. Sized and bordered like the code block's own bar above so it
+   reads as the same family of "content the model referenced but this renderer is holding back a
+   step". */
 .md-image { max-width:100%; border-radius:var(--radius-card); display:block; margin:8px 0; }
-.md-image-chip { display:inline-flex; align-items:center; gap:10px; margin:8px 0; padding:8px 14px; max-width:100%; border:1px solid var(--border-subtle); border-radius:var(--radius-card); background:var(--bg-canvas); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring); }
+.md-image-chip { display:inline-flex; align-items:center; gap:10px; margin:8px 0; padding:8px 14px; max-width:100%; border:1px solid var(--border-subtle); border-radius:var(--radius-card); background:var(--bg-canvas); color:inherit; font:inherit; text-align:left; text-decoration:none; cursor:pointer; transition:background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring); }
 .md-image-chip:hover { background:var(--bg-surface-hover); border-color:var(--control-border); }
 .md-image-chip-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .md-image-chip-alt { font-size:var(--text-footnote); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

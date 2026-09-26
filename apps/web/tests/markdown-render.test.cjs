@@ -73,21 +73,21 @@ test('#390: a data: image (nothing to fetch) renders as a real <img> immediately
   });
 });
 
-test('#390: a safe https image never auto-loads — it renders a labelled click-to-load chip, not an <img> and not a bare link with a stray "!"', async () => {
+test('#390: a safe https image never auto-loads, and never becomes an <img> even on request — the server CSP (img-src \'self\' data:) would block it; it opens as a real link in a new tab instead', async () => {
   await withSsr(async (server) => {
     const html = await renderMarkdown(server, '![real image](https://picsum.photos/40)');
-    assert.doesNotMatch(html, /<img\b/, 'must not fetch a third party without the reader asking');
+    assert.doesNotMatch(html, /<img\b/, 'must never be a live <img> src — the CSP blocks it and this renderer must not pretend otherwise');
     assert.doesNotMatch(html, /!real image|!<a/, 'the old bug leaked a literal "!" in front of a plain link');
-    assert.match(html, /<button[^>]*class="md-image-chip"[^>]*aria-label="Load image: real image from picsum\.photos"/);
+    assert.match(html, /<a href="https:\/\/picsum\.photos\/40" target="_blank" rel="noopener noreferrer nofollow" class="md-image-chip" aria-label="Open image: real image from picsum\.photos — opens in a new tab">/);
     assert.match(html, />real image</, 'the alt text is visible on the chip');
-    assert.match(html, />picsum\.photos ·/, 'the host is visible before the reader decides to load it');
+    assert.match(html, />picsum\.photos ·/, 'the host is visible before the reader decides to open it');
   });
 });
 
 test('#390: an image with no alt text still gets a sensible chip label instead of an empty one', async () => {
   await withSsr(async (server) => {
     const html = await renderMarkdown(server, '![](https://example.com/x.png)');
-    assert.match(html, /aria-label="Load image: Image from example\.com"/);
+    assert.match(html, /aria-label="Open image: Image from example\.com — opens in a new tab"/);
   });
 });
 
@@ -95,7 +95,7 @@ test('#390 sanitisation regression: a javascript: image source is never rendered
   await withSsr(async (server) => {
     const html = await renderMarkdown(server, '![x](javascript:alert(1))');
     assert.doesNotMatch(html, /<img\b/);
-    assert.doesNotMatch(html, /<button\b/);
+    assert.doesNotMatch(html, /<a\b/);
     assert.doesNotMatch(html, /javascript:alert\(1\)"/, 'the scheme must never end up in a live src/href attribute');
   });
 });
@@ -108,6 +108,14 @@ test('sanitisation regression: existing link handling is untouched — a safe ht
     assert.doesNotMatch(unsafe, /<a\b/);
     assert.match(unsafe, /click me \(javascript:alert\(1\)\)/);
   });
+});
+
+test('#390: the server CSP this decision depends on is still img-src \'self\' data: — if that ever loosens, MarkdownImage\'s "remote can never be an <img>" reasoning needs re-checking, not silent staleness', () => {
+  const fs = require('node:fs');
+  const serverSrc = fs.readFileSync(path.resolve(__dirname, '../server/index.cjs'), 'utf8');
+  const csp = serverSrc.match(/Content-Security-Policy'\s*,\s*"([^"]+)"/);
+  assert.ok(csp, 'could not find the CSP header to check');
+  assert.match(csp[1], /img-src 'self' data:/);
 });
 
 test('sanitisation regression: raw HTML in a reply is still never interpreted', async () => {

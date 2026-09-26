@@ -293,8 +293,8 @@ export const NL_NL: Catalogue = {
   'diary.markdown.properties': "Eigenschappen",
   'diary.markdown.empty': "leeg",
   'diary.markdown.image.alt': "Afbeelding",
-  'diary.markdown.image.load': "Klik om te laden",
-  'diary.markdown.image.ariaLabel': "Afbeelding laden: {alt} van {host}",
+  'diary.markdown.image.load': "Opent in een nieuw tabblad",
+  'diary.markdown.image.ariaLabel': "Afbeelding openen: {alt} van {host} — opent in een nieuw tabblad",
   'diary.modal.closeDialog': "Dialoogvenster sluiten",
   'settings.title': "Instellingen",
 

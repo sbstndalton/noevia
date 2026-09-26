@@ -293,8 +293,8 @@ export const FR_FR: Catalogue = {
   'diary.markdown.properties': "Propriétés",
   'diary.markdown.empty': "vide",
   'diary.markdown.image.alt': "Image",
-  'diary.markdown.image.load': "Cliquer pour charger",
-  'diary.markdown.image.ariaLabel': "Charger l'image : {alt} depuis {host}",
+  'diary.markdown.image.load': "S'ouvre dans un nouvel onglet",
+  'diary.markdown.image.ariaLabel': "Ouvrir l'image : {alt} depuis {host} — s'ouvre dans un nouvel onglet",
   'diary.modal.closeDialog': "Fermer la boîte de dialogue",
   'settings.title': "Réglages",
 

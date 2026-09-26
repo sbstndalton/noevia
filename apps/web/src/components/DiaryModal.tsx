@@ -47,30 +47,33 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
 }
 
 /** `![alt](src)`, rendered as a real `<img>` only for a source that cannot leave the server
- *  unasked (see `markdown-image.ts`); a remote source instead shows a click-to-load chip, and
- *  anything this renderer has no sanitiser for falls back to plain text, exactly like the link
- *  branch above it. */
+ *  unasked (see `markdown-image.ts`). A remote source cannot be a click-to-load `<img>` either:
+ *  the server's own CSP is `img-src 'self' data:` (server/index.cjs), so a remote `<img>` src is
+ *  blocked by the browser even after the reader asks for it — loosening that policy would defeat
+ *  the reason it exists. So a remote source instead opens as a real link, in a new tab, only on
+ *  request; anything this renderer has no sanitiser for falls back to plain text, exactly like the
+ *  link branch above it. */
 function MarkdownImage({ alt, src }: { alt: string; src: string }) {
   const t = useT();
-  const [loaded, setLoaded] = useState(false);
   const kind = classifyImageSrc(src);
   if (kind === 'unsafe') return <span>{alt || src} ({src})</span>;
-  if (kind === 'inline' || loaded) return <img className="md-image" src={src} alt={alt} loading="lazy" />;
+  if (kind === 'inline') return <img className="md-image" src={src} alt={alt} loading="lazy" />;
   const host = imageHost(src);
   const label = alt || t('diary.markdown.image.alt');
   return (
-    <button
-      type="button"
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
       className="md-image-chip"
-      onClick={() => setLoaded(true)}
       aria-label={t('diary.markdown.image.ariaLabel', { alt: label, host })}
     >
-      <Icon name="download" size={14} strokeWidth={1.75} />
+      <Icon name="external-link" size={14} strokeWidth={1.75} />
       <span className="md-image-chip-text">
         <span className="md-image-chip-alt">{label}</span>
         <span className="md-image-chip-host">{host} · {t('diary.markdown.image.load')}</span>
       </span>
-    </button>
+    </a>
   );
 }
 

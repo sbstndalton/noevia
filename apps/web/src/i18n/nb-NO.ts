@@ -293,8 +293,8 @@ export const NB_NO: Catalogue = {
   'diary.markdown.properties': "Egenskaper",
   'diary.markdown.empty': "tom",
   'diary.markdown.image.alt': "Bilde",
-  'diary.markdown.image.load': "Klikk for å laste inn",
-  'diary.markdown.image.ariaLabel': "Last inn bilde: {alt} fra {host}",
+  'diary.markdown.image.load': "Åpnes i en ny fane",
+  'diary.markdown.image.ariaLabel': "Åpne bilde: {alt} fra {host} — åpnes i en ny fane",
   'diary.modal.closeDialog': "Lukk dialogboks",
   'settings.title': "Innstillinger",
 

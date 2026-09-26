@@ -293,8 +293,8 @@ export const SV_SE: Catalogue = {
   'diary.markdown.properties': "Egenskaper",
   'diary.markdown.empty': "tom",
   'diary.markdown.image.alt': "Bild",
-  'diary.markdown.image.load': "Klicka för att ladda",
-  'diary.markdown.image.ariaLabel': "Ladda bild: {alt} från {host}",
+  'diary.markdown.image.load': "Öppnas i en ny flik",
+  'diary.markdown.image.ariaLabel': "Öppna bild: {alt} från {host} — öppnas i en ny flik",
   'diary.modal.closeDialog': "Stäng dialogruta",
   'settings.title': "Inställningar",
 

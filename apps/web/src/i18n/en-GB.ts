@@ -298,8 +298,8 @@ export const EN_GB = {
   'diary.markdown.properties': 'Properties',
   'diary.markdown.empty': 'empty',
   'diary.markdown.image.alt': 'Image',
-  'diary.markdown.image.load': 'Click to load',
-  'diary.markdown.image.ariaLabel': 'Load image: {alt} from {host}',
+  'diary.markdown.image.load': 'Opens in a new tab',
+  'diary.markdown.image.ariaLabel': 'Open image: {alt} from {host} — opens in a new tab',
   'diary.modal.closeDialog': 'Close dialog',
   'settings.title': 'Settings',
 
