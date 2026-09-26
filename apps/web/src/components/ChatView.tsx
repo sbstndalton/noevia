@@ -26,6 +26,7 @@ import { decideDispatch, type ChatMode } from '../chat-mode';
 import { insertMention, turnBoxesFor, type PermittedBox } from '../tool-catalogue';
 import { readDraft, writeDraft, clearDraft } from '../chat-drafts';
 import { onCancelEdit, focusAfterRender, type EditFocusState } from '../edit-focus';
+import { isCoarsePointerDevice } from '../composer-focus';
 
 /** What one send carries besides its text: per-turn boxes, a fallback notice, or a Cowork task. */
 export interface SendTurn { turnToolboxes?: string[]; notice?: string | null; cowork?: { repository: string } }
@@ -272,13 +273,18 @@ export function ChatView({
   //  - A send that runs to completion only reclaims focus if it is still sitting on <body> — i.e.
   //    the composer held it going in and nothing else has claimed it since. A user who clicked
   //    into something else during the reply keeps their own focus exactly where they put it.
+  // Neither guarantee applies on a coarse pointer (touch): programmatically focusing a text field
+  // there pops the on-screen keyboard over the reply the person is trying to read, which is a
+  // worse outcome than leaving focus on <body>. `isCoarsePointerDevice` is the one thing worth
+  // pulling out into its own module — it needs no ref, no DOM beyond `window`, so it has its own
+  // test independent of this effect.
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const wasStreamingRef = useRef(streaming);
   const stopRequestedRef = useRef(false);
   useEffect(() => {
     const wasStreaming = wasStreamingRef.current;
     wasStreamingRef.current = streaming;
-    if (!wasStreaming || streaming || typeof document === 'undefined') return;
+    if (!wasStreaming || streaming || typeof document === 'undefined' || isCoarsePointerDevice()) return;
     const stopped = stopRequestedRef.current;
     stopRequestedRef.current = false;
     if (stopped || document.activeElement === document.body) composerRef.current?.focus();

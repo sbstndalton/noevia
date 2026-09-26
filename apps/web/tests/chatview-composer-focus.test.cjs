@@ -35,5 +35,10 @@ test('Stop always reclaims focus — a stopRequestedRef set by the Stop button i
 });
 
 test('a completed Send only reclaims focus if it is still sitting on <body> — a user who has since clicked elsewhere keeps their own focus', () => {
-  assert.match(region, /if \(!wasStreaming \|\| streaming \|\| typeof document === 'undefined'\) return;/);
+  assert.match(region, /if \(!wasStreaming \|\| streaming \|\| typeof document === 'undefined' \|\| isCoarsePointerDevice\(\)\) return;/);
+});
+
+test('neither focus-recovery path runs on a coarse pointer (touch) device — programmatically focusing there would pop the on-screen keyboard', () => {
+  assert.match(src, /import \{ isCoarsePointerDevice \} from '\.\.\/composer-focus';/);
+  assert.match(region, /isCoarsePointerDevice\(\)\) return;/);
 });

@@ -93,7 +93,17 @@ const textareaHeight = (page) => page.locator('.composer-input').first().evaluat
     const created = await api('/api/projects', { name: 'Composer QA', model: 'synthetic-model', toolboxes: ['core'] });
     const project = created.body.project || created.body;
     assert.ok(project.id, JSON.stringify(created));
-    await api(`/api/projects/${project.id}/chats`, { chats: [{ id: 'compqa-basic', title: 'Composer basics' }, { id: 'compqa-scroll', title: 'Composer scroll' }] });
+    // Separate chats per scenario (rather than one shared chat) — each scenario's own synthetic
+    // reply text ("Synthetic completed reply.") is generic and would otherwise accumulate across
+    // reused chats' persisted history, making a later `getByText` ambiguous.
+    await api(`/api/projects/${project.id}/chats`, { chats: [
+      { id: 'compqa-basic', title: 'Composer basics' },
+      { id: 'compqa-focus', title: 'Composer focus' },
+      { id: 'compqa-focus-coarse', title: 'Composer focus coarse' },
+      { id: 'compqa-drop', title: 'Composer drop' },
+      { id: 'compqa-shots', title: 'Composer shots' },
+      { id: 'compqa-scroll', title: 'Composer scroll' },
+    ] });
     // A history long enough that the transcript is taller than the viewport (#436).
     const longHistory = Array.from({ length: 24 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `Synthetic turn ${i}. ${'Padding text so the transcript actually scrolls. '.repeat(15)}` }));
     await api('/api/chats/compqa-scroll/history', { history: longHistory });
@@ -147,7 +157,7 @@ const textareaHeight = (page) => page.locator('.composer-input').first().evaluat
 
     // ── (b) focus: Stop returns it, a completed Send keeps it (#435) ─────────────────────────
     {
-      const { ctx, page } = await openChat('compqa-basic');
+      const { ctx, page } = await openChat('compqa-focus');
       const box = page.getByRole('textbox', { name: 'Message', exact: true });
       const isComposerFocused = () => page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.classList.contains('composer-input'));
 
@@ -164,6 +174,30 @@ const textareaHeight = (page) => page.locator('.composer-input').first().evaluat
       await page.getByRole('button', { name: 'Send', exact: true }).waitFor({ timeout: 10000 });
       assert.ok(await isComposerFocused(), 'focus should stay in (or return to) the composer after a completed Send');
       console.log('PASS (b) focus: Stop and a completed Send both leave focus on the composer textarea');
+      await ctx.close();
+    }
+
+    // ── (b, coarse pointer) neither focus recovery fires on touch — it would pop the keyboard ──
+    {
+      const { ctx, page } = await openChat('compqa-focus-coarse', { hasTouch: true, isMobile: true, viewport: { width: 390, height: 700 } });
+      const box = page.getByRole('textbox', { name: 'Message', exact: true });
+      const isComposerFocused = () => page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.classList.contains('composer-input'));
+      assert.ok(await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches), 'this context should actually emulate a coarse pointer');
+
+      await box.fill('STOPTEST hold this reply open');
+      await box.press('Enter');
+      await page.getByTitle('Stop generating').waitFor({ timeout: 10000 });
+      await page.getByTitle('Stop generating').click();
+      await page.getByRole('button', { name: 'Send', exact: true }).waitFor({ timeout: 10000 });
+      assert.ok(!(await isComposerFocused()), 'Stop must not programmatically focus the composer on a coarse (touch) pointer — that would pop the keyboard');
+
+      await box.evaluate(el => el.focus());
+      await box.fill('completed send focus synthetic coarse');
+      await box.press('Enter');
+      await page.getByText('Synthetic completed reply.').waitFor({ timeout: 10000 });
+      await page.getByRole('button', { name: 'Send', exact: true }).waitFor({ timeout: 10000 });
+      assert.ok(!(await isComposerFocused()), 'a completed Send must not programmatically focus the composer on a coarse (touch) pointer either');
+      console.log('PASS (b, coarse pointer) focus: neither Stop nor a completed Send re-opens the on-screen keyboard on touch');
       await ctx.close();
     }
 
@@ -192,7 +226,7 @@ const textareaHeight = (page) => page.locator('.composer-input').first().evaluat
 
     // ── (d) drag-and-drop attachments reuse the picker's own pipeline (#437) ─────────────────
     {
-      const { ctx, page } = await openChat('compqa-basic');
+      const { ctx, page } = await openChat('compqa-drop');
       const pane = page.locator('.chat-workspace');
       // A synthetic small text file, dropped (not picked) — same pipeline, same limits.
       await pane.evaluate(async () => {
@@ -244,7 +278,7 @@ const textareaHeight = (page) => page.locator('.composer-input').first().evaluat
     // ── screenshots: composer at 1/5/12 lines and the drag-over state, two widths, both themes ──
     for (const [width, height] of [[1440, 900], [390, 800]]) {
       for (const scheme of ['light', 'dark']) {
-        const { ctx, page } = await openChat('compqa-basic', { viewport: { width, height }, colorScheme: scheme });
+        const { ctx, page } = await openChat('compqa-shots', { viewport: { width, height }, colorScheme: scheme });
         const box = page.getByRole('textbox', { name: 'Message', exact: true });
         for (const n of [1, 5, 12]) {
           await box.fill(Array.from({ length: n }, (_, i) => `line ${i + 1} of ${n}`).join('\n'));
