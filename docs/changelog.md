@@ -8,6 +8,55 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web f70e969 — 2026-09-26 (two reviewed fixes: #394, #391)
+
+### Services
+
+- **Web:** [#394](https://github.com/sbstndalton/noevia/pull/394) fix #387 #388 #389 #390 #355 (`useChatScroll` follow guard + "Jump to latest" while streaming; Markdown h2–h6/blockquote grouping and remote images rendered as new-tab links via `markdown-image.ts`; edit-cancel focus restore via `edit-focus.ts`; `ChatView.tsx`, `DiaryModal.tsx`, `app.css`, `diary-tab.css`, i18n), [#391](https://github.com/sbstndalton/noevia/pull/391) feat #359 shareable chat/project/Settings URLs with working Back/Forward (`routes.ts`, `server/spa-routes.cjs` static fallback, `AuthGate` `safeReturnPath` sign-in return, `App.tsx`, `SettingsShell`, `ProjectView`, `PluginsView`, i18n, `qa/url-history.cjs`) — deployed as `cowork-web:f70e969`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-f70e969`, live `docker-compose.yml` backup `docker-compose.yml.bak.before-f70e969`, live `docker-compose.override.yml` backup `docker-compose.override.yml.bak.before-f70e969`.
+
+Both PRs were draft with CI green and `MERGEABLE` against `origin/main` at `d805cfd` at the start of this
+release. #394 (`fa0f63f`) already had `d805cfd` as an ancestor, so `git merge origin/main` was a no-op and no
+new merge commit was needed; squash-merged directly to `532b049` (`npm test` 2208/2208, `typecheck`, `build`,
+`lint:design` clean; GitHub Actions CI green). #391 (`5a00528`) then merged `origin/main` (now at `532b049`,
+carrying #394) — the expected `App.tsx`/`ChatView`-adjacent conflict did not materialize; the `ort` merge
+strategy auto-merged `ChatView.tsx`, `DiaryModal.tsx`, `useChatScroll.ts`, i18n and the new `edit-focus.ts`/
+`markdown-image.ts` files cleanly, keeping both PRs' changes intact, producing `704d569`. `npm test`
+(2221/2221), `typecheck`, `build`, `lint:design` all clean on the merged worktree; GitHub Actions CI green
+on the pushed head. `qa/url-history.cjs` ran against the built dist with a real Chromium
+(`PLAYWRIGHT_MODULE` pointed at the codex-runtime `playwright` package, synthetic `page.route` API mocks,
+no inference/storage/Diary/network) — all 10 scenarios passed, including the sign-in-returns-to-deep-link
+case. Squash-merged #391 → `f70e969` (final `main` SHA). `git diff --quiet <head> origin/main` confirmed
+tree-identical after each squash. Both worktrees and their local+remote branches were deleted after merge.
+
+Built `cowork-web:f70e969` on DaServer from `releases/f70e969` (git archive of `main`@`f70e969`, scp'd — no
+git creds on the box). `current` symlink and `COWORK_VERSION` updated; every other `*_VERSION` left
+untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`, `MODEL_MANAGER_VERSION=1c87ab0`,
+`DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`; confirmed the `.env` diff before/after
+is exactly the one `COWORK_VERSION` line). Deployed with the guarded
+`tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+Verification: `cowork-web-1` recreated, healthy, `RestartCount=0`; `https://noevia.daserver.work/` **200**
+`text/html`, `/api/profile` **401** `application/json`; served `index-CtQ_CHX0.js`/`index-CeaH-H3n.css` match
+the image's `dist/assets` (confirmed from the public page and inside the running container). New SPA fallback
+checked directly: `/c/abc123` and `/settings/appearance` both **200** `text/html`; `/api/nope` **401**
+`application/json` (never HTML); `/definitely-not-a-route` **404** `application/json` (never HTML). Every
+other `cowork-*` container and `CloudflaredTunnel` kept identical container `Id` and `State.StartedAt`
+(model-loader, diary, code-sandbox, laya, ocr, docling, llama, kiwix). `cowork-embed-1` remains in its
+pre-existing crash loop (#336, unrelated, untouched — `RestartCount` rose 663→671 across the deploy window
+from its own ongoing restarts, same container `Id`, not recreated). No chat sends, model tunes, or Diary
+access were performed; no other container was rebuilt or recreated.
+
+Rollback: `ln -sfn releases/5430d25 current`, restore `.env.bak.before-f70e969` (`COWORK_VERSION=5430d25`),
+re-run `tools/preflight/up.sh --env-file config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+---
+
 ## Release web 5430d25 — 2026-09-26 (two reviewed fixes: #384, #365/#356)
 
 ### Services
