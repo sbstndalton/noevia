@@ -8,6 +8,62 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 39bf823 — 2026-09-26 (a11y focus/labels #418–#421 #345 #362; settings nav/summary/dedup #374 #422 #423)
+
+### Services
+
+- **Web:** [#424](https://github.com/sbstndalton/noevia/pull/424) closes #418–#421 and #345 (plus reopened #362 toast-keyboard) — `phone.css` row-actions focusable outside hover/focus-within, `ModelPopup` focus restore, `ToolCatalogue` sync-focus on close, `GeneralSettings` theme-tile `aria-labelledby`, `LibraryTab` named action buttons, `Sidebar` quick-archive/undo focus, i18n, 5 new qa scripts — and [#425](https://github.com/sbstndalton/noevia/pull/425) closes #374, #422, #423 — `shell-v2.css` nav head padding, `noevia.css` summary wrap, new `request-cache.ts` de-duplicating `fetchProfile`/`fetchFeatureFlags` with invalidations, `MtpControl`, `SecurityCard` refresh, qa scripts and tests — deployed together as `cowork-web:39bf823`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env changes beyond `COWORK_VERSION`; `.env` backup `.env.bak.before-39bf823`, live `docker-compose.yml` backup `docker-compose.yml.bak.before-39bf823` (no `docker-compose.override.yml` present to back up).
+
+PR #424 (head `3d88930`) and PR #425 (head `46d0f01`) were both draft with CI green against
+`origin/main` at `2c53d24`. #424 was already up to date with `2c53d24` (no local merge needed);
+`apps/web`: `npm test` 2296/2296, `typecheck`, `build`, `lint:design` all clean; CI green (7/7);
+`qa/sidebar-focus-undo.cjs`, `qa/model-popup-focus.cjs`, `qa/appearance-family-labels.cjs`,
+`qa/model-card-labels.cjs` and `qa/tool-catalogue-escape-focus.cjs` each **PASS** against the
+built `dist` with `PLAYWRIGHT_MODULE`. Marked ready, squash-merged to `06f1c45`; `git diff`
+against `origin/main` empty (tree invariance). Worktree and both copies of
+`fix/418-421-345-a11y` deleted.
+
+#425 was then merged against the new `origin/main` (`06f1c45`, i.e. #424) — `ort` auto-merge, no
+conflicts across the anticipated overlap in `Sidebar.tsx`, `ModelPopup.tsx`, `GeneralSettings.tsx`,
+`ToolCatalogue.tsx` and CSS, keeping both PRs' changes — to `48dde0e`. `npm test` 2303/2303,
+`typecheck`, `build`, `lint:design` all clean; CI green (7/7) on the merged branch;
+`qa/settings-nav-edge-and-summary-wrap.cjs` and `qa/profile-features-dedup.cjs` each **PASS**
+against the built `dist`. Marked ready, squash-merged to `39bf823` (final `main` SHA); `git diff`
+against `origin/main` empty. Worktree and both copies of `fix/374-422-423-small` deleted.
+
+Built `cowork-web:39bf823` on DaServer from `releases/39bf823` (git archive of `main`@`39bf823`,
+scp'd — no git creds on the box). The candidate image's `dist/version.json` reported `39bf823`
+and `dist/assets` contained the expected hashed `index-5ytF-2y4.js`/`index-CdP5s8pR.css` bundles;
+a synthetic, isolated candidate container (no live network attach, no real credentials) started
+cleanly before cutover. `current` symlink and `COWORK_VERSION` updated; every other `*_VERSION`
+left untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`, `MODEL_MANAGER_VERSION=1c87ab0`,
+`DOCLING_VERSION=2026-09-21`, `CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Applied with the installed
+preflight, web-only: `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+`cowork-web-1` came up healthy, `RestartCount` 0, `Image=cowork-web:39bf823`,
+`Started=2026-09-26T10:25:21Z`. Every other `cowork-*` container and `CloudflaredTunnel` kept
+its pre-release `Id` and `StartedAt` unchanged (model-loader, diary, code-sandbox, laya, ocr,
+docling, llama, kiwix, Cloudflared) — confirming `--no-deps` did not recreate them.
+`cowork-embed-1` kept its pre-existing `Id` through its ongoing crash-loop (#336, unrelated to
+this release; `RestartCount` continued climbing on its own schedule during the window).
+`https://noevia.daserver.work/` returned `200`, `/api/profile` returned `401`, and the served
+`index.html` referenced the same `index-5ytF-2y4.js`/`index-CdP5s8pR.css` hashes baked into the
+image.
+
+Rollback: `ssh daserver 'ln -sfn /mnt/docker/appdata/cowork/releases/584bdba
+/mnt/docker/appdata/cowork/current && cp /mnt/docker/appdata/cowork/config/.env.bak.before-39bf823
+/mnt/docker/appdata/cowork/config/.env && bash
+/mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web'`,
+then re-verify health, `RestartCount` and the `584bdba` asset hashes.
+
 ## Release web 584bdba — 2026-09-26 (spacing rhythm: #417)
 
 ### Services
