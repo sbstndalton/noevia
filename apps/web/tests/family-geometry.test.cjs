@@ -14,7 +14,7 @@ const rules = (file) => [...fs.readFileSync(path.join(root, file), 'utf8').repla
   .map(([, selector, body]) => ({ selector: selector.trim(), declarations: body.split(';').map(d => d.split(':')[0].trim()).filter(Boolean) }));
 
 test('family-scoped component rules inherit shared geometry and font metrics', () => {
-  const forbidden = /^(?:(?:min-|max-)?(?:width|height)|padding(?:-.+)?|margin(?:-.+)?|gap|font(?:-.+)?|letter-spacing|border(?:-(?:width|top|left|right|bottom))?|--font-ui|--font-display|--row-inset|--row-gap)$/;
+  const forbidden = /^(?:(?:min-|max-)?(?:width|height)|padding(?:-.+)?|margin(?:-.+)?|gap|font(?:-.+)?|letter-spacing|border(?:-(?:width|top|left|right|bottom))?|--font-ui|--font-display|--row-inset|--row-gap|--group-inset-(?:block|inline)|--group-row-min|--settings-[\w-]+-gap)$/;
   for (const file of fs.readdirSync(root).filter(name => name.endsWith('.css') && name !== 'themes.css')) {
     for (const { selector, declarations } of rules(file)) {
       if (!/data-family=/.test(selector)) continue;
