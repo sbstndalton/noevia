@@ -13,7 +13,7 @@ const exports_ = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/routes.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, { exports: exports_, URL });
-const { parsePath, matchPath, toPath, safeReturnPath, routeForState, historyMode } = exports_;
+const { parsePath, matchPath, toPath, safeReturnPath, routeForState, historyMode, canonicalSection } = exports_;
 const { isClientRoute } = require('../server/spa-routes.cjs');
 
 // The module runs in its own realm: compare by JSON, not prototype.
@@ -50,6 +50,40 @@ test('every place has one canonical path, and the path reads back as the same pl
     assert.equal(j(parsePath(expected)), j(route), `parsePath ${expected}`);
     assert.equal(toPath(parsePath(expected)), expected, `round trip ${expected}`);
   }
+});
+
+// #403: a section listed in SettingsShell's own navigation must be reachable at its own
+// `/settings/<id>` address — the nav is read from source, not hand-copied, so adding a section
+// there without giving it a working address fails this test instead of shipping a silent
+// deep-link fallback to Appearance.
+test('every Settings section SettingsShell lists has its own working /settings/<id> address', () => {
+  const shellSrc = fs.readFileSync(path.join(__dirname, '../src/components/SettingsShell.tsx'), 'utf8');
+  const personalStart = shellSrc.indexOf('const PERSONAL: Group[] = [');
+  const personalEnd = shellSrc.indexOf('\n];', personalStart);
+  const adminStart = shellSrc.indexOf('const ADMIN: Group = {');
+  const adminEnd = shellSrc.indexOf('\n] };', adminStart);
+  assert.ok(
+    personalStart >= 0 && personalEnd > personalStart && adminStart >= 0 && adminEnd > adminStart,
+    "SettingsShell.tsx's PERSONAL/ADMIN group markers changed shape — update this test's extraction",
+  );
+  const region = shellSrc.slice(personalStart, personalEnd) + '\n' + shellSrc.slice(adminStart, adminEnd);
+  // Each nav item is `['id', 'Label', 'keywords']`; the id is the first quoted string after `[`.
+  const ids = [...new Set([...region.matchAll(/\[\s*'([a-z][a-z0-9-]*)',\s*'/g)].map((m) => m[1]))];
+  // A floor, not an exact count: a newly added section joins the loop below automatically, so this
+  // only has to catch the extraction itself silently finding nothing.
+  assert.ok(ids.length >= 19, `expected every Settings section id (found ${ids.length}: ${ids.join(', ')})`);
+  for (const id of ids) {
+    // Listed by its own id, so it must not itself be aliased away to some other section.
+    assert.equal(canonicalSection(id), id, `${id} is a section id but SETTINGS_SECTION_ALIASES rewrites it`);
+    assert.equal(j(matchPath(`/settings/${id}`)), j({ kind: 'settings', section: id }), `/settings/${id} does not open ${id}`);
+    assert.equal(toPath({ kind: 'settings', section: id }), `/settings/${id}`, `${id} does not round-trip to its own path`);
+  }
+});
+
+test('#403: /settings/account (the obvious guess for the page SettingsShell labels "Account") reaches it, not Appearance', () => {
+  assert.equal(canonicalSection('account'), 'profile');
+  assert.equal(j(matchPath('/settings/account')), j({ kind: 'settings', section: 'profile' }));
+  assert.equal(j(parsePath('/settings/account')), j({ kind: 'settings', section: 'profile' }));
 });
 
 test('old and alternative spellings land on the canonical place', () => {
