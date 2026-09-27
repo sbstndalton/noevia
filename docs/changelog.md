@@ -24,7 +24,7 @@ Root reviewed exact heads before push and again before matching-head squash merg
 
 Deployed from main `7a3f736d9a47eaac3bc14d5ee675d272365d1a51` using git archive/scp and a DaServer build. Environment and both Compose files backed up as `*.bak.before-7a3f736`. Verified current→releases/7a3f736, healthy web with zero restarts, `/` 200, unauthenticated `/api/profile` 401, `/version.json` 7a3f736, and served `index-CDVCXJFu.js` / `index-CsXTtFAF.css` present in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts. No flags or sidecars changed.
 
-Dedicated Luna Chrome workers were dispatched immediately after activation for appearance/settings and sidebar search. Live browser verification is pending review of their reports; health checks do not substitute for it.
+Dedicated Luna Chrome workers tested immediately after activation; root reviewed both reports. Current Contemporary appearance/settings/menu navigation and sidebar destination search, keyboard activation, clearing, no-results and browser Back passed the tested desktop paths. No settings were saved. Other live themes, light/mobile views, real authentication, backup execution and inference remain untested; synthetic theme matrices are separate evidence.
 
 Rollback: point `current` to `releases/e51c5b1`, restore `config/.env.bak.before-7a3f736`, and run the same web-only preflight command from the Cowork Compose Manager directory.
 
