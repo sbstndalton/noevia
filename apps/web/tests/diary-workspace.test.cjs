@@ -4,10 +4,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
+// #456: diary-workspace.ts now also imports `cached` from `./request-cache` (for the
+// listFiles() dedup — see tests/diary-files-request-dedup.test.cjs for that behaviour). The
+// stub here stays a plain pass-through (no memoization) so every existing test below keeps
+// exercising exactly one network call per call site, unaffected by caching.
 function load(name, apiFetch = () => {throw Error('unexpected request');}) {
   const code = ts.transpileModule(fs.readFileSync(path.join(__dirname,'../src',name),'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const exports = {};
-  vm.runInNewContext(code,{exports,require:name=>name==='./diary-markdown'?load('diary-markdown.ts'):({apiFetch}),DOMException,File,TextEncoder,window:{},Date,console});
+  const fakeRequestCache = { cached: (_key, run) => run(), invalidateCachedPrefix: () => {} };
+  vm.runInNewContext(code,{exports,require:name=>name==='./diary-markdown'?load('diary-markdown.ts'):name==='./request-cache'?fakeRequestCache:({apiFetch}),DOMException,File,TextEncoder,window:{},Date,console});
   return exports;
 }
 const dates = load('diary-data.ts');
