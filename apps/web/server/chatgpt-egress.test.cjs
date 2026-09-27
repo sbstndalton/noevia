@@ -22,7 +22,7 @@ const reply = (o, status = 200) => new Response(JSON.stringify(o), { status, hea
 const BOXES = [
   { id: 'core', tools: [{ type: 'function', function: { name: 'core_time' } }] },
   { id: 'diary', tools: [{ type: 'function', function: { name: 'diary_search' } }] },
-  { id: 'nextcloud-files', tools: [{ type: 'function', function: { name: 'nc_webdav_read_file' } }, { type: 'function', function: { name: 'nc_webdav_search_files' } }] },
+  { id: 'nextcloud-files', tools: ['nc_webdav_read_file', 'nc_webdav_search_files', 'nc_webdav_find_by_name', 'nc_webdav_list_directory'].map((name) => ({ type: 'function', function: { name } })) },
 ];
 const STORAGE = { kind: 'nextcloud', baseUrl: 'https://cloud.fixture.invalid/remote.php/dav/files/synthetic', corpusRoot: 'Documents/Important Documents/Diary' };
 
@@ -243,4 +243,38 @@ test('a ChatGPT error mid-stream (usage limit) shows its own words and ends the 
   const error = r.events.find((e) => e.type === 'error');
   assert.equal(error.text, 'ChatGPT usage limit reached. Pick another provider in the model popup until then.');
   assert.equal(r.events.some((e) => e.type === 'done'), false);
+});
+
+test('#452 follow-up: a search scoped to the root or any ancestor of the Diary is refused; a sibling search and a root listing run', { timeout: 20000 }, async (t) => {
+  const cases = [
+    ['nc_webdav_search_files', { query: 'dream', path: '/' }, false],
+    ['nc_webdav_search_files', { query: 'dream', path: '' }, false],
+    ['nc_webdav_search_files', { query: 'dream', path: 'Documents' }, false],
+    ['nc_webdav_search_files', { query: 'dream', scope: 'documents/Important%20Documents/' }, false],
+    ['nc_webdav_find_by_name', { pattern: '*.md', scope_path: 'Documents/Important Documents' }, false],
+    ['nc_webdav_read_file', { path: 'Documents', recursive: true }, false],
+    ['nc_webdav_search_files', { query: 'dream', path: 'Documents/Other' }, true],
+    ['nc_webdav_search_files', { query: 'dream', path: 'Documents/Important Documents/DiaryArchive' }, true],
+    ['nc_webdav_read_file', { path: '/' }, true],
+    ['nc_webdav_read_file', { path: 'Documents' }, true],
+    ['nc_webdav_list_directory', { path: '/' }, true],
+  ];
+  for (const [name, args, runs] of cases) {
+    const f = await setup(t);
+    f.upstream.queue.push(toolCallEvents(name, args));
+    const r = await f.run({ project: { toolboxes: ['core', 'nextcloud-files'] } });
+    assert.equal(f.executed.length, runs ? 1 : 0, `${name} ${JSON.stringify(args)}`);
+    if (!runs) assert.match(r.events.find((e) => e.type === 'tool_result').text, /Diary/, JSON.stringify(args));
+  }
+});
+
+test('#452 follow-up: a plain listing of the root runs; a recursive one does not', () => {
+  const egress = require('./provider-egress.cjs');
+  const provider = require('./chatgpt-oauth.cjs').providerRow();
+  const call = (args) => egress.toolRefusal({ provider, toolName: 'nc_webdav_list_directory', rawArgs: JSON.stringify(args), storage: STORAGE });
+  assert.equal(call({ path: '/' }), null);
+  assert.equal(call({ path: 'Documents/Important Documents' }), null, 'names only, one level');
+  assert.match(call({ path: '/', recursive: true }), /contains the Diary folder/);
+  assert.match(call({ path: '/', depth: 'infinity' }), /contains the Diary folder/);
+  assert.equal(call({ path: '/', depth: 1 }), null);
 });

@@ -48,7 +48,13 @@ function stripPrivateToolboxes(selected, provider) {
 
 // ── Rule 4: the Diary folder ────────────────────────────────────────────────
 const STORAGE_TOOL = /^nc_webdav_/;
-const CONTENT_SEARCH = /^nc_webdav_search_files$/;
+// Tree tools search or recurse below their scope, so a scope that CONTAINS the Diary (the root,
+// '', or any ancestor) reaches it too. The manifest (mcp-toolbox-manifest.cjs) gives no argument
+// schema, so the Nextcloud search/find tools are all treated as tree tools, and any storage call
+// carrying a recursive/depth argument counts as one. A plain listing of an ancestor stays allowed:
+// it returns only the names directly in that folder, never file content.
+const TREE_TOOL = /^nc_webdav_(?:search_files|find_by_name|find_by_type)$/;
+const recursiveArgs = (args) => Object.entries(args || {}).some(([k, v]) => /recurs|depth|deep/i.test(k) && v !== false && v !== 0 && v !== '0' && v !== 1 && v !== '1' && v !== null);
 const PATH_KEY = /path|dir|folder|file|scope|source|destination|target|href|url|location|from|to$/i;
 
 /** One path, reduced to its canonical folder-relative form ('' is the files root). */
@@ -105,12 +111,17 @@ function toolRefusal({ provider, toolName, rawArgs, storage }) {
   let args;
   try { args = typeof rawArgs === 'string' ? JSON.parse(rawArgs || '{}') : rawArgs || {}; } catch { return `ERROR: ${name} arguments could not be read, so it was not run.`; }
   const paths = pathArguments(args);
-  // A content search with no folder to search in would search the Diary too.
-  if (CONTENT_SEARCH.test(name) && !paths.length) return `ERROR: ${name} needs a folder to search in when used with ${label}, so it was not run. Search a specific folder outside the Diary.`;
+  const tree = TREE_TOOL.test(name) || recursiveArgs(args);
+  // A search with no folder to search in would search the Diary too.
+  if (tree && !paths.length) return `ERROR: ${name} needs a folder to search in when used with ${label}, so it was not run. Search a specific folder outside the Diary.`;
   for (const value of paths) {
     const target = canonicalPath(value);
     if (target === folder || target.startsWith(`${folder}/`)) {
       return `ERROR: ${name} was not run: that path is in the Diary folder, and Diary content is never sent to ${label}. Do not retry; tell the user to use a local model for Diary files.`;
+    }
+    // An ancestor scope ('' is the root) contains the Diary: refused for tree tools only.
+    if (tree && (target === '' || folder.startsWith(`${target}/`))) {
+      return `ERROR: ${name} was not run: that folder contains the Diary folder, and Diary content is never sent to ${label}. Search a folder that does not contain the Diary.`;
     }
   }
   return null;
