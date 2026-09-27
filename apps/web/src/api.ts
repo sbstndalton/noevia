@@ -120,7 +120,7 @@ export async function uploadProjectFile(id: string, body: { name: string; dataBa
     xhr.onerror = () => reject(new Error('Upload connection failed; retry.'));
     xhr.ontimeout = () => reject(new Error('Upload timed out; retry.'));
     xhr.onload = () => {
-      if (xhr.status === 401) window.dispatchEvent(new Event('cowork:unauthorized'));
+      if (xhr.status === 401) { clearRequestCache(); window.dispatchEvent(new Event('cowork:unauthorized')); }
       try { const value = JSON.parse(xhr.responseText); if (xhr.status >= 400) reject(new Error(value.error || 'Upload failed')); else resolve(value); }
       catch { reject(new Error('Invalid upload response')); }
     };
@@ -131,6 +131,7 @@ export async function uploadProjectFile(id: string, body: { name: string; dataBa
     const job = await getJson<{ done: boolean; stage?: string; status?: number; body?: { error?: string; name: string; path: string; bytes: number; attachment?: { reduction?: { note: string } } } }>(response.poll);
     if (job.done) {
       if ((job.status || 500) >= 400) throw new Error(job.body?.error || 'Source processing failed');
+      invalidateCached(WORKSPACE_KEY);
       progress({ stage: 'Saved', percent: 100 }); return job.body!;
     }
     progress({ stage: job.stage || 'Queued for processing' });
@@ -191,6 +192,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
       const job = await getJson<{ done: boolean; status?: number; body?: T & { error?: string } }>(poll);
       if (!job.done) continue;
       if ((job.status || 500) >= 400) throw new Error(job.body?.error || 'Source processing failed');
+      invalidateCached(WORKSPACE_KEY);
       return job.body as T;
     }
   }

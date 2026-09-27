@@ -37,6 +37,8 @@ async function withWorkspaceModules(fn) {
     if (url === '/api/workspace' && method === 'GET') {
       return { ok: true, status: 200, json: async () => state.workspace };
     }
+    if (url === '/api/projects/p1/sources/sync?background=1') return { ok: true, status: 202, json: async () => ({ poll: '/api/source-job' }) };
+    if (url === '/api/source-job') return { ok: true, status: 200, json: async () => ({ done: true, status: 200, body: { files: [] } }) };
     if (method !== 'GET') return { ok: true, status: 200, json: async () => ({ ok: true }) };
     if (url === '/api/expired') return { ok: false, status: 401 };
     throw new Error(`unexpected synthetic fetch: ${method} ${url}`);
@@ -105,3 +107,15 @@ for (const [name, mutate] of [
     assert.equal(count(calls, 'GET /api/workspace'), 2);
   }));
 }
+
+test('#459 a completed background source job invalidates a workspace fetched while it was pending', () => withWorkspaceModules(async ({ api, calls, state }) => {
+  await api.fetchWorkspace();
+  const sync = api.syncProjectSources('p1');
+  await new Promise(resolve => setTimeout(resolve, 10));
+  await api.fetchWorkspace(); // another mounted reader while the source job is pending
+  state.workspace = makeWorkspace({ projects: [], freeChats: [] });
+  await sync;
+  const after = await api.fetchWorkspace();
+  assert.equal(after.projects.length, 0);
+  assert.equal(count(calls, 'GET /api/workspace'), 3);
+}));
