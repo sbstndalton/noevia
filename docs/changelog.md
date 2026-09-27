@@ -8,6 +8,100 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web b61a914 — 2026-09-27 (merge #451, deploy #449 #460 #461 #451)
+
+### Services
+
+- **Web:** [#449](https://github.com/sbstndalton/noevia/pull/449) closes #446, #401 —
+  `focus-utils.ts`'s `isFocusable` now also rejects `disabled` controls, `visibility:hidden`
+  elements and non-interactive (`tabIndex < 0`) elements, not just disconnected/`display:none`/
+  `inert` ones; `SettingsShell`'s close-time focus fallback is the account trigger, then the
+  always-focusable `.nav-drawer-toggle` (skipping the composer on a coarse-pointer device so
+  closing Settings never pops the on-screen keyboard); `ProvidersCard`'s "Connect a provider"
+  Cancel/Add now returns focus to the opening button or the new row's remove button.
+  [#460](https://github.com/sbstndalton/noevia/pull/460) closes #450, #458 — `useCodeAccess` is
+  tri-state (`checking`/`allowed`/`denied`) and never probes the placeholder project id, so an
+  admin with real Code access no longer sees a flash of the "not connected yet" stub while the
+  project list loads (`CodingWorkspace` shows a neutral loading skeleton instead); a new cached
+  `fetchCodeAccess` (reusing the `request-cache.ts` mechanism from #425) makes `CodingWorkspace`
+  and `Sidebar` share one `/api/projects/<id>/code` request instead of firing one each.
+  [#461](https://github.com/sbstndalton/noevia/pull/461) closes #448 — the Glass sidebar's sticky
+  strips (`.side-new`, `.side-permanent`, `.side-footer`, sticky section heads) get an
+  unconditional translucent tint (`color-mix` of `--md-surface-container-low` and
+  `--glass-sheet`) instead of relying on a `backdrop-filter` that silently no-ops as a nested
+  backdrop root inside `.sidebar.pane`'s own blur, so scrolled chat titles no longer bleed through
+  the footer/status strips. [#451](https://github.com/sbstndalton/noevia/pull/451) (refs #447,
+  closes #452, #453, #454, #455) adds Sign in with ChatGPT as a private, per-user AI provider
+  (`server/chatgpt-oauth.cjs`, ported from openai-oauth/openai-codex, Apache-2.0, no new npm
+  dependency) behind the `chatgptOAuth` feature flag (`NOEVIA_FEATURE_CHATGPT_OAUTH`), off by
+  default: device-code login, tokens stored per user as `secrets.cjs` v2 ciphertext, a
+  `/chat/completions` ⇄ Codex `/responses` adapter, and `server/provider-egress.cjs` rules that
+  keep Diary text, the Diary toolbox and project images from ever reaching this provider. The
+  three review-fix commits inside #451 close #452 (Diary-ancestor tree-search scopes refused,
+  fail closed), #453 (refresh writes compare-and-set against the ciphertext it started from),
+  #454 (Cancel/Disconnect during the device-code exchange wins over a pending login) and #455
+  (`x-noevia-provider-message` honoured only for the ChatGPT adapter). #447 itself stays open —
+  #451 only references it, and its own open question (a live sign-in test) is still outstanding.
+  Deployed as `cowork-web:b61a914`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change — `cowork-code-sandbox:pi-0.87.0-9b532a8`.
+- **OCR:** no change — `cowork-ocr:5004b50`.
+- **Docling:** no change — `cowork-docling:2026-09-21`.
+- **Deploy/infra:** no compose/env schema changes — `chatgptOAuth` reads its own env var with a
+  `false` default and needed no new required key; `.env` backup `.env.bak.before-b61a914`, live
+  Compose file backup `docker-compose.yml.bak.before-b61a914`. Image tag and release directory
+  use the 7-character short SHA (`b61a914`), matching the existing convention.
+
+#449 (`5ccdd9d`), #460 (`a350d4f`) and #461 (`ea1ed04`) were already merged into `main` by a
+previous release agent but not yet deployed; this release ships them for the first time. #451
+(`feat/447-chatgpt-oauth-provider`, head `5985b35`) already had `main` merged in and was pushed
+with CI running; `gh pr checks 451 --watch` finished 8/8 green (including "CI required"). Head
+SHA confirmed as `5985b353c7ad589fd159b8b37610c298d8da0188`, `mergeStateStatus: CLEAN`. Marked
+ready and squash-merged (`--match-head-commit 5985b353c7ad589fd159b8b37610c298d8da0188`) to
+`b61a914b6f0bf974588b399096e31d109da48fdd`; `origin/main` advanced `ea1ed04` → `b61a914`. Remote
+branch `feat/447-chatgpt-oauth-provider` deleted on merge. #452–#455 closed automatically on
+merge; GitHub also auto-closed #447 despite the PR only saying "Refs #447" (no "Closes" keyword
+against it) — reopened with an explanatory comment, since #451's own open questions call out that
+a live sign-in test is still needed before #447 can close. Diff for this release limited to
+`apps/web`, `THIRD_PARTY_NOTICES.md` and `docs/`, no `services/`, so this stayed a web-only
+release; no other sidecar was touched. Worktrees/branches `/tmp/noevia-fix-446`,
+`/tmp/noevia-fix-450`, `/tmp/noevia-fix-448` and `/tmp/noevia-feat-447` (and the matching local
+branches `fix/448-glass-sticky-strips`, `fix/450-code-access-flash`,
+`feat/447-chatgpt-oauth-provider`) removed after merge; `/tmp/noevia-fix-456`
+(`fix/456-457-459-dup-fetches`, unfinished) was left alone.
+
+Archived `main`@`b61a914` with `git archive`, scp'd to `releases/b61a914` (no git creds on the
+box); built only `cowork-web:b61a914` with `COWORK_VERSION=b61a914`. `.env` backed up to
+`.env.bak.before-b61a914` first. Candidate verification used synthetic in-image checks before
+cutover: `docker run --rm --entrypoint cat cowork-web:b61a914 /app/dist/version.json` returned
+`{"version":"b61a914"}`, the built `index.html`'s asset references (`index-CCKOIjC1.js`,
+`index-kv_iUv4Y.css`) were confirmed present in the same image's `/app/dist/assets`, and
+`grep chatgptOAuth /app/server/features.cjs` inside the candidate confirmed the flag is
+registered with `env: 'NOEVIA_FEATURE_CHATGPT_OAUTH'`. `current` symlink and `COWORK_VERSION`
+updated; every other `*_VERSION` left untouched (`DIARY_VERSION=f6444b4`, `OCR_VERSION=5004b50`,
+`MODEL_MANAGER_VERSION=1c87ab0`, `DOCLING_VERSION=2026-09-21`,
+`CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8`). Applied with the installed preflight, web-only: `bash
+/mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file
+/mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+`cowork-web-1` came up healthy, `RestartCount` 0, `Image=cowork-web:b61a914`,
+`StartedAt=2026-09-27T03:40:45Z`. `cowork-diary-1`, `cowork-ocr-1`, `cowork-model-loader-1`,
+`cowork-code-sandbox-1`, `cowork-laya-1`, `cowork-docling-1`, `cowork-llama-1` and `cowork-kiwix-1`
+all kept their pre-release container `Id` and `StartedAt` unchanged, confirming `--no-deps` did
+not recreate them. (`cowork-embed-1` is the same pre-existing, unrelated crash-loop noted in the
+`b84b3b8` entry below — its `Id` is unchanged; its `RestartCount` continued climbing through the
+deploy window, not caused by this release.) `https://noevia.daserver.work/` returned `200`,
+`/api/profile` returned `401`, and the served `index.html` referenced
+`index-CCKOIjC1.js`/`index-kv_iUv4Y.css`, both confirmed present in the deployed image's
+`dist/assets` via `docker exec`. A read-only, unauthenticated check inside `cowork-web-1`
+(`node -e "require('/app/server/features.cjs').createFeatures({env:process.env}).enabled('chatgptOAuth')"`)
+returned `false`; no env var was set and the flag was not flipped.
+
+Rollback (not needed — release succeeded): `ln -sfn /mnt/docker/appdata/cowork/releases/b84b3b8
+/mnt/docker/appdata/cowork/current`, restore `.env` from `.env.bak.before-b61a914`, then re-run
+the same guarded `up.sh --no-build --no-deps --wait web`.
+
 ## Release web b84b3b8 — 2026-09-26 (merge #445, deploy #445)
 
 ### Services
