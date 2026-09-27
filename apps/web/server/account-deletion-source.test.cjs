@@ -169,7 +169,7 @@ test('queued RAG indexing checks account revocation before opening a tenant dire
       userActive: (id) => { checked += 1; return !f.workspaces.isRemoved(id); } });
     f.workspaces.remove(DELETED_ID);
     const result = await rag.indexProjectFile('p1', 'synthetic.txt', 'synthetic content', DELETED_ID);
-    assert.equal(result.ok, false);
+    assert.equal(result.superseded, true);
     assert.ok(checked > 0);
     assert.equal(fs.existsSync(f.workspace.dir), false);
   } finally {

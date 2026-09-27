@@ -428,7 +428,8 @@ function indexProjectFile(projectId, fileName, text, userId) {
   fileVersions.set(key, version);
   const run = (fileQueues.get(key) || Promise.resolve())
     .catch(() => {})
-    .then(() => indexProjectFileNow(projectId, fileName, text, userId, () => fileGenerations.get(key) === generation, version));
+    .then(() => indexProjectFileNow(projectId, fileName, text, userId,
+      () => fileGenerations.get(key) === generation && (!userId || userActive(userId)), version));
   const tail = run.catch(() => {});
   fileQueues.set(key, tail);
   tail.then(() => { if (fileQueues.get(key) === tail) fileQueues.delete(key); });
