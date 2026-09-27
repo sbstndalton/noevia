@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 7a3f736 — 2026-09-27 (theme consistency, navigation search, backup memory)
+
+### Services
+
+- **Web:** [#494](https://github.com/sbstndalton/noevia/pull/494), [#495](https://github.com/sbstndalton/noevia/pull/495), [#496](https://github.com/sbstndalton/noevia/pull/496), closes #139, #491, #492 and #493 — `cowork-web:7a3f736`.
+- **Diary:** no deployed change; #480 remains merged but undeployed.
+- **Model manager:** no deployed change; #483 remains merged but undeployed, model-loader stays `1c87ab0`.
+- **Code sandbox, OCR, Docling:** no change.
+- **Deploy/infra:** web-only activation through the installed preflight wrapper.
+
+Theme families now control shared corner roles across controls, fields, cards, menus and dialogs, including sign-in/setup. Glass foreground overlays use a denser tint so underlying labels do not compete with menu text; translucent panes remain. Sidebar search finds available app destinations alongside chats and projects. Offsite backups stream consistent SQLite snapshots from temporary files instead of loading the full database into one Buffer, with cleanup on success, failure and cancellation. A synthetic 67 MB database demonstrates removal of the full snapshot Buffer allocation; this is not a total-process memory or throughput claim.
+
+Root reviewed exact heads before push and again before matching-head squash merge; all PR CI gates passed. Combined main passed 2,497 tests, typecheck, an explicit temporary-output build and design lint, plus destination-search browser QA. Theme regressions passed 613 shape/material checks and 452 authentication/setup checks, with baseline failures reproduced, plus 216 reading states. Root inspected all theme/reading/authentication contact sheets and focal captures at 1440/768/390 in light/dark. These are synthetic Chrome fixtures; native WebKit, physical devices and actual credentials/inference are outside that coverage.
+
+Deployed from main `7a3f736d9a47eaac3bc14d5ee675d272365d1a51` using git archive/scp and a DaServer build. Environment and both Compose files backed up as `*.bak.before-7a3f736`. Verified current→releases/7a3f736, healthy web with zero restarts, `/` 200, unauthenticated `/api/profile` 401, `/version.json` 7a3f736, and served `index-CDVCXJFu.js` / `index-CsXTtFAF.css` present in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts. No flags or sidecars changed.
+
+Dedicated Luna Chrome workers were dispatched immediately after activation for appearance/settings and sidebar search. Live browser verification is pending review of their reports; health checks do not substitute for it.
+
+Rollback: point `current` to `releases/e51c5b1`, restore `config/.env.bak.before-7a3f736`, and run the same web-only preflight command from the Cowork Compose Manager directory.
+
 ## Release web e51c5b1 — 2026-09-27 (tool policy after approval)
 
 ### Services
