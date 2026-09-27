@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web e2f1e0a — 2026-09-27 (project validation and UI navigation)
+
+### Services
+
+- **Web:** [#468](https://github.com/sbstndalton/noevia/pull/468), [#469](https://github.com/sbstndalton/noevia/pull/469), [#470](https://github.com/sbstndalton/noevia/pull/470), closes #465, #467, #463, #464 — `cowork-web:e2f1e0a`.
+- **Diary:** no change.
+- **Model manager:** no change; `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no code change; web-only activation through the installed preflight wrapper.
+
+Rejected project configuration patches preserve the live sampling override. Chat turns and metadata requests explicitly targeting a deleted project return 404 instead of continuing without project context or reporting a discarded save as successful. Admin Settings deep links focus the requested section after profile loading unless the user has moved focus, including moving away and back. Code → Plugins opens Plugins; the main Customise default remains Connectors.
+
+Root independently reviewed each exact local commit before push and again before squash merge with matching-head guards. All applicable CI checks passed. The combined project/chat regression suite passed 67 tests. Both UI Playwright scripts fail on the original base and pass on the reviewed branch at 1440/768/390 in light/dark; the focus-away-and-back regression also fails on the intermediate implementation. Root inspected the screenshot matrices. Local typecheck/build/design lint passed; full local npm test did not complete due baseline-matching missing server dependencies and a RAG stall, so no full local pass is claimed.
+
+Built on DaServer from main `e2f1e0ae3a55e28a7146c9ddf973f719d4e43e8a` using git archive/scp. Backed up `.env` and both Compose files as `*.bak.before-e2f1e0a`; activated only web through the required preflight command. Verified current→releases/e2f1e0a, healthy web with zero restarts, `/` 200, unauthenticated `/api/profile` 401, and served `index-BRTYQITs.js` / `index-kv_iUv4Y.css` present in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts. No flags, models or sidecars changed; embedding restore #336 remains owner-blocked.
+
+Rollback: point `current` to `releases/d8f510d`, restore `config/.env.bak.before-e2f1e0a`, and run the same web-only preflight command from the Cowork Compose Manager directory.
+
 ## Release web d8f510d — 2026-09-27 (duplicate request fixes, #462)
 
 ### Services
