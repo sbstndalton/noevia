@@ -157,9 +157,19 @@ export function SettingsShell(props: SettingsViewProps & {initialSection?:Settin
     target?.focus({ preventScroll: true });
     // An admin deep link can mount before the profile reveals its nav entry. Remember the
     // temporary first-row focus so it can follow the requested section when it appears.
-    // The narrow layout moves focus into the detail pane in its own effect below.
-    if (!current && target && !phone()) pendingInitialNavFocus.current = target;
+    // The narrow layout moves focus into the detail pane in its own effect below. Once
+    // focus leaves this row, even if it later returns, the user owns its position.
+    let cancelPendingFocus: (() => void) | null = null;
+    if (!current && target && !phone() && document.activeElement === target) {
+      pendingInitialNavFocus.current = target;
+      cancelPendingFocus = () => {
+        if (pendingInitialNavFocus.current === target) pendingInitialNavFocus.current = null;
+      };
+      target.addEventListener('blur', cancelPendingFocus, { once: true });
+    }
     return () => {
+      if (target && cancelPendingFocus) target.removeEventListener('blur', cancelPendingFocus);
+      if (pendingInitialNavFocus.current === target) pendingInitialNavFocus.current = null;
       // #401 reopened: at the narrow nav/detail width, opening Settings from the account menu
       // collapses the sidebar drawer (Sidebar.tsx's own `openSettings` calls `setExpanded(false)`
       // before handing off) and it stays collapsed — the drawer does not reopen on its own when
