@@ -12,6 +12,9 @@ import { createInvitation, createRecovery, deleteProvider, deleteUser, fetchProf
 import type { AuthUser, PasskeyInfo, SessionInfo } from '../api';
 import { startRegistration } from '@simplewebauthn/browser';
 import { ProviderForm } from './ProviderForm';
+import { ChatGptConnect } from './ChatGptConnect';
+import { useFeatureFlags } from './features/useFeatureFlags';
+import { afterLayoutSettles, pickFocusable } from '../focus-utils';
 import { StoragePicker } from './StoragePicker';
 import { useT } from '../i18n';
 import type { Translate } from '../i18n';
@@ -291,11 +294,21 @@ function UsersCard(): JSX.Element {
  *  Keys live server-side only — the list shows masked hints, never plaintext. */
 function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
   const t = useT();
+  // #447: Sign in with ChatGPT exists only while the server's feature flag is on.
+  const chatgptOn = useFeatureFlags().chatgptOAuth === true;
   const [providers, setProviders] = useState<Provider[]>([]);
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<string | null>(null);
+  // #446: neither Cancel nor a successful add moved focus anywhere, so when the form (or the
+  // Cancel button inside it) unmounted, focus fell through to <body>. `connectButtonRef` is the
+  // "Connect a provider" button Cancel should return to; `rowRefs` lets a successful add land on
+  // the new (always non-default, so it always has a remove button) row instead, once `refresh()`
+  // has actually re-rendered it — `afterLayoutSettles` waits for that render to commit rather
+  // than querying the DOM the instant the promise resolves.
+  const connectButtonRef = useRef<HTMLButtonElement>(null);
+  const rowRefs = useRef(new Map<string, HTMLElement>());
   const refresh = async () => {
     setLoading(true); setErr(null);
     try { const r = await fetchProviders(); setProviders(r.providers); }
@@ -321,7 +334,8 @@ function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
       {!loading && !err && providers.length === 0 && <p className="route-note">{t('providers.empty')}</p>}
       {err && <><p className="modal-err" role="alert">{err}</p><button className="modal-btn secondary" disabled={loading || !!removing} onClick={() => void refresh()}>{t('providers.retry')}</button></>}
       <div className="card-list">
-        {providers.map((p) => (
+        {/* #447: a ChatGPT connection is shown once, as the Sign in with ChatGPT card below. */}
+        {providers.filter((p) => p.kind !== 'chatgpt-oauth').map((p) => (
           <div key={p.id} className="model-row">
             {/* #404: the dot was hard-coded green for every provider, connected or not. The
                 default provider is the one `/api/health` actually probes (the same signal
@@ -339,7 +353,7 @@ function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
             ) : (
               <>
                 {p.apiKeyMasked && <span className="model-quant">{t('providers.keyHint', { key: p.apiKeyMasked })}</span>}
-                <button className="recents-del" title={t('providers.remove')} aria-label={t('providers.removeNamed', { name: p.label })} disabled={loading || !!removing} onClick={() => void remove(p.id)}>
+                <button ref={(el) => { if (el) rowRefs.current.set(p.id, el); else rowRefs.current.delete(p.id); }} className="recents-del" title={t('providers.remove')} aria-label={t('providers.removeNamed', { name: p.label })} disabled={loading || !!removing} onClick={() => void remove(p.id)}>
                   {removing === p.id ? t('providers.removing') : <ShellIcon name="close" size={16}/>}
                 </button>
               </>
@@ -348,20 +362,31 @@ function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
         ))}
       </div>
 
+      {chatgptOn && <ChatGptConnect onChanged={() => void refresh()} />}
+
       {adding ? (
         <ProviderForm
           autoFocus
           allowShared
           cancelLabel={t('common.cancel')}
-          onCancel={() => setAdding(false)}
-          onConnected={() => {
+          onCancel={() => {
             setAdding(false);
-            refresh();
+            // The unmounting Cancel button is not a usable focus target (#446) — the button that
+            // opened the form is, and it is guaranteed to exist once `adding` is false again.
+            afterLayoutSettles(() => connectButtonRef.current?.focus({ preventScroll: true }));
+          }}
+          onConnected={(created) => {
+            setAdding(false);
+            void refresh().then(() => {
+              afterLayoutSettles(() => {
+                pickFocusable<HTMLElement>(rowRefs.current.get(created.id) ?? null, connectButtonRef.current)?.focus({ preventScroll: true });
+              });
+            });
           }}
         />
       ) : (
         <>
-          <button className="modal-btn secondary" style={{ width: 'fit-content' }} onClick={() => setAdding(true)}>
+          <button ref={connectButtonRef} className="modal-btn secondary" style={{ width: 'fit-content' }} onClick={() => setAdding(true)}>
             <ShellIcon name="plus" size={16}/>{t('providers.connect')}
           </button>
           <p className="route-note">
