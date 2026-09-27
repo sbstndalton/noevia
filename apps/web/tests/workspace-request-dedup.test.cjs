@@ -37,6 +37,8 @@ async function withWorkspaceModules(fn) {
     if (url === '/api/workspace' && method === 'GET') {
       return { ok: true, status: 200, json: async () => state.workspace };
     }
+    if (method !== 'GET') return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    if (url === '/api/expired') return { ok: false, status: 401 };
     throw new Error(`unexpected synthetic fetch: ${method} ${url}`);
   };
   try {
@@ -84,3 +86,22 @@ test('#459 useWorkspaceChanged listeners still fire on notifyWorkspaceChanged() 
   workspaceChanged.notifyWorkspaceChanged();
   assert.equal(seen, 1);
 }));
+
+for (const [name, mutate] of [
+  ['create project', api => api.createProject({ name: 'Synthetic new project' })],
+  ['delete project', api => api.deleteProject('p1')],
+  ['project config', api => api.saveProjectConfig('p1', { name: 'Synthetic renamed project' })],
+  ['archive free chat', api => api.saveFreeChats([])],
+  ['restore project chat', api => api.saveProjectChats('p1', [])],
+  ['logout', api => api.logout()],
+  ['expired session', api => api.apiFetch('/api/expired')],
+]) {
+  test(`#459 ${name} invalidates without relying on a component notification`, () => withWorkspaceModules(async ({ api, calls, state }) => {
+    await api.fetchWorkspace();
+    await mutate(api);
+    state.workspace = makeWorkspace({ projects: [], freeChats: [] });
+    const after = await api.fetchWorkspace();
+    assert.equal(after.projects.length, 0);
+    assert.equal(count(calls, 'GET /api/workspace'), 2);
+  }));
+}

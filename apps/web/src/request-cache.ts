@@ -46,3 +46,12 @@ export function cached<T>(key: string, load: () => Promise<T>, ttlMs: number = D
 export function invalidateCached(key: string): void {
   store.delete(key);
 }
+
+/** Remove a resource family without retaining a new generation of keys after every edit. */
+export function invalidateCachedPrefix(prefix: string): void {
+  for (const key of store.keys()) if (key.startsWith(prefix)) store.delete(key);
+}
+
+export function clearRequestCache(): void {
+  store.clear();
+}

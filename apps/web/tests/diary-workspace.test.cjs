@@ -11,7 +11,7 @@ const ts = require('typescript');
 function load(name, apiFetch = () => {throw Error('unexpected request');}) {
   const code = ts.transpileModule(fs.readFileSync(path.join(__dirname,'../src',name),'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const exports = {};
-  const fakeRequestCache = { cached: (_key, run) => run(), invalidateCached: () => {} };
+  const fakeRequestCache = { cached: (_key, run) => run(), invalidateCachedPrefix: () => {} };
   vm.runInNewContext(code,{exports,require:name=>name==='./diary-markdown'?load('diary-markdown.ts'):name==='./request-cache'?fakeRequestCache:({apiFetch}),DOMException,File,TextEncoder,window:{},Date,console});
   return exports;
 }

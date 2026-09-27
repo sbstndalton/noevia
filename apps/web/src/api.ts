@@ -18,7 +18,7 @@ import type {
   WorkspaceInfo,
 } from './types';
 import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
-import { cached, invalidateCached } from './request-cache';
+import { cached, invalidateCached, clearRequestCache } from './request-cache';
 
 function cookie(name: string): string {
   const item = document.cookie.split(';').map((x) => x.trim()).find((x) => x.startsWith(`${name}=`));
@@ -42,9 +42,13 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   if (response.status === 401) {
     // The session that the cached profile belonged to is gone — a signed-in read served from
     // cache after this point would be a different (stale) answer than the server now gives.
-    invalidateCached(PROFILE_KEY);
+    clearRequestCache();
     window.dispatchEvent(new Event('cowork:unauthorized'));
   }
+  // Workspace refresh callers do not all dispatch workspace-changed (project creation,
+  // deletion and configuration are examples). Successful writes invalidate before callers
+  // can refresh. Conservatively include other writes, which may also change workspace data.
+  if (response.ok && !['GET', 'HEAD', 'OPTIONS'].includes(method)) invalidateCached(WORKSPACE_KEY);
   return response;
 }
 
@@ -60,7 +64,7 @@ export const probeSession = (): Promise<AuthUser | null> =>
   fetch('/api/auth/session', { credentials: 'same-origin' })
     .then((r) => (r.ok ? r.json().then((j: { user: AuthUser }) => j.user) : null))
     .catch(() => null);
-export const logout = () => postJson<{ ok: true }>('/api/auth/logout', {}).then((v) => { invalidateCached(PROFILE_KEY); return v; });
+export const logout = () => postJson<{ ok: true }>('/api/auth/logout', {}).then((v) => { clearRequestCache(); return v; });
 export const passkeyLoginOptions = (username: string) => postJson<{ options: PublicKeyCredentialRequestOptionsJSON; challengeToken: string }>('/api/auth/login/passkey/options', { username });
 export const passkeyLoginVerify = (challengeToken: string, response: unknown) => postJson<{ user: AuthUser }>('/api/auth/login/passkey/verify', { challengeToken, response });
 export const passkeyRegistrationOptions = () => postJson<{ options: PublicKeyCredentialCreationOptionsJSON; challengeToken: string }>('/api/auth/passkeys/register/options', {});
@@ -203,14 +207,8 @@ async function putJson<T>(url: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// #459: `App`'s own `refreshProjects()` fetches `/api/workspace` on every mount, and
-// `ArchivedChatsView`/`useArchivedCount` (components/data/ArchivedChats.tsx) each independently
-// fetch it again on their own mount to build the full archived-rows list — none of them reuses
-// the copy `App` already has. `WORKSPACE_KEY` is the shared cache slot (same mechanism #425 built
-// for `fetchProfile`/`fetchFeatureFlags`); `components/data/workspace-changed.ts` invalidates it
-// from `notifyWorkspaceChanged()`, the same event every workspace-mutating action (archive,
-// restore, delete, import, rename…) already dispatches to tell `useWorkspaceChanged()` listeners
-// to reload, so a mutation is never served the pre-mutation cached list.
+// Share the App and Archived-view mount reads. Successful API writes and explicit
+// workspace-changed notifications invalidate this slot before subsequent refreshes.
 export const WORKSPACE_KEY = 'noevia:workspace';
 export function fetchWorkspace(): Promise<WorkspaceInfo> {
   return cached(WORKSPACE_KEY, () => getJson('/api/workspace'));

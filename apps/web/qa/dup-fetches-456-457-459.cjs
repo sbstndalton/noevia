@@ -27,6 +27,12 @@
 //   PLAYWRIGHT_MODULE=~/noevia-local-test/node_modules/playwright-core node qa/dup-fetches-456-457-459.cjs
 // Exits non-zero on the first scenario whose counts are wrong, printing every request seen.
 const os = require('node:os');
+const fs = require('node:fs');
+const width = Number(process.env.QA_WIDTH || 1440);
+const theme = process.env.QA_THEME || 'light';
+const shots = process.env.QA_SHOTS || '/tmp/noevia-456-shots';
+fs.mkdirSync(shots, { recursive: true });
+async function screenshot(page, name) { await page.screenshot({ path: `${shots}/${name}-${width}-${theme}.png`, fullPage: true }); }
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || `${os.homedir()}/noevia-local-test/node_modules/playwright-core`);
 const { withLocale } = require('./qa-locale.cjs');
 const { createFixture } = require('./diary-fixture.cjs');
@@ -34,7 +40,7 @@ const PORT = Number(process.env.QA_PORT || 31487);
 const origin = `http://localhost:${PORT}`;
 
 async function scenario456(browser) {
-  const page = await browser.newPage(withLocale({ viewport: { width: 1280, height: 900 } }));
+  const page = await browser.newPage(withLocale({ viewport: { width, height: 900 }, colorScheme: theme }));
   page.setDefaultTimeout(8000);
   const seen = [];
   page.on('request', (req) => {
@@ -68,6 +74,8 @@ async function scenario456(browser) {
       sources: seen.filter((s) => s === '?path=Raw%20Sources').length,
     };
 
+    await screenshot(page, 'diary');
+
     // A real send (no local folder connected, so this is the ordinary server-side write path —
     // DiaryView.tsx's `bumpRevision()` runs unconditionally once the stream completes, whatever
     // the diary decision) must still be reflected — the cache must never keep serving the
@@ -85,7 +93,7 @@ async function scenario456(browser) {
 }
 
 async function scenario457(browser) {
-  const page = await browser.newPage(withLocale({ viewport: { width: 1280, height: 900 } }));
+  const page = await browser.newPage(withLocale({ viewport: { width, height: 900 }, colorScheme: theme }));
   page.setDefaultTimeout(8000);
   const chatId = 'ctx-qa-1';
   const seen = [];
@@ -112,6 +120,7 @@ async function scenario457(browser) {
     await page.getByText('Synthetic first reply', { exact: true }).waitFor();
     await page.waitForTimeout(600);
     const initial = seen.length;
+    await screenshot(page, 'chat');
 
     // A real reply (streaming true -> false) must still produce a fresh read.
     await page.getByRole('textbox', { name: 'Message', exact: true }).fill('second message synthetic');
@@ -126,7 +135,7 @@ async function scenario457(browser) {
 }
 
 async function scenario459(browser) {
-  const page = await browser.newPage(withLocale({ viewport: { width: 1280, height: 900 } }));
+  const page = await browser.newPage(withLocale({ viewport: { width, height: 900 }, colorScheme: theme }));
   page.setDefaultTimeout(8000);
   const seen = [];
   page.on('request', (req) => {
@@ -149,6 +158,7 @@ async function scenario459(browser) {
     await page.getByRole('heading', { name: 'Archived chats', exact: true }).waitFor();
     await page.waitForTimeout(600);
     const initial = seen.length;
+    await screenshot(page, 'archived');
 
     // A real mutation (restoring a chat) must still produce a fresh read, not the stale
     // pre-restore cached list.
@@ -182,13 +192,13 @@ async function scenario459(browser) {
   if (results.r456.root !== 1) failures.push(`#456 expected exactly 1 GET /api/diary/files?path= on Diary root load, saw ${results.r456.root} (all: ${JSON.stringify(results.r456.seen)})`);
   if (results.r456.memory !== 1) failures.push(`#456 expected exactly 1 GET /api/diary/files?path=AI%20Memory, saw ${results.r456.memory}`);
   if (results.r456.sources !== 1) failures.push(`#456 expected exactly 1 GET /api/diary/files?path=Raw%20Sources, saw ${results.r456.sources}`);
-  if (results.r456.rootAfterWrite <= results.r456.root) failures.push(`#456 a saved diary message must still refetch the root listing (was ${results.r456.root}, still ${results.r456.rootAfterWrite} after a write)`);
+  if (results.r456.rootAfterWrite !== results.r456.root + 1) failures.push(`#456 a saved diary message must still refetch the root listing (was ${results.r456.root}, still ${results.r456.rootAfterWrite} after a write)`);
 
   if (results.r457.onOpen !== 1) failures.push(`#457 expected exactly 1 GET /api/chats/<id>/context-window on opening a chat with history, saw ${results.r457.onOpen}`);
-  if (results.r457.afterReply <= results.r457.onOpen) failures.push(`#457 a finished reply must still refetch the context window (was ${results.r457.onOpen}, still ${results.r457.afterReply} after a reply)`);
+  if (results.r457.afterReply !== results.r457.onOpen + 1) failures.push(`#457 a finished reply must still refetch the context window (was ${results.r457.onOpen}, still ${results.r457.afterReply} after a reply)`);
 
   if (results.r459.onLoad !== 1) failures.push(`#459 expected exactly 1 GET /api/workspace on loading /archived, saw ${results.r459.onLoad}`);
-  if (results.r459.afterRestore <= results.r459.onLoad) failures.push(`#459 restoring a chat must still refetch the workspace (was ${results.r459.onLoad}, still ${results.r459.afterRestore} after a restore)`);
+  if (results.r459.afterRestore !== results.r459.onLoad + 1) failures.push(`#459 restoring a chat must still refetch the workspace (was ${results.r459.onLoad}, still ${results.r459.afterRestore} after a restore)`);
 
   if (failures.length) {
     console.log('dup-fetches-456-457-459: FAIL');
