@@ -390,9 +390,10 @@ section says so.
   today; their current surface is declared **v1** as-is, and a breaking change adds `/v2` beside it
   for at least one release. Additive fields are not a version bump; removing or renaming a field,
   header, status meaning or endpoint is.
-- **Browser API (`/api/*`)** is declared v1 as-is. Proposal: every response carries
-  `X-Noevia-API: 1` and the SPA refuses to run against a different major with a reload prompt.
-  (Not implemented; a #268 task.)
+- **Browser API (`/api/*`)** is declared v1 as-is. Every response carries
+  `X-Noevia-API: 1`; the SPA checks readiness before session work and stops on a
+  different major with a reload action. The endpoint inventory, compatibility
+  policy, and release marker are in [api-browser-core-v1.md](api-browser-core-v1.md).
 - **Image tags** stay the source commit SHA or content tag per service, pinned by
   `COWORK_VERSION`, `DIARY_VERSION`, `OCR_VERSION`, `MODEL_MANAGER_VERSION`, `DOCLING_VERSION`,
   `CODE_SANDBOX_VERSION` ([deployment.md](deployment.md) "Per-service image tags"). The compatible
@@ -496,12 +497,14 @@ cut. A new hop must declare its timeout and what the caller shows when it fires.
 
 ## 6. Migration plans
 
-Each is a proposal for its issue; none is authorised here.
+Each plan records its issue's decision and implementation status. M1's contract
+scope was accepted for #268; the optional UI container remains deferred.
 
 ### 6.1 M1 — Browser API contract and optional UI container (#268)
 
-- **Change:** add `X-Noevia-API: 1` and `/api/ready`; document every `/api/*` route the SPA uses
-  from the §3.1 table; optionally build the SPA into its own static image served at the same
+- **Contract work:** `X-Noevia-API: 1` and `/api/ready` are implemented; browser routes and
+  compatibility behavior are documented in [api-browser-core-v1.md](api-browser-core-v1.md).
+  An optional future step is to build the SPA into its own static image served at the same
   origin by a front proxy, with core serving `/api/*`.
 - **Live path: the UI container is out of scope** until a front proxy and the Cloudflare tunnel
   target are designed. Today the tunnel points at `http://10.69.0.130:8021`, i.e. web directly
@@ -510,10 +513,13 @@ Each is a proposal for its issue; none is authorised here.
   flow that bumps two images instead of one. Until that design exists, M1 is the contract work only.
 - **State/secrets:** none move. The UI container holds no secret and no state; cookies stay
   host-only on the same origin.
-- **Verification:** the SPA refuses a mismatched major; the full authenticated browser checks in
-  [agent-brief.md](agent-brief.md) "Verification expectations" (theme in every view, a real write
-  with all three approval actions, "Allow for this chat" scoped to one chat); a UI-only upgrade
-  and rollback with a chat waiting on approval does not lose the approval.
+- **Contract verification:** the SPA stops on an explicit mismatched major and offers reload;
+  the served `/api/ready.version` matches `/version.json`, and API responses carry the major
+  through public, denied, and streamed paths. A future UI-container release also requires the
+  full authenticated browser checks in [agent-brief.md](agent-brief.md) "Verification
+  expectations" (theme in every view, a real write with all three approval actions, "Allow for
+  this chat" scoped to one chat), plus a UI-only upgrade and rollback while a chat waits on
+  approval. Those UI-container checks are deferred with the front proxy design.
 - **Rollback:** previous `COWORK_VERSION` (or UI tag) and `.env` backup; with no UI container,
   core keeps serving `dist` as today.
 

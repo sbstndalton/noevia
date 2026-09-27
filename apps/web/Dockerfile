@@ -26,9 +26,8 @@ RUN node --test tests/*.test.cjs && npm run build
 FROM node:22-bookworm
 WORKDIR /app
 COPY --from=build /app/dist ./dist
-# Root package.json backs the /api/ready version lookup (server/version-resolve.cjs, #337);
-# without it the resolver falls back to server/package.json's version, which is fine but
-# stays static across releases, so we still ship the root file when we can.
+# /api/ready reads the stamped dist/version.json copied above. Keep package.json
+# as a safe fallback if that artifact is missing or unreadable (#337).
 COPY package.json ./
 COPY server/package.json server/package-lock.json* ./server/
 # Project-RAG deps (both native modules — installed fresh so the platform-matching

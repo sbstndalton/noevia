@@ -14,7 +14,8 @@ const root = path.join(__dirname, '..');
 // scripts/build.cjs entry point with STAMP_VERSION set, the same as the
 // Docker build, and asserts the release identifier actually made it through.
 test('a release SHA passed as STAMP_VERSION reaches dist/version.json, the stamped icon/manifest URLs, and the bundle', () => {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-build-stamp-'));
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-build-stamp-'));
+  const outDir = path.join(runtimeDir, 'dist');
   const sha = 'deadbee';
   try {
     const build = spawnSync(process.execPath, [path.join(root, 'scripts', 'build.cjs'), '--outDir', outDir], {
@@ -24,6 +25,17 @@ test('a release SHA passed as STAMP_VERSION reaches dist/version.json, the stamp
 
     const version = JSON.parse(fs.readFileSync(path.join(outDir, 'version.json'), 'utf8'));
     assert.equal(version.version, sha);
+    // The Docker runtime has no build-stage STAMP_VERSION. Its resolver must
+    // report the exact artifact version that the static server serves.
+    const serverDir = path.join(runtimeDir, 'server');
+    fs.mkdirSync(serverDir);
+    fs.writeFileSync(path.join(runtimeDir, 'package.json'), JSON.stringify({ version: '0.2.0' }));
+    const { resolveVersion } = require('../server/version-resolve.cjs');
+    const { createReadyRoutes } = require('../server/routes/health.cjs');
+    let ready;
+    const route = createReadyRoutes({ json: (_res, status, body) => { ready = { status, body }; }, isReady: () => true, version: resolveVersion({}, serverDir) });
+    route({ method: 'GET' }, {}, { path: '/api/ready' });
+    assert.deepEqual(ready, { status: 200, body: { ready: true, version: sha } });
 
     const html = fs.readFileSync(path.join(outDir, 'index.html'), 'utf8');
     assert.match(html, new RegExp(`href="/icon\\.svg\\?v=${sha}"`));
@@ -38,7 +50,7 @@ test('a release SHA passed as STAMP_VERSION reaches dist/version.json, the stamp
     const hasSha = chunkFiles.some((f) => fs.readFileSync(path.join(outDir, 'assets', f), 'utf8').includes(`"${sha}"`));
     assert.ok(hasSha, `expected "${sha}" baked into one of: ${chunkFiles.join(', ')}`);
   } finally {
-    fs.rmSync(outDir, { recursive: true, force: true });
+    fs.rmSync(runtimeDir, { recursive: true, force: true });
   }
 });
 
