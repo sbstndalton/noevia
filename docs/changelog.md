@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web f8a83f0 — 2026-09-27 (model states, provider validation, source deletion)
+
+### Services
+
+- **Web:** [#472](https://github.com/sbstndalton/noevia/pull/472), [#476](https://github.com/sbstndalton/noevia/pull/476), [#477](https://github.com/sbstndalton/noevia/pull/477), [#479](https://github.com/sbstndalton/noevia/pull/479), closes #466, #473, #474, #475, #471 — `cowork-web:f8a83f0`.
+- **Diary:** no change.
+- **Model manager:** no change; `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no code change; web-only activation through the installed preflight wrapper.
+
+Model loader checks and installed-model panels now distinguish initial loading from unavailable or empty results. Removing a provider clears its associated model selection in the current workspace, and explicit unknown provider IDs are rejected while the legacy alias remains supported. Shared-provider references in other workspaces remain a separate lifecycle gap. Account deletion now revokes captured workspaces and fences project/source persistence, detached source journals, and RAG work before and after asynchronous boundaries. The separate chat-context persistence path remains tracked in #478; this release makes no universal account-erasure claim.
+
+Each exact PR head was independently reviewed before push and again before squash merge with a matching-head guard. All applicable CI passed. Combined main passed all 2,484 Node tests with zero skips after linking the worktree to existing server dependencies; no package installation was needed. Typecheck, builds and design lint passed on the implementation branches. Synthetic Playwright checks fail on their bases and pass the UI fixes at 1440/768/390 in light/dark, covering pending and settled responses; root inspected the screenshot matrices. Deletion regressions pause extraction, storage and synthetic embedding across revocation and preserve active/other-tenant behavior.
+
+Deployed from main `f8a83f0af6c2ade08eaf77cf3cfe1814c24fbf8a` using git archive/scp and a DaServer image build. Backed up `.env` and both Compose files as `*.bak.before-f8a83f0`; ran only the required web preflight activation. Verified current→releases/f8a83f0, healthy web with zero restarts, `/` 200, unauthenticated `/api/profile` 401, and served `index-BkrNM4Vo.js` / `index-CLfPZER_.css` present in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts. No flags, model jobs or sidecars changed.
+
+Rollback: point `current` to `releases/e2f1e0a`, restore `config/.env.bak.before-f8a83f0`, and run the same web-only preflight command from the Cowork Compose Manager directory.
+
 ## Release web e2f1e0a — 2026-09-27 (project validation and UI navigation)
 
 ### Services
