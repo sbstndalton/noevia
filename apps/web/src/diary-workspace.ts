@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { cached } from './request-cache';
 export interface DiaryFile { path: string; content: string | null; version: string | null }
 export interface FileEntry { path: string; name: string; isDir: boolean }
 export class DiaryRequestError extends Error {
@@ -10,8 +11,22 @@ export async function diaryRequest<T>(path: string, body?: unknown, method = 'PO
   if (!r.ok) throw new DiaryRequestError(value.error || 'Diary request failed', r.status);
   return value;
 }
+/**
+ * #456: `DiaryView`'s "overview" effect and its "files" effect both land on `listFiles('')` for
+ * the Diary root on the same mount, with nothing between them noticing the other already asked.
+ * `filesGeneration` is the invalidation half of the same `request-cache.ts` mechanism #425 built
+ * for `fetchProfile`/`fetchFeatureFlags`: every write that can change a directory's contents
+ * (`writeFile`, a diary chat capture landing on disk, a storage reconnect/import) bumps it via
+ * `invalidateFileListings()`, which changes every cache key so the next read is never served a
+ * pre-write listing. A call carrying its own `AbortSignal` (the folder search) is never cached —
+ * sharing one in-flight request across independent callers would let one caller's abort cancel
+ * another caller's still-wanted result.
+ */
+let filesGeneration = 0;
+export function invalidateFileListings(): void { filesGeneration += 1; }
 export async function listFiles(path = '', signal?: AbortSignal): Promise<{files:FileEntry[]}> {
-  const value=await diaryRequest<{files:FileEntry[]}>('files?path='+encodeURIComponent(path),undefined,'GET',signal);
+  const load = () => diaryRequest<{files:FileEntry[]}>('files?path='+encodeURIComponent(path),undefined,'GET',signal);
+  const value = signal ? await load() : await cached(`diary:files:${filesGeneration}:${path}`, load);
   if(!value || !Array.isArray(value.files) || value.files.length>500 || value.files.some(f=>!f || typeof f.path!=='string' || typeof f.name!=='string' || typeof f.isDir!=='boolean'))throw Error('File list was invalid. Try refreshing this folder.');
   return value;
 }
@@ -20,7 +35,7 @@ function checkedFile(value: DiaryFile, path: string): DiaryFile {
   return value;
 }
 export const readFile = async (path: string, signal?: AbortSignal) => checkedFile(await diaryRequest<DiaryFile>('file', { path }, 'POST', signal), path);
-export const writeFile = async (file: DiaryFile) => checkedFile(await diaryRequest<DiaryFile>('file', file, 'PUT'), file.path);
+export const writeFile = async (file: DiaryFile) => { const result = checkedFile(await diaryRequest<DiaryFile>('file', file, 'PUT'), file.path); invalidateFileListings(); return result; };
 interface LocalFileHandle {
   kind: 'file'; name: string;
   getFile(): Promise<File>;

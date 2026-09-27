@@ -200,8 +200,17 @@ async function putJson<T>(url: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// #459: `App`'s own `refreshProjects()` fetches `/api/workspace` on every mount, and
+// `ArchivedChatsView`/`useArchivedCount` (components/data/ArchivedChats.tsx) each independently
+// fetch it again on their own mount to build the full archived-rows list — none of them reuses
+// the copy `App` already has. `WORKSPACE_KEY` is the shared cache slot (same mechanism #425 built
+// for `fetchProfile`/`fetchFeatureFlags`); `components/data/workspace-changed.ts` invalidates it
+// from `notifyWorkspaceChanged()`, the same event every workspace-mutating action (archive,
+// restore, delete, import, rename…) already dispatches to tell `useWorkspaceChanged()` listeners
+// to reload, so a mutation is never served the pre-mutation cached list.
+export const WORKSPACE_KEY = 'noevia:workspace';
 export function fetchWorkspace(): Promise<WorkspaceInfo> {
-  return getJson('/api/workspace');
+  return cached(WORKSPACE_KEY, () => getJson('/api/workspace'));
 }
 
 // ── Providers (step 9: generic OpenAI-compatible endpoints) ─────────────────
