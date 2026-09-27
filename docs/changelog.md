@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web d8f510d — 2026-09-27 (duplicate request fixes, #462)
+
+### Services
+
+- **Web:** [#462](https://github.com/sbstndalton/noevia/pull/462), closes #456, #457, #459 — `cowork-web:d8f510d`.
+- **Diary:** no change.
+- **Model manager:** no change; `cowork-model-loader:1c87ab0`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** no code change; web-only activation through the installed preflight wrapper.
+
+Diary directory listings and Archived workspace reads now share requests. Chat context refreshes on chat changes and reply completion, avoiding the extra read caused by initial history hydration. Mutation, background-source completion and session invalidation preserve fresh reads. The request cache retains at most 128 keys and shares slow in-flight requests.
+
+The reviewed PR head was `f16905dab654591f61fc00059b4014edf54c28cf`, squash-merged with a matching-head guard to `d8f510de4c2f646c83f5cadf4d7a42a17d264170`. Required CI is green, including Node tests/typecheck/build and Docker images; 754 frontend tests pass locally. Synthetic browser QA fails on main d0f9750 (two initial requests per endpoint) and passes on the fix (one, then one more after a mutation). The 1440/768/390 light/dark matrix was inspected before the final cache-only follow-up; final-head 1440-light request-count QA and cache regressions pass. Full local suites stalled at the same server RAG test after about 22 minutes with baseline missing-dependency failures; no full local pass is claimed.
+
+Deployed from main using git archive/scp and a DaServer image build. Backed up `.env` and both Compose files as `*.bak.before-d8f510d`, then used only `up.sh --env-file ... -- -d --no-build --no-deps --wait --wait-timeout 180 web`. Verified current→releases/d8f510d, web healthy with zero restarts, public `/` 200, unauthenticated `/api/profile` 401, and served `index-N4w7_lzO.js` / `index-kv_iUv4Y.css` present in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts across activation. No feature flags, models or sidecars changed; embed's existing crash loop (#336) remains owner-blocked.
+
+Rollback: point `current` to `releases/b61a914`, restore `config/.env.bak.before-d8f510d`, and run the same web-only preflight command from the Cowork Compose Manager directory.
+
 ## Release web b61a914 — 2026-09-27 (merge #451, deploy #449 #460 #461 #451)
 
 ### Services
