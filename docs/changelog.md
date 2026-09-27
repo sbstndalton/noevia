@@ -8,6 +8,22 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web c01f303 — 2026-09-27 (bounded passkey challenges)
+
+### Services
+
+- **Web:** [#488](https://github.com/sbstndalton/noevia/pull/488), closes #487 — `cowork-web:c01f303`.
+- **Diary, model manager, Code sandbox, OCR, Docling:** no deployed change. Previously merged Diary #480 and model-manager #483 fixes remain undeployed; model-loader stays `1c87ab0`.
+- **Deploy/infra:** web-only activation through the installed preflight wrapper.
+
+Passkey challenge issuance now prunes expired rows transactionally and limits active challenges to 4,096. Capacity rejects new requests without invalidating existing ceremonies, with uniform public responses for known and unknown usernames. Registration and sign-in resume when challenges expire or are consumed. This bounds challenge records; it does not claim general HTTP/CPU denial-of-service protection or immediate SQLite file compaction.
+
+Root reviewed the exact implementation before push and again before matching-head squash merge; all eight CI checks passed. Local focused auth tests, typecheck, build and design lint passed. Full local tests passed 2,491/2,491 on rerun; the first run had one unrelated chat-drafts LRU assertion failure that also passed in isolation. Synthetic real-route/SQLite tests cover concurrent issuance, cleanup, capacity errors and preservation of existing tokens.
+
+Deployed from main `c01f303c4a797ccac429a5d1d010c732d1d67fb5` through git archive/scp and a DaServer web build. Environment and both Compose files were backed up as `*.bak.before-c01f303`. Verified current→releases/c01f303, healthy web with zero restarts, `/` 200, unauthenticated `/api/profile` 401, and served `index-ogJdHrHD.js` / `index-CLfPZER_.css` in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts.
+
+Rollback: point `current` to `releases/69a40a7`, restore `config/.env.bak.before-c01f303`, and run the same web-only preflight command from the Cowork Compose Manager directory.
+
 ## Release web 69a40a7 — 2026-09-27 (account deletion persistence)
 
 ### Services
