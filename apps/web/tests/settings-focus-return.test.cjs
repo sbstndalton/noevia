@@ -37,15 +37,27 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../s
 });
 const { closeFocusTarget } = settingsFocusExports;
 
-// A visible, connected, non-inert element: getClientRects reports a layout box and closest never
-// matches `[inert]`.
-const el = (connected = true, rects = 1, inert = false) => ({
+// A visible, connected, non-inert, enabled, natively-focusable (tabIndex 0) element:
+// getClientRects reports a layout box, closest never matches `[inert]`, checkVisibility (when
+// asked to also check the `visibility` property, as focus-utils.ts does) reports true.
+const el = (connected = true, rects = 1, inert = false, { disabled = false, tabIndex = 0, visible = true } = {}) => ({
   isConnected: connected,
   getClientRects: () => new Array(rects).fill(0),
   closest: (sel) => (inert && sel === '[inert]' ? {} : null),
+  checkVisibility: () => visible,
+  disabled,
+  tabIndex,
 });
 const hidden = () => el(true, 0);
 const inertEl = () => el(true, 1, true);
+// #401 reopened, measured against a real headless Chrome (see the comment in focus-utils.ts):
+// a `disabled` control and a `visibility:hidden` one both still report a non-empty
+// `getClientRects()` and a `tabIndex` of `0` — `getClientRects` alone (the original check this
+// module shipped with) does not catch either. A plain heading with no `tabindex` reports
+// `tabIndex: -1` with everything else looking focusable.
+const disabledEl = () => el(true, 1, false, { disabled: true });
+const visibilityHiddenEl = () => el(true, 1, false, { visible: false });
+const nonInteractiveEl = () => el(true, 1, false, { tabIndex: -1 });
 
 // ── isFocusable / pickFocusable (focus-utils.ts) ────────────────────────────────────────────
 
@@ -64,6 +76,18 @@ test('#401 reopened: isFocusable rejects a connected element with no client rect
 });
 test('isFocusable rejects an element inside an inert region even though it has rects', () => {
   assert.equal(isFocusable(inertEl()), false);
+});
+test('#401 reopened: isFocusable rejects a disabled control even though it reports rects and a tabIndex of 0 (measured, not assumed — see focus-utils.ts)', () => {
+  assert.equal(isFocusable(disabledEl()), false);
+});
+test('#401 reopened: isFocusable rejects a visibility:hidden element (on itself or an inherited-from ancestor) even though it reports rects and a tabIndex of 0', () => {
+  assert.equal(isFocusable(visibilityHiddenEl()), false);
+});
+test('#401 reopened: isFocusable rejects a non-interactive element with no tabindex (e.g. a bare <h1>) even though it reports rects and passes every other check — .focus() on it is a silent no-op', () => {
+  assert.equal(isFocusable(nonInteractiveEl()), false);
+});
+test('isFocusable skips checks a candidate does not support (the plain isConnected/getClientRects/closest objects this suite otherwise uses)', () => {
+  assert.equal(isFocusable({ isConnected: true, getClientRects: () => [0] }), true);
 });
 test('pickFocusable returns the first focusable candidate and skips the rest', () => {
   const target = el();
@@ -110,13 +134,18 @@ const sidebarSrc = fs.readFileSync(path.join(__dirname, '../src/components/Sideb
 test('SettingsShell reads the opener from a prop rather than capturing document.activeElement on its own mount', () => {
   assert.match(settingsShellSrc, /import \{ closeFocusTarget \} from '\.\.\/settings-focus';/);
   assert.match(settingsShellSrc, /import \{ afterLayoutSettles, pickFocusable \} from '\.\.\/focus-utils';/);
+  assert.match(settingsShellSrc, /import \{ isCoarsePointerDevice \} from '\.\.\/composer-focus';/);
   assert.match(settingsShellSrc, /const previous = opener\?\.current \?\? \(document\.activeElement as HTMLElement \| null\);/);
 });
 
-test('#401 reopened: the close-time fallback is computed after layout settles (rAF + a timer, for a hidden tab) and re-queries the account trigger, a main-region heading and the composer, in that order', () => {
+test('#401 reopened: the close-time fallback is computed after layout settles (rAF + a timer, for a hidden tab) and re-queries the account trigger, the narrow-width nav-drawer toggle and the composer, in that order', () => {
   assert.match(settingsShellSrc, /afterLayoutSettles\(\(\) => \{/);
-  assert.match(settingsShellSrc, /pickFocusable<HTMLElement>\(\s*\n\s*document\.querySelector<HTMLElement>\('\.account-trigger'\),\s*\n\s*document\.querySelector<HTMLElement>\('\.app-main h1, \.app-main h2'\),\s*\n\s*document\.querySelector<HTMLElement>\('\.composer-input'\),\s*\n\s*\);/);
+  assert.match(settingsShellSrc, /pickFocusable<HTMLElement>\(\s*\n\s*document\.querySelector<HTMLElement>\('\.account-trigger'\),\s*\n\s*document\.querySelector<HTMLElement>\('\.nav-drawer-toggle'\),\s*\n\s*isCoarsePointerDevice\(\) \? null : document\.querySelector<HTMLElement>\('\.composer-input'\),\s*\n\s*\);/);
   assert.match(settingsShellSrc, /closeFocusTarget\(previous, fallback\)\?\.focus\(\{ preventScroll: true \}\);/);
+});
+
+test('#446/#401: the composer is never a fallback candidate on a coarse pointer (touch) — focusing a text field would pop the on-screen keyboard, the same tradeoff ChatView.tsx already makes for #435', () => {
+  assert.match(settingsShellSrc, /isCoarsePointerDevice\(\) \? null : document\.querySelector<HTMLElement>\('\.composer-input'\)/);
 });
 
 test('#401 regression: AccountMenu captures its own (still-mounted) trigger before closing its popover, not after', () => {
