@@ -37,6 +37,8 @@ Editorial's warm paper, serif display and hairline treatment are Noevia's own de
 
 `qa/theme-families.cjs` additionally exercises Chat/Cowork, real synthetic messages, all three reading fonts and both densities, opening/closing menus/sheets, family changes, legacy migration, display fonts and hover-pull behavior. `QA_WIDTHS` selects the viewport matrix; all widths now produce screenshots.
 
+`qa/theme-auth-shapes-492.cjs` renders signed-out login and fresh setup (welcome, optional-feature choice, account form) across the same 18 family/mode/width cases. Primary actions without shared classes and secondary actions must both consume the action role; changing that token must propagate to every button. Fields, compact inline code and the enclosing surface have separate roles. No credentials are entered; the fixture rejects and reports any attempted write.
+
 `qa/material-preferences.cjs` checks live family switching, focus, switch contrast, optical-effect shutdown and both motion preference sources. `qa/appearance-system.cjs` checks automatic OS scheme tracking, explicit light/dark pins and before-paint restoration. `qa/glass-sticky-strips-448.cjs` retains the pixel-based scrolled-sidebar regression.
 
 The matrix covers every exposed appearance setting and representative shared surfaces, not the Cartesian product of every preference with every feature, data state and browser. Chrome desktop and emulated touch viewports are verified; native Safari, physical mobile hardware and real inference/credentials/Diary content are outside this synthetic run. No live settings were changed.
@@ -56,6 +58,7 @@ The matrix covers every exposed appearance setting and representative shared sur
 | OS reduced transparency / increased contrast | Glass becomes opaque and outlined; no visible backdrop filters | Each Glass family/mode/width case plus dynamic preference suite |
 | No backdrop filtering | Foreground menu stays readable without nested blur | Glass menu captures with filter explicitly disabled |
 | Overflowing sidebar / collapsed sidebar | Sticky account strip does not show history through its text | Existing #448 pixel suite, 42 synthetic chats |
+| Signed-out login / fresh setup | Primary and secondary actions share the family action shape; fields and enclosing card retain their own roles | 72 rendered captures; 452 checks; no credentials or writes |
 | Circles, badges, indicators, flush edges | Preserve functional geometry rather than forcing an action shape | Documented shape exceptions; screenshots and source review |
 
 Mechanical Impeccable detector: three unchanged findings. The Diary Markdown blockquote rule is content semantics, and the two 10px swatch borders depict miniature sidebars (already documented design-lint exceptions). No new detector finding was introduced. `lint:design` passes.

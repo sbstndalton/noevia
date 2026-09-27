@@ -57,7 +57,7 @@ body { margin: 0; background: var(--bg); }
 .auth-card button {
   padding: 11px 14px;
   border: none;
-  border-radius: var(--radius-surface);
+  border-radius: var(--radius-button);
   background: var(--accent);
   color: var(--on-accent);
   font: inherit;
@@ -69,7 +69,7 @@ body { margin: 0; background: var(--bg); }
 .auth-card .auth-error { color: var(--accent-text); font-size: var(--text-footnote); }
 .auth-card .auth-option {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px;
-  border: 1px solid var(--border); border-radius: var(--radius-surface); cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-control); cursor: pointer;
 }
 .auth-card .auth-option input { width: auto; margin-top: 3px; }
 .auth-card .auth-option span { display: grid; gap: 3px; }
@@ -89,7 +89,7 @@ body { margin: 0; background: var(--bg); }
 .wizard-dot.active { background: var(--accent-2); }
 .wizard-step-label { margin-left: auto; font-variant-numeric: tabular-nums; }
 .wizard-card code {
-  padding: 1px 5px; border-radius: var(--radius-card);
+  padding: 1px 5px; border-radius: var(--radius-xs);
   background: var(--bg-input); font-size: var(--text-caption);
 }
 
