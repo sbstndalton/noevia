@@ -15,7 +15,7 @@ const code = ts.transpileModule(
 // same-shape object from a different vm context as unequal (different constructors).
 const exports_ = {};
 new Function('exports', 'require', code)(exports_, (m) => { throw new Error('unexpected import ' + m); });
-const { escapeRegExp, highlightSegments, buildSearchResults, searchResultKey } = exports_;
+const { escapeRegExp, highlightSegments, buildSearchResults, matchingDestinations, searchResultKey } = exports_;
 
 test('escapeRegExp neutralises every regex metacharacter', () => {
   assert.equal(escapeRegExp('a.b('), 'a\\.b\\(');
@@ -72,6 +72,25 @@ test('buildSearchResults orders pinned chats, pinned projects, unpinned projects
 
 test('buildSearchResults tolerates every list being empty', () => {
   assert.deepEqual(buildSearchResults([], [], [], []), []);
+});
+
+test('destinations lead the keyboard order while chats and projects keep their order', () => {
+  assert.deepEqual(buildSearchResults(
+    [{ id: 'c1' }], [{ id: 'p1' }], [{ id: 'p2' }], [{ id: 'c2' }], [{ id: 'diary' }],
+  ), [
+    { kind: 'destination', id: 'diary' },
+    { kind: 'chat', id: 'c1' },
+    { kind: 'project', id: 'p1' },
+    { kind: 'project', id: 'p2' },
+    { kind: 'chat', id: 'c2' },
+  ]);
+});
+
+test('destination matches use the visible localized label', () => {
+  const destinations = [{ id: 'settings', label: 'Einstellungen' }, { id: 'diary', label: 'Tagebuch' }];
+  assert.deepEqual(matchingDestinations(destinations, 'STELL'), [destinations[0]]);
+  assert.deepEqual(matchingDestinations(destinations, 'diary'), []);
+  assert.deepEqual(matchingDestinations(destinations, '  '), []);
 });
 
 test('searchResultKey distinguishes a chat and a project sharing the same id', () => {
