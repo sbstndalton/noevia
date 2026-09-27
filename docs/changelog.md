@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 69a40a7 — 2026-09-27 (account deletion persistence)
+
+### Services
+
+- **Web:** [#481](https://github.com/sbstndalton/noevia/pull/481), [#484](https://github.com/sbstndalton/noevia/pull/484), closes #478 and #482 — `cowork-web:69a40a7`.
+- **Diary:** deployed service unchanged. Session erasure fix [#486](https://github.com/sbstndalton/noevia/pull/486) (#480) is merged but **not deployed**.
+- **Model manager:** deployed `cowork-model-loader:1c87ab0` unchanged. Download integrity fix [#485](https://github.com/sbstndalton/noevia/pull/485) (#483) is merged but **not deployed**.
+- **Code sandbox, OCR, Docling:** no deployed change.
+- **Deploy/infra:** web-only activation through the installed preflight wrapper.
+
+Captured workspaces now guard chat-context observations, summaries, meter snapshots and optional context logs after account deletion. Late reply and tool usage updates also refuse to recreate the deleted account directory. These changes cover the named persistence paths, not every possible detached writer. Synthetic regressions pause manager/summarizer responses across deletion and verify active and other-tenant writes still work.
+
+All PR heads were independently reviewed before push and again before matching-head squash merge; CI passed. Combined web source passed 2,489 tests with zero failures or skips; the final main delta after that run changes only the undeployed Diary service. Branch typecheck, build and design lint passed. The separately merged sidecar fixes passed their applicable CI, but this release does not activate them.
+
+Deployed from main `69a40a7f020df373737f9bfa9ae5824ba97da34c` using git archive/scp and a DaServer image build. Backed up the environment and both Compose files as `*.bak.before-69a40a7`, then ran only the owner's web preflight command. Verified current→releases/69a40a7, healthy web with zero restarts, `/` 200, unauthenticated `/api/profile` 401, and served `index-DRiaLDMn.js` / `index-CLfPZER_.css` present in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts. No flags, model jobs or sidecars changed.
+
+Rollback: point `current` to `releases/f8a83f0`, restore `config/.env.bak.before-69a40a7`, and run the same web-only preflight command from the Cowork Compose Manager directory.
+
 ## Release web f8a83f0 — 2026-09-27 (model states, provider validation, source deletion)
 
 ### Services
