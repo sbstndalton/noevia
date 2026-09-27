@@ -12,6 +12,8 @@ import { createInvitation, createRecovery, deleteProvider, deleteUser, fetchProf
 import type { AuthUser, PasskeyInfo, SessionInfo } from '../api';
 import { startRegistration } from '@simplewebauthn/browser';
 import { ProviderForm } from './ProviderForm';
+import { ChatGptConnect } from './ChatGptConnect';
+import { useFeatureFlags } from './features/useFeatureFlags';
 import { StoragePicker } from './StoragePicker';
 import { useT } from '../i18n';
 import type { Translate } from '../i18n';
@@ -291,6 +293,8 @@ function UsersCard(): JSX.Element {
  *  Keys live server-side only — the list shows masked hints, never plaintext. */
 function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
   const t = useT();
+  // #447: Sign in with ChatGPT exists only while the server's feature flag is on.
+  const chatgptOn = useFeatureFlags().chatgptOAuth === true;
   const [providers, setProviders] = useState<Provider[]>([]);
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -339,6 +343,7 @@ function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
             ) : (
               <>
                 {p.apiKeyMasked && <span className="model-quant">{t('providers.keyHint', { key: p.apiKeyMasked })}</span>}
+                {p.external && <span className={`set-badge${p.connection === 'reconnect' ? ' is-warn' : ''}`}>{p.connection === 'reconnect' ? t('providers.chatgpt.reconnectNeeded') : t('providers.chatgpt.external')}</span>}
                 <button className="recents-del" title={t('providers.remove')} aria-label={t('providers.removeNamed', { name: p.label })} disabled={loading || !!removing} onClick={() => void remove(p.id)}>
                   {removing === p.id ? t('providers.removing') : <ShellIcon name="close" size={16}/>}
                 </button>
@@ -347,6 +352,8 @@ function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
           </div>
         ))}
       </div>
+
+      {chatgptOn && <ChatGptConnect onChanged={() => void refresh()} />}
 
       {adding ? (
         <ProviderForm
