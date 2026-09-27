@@ -87,9 +87,9 @@ export function ChatGptConnect({ onChanged }: { onChanged?: () => void }): JSX.E
               : state === 'reconnect' ? t('providers.chatgpt.reconnectNeeded') : t('providers.chatgpt.notConnected')}
           </span>
         </div>
-        <span className={`set-badge${state === 'connected' ? ' is-on' : state === 'reconnect' ? ' is-warn' : ''}`}>{t('providers.chatgpt.external')}</span>
+        <span className="set-badge">{t('providers.chatgpt.external')}</span>
       </div>
-      <p className="route-note">{t('providers.chatgpt.egress')}</p>
+      <p className="route-note">{t('providers.chatgpt.egress')} {t('providers.chatgpt.limits')}</p>
       {login ? (
         <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <p className="route-note">{t('providers.chatgpt.step1')} <a href={login.verificationUrl} target="_blank" rel="noopener noreferrer">{login.verificationUrl}</a></p>

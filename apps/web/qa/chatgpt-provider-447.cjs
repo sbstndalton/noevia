@@ -1,9 +1,11 @@
 // #447: Settings → AI providers with Sign in with ChatGPT, against synthetic APIs only (the
 // diary-fixture server plus page.route mocks). No real OpenAI account, token or network call.
 //   flag off  the section is absent and nothing asks for /api/providers/chatgpt
-//   flag on   Sign in → one-time code + OpenAI link → pending → connected (masked account,
-//             External badge, model hint, Disconnect) → Disconnect → signed out;
-//             a "reconnect" account shows Reconnect needed + Sign in again.
+//   flag on   Sign in → one-time code + OpenAI link → pending → connected (ONE card: masked
+//             account, one External badge, limits note, model hint, Disconnect as the only way
+//             out) → Disconnect → signed out; a "reconnect" account shows Reconnect needed.
+//   model picker  a project on the ChatGPT provider lists the account's models to pick from;
+//             free text only when that list cannot be loaded.
 // Screenshots: 1440 light and 390 dark into $QA_SCREENSHOTS (default /tmp/noevia-qa-447/shots).
 //
 // Run: npm run build -- --outDir /tmp/noevia-447-dist
@@ -29,7 +31,7 @@ async function shoot(page, name, { width, theme }) {
 }
 
 /** page.route mocks for the flag and the ChatGPT endpoints; `state` drives what the server "has". */
-async function mockApis(page, { flag, state }) {
+async function mockApis(page, { flag, state, models = ['gpt-synthetic-1', 'gpt-synthetic-mini'] }) {
   const seen = [];
   await page.route('**/api/**', (route) => {
     const req = route.request();
@@ -55,7 +57,7 @@ async function mockApis(page, { flag, state }) {
       return json({ state: 'connected', account });
     }
     if (p === '/api/providers/chatgpt/device/cancel') return json({ ok: true });
-    if (p === '/api/providers/chatgpt/models') return json({ models: ['gpt-synthetic-1', 'gpt-synthetic-mini'] });
+    if (p === '/api/providers/chatgpt/models') return models ? json({ models }) : json({ error: 'ChatGPT returned 503' }, 502);
     return json({ error: 'unexpected' }, 500);
   });
   return seen;
@@ -93,6 +95,7 @@ async function mockApis(page, { flag, state }) {
       const card = page.getByRole('region', { name: 'Sign in with ChatGPT' });
       await card.waitFor();
       await card.getByText('Chats on this provider are sent to OpenAI').waitFor();
+      await card.getByText('It uses your ChatGPT plan’s usage limits, and OpenAI may block use from third-party apps like this one.').waitFor();
       await card.getByText('External', { exact: true }).waitFor();
       await shoot(page, 'flag-on-signed-out', { width: 1440, theme: 'light' });
       await page.setViewportSize({ width: 1440, height: 1000 });
@@ -108,8 +111,10 @@ async function mockApis(page, { flag, state }) {
       await card.getByText('Connected as s…@example.test · plus').waitFor({ timeout: 15000 });
       assert.ok(state.polls >= 3, 'the card kept polling until the account connected');
       await card.getByText('Models on your account: gpt-synthetic-1, gpt-synthetic-mini').waitFor();
-      const listRow = page.locator('.model-row', { hasText: 'https://chatgpt.com/backend-api/codex' });
-      await listRow.getByText('External', { exact: true }).waitFor();
+      // One card for the connection: no second "ChatGPT" provider row with its own remove (X) button.
+      assert.equal(await page.locator('.model-row', { hasText: 'https://chatgpt.com/backend-api/codex' }).count(), 0, 'no duplicate provider row');
+      assert.equal(await page.getByRole('button', { name: 'Remove ChatGPT' }).count(), 0, 'Disconnect is the only way to remove it');
+      assert.equal(await page.getByText('External', { exact: true }).count(), 1, 'one External badge');
       assert.equal(await page.getByText(/AT-|RT-|access_token|refresh_token/).count(), 0, 'no token text on the page');
       await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
       await shoot(page, 'flag-on-connected', { width: 1440, theme: 'light' });
@@ -134,6 +139,39 @@ async function mockApis(page, { flag, state }) {
       await card.getByRole('button', { name: 'Disconnect', exact: true }).waitFor();
       await shoot(page, 'flag-on-reconnect', { width: 1440, theme: 'light' });
       await shoot(page, 'flag-on-reconnect', { width: 390, theme: 'dark' });
+      await page.close();
+    }
+    // ── the model picker lists the account's models for a project on ChatGPT ──
+    for (const listed of [true, false]) {
+      const page = await browser.newPage(withLocale({ viewport: { width: 1440, height: 900 } }));
+      const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+      await mockApis(page, { flag: true, state: { connection: 'connected', polls: 0, pendingPolls: 1 }, models: listed ? ['gpt-synthetic-1', 'gpt-synthetic-mini'] : null });
+      const project = { id: 'p1', name: 'Synthetic', model: '', routing: 'manual', provider: 'chatgpt-oauth', files: [], assets: [], toolboxes: ['core'] };
+      const saved = [];
+      await page.route('**/api/chats/*/context', (r) => r.fulfill({ json: { project } }));
+      await page.route('**/api/models/installed', (r) => r.fulfill({ json: [] }));
+      await page.route('**/api/auto-roles', (r) => r.fulfill({ json: { configured: false, roles: null } }));
+      await page.route('**/api/models/capabilities', (r) => r.fulfill({ json: { modelManagement: false } }));
+      await page.route('**/api/projects/*/config', async (r) => { const b = r.request().postDataJSON(); saved.push(b); Object.assign(project, b); await r.fulfill({ json: { project } }); });
+      await page.goto(`http://localhost:${PORT}`);
+      await page.getByRole('button', { name: 'Choose model' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Model and tools' });
+      await dialog.waitFor();
+      if (listed) {
+        const pick = dialog.getByRole('button', { name: /gpt-synthetic-mini/ });
+        await pick.waitFor();
+        assert.equal(await dialog.getByPlaceholder(/model/i).count(), 0, 'no free-text box when the list loads');
+        await shoot(page, 'model-picker', { width: 1440, theme: 'light' });
+        await shoot(page, 'model-picker', { width: 390, theme: 'dark' });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await pick.click();
+        await page.waitForFunction(() => true);
+        assert.deepEqual(saved.at(-1), { model: 'gpt-synthetic-mini', routing: 'manual' });
+      } else {
+        await dialog.getByRole('textbox').first().waitFor();
+        await shoot(page, 'model-picker-fallback', { width: 1440, theme: 'light' });
+      }
+      assert.deepEqual(errors, []);
       await page.close();
     }
     console.log(`PASS #447 Sign in with ChatGPT settings: hidden with the flag off; sign-in code, polling, connected, disconnect and reconnect with it on. Shots in ${shots}`);

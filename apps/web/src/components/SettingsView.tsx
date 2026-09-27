@@ -325,7 +325,8 @@ function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
       {!loading && !err && providers.length === 0 && <p className="route-note">{t('providers.empty')}</p>}
       {err && <><p className="modal-err" role="alert">{err}</p><button className="modal-btn secondary" disabled={loading || !!removing} onClick={() => void refresh()}>{t('providers.retry')}</button></>}
       <div className="card-list">
-        {providers.map((p) => (
+        {/* #447: a ChatGPT connection is shown once, as the Sign in with ChatGPT card below. */}
+        {providers.filter((p) => p.kind !== 'chatgpt-oauth').map((p) => (
           <div key={p.id} className="model-row">
             {/* #404: the dot was hard-coded green for every provider, connected or not. The
                 default provider is the one `/api/health` actually probes (the same signal
@@ -343,7 +344,6 @@ function ProvidersCard({ health }: { health: HealthState }): JSX.Element {
             ) : (
               <>
                 {p.apiKeyMasked && <span className="model-quant">{t('providers.keyHint', { key: p.apiKeyMasked })}</span>}
-                {p.external && <span className={`set-badge${p.connection === 'reconnect' ? ' is-warn' : ''}`}>{p.connection === 'reconnect' ? t('providers.chatgpt.reconnectNeeded') : t('providers.chatgpt.external')}</span>}
                 <button className="recents-del" title={t('providers.remove')} aria-label={t('providers.removeNamed', { name: p.label })} disabled={loading || !!removing} onClick={() => void remove(p.id)}>
                   {removing === p.id ? t('providers.removing') : <ShellIcon name="close" size={16}/>}
                 </button>

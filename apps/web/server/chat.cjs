@@ -324,6 +324,9 @@ function createChatHandler({
     const egressRefused = egress.egressRefusal({ provider, spaceId, projectId: project?.id, diaryProjectId: diaryExtras.PROJECT_ID });
     if (egressRefused) return json(res, 409, { error: egressRefused });
     const chatgptProvider = require('./chatgpt-oauth.cjs').isChatGptProvider(provider);
+    // Rule 4 (#452): storage tools never reach the Diary folder through an external provider.
+    const egressToolRefusal = (userId, name, rawArgs) => (externalProvider ? egress.toolRefusal({ provider, toolName: name, rawArgs,
+      storage: userId && typeof authService?.getStorage === 'function' ? authService.getStorage(userId) : null }) : null);
     let providerFetch = fetch;
     if (chatgptProvider) {
       if (!chatgptOAuth || !chatgptEnabled()) return json(res, 409, { error: 'Sign in with ChatGPT is turned off on this server. Choose another provider in the model popup.' });
@@ -337,7 +340,7 @@ function createChatHandler({
           ? 'Reconnect needed: your ChatGPT sign-in expired or was revoked. Sign in with ChatGPT again in Settings → AI providers.'
           : 'ChatGPT is not connected. Sign in with ChatGPT in Settings → AI providers.' });
       }
-      providerFetch = chatgptOAuth.fetchFor(ownerId);
+      providerFetch = chatgptOAuth.fetchFor(ownerId, { conversation: chatId || spaceId || null });
     }
 
     let model = (project && project.model) || null;
@@ -555,6 +558,7 @@ function createChatHandler({
       const workspaceUserId = requestScope.getStore()?.workspace?.userId || null;
       if (!userId || (workspaceUserId && workspaceUserId !== userId)) return null;
       if (chatSignal.signal.aborted || toolPolicy.mode(userId, tool, isWriteTool(tool)) !== 'allow') return null;
+      if (egressToolRefusal(chatUser?.id || userId, tool, JSON.stringify(args))) return null;
       const call = { id: `gate-${crypto.randomUUID()}`, name: tool, args: JSON.stringify(args) };
       const index = toolOffset;
       // Journaled exactly like a model-requested call (output -> started -> result), so a resumed
@@ -752,7 +756,7 @@ function createChatHandler({
         const detail = await upstream.text().catch(() => '');
         // The ChatGPT adapter marks messages written for people (reconnect, usage limit); show those as they are.
         let msg = context.providerError(detail);
-        if (upstream.headers?.get?.('x-noevia-provider-message') === '1') { try { msg = String(JSON.parse(detail).error.message).slice(0, 300) || msg; } catch { /* keep the generic text */ } }
+        if (chatgptProvider && upstream.headers?.get?.('x-noevia-provider-message') === '1') { try { msg = String(JSON.parse(detail).error.message).slice(0, 300) || msg; } catch { /* keep the generic text */ } }
 
         send({ type: 'error', text: msg });
         break;
@@ -780,7 +784,7 @@ function createChatHandler({
             try {
               const evt = JSON.parse(payload);
               if(evt.choices?.[0]?.finish_reason==='length')send({type:'warning',text:'The model reached its thinking/answer token budget. This reply may be incomplete; try Low thinking or a narrower question.'});
-              if(evt.error){const text=context.providerError(evt.error);turn?.interrupt(`Provider stream error: ${text}`);send({type:'error',text});res.end();return;}
+              if(evt.error){const text=chatgptProvider&&evt.error?.source==='chatgpt'&&typeof evt.error.message==='string'?evt.error.message.slice(0,300):context.providerError(evt.error);turn?.interrupt(`Provider stream error: ${text}`);send({type:'error',text});res.end();return;}
               const delta = evt.choices?.[0]?.delta || {};
               const meaningfulToolFragment = Array.isArray(delta.tool_calls) && delta.tool_calls.some(tc => tc?.id || tc?.function?.name || tc?.function?.arguments);
               // Detect output before handling usage: a compact provider may put
@@ -927,6 +931,11 @@ function createChatHandler({
             let result;
             const userId = requestScope.getStore()?.workspace?.userId || null;
             // The account's tool policy (Settings → Connectors). Writes are always at least `ask`.
+            const refusedForEgress = egressToolRefusal(chatUser?.id || userId, tc.name, tc.args);
+            if (refusedForEgress) {
+              authService.audit('tool.denied', userId, userId, { tool: tc.name, reason: 'external-provider-diary' });
+              return refusedForEgress;
+            }
             const permission = toolPolicy.mode(userId, tc.name, isWriteTool(tc.name));
             if (permission === 'block') {
               authService.audit('tool.denied', userId, userId, { tool: tc.name, reason: 'blocked' });

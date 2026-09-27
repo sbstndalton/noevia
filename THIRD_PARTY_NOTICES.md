@@ -73,6 +73,18 @@ dependency on either package, of logic from two Apache-2.0 projects. Neither pac
   Copyright 2025 OpenAI
   ```
 
+- Fixes from openai-oauth's open pull requests and issues, and from forks, all under the same
+  Apache-2.0 licence and re-implemented here rather than copied: tool strictness defaulting to
+  false (PR #44, augusto-rehfeldt@27f3a60); `json_schema` response_format (PRs #9/#40,
+  cruzanstx@06aa1b0); stripping `prompt_cache_retention` / `safety_identifier` / sampling fields
+  (PR #38, issue #22, PR #7, dongmin-j-lee@cb52448); rebuilding output from streamed items (PR #11,
+  YangKeao@7633d09); explicit error frames instead of 200 + a cut-off stream (issue #39);
+  reasoning summaries (YangKeao@d72dec5, twaldin@b471a45); completed/incomplete terminal handling,
+  soft refresh failures and the model allowlist from
+  [plgonzalezrx8/openai-oauth](https://github.com/plgonzalezrx8/openai-oauth) (1bc2913, 3b04587).
+  Protocol headers were checked against openai/codex itself (commit `985cf47`), not taken from
+  QuartzWarrior@7100902.
+
 Changes: rewritten in CommonJS for the web server; per-user encrypted token storage through
 `secrets.cjs` instead of `~/.codex/auth.json`; single-flight refresh; the device-code flow instead
 of the loopback redirect; no Vercel AI SDK. Full licence text:

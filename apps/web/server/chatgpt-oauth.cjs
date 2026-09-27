@@ -42,7 +42,14 @@ const DEVICE_TTL_MS = 15 * 60 * 1000;
 const MAX_PENDING_PER_USER = 3;
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const MODEL_CACHE_MS = 5 * 60 * 1000;
+const MODEL_FAILURE_CACHE_MS = 60 * 1000;
+const START_WINDOW_MS = 10 * 60 * 1000;
+const MAX_STARTS_PER_WINDOW = 5;
 const TIMEOUT_MS = 15000;
+// One stable, honest User-Agent. The Codex CLI sends `codex_cli_rs/<version> (<os>; <arch>) <terminal>`
+// (codex-rs/login/src/auth/default_client.rs get_codex_user_agent); nothing shows the backend
+// requires that shape, and noevia does not pretend to be the CLI.
+const USER_AGENT = (() => { let v = '0'; try { v = require('../package.json').version || v; } catch { /* runtime without package.json */ } return `noevia/${v} (chatgpt-oauth; +https://github.com/sbstndalton/noevia)`; })();
 
 const fail = (message, status = 502, code = undefined) => Object.assign(new Error(message), { status, code });
 const MESSAGES = {
@@ -71,6 +78,11 @@ function accountIdFrom(token) {
   if (typeof claims.chatgpt_account_id === 'string' && claims.chatgpt_account_id) return claims.chatgpt_account_id;
   const first = Array.isArray(claims.organizations) ? record(claims.organizations[0]) : null;
   return first && typeof first.id === 'string' && first.id ? first.id : undefined;
+}
+/** A UUID-shaped, stable digest of `text` (never reversible to it). */
+function uuidFrom(text) {
+  const h = crypto.createHash('sha256').update(String(text)).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h[16], 16) & 3) | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 const isFedRamp = (token) => record(jwtClaims(token)?.['https://api.openai.com/auth'])?.chatgpt_account_is_fedramp === true;
 function maskEmail(email) {
@@ -123,8 +135,11 @@ function toolChoice(choice) {
   if (record(choice) && choice.type === 'function' && typeof choice.function?.name === 'string') return { type: 'function', name: choice.function.name };
   return undefined;
 }
-/** The Codex backend takes Responses input, always streams and never stores. Sampling knobs and
- *  output budgets the local engines use are dropped: the backend rejects them. */
+/** The Codex backend takes Responses input, always streams and never stores (store:false; every
+ *  turn replays the whole conversation, never previous_response_id). The body is built from an
+ *  allowlist, so nothing the backend rejects is ever forwarded: temperature, top_p, top_k, min_p,
+ *  max_tokens / max_output_tokens, stream_options, user, safety_identifier (openai-oauth #22),
+ *  prompt_cache_retention (#38), metadata, service_tier, seed, stop, n, logprobs and the like. */
 function toResponsesRequest(body) {
   const input = [];
   for (const m of Array.isArray(body.messages) ? body.messages : []) {
@@ -149,13 +164,30 @@ function toResponsesRequest(body) {
   const tools = (Array.isArray(body.tools) ? body.tools : [])
     .filter((t) => record(t) && t.type === 'function' && typeof t.function?.name === 'string' && t.function.name)
     .map((t) => ({ type: 'function', name: t.function.name, description: typeof t.function.description === 'string' ? t.function.description : undefined,
-      parameters: record(t.function.parameters) || { type: 'object', properties: {} }, strict: false }));
+      // Chat Completions tools are non-strict unless they opt in; the Responses bridge must keep
+      // that default or optional parameters are rejected (openai-oauth #44).
+      parameters: record(t.function.parameters) || { type: 'object', properties: {} }, strict: t.function.strict === true }));
   if (tools.length) {
     out.tools = tools;
     out.tool_choice = toolChoice(body.tool_choice) || 'auto';
   }
-  if (['minimal', 'low', 'medium', 'high'].includes(body.reasoning_effort)) out.reasoning = { effort: body.reasoning_effort };
+  // An explicit effort also asks for the reasoning summary, or the summary deltas chatParts
+  // forwards never arrive (forks YangKeao@d72dec5, twaldin@b471a45). Model defaults are added in
+  // fetchFor from the account catalogue.
+  if (['minimal', 'low', 'medium', 'high'].includes(body.reasoning_effort)) out.reasoning = { effort: body.reasoning_effort, summary: 'auto' };
+  // Structured output (openai-oauth #9/#40): chat's response_format becomes Responses text.format,
+  // the same field the Codex CLI's --output-schema sends to this backend.
+  const format = responseFormat(body.response_format);
+  if (format) out.text = { format };
   return out;
+}
+function responseFormat(rf) {
+  if (!record(rf)) return null;
+  if (rf.type === 'json_object') return { type: 'json_object' };
+  if (rf.type !== 'json_schema' || !record(rf.json_schema) || !record(rf.json_schema.schema)) return null;
+  const js = rf.json_schema;
+  return { type: 'json_schema', name: typeof js.name === 'string' && js.name ? js.name.slice(0, 64) : 'response', schema: js.schema,
+    strict: js.strict === true, ...(typeof js.description === 'string' ? { description: js.description } : {}) };
 }
 
 // ── Responses SSE → /chat/completions (response) ────────────────────────────
@@ -178,20 +210,53 @@ async function* sseEvents(stream) {
 }
 const usageOf = (u) => (record(u) ? { prompt_tokens: u.input_tokens ?? null, completion_tokens: u.output_tokens ?? null,
   total_tokens: u.total_tokens ?? (Number.isFinite(u.input_tokens) && Number.isFinite(u.output_tokens) ? u.input_tokens + u.output_tokens : null) } : null);
-const errorText = (value, fallback) => String((record(value) && (value.message || value.error?.message || value.detail)) || fallback).slice(0, 300);
+/** A person-readable line for an upstream error object, or null if it is not a known kind.
+ *  Shapes follow the Codex CLI's own parser (codex-rs/codex-api/src/api_bridge.rs): a 429 with
+ *  error.type "usage_limit_reached", plan_type and resets_at (unix seconds). */
+function knownError(e, nowMs = Date.now()) {
+  if (!record(e)) return null;
+  const type = String(e.type || e.code || '');
+  const message = typeof e.message === 'string' ? e.message : typeof e.detail === 'string' ? e.detail : '';
+  if (type === 'usage_limit_reached' || /usage limit/i.test(message)) {
+    const at = Number(e.resets_at) > 0 ? Number(e.resets_at) * 1000 : Number(e.resets_in_seconds) > 0 ? nowMs + Number(e.resets_in_seconds) * 1000 : null;
+    const plan = typeof e.plan_type === 'string' && /^[a-z_]{1,20}$/i.test(e.plan_type) ? ` on your ${e.plan_type[0].toUpperCase()}${e.plan_type.slice(1)} plan` : '';
+    const when = at ? ` It resets at ${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC.` : '';
+    return `ChatGPT usage limit reached${plan}.${when} Pick another provider in the model popup until then.`;
+  }
+  if (type === 'usage_not_included') return 'Your ChatGPT plan does not include the Codex usage that Sign in with ChatGPT relies on.';
+  if (['insufficient_quota', 'credit_balance_exhausted', 'organization_usage_limit_exceeded'].includes(type)) return 'Your ChatGPT account has no usage quota left.';
+  return null;
+}
+const errorObject = (value) => (record(value?.error) ? { ...value, ...value.error } : record(value) ? value : null);
+const errorText = (value, fallback) => {
+  const e = errorObject(value);
+  return String(knownError(e) || (e && (e.message || e.detail)) || fallback).slice(0, 300);
+};
 
 /** Turns the upstream event stream into the parts the chat loop understands, in order. */
 async function* chatParts(stream) {
   const toolIndex = new Map(); // upstream item id -> tool_calls index
   const argsSent = new Set();
+  const textSent = new Set(); // message item ids whose text already streamed
+  let sawText = false;
+  let anonymousText = false; // a text delta without an item id: rebuilding could then duplicate it
+  const unsentMessage = (it) => (it.id ? !textSent.has(it.id) && !anonymousText : !sawText);
   let finish = null;
   let usage = null;
   let sawTool = false;
+  // openai-oauth #11: Codex sometimes streams a message only as a finished item, or leaves
+  // response.completed.output empty after streaming items. Text is rebuilt from whichever arrived.
+  const messageText = (item) => (Array.isArray(item.content) ? item.content : [])
+    .map((c) => (record(c) && (c.type === 'output_text' || c.type === 'text') && typeof c.text === 'string' ? c.text : '')).join('');
   for await (const evt of sseEvents(stream)) {
     const item = record(evt.item);
     switch (evt.type) {
       case 'response.output_text.delta':
-        if (typeof evt.delta === 'string' && evt.delta) yield { delta: { content: evt.delta } };
+        if (typeof evt.delta === 'string' && evt.delta) {
+          if (typeof evt.item_id === 'string') textSent.add(evt.item_id); else anonymousText = true;
+          sawText = true;
+          yield { delta: { content: evt.delta } };
+        }
         break;
       case 'response.reasoning_summary_text.delta':
       case 'response.reasoning_text.delta':
@@ -213,6 +278,11 @@ async function* chatParts(stream) {
         break;
       }
       case 'response.output_item.done':
+        if (item && item.type === 'message' && unsentMessage(item)) {
+          const text = messageText(item);
+          if (item.id) textSent.add(item.id);
+          if (text) { sawText = true; yield { delta: { content: text } }; }
+        }
         if (item && item.type === 'function_call') {
           // Some models send a call's arguments only here, never as deltas.
           let index = toolIndex.get(item.id);
@@ -229,18 +299,32 @@ async function* chatParts(stream) {
         }
         break;
       case 'response.completed':
+      case 'response.incomplete': {
+        // Items only present in the final output (nothing streamed for them) still count.
+        for (const out of Array.isArray(evt.response?.output) ? evt.response.output : []) {
+          if (!record(out)) continue;
+          if (out.type === 'message' && unsentMessage(out)) {
+            const text = messageText(out);
+            if (out.id) textSent.add(out.id);
+            if (text) { sawText = true; yield { delta: { content: text } }; }
+          } else if (out.type === 'function_call' && !toolIndex.has(out.id) && typeof out.name === 'string') {
+            const index = toolIndex.size;
+            toolIndex.set(out.id, index);
+            sawTool = true;
+            yield { delta: { tool_calls: [{ index, id: out.call_id || out.id, type: 'function', function: { name: out.name, arguments: typeof out.arguments === 'string' ? out.arguments : '' } }] } };
+          }
+        }
         usage = usageOf(evt.response?.usage);
-        finish = sawTool ? 'tool_calls' : 'stop';
+        // An incomplete terminal response is a finished reply with a reason, not an error.
+        const reason = evt.type === 'response.incomplete' ? evt.response?.incomplete_details?.reason : null;
+        finish = reason === 'max_output_tokens' ? 'length' : reason === 'content_filter' ? 'content_filter' : sawTool ? 'tool_calls' : 'stop';
         break;
-      case 'response.incomplete':
-        usage = usageOf(evt.response?.usage);
-        finish = evt.response?.incomplete_details?.reason === 'max_output_tokens' ? 'length' : sawTool ? 'tool_calls' : 'stop';
-        break;
+      }
       case 'response.failed':
-        yield { error: errorText(evt.response?.error, 'ChatGPT could not finish this reply.') };
+        yield { error: errorText(evt.response?.error || evt.response, 'ChatGPT could not finish this reply.'), status: 502 };
         return;
       case 'error':
-        yield { error: errorText(evt, 'ChatGPT returned an error.') };
+        yield { error: errorText(evt, 'ChatGPT returned an error.'), status: knownError(errorObject(evt)) ? 429 : 502 };
         return;
       default:
         break;
@@ -251,21 +335,25 @@ async function* chatParts(stream) {
   yield { finish, usage };
 }
 
-function chatStream(upstreamBody, model) {
+/** `parts` is a chatParts() iterator whose first result was already read (`first`), so an error
+ *  that arrives before any output becomes a real HTTP error instead of 200 + a cut-off stream
+ *  (openai-oauth #39). Later errors are sent as an explicit error frame, then [DONE]. */
+function chatStream(parts, first, model) {
   const id = `chatcmpl-${crypto.randomUUID()}`;
   const created = Math.floor(Date.now() / 1000);
   const encoder = new TextEncoder();
   const frame = (value) => encoder.encode(`data: ${JSON.stringify(value)}\n\n`);
   const chunk = (delta, finish_reason = null) => frame({ id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta, finish_reason }] });
-  const parts = chatParts(upstreamBody);
   let opened = false;
+  let pending = first;
   return new ReadableStream({
     async pull(controller) {
       try {
         if (!opened) { opened = true; controller.enqueue(chunk({ role: 'assistant' })); return; }
-        const { value, done } = await parts.next();
+        const { value, done } = pending || await parts.next();
+        pending = null;
         if (done) { controller.enqueue(encoder.encode('data: [DONE]\n\n')); controller.close(); return; }
-        if (value.error) { controller.enqueue(frame({ error: { message: value.error } })); controller.enqueue(encoder.encode('data: [DONE]\n\n')); controller.close(); return; }
+        if (value.error) { controller.enqueue(frame({ error: { message: value.error, source: 'chatgpt' } })); controller.enqueue(encoder.encode('data: [DONE]\n\n')); controller.close(); return; }
         if (value.delta) { controller.enqueue(chunk(value.delta)); return; }
         controller.enqueue(chunk({}, value.finish));
         if (value.usage) controller.enqueue(frame({ id, object: 'chat.completion.chunk', created, model, choices: [], usage: value.usage }));
@@ -284,7 +372,7 @@ async function chatCompletion(upstreamBody, model) {
   let finish = 'stop';
   let usage = null;
   for await (const part of chatParts(upstreamBody)) {
-    if (part.error) return { error: { message: part.error } };
+    if (part.error) return { error: { message: part.error, status: part.status } };
     if (part.delta?.content) content += part.delta.content;
     if (part.delta?.reasoning_content) reasoning += part.delta.reasoning_content;
     for (const tc of part.delta?.tool_calls || []) {
@@ -309,12 +397,13 @@ function errorResponse(status, message, code) {
   });
 }
 function upstreamMessage(text, status) {
-  let detail = '';
-  try {
-    const parsed = JSON.parse(text);
-    detail = typeof parsed?.detail === 'string' ? parsed.detail : typeof parsed?.error?.message === 'string' ? parsed.error.message : typeof parsed?.message === 'string' ? parsed.message : '';
-  } catch { /* not JSON */ }
-  if (status === 429) return `ChatGPT usage limit reached${detail ? `: ${detail}` : ''}`.slice(0, 300);
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch { /* not JSON */ }
+  const e = errorObject(parsed);
+  const known = knownError(e) || (!e && /usage limit/i.test(String(text)) ? knownError({ type: 'usage_limit_reached' }) : null);
+  if (known) return known.slice(0, 300);
+  const detail = e ? (typeof e.detail === 'string' ? e.detail : typeof e.message === 'string' ? e.message : '') : '';
+  if (status === 429) return `ChatGPT is rate-limiting this account${detail ? `: ${detail}` : ''}. Try again shortly.`.slice(0, 300);
   return `ChatGPT returned ${status}${detail ? `: ${detail}` : ''}`.slice(0, 300);
 }
 
@@ -341,22 +430,25 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
     if (!row) return null;
     let data = null;
     try { data = JSON.parse(secrets.decrypt(row.data_enc, String(userId))); } catch { data = null; }
-    return { state: row.state, data: record(data) };
+    return { state: row.state, data: record(data), raw: row.data_enc };
   }
   function write(userId, data, state = 'connected') {
     db.prepare(`INSERT INTO chatgpt_oauth_tokens(user_id, data_enc, state, updated_at) VALUES(?,?,?,?)
       ON CONFLICT(user_id) DO UPDATE SET data_enc=excluded.data_enc, state=excluded.state, updated_at=excluded.updated_at`)
       .run(String(userId), secrets.encrypt(JSON.stringify(data), String(userId)), state, now());
   }
-  function markReconnect(userId) {
-    db.prepare("UPDATE chatgpt_oauth_tokens SET state='reconnect', updated_at=? WHERE user_id=?").run(now(), String(userId));
-    audit('chatgpt.oauth.reconnect_needed', String(userId), {});
+  /** Marks THIS stored sign-in (by its ciphertext) as needing a reconnect; a newer one is left alone. */
+  function markReconnect(userId, raw = null) {
+    const r = raw
+      ? db.prepare("UPDATE chatgpt_oauth_tokens SET state='reconnect', updated_at=? WHERE user_id=? AND data_enc=?").run(now(), String(userId), raw)
+      : db.prepare("UPDATE chatgpt_oauth_tokens SET state='reconnect', updated_at=? WHERE user_id=?").run(now(), String(userId));
+    if (r.changes) audit('chatgpt.oauth.reconnect_needed', String(userId), {});
   }
 
   async function postJson(url, body, { form = false } = {}) {
     const r = await fetchImpl(url, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { 'content-type': form ? 'application/x-www-form-urlencoded' : 'application/json', accept: 'application/json' },
+      headers: { 'content-type': form ? 'application/x-www-form-urlencoded' : 'application/json', accept: 'application/json', 'user-agent': USER_AGENT },
       body: form ? new URLSearchParams(body).toString() : JSON.stringify(body),
     });
     const text = await r.text().catch(() => '');
@@ -366,15 +458,26 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
   }
 
   // ── device-code login ──
-  const pending = new Map(); // loginId -> { userId, deviceAuthId, userCode, interval, expires, nextPollAt, polling }
-  const models = new Map(); // userId -> { until, ids }: the account's model catalogue
+  // Endpoints and bodies match the Codex CLI's `codex login --device-auth`
+  // (openai/codex codex-rs/login/src/device_code_auth.rs @985cf47: usercode L63-70 and L167-175,
+  // token poll L107-131, redirect_uri L206; code exchange as a form, oauth/client.rs L58-67).
+  const pending = new Map(); // loginId -> { userId, deviceAuthId, userCode, interval, expires, nextPollAt, polling, cancelled, generation }
+  const models = new Map(); // userId -> { until, ids }: the account's model catalogue (ids null = unavailable)
+  const generations = new Map(); // userId -> number, bumped by disconnect: an exchange in flight must not reconnect
+  const starts = new Map(); // userId -> start timestamps (rate limit)
+  const generation = (userId) => generations.get(userId) || 0;
+  const bump = (userId) => generations.set(userId, generation(userId) + 1);
   const prune = () => { for (const [k, v] of pending) if (v.expires < now()) pending.delete(k); };
+  const dropPending = (userId) => { for (const [k, v] of pending) if (v.userId === userId) { v.cancelled = true; pending.delete(k); } };
 
   async function startDeviceLogin(userId) {
     if (!userId) throw fail('Sign in to noevia first.', 401);
+    const recent = (starts.get(userId) || []).filter((at) => at > now() - START_WINDOW_MS);
+    if (recent.length >= MAX_STARTS_PER_WINDOW) throw fail('Too many ChatGPT sign-in attempts. Wait a few minutes and try again.', 429);
+    starts.set(userId, [...recent, now()]);
     prune();
     const own = [...pending].filter(([, v]) => v.userId === userId).map(([k]) => k);
-    while (own.length >= MAX_PENDING_PER_USER) pending.delete(own.shift());
+    while (own.length >= MAX_PENDING_PER_USER) { const k = own.shift(); pending.get(k).cancelled = true; pending.delete(k); }
     let r;
     try { r = await postJson(`${issuer}/api/accounts/deviceauth/usercode`, { client_id: cfg.clientId }); }
     catch { throw fail('ChatGPT sign-in could not be reached. Try again.', 502); }
@@ -387,7 +490,7 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
     const interval = Math.min(30, Math.max(1, Number.parseInt(String(r.body.interval ?? '5'), 10) || 5));
     const loginId = crypto.randomBytes(18).toString('base64url');
     const expires = now() + DEVICE_TTL_MS;
-    pending.set(loginId, { userId, deviceAuthId, userCode, interval, expires, nextPollAt: now() + interval * 1000, polling: false });
+    pending.set(loginId, { userId, deviceAuthId, userCode, interval, expires, nextPollAt: now() + interval * 1000, polling: false, cancelled: false, generation: generation(userId) });
     audit('chatgpt.oauth.start', userId, {});
     return { loginId, userCode, verificationUrl: `${issuer}/codex/device`, interval, expiresAt: expires };
   }
@@ -402,7 +505,8 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
     return tokensFrom(r.body, { now });
   }
 
-  /** Poll one pending login. Only the account that started it may poll or cancel it. */
+  /** Poll one pending login. Only the account that started it may poll or cancel it. The entry
+   *  stays pending through the token exchange, so a Cancel or Disconnect during it still wins. */
   async function pollDeviceLogin(userId, loginId) {
     const p = pending.get(String(loginId || ''));
     if (p && p.userId !== userId) throw fail('This sign-in was started by a different account.', 403);
@@ -410,18 +514,23 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
     if (p.polling || now() < p.nextPollAt) return { state: 'pending', interval: p.interval };
     p.polling = true;
     p.nextPollAt = now() + p.interval * 1000;
+    const abandoned = () => p.cancelled || p.generation !== generation(userId);
     try {
       let r;
       try { r = await postJson(`${issuer}/api/accounts/deviceauth/token`, { device_auth_id: p.deviceAuthId, user_code: p.userCode }); }
       catch { return { state: 'pending', interval: p.interval }; }
       if (r.status === 403 || r.status === 404) return { state: 'pending', interval: p.interval };
-      pending.delete(loginId);
       const code = r.body?.authorization_code;
       const verifier = r.body?.code_verifier;
       if (!r.ok || typeof code !== 'string' || typeof verifier !== 'string' || !code || !verifier) {
+        pending.delete(loginId);
         throw fail(`ChatGPT sign-in failed (${r.status}). Start again.`, 502);
       }
-      const tokens = await exchange(code, verifier);
+      if (abandoned()) return { state: 'cancelled' };
+      let tokens;
+      try { tokens = await exchange(code, verifier); } finally { if (pending.get(loginId) === p) pending.delete(loginId); }
+      // Checked after the exchange and before the (synchronous) write: nothing can slip in between.
+      if (abandoned()) { audit('chatgpt.oauth.cancelled', userId, {}); return { state: 'cancelled' }; }
       write(userId, { ...tokens, connectedAt: now() });
       models.delete(userId);
       audit('chatgpt.oauth.connect', userId, { plan: tokens.plan || undefined });
@@ -435,28 +544,42 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
     const p = pending.get(String(loginId || ''));
     if (!p) return false;
     if (p.userId !== userId) throw fail('This sign-in was started by a different account.', 403);
+    p.cancelled = true;
     return pending.delete(loginId);
   }
 
   // ── tokens in use ──
+  // Known limit: if OpenAI completes a refresh but the answer never reaches us (timeout), the old
+  // refresh token is already spent and the next refresh is refused, so the account shows
+  // "Reconnect needed". There is no safe automatic recovery; signing in again fixes it.
   const refreshing = new Map(); // userId -> Promise<tokens>
-  function refresh(userId, current) {
+  function refresh(userId, row) {
     if (refreshing.has(userId)) return refreshing.get(userId);
+    const current = row.data;
     const run = (async () => {
-      if (!current.refreshToken) { markReconnect(userId); throw authError('reconnect'); }
+      if (!current.refreshToken) { markReconnect(userId, row.raw); throw authError('reconnect'); }
       let r;
       try { r = await postJson(`${issuer}/oauth/token`, { grant_type: 'refresh_token', refresh_token: current.refreshToken, client_id: cfg.clientId }); }
       catch { throw authError('transient'); }
-      if ([400, 401, 403].includes(r.status)) { markReconnect(userId); throw authError('reconnect'); }
+      if ([400, 401, 403].includes(r.status)) {
+        markReconnect(userId, row.raw);
+        const latest = read(userId);
+        // A re-sign-in that landed meanwhile is still good: use it rather than failing.
+        if (latest && latest.raw !== row.raw && latest.state === 'connected' && latest.data) return latest.data;
+        throw authError('reconnect');
+      }
       if (!r.ok) throw authError('transient');
       let next;
       try { next = { ...tokensFrom(r.body, { now, previous: current }), connectedAt: current.connectedAt || now() }; }
       catch { throw authError('transient'); }
-      // UPDATE, not upsert: a disconnect that landed while this refresh was in flight must win.
-      const kept = db.prepare("UPDATE chatgpt_oauth_tokens SET data_enc=?, updated_at=? WHERE user_id=? AND state='connected'")
-        .run(secrets.encrypt(JSON.stringify(next), String(userId)), now(), String(userId));
-      if (!kept.changes) throw authError('disconnected');
-      return next;
+      // Compare-and-set on the ciphertext this refresh started from: a disconnect or a newer
+      // sign-in that landed while the refresh was in flight wins, never the stale refresh.
+      const kept = db.prepare("UPDATE chatgpt_oauth_tokens SET data_enc=?, updated_at=? WHERE user_id=? AND state='connected' AND data_enc=?")
+        .run(secrets.encrypt(JSON.stringify(next), String(userId)), now(), String(userId), row.raw);
+      if (kept.changes) return next;
+      const latest = read(userId);
+      if (latest && latest.state === 'connected' && latest.data) return latest.data;
+      throw authError(latest ? 'reconnect' : 'disconnected');
     })();
     refreshing.set(userId, run);
     run.then(() => refreshing.delete(userId), () => refreshing.delete(userId));
@@ -471,9 +594,15 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
     if (rejectedToken) {
       // Another request may already have refreshed; use that rather than burning a refresh token.
       if (t.accessToken !== rejectedToken) return t;
-      return refresh(userId, t);
+      return refresh(userId, row);
     }
-    if (t.expiresAt && t.expiresAt - now() <= REFRESH_MARGIN_MS) return refresh(userId, t);
+    if (t.expiresAt && t.expiresAt - now() <= REFRESH_MARGIN_MS) {
+      try { return await refresh(userId, row); } catch (e) {
+        // A soft failure inside the early-refresh window keeps the still-valid token (fork 3b04587).
+        if (e.code === 'transient' && t.expiresAt > now()) return t;
+        throw e;
+      }
+    }
     return t;
   }
 
@@ -484,20 +613,32 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
     return { state: 'connected', account: { email: maskEmail(row.data.email), plan: row.data.plan || null } };
   }
   function disconnect(userId) {
+    bump(userId);
     db.prepare('DELETE FROM chatgpt_oauth_tokens WHERE user_id=?').run(String(userId));
-    for (const [k, v] of pending) if (v.userId === userId) pending.delete(k);
+    dropPending(userId);
     models.delete(userId);
     audit('chatgpt.oauth.disconnect', String(userId), {});
   }
   function forgetUser(userId) {
+    bump(userId);
     db.prepare('DELETE FROM chatgpt_oauth_tokens WHERE user_id=?').run(String(userId));
-    for (const [k, v] of pending) if (v.userId === userId) pending.delete(k);
+    dropPending(userId);
     models.delete(userId);
+    starts.delete(userId);
   }
 
-  function upstreamHeaders(t, accept) {
-    const h = { 'content-type': 'application/json', accept, authorization: `Bearer ${t.accessToken}`, 'chatgpt-account-id': t.accountId };
+  /** The protocol headers the Codex client itself sends (openai/codex @985cf47):
+   *  Authorization + ChatGPT-Account-ID, and X-OpenAI-Fedramp for FedRAMP accounts
+   *  (codex-rs/model-provider/src/bearer_auth_provider.rs L32-44: the Codex source DOES send it,
+   *  so a fork's advice to drop it is not followed); per conversation, `session-id` and
+   *  `x-client-request-id` (codex-rs/codex-api/src/endpoint/responses.rs L86-90,
+   *  requests/headers.rs L5-11). Not sent: `originator: codex_cli_rs` and the CLI's User-Agent
+   *  (that would claim to be the CLI; upstream openai-oauth works without them), installation,
+   *  window and turn-metadata telemetry. */
+  function upstreamHeaders(t, accept, conversationId = null) {
+    const h = { 'content-type': 'application/json', accept, authorization: `Bearer ${t.accessToken}`, 'chatgpt-account-id': t.accountId, 'user-agent': USER_AGENT };
     if (t.fedRamp) h['x-openai-fedramp'] = 'true';
+    if (conversationId) { h['session-id'] = conversationId; h['x-client-request-id'] = conversationId; }
     return h;
   }
   /** One authorised upstream call with the refresh-once-on-401 rule. Returns a Response or an error Response. */
@@ -518,46 +659,84 @@ function createChatGptOAuth({ db, secrets, fetchImpl = (...args) => globalThis.f
   }
 
   /** A fetch for the chat loop: /chat/completions in, /chat/completions out, the user's bearer on the wire. */
-  function fetchFor(userId) {
+  function fetchFor(userId, { conversation = null } = {}) {
+    // An opaque, stable id per (account, conversation): the session the backend caches prompts
+    // under (prompt_cache_key, as the Codex client sends). Derived, so no internal id leaves.
+    const conversationId = conversation ? uuidFrom(`${userId}:${conversation}`) : null;
     return async function chatgptFetch(url, init = {}) {
       let pathname = '';
       try { pathname = new URL(String(url)).pathname; } catch { /* checked below */ }
+      // Chat only: never the images route (openai-oauth #31: its token has no image scope).
       if (!/\/chat\/completions$/.test(pathname)) return errorResponse(404, 'Only chat completions are available through ChatGPT.');
       let body;
       try { body = JSON.parse(String(init.body || '')); } catch { return errorResponse(400, 'The chat request was not valid JSON.'); }
+      const model = String(body.model || '');
+      // The account's catalogue is the allowlist (fork 1bc2913/3b04587). If it cannot be read the
+      // request goes ahead and the backend decides; a known miss is refused plainly.
+      if (!model) return errorResponse(400, 'Choose a ChatGPT model in the model popup.');
+      const catalogue = await modelCatalogue(userId).catch(() => null);
+      if (Array.isArray(catalogue) && catalogue.length && !catalogue.some((m) => m.slug === model)) {
+        return errorResponse(400, `${model.slice(0, 80)} is not available on your ChatGPT account. Choose one of: ${catalogue.slice(0, 8).map((m) => m.slug).join(', ')}.`);
+      }
       const wantsStream = body.stream === true;
-      const upstreamBody = JSON.stringify(toResponsesRequest(body));
+      const request = toResponsesRequest(body);
+      const info = catalogue?.find((m) => m.slug === model);
+      if (info) {
+        // The model's own defaults, as the Codex client applies them (ModelInfo in
+        // codex-rs/protocol/src/openai_models.rs: default_reasoning_level, default_reasoning_summary,
+        // supports_reasoning_summary_parameter).
+        const reasoning = { ...(request.reasoning || {}) };
+        if (!reasoning.effort && info.effort) reasoning.effort = info.effort;
+        if (info.summaryParam && info.summary !== 'none') reasoning.summary = info.summary || 'auto';
+        else delete reasoning.summary;
+        if (Object.keys(reasoning).length) request.reasoning = reasoning; else delete request.reasoning;
+      }
+      if (conversationId) request.prompt_cache_key = conversationId;
+      const upstreamBody = JSON.stringify(request);
       const r = await authorised(userId, (t) => fetchImpl(`${codexBase}/responses`, {
-        method: 'POST', redirect: 'error', signal: init.signal, headers: upstreamHeaders(t, 'text/event-stream'), body: upstreamBody,
+        method: 'POST', redirect: 'error', signal: init.signal, headers: upstreamHeaders(t, 'text/event-stream', conversationId), body: upstreamBody,
       }));
       if (r.headers.get('x-noevia-provider-message') === '1') return r;
       if (!r.ok || !r.body) {
         const text = await r.text().catch(() => '');
         return errorResponse(r.status || 502, upstreamMessage(text, r.status));
       }
-      const model = String(body.model || '');
-      if (wantsStream) return new Response(chatStream(r.body, model), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+      if (wantsStream) {
+        const parts = chatParts(r.body);
+        let first;
+        try { first = await parts.next(); } catch (e) { return errorResponse(502, `ChatGPT stream failed: ${String(e?.message || e).slice(0, 200)}`); }
+        if (!first.done && first.value.error) { await parts.return?.(); return errorResponse(first.value.status || 502, first.value.error); }
+        return new Response(chatStream(parts, first, model), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+      }
       const completion = await chatCompletion(r.body, model);
-      if (completion.error) return errorResponse(502, completion.error.message);
+      if (completion.error) return errorResponse(completion.error.status || 502, completion.error.message);
       return new Response(JSON.stringify(completion), { status: 200, headers: { 'content-type': 'application/json' } });
     };
   }
 
-  /** The account's model catalogue (public ids only), cached for five minutes per user. */
+  /** The account's model catalogue (public ids only), cached for five minutes per user; a failure
+   *  is remembered for a minute so a broken catalogue does not add a call to every chat. */
   async function listModels(userId) {
+    return (await modelCatalogue(userId)).map((m) => m.slug);
+  }
+  async function modelCatalogue(userId) {
     const cached = models.get(userId);
-    if (cached && cached.until > now()) return cached.ids;
+    if (cached && cached.until > now()) { if (cached.ids) return cached.ids; throw fail(cached.error, 502); }
     const r = await authorised(userId, (t) => fetchImpl(`${codexBase}/models?client_version=${encodeURIComponent(cfg.codexClientVersion)}`, {
       method: 'GET', redirect: 'error', signal: AbortSignal.timeout(TIMEOUT_MS), headers: upstreamHeaders(t, 'application/json'),
     }));
     const text = await r.text().catch(() => '');
     if (r.headers.get('x-noevia-provider-message') === '1') { let m = ''; try { m = JSON.parse(text).error.message; } catch { /* fallthrough */ } throw fail(m || MESSAGES.reconnect, r.status); }
-    if (!r.ok) throw fail(upstreamMessage(text, r.status), 502);
+    const remember = (error) => { models.set(userId, { until: now() + MODEL_FAILURE_CACHE_MS, ids: null, error }); return fail(error, 502); };
+    if (!r.ok) throw remember(upstreamMessage(text, r.status));
     let parsed = null;
     try { parsed = JSON.parse(text); } catch { parsed = null; }
+    const word = (v) => (typeof v === 'string' && /^[a-z_]{1,20}$/.test(v) ? v : null);
     const ids = (Array.isArray(parsed?.models) ? parsed.models : [])
       .filter((m) => record(m) && typeof m.slug === 'string' && m.slug && m.supported_in_api !== false && (m.visibility === undefined || m.visibility === 'list'))
-      .map((m) => m.slug.slice(0, 120)).slice(0, 50);
+      .map((m) => ({ slug: m.slug.slice(0, 120), effort: word(m.default_reasoning_level), summary: word(m.default_reasoning_summary),
+        summaryParam: m.supports_reasoning_summary_parameter !== false })).slice(0, 50);
+    if (!ids.length) throw remember('ChatGPT returned no models for this account.');
     models.set(userId, { until: now() + MODEL_CACHE_MS, ids });
     return ids;
   }

@@ -14,6 +14,13 @@
 //      the private journal into a request bound for a third party.
 //   3. Project images are not attached automatically (spec-document-understanding: "Do not
 //      automatically send sources to a new cloud provider").
+//   4. Storage tools cannot reach the Diary folder (#452). Nextcloud Files reads run without an
+//      approval card, so `nc_webdav_read_file` on a journal entry would hand it to the provider.
+//      Every path-like argument of a storage tool is normalised (URL-decoding, backslashes, ./..,
+//      duplicate and trailing slashes, a full DAV URL, case, Unicode form) and refused when it is
+//      the Diary folder or inside it. The folder is the storage connection's corpusRoot, the
+//      same setting the Diary and storage-client.cjs use, placed under the connection's DAV root.
+//      If the folder cannot be worked out, storage tools are refused outright (fail closed).
 // Every write still goes through the approval card; nothing here widens what a chat may do.
 
 const PRIVATE_TOOLBOXES = new Set(['diary']);
@@ -39,4 +46,74 @@ function stripPrivateToolboxes(selected, provider) {
   return removed;
 }
 
-module.exports = { PRIVATE_TOOLBOXES, isExternalProvider, egressRefusal, stripPrivateToolboxes };
+// ── Rule 4: the Diary folder ────────────────────────────────────────────────
+const STORAGE_TOOL = /^nc_webdav_/;
+const CONTENT_SEARCH = /^nc_webdav_search_files$/;
+const PATH_KEY = /path|dir|folder|file|scope|source|destination|target|href|url|location|from|to$/i;
+
+/** One path, reduced to its canonical folder-relative form ('' is the files root). */
+function canonicalPath(value) {
+  let text = String(value ?? '').normalize('NFC');
+  for (let i = 0; i < 3 && /%[0-9a-f]{2}/i.test(text); i++) { try { text = decodeURIComponent(text); } catch { break; } }
+  text = text.replace(/\\/g, '/');
+  // A full DAV URL or a /remote.php/... path: keep what follows the user's files root.
+  const dav = /(?:^[a-z][a-z0-9+.-]*:\/\/[^/]*)?\/?remote\.php\/(?:dav\/files\/[^/]+|webdav)(\/.*)?$/i.exec(text);
+  if (dav) text = dav[1] || '';
+  else text = text.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '');
+  const out = [];
+  for (const segment of text.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') { out.pop(); continue; }
+    out.push(segment);
+  }
+  return out.join('/').toLowerCase();
+}
+
+/** The Diary folder relative to the Nextcloud files root, or null when it cannot be worked out. */
+function diaryFolderFor(storage) {
+  if (!storage || !['nextcloud', 'webdav'].includes(storage.kind)) return null;
+  const root = String(storage.corpusRoot || '').trim();
+  if (!root) return null; // the Diary is the whole connection: nothing outside it is known to be safe
+  let base = '';
+  try { base = new URL(String(storage.baseUrl || '')).pathname; } catch { base = String(storage.baseUrl || ''); }
+  const dav = /\/remote\.php\/(?:dav\/files\/[^/]+|webdav)(\/.*)?$/i.exec(base);
+  const prefix = dav ? canonicalPath(dav[1] || '') : '';
+  const folder = [prefix, canonicalPath(root)].filter(Boolean).join('/');
+  return folder || null;
+}
+
+function pathArguments(args, depth = 0, out = []) {
+  if (depth > 3 || !args || typeof args !== 'object') return out;
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === 'string' && PATH_KEY.test(key)) out.push(value);
+    else if (Array.isArray(value)) for (const v of value) { if (typeof v === 'string' && PATH_KEY.test(key)) out.push(v); else pathArguments(v, depth + 1, out); }
+    else if (value && typeof value === 'object') pathArguments(value, depth + 1, out);
+  }
+  return out;
+}
+
+/** Why this tool call may not run for an external provider, or null. `storage` is the account's
+ *  storage connection (authService.getStorage). Diary tools are refused by name as well. */
+function toolRefusal({ provider, toolName, rawArgs, storage }) {
+  if (!isExternalProvider(provider)) return null;
+  const name = String(toolName || '');
+  const label = provider.label || 'an external provider';
+  if (/^diary_/.test(name)) return `ERROR: ${name} is not available with ${label}: Diary content is never sent to an external provider.`;
+  if (!STORAGE_TOOL.test(name)) return null;
+  const folder = diaryFolderFor(storage);
+  if (!folder) return `ERROR: ${name} is not available with ${label}: the Diary folder could not be identified, so storage is closed to external providers. Use a local model for file work.`;
+  let args;
+  try { args = typeof rawArgs === 'string' ? JSON.parse(rawArgs || '{}') : rawArgs || {}; } catch { return `ERROR: ${name} arguments could not be read, so it was not run.`; }
+  const paths = pathArguments(args);
+  // A content search with no folder to search in would search the Diary too.
+  if (CONTENT_SEARCH.test(name) && !paths.length) return `ERROR: ${name} needs a folder to search in when used with ${label}, so it was not run. Search a specific folder outside the Diary.`;
+  for (const value of paths) {
+    const target = canonicalPath(value);
+    if (target === folder || target.startsWith(`${folder}/`)) {
+      return `ERROR: ${name} was not run: that path is in the Diary folder, and Diary content is never sent to ${label}. Do not retry; tell the user to use a local model for Diary files.`;
+    }
+  }
+  return null;
+}
+
+module.exports = { PRIVATE_TOOLBOXES, isExternalProvider, egressRefusal, stripPrivateToolboxes, toolRefusal, diaryFolderFor, canonicalPath };

@@ -22,9 +22,11 @@ const reply = (o, status = 200) => new Response(JSON.stringify(o), { status, hea
 const BOXES = [
   { id: 'core', tools: [{ type: 'function', function: { name: 'core_time' } }] },
   { id: 'diary', tools: [{ type: 'function', function: { name: 'diary_search' } }] },
+  { id: 'nextcloud-files', tools: [{ type: 'function', function: { name: 'nc_webdav_read_file' } }, { type: 'function', function: { name: 'nc_webdav_search_files' } }] },
 ];
+const STORAGE = { kind: 'nextcloud', baseUrl: 'https://cloud.fixture.invalid/remote.php/dav/files/synthetic', corpusRoot: 'Documents/Important Documents/Diary' };
 
-async function setup(t, { flag = true, connected = true, refresh = 'ok' } = {}) {
+async function setup(t, { flag = true, connected = true, refresh = 'ok', storage = STORAGE, localResponse = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-chatgpt-egress-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, 'img-1'), Buffer.from('synthetic image bytes'));
@@ -54,6 +56,7 @@ async function setup(t, { flag = true, connected = true, refresh = 'ok' } = {}) 
   }
   const row = chatgpt.providerRow();
   const localFetch = [];
+  const executed = [];
   const run = async ({ body = {}, user = { id: 'user-a', role: 'member' }, workspaceUser = user.id, project = {} } = {}) => {
     const events = []; let refused = null; let offered = null;
     const res = new EventEmitter();
@@ -63,10 +66,10 @@ async function setup(t, { flag = true, connected = true, refresh = 'ok' } = {}) 
       assets: [{ id: 'img-1', name: 'receipt.png', mime: 'image/png' }], ...project };
     const { handleChat } = createChatHandler({
       // The default-provider fetch: must never carry a ChatGPT chat.
-      fetch: async (url) => { localFetch.push(String(url)); throw new Error('the local fetch was used for an external provider'); },
+      fetch: async (url, init) => { localFetch.push(String(url)); if (localResponse) return localResponse(init); throw new Error('the local fetch was used for an external provider'); },
       chatgptOAuth: oauth, chatgptEnabled: () => flag,
-      modelManager: { enabled: true, health: async () => ({ ok: true, body: { all_models_loaded: [] } }) },
-      reasoningEffort: require('./reasoning-effort.cjs'), authService: { audit() {}, diaryEnabled: () => true },
+      modelManager: { enabled: true, health: async () => ({ ok: true, body: { all_models_loaded: [{ model_name: 'gpt-synthetic', loaded: true, recipe_options: { ctx_size: 32768 } }] } }) },
+      reasoningEffort: require('./reasoning-effort.cjs'), authService: { audit() {}, diaryEnabled: () => true, getStorage: () => storage },
       crypto: require('node:crypto'), path, fs, HISTORY_CAP: 20, DEFAULT_PROVIDER_ID: 'default', createToolExchange,
       currentWorkspace: () => ({ userId: workspaceUser, dir, assetDir: () => dir }),
       getProject: (id) => (id === theProject.id || id === require('./diary-extras.cjs').PROJECT_ID ? { ...theProject, id } : null),
@@ -79,14 +82,16 @@ async function setup(t, { flag = true, connected = true, refresh = 'ok' } = {}) 
       isWriteTool: () => false, rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: () => ({ text: 'reduced' }), diaryExtras: require('./diary-extras.cjs'),
       DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: (_res, status, b) => { refused = { status, body: b }; }, saveChats() {}, endpointApproved: () => false, diaryHeaders: () => ({}),
       lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
-      allToolboxes: () => BOXES, executeToolCall: async () => 'unused', chatWideApproved: () => false, awaitApproval: async () => 'deny', recordUsage() {}, recordToolUse() {},
+      allToolboxes: () => BOXES, executeToolCall: async (_p, name, args) => { executed.push({ name, args: JSON.parse(args) }); return 'synthetic file text'; }, chatWideApproved: () => false, awaitApproval: async () => 'deny', recordUsage() {}, recordToolUse() {},
     });
-    await handleChat({}, res, { projectId: 'fixture-project', chatId: 'fixture-chat', message: 'synthetic question', ...body }, { user });
+    // A thrown handler leaves the SSE heartbeat running; end the fake response so the test exits.
+    try { await handleChat({}, res, { projectId: 'fixture-project', chatId: 'fixture-chat', message: 'synthetic question', ...body }, { user }); }
+    finally { if (!res.writableEnded) res.end(); }
     const sent = upstream.responses.at(-1);
     if (sent) offered = (sent.body.tools || []).map((x) => x.name);
     return { events, refused, offered, sent };
   };
-  return { run, upstream, localFetch, oauth };
+  return { run, upstream, localFetch, oauth, executed };
 }
 
 test('flag off: a chat pinned to the ChatGPT provider is refused before anything is sent', { timeout: 20000 }, async (t) => {
@@ -176,4 +181,66 @@ test('provider-egress rules in isolation', () => {
   const local = ['core', 'diary'];
   assert.deepEqual(egress.stripPrivateToolboxes(local, { id: 'default' }), []);
   assert.deepEqual(local, ['core', 'diary']);
+});
+
+const sseOf = (events) => () => new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(''), { status: 200 });
+const toolCallEvents = (name, args) => sseOf([
+  { type: 'response.output_item.done', item: { id: 'fc_1', type: 'function_call', call_id: 'call_1', name, arguments: JSON.stringify(args) } },
+  { type: 'response.completed', response: {} },
+]);
+
+test('#452: through ChatGPT, a Nextcloud read inside the Diary folder is refused in every spelling; other paths still run', { timeout: 20000 }, async (t) => {
+  const diaryPaths = ['Documents/Important Documents/Diary/2026-09-01.md', '/documents/important documents/diary/', 'Documents%2FImportant%20Documents%2FDiary%2F2026-09-01.md',
+    'Documents/Other/../Important Documents/Diary/a.md', 'Documents\\Important Documents\\Diary\\a.md', 'Documents//Important Documents/./Diary//a.md',
+    'https://cloud.fixture.invalid/remote.php/dav/files/synthetic/Documents/Important%20Documents/Diary/a.md', 'Documents/Important%2520Documents/Diary/a.md'];
+  for (const path of diaryPaths) {
+    const f = await setup(t);
+    f.upstream.queue.push(toolCallEvents('nc_webdav_read_file', { path }));
+    const r = await f.run({ project: { toolboxes: ['core', 'nextcloud-files'] } });
+    assert.equal(r.refused, null);
+    assert.deepEqual(f.executed, [], `not run: ${path}`);
+    assert.match(r.events.find((e) => e.type === 'tool_result').text, /in the Diary folder, and Diary content is never sent to ChatGPT/, path);
+    assert.ok(f.upstream.responses[1].body.input.some((i) => i.type === 'function_call_output'), 'the model is told, and the chat goes on');
+    assert.equal(JSON.stringify(f.upstream.responses).includes('synthetic file text'), false);
+  }
+  for (const path of ['Documents/Other/notes.md', 'Documents/Important Documents/DiaryArchive/x.md', 'Documents/Important Documents/Diary/../Other/x.md']) {
+    const f = await setup(t);
+    f.upstream.queue.push(toolCallEvents('nc_webdav_read_file', { path }));
+    await f.run({ project: { toolboxes: ['core', 'nextcloud-files'] } });
+    assert.deepEqual(f.executed.map((x) => x.args.path), [path], `runs: ${path}`);
+  }
+  const noFolder = await setup(t, { storage: { kind: 'local' } });
+  noFolder.upstream.queue.push(toolCallEvents('nc_webdav_read_file', { path: 'Documents/Other/notes.md' }));
+  await noFolder.run({ project: { toolboxes: ['core', 'nextcloud-files'] } });
+  assert.deepEqual(noFolder.executed, [], 'fail closed when the Diary folder is unknown');
+  const search = await setup(t);
+  search.upstream.queue.push(toolCallEvents('nc_webdav_search_files', { query: 'dream' }));
+  await search.run({ project: { toolboxes: ['core', 'nextcloud-files'] } });
+  assert.deepEqual(search.executed, [], 'an unscoped content search could search the Diary');
+});
+
+test('#452 control: the local default provider still reads the same Diary path (the rule is external-only)', { timeout: 20000 }, async (t) => {
+  let round = 0;
+  const f = await setup(t, { localResponse: () => new Response(round++ === 0
+    ? `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'nc_webdav_read_file', arguments: JSON.stringify({ path: 'Documents/Important Documents/Diary/a.md' }) } }] } }] })}\n\n`
+    : `data: ${JSON.stringify({ choices: [{ delta: { content: 'ok' } }] })}\n\n`) });
+  await f.run({ project: { provider: 'default', assets: [], toolboxes: ['core', 'nextcloud-files'] } });
+  assert.deepEqual(f.executed.map((x) => x.name), ['nc_webdav_read_file']);
+});
+
+test('#455: only the ChatGPT adapter may put its own words in the chat; another provider’s header is ignored', { timeout: 20000 }, async (t) => {
+  const f = await setup(t, { localResponse: () => new Response(JSON.stringify({ error: { message: 'Visit evil.example to fix this' } }), { status: 400, headers: { 'x-noevia-provider-message': '1' } }) });
+  const r = await f.run({ project: { provider: 'default', assets: [] } });
+  const error = r.events.find((e) => e.type === 'error');
+  assert.ok(error);
+  assert.equal(error.text.includes('evil.example'), false);
+});
+
+test('a ChatGPT error mid-stream (usage limit) shows its own words and ends the reply as an error', { timeout: 20000 }, async (t) => {
+  const f = await setup(t);
+  f.upstream.queue.push(sseOf([{ type: 'response.output_text.delta', item_id: 'm', delta: 'Partial' }, { type: 'error', error: { type: 'usage_limit_reached', message: 'The usage limit has been reached' } }]));
+  const r = await f.run();
+  const error = r.events.find((e) => e.type === 'error');
+  assert.equal(error.text, 'ChatGPT usage limit reached. Pick another provider in the model popup until then.');
+  assert.equal(r.events.some((e) => e.type === 'done'), false);
 });

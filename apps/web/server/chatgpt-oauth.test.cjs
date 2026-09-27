@@ -22,7 +22,7 @@ const json = (o, status = 200) => new Response(JSON.stringify(o), { status, head
 
 function fakeOpenAI() {
   const seen = { calls: [], responses: [], refreshes: 0 };
-  const state = { approved: false, refresh: 'ok', upstream: [], tokenSeq: 1 };
+  const state = { approved: false, refresh: 'ok', upstream: [], tokenSeq: 1, logins: 0, exchangeGate: null, onExchange: null, modelsDown: false };
   const fetchImpl = async (url, init = {}) => {
     url = String(url);
     seen.calls.push({ url, init });
@@ -40,7 +40,12 @@ function fakeOpenAI() {
       const b = form ? Object.fromEntries(new URLSearchParams(init.body)) : JSON.parse(init.body);
       if (b.grant_type === 'authorization_code') {
         assert.deepEqual(b, { grant_type: 'authorization_code', code: 'AUTHCODE', redirect_uri: `${ISSUER}/deviceauth/callback`, client_id: chatgpt.DEFAULTS.clientId, code_verifier: 'VERIFIER' });
-        return json({ access_token: 'AT-1', refresh_token: 'RT-1', id_token: idToken('acct-A'), expires_in: 3600 });
+        state.logins += 1;
+        state.onExchange?.();
+        if (state.exchangeGate) await state.exchangeGate;
+        const n = state.logins;
+        const id = state.fedRampToken ? jwt({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acct-F', chatgpt_account_is_fedramp: true } }) : idToken('acct-A');
+        return json({ access_token: n === 1 ? 'AT-1' : `AT-L${n}`, refresh_token: n === 1 ? 'RT-1' : `RT-L${n}`, id_token: id, expires_in: 3600 });
       }
       if (b.grant_type === 'refresh_token') {
         seen.refreshes += 1;
@@ -56,7 +61,9 @@ function fakeOpenAI() {
       const next = state.upstream.shift();
       return next ? next(init) : sse([{ type: 'response.output_text.delta', delta: 'Hello' }, { type: 'response.completed', response: { usage: { input_tokens: 7, output_tokens: 2, total_tokens: 9 } } }]);
     }
-    if (url.startsWith(`${CODEX}/models?`)) return json({ models: [{ slug: 'gpt-synthetic', visibility: 'list' }, { slug: 'hidden', visibility: 'hide' }, { slug: 'no-api', supported_in_api: false }] });
+    if (url.startsWith(`${CODEX}/models?`) && state.modelsDown) return json({ detail: 'down' }, 503);
+    if (url.startsWith(`${CODEX}/models?`)) return json({ models: [{ slug: 'gpt-synthetic', visibility: 'list' }, { slug: 'hidden', visibility: 'hide' }, { slug: 'no-api', supported_in_api: false },
+      { slug: 'gpt-thinker', default_reasoning_level: 'medium', default_reasoning_summary: 'detailed' }, { slug: 'gpt-plain', supports_reasoning_summary_parameter: false }, { slug: 'gpt-quiet', default_reasoning_summary: 'none' }] });
     return json({ error: 'unexpected ' + url }, 599);
   };
   return { fetchImpl, seen, state };
@@ -137,7 +144,7 @@ test('tenant isolation: user B has no session, cannot use A’s token, and a cop
   const f = make(t);
   await connect(f, 'user-a');
   await assert.rejects(f.oauth.session('user-b'), (e) => e.code === 'disconnected');
-  const r = await f.oauth.fetchFor('user-b')('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'm', messages: [], stream: false }) });
+  const r = await f.oauth.fetchFor('user-b')('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [], stream: false }) });
   assert.equal(r.status, 401);
   assert.equal(f.fake.seen.responses.length, 0, 'nothing was sent upstream for B');
   const row = f.db.prepare("SELECT data_enc FROM chatgpt_oauth_tokens WHERE user_id='user-a'").get();
@@ -191,6 +198,7 @@ test('the adapter sends the OAuth bearer and account header, maps the request, a
     ],
     tools: [{ type: 'function', name: 'core_time', description: 'time', parameters: { type: 'object', properties: { tz: { type: 'string' } } }, strict: false }],
     tool_choice: { type: 'function', name: 'core_time' },
+    reasoning: { summary: 'auto' },
   });
   const text = await r.text();
   const frames = text.trim().split('\n\n').map((l) => l.slice(6));
@@ -226,11 +234,11 @@ test('non-streaming requests (compaction, fallback) get one chat.completion; ups
   const limited = await call({ stream: true });
   assert.equal(limited.status, 429);
   assert.equal(limited.headers.get('x-noevia-provider-message'), '1');
-  assert.match((await limited.json()).error.message, /usage limit reached: You have hit your usage limit/);
+  assert.match((await limited.json()).error.message, /^ChatGPT usage limit reached\. Pick another provider/);
 
   f.fake.state.upstream.push(() => sse([{ type: 'response.output_text.delta', delta: 'part' }, { type: 'response.failed', response: { error: { message: 'model overloaded' } } }]));
   const failed = await (await call({ stream: true })).text();
-  assert.match(failed, /"error":\{"message":"model overloaded"\}/);
+  assert.match(failed, /"error":\{"message":"model overloaded","source":"chatgpt"\}/);
 
   f.fake.state.upstream.push(() => sse([{ type: 'response.output_text.delta', delta: 'cut' }]));
   assert.match(await (await call({ stream: true })).text(), /ended the reply early/);
@@ -258,7 +266,7 @@ test('refresh on 401: the request is retried once with the new bearer', async (t
   const f = make(t);
   await connect(f);
   f.fake.state.upstream.push(() => json({ detail: 'token expired' }, 401));
-  const r = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'm', messages: [], stream: false }) });
+  const r = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [], stream: false }) });
   assert.equal(r.status, 200);
   assert.deepEqual(f.fake.seen.responses.map((x) => x.headers.authorization), ['Bearer AT-1', 'Bearer AT-2']);
   assert.equal(f.oauth.status('user-a').state, 'connected');
@@ -269,19 +277,19 @@ test('a refused refresh marks the account "reconnect"; a transient one does not;
   await connect(f);
   f.fake.state.refresh = 'down';
   f.fake.state.upstream.push(() => json({}, 401));
-  const transient = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'm', messages: [] }) });
+  const transient = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [] }) });
   assert.equal(transient.status, 503);
   assert.equal(f.oauth.status('user-a').state, 'connected', 'a network blip is not a revoked sign-in');
 
   f.fake.state.refresh = 'invalid';
   f.fake.state.upstream.push(() => json({}, 401));
-  const refused = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'm', messages: [] }) });
+  const refused = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [] }) });
   assert.equal(refused.status, 401);
   assert.equal(refused.headers.get('x-noevia-provider-message'), '1');
   assert.match((await refused.json()).error.message, /^Reconnect needed/);
   assert.equal(f.oauth.status('user-a').state, 'reconnect');
   const before = f.fake.seen.responses.length;
-  const after = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'm', messages: [] }) });
+  const after = await f.oauth.fetchFor('user-a')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [] }) });
   assert.equal(after.status, 401);
   assert.equal(f.fake.seen.responses.length, before, 'a reconnect-needed account sends nothing upstream');
 
@@ -310,7 +318,7 @@ test('a disconnect during an in-flight refresh wins: the refreshed tokens are no
 test('the model list is the account’s public models; forgetUser removes a deleted account; rotation covers the table', async (t) => {
   const f = make(t);
   await connect(f);
-  assert.deepEqual(await f.oauth.listModels('user-a'), ['gpt-synthetic']);
+  assert.deepEqual(await f.oauth.listModels('user-a'), ['gpt-synthetic', 'gpt-thinker', 'gpt-plain', 'gpt-quiet']);
   const modelCall = f.fake.seen.calls.find((c) => c.url.startsWith(`${CODEX}/models?`));
   assert.match(modelCall.url, /client_version=0\.144\.1/);
   assert.equal(modelCall.init.headers.authorization, 'Bearer AT-1');
@@ -331,4 +339,207 @@ test('pure helpers: masked e-mail, account id from claims, provider row is priva
   assert.equal(chatgpt.accountIdFrom('not.a.jwt'), undefined);
   const row = chatgpt.providerRow();
   assert.deepEqual({ shared: row.shared, external: row.external, kind: row.kind, apiKey: row.apiKey }, { shared: false, external: true, kind: 'chatgpt-oauth', apiKey: '' });
+});
+
+// ── Hardening from upstream openai-oauth issues/PRs, the plgonzalezrx8 fork and the #451 review ──
+const post = (f, body, user = 'user-a') => f.oauth.fetchFor(user)('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [{ role: 'user', content: 'x' }], ...body }) });
+const lastSent = (f) => f.fake.seen.responses.at(-1).body;
+
+test('upstream #44: tools stay non-strict unless the request opts in', () => {
+  const tool = (strict) => ({ type: 'function', function: { name: 'Agent', parameters: { type: 'object', properties: { prompt: { type: 'string' }, isolation: { type: 'string' } }, required: ['prompt'] }, ...(strict === undefined ? {} : { strict }) } });
+  const out = chatgpt.toResponsesRequest({ model: 'm', messages: [], tools: [tool(undefined), tool(false), tool(true)] });
+  assert.deepEqual(out.tools.map((x) => x.strict), [false, false, true]);
+});
+
+test('upstream #9/#40: response_format json_schema and json_object become Responses text.format', () => {
+  const schema = { type: 'object', properties: { explicit: { type: 'array', items: { type: 'string' } } }, required: ['explicit'] };
+  const out = chatgpt.toResponsesRequest({ model: 'm', messages: [], response_format: { type: 'json_schema', json_schema: { name: 'facts', schema, strict: true } } });
+  assert.deepEqual(out.text, { format: { type: 'json_schema', name: 'facts', schema, strict: true } });
+  assert.deepEqual(chatgpt.toResponsesRequest({ model: 'm', messages: [], response_format: { type: 'json_object' } }).text, { format: { type: 'json_object' } });
+  assert.equal(chatgpt.toResponsesRequest({ model: 'm', messages: [], response_format: { type: 'text' } }).text, undefined);
+});
+
+test('upstream #22/#38 and PR #7: fields the Codex backend rejects are never forwarded (allowlisted body)', () => {
+  const out = chatgpt.toResponsesRequest({ model: 'm', messages: [{ role: 'user', content: 'x' }], safety_identifier: 'u', prompt_cache_retention: '24h', user: 'u',
+    temperature: 0.2, top_p: 0.9, top_k: 20, min_p: 0.05, max_tokens: 10, max_completion_tokens: 10, max_output_tokens: 10, stream_options: { include_usage: true },
+    metadata: { a: 1 }, service_tier: 'flex', seed: 1, stop: ['x'], n: 1, logprobs: true, previous_response_id: 'resp_1', store: true, parallel_tool_calls: true });
+  assert.deepEqual(Object.keys(out).sort(), ['include', 'input', 'instructions', 'model', 'store', 'stream']);
+  assert.equal(out.store, false, 'stateless: store:false and never previous_response_id (fork 1bc2913)');
+});
+
+test('upstream #11: a reply sent only as a finished item, or only in response.completed.output, is not lost', async (t) => {
+  const f = make(t);
+  await connect(f);
+  f.fake.state.upstream.push(() => sse([
+    { type: 'response.output_item.done', item: { id: 'msg_1', type: 'message', content: [{ type: 'output_text', text: 'From the item.' }] } },
+    { type: 'response.completed', response: { output: [], usage: { input_tokens: 1, output_tokens: 3 } } },
+  ]));
+  assert.equal((await (await post(f, { stream: false })).json()).choices[0].message.content, 'From the item.');
+  f.fake.state.upstream.push(() => sse([{ type: 'response.completed', response: { output: [{ id: 'msg_2', type: 'message', content: [{ type: 'output_text', text: 'Only in output.' }] }] } }]));
+  assert.equal((await (await post(f, { stream: false })).json()).choices[0].message.content, 'Only in output.');
+  f.fake.state.upstream.push(() => sse([
+    { type: 'response.output_text.delta', item_id: 'msg_3', delta: 'Streamed once.' },
+    { type: 'response.output_item.done', item: { id: 'msg_3', type: 'message', content: [{ type: 'output_text', text: 'Streamed once.' }] } },
+    { type: 'response.completed', response: { output: [{ id: 'msg_3', type: 'message', content: [{ type: 'output_text', text: 'Streamed once.' }] }] } },
+  ]));
+  assert.equal((await (await post(f, { stream: false })).json()).choices[0].message.content, 'Streamed once.', 'no duplicate when it did stream');
+});
+
+test('fork 3b04587: an incomplete terminal response is a finished reply with its reason', async (t) => {
+  const f = make(t);
+  await connect(f);
+  f.fake.state.upstream.push(() => sse([{ type: 'response.output_text.delta', item_id: 'm1', delta: 'Partial' }, { type: 'response.incomplete', response: { incomplete_details: { reason: 'content_filter' } } }]));
+  const body = await (await post(f, { stream: false })).json();
+  assert.deepEqual([body.choices[0].message.content, body.choices[0].finish_reason], ['Partial', 'content_filter']);
+  f.fake.state.upstream.push(() => sse([{ type: 'response.output_text.delta', item_id: 'm2', delta: 'Long' }, { type: 'response.incomplete', response: { incomplete_details: { reason: 'max_output_tokens' } } }]));
+  assert.equal((await (await post(f, { stream: false })).json()).choices[0].finish_reason, 'length');
+});
+
+test('upstream #39: an error before any output is a real HTTP error, not 200 plus a cut-off stream', async (t) => {
+  const f = make(t);
+  await connect(f);
+  f.fake.state.upstream.push(() => sse([{ type: 'error', error: { type: 'usage_limit_reached', message: 'The usage limit has been reached', plan_type: 'plus', resets_at: 1_800_003_600 } }]));
+  const r = await post(f, { stream: true });
+  assert.equal(r.status, 429);
+  assert.equal(r.headers.get('x-noevia-provider-message'), '1');
+  assert.equal((await r.json()).error.message, 'ChatGPT usage limit reached on your Plus plan. It resets at 2027-01-15 09:00 UTC. Pick another provider in the model popup until then.');
+  f.fake.state.upstream.push(() => sse([{ type: 'response.output_text.delta', item_id: 'm', delta: 'Hi' }, { type: 'error', code: 'usage_limit_reached', message: 'The usage limit has been reached' }]));
+  const mid = await (await post(f, { stream: true })).text();
+  assert.match(mid, /"error":\{"message":"ChatGPT usage limit reached\. Pick another provider in the model popup until then\.","source":"chatgpt"\}/);
+  assert.match(mid, /data: \[DONE\]\n\n$/, 'closed cleanly after the explicit error frame');
+});
+
+test('usage limits (issue #35) read clearly, with the reset time when OpenAI gives one', async (t) => {
+  const f = make(t);
+  await connect(f);
+  f.fake.state.upstream.push(() => json({ error: { type: 'usage_limit_reached', message: 'The usage limit has been reached', resets_in_seconds: 120 } }, 429));
+  assert.match((await (await post(f, {})).json()).error.message, /^ChatGPT usage limit reached\. It resets at \d{4}-\d\d-\d\d \d\d:\d\d UTC\./);
+  f.fake.state.upstream.push(() => json({ error: { type: 'usage_not_included' } }, 429));
+  assert.match((await (await post(f, {})).json()).error.message, /does not include the Codex usage/);
+  f.fake.state.upstream.push(() => json({ detail: 'Too Many Requests' }, 429));
+  assert.match((await (await post(f, {})).json()).error.message, /rate-limiting this account/);
+});
+
+test('upstream #31: the adapter never calls an images route', async (t) => {
+  const f = make(t);
+  await connect(f);
+  const r = await f.oauth.fetchFor('user-a')('https://c/v1/images/generations', { method: 'POST', body: '{}' });
+  assert.equal(r.status, 404);
+  assert.equal(f.fake.seen.calls.some((c) => /images/.test(c.url)), false);
+});
+
+test('fork allowlist: a model the account does not have is refused before anything is sent; a broken catalogue does not block', async (t) => {
+  const f = make(t);
+  await connect(f);
+  const before = f.fake.seen.responses.length;
+  const r = await post(f, { model: 'gpt-imaginary' });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error.message, /gpt-imaginary is not available on your ChatGPT account\. Choose one of: gpt-synthetic, gpt-thinker, gpt-plain, gpt-quiet\./);
+  assert.equal(f.fake.seen.responses.length, before);
+  const g = make(t);
+  g.fake.state.modelsDown = true;
+  await connect(g);
+  assert.equal((await post(g, { model: 'gpt-anything' })).status, 200);
+});
+
+test('fork 3b04587 / review: a transient refresh failure inside the early window keeps the still-valid token', async (t) => {
+  const f = make(t);
+  await connect(f);
+  f.fake.state.refresh = 'down';
+  f.clock.t += 3600 * 1000 - 60 * 1000; // four minutes early, token still valid
+  assert.equal((await f.oauth.session('user-a')).accessToken, 'AT-1');
+  f.clock.t += 120 * 1000; // now expired
+  await assert.rejects(f.oauth.session('user-a'), (e) => e.code === 'transient');
+  assert.equal(f.oauth.status('user-a').state, 'connected');
+});
+
+test('#453: a stale refresh cannot overwrite a newer sign-in (compare-and-set)', async (t) => {
+  const f = make(t);
+  await connect(f);
+  let release;
+  f.fake.state.refreshGate = new Promise((r) => { release = r; });
+  f.clock.t += 3600 * 1000;
+  const stale = f.oauth.session('user-a');
+  await new Promise((r) => setImmediate(r));
+  await connect(f); // the person signs in again while the old refresh is in flight
+  release();
+  const got = await stale;
+  const stored = JSON.parse(f.secrets.decrypt(f.db.prepare('SELECT data_enc FROM chatgpt_oauth_tokens').get().data_enc, 'user-a'));
+  assert.equal(stored.accessToken, 'AT-L2', 'the re-sign-in survives');
+  assert.equal(got.accessToken, 'AT-L2', 'the caller gets the current sign-in, not the stale refresh');
+});
+
+test('#454: Cancel or Disconnect during the token exchange wins; nothing is stored', async (t) => {
+  for (const how of ['cancel', 'disconnect']) {
+    const f = make(t);
+    const login = await f.oauth.startDeviceLogin('user-a');
+    f.fake.state.approved = true;
+    let release, entered;
+    const inExchange = new Promise((r) => { entered = r; });
+    f.fake.state.exchangeGate = new Promise((r) => { release = r; });
+    f.fake.state.onExchange = entered;
+    f.clock.t += 5000;
+    const polled = f.oauth.pollDeviceLogin('user-a', login.loginId);
+    await inExchange;
+    if (how === 'cancel') assert.equal(f.oauth.cancelDeviceLogin('user-a', login.loginId), true);
+    else f.oauth.disconnect('user-a');
+    release();
+    assert.deepEqual(await polled, { state: 'cancelled' }, how);
+    assert.equal(f.oauth.status('user-a').state, 'disconnected', how);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM chatgpt_oauth_tokens').get().n, 0, how);
+  }
+});
+
+test('review: starting a sign-in is rate-limited per account (5 per 10 minutes)', async (t) => {
+  const f = make(t);
+  for (let i = 0; i < 5; i++) await f.oauth.startDeviceLogin('user-a');
+  await assert.rejects(f.oauth.startDeviceLogin('user-a'), (e) => e.status === 429);
+  await f.oauth.startDeviceLogin('user-b');
+  f.clock.t += 10 * 60 * 1000 + 1;
+  await f.oauth.startDeviceLogin('user-a');
+});
+
+test('forks YangKeao@d72dec5 / twaldin@b471a45: reasoning summaries are requested, following the model’s catalogue defaults', async (t) => {
+  const f = make(t);
+  await connect(f);
+  assert.deepEqual(chatgpt.toResponsesRequest({ model: 'm', messages: [], reasoning_effort: 'high' }).reasoning, { effort: 'high', summary: 'auto' });
+  await post(f, { model: 'gpt-thinker' });
+  assert.deepEqual(lastSent(f).reasoning, { effort: 'medium', summary: 'detailed' });
+  await post(f, { model: 'gpt-thinker', reasoning_effort: 'low' });
+  assert.deepEqual(lastSent(f).reasoning, { effort: 'low', summary: 'detailed' });
+  await post(f, { model: 'gpt-plain', reasoning_effort: 'high' });
+  assert.deepEqual(lastSent(f).reasoning, { effort: 'high' }, 'a model that rejects the summary parameter does not get it');
+  await post(f, { model: 'gpt-quiet' });
+  assert.equal(lastSent(f).reasoning, undefined);
+  f.fake.state.upstream.push(() => sse([{ type: 'response.reasoning_summary_text.delta', delta: 'Thinking about it.' }, { type: 'response.output_text.delta', item_id: 'm', delta: 'Done.' }, { type: 'response.completed', response: {} }]));
+  const body = await (await post(f, { model: 'gpt-thinker', stream: false })).json();
+  assert.equal(body.choices[0].message.reasoning_content, 'Thinking about it.');
+});
+
+test('fork QuartzWarrior@7100902, checked against openai/codex: per-conversation session headers and cache key, honest UA, FedRAMP header kept', async (t) => {
+  const f = make(t);
+  await connect(f);
+  await f.oauth.fetchFor('user-a', { conversation: 'chat-1' })('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [] }) });
+  const a = f.fake.seen.responses.at(-1);
+  assert.match(a.headers['session-id'], /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(a.headers['x-client-request-id'], a.headers['session-id']);
+  assert.equal(a.body.prompt_cache_key, a.headers['session-id']);
+  assert.equal(a.headers['session-id'].includes('chat-1'), false, 'the internal chat id does not leave');
+  await f.oauth.fetchFor('user-a', { conversation: 'chat-1' })('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [] }) });
+  assert.equal(f.fake.seen.responses.at(-1).headers['session-id'], a.headers['session-id'], 'stable per conversation');
+  await f.oauth.fetchFor('user-a', { conversation: 'chat-2' })('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [] }) });
+  assert.notEqual(f.fake.seen.responses.at(-1).headers['session-id'], a.headers['session-id']);
+  assert.match(a.headers['user-agent'], /^noevia\/\S+ \(chatgpt-oauth; \+https:\/\/github\.com\/sbstndalton\/noevia\)$/);
+  assert.equal('originator' in a.headers, false, 'noevia does not claim to be the Codex CLI');
+  const tokenCall = f.fake.seen.calls.find((c) => c.url.endsWith('/oauth/token'));
+  assert.equal(tokenCall.init.headers['user-agent'], a.headers['user-agent']);
+  // FedRAMP: the Codex client itself sends X-OpenAI-Fedramp for such accounts (bearer_auth_provider.rs L43-44).
+  const g = make(t);
+  g.fake.state.fedRampToken = true;
+  const login = await g.oauth.startDeviceLogin('user-f');
+  g.fake.state.approved = true; g.clock.t += 5000;
+  await g.oauth.pollDeviceLogin('user-f', login.loginId);
+  await g.oauth.fetchFor('user-f')('https://c/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-synthetic', messages: [] }) });
+  assert.equal(g.fake.seen.responses.at(-1).headers['x-openai-fedramp'], 'true');
+  assert.equal('x-openai-fedramp' in a.headers, false);
 });

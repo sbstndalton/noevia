@@ -24,10 +24,12 @@ function fixture(t, { flag = true } = {}) {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const clock = { t: 1_800_000_000_000 };
   const flags = { on: flag };
+  const gates = { exchange: null, entered: null };
   const fetchImpl = async (url, init) => {
     url = String(url);
     if (url.endsWith('/deviceauth/usercode')) return reply({ device_auth_id: 'DAID', user_code: 'WXYZ-9876', interval: '1' });
     if (url.endsWith('/deviceauth/token')) return reply({ authorization_code: 'CODE', code_challenge: 'C', code_verifier: 'V' });
+    if (url.endsWith('/oauth/token') && gates.exchange) { gates.entered?.(); await gates.exchange; }
     if (url.endsWith('/oauth/token')) return reply({ access_token: 'AT-secret', refresh_token: 'RT-secret', id_token: idToken, expires_in: 3600 });
     if (url.includes('/models?')) return reply({ models: [{ slug: 'gpt-synthetic' }] });
     throw new Error('unexpected ' + url + (init ? '' : ''));
@@ -60,7 +62,7 @@ function fixture(t, { flag = true } = {}) {
     };
     return (accounts[userId] = { call, providers, projects, saved });
   };
-  return { routesFor, flags, clock, oauth };
+  return { routesFor, flags, clock, oauth, gates };
 }
 async function signIn(f, userId) {
   const a = f.routesFor(userId);
@@ -144,4 +146,30 @@ test('POST /api/providers cannot mint a ChatGPT or external row', async (t) => {
   assert.equal(row.kind, undefined);
   assert.equal(row.external, undefined);
   assert.equal(chatgpt.isChatGptProvider(row), false);
+});
+
+test('#454: Disconnect while the sign-in is being exchanged wins, and the route does not add the row', async (t) => {
+  const f = fixture(t);
+  const a = f.routesFor('user-a');
+  const start = await a.call('POST', '/api/providers/chatgpt/device');
+  let release;
+  f.gates.exchange = new Promise((r) => { release = r; });
+  const entered = new Promise((r) => { f.gates.entered = r; });
+  f.clock.t += 1000;
+  const polling = a.call('POST', '/api/providers/chatgpt/device/poll', { loginId: start.body.loginId });
+  await entered;
+  assert.equal((await a.call('DELETE', '/api/providers/chatgpt')).status, 200);
+  release();
+  assert.deepEqual((await polling).body, { state: 'cancelled' });
+  assert.equal(a.providers.some((p) => p.id === 'chatgpt-oauth'), false);
+  assert.equal((await a.call('GET', '/api/providers/chatgpt')).body.state, 'disconnected');
+});
+
+test('review: too many sign-in starts answer 429 through the route', async (t) => {
+  const f = fixture(t);
+  const a = f.routesFor('user-a');
+  for (let i = 0; i < 5; i++) assert.equal((await a.call('POST', '/api/providers/chatgpt/device')).status, 200);
+  const sixth = await a.call('POST', '/api/providers/chatgpt/device');
+  assert.equal(sixth.status, 429);
+  assert.match(sixth.body.error, /Too many ChatGPT sign-in attempts/);
 });
