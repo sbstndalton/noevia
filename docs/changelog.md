@@ -8,6 +8,22 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web e51c5b1 — 2026-09-27 (tool policy after approval)
+
+### Services
+
+- **Web:** [#490](https://github.com/sbstndalton/noevia/pull/490), closes #489 — `cowork-web:e51c5b1`.
+- **Diary, model manager, Code sandbox, OCR, Docling:** no deployed change. Diary #480 and model-manager #483 remain merged but undeployed; model-loader stays `1c87ab0`.
+- **Deploy/infra:** web-only activation through the installed preflight wrapper.
+
+Chat now rechecks the account's current tool policy immediately before dispatch. If a tool was changed to Block while its approval card was pending, submitting that old approval refuses the call and records a denial. The original issue still required the owner to approve the displayed arguments; this fixes stale policy enforcement, not an unauthenticated or silent write bypass.
+
+Root reviewed the exact head before push and again before matching-head squash merge; all eight CI checks passed. Combined main passed 2,494 tests with zero failures or skips. Branch typecheck, explicit build to a unique /tmp output, and design lint passed. Synthetic tests exercise the real approval gate and owner decision route with fake provider/Drive execution, covering blocked reads/writes and unchanged ask behavior.
+
+Deployed from main `e51c5b1454850af7054359f7c7a699620d046005` with git archive/scp and a DaServer web build. Environment and both Compose files backed up as `*.bak.before-e51c5b1`. Verified current→releases/e51c5b1, healthy web with zero restarts, `/` 200, unauthenticated `/api/profile` 401, and served `index-BVAVsQI9.js` / `index-CLfPZER_.css` present in the image. All 42 non-web containers retained identical IDs, StartedAt, images and restart counts. No flags or sidecars changed.
+
+Rollback: point `current` to `releases/c01f303`, restore `config/.env.bak.before-e51c5b1`, and run the same web-only preflight command from the Cowork Compose Manager directory.
+
 ## Release web c01f303 — 2026-09-27 (bounded passkey challenges)
 
 ### Services
