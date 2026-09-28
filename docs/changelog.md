@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web b272746 — 2026-09-28 (calendar logo and tuner answer handling)
+
+### Services
+
+- **Web:** [#505](https://github.com/sbstndalton/noevia/pull/505), [#506](https://github.com/sbstndalton/noevia/pull/506) — `cowork-web:b272746`.
+- **Diary:** no deployed change; #480 remains merged but undeployed.
+- **Model manager:** no deployed change; #483 remains merged but undeployed, model-loader stays `1c87ab0`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** web-only build and activation through the installed preflight; no sidecar or model action.
+
+Appearance now offers per-device default, seasonal and monthly logo palettes, with an explicit hemisphere choice. Default geometry and favicon stay unchanged. The admin preview cycles palettes temporarily and clears when leaving Appearance. GPT-OSS quality probes request low reasoning effort with a bounded answer budget; strict final-answer scoring accepts harmless formatting wrappers but rejects empty or reasoning-only responses. Throughput probes retain their separate handling of capped output. No live tune or model inference was run.
+
+Exact source `b272746d00217f88025809ebcaadae8c6b331310` passed 2,517 combined tests with no failures or skips, typecheck, build and design lint. Logo synthetic browser coverage passed 507 assertions across 1440/768/390 widths, light/dark, all three themes, admin/member, persistence and preview cleanup. Both PRs passed CI and root exact-SHA reviews. Source archive SHA-256 matched locally and remotely: `fb435cbc500dd0e1dbbf906a3fdb3d5c9717805d23cd76eac272ade9f3979c52`.
+
+Web is healthy with zero restarts, started at `2026-09-28T02:11:30.068581928Z`. Public root returns 200, unauthenticated profile 401, version `b272746`; `index-DrBXtR_7.js` and `index--htmrLTo.css` return 200 and exist in the image. Available memory remained about 9.3 GiB. Every non-web container retained its ID and image. Start times and restart counts also stayed unchanged except the existing embedding crash loop: its count advanced from 3,183 to 3,184 while the same container reported its missing Nomic GGUF (#336). Embedding recovery was not attempted.
+
+Dedicated Luna Chrome verification observed the deployed version and authenticated desktop Appearance controls: Default leaves, Test next palette, and the preview-only explanation. The user supplied a screenshot confirming the native macOS menu displays Default leaves, Seasonal and Monthly; the open popup is confirmed by that screenshot rather than an agent capture. No preference or palette test was changed. Current-release mobile verification and physical Safari remain unverified; synthetic responsive coverage is recorded separately above.
+
+Rollback: restore `config/.env.bak.before-b272746`, point `current` at `releases/c90046e`, and use the installed web-only no-build preflight. Prior releases, images and Compose backups remain available.
+
 ## Release web c90046e — 2026-09-28 (server memory recovery and sidebar corrections)
 
 ### Services

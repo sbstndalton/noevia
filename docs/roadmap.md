@@ -234,7 +234,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    `state/web/system-one-decisions.jsonl` (bounded, rotated; docker logs are lost at each deploy).
    After a week of real use: `docker exec cowork-web-1 node /app/server/decision-log.cjs
    /app/server/ui-data` prints the summary; tune only from that. Rerun `scripts/system-one-probe.cjs` after
-   any Laya or label change.
+   any Laya or label change. Counts-only review on 2026-09-28 found 32 routing decisions
+   across under five days, four `no-backend-answered` fallbacks (12.5%), median 663.5 ms
+   and p95 1,407 ms. Keep current routing; the sample has no accuracy labels and does not
+   satisfy the weeklong observation window. [Reviewed evidence](https://github.com/sbstndalton/noevia/issues/261#issuecomment-5861940658).
 2. **Confirm the tax-folder documents re-read under Docling ([#262](https://github.com/sbstndalton/noevia/issues/262))** the next time that project is
    opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
 3. **DAV client interoperability, remaining clients ([#263](https://github.com/sbstndalton/noevia/issues/263))** — rclone passes 18/18 (docs/dav.md, run 2);
@@ -324,7 +327,11 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
       noevia before choosing whether to reactivate the repository. No corpus or state migration
       starts until compatibility, import/export, rollback and live-data backup are specified.
       Acceptance: a documented keep/port/replace decision with a synthetic-fixture migration plan
-      and no loss of current Diary behavior or tenant isolation.
+      and no loss of current Diary behavior or tenant isolation. The 2026-09-28 source
+      comparison recommends keeping `services/diary` authoritative; the old single-user
+      companion does not justify replacing current tenant boundaries. The synthetic migration
+      matrix and live M2 qualification remain unexecuted.
+      [Reviewed comparison](https://github.com/sbstndalton/noevia/issues/271#issuecomment-5861988953).
    6. **Make Skills portable across clients ([#272](https://github.com/sbstndalton/noevia/issues/272)).** Keep Skills as versioned manifests, instructions
       and optional assets rather than creating a container for each Skill. Define discovery,
       compatibility, origin, updates and per-Skill tool/permission requirements in core; execute
