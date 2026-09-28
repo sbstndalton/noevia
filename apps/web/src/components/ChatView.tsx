@@ -1,6 +1,6 @@
 import { ChatContext } from './ChatContext';
 import { useChatScroll } from '../useChatScroll';
-import { ReasoningControl, thinkingLevelLabel } from './ReasoningControl';
+import { ReasoningControl, thinkingLevelLabel, useReasoningSettings } from './ReasoningControl';
 import { ProjectIcon } from './ProjectIdentity';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { JSX, ReactNode } from 'react';
@@ -362,6 +362,9 @@ export function ChatView({
   }, [coworkAccess.repositories]);
   const modeSwitch = useModeSwitch({ mode, messageCount: messages.length, projectId: project?.id ?? null, access: coworkAccess, repository, onModeChange });
   const chatConfig = project || freeContext;
+  // The phone model button names a thinking level only when the sheet can offer one; with the
+  // effort settings unavailable the sheet has no Thinking section, so the button drops the suffix.
+  const thinkingAvailable = !!useReasoningSettings(chatConfig, phone);
   const [catalogueOpen, setCatalogueOpen] = useState(false);
   const [turnBoxes, setTurnBoxes] = useState<string[]>([]);
   const [permitted, setPermitted] = useState<PermittedBox[]>([]);
@@ -630,7 +633,7 @@ export function ChatView({
             browseTools={{ onOpen: () => setCatalogueOpen(true), count: turnBoxes.length }} />
           {phone && <ModeToggle state={modeSwitch} disabled={streaming || actionBusy} compact />}
           <ComposerModel label={modelLabel} onClick={openModels}
-            compact={phone ? { thinking: chatConfig ? thinkingLevelLabel(t, chatConfig.reasoningEffort) : null, live: streaming } : undefined} />
+            compact={phone ? { thinking: chatConfig && thinkingAvailable ? thinkingLevelLabel(t, chatConfig.reasoningEffort) : null, live: streaming } : undefined} />
           {!phone && <ReasoningControl project={project || freeContext} disabled={streaming || actionBusy} onChanged={refreshContext} />}
           {streaming ? (
             <button className="send-btn glass glass-lens is-primary is-press" onClick={() => { stopRequestedRef.current = true; onStop(); }} title={t('composer.stop')} aria-label={t('composer.stop')}>

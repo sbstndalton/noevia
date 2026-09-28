@@ -34,20 +34,35 @@ const REPLY = ['meta', 'delta', 'usage', 'done'].map(type => 'data: ' + JSON.str
   : type === 'delta' ? { type, text: 'Synthetic answer paragraph. '.repeat(60) }
   : type === 'usage' ? { type, promptTokens: 12, completionTokens: 34, totalTokens: 46, tokensPerSecond: 46.8 } : { type })).join('\n\n') + '\n\n';
 
-async function open(browser, { width, height, theme = 'light', routing = 'auto', reply = true }) {
-  const touch = width < 768;
+async function open(browser, { width, height, theme = 'light', routing = 'auto', reply = true, models = 1, reasoning = true, touch = width < 768 }) {
   const page = await browser.newPage({ viewport: { width, height }, isMobile: touch, hasTouch: touch, reducedMotion: 'reduce' });
   await page.addInitScript(t => localStorage.setItem('cowork-theme', t), theme);
   page.on('pageerror', e => errors.push({ size: `${width}x${height}`, error: e.message }));
   await page.route('https://**/*', r => r.abort());
   await page.route('**/api/workspace', r => r.fulfill({ json: { projects: [], freeChats: [] } }));
-  await page.route('**/api/chats/*/context', r => r.fulfill({ json: { project: context(routing) } }));
+  // The chat's own settings, kept across saves so a Thinking choice reads back.
+  const chat = context(routing);
+  await page.route('**/api/chats/*/context', r => r.fulfill({ json: { project: chat } }));
+  await page.route('**/api/projects/__free-synthetic/config', async r => {
+    const body = r.request().postDataJSON() || {};
+    await new Promise(done => setTimeout(done, 300));
+    if ('reasoningEffort' in body) chat.reasoningEffort = body.reasoningEffort ?? undefined;
+    await r.fulfill({ json: { ok: true } });
+  });
+  if (!reasoning) await page.route('**/api/reasoning-settings*', r => r.fulfill({ status: 503, json: { error: 'Synthetic outage' } }));
   await page.route('**/api/chats/*/context-window', r => r.fulfill({ json: { meter: METER } }));
-  await page.route('**/api/models/installed', r => r.fulfill({ json: [{ name: MODEL, labels: [], loaded: true }] }));
+  await page.route('**/api/models/installed', r => r.fulfill({ json: [MODEL, ...Array.from({ length: models - 1 }, (_, i) => `synthetic-extra-${i + 1}-Q4_K_M`)].map(name => ({ name, labels: [], loaded: true })) }));
   await page.route('**/api/toolboxes', r => r.fulfill({ json: { toolboxes: [{ id: 'core', label: 'Synthetic core', description: 'Synthetic tools', source: 'builtin', toolCount: 1, estTokens: 10 }], mcp: { configured: false } } }));
   // A finished synthetic reply with speed, a routing decision and a measured context; `reply:
   // false` leaves /api/chat to the fixture, whose "live synthetic" stream stays open.
-  if (reply) await page.route('**/api/chat', r => r.fulfill({ headers: { 'content-type': 'text/event-stream' }, body: REPLY }));
+  // A compaction request answers after a pause, so the test can watch it run.
+  if (reply) await page.route('**/api/chat', async r => {
+    if (r.request().postDataJSON()?.compactOnly) {
+      await new Promise(done => setTimeout(done, 1500));
+      return r.fulfill({ headers: { 'content-type': 'text/event-stream' }, body: 'data: {"type":"status","text":"Summarising synthetic messages"}\n\ndata: {"type":"done"}\n\n' });
+    }
+    return r.fulfill({ headers: { 'content-type': 'text/event-stream' }, body: REPLY });
+  });
   await page.goto(origin);
   await page.getByRole('textbox', { name: 'Message', exact: true }).waitFor();
   await page.getByRole('button', { name: /^Choose model: / }).first().waitFor();
@@ -121,7 +136,7 @@ const tier0Snapshot = (page) => page.evaluate(() => {
       // One control row, in reading order, every control a 44px target.
       const controls = [page.getByRole('button', { name: 'Add files and tools', exact: true }), page.getByRole('radio', { name: 'Chat' }), page.getByRole('radio', { name: 'Cowork' }), model, page.getByRole('button', { name: 'Send', exact: true })];
       const boxes = []; for (const c of controls) boxes.push(await box(c));
-      check(boxes.every(b => b && b.height >= 44 && b.width >= 40), 'composer controls are touch targets', boxes);
+      check(boxes.every(b => b && b.height >= 44 && b.width >= 44), 'composer controls are 44px touch targets', boxes);
       check(boxes.every((b, i) => i === 0 || b.x >= boxes[i - 1].x + boxes[i - 1].width - 0.5), 'controls run left to right: +, Chat/Cowork, model, send', boxes);
       check(boxes.every(b => Math.abs((b.y + b.height / 2) - (boxes[0].y + boxes[0].height / 2)) < 4), 'controls share one row', boxes);
       // Send is disabled (unfocusable) while the draft is empty.
@@ -270,6 +285,117 @@ const tier0Snapshot = (page) => page.evaluate(() => {
       const send = await box(page.getByRole('button', { name: 'Send', exact: true })), add = await box(page.getByRole('button', { name: 'Add files and tools', exact: true }));
       check(send && add && send.x + send.width <= 320 && Math.abs(send.y - add.y) < 4, '320px: + and send share the row and stay on screen', { send, add });
       await shot(page, '320x640-light-empty');
+      await page.close();
+    });
+
+    // ── Choosing a Thinking level keeps focus on it while it saves (#419) ──
+    await step('390x844 thinking keeps focus', async () => {
+      const page = await open(browser, { width: W, height: H });
+      await modelButton(page).click();
+      const sheet = page.getByRole('dialog', { name: 'Model and tools' });
+      await sheet.waitFor();
+      const low = sheet.getByRole('group', { name: 'Thinking' }).getByRole('button', { name: /^Low/ });
+      await low.focus();
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(100);
+      check(await low.getAttribute('aria-disabled') === 'true', 'the level reads as busy while it saves');
+      check(await low.evaluate(e => e === document.activeElement), 'focus stays on the level while it saves');
+      await page.waitForFunction(() => [...document.querySelectorAll('.reasoning-level')].some(b => b.getAttribute('aria-pressed') === 'true' && b.textContent.startsWith('Low')));
+      await page.waitForTimeout(150);
+      check(await low.evaluate(e => e === document.activeElement), 'focus is still on the chosen level after the save', await page.evaluate(() => document.activeElement?.tagName + ' ' + document.activeElement?.textContent?.slice(0, 20)));
+      check(await low.getAttribute('aria-disabled') === null, 'the level is available again after the save');
+      await page.keyboard.press('Escape');
+      await sheet.waitFor({ state: 'hidden' });
+      check((await modelButton(page).innerText()).replace(/\s+/g, ' ').trim() === 'Auto · Low', 'the model button shows the new level', await modelButton(page).innerText());
+      await page.close();
+    });
+
+    // ── Effort settings unavailable: no level on the button, none in the sheet ─
+    await step('390x844 thinking unavailable', async () => {
+      const page = await open(browser, { width: W, height: H, reasoning: false });
+      await page.waitForTimeout(300);
+      const model = modelButton(page);
+      check((await model.innerText()).replace(/\s+/g, ' ').trim() === 'Auto', 'without effort settings the button shows only the model', await model.innerText());
+      check(await model.getAttribute('aria-label') === 'Choose model: Auto (Fast/Smart)', 'and names only the model', await model.getAttribute('aria-label'));
+      await model.click();
+      const sheet = page.getByRole('dialog', { name: 'Model and tools' });
+      await sheet.waitFor();
+      check(await sheet.getByRole('group', { name: 'Thinking' }).count() === 0, 'and the sheet has no Thinking section');
+      await page.close();
+    });
+
+    // ── The message box re-measures across the tier boundary ───────────────
+    await step('resize across the phone breakpoint', async () => {
+      const page = await open(browser, { width: 1440, height: 900, touch: false });
+      const input = page.getByRole('textbox', { name: 'Message', exact: true });
+      const measure = () => input.evaluate(e => ({ h: e.getBoundingClientRect().height, rows: e.rows, overflow: getComputedStyle(e).overflowY, scroll: e.scrollHeight, client: e.clientHeight }));
+      const desk = await measure();
+      await page.setViewportSize({ width: W, height: H });
+      await page.waitForTimeout(250);
+      const phone = await measure();
+      check(phone.rows === 1 && phone.h <= 48 && phone.h < desk.h, 'an empty box drops to one line when the window becomes phone-sized', { desk, phone });
+      // A draft that fits the desktop box (no scrollbar there) but not the phone's 160px.
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.waitForTimeout(250);
+      await input.fill(Array.from({ length: 7 }, (_, i) => `Synthetic draft line ${i + 1}`).join('\n'));
+      const fits = await measure();
+      check(fits.overflow === 'hidden' && fits.h > 161, 'the draft fits the desktop box without scrolling', fits);
+      await page.setViewportSize({ width: W, height: H });
+      await page.waitForTimeout(250);
+      const tall = await measure();
+      check(tall.h <= 161 && tall.overflow === 'auto' && tall.scroll > tall.client, 'a long draft is capped and scrolls inside the phone box, not clipped', tall);
+      await input.fill('');
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.waitForTimeout(250);
+      const back = await measure();
+      check(back.rows === 2 && Math.abs(back.h - desk.h) <= 1, 'back on the desktop the box is its two-row self again', { desk, back });
+      await page.close();
+    });
+
+    // ── Compaction: said beside the composer, announced once ───────────────
+    await step('390x844 compaction status', async () => {
+      const page = await open(browser, { width: W, height: H });
+      for (let i = 0; i < 3; i++) { await send(page, `Synthetic question ${i + 1}`); await page.waitForFunction(n => document.querySelectorAll('.chat-workspace .msg').length >= n, (i + 1) * 2); await page.waitForTimeout(250); }
+      await modelButton(page).click();
+      const sheet = page.getByRole('dialog', { name: 'Model and tools' });
+      await sheet.waitFor();
+      await sheet.locator('.chat-context-meter summary').click();
+      await sheet.getByRole('button', { name: 'Compact chat' }).click();
+      await page.keyboard.press('Escape');
+      await sheet.waitFor({ state: 'hidden' });
+      const line = page.locator('.composer > .chat-context-live');
+      check(await line.isVisible() && /Compacting|Summarising/.test(await line.innerText()), 'a slim line says the chat is compacting', await line.innerText());
+      check(await page.getByRole('textbox', { name: 'Message', exact: true }).isDisabled(), 'while the composer waits for it');
+      const lb = await box(line), card = await box(page.locator('.chat-workspace .chat-composer-inner'));
+      check(lb && card && lb.y + lb.height <= card.y + 1 && lb.height <= 40, 'the line sits just above the composer', { lb, card });
+      await shot(page, '390x844-light-compacting');
+      await page.waitForFunction(() => /Compacted/.test(document.querySelector('.composer > .chat-context-live')?.textContent || ''), null, { timeout: 5000 });
+      check(!(await line.isVisible()) || (await line.evaluate(e => e.getBoundingClientRect().height)) <= 1, 'the line goes when compaction finishes');
+      const regions = await page.evaluate(() => [...document.querySelectorAll('[role="status"], [aria-live]')].filter(e => /Compacted/.test(e.textContent || '')).length);
+      check(regions === 1, 'the result is announced by exactly one live region', regions);
+      check(await page.getByRole('textbox', { name: 'Message', exact: true }).isEnabled(), 'the composer is usable again');
+      await modelButton(page).click();
+      await sheet.waitFor();
+      await sheet.locator('.chat-context-meter summary').click();
+      check(/Compacted/.test(await sheet.locator('.chat-context-meter').innerText()), 'the sheet still shows the result', await sheet.locator('.chat-context-meter').innerText());
+      await page.close();
+    });
+
+    // ── The sheet opens at its top, focus on its heading ───────────────────
+    await step('390x844 sheet opens at the top', async () => {
+      const page = await open(browser, { width: W, height: H, routing: 'manual', models: 8 });
+      await send(page, 'Synthetic question');
+      await page.getByText('Synthetic answer paragraph.').first().waitFor();
+      await modelButton(page).click();
+      const sheet = page.getByRole('dialog', { name: 'Model and tools' });
+      await sheet.waitFor();
+      await sheet.getByRole('searchbox').waitFor();
+      await page.waitForTimeout(400);
+      check(await sheet.locator('.mp-grid').evaluate(e => e.scrollTop) === 0, 'the sheet opens scrolled to the top (8 models, filter shown)', await sheet.locator('.mp-grid').evaluate(e => e.scrollTop));
+      const focus = await page.evaluate(() => { const e = document.activeElement; return e && `${e.tagName}${e.closest('.mp-head') ? ' in header' : ''}`; });
+      check(focus === 'H2 in header', 'initial focus is the sheet heading, not a field', focus);
+      const status = await box(sheet.locator('.mp-status')), grid = await box(sheet.locator('.mp-grid'));
+      check(status && grid && status.y >= grid.y - 1 && status.y < grid.y + grid.height, 'the status block is in view', { status, grid });
       await page.close();
     });
 

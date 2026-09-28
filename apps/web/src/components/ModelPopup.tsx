@@ -36,6 +36,7 @@ interface ModelPopupProps {
 export function ModelPopup({ projects, activeProject, onClose, onProjectsChanged, onOpenModelSettings: openSettingsProp, status, thinking }: ModelPopupProps): JSX.Element {
   const dialog = useModalDialog();
   const t = useT();
+  const phoneSheet = !!(status || thinking);
   const openSettings = (model?: string) => {
     if (openSettingsProp) return openSettingsProp(model);
     onClose(); window.dispatchEvent(new CustomEvent('noevia:open-model-settings', { detail: { model } }));
@@ -43,9 +44,12 @@ export function ModelPopup({ projects, activeProject, onClose, onProjectsChanged
   return (
     <dialog ref={dialog} className="native-modal model-dialog-backdrop" aria-label={t('modelPopup.title')}
       onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={onClose}>
-      <div className={`mp-panel aero dialog-sheet${status || thinking ? ' is-phone-sheet' : ''}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`mp-panel aero dialog-sheet${phoneSheet ? ' is-phone-sheet' : ''}`} onClick={(e) => e.stopPropagation()}>
         <header className="mp-head">
-          <h2><small>{t('modelPopup.title')}</small>{activeProject ? activeProject.name : t('modelPopup.model')}</h2>
+          {/* #527: the phone sheet opens on its heading, so the status block at the top is what is
+              read and seen first; left to itself, initial focus would land on the first field (a
+              model filter or a tool checkbox) and scroll the sheet past it. */}
+          <h2 {...(phoneSheet ? { tabIndex: -1, 'data-initial-focus': '' } : {})}><small>{t('modelPopup.title')}</small>{activeProject ? activeProject.name : t('modelPopup.model')}</h2>
           <button className="btn btn-ghost btn-sm mp-settings" onClick={() => openSettings()}><ShellIcon name="settings" size={16}/>{t('modelPopup.settings')}</button>
           <CloseButton onClick={onClose}/>
         </header>
