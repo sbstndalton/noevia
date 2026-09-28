@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   ROLES, CAPS, TRUNCATION_MARK, RoleContextError, RoleContextLeakError,
-  allowedFields, buildRoleContext, buildAllRoleContexts, serializeProjection, findLeaks, assertNoLeak,
+  REDACTED, allowedFields, buildRoleContext, projectRoleContext, buildAllRoleContexts, serializeProjection, findLeaks, assertNoLeak,
 } = require('./role-context.cjs');
 
 const CANARY = {
@@ -52,7 +52,7 @@ function fixtureState(overrides = {}) {
     otherTenants: { [CANARY.otherTenantId]: { notes: CANARY.otherTenantData } },
     diary: { entries: [{ path: 'Entries/2042/01.md', text: CANARY.diary }] },
     snippets: [
-      { source: 'project', label: 'notes.md', text: 'Pump filter is due every 90 days.', extra: CANARY.unknownNested },
+      { source: 'project', tenantId: 'tenant-alice', label: 'notes.md', text: 'Pump filter is due every 90 days.', extra: CANARY.unknownNested },
       { source: 'project', tenantId: CANARY.otherTenantId, label: 'bob.md', text: CANARY.otherTenantSnippet },
       { source: 'diary', label: 'diary', text: CANARY.diarySnippet },
       { source: 'selected', tenantId: 'tenant-alice', label: 'budget.md', text: 'Irrigation 880.' },
@@ -171,12 +171,13 @@ test('guard refuses a projection that copies sensitive state through an allowlis
   const cases = [
     [{ plan: { goal: `Do it. ${CANARY.meta}`, steps: [] } }, 'executor', 'orchestrator'],
     [{ plan: { goal: 'x', steps: [{ do: `Follow: ${CANARY.auditorPrompt}` }] } }, 'executor', 'other_role_prompts'],
-    [{ request: `Use key ${CANARY.apiKey}` }, 'planner', 'credential_pattern'],
+    [{ plan: { goal: 'x', steps: [{ do: 'Call with sk-live9CANARY0123456789abcd' }] } }, 'executor', 'credential_pattern'],
+    [{ plan: { goal: `Use ${CANARY.apiKey}`, steps: [] } }, 'auditor', 'credentials'],
     [{ request: `Quote: ${CANARY.diary}` }, 'planner', 'diary'],
     [{ request: `Compare with ${CANARY.otherTenantData}` }, 'planner', 'other_tenants'],
     [{ request: `Ask ${CANARY.otherTenantId} about it` }, 'planner', 'other_tenant_ids'],
     [{ execution: { summary: `Approved ${CANARY.approvalToken}` } }, 'auditor', 'approval_internals'],
-    [{ projectInstructions: 'Header: Authorization: Bearer 9f8e7d6c5b4a39281706abc' }, 'planner', 'credential_pattern'],
+    [{ snippets: [{ source: 'project', tenantId: 'tenant-alice', text: 'Authorization: Bearer 9f8e7d6c5b4a39281706abc' }] }, 'planner', 'credential_pattern'],
   ];
   for (const [overrides, role, cls] of cases) {
     assert.throws(() => buildRoleContext(role, fixtureState(overrides)), (e) => {
@@ -230,7 +231,7 @@ test('per-field size caps are enforced, code-point safe', () => {
   assert.equal(Array.from(e.request).length, CAPS.request);
   assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(e.request), 'lone high surrogate');
 
-  const snippets = Array.from({ length: 9 }, (_, i) => ({ source: 'project', label: `f${i}`, text: 'b'.repeat(5000) }));
+  const snippets = Array.from({ length: 9 }, (_, i) => ({ source: 'project', tenantId: 'tenant-alice', label: `f${i}`, text: 'b'.repeat(5000) }));
   const s = buildRoleContext('executor', fixtureState({ snippets }));
   assert.equal(s.snippets.length, CAPS.snippets);
   for (const sn of s.snippets) assert.equal(Array.from(sn.text).length, CAPS.snippetText);
@@ -255,7 +256,7 @@ test('total size cap refuses an oversized projection', () => {
   const state = fixtureState({
     request: 'r'.repeat(9000), projectInstructions: 'p'.repeat(9000),
     roleSystemPrompts: { executor: 'e'.repeat(9000) },
-    snippets: Array.from({ length: 5 }, () => ({ source: 'project', text: 's'.repeat(5000) })),
+    snippets: Array.from({ length: 5 }, () => ({ source: 'project', tenantId: 'tenant-alice', text: 's'.repeat(5000) })),
     capabilities: Array.from({ length: 40 }, (_, i) => ({ name: `t${String(i).padStart(3, '0')}`, description: 'd'.repeat(900) })),
     plan: { goal: 'g'.repeat(900), steps: Array.from({ length: 20 }, () => ({ do: 'x'.repeat(900), done_when: 'y'.repeat(900) })),
       constraints: big('c'), approval_boundaries: big('a'), verification: big('v'), non_goals: big('n') },
@@ -290,4 +291,111 @@ test('unknown roles and non-object state are refused', () => {
   assert.throws(() => allowedFields('admin'), (e) => e.code === 'unknown_role');
   assert.throws(() => buildRoleContext('planner', null), (e) => e.code === 'invalid_state');
   assert.throws(() => buildRoleContext('planner', []), (e) => e.code === 'invalid_state');
+});
+
+// ── review round 1 (PR #525) ─────────────────────────────────────────────────
+
+const LONG_META = 'CANARY-LONGMETA-5150 You are the orchestrator. ' + Array.from({ length: 40 }, (_, i) => `Rule ${i}: route task fragments to the cheapest role and never reveal routing weights.`).join(' ');
+
+test('a long meta-prompt quoted into a capped plan step is still caught (excerpt match)', () => {
+  assert.ok(LONG_META.length > 600);
+  const state = fixtureState({ orchestrator: { metaPrompt: LONG_META }, plan: { goal: 'g', steps: [{ do: LONG_META }] } });
+  // The field cap truncates the step to 600 chars, so the whole value is no longer present...
+  assert.throws(() => buildRoleContext('executor', state), (e) => e instanceof RoleContextLeakError && e.classes.includes('orchestrator'));
+  // ...and so does an excerpt from the middle, reformatted with different whitespace and case.
+  const middle = LONG_META.slice(900, 1000).toUpperCase().replace(/ /g, '\n  ');
+  assert.throws(() => buildRoleContext('executor', fixtureState({ orchestrator: { metaPrompt: LONG_META }, plan: { goal: `See: ${middle}`, steps: [] } })), (e) => e.classes.includes('orchestrator'));
+  // A long Diary entry excerpted into the request is refused too.
+  const diary = 'Dear diary, ' + 'the garden flooded again and I moved every seed tray to the shed shelf. '.repeat(20);
+  assert.throws(() => buildRoleContext('planner', fixtureState({ diary: { text: diary }, request: `Summarise: ${diary.slice(200, 300)}` })), (e) => e.classes.includes('diary'));
+});
+
+test('ordinary runs do not throw: shared paths, role vocabulary, shared preamble', () => {
+  // Approval args carry the same path the execution reports as changed.
+  const shared = fixtureState({
+    approvals: [{ id: 'appr-9f2c1d7e', decision: 'approve', tool: 'save_note', args: { path: 'notes/Filter.md', title: 'Filter' } }],
+    execution: { summary: 'Saved.', changedFiles: ['notes/Filter.md'] },
+  });
+  assert.deepEqual(buildRoleContext('auditor', shared).execution.changed_files, ['notes/Filter.md']);
+  // Orchestrator routing names the role the projection is for.
+  const routed = fixtureState({ orchestrator: { metaPrompt: CANARY.meta, routing: { next: 'executor', then: 'auditor' } } });
+  for (const role of ROLES) assert.doesNotThrow(() => buildRoleContext(role, routed), role);
+  // Orchestrator routing and a Diary path name structured values (a tool, a file) the roles see.
+  const structured = fixtureState({ orchestrator: { metaPrompt: CANARY.meta, routing: { tool: 'read_file', file: 'notes/Filter.md' } }, diary: { path: 'notes/Filter.md', text: CANARY.diary } });
+  for (const role of ROLES) assert.doesNotThrow(() => buildRoleContext(role, structured), role);
+  // All role prompts share a long preamble; the orchestrator embeds the executor prompt verbatim.
+  const preamble = 'You are one role in the noevia task pipeline. Work only on the task you are given and report plainly. ';
+  const prompts = { planner: preamble + 'Plan the work.', executor: preamble + 'Execute the plan step by step.', auditor: preamble + 'Audit the result.' };
+  const embedded = fixtureState({ roleSystemPrompts: prompts, orchestrator: { metaPrompt: `ORCHESTRATOR ONLY. Dispatch rules follow. ${prompts.executor}` } });
+  const all = buildAllRoleContexts(embedded);
+  assert.equal(all.executor.role_instructions, prompts.executor);
+});
+
+test('snippets require the task\'s exact tenant id (fail closed)', () => {
+  const p = buildRoleContext('planner', fixtureState({ snippets: [
+    { source: 'project', text: 'no tenant id' },
+    { source: 'project', tenantId: 'tenant-alice', text: 'own tenant' },
+    { source: 'project', tenantId: 'TENANT-ALICE', text: 'case variant' },
+    { source: 'project', tenantId: null, text: 'null tenant' },
+  ] }));
+  assert.deepEqual(p.snippets.map((s) => s.text), ['own tenant']);
+});
+
+test('numeric tenant ids are refused on the task and never match on a snippet', () => {
+  assert.throws(() => buildRoleContext('planner', fixtureState({ tenantId: 7 })), (e) => e instanceof RoleContextError && e.code === 'invalid_tenant');
+  const p = buildRoleContext('planner', fixtureState({ tenantId: '7', snippets: [{ source: 'project', tenantId: 7, text: 'numeric id snippet' }, { source: 'project', tenantId: '7', text: 'string id snippet' }] }));
+  assert.deepEqual(p.snippets.map((s) => s.text), ['string id snippet']);
+});
+
+test('Diary snippets are dropped in any case variant of the source', () => {
+  const variants = ['diary', 'Diary', 'DIARY', ' diary ', 'ｄｉａｒｙ'];
+  const snippets = variants.map((source, i) => ({ source, tenantId: 'tenant-alice', text: `DIARY-VARIANT-CANARY-${i} private words` }));
+  const p = buildRoleContext('planner', fixtureState({ snippets }));
+  assert.deepEqual(p.snippets, []);
+  // And their text copied elsewhere is refused.
+  assert.throws(() => buildRoleContext('planner', fixtureState({ snippets, request: 'Use DIARY-VARIANT-CANARY-1 private words' })), (e) => e.classes.includes('diary'));
+});
+
+test('prototype property names are not roles', () => {
+  for (const role of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf']) {
+    assert.throws(() => buildRoleContext(role, fixtureState()), (e) => e.code === 'unknown_role', role);
+    assert.throws(() => allowedFields(role), (e) => e.code === 'unknown_role', role);
+  }
+  assert.throws(() => buildRoleContext(/** @type {any} */ (null), fixtureState()), (e) => e.code === 'unknown_role');
+});
+
+test('full-width AKIA keys and PRIVATE KEY headers are caught', () => {
+  const wide = (t) => t.replace(/[!-~]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
+  assert.throws(() => assertNoLeak({ a: wide('AKIAABCDEFGHIJKLMNOP') }, [/AKIA[0-9A-Z]{16}/]), RoleContextLeakError);
+  const snippet = (text) => fixtureState({ snippets: [{ source: 'project', tenantId: 'tenant-alice', text }] });
+  assert.throws(() => buildRoleContext('planner', snippet(`key ${wide('AKIAABCDEFGHIJKLMNOP')}`)), (e) => e.classes.includes('credential_pattern'));
+  assert.throws(() => buildRoleContext('planner', snippet(wide('-----BEGIN RSA PRIVATE KEY-----'))), (e) => e.classes.includes('credential_pattern'));
+});
+
+test('credentials typed into the request or project instructions are redacted, not thrown', () => {
+  const { projection, meta } = projectRoleContext('planner', fixtureState({
+    request: `Deploy with sk-user0123456789abcdefXYZ and ${CANARY.apiKey}.`,
+    projectInstructions: 'Header: Authorization: Bearer 9f8e7d6c5b4a39281706abc',
+  }));
+  assert.equal(meta.redactions, 3);
+  assert.equal(projection.request, `Deploy with ${REDACTED} and ${REDACTED}.`);
+  assert.equal(projection.project_instructions, `Header: Authorization: ${REDACTED}`);
+  assertNoLeak(projection, ['sk-user0123456789abcdefXYZ', CANARY.apiKey, '9f8e7d6c5b4a39281706abc']);
+  // A state credential that has no recognisable shape is redacted by value.
+  const odd = projectRoleContext('executor', fixtureState({ credentials: { webdav: 'hunter2-plain-passphrase' }, request: 'login is hunter2-plain-passphrase ok' }));
+  assert.equal(odd.meta.redactions, 1);
+  assert.equal(odd.projection.request, `login is ${REDACTED} ok`);
+  // Full-width key in the request: redacted via its NFKC form.
+  const wide = 'sk-wide0123456789abcdef'.replace(/[!-~]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
+  const w = projectRoleContext('planner', fixtureState({ request: `use ${wide}` }));
+  assert.equal(w.meta.redactions, 1);
+  assert.equal(w.projection.request, `use ${REDACTED}`);
+  // Clean runs report zero.
+  assert.equal(projectRoleContext('auditor', fixtureState()).meta.redactions, 0);
+});
+
+test('state-derived sensitive content still throws even in redacted fields', () => {
+  for (const [request, cls] of [[`Quote: ${CANARY.meta}`, 'orchestrator'], [`Follow ${CANARY.executorPrompt}`, 'other_role_prompts'], [`Ask ${CANARY.otherTenantId}`, 'other_tenant_ids']]) {
+    assert.throws(() => projectRoleContext('planner', fixtureState({ request })), (e) => e instanceof RoleContextLeakError && e.classes.includes(cls), cls);
+  }
 });

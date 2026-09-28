@@ -18,10 +18,17 @@
 //   * Snippets are admitted only from allowlisted source classes and only when they belong to
 //     the task's own tenant; a task without a tenant id is refused.
 //   * Per-field size caps (code-point safe) and a total cap; deterministic serialisation.
-//   * Fail closed: after building, the projection is scanned for sensitive values taken from the
-//     state itself (meta-prompt, other roles' prompts, credential/Diary/other-tenant leaves) and
-//     for credential patterns. Any hit throws RoleContextLeakError — no silent repair, matching
-//     "any hit invalidates the run" in the PromptArchitect outbound audit.
+//   * Credentials the user typed into their own free text (request, project instructions) are
+//     redacted to "[redacted credential]" and counted in `meta.redactions` (projectRoleContext).
+//   * Fail closed for everything else: after building, the projection is scanned for sensitive
+//     values taken from the state itself (meta-prompt, other roles' prompts, credential, Diary,
+//     other-tenant and approval leaves) — whole values and any copied excerpt of ≥ 63 folded code
+//     points, so a field cap truncating a quoted meta-prompt does not hide it — and for credential
+//     patterns. Any hit throws RoleContextLeakError, matching "any hit invalidates the run" in the
+//     PromptArchitect outbound audit; it is also the backstop if redaction missed something.
+//     Short single-token values (paths, enums, ids) from prose classes and this module's own
+//     vocabulary are not matched whole, and windows shared with the role's own prompt are
+//     trusted, so ordinary runs do not throw.
 //
 // Pure: no model calls, no I/O, no HTTP. NOT wired into any live chat path — no multi-role
 // runner exists yet. A future runner prepends nothing but this projection (plus the original
@@ -143,10 +150,9 @@ function capCapabilities(value) {
   return [...byName.keys()].sort().slice(0, CAPS.capabilities).map((k) => byName.get(k));
 }
 
-// Only snippets from allowlisted source classes that belong to the task's own tenant. A snippet
-// with no tenant id is taken to be the task's own (the caller selected it for this task); one
-// carrying a *different* tenant id is dropped. The tenant id is used for the check and is never
-// copied into the projection.
+// Only snippets from allowlisted source classes (exact, case-sensitive match) that carry the
+// task's own tenant id. Fail closed: a snippet with no tenant id, or a differently typed one (7 vs
+// '7'), is dropped. The tenant id is used for the check and is never copied into the projection.
 function capSnippets(value, tenantId) {
   if (!Array.isArray(value)) return undefined;
   const out = [];
@@ -154,7 +160,7 @@ function capSnippets(value, tenantId) {
     if (out.length >= CAPS.snippets) break;
     if (!isPlainObject(snip)) continue;
     if (!SNIPPET_SOURCES.includes(snip.source)) continue;
-    if (snip.tenantId !== undefined && snip.tenantId !== tenantId) continue;
+    if (snip.tenantId !== tenantId) continue;
     const text = capText(snip.text, CAPS.snippetText);
     if (text === undefined) continue;
     const entry = { source: snip.source, text };
@@ -248,14 +254,14 @@ const common = {
   role_name: (_s, ctx) => ROLE_NAMES[ctx.role],
   task_id: (s) => capIdentifier(s.taskId),
   revision: (s) => capIdentifier(s.revision),
-  request: (s) => capText(s.request, CAPS.request),
+  request: (s, ctx) => capText(ctx.redact(s.request), CAPS.request),
   role_instructions: (s, ctx) => (isPlainObject(s.roleSystemPrompts) ? capText(s.roleSystemPrompts[ctx.role], CAPS.roleInstructions) : undefined),
 };
 
 const ROLE_SPECS = Object.freeze({
   planner: Object.freeze({
     ...common,
-    project_instructions: (s) => capText(s.projectInstructions, CAPS.projectInstructions),
+    project_instructions: (s, ctx) => capText(ctx.redact(s.projectInstructions), CAPS.projectInstructions),
     snippets: (s, ctx) => capSnippets(s.snippets, ctx.tenantId),
     capabilities: (s) => capCapabilities(s.capabilities),
     constraints: (s) => capList(s.constraints),
@@ -263,7 +269,7 @@ const ROLE_SPECS = Object.freeze({
   }),
   executor: Object.freeze({
     ...common,
-    project_instructions: (s) => capText(s.projectInstructions, CAPS.projectInstructions),
+    project_instructions: (s, ctx) => capText(ctx.redact(s.projectInstructions), CAPS.projectInstructions),
     plan: (s) => capPlan(s.plan, PLAN_KEYS_EXECUTOR),
     snippets: (s, ctx) => capSnippets(s.snippets, ctx.tenantId),
     capabilities: (s) => capCapabilities(s.capabilities),
@@ -278,9 +284,7 @@ const ROLE_SPECS = Object.freeze({
 });
 
 function allowedFields(role) {
-  const spec = ROLE_SPECS[role];
-  if (!spec) throw new RoleContextError(`unknown role: ${String(role)}`, 'unknown_role');
-  return Object.keys(spec).sort();
+  return Object.keys(resolveSpec(role)).sort();
 }
 
 // ── deterministic serialisation ─────────────────────────────────────────────
@@ -327,7 +331,8 @@ function collectStrings(value, out = []) {
 
 // Every representation of the projection a leak could hide in: the canonical serialisation, its
 // ASCII-escaped form, each decoded string and key (nested), those with literal \u escapes decoded,
-// and NFKC-folded, case-folded variants of all of it (catches full-width lookalikes).
+// NFKC variants (case preserved, for case-sensitive patterns) and NFKC+lower-cased variants of all
+// of it (catches full-width lookalikes and case changes).
 function haystacks(projection) {
   const serialized = serializeProjection(projection);
   const base = [serialized, escapeNonAscii(serialized), ...collectStrings(projection)];
@@ -337,8 +342,9 @@ function haystacks(projection) {
     const decoded = decodeLiteralEscapes(h);
     if (decoded !== h) expanded.push(decoded);
   }
-  const folded = expanded.map((h) => h.normalize('NFKC').toLowerCase());
-  return expanded.concat(folded);
+  const nfkc = expanded.map((h) => h.normalize('NFKC'));
+  const folded = nfkc.map((h) => h.toLowerCase());
+  return expanded.concat(nfkc, folded);
 }
 
 function needles(item) {
@@ -371,19 +377,50 @@ function assertNoLeak(projection, forbidden) {
   return true;
 }
 
-// Credential shapes that must never reach any role, whatever field they arrive in.
+// Credential shapes that must never reach any role, whatever field they arrive in. Matched against
+// raw, escaped, NFKC (case preserved) and NFKC+lower-cased haystacks, so the AKIA and PEM patterns
+// are case-insensitive too: the lower-cased copy would otherwise hide a full-width key.
 const CREDENTIAL_PATTERNS = Object.freeze([
   /(?<![A-Za-z0-9])sk-(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{16,}/,
   /(?<![A-Za-z])bearer\s+(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/-]{16,}/i,
   /gh[pousr]_[A-Za-z0-9]{20,}/,
-  /AKIA[0-9A-Z]{16}/,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /AKIA[0-9A-Z]{16}/i,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
   /xox[abpr]-[A-Za-z0-9-]{10,}/,
 ]);
 
+const REDACTED = '[redacted credential]';
 const MIN_SENSITIVE_LENGTH = 8;
+// Excerpt matching: sensitive values are compared as sliding windows of EXCERPT_WINDOW folded code
+// points taken every EXCERPT_STRIDE, against every window of the projection. Any copied excerpt of
+// at least EXCERPT_WINDOW + EXCERPT_STRIDE - 1 (= 63) folded code points therefore contains one
+// whole stride-aligned window and is caught, even after a field cap truncated it.
+const EXCERPT_WINDOW = 48;
+const EXCERPT_STRIDE = 16;
 const ORCHESTRATOR_SENSITIVE_KEYS = Object.freeze(['metaPrompt', 'systemPrompt', 'routing', 'notes', 'scratchpad']);
-const APPROVAL_SENSITIVE_KEYS = Object.freeze(['id', 'token', 'args', 'arguments', 'userId', 'chatId']);
+// Approval ids and tokens are random secrets. Arguments are NOT listed: they legitimately repeat
+// structured values (a file path, a note title) that the auditor sees in execution results.
+const APPROVAL_SENSITIVE_KEYS = Object.freeze(['id', 'token', 'userId', 'chatId']);
+
+// Fixed vocabulary this module itself writes into projections (role values and names, field names,
+// decision and source enums). A state value equal to one of these is never a leak.
+const VOCABULARY = new Set([
+  ...ROLES, ...Object.values(ROLE_NAMES), ...APPROVAL_DECISIONS, ...SNIPPET_SOURCES,
+  ...Object.values(ROLE_SPECS).flatMap((spec) => Object.keys(spec)),
+  ...PLAN_KEYS_EXECUTOR, 'done_when', 'head_sha', 'changed_files', 'test_results', 'step_results', 'summary',
+  'done', 'skipped', 'failed', 'label', 'source', 'text', 'name', 'description', 'passed', 'note',
+].map((w) => fold(w)));
+
+// A short single token (no whitespace, ≤ 64 chars) — a path, enum or identifier. For prose classes
+// (orchestrator text, role prompts, Diary, other-tenant data) such values are not matched whole,
+// since they collide with legitimate structured fields; long prose is still matched by excerpt.
+function isStructuredToken(value) {
+  return /^\S{1,64}$/.test(value);
+}
+
+function fold(text) {
+  return String(text).normalize('NFKC').toLowerCase().replace(/\s+/g, ' ');
+}
 
 function leafStrings(value, out = [], depth = 0) {
   if (depth > 32) return out;
@@ -393,39 +430,110 @@ function leafStrings(value, out = [], depth = 0) {
   return out;
 }
 
+function credentialValues(state) {
+  return leafStrings([state.credentials, state.secrets, state.tokens]);
+}
+
+// Redacts credentials the user typed into free text (request, project instructions): pattern
+// matches and verbatim copies of the state's own credential values. If only the NFKC form reveals a
+// credential (e.g. full-width characters), the NFKC form is what gets redacted and kept.
+function redactCredentials(text, known, counter) {
+  if (typeof text !== 'string') return text;
+  const redactOnce = (input) => {
+    let n = 0;
+    let out = input;
+    for (const value of known) {
+      if (out.includes(value)) { n += out.split(value).length - 1; out = out.split(value).join(REDACTED); }
+    }
+    for (const re of CREDENTIAL_PATTERNS) {
+      const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+      out = out.replace(g, () => { n += 1; return REDACTED; });
+    }
+    return { out, n };
+  };
+  let { out, n } = redactOnce(text);
+  const nfkc = out.normalize('NFKC');
+  if (nfkc !== out) {
+    const second = redactOnce(nfkc);
+    if (second.n > 0) { out = second.out; n += second.n; }
+  }
+  counter.redactions += n;
+  return out;
+}
+
 // Sensitive values drawn from the state itself, grouped by class, so a projection that copied one
-// verbatim through an allowlisted field (e.g. a plan step quoting the meta-prompt) is refused.
+// (or a long enough excerpt of one) through an allowlisted field is refused.
 function sensitiveClasses(state, role) {
+  const prose = (values) => values.filter((v) => !isStructuredToken(v));
   const classes = {};
   // The orchestrator's own text: its meta-prompt, system prompt, routing and notes. Its other
   // fields (e.g. a status word) are not treated as secrets, to avoid refusing on common words.
   const o = isPlainObject(state.orchestrator) ? state.orchestrator : {};
-  classes.orchestrator = leafStrings(ORCHESTRATOR_SENSITIVE_KEYS.map((k) => o[k]));
+  classes.orchestrator = prose(leafStrings(ORCHESTRATOR_SENSITIVE_KEYS.map((k) => o[k])));
   const prompts = isPlainObject(state.roleSystemPrompts) ? state.roleSystemPrompts : {};
-  classes.other_role_prompts = leafStrings(Object.keys(prompts).filter((r) => r !== role).map((r) => prompts[r]));
-  classes.credentials = leafStrings([state.credentials, state.secrets, state.tokens]);
+  classes.other_role_prompts = prose(leafStrings(Object.keys(prompts).filter((r) => r !== role).map((r) => prompts[r])));
+  classes.credentials = credentialValues(state);
   classes.diary = leafStrings(state.diary);
   classes.other_tenants = leafStrings(state.otherTenants);
   if (Array.isArray(state.snippets)) {
     classes.other_tenants.push(...leafStrings(state.snippets.filter((s) => isPlainObject(s) && s.tenantId !== undefined && s.tenantId !== state.tenantId).map((s) => s.text)));
-    classes.diary.push(...leafStrings(state.snippets.filter((s) => isPlainObject(s) && s.source === 'diary').map((s) => s.text)));
+    classes.diary.push(...leafStrings(state.snippets.filter((s) => isPlainObject(s) && typeof s.source === 'string' && fold(s.source).trim() === 'diary').map((s) => s.text)));
   }
-  // Approval ids, tokens and arguments. The tool name on a card is not listed: it legitimately
-  // matches a capability name the role is allowed to see.
+  classes.diary = prose(classes.diary);
+  classes.other_tenants = prose(classes.other_tenants);
   classes.approval_internals = leafStrings((Array.isArray(state.approvals) ? state.approvals : []).map((a) => (isPlainObject(a) ? [...APPROVAL_SENSITIVE_KEYS.map((k) => a[k]), ...(isPlainObject(a.card) ? APPROVAL_SENSITIVE_KEYS.map((k) => a.card[k]) : [])] : undefined)));
   // Other tenants' ids are forbidden too, even when short.
   const otherIds = [];
   if (isPlainObject(state.otherTenants)) otherIds.push(...Object.keys(state.otherTenants));
-  if (Array.isArray(state.snippets)) for (const s of state.snippets) if (isPlainObject(s) && typeof s.tenantId === 'string' && s.tenantId !== state.tenantId) otherIds.push(s.tenantId);
+  if (Array.isArray(state.snippets)) for (const s of state.snippets) if (isPlainObject(s) && (typeof s.tenantId === 'string' || typeof s.tenantId === 'number') && s.tenantId !== state.tenantId) otherIds.push(String(s.tenantId));
   classes.other_tenant_ids = otherIds.filter((id) => id.length >= 3);
+  for (const name of Object.keys(classes)) {
+    if (name !== 'credentials') classes[name] = classes[name].filter((v) => !VOCABULARY.has(fold(v)));
+  }
   return classes;
+}
+
+function windowSet(text) {
+  const points = Array.from(text);
+  const set = new Set();
+  for (let i = 0; i + EXCERPT_WINDOW <= points.length; i++) set.add(points.slice(i, i + EXCERPT_WINDOW).join(''));
+  return set;
+}
+
+function valueWindows(folded) {
+  const points = Array.from(folded);
+  if (points.length < EXCERPT_WINDOW) return [];
+  const out = [];
+  for (let i = 0; i + EXCERPT_WINDOW <= points.length; i += EXCERPT_STRIDE) out.push(points.slice(i, i + EXCERPT_WINDOW).join(''));
+  out.push(points.slice(points.length - EXCERPT_WINDOW).join(''));
+  return out;
+}
+
+// True if a copied excerpt (≥ 63 folded code points) of `value` appears in the projection, not
+// counting windows that also occur in `trusted` (the role's own prompt, which may legitimately
+// share a preamble with other prompts or be embedded in the orchestrator's text).
+function excerptLeaked(value, projectionWindows, trustedWindows) {
+  return valueWindows(fold(value)).some((w) => projectionWindows.has(w) && !trustedWindows.has(w));
 }
 
 function guardProjection(projection, state, role) {
   const leaked = [];
   const classes = sensitiveClasses(state, role);
+  const strings = collectStrings(projection);
+  const foldedProjection = strings.flatMap((h) => {
+    const d = decodeLiteralEscapes(h);
+    return d === h ? [fold(h)] : [fold(h), fold(d)];
+  }).join('\u0000');
+  const projectionWindows = windowSet(foldedProjection);
+  const own = isPlainObject(state.roleSystemPrompts) && typeof state.roleSystemPrompts[role] === 'string' ? state.roleSystemPrompts[role] : '';
+  const foldedOwn = fold(own);
+  const trustedWindows = windowSet(foldedOwn);
   for (const name of Object.keys(classes).sort()) {
-    if (classes[name].length && findLeaks(projection, classes[name]).length) leaked.push(name);
+    const values = classes[name].filter((v) => name === 'credentials' || !foldedOwn.includes(fold(v)));
+    if (!values.length) continue;
+    const whole = findLeaks(projection, values).length > 0;
+    const excerpt = !whole && values.some((v) => excerptLeaked(v, projectionWindows, trustedWindows));
+    if (whole || excerpt) leaked.push(name);
   }
   if (findLeaks(projection, CREDENTIAL_PATTERNS).length) leaked.push('credential_pattern');
   if (leaked.length) throw new RoleContextLeakError(leaked);
@@ -441,12 +549,25 @@ function deepFreeze(value) {
   return value;
 }
 
-function buildRoleContext(role, state) {
-  const spec = ROLE_SPECS[role];
-  if (!spec) throw new RoleContextError(`unknown role: ${String(role)}`, 'unknown_role');
+function resolveSpec(role) {
+  if (typeof role !== 'string' || !Object.hasOwn(ROLE_SPECS, role)) {
+    throw new RoleContextError(`unknown role: ${typeof role === 'string' ? role.slice(0, 40) : typeof role}`, 'unknown_role');
+  }
+  return ROLE_SPECS[role];
+}
+
+// Returns { projection, meta: { role, redactions } }. `redactions` counts credentials removed from
+// the user's own free text (request, project instructions). Sensitive content from anywhere else
+// in the state is never redacted: it throws RoleContextLeakError. The throw is also the backstop
+// for anything the redaction missed.
+function projectRoleContext(role, state) {
+  const spec = resolveSpec(role);
   if (!isPlainObject(state)) throw new RoleContextError('state must be an object', 'invalid_state');
-  if (typeof state.tenantId !== 'string' || !state.tenantId) throw new RoleContextError('state.tenantId is required', 'missing_tenant');
-  const ctx = { role, tenantId: state.tenantId };
+  if (state.tenantId === undefined || state.tenantId === null || state.tenantId === '') throw new RoleContextError('state.tenantId is required', 'missing_tenant');
+  if (typeof state.tenantId !== 'string') throw new RoleContextError('state.tenantId must be a string', 'invalid_tenant');
+  const counter = { redactions: 0 };
+  const known = credentialValues(state);
+  const ctx = { role, tenantId: state.tenantId, redact: (text) => redactCredentials(text, known, counter) };
   const projection = {};
   for (const key of Object.keys(spec).sort()) {
     const value = spec[key](state, ctx);
@@ -456,7 +577,11 @@ function buildRoleContext(role, state) {
   const size = Array.from(serializeProjection(canonical)).length;
   if (size > CAPS.total) throw new RoleContextError(`projection exceeds ${CAPS.total} characters`, 'too_large');
   guardProjection(canonical, state, role);
-  return deepFreeze(canonical);
+  return { projection: deepFreeze(canonical), meta: Object.freeze({ role, redactions: counter.redactions }) };
+}
+
+function buildRoleContext(role, state) {
+  return projectRoleContext(role, state).projection;
 }
 
 function buildAllRoleContexts(state) {
@@ -473,10 +598,14 @@ module.exports = {
   CAPS,
   CREDENTIAL_PATTERNS,
   TRUNCATION_MARK,
+  REDACTED,
+  EXCERPT_WINDOW,
+  EXCERPT_STRIDE,
   RoleContextError,
   RoleContextLeakError,
   allowedFields,
   buildRoleContext,
+  projectRoleContext,
   buildAllRoleContexts,
   serializeProjection,
   findLeaks,
