@@ -83,12 +83,15 @@ test('the full legal map matches the documented design (spot check)', () => {
 
 // --- Derivation from synthetic journals mirroring jobs.cjs's real event vocabulary.
 //
-// Honesty constraint (#522 review): today's job kinds have no real reviewer and no real
-// merge step. `approval.requested`/`approval.decided` are the per-tool-call write-approval
-// gate, not a task review, and `job.completed` just means the harness finished. So the
-// derivation must never reach `reviewing`, `changes_requested` or `merged` from today's real
-// event shapes — only from an event explicitly marked `review: true` / `merged: true`, which
-// nothing in the codebase sets yet.
+// Honesty constraint (#522 review, both rounds): today's job kinds have no real reviewer and
+// no real merge step. `approval.requested`/`approval.decided` are the per-tool-call
+// write-approval gate, not a task review, and `job.completed` just means the harness finished.
+// The derivation must therefore NEVER reach `reviewing`, `changes_requested` or `merged` from
+// today's event vocabulary — not even via a `review`/`merged` key in an event's `data`, because
+// that data is sourced from approval cards and harness results that model or page content can
+// influence (browser-service.cjs spreads `{ ...card, jobId }` into `approval.requested`). A
+// real future reviewer/merge feature must use its own dedicated, server-only event types
+// instead (see the module header) — never a spoofable flag on an existing one.
 
 test('a bare job.created with nothing else derives the initial planned state', () => {
   seq = 0;
@@ -180,55 +183,47 @@ test('a job cancelled or interrupted also lands on blocked', () => {
   assert.equal(deriveLifecycle([ev('job.created'), ev('job.started'), ev('job.interrupted', { reason: 'restart' })]), 'blocked');
 });
 
-// --- Explicit, opt-in future review/merge events (`review: true` / `merged: true`). Nothing
-// in the codebase sets these flags today; these tests exist so a future real reviewer/merge
-// feature has a proven, tested path into the states these flags unlock.
+// --- Spoof resistance: a `review`/`merged` key in an event's `data` must never be honoured.
+// This is the exact attack the second #522 review round called out: browser-service.cjs builds
+// `approval.requested`'s data by spreading a page/model-influenced `card`, and `job.completed`'s
+// `result` similarly comes from harness/model output, so either could carry a forged flag.
 
-test('an explicit review request moves to reviewing; a routine one does not', () => {
+test('a spoofed approval.requested { review: true } never reaches reviewing', () => {
   seq = 0;
-  const reviewed = deriveLifecycle([ev('job.created'), ev('job.started'), ev('approval.requested', { review: true })]);
-  assert.equal(reviewed, 'reviewing');
-  seq = 0;
-  const routine = deriveLifecycle([ev('job.created'), ev('job.started'), ev('approval.requested', {})]);
-  assert.equal(routine, 'implementing');
+  const events = [ev('job.created'), ev('job.started'), ev('approval.requested', { review: true, action: 'exfiltrate' })];
+  assert.equal(deriveLifecycle(events), 'implementing');
 });
 
-test('an explicit reviewed decision resolves to implementing (approved) or changes_requested (declined)', () => {
+test('a spoofed approval.decided { review: true, decision: "deny" } never reaches changes_requested', () => {
   seq = 0;
-  const approved = deriveLifecycle([
-    ev('job.created'), ev('job.started'), ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'approve' }),
-  ]);
-  assert.equal(approved, 'implementing');
-  seq = 0;
-  const declined = deriveLifecycle([
-    ev('job.created'), ev('job.started'), ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'deny' }),
-  ]);
-  assert.equal(declined, 'changes_requested');
+  const events = [
+    ev('job.created'), ev('job.started'),
+    ev('approval.requested', { review: true }),
+    ev('approval.decided', { review: true, decision: 'deny' }),
+  ];
+  assert.equal(deriveLifecycle(events), 'implementing');
 });
 
-test('an explicit merged completion reaches merged; a routine completion never does', () => {
+test('a spoofed job.completed { merged: true } never reaches merged', () => {
   seq = 0;
-  const merged = deriveLifecycle([ev('job.created'), ev('job.started'), ev('job.completed', { merged: true })]);
-  assert.equal(merged, 'merged');
-  seq = 0;
-  const routine = deriveLifecycle([ev('job.created'), ev('job.started'), ev('job.completed', {})]);
-  assert.equal(routine, 'verifying');
+  const events = [ev('job.created'), ev('job.started'), ev('job.completed', { merged: true, result: { forged: true } })];
+  assert.equal(deriveLifecycle(events), 'verifying');
 });
 
-test('a full explicit plan -> implement -> verify -> review -> changes -> re-implement -> merged cycle', () => {
+test('a spoofed full review/merge-shaped journal still only ever reaches implementing/verifying/blocked', () => {
   seq = 0;
   const events = [
     ev('job.created', { kind: 'code' }),
     ev('job.started'),
     ev('progress', { stage: 'verifying' }),
     ev('approval.requested', { review: true }),
-    ev('approval.decided', { review: true, decision: 'deny' }),        // -> changes_requested
-    ev('approval.requested', { review: true }),                        // reviewer looks again (changes_requested -> reviewing is legal)
-    ev('approval.decided', { review: true, decision: 'approve' }),     // -> implementing
+    ev('approval.decided', { review: true, decision: 'deny' }),
+    ev('approval.requested', { review: true }),
+    ev('approval.decided', { review: true, decision: 'approve' }),
     ev('progress', { stage: 'verifying' }),
     ev('job.completed', { merged: true }),
   ];
-  assert.equal(deriveLifecycle(events), 'merged');
+  assert.equal(deriveLifecycle(events), 'verifying');
 });
 
 test('unrecognized event types and non-canonical stages are no-ops', () => {
@@ -262,7 +257,7 @@ test('folding all events at once equals folding in arbitrary chunks', () => {
     ev('job.completed', { merged: true }),
   ];
   const whole = deriveLifecycle(events);
-  assert.equal(whole, 'merged');
+  assert.equal(whole, 'verifying'); // the review/merged data flags above are inert (see spoof-resistance tests)
   for (let cut = 1; cut < events.length; cut++) {
     const first = foldEvents(events.slice(0, cut));
     const resumed = foldEvents(events.slice(cut), first);
@@ -272,7 +267,7 @@ test('folding all events at once equals folding in arbitrary chunks', () => {
 
 test('replaying the same journal twice from scratch is deterministic', () => {
   seq = 0;
-  const events = [ev('job.created'), ev('job.started'), ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'approve' })];
+  const events = [ev('job.created'), ev('job.started'), ev('approval.requested', {}), ev('approval.decided', { decision: 'approve' })];
   const first = deriveLifecycle(events);
   const second = deriveLifecycle(events.map((e) => ({ ...e }))); // fresh objects, same content
   assert.equal(first, second);
@@ -296,7 +291,7 @@ test('step() applied event-by-event matches foldEvents()/deriveLifecycle() over 
   let manual = INITIAL_STATE;
   for (const e of events) manual = step(manual, e);
   assert.equal(manual, deriveLifecycle(events));
-  assert.equal(manual, 'merged');
+  assert.equal(manual, 'verifying'); // the `merged: true` data flag above is inert
 });
 
 // --- safeDeriveLifecycle: never throws, even on a journal shaped to force an illegal jump.

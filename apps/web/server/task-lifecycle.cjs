@@ -15,14 +15,30 @@
 // `approval.decided` are the per-tool-call write-approval gate (a human clicking Allow/Decline
 // on one command), not a task-level code review, and `job.completed` just means the harness
 // finished, not that anyone reviewed or merged the result. The derivation below therefore
-// never reaches `reviewing`, `changes_requested` or `merged` from today's real event stream —
-// it only reaches `planned`, `implementing`, `verifying` and `blocked`. The full transition
-// table below still defines the review/merge states and the legal moves into and out of them,
-// so `transition()` keeps working for a future caller that has a real review/merge feature:
-// such a caller opts in by setting an explicit `review: true` (on `approval.requested` /
-// `approval.decided`) or `merged: true` (on `job.completed`) flag in the event's `data`, which
-// nothing in this codebase does today. Until that exists, those three states are reachable only
-// from tests exercising this module directly, by design.
+// NEVER reaches `reviewing`, `changes_requested` or `merged` from today's real event stream —
+// it only reaches `planned`, `implementing`, `verifying` and `blocked`.
+//
+// This is unconditional, with no data-carried opt-in: an earlier version of this module let a
+// caller mark an event `review: true` / `merged: true` in its `data` to reach those states.
+// That was removed (2026-09-28, second #522 review round) because `data` on these events is
+// not trustworthy: `approval.requested`'s payload is the approval card itself, which
+// browser-service.cjs builds by spreading a page- or model-influenced `card` object
+// (`{ ...card, jobId }`), and `job.completed`'s `result` similarly comes from whatever the
+// harness or model reported. A spoofed `review`/`merged` key on either would have silently
+// forged a lifecycle state no human ever actually granted — exactly the kind of thing the real
+// write-approval gate (`docs/agent-brief.md` — "a security control, not decoration") exists to
+// prevent. A data flag on an existing, model-reachable event can never be trusted to carry
+// lifecycle authority.
+//
+// The full transition table below still defines `reviewing`, `changes_requested` and `merged`
+// and the legal moves into and out of them, so `transition()`/`canTransition()` keep working
+// standalone. A future real review/merge feature reaches them by adding its own dedicated,
+// server-only journal event types — e.g. `review.requested`, `review.decided`, `task.merged` —
+// to jobs.cjs's `TYPES` allowlist, appended only from trusted server code path(s) that a
+// model or page content cannot reach (the way `approval.decided` itself can only be appended
+// by the harness after a human actually answers, never by tool/model output). Until that
+// exists, `reviewing`/`changes_requested`/`merged` are reachable only from tests exercising
+// this module directly, by design.
 
 const STATES = Object.freeze([
   'planned',
@@ -89,18 +105,6 @@ function transition(from, to) {
 // free-text stages for UI display) is ignored here, exactly as before this module existed.
 const CANONICAL_STAGES = new Set(['implementing', 'verifying']);
 
-// Decision strings observed across existing approval call sites (approvals.cjs uses
-// approve/deny/approve_all; browser-service/code-harness relay whatever askApproval
-// resolves to, including 'denied' for an automatic policy refusal, and 'aborted' for a
-// cancelled wait). Only consulted for an event explicitly marked `review: true` (see module
-// header) — today nothing sets that flag, so this table is exercised only by tests until a
-// real reviewer exists.
-const APPROVE_DECISIONS = new Set(['approve', 'approve_all', 'allow', 'allow_once', 'allowed']);
-
-function isApproved(decision) {
-  return APPROVE_DECISIONS.has(decision);
-}
-
 // One step of the fold: applies a single existing jobs.cjs journal event to a lifecycle
 // state and returns the next state. Exported as a low-level primitive so a caller that
 // already loops over a job's events once (jobs.cjs's own `derive()`) can fold the lifecycle
@@ -111,12 +115,10 @@ function isApproved(decision) {
 // - `job.started` moves to `implementing`.
 // - `progress` only acts on the canonical stages above.
 // - `approval.requested` / `approval.decided` are today's per-tool-call write-approval gate,
-//   not a task-level review: they are no-ops UNLESS the event's data explicitly opts in with
-//   `review: true`, in which case a request moves to `reviewing` and a decision resolves it —
-//   approved back to `implementing`, declined to `changes_requested`.
+//   not a task-level review, and their `data` is attacker/model-reachable (see module header)
+//   — they are ALWAYS a no-op here, unconditionally, with no data-carried override.
 // - `job.completed` means the harness finished, not that anyone reviewed or merged it: it
-//   moves to `verifying`, UNLESS the event's data explicitly opts in with `merged: true`, in
-//   which case it moves to `merged`.
+//   ALWAYS moves to `verifying`, unconditionally, with no data-carried override.
 // - `job.failed` / `job.cancelled` / `job.interrupted` all move to `blocked`.
 function step(state, event) {
   if (!event || typeof event.type !== 'string') return state;
@@ -129,11 +131,15 @@ function step(state, event) {
     case 'progress':
       return CANONICAL_STAGES.has(data.stage) ? advance(state, data.stage) : state;
     case 'approval.requested':
-      return data.review === true ? advance(state, 'reviewing') : state;
     case 'approval.decided':
-      return data.review === true ? advance(state, isApproved(data.decision) ? 'implementing' : 'changes_requested') : state;
+      // Never a review: this is the per-tool-call write-approval gate, and its data is
+      // sourced from the approval card / harness output, which model or page content can
+      // influence. No key in `data` can move the lifecycle here — see module header.
+      return state;
     case 'job.completed':
-      return advance(state, data.merged === true ? 'merged' : 'verifying');
+      // Never a merge: only that the harness finished. No key in `data` (including the
+      // harness/model-influenced `result`) can move this to `merged` — see module header.
+      return advance(state, 'verifying');
     case 'job.failed':
     case 'job.cancelled':
     case 'job.interrupted':
