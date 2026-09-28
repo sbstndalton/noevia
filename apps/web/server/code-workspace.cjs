@@ -476,9 +476,38 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
       });
   }
 
+  /**
+   * What a released task changed, for the Astra review (#519): `git diff base..head` read from the
+   * SOURCE repository, exactly as `branchHead()` is — never the harness's tree, which may be gone
+   * or hostile. Only a cleanly released claim is diffed (a stuck one is for a human to inspect),
+   * both ends must be real commit ids noevia recorded itself, and every diff driver, textconv and
+   * external diff is switched off, so content fetched from the harness never runs anything.
+   * Returns `{ baseSha, headSha, files: [{ path, patch }] }`; throws with a plain reason
+   * otherwise. The caller bounds what it sends on (role-context.cjs `capChange`).
+   */
+  function change(taskId, { maxFiles = 200 } = {}) {
+    const record = read(taskId);
+    if (!record) throw Object.assign(Error('The task holds no workspace record.'), { code: 'no_workspace' });
+    if (record.status !== 'released') throw Object.assign(Error('The workspace was not released cleanly, so its change was not read.'), { code: 'not_released' });
+    const sha = /^[0-9a-f]{7,64}$/;
+    if (!sha.test(String(record.baseSha || ''))) throw Object.assign(Error('The repository had no base commit to compare against.'), { code: 'no_base' });
+    if (!sha.test(String(record.headSha || ''))) throw Object.assign(Error('The task branch has no commit to review.'), { code: 'no_head' });
+    if (record.baseSha === record.headSha) throw Object.assign(Error('The task made no commits, so there is nothing to review.'), { code: 'no_change' });
+    const text = run([...HOSTILE_OFF, 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--no-renames',
+      '--unified=3', record.baseSha, record.headSha, '--'], record.repo, gitEnv());
+    const files = [];
+    for (const chunk of String(text || '').split(/^(?=diff --git )/m)) {
+      if (!chunk.startsWith('diff --git ')) continue;
+      if (files.length >= maxFiles) break;
+      const named = /^\+\+\+ b\/(.+)$/m.exec(chunk) || /^--- a\/(.+)$/m.exec(chunk) || /^diff --git a\/(.+?) b\//.exec(chunk);
+      files.push({ path: named ? named[1] : '(unnamed)', patch: chunk.replace(/\n$/, '') });
+    }
+    return { baseSha: record.baseSha, headSha: record.headSha, files, truncated: files.length >= maxFiles };
+  }
+
   // `owner` is public so anything else noevia writes into a workspace (the harness's own
   // config file) can be handed over the same way the worktree is.
-  return { claim, release, recover, contains, headSha, get: read, list, root, owner, BRANCH_PREFIX };
+  return { claim, release, recover, contains, headSha, change, get: read, list, root, owner, BRANCH_PREFIX };
 }
 
 /** Recursive chown, so the harness owns the tree and git's own files inside it. */

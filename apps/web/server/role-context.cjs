@@ -35,7 +35,11 @@
 // request, which the projection already carries as authoritative intent).
 
 const ROLES = Object.freeze(['planner', 'executor', 'auditor']);
-const ROLE_NAMES = Object.freeze({ planner: 'Astra', executor: 'Sol', auditor: 'Luna' });
+const ROLE_NAMES = Object.freeze({ planner: 'Astra', executor: 'Sol', auditor: 'Luna', reviewer: 'Astra' });
+// Astra's second persona (#519): the reviewer of a finished Code change. Deliberately not in ROLES,
+// which stays the three #515 sub-roles `buildAllRoleContexts` projects; code-review.cjs builds this
+// one on demand through the same allowlist, caps and leak guard.
+const REVIEW_ROLE = 'reviewer';
 
 // The three write-approval decisions (approvals.cjs `decide`). Counts only.
 const APPROVAL_DECISIONS = Object.freeze(['approve', 'deny', 'approve_all']);
@@ -62,6 +66,9 @@ const CAPS = Object.freeze({
   changedFiles: 50,
   testResults: 20,
   stepResults: 12,
+  changeFiles: 20,
+  changePatch: 4000,
+  changeTotal: 24000,
   total: 40000,
 });
 
@@ -231,6 +238,33 @@ function capExecution(execution) {
   return out;
 }
 
+// The change under review (#519): a bounded diff read by noevia from the source repository, never
+// from the harness. Per-file and total caps; anything cut is marked, never silently dropped.
+function capChange(change) {
+  if (!isPlainObject(change)) return undefined;
+  const out = { files: [], truncated: change.truncated === true };
+  const sha = (v) => (typeof v === 'string' && /^[0-9a-f]{7,64}$/.test(v) ? v : undefined);
+  if (sha(change.baseSha)) out.base_sha = sha(change.baseSha);
+  if (sha(change.headSha)) out.head_sha = sha(change.headSha);
+  let budget = CAPS.changeTotal;
+  for (const file of Array.isArray(change.files) ? change.files : []) {
+    if (out.files.length >= CAPS.changeFiles) { out.truncated = true; break; }
+    if (!isPlainObject(file)) continue;
+    const filePath = capText(file.path, CAPS.identifier * 2);
+    if (filePath === undefined) continue;
+    const entry = { path: filePath };
+    if (typeof file.patch === 'string' && budget > 0) {
+      const patch = capText(file.patch, Math.min(CAPS.changePatch, budget));
+      if (patch !== file.patch.normalize('NFC')) out.truncated = true;
+      entry.patch = patch;
+      budget -= Array.from(patch).length;
+    } else if (typeof file.patch === 'string') out.truncated = true;
+    out.files.push(entry);
+  }
+  if (Array.isArray(change.files) && change.files.length > CAPS.changeFiles) out.truncated = true;
+  return out;
+}
+
 // Counts of the three write-approval decisions only. Ids, cards, arguments, tokens, timestamps
 // and any unknown decision value are never read into the projection.
 function approvalOutcomes(approvals) {
@@ -280,6 +314,17 @@ const ROLE_SPECS = Object.freeze({
     lifecycle_state: (s) => capIdentifier(s.lifecycleState),
     execution: (s) => capExecution(s.execution),
     approval_outcomes: (s) => approvalOutcomes(s.approvals),
+  }),
+  // What Astra needs to judge a finished change, and nothing else: the request (authoritative
+  // intent), what the task was allowed to do, the plan it reported, a server-side summary and the
+  // bounded diff. No approval cards, ids, arguments or grants — the reviewer cannot answer or
+  // widen anything, and has nothing that names one.
+  reviewer: Object.freeze({
+    ...common,
+    plan: (s) => capPlan(s.plan, PLAN_KEYS_AUDITOR),
+    capabilities: (s) => capCapabilities(s.capabilities),
+    execution: (s) => capExecution(s.execution),
+    change: (s) => capChange(s.change),
   }),
 });
 
@@ -433,6 +478,7 @@ const VOCABULARY = new Set([
   ...ROLES, ...Object.values(ROLE_NAMES), ...APPROVAL_DECISIONS, ...SNIPPET_SOURCES,
   ...Object.values(ROLE_SPECS).flatMap((spec) => Object.keys(spec)),
   ...PLAN_KEYS_EXECUTOR, 'done_when', 'head_sha', 'changed_files', 'test_results', 'step_results', 'summary',
+  'base_sha', 'files', 'patch', 'path', 'truncated',
   'done', 'skipped', 'failed', 'label', 'source', 'text', 'name', 'description', 'passed', 'note',
 ].map((w) => fold(w)));
 
@@ -626,6 +672,7 @@ function buildAllRoleContexts(state) {
 module.exports = {
   ROLES,
   ROLE_NAMES,
+  REVIEW_ROLE,
   APPROVAL_DECISIONS,
   SNIPPET_SOURCES,
   CAPS,
