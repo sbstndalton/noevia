@@ -126,7 +126,8 @@ function resolvePinned(project, raw, knownToolboxes = []) {
   if (!manifest.resolvable) throw pinError(422, 'skill_unsupported_requirements', 'This skill declares unsupported toolbox requirements.');
   const file = (project.files || []).find(f => f.name === manifest.file);
   const content = String(file?.content || '');
-  // Defence in depth: hash the exact bytes that will reach the model, not the cached manifest.
+  // Defence in depth: hash the stored source file itself, not the cached manifest. The prompt later
+  // receives this file's body with frontmatter stripped and a length cap applied.
   if (hash(content) !== pin.digest) throw pinError(409, 'skill_hash_mismatch', 'The skill content does not match the pinned hash.');
   return { manifest, content, record: { id: manifest.id, file: manifest.file, name: manifest.name,
     versionLabel: manifest.versionLabel, version: manifest.version, contentHash: pin.digest, origin: manifest.origin.kind } };

@@ -57,6 +57,7 @@ test('resolver: a skill id from another project or tenant is unknown in this one
 
 test('a Cowork request with a pin is refused rather than silently dropped', () => {
   assert.match(requestShapeError({ mode: 'cowork', skill: 'x@y' }).error, /chat turns only/);
+  assert.equal(requestShapeError({ mode: 'cowork', skill: 'x@y' }).code, 'skill_pin_unsupported_mode');
   assert.equal(requestShapeError({ mode: 'chat', skill: 'x@y' }), null);
   assert.equal(requestShapeError({ mode: 'cowork' }), null);
 });
@@ -64,7 +65,7 @@ test('a Cowork request with a pin is refused rather than silently dropped', () =
 // ── Chat loop integration ──
 async function run(t, { reqBody = {}, owner = 'user-a', requester = owner, fixture = project(), toolCall = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-skill-pin-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const events = [], res = new EventEmitter(); let reply = null;
+  const events = [], res = new EventEmitter(), saved = []; let reply = null;
   res.writeHead = () => {}; res.write = (line) => events.push(JSON.parse(line.slice(6))); res.end = () => { res.writableEnded = true; res.emit('finish'); };
   const requests = []; let approvals = 0, executions = 0, routerCalls = 0;
   const fetch = async (_url, init) => {
@@ -89,7 +90,7 @@ async function run(t, { reqBody = {}, owner = 'user-a', requester = owner, fixtu
     toolPolicy: { mode: (_u, _n, write) => (write ? 'ask' : 'allow') }, requestScope: { getStore: () => ({}) },
     resolveTools: () => ({ tools: [{ type: 'function', function: { name: 'synthetic_write', parameters: { type: 'object' } } }], dropped: [] }), isWriteTool: () => true,
     rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: (text) => ({ text }), diaryExtras: require('./diary-extras.cjs'),
-    DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: (_res, status, payload) => { reply = { status, payload }; }, saveChats() {},
+    DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: (_res, status, payload) => { reply = { status, payload }; }, saveChats: (...args) => saved.push(args),
     endpointApproved: () => true, diaryHeaders: () => ({}), lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [],
     modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null, allToolboxes: () => [{ id: 'core' }],
     executeToolCall: async () => { executions++; return 'synthetic result'; }, chatWideApproved: () => false,
@@ -98,7 +99,7 @@ async function run(t, { reqBody = {}, owner = 'user-a', requester = owner, fixtu
   await handleChat({}, res, { projectId: fixture.id, chatId: 'fixture-chat', message: 'synthetic question', ...reqBody }, { user: { id: requester } });
   const job = require('./jobs.cjs').createJobs({ dir }).list({ kind: 'chat' })[0];
   const turn = job ? durableChat.restore(workspace, job.id).state : null;
-  return { events, requests, reply, turn, approvals, executions, routerCalls };
+  return { events, requests, reply, turn, approvals, executions, routerCalls, saved };
 }
 const system = (r) => r.requests[0].messages.find((m) => m.role === 'system')?.content || '';
 
@@ -114,6 +115,22 @@ test('chat: a pinned reviewed version is injected, recorded on meta and on the d
   assert.deepEqual(meta.skill, { id: pin.id, file: FILE, name: 'synthetic-helper', versionLabel: '1.0.0', version: pin.version, contentHash: pin.version, origin: 'project-file' });
   assert.equal(r.events.find((e) => e.type === 'skills_scope')?.text, 'synthetic-helper');
   assert.deepEqual(r.turn.skill, meta.skill);
+});
+
+test('chat: a refused pin on a new project chat creates no chat entry; a resolved one still does', async (t) => {
+  const fixture = project(), pin = pinOf(fixture);
+  for (const skill of [{ ...pin, contentHash: 'b'.repeat(64) }, { id: pin.id, version: 'c'.repeat(64) }, 'garbage']) {
+    const r = await run(t, { fixture, reqBody: { chatId: undefined, skill } });
+    assert.ok(r.reply?.status >= 400);
+    assert.deepEqual(r.saved, [], 'no empty "New task" chat left behind');
+  }
+  const ok = await run(t, { fixture, reqBody: { chatId: undefined, skill: pin } });
+  assert.equal(ok.reply, null);
+  assert.equal(ok.saved.length, 1);
+  assert.equal(ok.saved[0][0], fixture.id);
+  assert.equal(ok.saved[0][1][0].title, 'New task');
+  const unpinned = await run(t, { fixture, reqBody: { chatId: undefined } });
+  assert.equal(unpinned.saved.length, 1, 'unpinned new chats are created as before');
 });
 
 test('chat: an unpinned request behaves as before and records no skill', async (t) => {

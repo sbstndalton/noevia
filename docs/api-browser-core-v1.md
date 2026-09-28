@@ -121,8 +121,11 @@ field on `POST /api/chat`: either `"skill_<id>@<sha256>"` or
 `{ "id", "version", "contentHash" }`, where `version` is the manifest's SHA-256
 `version`, or its `versionLabel` together with `contentHash`. Core resolves the
 pin only against the reviewed, enabled content of the chat's own project (loaded
-through the tenant-scoped project store), re-hashes the exact bytes it will send,
-and places them in that turn's system prompt instead of automatic Skill selection.
+through the tenant-scoped project store), re-hashes the stored Skill file itself
+rather than trusting the cached manifest, and places that file's body (frontmatter
+stripped, length-capped) in that turn's system prompt instead of automatic Skill
+selection. Pin resolution precedes creating a new project chat, so a refused pin
+leaves no empty chat entry.
 Refusals happen before any retrieval, model or tool work and return
 `{ "error", "code" }`: `400 skill_pin_invalid` (malformed, or on compaction),
 `400 skill_pin_requires_project`, `404 skill_not_found` (including an id from
@@ -135,5 +138,6 @@ another project or tenant), `404 skill_version_unknown`,
 the stream's `meta` event and recorded on the durable turn checkpoint when that
 seam is enabled. Without `skill` the turn is unchanged. A pin selects
 instructions only: tool choice, tool policy and every write approval are
-unchanged. Cowork-mode requests refuse a pin (`400`) rather than drop it. Types
+unchanged. Cowork-mode requests refuse a pin with
+`400 skill_pin_unsupported_mode` rather than drop it. Types
 are in [`api-contract.ts`](../apps/web/src/api-contract.ts).

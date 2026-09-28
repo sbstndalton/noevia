@@ -55,6 +55,7 @@ export interface PinnedSkillRecord {
 export type SkillPinErrorCode =
   | 'skill_pin_invalid'            // 400 malformed pin, or a pin on compaction
   | 'skill_pin_requires_project'   // 400 no project chat
+  | 'skill_pin_unsupported_mode'   // 400 Cowork-mode request
   | 'skill_not_found'              // 404 not a Skill of this project (or tenant)
   | 'skill_version_unknown'        // 404 no such version in this project
   | 'skill_version_changed'        // 409 the reviewed version was replaced on disk

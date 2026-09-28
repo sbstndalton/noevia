@@ -149,10 +149,6 @@ function createChatHandler({
       if (project && body.projectId && !require('./project-modes.cjs').enabled(project, 'chat')) {
         return json(res, 409, { error: `${project.name} is not enabled for Chat. Turn Chat on in the project's settings.` });
       }
-      if (project && !chatId) {
-        chatId = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        saveChats(projectId, [{ id: chatId, title: 'New task', updatedAt: Date.now(), preview: '' }]);
-      }
     }
 
     let autoSkills = [];
@@ -165,6 +161,11 @@ function createChatHandler({
       if (body.compactOnly) return json(res, 400, { error: 'Compaction does not accept a pinned Skill.', code: 'skill_pin_invalid' });
       try { pinnedSkill = require('./instruction-skills.cjs').resolvePinned(project, body.skill, allToolboxes().map((b) => b.id)); }
       catch (error) { return json(res, error.status || 400, { error: error.message, code: error.code || 'skill_pin_invalid' }); }
+    }
+    // Created only after the pin resolved, so a refused request leaves no empty chat behind.
+    if (project && !chatId) {
+      chatId = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      saveChats(projectId, [{ id: chatId, title: 'New task', updatedAt: Date.now(), preview: '' }]);
     }
 
     // Project knowledge files: RAG retrieval replaces whole-file pasting (step 10).
