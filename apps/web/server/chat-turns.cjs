@@ -75,10 +75,17 @@ function createChatTurns({ enabled = false, resultCap = DEFAULT_RESULT_CAP } = {
     return { state, next, unresolved: unresolved.map(c => ({...c,status:['started','outcome_unknown'].includes(c.status) ? 'outcome_unknown' : c.status, reask:true})) };
   }
   // Explicitly invoked test/internal continuation, generation only. No tool executor is accepted.
-  async function resumeGeneration(workspace, id, { provider, model, project }) {
+  // A turn that pinned a Skill (#272) continues only while that exact version is still enabled:
+  // `skillActive(record)` must confirm it against the stored project, or the continuation is refused.
+  async function resumeGeneration(workspace, id, { provider, model, project, skillActive = null }) {
     const restored = restore(workspace,id);
     if (restored.next !== 'generate') throw Error(`Continuation requires ${restored.next}`);
     const turn = bind(workspace,id);
+    if (restored.state.skill && !(typeof skillActive === 'function' && await skillActive(clone(restored.state.skill)) === true)) {
+      const reason = 'Pinned Skill is disabled, changed or unverifiable; continuation refused';
+      turn.interrupt(reason);
+      throw Error(reason);
+    }
     turn.retry(); // Persist the attempt before any external request, including projection failure.
     try {
       const projection = await project(clone(restored.state));
