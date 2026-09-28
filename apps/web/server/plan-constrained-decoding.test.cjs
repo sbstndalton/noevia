@@ -9,9 +9,11 @@ const base = { enabled: true, provider: local, managerKind: 'llamacpp', defaultP
 const payload = { model: 'qwen3.5-4b', messages: [{ role: 'user', content: 'x' }] };
 const fake = (...replies) => { const calls = []; const send = async p => { calls.push(p); const r = replies.shift(); if (r instanceof Error) throw r; return r; }; return { send, calls }; };
 
-test('the feature flag exists and defaults off', () => {
+test('the feature flag exists, is off, and is unavailable until a server caller exists', () => {
+  const f = createFeatures({ env: { NOEVIA_FEATURE_CONSTRAINED_PLAN_DECODING: 'true' } });
   assert.equal(createFeatures({ env: {} }).enabled('constrainedPlanDecoding'), false);
-  assert.equal(createFeatures({ env: { NOEVIA_FEATURE_CONSTRAINED_PLAN_DECODING: 'true' } }).enabled('constrainedPlanDecoding'), true);
+  assert.equal(f.enabled('constrainedPlanDecoding'), false, 'unavailable wins over the env pin');
+  assert.match(f.describe().find(x => x.name === 'constrainedPlanDecoding').unavailable, /no server-side plan generator/);
 });
 
 test('flag off: no constraint fields', async () => {
