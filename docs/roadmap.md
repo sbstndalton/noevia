@@ -257,8 +257,10 @@ Each builds on the one before or is ordered by value. Work top-down; record any 
    until there is evidence.
 6. **Skills portability and bounded skill/toolbox selection — offline prototype in draft review ([#265](https://github.com/sbstndalton/noevia/issues/265) for the evidence gate).**
    The default-off contract and measurement harness for [issue #19](https://github.com/sbstndalton/noevia/issues/19) is implemented. Next, collect authorized held-out model evidence before deciding whether a production experiment is justified. Keep script execution and each MCP candidate behind separate qualification gates. See [the research plan](research-skills-mcp-loading.md).
-7. **Later:** a [whole-Diary graph](https://github.com/sbstndalton/noevia/issues/275) (needs an index the Diary deliberately does not keep; the
-   one-hop **local graph** shipped 2026-09-22) · a
+7. **Later:** a [whole-Diary graph](https://github.com/sbstndalton/noevia/issues/275) (the
+   one-hop **local graph** shipped 2026-09-22; [offline index design and synthetic prototype](research/diary-graph-index-275.md)
+   are complete with a **narrow** recommendation; production source watermarks and
+   sidecar/storage validation remain pending) · a
    [browser executor](https://github.com/sbstndalton/noevia/issues/274) (spec-agent-execution §6; `browser-policy.cjs` built 2026-09-22; the executor,
    `browser-executor.cjs`, built and proven on real Chromium behind the egress proxy 2026-09-23,
    not deployed; what remains is a node to run it on and the job/card wiring) · the [Mac app](https://github.com/sbstndalton/noevia/issues/273) with an offline Diary replica (D22).
