@@ -44,8 +44,11 @@ class CorrectionFailedError extends Error {
 
 const WHITESPACE = /\s/;
 const NUMBER_CHAR = /[0-9eE+\-.]/;
-const NUMBER_RE = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
-const INTEGER_RE = /^-?\d+$/;
+// JSON number grammar: no leading zeros ("01" is invalid; "0", "0.5", "-0" are fine).
+const NUMBER_RE = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/;
+const INTEGER_RE = /^-?(0|[1-9]\d*)$/;
+const DEFAULT_MAX_DEPTH = 64;
+const DEFAULT_MAX_BYTES = 2 * 1024 * 1024; // 2 MiB: generous for tool args / plan artifacts
 const HEX_DIGIT = /[0-9a-fA-F]/;
 const ESCAPE_MAP = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
 
@@ -82,12 +85,21 @@ function typeLabel(schema) {
  * no-ops once a violation is recorded.
  */
 class IncrementalValidator {
-  constructor(schema) {
+  /**
+   * @param {object} schema restricted JSON-schema subset
+   * @param {object} [options]
+   * @param {number} [options.maxDepth] max object/array nesting depth (default 64)
+   * @param {number} [options.maxBytes] max cumulative UTF-8 bytes fed before failing (default 2 MiB)
+   */
+  constructor(schema, options = {}) {
     this.rootSchema = schema || {};
     this.violation = null;
     this.done = false;
     this.token = null; // active string/number/literal token, at most one at a time
     this.stack = []; // open object/array containers
+    this.maxDepth = typeof options.maxDepth === 'number' ? options.maxDepth : DEFAULT_MAX_DEPTH;
+    this.maxBytes = typeof options.maxBytes === 'number' ? options.maxBytes : DEFAULT_MAX_BYTES;
+    this.bytesSeen = 0;
   }
 
   getViolation() {
@@ -105,6 +117,11 @@ class IncrementalValidator {
 
   feed(text) {
     if (this.violation) return this.violation;
+    this.bytesSeen += Buffer.byteLength(text, 'utf8');
+    if (this.bytesSeen > this.maxBytes) {
+      this.fail(`Input exceeds maxBytes ${this.maxBytes}`, '$');
+      return this.violation;
+    }
     for (let i = 0; i < text.length; i += 1) {
       this._step(text[i]);
       if (this.violation) return this.violation;
@@ -179,6 +196,12 @@ class IncrementalValidator {
     if (typeName === 'null') {
       this.token = { type: 'literal', role: 'value', schema, path, expect: 'null', matched: ch };
       return;
+    }
+    if (typeName === 'object' || typeName === 'array') {
+      if (this.stack.length + 1 > this.maxDepth) {
+        this.fail(`Nesting exceeds maxDepth ${this.maxDepth} at ${path}`, path);
+        return;
+      }
     }
     if (typeName === 'object') {
       this.stack.push({ type: 'object', schema, path, seenKeys: new Set(), awaiting: 'key-or-close', currentKey: null });
@@ -420,8 +443,8 @@ class IncrementalValidator {
   }
 }
 
-function createValidator(schema) {
-  return new IncrementalValidator(schema);
+function createValidator(schema, options) {
+  return new IncrementalValidator(schema, options);
 }
 
 /**
@@ -450,12 +473,12 @@ function buildCorrectionRequest(violation) {
  * `CorrectionFailedError` if both the original attempt and the one
  * correction attempt fail validation.
  */
-async function runGuardedStream({ schema, createStream, signal, buildCorrection = buildCorrectionRequest } = {}) {
+async function runGuardedStream({ schema, createStream, signal, buildCorrection = buildCorrectionRequest, maxDepth, maxBytes } = {}) {
   if (typeof createStream !== 'function') throw new TypeError('runGuardedStream requires createStream(context)');
 
   async function attempt(attemptNumber, correction) {
     if (signal && signal.aborted) throw new GuardAbortError();
-    const validator = createValidator(schema);
+    const validator = createValidator(schema, { maxDepth, maxBytes });
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     if (signal) signal.addEventListener('abort', onAbort, { once: true });

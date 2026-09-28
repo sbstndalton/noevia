@@ -16,8 +16,8 @@ const {
   buildCorrectionRequest,
 } = require('./stream-guard.cjs');
 
-function feedChunks(schema, chunks) {
-  const v = createValidator(schema);
+function feedChunks(schema, chunks, options) {
+  const v = createValidator(schema, options);
   for (const c of chunks) {
     const violation = v.feed(c);
     if (violation) return { violation, stoppedAtChunk: chunks.indexOf(c) };
@@ -269,4 +269,79 @@ test('an incomplete stream (ended early) is a violation, not a silent pass', () 
   const result = feedChunks(toolArgsSchema, ['{"action":"read","target":"f"']); // no closing brace
   assert.ok(result.violation);
   assert.match(result.violation.message, /Unexpected end of stream/);
+});
+
+// ---- number grammar (JSON: no leading zeros) -------------------------------
+
+test('a leading zero followed by more digits is rejected ("01")', () => {
+  const schema = { type: 'object', properties: { x: { type: 'number' } } };
+  const result = feedChunks(schema, ['{"x":01}']);
+  assert.ok(result.violation);
+  assert.match(result.violation.message, /Invalid number literal '01'/);
+});
+
+test('"-0" is a valid number', () => {
+  const schema = { type: 'object', properties: { x: { type: 'number' } } };
+  const result = feedChunks(schema, ['{"x":-0}']);
+  assert.equal(result.violation, null);
+});
+
+test('"0.5" is a valid number', () => {
+  const schema = { type: 'object', properties: { x: { type: 'number' } } };
+  const result = feedChunks(schema, ['{"x":0.5}']);
+  assert.equal(result.violation, null);
+});
+
+test('a bare "0" is still valid', () => {
+  const schema = { type: 'object', properties: { x: { type: 'number' } } };
+  const result = feedChunks(schema, ['{"x":0}']);
+  assert.equal(result.violation, null);
+});
+
+// ---- depth and size caps ----------------------------------------------------
+
+test('nesting beyond maxDepth is reported as a violation', () => {
+  const schema = {}; // no constraint on shape, just depth
+  const nested = '{"a":'.repeat(5) + '1' + '}'.repeat(5); // 5 levels of object nesting
+  const result = feedChunks(schema, [nested], { maxDepth: 3 });
+  assert.ok(result.violation);
+  assert.match(result.violation.message, /Nesting exceeds maxDepth 3/);
+});
+
+test('nesting within maxDepth is unaffected', () => {
+  const schema = {};
+  const nested = '{"a":'.repeat(3) + '1' + '}'.repeat(3);
+  const result = feedChunks(schema, [nested], { maxDepth: 3 });
+  assert.equal(result.violation, null);
+});
+
+test('input exceeding maxBytes is reported as a violation', () => {
+  const schema = { type: 'string' };
+  const doc = JSON.stringify('x'.repeat(100));
+  const result = feedChunks(schema, [doc], { maxBytes: 20 });
+  assert.ok(result.violation);
+  assert.match(result.violation.message, /exceeds maxBytes 20/);
+});
+
+test('input within maxBytes is unaffected, split across many small chunks', () => {
+  const schema = { type: 'string' };
+  const doc = JSON.stringify('short');
+  const result = feedChunks(schema, chunkEvery(doc, 2), { maxBytes: 1000 });
+  assert.equal(result.violation, null);
+});
+
+test('runGuardedStream forwards maxDepth/maxBytes to the validator', async () => {
+  const schema = {};
+  await assert.rejects(
+    runGuardedStream({
+      schema,
+      maxDepth: 1,
+      createStream: async () => asyncGen(['{"a":{"b":1}}']),
+    }),
+    (err) => {
+      assert.ok(err instanceof CorrectionFailedError);
+      assert.match(err.violation.message, /Nesting exceeds maxDepth 1/);
+      return true;
+    },
+  );
 });
