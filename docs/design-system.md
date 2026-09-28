@@ -190,7 +190,12 @@ light/dark (neumorphic) shadows, no per-element shadow values.
 
 **Shape and space.** Three radius roles: `--radius-control` (buttons, rows, fields, menu
 items), `--radius-overlay` (menus, popovers, cards) and `--radius-surface` (composer, panels,
-dialogs). Spacing stays on the 4pt `--space-*` scale.
+dialogs). Spacing stays on the 4pt `--space-*` scale. #529: the user's bubble reads
+`--radius-bubble`, data marks and inline highlights read `--radius-mark` (a quarter of the control
+corner), and `npm run lint:design` (`radius-token`) rejects any corner in component CSS that is not a
+`--radius-*` token or a calc() on one; `0`, `50%`, `999px` and `inherit` are the only literals.
+`--enter-from`, `--enter-opacity` and `--exit-to` are registered as non-inherited (`motion.css`), so a
+slide-only drawer or sheet no longer stops the menus and toasts inside it from fading.
 
 **Type.** Headings and the home greeting use `--font-display` with `--display-weight` and
 `--display-tracking`; everything else uses `--font-ui`. The sidebar reads destinations

@@ -94,3 +94,28 @@ test('the Chat/Cowork toggle moves a thumb on the considered token and the mode 
   // #527: the phone composer's compact chip adds a class; the mode stays on the same element.
   assert.match(bar, /className=\{`composer-mode-toggle\$\{compact \? ' is-compact' : ''\}`\} data-mode=\{mode\} role="radiogroup"/);
 });
+
+// #529: the drawer and the phone sheet slide without fading (--enter-opacity: 1). As inherited
+// custom properties that setting reached every menu and toast drawn inside them, which then
+// entered with no visible motion. The travel parameters are registered as non-inherited.
+test('entrance and exit travel belong to the animating element, not its descendants', () => {
+  for (const name of ['--enter-from', '--enter-opacity', '--exit-to']) {
+    assert.match(motion, new RegExp(`@property ${name} \\{[^}]*inherits: false;`), name);
+  }
+  assert.match(motion, /@property --enter-opacity \{[^}]*initial-value: 0;/);
+});
+
+test('a centred toast enters from its own centred position', () => {
+  const overlays = read('overlays.css');
+  const toast = overlays.match(/\n\.save-error \{([^}]*)\}/)[1];
+  assert.match(toast, /transform: translateX\(-50%\)/);
+  assert.match(toast, /--enter-from: translateX\(-50%\) /, 'the entrance frame keeps the centring translate');
+});
+
+test('the phone Chat/Cowork chip moves its highlight on the considered token (#527, #529)', () => {
+  const tiers = read('space-tiers.css');
+  const before = tiers.match(/\.composer-mode-toggle\.is-compact button::before \{([^}]*)\}/)[1];
+  assert.match(before, /border-radius: var\(--radius-control\)/);
+  assert.match(before, /transition: opacity var\(--motion-considered\) var\(--ease-considered\), transform var\(--motion-considered\) var\(--ease-considered\);/);
+  assert.match(tiers, /\.composer-mode-toggle\.is-compact button\[aria-checked='true'\]::before \{ opacity: 1; transform: none; \}/);
+});
