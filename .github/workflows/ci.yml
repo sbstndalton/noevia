@@ -141,8 +141,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: services/diary/requirements.txt
-      - run: pip install -r requirements.txt
+          cache-dependency-path: services/diary/requirements*.txt
+      - run: pip install -r requirements-dev.txt
         if: env.RUN_JOB == 'true'
       - run: python -m pytest -q
         if: env.RUN_JOB == 'true'
