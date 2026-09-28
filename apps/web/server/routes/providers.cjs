@@ -185,7 +185,7 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
       // by someone allowed to edit that row and only against the same origin it is stored for.
       if (!probeKey && typeof body.providerId === 'string' && body.providerId) {
         const row = Array.from(PROVIDERS).find((pr) => pr.id === body.providerId);
-        if (row && !editRefusal(body.providerId, row, authn) && hasRealKey(row.apiKey) && originOf(row.baseUrl) === originOf(baseUrl)) probeKey = row.apiKey;
+        if (row && !editRefusal(body.providerId, row, authn) && hasRealKey(row.apiKey) && originOf(baseUrl) !== null && originOf(row.baseUrl) === originOf(baseUrl)) probeKey = row.apiKey;
       }
       if (probeKey) headers.Authorization = `Bearer ${probeKey}`;
       try {
@@ -209,6 +209,9 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
         return json(res, 400, { error: 'invalid JSON' });
       }
       if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'invalid JSON' });
+      for (const field of ['label', 'baseUrl', 'apiKey', 'defaultModel']) {
+        if (body[field] !== undefined && body[field] !== null && typeof body[field] !== 'string') return json(res, 400, { error: `${field} must be a string` });
+      }
       const label = body.label === undefined ? row.label : String(body.label || '').trim().slice(0, 80);
       const baseUrl = body.baseUrl === undefined ? row.baseUrl : String(body.baseUrl || '').trim().replace(/\/+$/, '');
       const newKey = String(body.apiKey || '').trim();
@@ -221,10 +224,11 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
       }
       // A stored key never follows the provider to another origin: that would send it somewhere
       // the person never typed it for (and read it back out through a host they control).
-      if (!newKey && hasRealKey(row.apiKey) && originOf(baseUrl) !== originOf(row.baseUrl)) {
+      if (!newKey && hasRealKey(row.apiKey) && (originOf(baseUrl) === null || originOf(baseUrl) !== originOf(row.baseUrl))) {
         return json(res, 400, { error: 'Enter the API key again when moving a provider to a different address.' });
       }
-      const context = parseContextTokens(body.contextTokens);
+      // Omitted keeps the stored value; null or '' clears it.
+      const context = body.contextTokens === undefined ? { value: validContextTokens(row.contextTokens) } : parseContextTokens(body.contextTokens);
       if (context.error) return json(res, 400, { error: context.error });
       // Validated in full before anything changes, so a refusal leaves the row as it was.
       row.label = label;

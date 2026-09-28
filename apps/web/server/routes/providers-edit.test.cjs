@@ -257,3 +257,27 @@ test('an admin edit of a shared row lands in the shared file and another account
   assert.equal(s.sent.pop().status, 403);
   assert.equal(s.ws().providers.find((p) => p.id === id).label, 'Team (edited)');
 });
+
+test('a PUT that omits contextTokens keeps the stored value; null clears it', async () => {
+  const f = fixture();
+  await f.call('PUT', '/api/providers/mine', full({ contextTokens: 65536 }));
+  f.sent.pop();
+  await f.call('PUT', '/api/providers/mine', { label: 'Only label' });
+  assert.equal(f.sent.pop().status, 200);
+  assert.equal(f.mine().contextTokens, 65536);
+  await f.call('PUT', '/api/providers/mine', { contextTokens: null });
+  f.sent.pop();
+  assert.equal(f.mine().contextTokens, undefined);
+});
+
+test('non-string label, baseUrl, apiKey or defaultModel are refused and change nothing', async () => {
+  const f = fixture();
+  for (const field of ['label', 'baseUrl', 'apiKey', 'defaultModel']) {
+    await f.call('PUT', '/api/providers/mine', full({ [field]: field === 'apiKey' ? 123 : { x: 1 } }));
+    const reply = f.sent.pop();
+    assert.equal(reply.status, 400, field);
+    assert.match(reply.body.error, /must be a string/);
+  }
+  assert.equal(f.mine().apiKey, 'sk-original-1111');
+  assert.equal(f.mine().label, 'Mine');
+});
