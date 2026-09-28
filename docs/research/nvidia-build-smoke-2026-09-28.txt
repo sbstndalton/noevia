@@ -1,0 +1,9 @@
+moonshotai/kimi-k3 chat: HTTP 0 90.1s -> 'The read operation timed out'
+moonshotai/kimi-k3 tools: HTTP 0 90.1s -> "The read operation timed out"
+deepseek-ai/deepseek-v4.1-flash chat: HTTP 200 54.3s -> 'pong'
+deepseek-ai/deepseek-v4.1-flash tools: HTTP 200 69.8s -> [{"id": "chatcmpl-tool-9b8aef668ab7894d", "type": "function", "function": {"name": "get_weather", "arguments":
+nvidia/nemotron-3-super-120b-a12b chat: HTTP 200 0.9s -> 'pong'
+nvidia/nemotron-3-super-120b-a12b tools: HTTP 200 1.2s -> [{"id": "call-10a87269-4574-4ba7-af7d-afc9e191c928", "type": "function", "function": {"name": "get_weather", "
+openai/gpt-oss-20b chat: HTTP 200 1.1s -> 'pong'
+openai/gpt-oss-20b tools: HTTP 200 0.8s -> [{"id": "chatcmpl-tool-b86db405abcc8bc5", "type": "function", "function": {"name": "get_weather", "arguments":
+embed: HTTP 404 0.2s {"status":404,"title":"Not Found","detail":"Function '6caf65cf-1c3a-4823-89a5-21b821640d99': Not found for account 'g0idOK__fJr48rfz8kTPQZRVrDQ2eqlFq8EeCFHFpBw'"}

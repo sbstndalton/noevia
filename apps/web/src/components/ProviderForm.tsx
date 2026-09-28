@@ -16,6 +16,16 @@ const PRESETS: Record<string, { label: string; url: string }> = {
   nvidia: { label: 'NVIDIA Build (free trial)', url: 'https://integrate.api.nvidia.com/v1' },
 };
 
+/** Mirrors the server's trial-terms host rule (provider-egress.cjs): nvidia.com or any subdomain. */
+function isNvidiaHost(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl.trim()).hostname.toLowerCase().replace(/\.+$/, '');
+    return host === 'nvidia.com' || host.endsWith('.nvidia.com');
+  } catch {
+    return false;
+  }
+}
+
 export interface ProviderFormProps {
   /** Called after the provider is created. Receives the created provider. */
   onConnected?: (provider: Provider) => void;
@@ -124,7 +134,7 @@ export function ProviderForm({
         value={defaultModel}
         onChange={(e) => setDefaultModel(e.target.value)}
       />
-      {/nvidia\.com(?::\d+)?(?:\/|$)/i.test(baseUrl.replace(/^https?:\/\//i, '')) && <p className="route-note">{t('providers.form.nvidiaNote')}</p>}
+      {isNvidiaHost(baseUrl) && <p className="route-note">{t('providers.form.nvidiaNote')}</p>}
       {allowShared && (
         <label className="route-note">
           <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} /> {t('providers.form.shared')}

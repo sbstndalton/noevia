@@ -88,7 +88,7 @@ function validateToolArguments(toolName, rawArgs) {
 const TRIAL_TERMS_HOSTS = ['nvidia.com'];
 
 function hostOf(baseUrl) {
-  try { return new URL(String(baseUrl)).hostname.toLowerCase().replace(/\.$/, ''); } catch { return ''; }
+  try { return new URL(String(baseUrl)).hostname.toLowerCase().replace(/\.+$/, ''); } catch { return ''; }
 }
 
 /** True when the provider's endpoint is a third-party trial service (e.g. build.nvidia.com's

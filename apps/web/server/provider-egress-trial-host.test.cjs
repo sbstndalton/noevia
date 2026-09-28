@@ -12,6 +12,7 @@ test('the NVIDIA hosted endpoint is external without an external flag', () => {
   assert.equal(egress.isExternalProvider(nvidia('https://integrate.api.nvidia.com/v1')), true);
   assert.equal(egress.isExternalProvider(nvidia('https://ai.api.nvidia.com/v1')), true);
   assert.equal(egress.isExternalProvider(nvidia('HTTPS://Integrate.API.NVIDIA.com./v1')), true);
+  assert.equal(egress.isExternalProvider(nvidia('https://integrate.api.nvidia.com../v1')), true);
 });
 
 test('lookalike hosts, local NIM containers and other providers stay ordinary', () => {
