@@ -29,7 +29,13 @@ test('content beyond the cap scrolls internally instead of overflowing the box',
 });
 
 test('the height sync runs off the `value` prop itself (a useLayoutEffect keyed on [value]), not only the change handler — so a draft restore, an edit-message load, or clearing after send all resize it the same way typing would, with no flash of the old height', () => {
-  assert.match(src, /useLayoutEffect\(\(\) => \{\s*if \(innerRef\.current\) syncComposerHeight\(innerRef\.current\);\s*\}, \[value\]\);/);
+  // #527: also keyed on `rows`, which changes when the window crosses into phone-sized space.
+  assert.match(src, /useLayoutEffect\(\(\) => \{\s*if \(innerRef\.current\) syncComposerHeight\(innerRef\.current\);\s*\}, \[value, rest\.rows\]\);/);
+});
+
+test('#527: the height re-syncs on window resize, so a tier change (new max-height, one row) never leaves an empty box tall or a long draft clipped', () => {
+  assert.match(src, /window\.addEventListener\('resize', resync\);/);
+  assert.match(src, /return \(\) => window\.removeEventListener\('resize', resync\);/);
 });
 
 test('the component forwards its ref to the underlying textarea, so a caller can manage focus without a second, competing ref', () => {
