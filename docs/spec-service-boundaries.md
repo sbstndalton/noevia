@@ -389,7 +389,8 @@ section says so.
   (`/api/v1`, `services/model-manager/app/api.py`). Diary, OCR, Docling and Laya are unversioned
   today; their current surface is declared **v1** as-is, and a breaking change adds `/v2` beside it
   for at least one release. Additive fields are not a version bump; removing or renaming a field,
-  header, status meaning or endpoint is.
+  header, status meaning or endpoint is. The model-loader contract is written down, and kept in
+  step with the code by tests, in [spec-model-loader-api-v1.md](spec-model-loader-api-v1.md).
 - **Browser API (`/api/*`)** is declared v1 as-is. Every response carries
   `X-Noevia-API: 1`; the SPA checks readiness before session work and stops on a
   different major with a reload action. The endpoint inventory, compatibility
