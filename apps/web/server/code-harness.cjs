@@ -88,7 +88,9 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         const session = createSession({ taskId, ctx, workspace, domains, capabilities, harness, model: chosen });
         sessionEnd = session.end;
         // Recorded first so a running task is identifiable in the list, not just once it ends.
-        ctx.checkpoint({ branch: workspace.branch, task: String(prompt).slice(0, 120) });
+        // `baseSha` is the commit the task's branch forked from (captured at claim, before the
+        // agent runs); a repository with no commits yet records `null`, not a failure.
+        ctx.checkpoint({ branch: workspace.branch, task: String(prompt).slice(0, 120), baseSha: workspace.baseSha ?? null });
         // The agent's own config file, written by noevia before the agent exists: the gate it
         // will actually obey, and the only model endpoint it is given. A harness whose config
         // noevia cannot pin throws here, before anything runs.
@@ -130,8 +132,12 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
           model: chosen, protocolVersion: meta.protocolVersion, capabilities,
           promptPreparation, sandbox: sandboxKind,
         });
+        // `headSha` is read from the worktree noevia already holds open for this task — the
+        // same sandboxed git this module already runs, not a new path to the host — so it
+        // reflects whatever the agent actually committed, not just where the branch started.
         ctx.event('checkpoint.created', { branch: workspace.branch, task: String(prompt).slice(0, 120),
-          identityHash: scope.identityHash, identity: scope.identity, meta });
+          identityHash: scope.identityHash, identity: scope.identity, meta,
+          baseSha: workspace.baseSha ?? null, headSha: workspaces.headSha(taskId) });
         return { stopReason: outcome?.stopReason || 'end_turn', branch: workspace.branch,
           identityHash: scope.identityHash, meta, ...session.summary(),
           // Which hosts the task reached and which it was refused, from the proxy's own record.

@@ -69,6 +69,64 @@ test('reported rates are throttled to meaningful changes or a daily refresh', ()
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('a task-scoped record gets a monotonic revision, independent of category or identity', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-evidence-revision-'));
+  try {
+    const store = ev.createStore(dir);
+    const taskId = 'task-1';
+    const one = store.append({ taskId, model: 'm', category: 'context_capacity', identityHash: 'h1', result: 'passed', value: null });
+    const two = store.append({ taskId, model: 'm', category: 'vision', identityHash: 'h2', result: 'failed', value: null });
+    const three = store.append({ taskId, model: 'm', category: 'context_capacity', identityHash: 'h1', result: 'passed', value: null });
+    assert.deepEqual([one.revision, two.revision, three.revision], [1, 2, 3]);
+    // A different task starts its own sequence at 1; the two never interleave.
+    const other = store.append({ taskId: 'task-2', model: 'm', category: 'vision', identityHash: 'h1', result: 'passed', value: null });
+    assert.equal(other.revision, 1);
+    // A caller cannot smuggle its own revision in: the store's own count always wins.
+    const spoofed = store.append({ taskId, model: 'm', category: 'vision', identityHash: 'h2', result: 'passed', value: null, revision: 999 });
+    assert.equal(spoofed.revision, 4);
+    // A record with no taskId at all — every existing producer — gets no revision field, exactly
+    // as before this feature existed.
+    const untaskd = store.append({ model: 'm', category: 'throughput', identityHash: 'h3', result: 'passed', value: null });
+    assert.equal('revision' in untaskd, false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('revisions survive a reload of the store from disk', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-evidence-revision-reload-'));
+  try {
+    const first = ev.createStore(dir);
+    first.append({ taskId: 't', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    first.append({ taskId: 't', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    const reopened = ev.createStore(dir);
+    const third = reopened.append({ taskId: 't', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    assert.equal(third.revision, 3, 'a freshly constructed store still continues the task’s sequence');
+    assert.deepEqual(reopened.list().map((r) => r.revision), [1, 2, 3]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('legacy records with no revision or taskId field still load, list and derive normally', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-evidence-legacy-'));
+  try {
+    const file = path.join(dir, 'evidence.jsonl');
+    fs.mkdirSync(dir, { recursive: true });
+    // Written by hand, the shape evidence.jsonl had before this feature existed: no `taskId`,
+    // no `revision`.
+    const legacy = { id: 'ev_legacy', at: 1000, limitations: [], model: 'm', category: 'context_capacity', identityHash: 'h1', result: 'passed', value: { ctx: 32768 } };
+    fs.writeFileSync(file, JSON.stringify(legacy) + '\n', { mode: 0o600 });
+    const store = ev.createStore(dir);
+    const loaded = store.list();
+    assert.equal(loaded.length, 1);
+    assert.deepEqual(loaded[0], legacy, 'nothing was rewritten or backfilled onto the old record');
+    const derived = ev.derive(loaded, { model: 'm', category: 'context_capacity', liveHash: 'h1' });
+    assert.equal(derived.state, 'verified');
+    // A new task-scoped record appended alongside legacy ones starts its own sequence at 1: the
+    // legacy record (no taskId) is simply invisible to that count.
+    const next = store.append({ taskId: 'new-task', model: 'm', category: 'context_capacity', identityHash: 'h1', result: 'passed', value: null });
+    assert.equal(next.revision, 1);
+    assert.equal(store.list().length, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the evidence log stays bounded and keeps the newest records per model, category and identity', () => {
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const { createStore } = require('./evidence.cjs');

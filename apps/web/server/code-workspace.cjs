@@ -224,6 +224,11 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
       // worktree path itself must be new, which `git worktree add` enforces.
       run(['worktree', 'add', '-B', name, tree], repo, gitEnv());
     }
+    // The commit the task's branch forked from, before the agent (or noevia's own pinned
+    // config) touches the tree. An empty repository has no HEAD yet; that is recorded as
+    // `null`, not treated as a failure of the claim.
+    let baseSha = null;
+    try { baseSha = run([...HOSTILE_OFF, 'rev-parse', 'HEAD'], tree, gitEnv()) || null; } catch { /* no commits yet */ }
     // Anything that fails from here on takes the half-made workspace with it.
     const undo = () => {
       if (mode === 'clone') { try { rm(tree); } catch { /* the refusal is what matters */ } }
@@ -277,7 +282,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
         throw Object.assign(Error(`Could not hand the workspace to the harness user: ${e.message}`), { status: 500 });
       }
     }
-    return write({ taskId: id, repo, branch: name, path: fs.realpathSync(tree), home, status: 'held', mode,
+    return write({ taskId: id, repo, branch: name, path: fs.realpathSync(tree), home, status: 'held', mode, baseSha,
       // Who to hand the clone BACK to before reading from it: git refuses to read a repository
       // owned by someone else ("dubious ownership"), and that check ignores `-c` and the
       // GIT_CONFIG_* environment on purpose, so it cannot be worked around from the outside.
@@ -294,6 +299,19 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
       if (st.isDirectory()) throw Error(`${rel} is a directory`);
       fs.unlinkSync(target);
     }
+  }
+
+  /**
+   * The current commit at the head of the task's own branch, read from the worktree the code
+   * already holds open — no new host access, just the same sandboxed `git` this module already
+   * runs against that tree. `null` when the task holds no live workspace, or the tree has no
+   * commits yet (nothing to read is not an error here).
+   */
+  function headSha(taskId) {
+    const record = read(taskId);
+    if (!record || record.status !== 'held') return null;
+    try { return run([...HOSTILE_OFF, 'rev-parse', 'HEAD'], record.path, gitEnv()) || null; }
+    catch { return null; }
   }
 
   /**
@@ -439,7 +457,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
 
   // `owner` is public so anything else noevia writes into a workspace (the harness's own
   // config file) can be handed over the same way the worktree is.
-  return { claim, release, recover, contains, get: read, list, root, owner, BRANCH_PREFIX };
+  return { claim, release, recover, contains, headSha, get: read, list, root, owner, BRANCH_PREFIX };
 }
 
 /** Recursive chown, so the harness owns the tree and git's own files inside it. */

@@ -405,6 +405,46 @@ test('a finished task records what the harness reported, and what it did not', a
   assert.match(r.job.result.identityHash, /^[0-9a-f]{64}$/);
 });
 
+test('checkpoints carry the base commit and the head commit the agent actually left, not just the branch', async () => {
+  let observedBase;
+  const r = await run({
+    script: async (h, cwd) => {
+      observedBase = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+      fs.writeFileSync(path.join(cwd, 'b.txt'), 'b');
+      execFileSync('git', ['add', '.'], { cwd, stdio: 'ignore' });
+      execFileSync('git', ['-c', 'user.email=qa@example.invalid', '-c', 'user.name=QA', 'commit', '-qm', 'second'], { cwd, stdio: 'ignore' });
+    },
+  });
+  assert.equal(r.job.checkpoint.baseSha, observedBase);
+  assert.match(r.job.checkpoint.headSha, /^[0-9a-f]{40}$/);
+  assert.notEqual(r.job.checkpoint.headSha, r.job.checkpoint.baseSha, 'the checkpoint sees the agent’s commit');
+  // The workspace is released once the task finishes, so a later read has nothing to report,
+  // never a stale or wrong sha for a tree that no longer exists.
+  assert.equal(r.workspaces.headSha(r.taskId), null);
+});
+
+test('a task on a repository with no commits yet checkpoints base and head as null, not a thrown error', async () => {
+  const dir = temp('noevia-hjobs-');
+  const jobs = createJobs({ dir });
+  const workspaces = createCodeWorkspaces({ dir, epoch: 'test' });
+  const emptyRepo = temp('noevia-hrepo-empty-');
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: emptyRepo, stdio: 'ignore' });
+  const harness = createCodeHarness({
+    jobs, workspaces, engine: () => ({ baseUrl: 'http://engine.test/v1', model: 'synthetic-coder', apiKey: null, contextTokens: 8192 }),
+    askApproval: async () => 'deny',
+  });
+  const started = await harness.start({
+    repoPath: emptyRepo, prompt: 'fix the bug',
+    connect: async () => ({ agent: {}, prompt: async () => ({ stopReason: 'end_turn' }) }),
+  });
+  for (let i = 0; i < 200 && !['completed', 'failed', 'cancelled'].includes(jobs.get(started.taskId)?.status); i++) {
+    await new Promise((res) => setTimeout(res, 5));
+  }
+  const job = jobs.get(started.taskId);
+  assert.equal(job.checkpoint.baseSha, null);
+  assert.equal(job.checkpoint.headSha, null);
+});
+
 test('a silent harness produces an honest record rather than zeroes', async () => {
   const r = await run({ script: async () => {} });
   const meta = r.job.result.meta;

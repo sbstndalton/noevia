@@ -52,8 +52,24 @@ function createStore(dir, { maxBytes = 1024 * 1024, keepPerKey = 50 } = {}) {
     try { return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
     catch { return []; }
   }
+  // A record tied to a task (a coding checkpoint, eventually) gets its own revision counter,
+  // separate from `at`: a clock can go backwards or tie, a revision never can. Scoped to the
+  // task alone — not to model/category/identity — so every record a task ever produces sits on
+  // one growing sequence regardless of what kind of evidence it is. Computed here, not accepted
+  // from the caller (below), so nothing but this store can ever assign one.
+  function nextRevision(taskId) {
+    let max = 0;
+    for (const r of list()) if (r.taskId === taskId && Number.isInteger(r.revision) && r.revision > max) max = r.revision;
+    return max + 1;
+  }
   function append(record) {
-    const entry = { id: 'ev_' + crypto.randomUUID(), at: Date.now(), limitations: [], ...record };
+    // A caller-supplied `revision` would defeat the guarantee, so it is dropped before the
+    // store computes its own. Older records that never had a `taskId` at all get no `revision`
+    // either: the field is additive, never retrofitted, so records written before this existed
+    // keep loading exactly as they did — `derive()` and `list()` never require it.
+    const { revision: _ignoredRevision, ...rest } = record || {};
+    const entry = { id: 'ev_' + crypto.randomUUID(), at: Date.now(), limitations: [], ...rest,
+      ...(rest.taskId ? { revision: nextRevision(rest.taskId) } : {}) };
     if (!entry.category || !entry.model || !['passed', 'failed', 'reported'].includes(entry.result)) throw Error('Invalid evidence record');
     if (/Bearer\s+[A-Za-z0-9._~+/=-]{8,}|\bhf_[A-Za-z0-9]{20,}|\bsk-[A-Za-z0-9_-]{16,}|"(?:api_?key|password|secret|access_?token|authorization)"\s*:/i.test(JSON.stringify(entry))) throw Error('Evidence must not contain credentials');
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

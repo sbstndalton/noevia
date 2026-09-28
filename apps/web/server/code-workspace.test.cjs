@@ -641,6 +641,40 @@ test('in clone mode the release auto-commit never carries the pinned config, eve
   assert.deepEqual(files, ['a.txt']);
 });
 
+test('claim records the base commit, and headSha tracks commits made after the claim', () => {
+  for (const mode of ['worktree', 'clone']) {
+    const repo = repoWith();
+    const base = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+    const ws = createCodeWorkspaces({ dir: temp('noevia-ws-'), treeRoot: temp('noevia-shared-'), mode, epoch: 'test' });
+    const claim = ws.claim({ taskId: ids(1), repoPath: repo });
+    assert.equal(claim.baseSha, base, mode);
+    // Before any commit in the worktree, head is still base.
+    assert.equal(ws.headSha(ids(1)), base, mode);
+    fs.writeFileSync(path.join(claim.path, 'b.txt'), 'b');
+    trackedGit(claim.path, 'add', '.');
+    trackedGit(claim.path, '-c', 'user.email=qa@example.invalid', '-c', 'user.name=QA', 'commit', '-qm', 'second');
+    const head = ws.headSha(ids(1));
+    assert.notEqual(head, base, mode);
+    assert.match(head, /^[0-9a-f]{40}$/, mode);
+    ws.release({ taskId: ids(1) });
+    assert.equal(ws.headSha(ids(1)), null, 'released workspaces have nothing to read, ' + mode);
+  }
+});
+
+test('claim on an empty repository (no commits yet) records base and head as null, not a thrown error', () => {
+  const repo = temp('noevia-empty-repo-');
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, stdio: 'ignore' });
+  const { ws } = workspaces();
+  const claim = ws.claim({ taskId: ids(1), repoPath: repo });
+  assert.equal(claim.baseSha, null);
+  assert.equal(ws.headSha(ids(1)), null);
+});
+
+test('headSha is null for a task id that never claimed a workspace', () => {
+  const { ws } = workspaces();
+  assert.equal(ws.headSha(ids(9)), null);
+});
+
 test('a dangling symlink inside the worktree is not contained', () => {
   const repo = repoWith();
   const { ws } = workspaces();
