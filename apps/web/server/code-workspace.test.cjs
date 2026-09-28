@@ -670,6 +670,37 @@ test('claim on an empty repository (no commits yet) records base and head as nul
   assert.equal(ws.headSha(ids(1)), null);
 });
 
+test('headSha trusts the task’s own tree once it is handed to another user, the same way trust() already covers the source repository', () => {
+  // Real chown is faked out (as in the other owner tests: this suite does not run as root), but
+  // the "dubious ownership" refusal itself is simulated faithfully — including reading the SAME
+  // trust file `trust()` writes — so this fails without the fix (headSha() reads the tree
+  // directly) and passes once headSha() trusts the tree before reading it.
+  const repo = repoWith();
+  const dir = temp('noevia-ws-');
+  const trustFile = path.join(dir, 'code-workspaces', 'trusted-repositories.gitconfig');
+  let ownedTree = null;
+  const run = (args, cwd, env) => {
+    if (ownedTree && cwd && path.resolve(cwd) === ownedTree && sub(args) === 'rev-parse') {
+      let trusted = false;
+      try { trusted = fs.readFileSync(trustFile, 'utf8').includes(ownedTree); } catch { /* not trusted yet */ }
+      if (!trusted) throw Object.assign(Error('git failed'), { stderr: `fatal: detected dubious ownership in repository at '${ownedTree}'` });
+    }
+    return execFileSync('git', args, { cwd, env: { ...process.env, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000 }).trim();
+  };
+  // `owner` set (mode defaults to 'clone', matching CODE_HARNESS_USER in production); chown is
+  // faked as a no-op so this test never needs real root privileges.
+  const ws = createCodeWorkspaces({ dir, treeRoot: temp('noevia-shared-'), owner: { uid: 1000, gid: 1000 }, epoch: 'test', run, chown: () => {} });
+  const claim = ws.claim({ taskId: ids(1), repoPath: repo });
+  assert.equal(claim.mode, 'clone');
+  // Only now, after the claim itself succeeded, does the simulated refusal start applying to
+  // the tree — mirroring a real handover, which happens once the tree already exists.
+  ownedTree = fs.realpathSync(claim.path);
+  assert.equal(fs.readFileSync(trustFile, 'utf8').includes(ownedTree), false, 'the tree is not trusted yet');
+  const head = ws.headSha(ids(1));
+  assert.match(head, /^[0-9a-f]{40}$/, 'headSha still reads the commit despite the simulated ownership refusal');
+  assert.ok(fs.readFileSync(trustFile, 'utf8').includes(ownedTree), 'headSha trusted the tree before reading it');
+});
+
 test('headSha is null for a task id that never claimed a workspace', () => {
   const { ws } = workspaces();
   assert.equal(ws.headSha(ids(9)), null);

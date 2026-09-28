@@ -127,6 +127,27 @@ test('legacy records with no revision or taskId field still load, list and deriv
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('a task’s revision never repeats, even once compaction drops the record that held the highest one', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-evidence-revision-compact-'));
+  try {
+    // A tiny cap and a single shared key so the very first few appends already trigger
+    // compaction and evict everything but the newest keepPerKey=1 record for that key.
+    const store = ev.createStore(dir, { maxBytes: 1, keepPerKey: 1 });
+    const rec = (taskId) => ({ taskId, model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    const one = store.append(rec('t1'));
+    assert.equal(one.revision, 1);
+    // Other tasks append to the SAME key, so compaction (triggered by the tiny maxBytes) evicts
+    // t1's revision-1 record entirely — list() can no longer see it at all.
+    store.append(rec('t2'));
+    store.append(rec('t3'));
+    assert.equal(store.list().some((r) => r.taskId === 't1'), false, 't1’s own record was compacted away');
+    // Without a persisted high-water mark this would recompute from an empty scan and hand out
+    // revision 1 again — a real repeat, not just a gap.
+    const again = store.append(rec('t1'));
+    assert.equal(again.revision, 2, 't1’s next revision still continues from where it left off');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the evidence log stays bounded and keeps the newest records per model, category and identity', () => {
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const { createStore } = require('./evidence.cjs');

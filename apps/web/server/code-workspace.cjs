@@ -310,6 +310,13 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
   function headSha(taskId) {
     const record = read(taskId);
     if (!record || record.status !== 'held') return null;
+    // A tree handed to the harness user (`owner`, the sandbox case — clone mode by default, see
+    // `mode` above) is "dubious ownership" to git run as noevia, the same refusal `trust()`
+    // exists to lift for the source repository at claim time. Reading HEAD is not writing to the
+    // tree, and HOSTILE_OFF already disables the hostile levers `rev-parse` could reach anyway,
+    // so the task's own tree gets the same trust. Without this, every live read here on a
+    // sandboxed task returns `null` even though the commit is right there.
+    if (record.owner) trust(record.path);
     try { return run([...HOSTILE_OFF, 'rev-parse', 'HEAD'], record.path, gitEnv()) || null; }
     catch { return null; }
   }
@@ -356,6 +363,17 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
    * that fails keeps the tree and marks the claim stuck, because a task's work is not ours to
    * discard quietly.
    */
+  // The branch's own tip, read from the SOURCE repository — never the task's worktree or clone,
+  // which may still be owned by the harness user or (for a clone) may not exist at all once
+  // removed. `record.repo` is always noevia's own, so this never needs "dubious ownership"
+  // cooperation, and reading it after any release-time auto-commit and fetch is what makes it
+  // trustworthy: it is the commit the branch actually ends at, not a snapshot taken mid-task.
+  // `null` when the branch never got a commit (nothing was ever fetched or committed to it).
+  function branchHead(record) {
+    try { return run([...HOSTILE_OFF, 'rev-parse', '--verify', record.branch], record.repo, gitEnv()) || null; }
+    catch { return null; }
+  }
+
   function release({ taskId, removeBranch = false } = {}) {
     const record = read(taskId);
     if (!record) return null;
@@ -371,7 +389,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
       if (record.owner && record.noevia) {
         try { chown(record.path, record.noevia.uid, record.noevia.gid); }
         catch (e) {
-          return write({ ...record, status: 'stuck', releasedAt: now(),
+          return write({ ...record, status: 'stuck', releasedAt: now(), headSha: branchHead(record),
             error: `Could not take the workspace back from the harness user: ${e.message}` });
         }
       }
@@ -382,7 +400,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
       const hostile = hostileReason(record.path, run, gitEnv());
       if (hostile) {
         // Kept, not deleted: whoever looks at it decides whether the work is worth saving.
-        return write({ ...record, status: 'stuck', releasedAt: now(),
+        return write({ ...record, status: 'stuck', releasedAt: now(), headSha: branchHead(record),
           error: `Refused to release the workspace: ${hostile}. It was left in place for inspection.` });
       }
       // The pinned configuration holds the engine key and is never the task's work. Removed
@@ -390,7 +408,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
       // harness un-ignored or force-added it.
       try { dropPinned(record); }
       catch (e) {
-        return write({ ...record, status: 'stuck', releasedAt: now(),
+        return write({ ...record, status: 'stuck', releasedAt: now(), headSha: branchHead(record),
           error: `Could not remove the harness configuration before saving: ${e.message}` });
       }
       try {
@@ -402,7 +420,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
           ], record.path, gitEnv());
         }
       } catch (e) {
-        return write({ ...record, status: 'stuck', releasedAt: now(),
+        return write({ ...record, status: 'stuck', releasedAt: now(), headSha: branchHead(record),
           error: `Could not save the task\u2019s uncommitted changes: ${e.message}` });
       }
       try {
@@ -412,7 +430,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
       } catch (e) {
         // "Couldn't find remote ref" simply means the task made no commits — not a failure.
         if (!/couldn't find remote ref|not found in upstream/i.test(String(e.message))) {
-          return write({ ...record, status: 'stuck', releasedAt: now(), error: `Could not save the task’s branch: ${e.message}` });
+          return write({ ...record, status: 'stuck', releasedAt: now(), headSha: branchHead(record), error: `Could not save the task’s branch: ${e.message}` });
         }
       }
       try { rm(record.path); } catch (e) { removed = false; error = e.message; }
@@ -427,7 +445,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
     }
     // An unremovable tree is recorded, not hidden: it may still hold the branch, so the next
     // claim on it must keep failing until someone looks.
-    return write({ ...record, status: removed ? 'released' : 'stuck', releasedAt: now(), error });
+    return write({ ...record, status: removed ? 'released' : 'stuck', releasedAt: now(), headSha: branchHead(record), error });
   }
 
   /**

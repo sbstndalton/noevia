@@ -59,13 +59,19 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
     // it (jobs.run records `job.started` before the work and `job.completed` after it, and
     // either append can throw — a full disk — without the work's `finally` ever running).
     let cleaned = false;
+    // What release() reported back, kept so the work below can correct the checkpoint's head
+    // once the workspace is actually gone — see `released` below. `cleanup` is idempotent and
+    // may run more than once (the work's own `finally`, or a run that never got that far); the
+    // cached value is what every caller after the first gets.
+    let released = null;
     const cleanup = () => {
-      if (cleaned) return;
+      if (cleaned) return released;
       cleaned = true;
       try { if (grant) { egress.revoke(taskId); if (typeof egress.activity === 'function') egress.activity(taskId, { forget: true }); } }
       catch (error) { log({ at: now(), taskId, event: 'code.cleanup_failed', what: 'network grant', error: String(error?.message || error) }); }
-      try { workspaces.release({ taskId }); }
+      try { released = workspaces.release({ taskId }); }
       catch (error) { log({ at: now(), taskId, event: 'code.cleanup_failed', what: 'workspace', error: String(error?.message || error) }); }
+      return released;
     };
     try { grant = egress && wantsNetwork && domains.length ? egress.grant({ taskId, domains }) : null; }
     catch (error) {
@@ -80,6 +86,11 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
     // it outside meant a live proxy token and a branch claimed for good.
     jobs.run(taskId, async (ctx) => {
       let sessionEnd = null;
+      // Set once the run has something to report, so the `finally` below knows whether a
+      // corrected, post-release checkpoint is owed at all (a task that never got this far — a
+      // config pin that failed, a connect() that threw — still gets its workspace back, but has
+      // no result to attach a head commit to).
+      let scope = null, meta = null;
       try {
         // A task that named no model runs on whatever this deployment loads, and the identity
         // records the model that actually ran rather than the absence of a choice.
@@ -126,15 +137,15 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         try { outcome = await agent.prompt(context ? `${context}\n\nTask:\n${String(prompt)}` : String(prompt)); }
         finally { session.flushOutput(); }
         // What the run can say about itself, and — just as much — what it could not (§1).
-        const meta = session.meta(agent.agent, readUsage(outcome?._meta));
-        const scope = codingIdentity({
+        meta = session.meta(agent.agent, readUsage(outcome?._meta));
+        scope = codingIdentity({
           harness: meta.harness || harness, harnessVersion: meta.harnessVersion,
           model: chosen, protocolVersion: meta.protocolVersion, capabilities,
           promptPreparation, sandbox: sandboxKind,
         });
-        // `headSha` is read from the worktree noevia already holds open for this task — the
-        // same sandboxed git this module already runs, not a new path to the host — so it
-        // reflects whatever the agent actually committed, not just where the branch started.
+        // A snapshot, not the final word: the worktree is still live here, before release() makes
+        // its own "work in progress" auto-commit for whatever the agent left uncommitted (§ below).
+        // Recorded anyway so a task that dies during cleanup still has a checkpoint on file.
         ctx.event('checkpoint.created', { branch: workspace.branch, task: String(prompt).slice(0, 120),
           identityHash: scope.identityHash, identity: scope.identity, meta,
           baseSha: workspace.baseSha ?? null, headSha: workspaces.headSha(taskId) });
@@ -146,7 +157,18 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         // Whatever happened, the task stops being able to reach anything, and no approval it
         // raised is left waiting to be answered into an action.
         sessionEnd?.();
-        cleanup();
+        const releasedWorkspace = cleanup();
+        // The corrected checkpoint: release() reads the branch back from the SOURCE repository,
+        // after any WIP auto-commit and after ownership is handed back to noevia, so this never
+        // needs "dubious ownership" cooperation from a harness-owned clone (#1) and it reflects
+        // what actually landed on the branch, not a snapshot from before release ran (#2).
+        // `ctx` is still valid here: jobs.run does not append the job's terminal event until this
+        // whole function returns, which happens only after this `finally` completes.
+        if (scope) {
+          ctx.checkpoint({ branch: workspace.branch, task: String(prompt).slice(0, 120),
+            identityHash: scope.identityHash, identity: scope.identity, meta,
+            baseSha: workspace.baseSha ?? null, headSha: releasedWorkspace?.headSha ?? null });
+        }
       }
     }).catch(() => {
       // jobs.run records the failure when it can; when it could not even record the start, the

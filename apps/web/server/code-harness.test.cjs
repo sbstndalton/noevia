@@ -445,6 +445,35 @@ test('a task on a repository with no commits yet checkpoints base and head as nu
   assert.equal(job.checkpoint.headSha, null);
 });
 
+test('the recorded head matches the branch in the SOURCE repository even after an uncommitted edit, not a pre-release snapshot (clone mode)', async () => {
+  // Clone mode is what a sandboxed harness runs under (CODE_HARNESS_USER set in production, see
+  // `mode` in code-workspace.cjs): only release() auto-commits whatever the agent left
+  // uncommitted, and only after that auto-commit is headSha's answer actually final.
+  const dir = temp('noevia-hjobs-');
+  const jobs = createJobs({ dir });
+  const workspaces = createCodeWorkspaces({ dir, treeRoot: temp('noevia-hshared-'), mode: 'clone', epoch: 'test' });
+  const repoPath = repo();
+  const harness = createCodeHarness({
+    jobs, workspaces, engine: () => ({ baseUrl: 'http://engine.test/v1', model: 'synthetic-coder', apiKey: null, contextTokens: 8192 }),
+    askApproval: async () => 'deny',
+  });
+  const started = await harness.start({
+    repoPath, prompt: 'leave uncommitted work',
+    connect: async ({ cwd }) => ({ agent: {}, prompt: async () => {
+      // Never committed by the agent — only noevia's own release-time auto-commit saves this.
+      fs.writeFileSync(path.join(cwd, 'wip.txt'), 'uncommitted');
+      return { stopReason: 'end_turn' };
+    } }),
+  });
+  for (let i = 0; i < 200 && !['completed', 'failed', 'cancelled'].includes(jobs.get(started.taskId)?.status); i++) {
+    await new Promise((res) => setTimeout(res, 5));
+  }
+  const job = jobs.get(started.taskId);
+  const branchHeadInSource = execFileSync('git', ['rev-parse', job.checkpoint.branch], { cwd: repoPath, encoding: 'utf8' }).trim();
+  assert.equal(job.checkpoint.headSha, branchHeadInSource, 'the checkpoint’s head is exactly the branch’s tip in the source repository');
+  assert.notEqual(job.checkpoint.headSha, job.checkpoint.baseSha, 'the release-time auto-commit moved the branch past base');
+});
+
 test('a silent harness produces an honest record rather than zeroes', async () => {
   const r = await run({ script: async () => {} });
   const meta = r.job.result.meta;
