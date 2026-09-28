@@ -13,6 +13,7 @@ const PRESETS: Record<string, { label: string; url: string }> = {
   ollama: { label: 'Ollama', url: 'http://host.docker.internal:11434/v1' },
   lmstudio: { label: 'LM Studio', url: 'http://host.docker.internal:1234/v1' },
   lemonade: { label: 'Lemonade', url: 'http://host.docker.internal:13305/v1' },
+  nvidia: { label: 'NVIDIA Build (free trial)', url: 'https://integrate.api.nvidia.com/v1' },
 };
 
 export interface ProviderFormProps {
@@ -91,6 +92,7 @@ export function ProviderForm({
         <option value="ollama">Ollama</option>
         <option value="lmstudio">LM Studio</option>
         <option value="lemonade">Lemonade</option>
+        <option value="nvidia">NVIDIA Build (free trial)</option>
       </select>
       <input
         className="modal-input"
@@ -122,6 +124,7 @@ export function ProviderForm({
         value={defaultModel}
         onChange={(e) => setDefaultModel(e.target.value)}
       />
+      {/nvidia\.com(?::\d+)?(?:\/|$)/i.test(baseUrl.replace(/^https?:\/\//i, '')) && <p className="route-note">{t('providers.form.nvidiaNote')}</p>}
       {allowShared && (
         <label className="route-note">
           <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} /> {t('providers.form.shared')}
