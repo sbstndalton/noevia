@@ -92,3 +92,41 @@ test('a weight may come from a --*-weight token, which is itself held to four st
   assert.deepEqual(rules(':root { --display-weight: 450; }'), ['font-weight']);
   assert.deepEqual(rules('h1 { font-weight: var(--anything); }'), ['font-weight']);
 });
+
+// #529: every corner in component CSS comes from the family's shape tokens, so one theme cannot
+// mix a hard-coded 24px composer with 20px sheets. Only square, circle, pill and inherit are
+// literal; tokens.css and themes.css define the tokens.
+test('border-radius reads a --radius-* token; 0, 50%, 999px and inherit are the only literals', () => {
+  const rules = (css, file = 'src/styles/a.css') => lint(css, file).map((f) => f.rule);
+  for (const ok of ['var(--radius-control)', 'var(--radius-surface) var(--radius-surface) 0 0', '0', '50%', '999px', 'inherit',
+    'var(--radius-pill)', 'max(4px, calc(var(--radius-overlay) - 6px))', 'calc(var(--radius-overlay) - 4px)', 'var(--radius-control) !important']) {
+    assert.deepEqual(rules(`.x { border-radius: ${ok}; }`), [], ok);
+  }
+  assert.deepEqual(rules('.composer { border-radius: 24px; }'), ['radius-token']);
+  assert.deepEqual(rules('.chip { padding: 0 9px; border-radius: 10px; background: none; }'), ['radius-token']);
+  assert.deepEqual(rules('.bar { border-radius: 0 4px 4px 0; }'), ['radius-token']);
+  assert.deepEqual(rules('.tab::after { border-radius: 3px 3px 0 0; }'), ['radius-token']);
+  assert.deepEqual(rules('.x { border-radius: 1rem; }'), ['radius-token']);
+  assert.deepEqual(rules('.x { border-top-left-radius: 6px; }'), ['radius-token']);
+  assert.deepEqual(rules('.x { border-start-end-radius: 6px; }'), ['radius-token']);
+  // A literal fallback pins one family's corner wherever the token is missing.
+  assert.deepEqual(rules('.x { border-radius: var(--radius-control, 8px); }'), ['radius-token']);
+  // A calc() that is not built on a shape token is still a hard-coded corner.
+  assert.deepEqual(rules('.x { border-radius: calc(8px + 2px); }'), ['radius-token']);
+  assert.deepEqual(rules('.x { border-radius: var(--my-corner); }'), ['radius-token']);
+  // Token definitions, custom properties named *-radius and non-CSS files are out of scope.
+  assert.deepEqual(rules('[data-family=\'glass\'] { --radius-control: 12px; }', 'src/styles/themes.css'), []);
+  assert.deepEqual(rules('.x { border-radius: 12px; }', 'src/styles/tokens.css'), []);
+  assert.deepEqual(rules('.x { --thumb-radius: 12px; }'), []);
+  assert.deepEqual(rules('.x { border-radius: 12px; }', 'x.tsx'), []);
+  assert.deepEqual(rules('/* design-lint: allow radius-token — a deliberate case */\n.x { border-radius: 3px; }'), []);
+});
+
+test('every component stylesheet in src/ keeps its corners on the shape tokens', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const dir = path.join(__dirname, '../src');
+  const css = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.css'));
+  assert.ok(css.includes(path.join('styles', 'space-tiers.css')) && css.includes(path.join('styles', 'phone.css')), 'scans the tier and phone sheets');
+  const findings = css.flatMap((f) => lint(fs.readFileSync(path.join(dir, f), 'utf8'), f)).filter((f) => f.rule === 'radius-token');
+  assert.deepEqual(findings.map((f) => `${f.file}:${f.line} ${f.message}`), []);
+});
