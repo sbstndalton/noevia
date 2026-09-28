@@ -74,7 +74,7 @@ test('ordered script commits KV, context, drafting and batch with measured evide
   assert.equal((await f.manager.autotune.start('synthetic', { confirmPause: true })).status, 202);
   const j = await finished(f.manager), item = j.models[0];
   assert.equal(j.status, 'passed', j.error);
-  assert.deepEqual(item.phases.map(p => [p.id, p.status]), [['kv','passed'],['context','passed'],['drafting','passed'],['batch','passed']]);
+  assert.deepEqual(item.phases.map(p => [p.id, p.status]), [['sampling','passed'],['kv','passed'],['context','passed'],['drafting','passed'],['batch','passed']]);
   assert.equal(item.result.kv, 'q8_0'); assert.equal(item.result.spec, 'mtp-deep');
   assert.equal(item.result.context, 16384); assert.equal(item.result.acceptance, 65);
   assert.equal(item.result.generation, 60);
@@ -381,7 +381,7 @@ test('final saved-profile quality failure does not publish a successful tune', a
   await f.manager.autotune.start('synthetic', { confirmPause: true });
   const j = await finished(f.manager);
   assert.equal(j.status, 'failed');
-  assert.deepEqual(j.models[0].phases.map(p => p.status), ['passed','passed','passed','passed']);
+  assert.deepEqual(j.models[0].phases.map(p => p.status), ['passed','passed','passed','passed','passed']);
   assert.equal(j.models[0].result, undefined);
   assert.equal(f.manager.autotune.status('synthetic').body.history.length, 0);
   assert.deepEqual((await f.manager.autotune.untuned()).body.models, ['synthetic']);
@@ -506,4 +506,66 @@ test('KV floor override env var is off by default (no override, no q4_0 candidat
   await f.manager.autotune.start('synthetic', { confirmPause: true });
   const j = await finished(f.manager), item = j.models[0];
   assert.ok(!phase(item, 'kv').steps.some(s => s.id === 'q4_0'));
+});
+
+test('sampling step skips with a reason when no family or card recommends values', async t => {
+  const f = fixture(t);
+  await f.manager.autotune.start('synthetic', { confirmPause: true });
+  const item = (await finished(f.manager)).models[0], p = phase(item, 'sampling');
+  assert.equal(p.status, 'passed'); assert.equal(p.value.skipped, true);
+  assert.equal(p.steps[0].status, 'skipped'); assert.equal(item.result.sampling.skipped, true);
+  for (const k of ['temp', 'top-p', 'top-k', 'min-p', 'repeat-penalty']) assert.equal(f.options('synthetic')[k], undefined);
+});
+
+test('sampling step applies the family recommendation through the preset write path and records its source', async t => {
+  const f = fixture(t, { models: ['Qwen3-8B-Instruct'] });
+  await f.manager.autotune.start('Qwen3-8B-Instruct', { confirmPause: true });
+  const j = await finished(f.manager), item = j.models[0], p = phase(item, 'sampling');
+  assert.equal(j.status, 'passed', j.error);
+  const o = f.options('Qwen3-8B-Instruct');
+  assert.equal(o.temp, '0.6');
+  assert.deepEqual([o['top-p'], o['top-k'], o['min-p']], ['0.95', '20', '0']);
+  assert.equal(p.value.applied, true); assert.equal(p.value.tier, 'family'); assert.equal(p.value.family, 'qwen3');
+  assert.match(p.value.source, /Qwen3 family table/);
+  assert.equal(item.result.sampling.tier, 'family');
+  // The later phases keep the sampling keys they did not touch.
+  assert.equal(o['cache-type-k'], 'q8_0');
+});
+
+test('sampling step restores models.ini exactly and stops when the sampled profile fails its quality probes', async t => {
+  const f = fixture(t, { models: ['Qwen3-8B-Instruct'], rejectAll: true });
+  await f.manager.autotune.start('Qwen3-8B-Instruct', { confirmPause: true });
+  const j = await finished(f.manager), item = j.models[0], p = phase(item, 'sampling');
+  assert.equal(j.status, 'failed');
+  assert.equal(p.status, 'failed'); assert.equal(p.restored, true);
+  assert.equal(fs.readFileSync(f.ini, 'utf8'), f.original);
+  assert.equal(phase(item, 'kv').status, 'pending');
+});
+
+test('sampling step never overwrites sampling an operator already set, per model or in the defaults', async t => {
+  for (const [label, edit] of [
+    ['model', text => text.replace('parallel = 1', 'parallel = 1\ntemp = 0.3')],
+    ['defaults', text => text.replace('version = 1\n', 'version = 1\n[*]\ntop-k = 40\n')],
+  ]) {
+    const f = fixture(t, { models: ['Qwen3-8B-Instruct'] });
+    const edited = edit(f.original); assert.notEqual(edited, f.original, label);
+    fs.writeFileSync(f.ini, edited);
+    const start = await f.manager.autotune.start('Qwen3-8B-Instruct', { confirmPause: true });
+    assert.equal(start.status, 202, label);
+    const j = await finished(f.manager), p = phase(j.models[0], 'sampling');
+    assert.equal(j.status, 'passed', j.error);
+    assert.equal(p.value.skipped, true, label); assert.match(p.value.reason, /already set/);
+    assert.equal(f.options('Qwen3-8B-Instruct')['top-p'], undefined, label);
+  }
+});
+
+test('shared family table drives the gpt-oss reasoning budget, and its sampling is applied too', async t => {
+  const f = fixture(t, { models: ['gpt-oss-20b'] });
+  await f.manager.autotune.start('gpt-oss-20b', { confirmPause: true });
+  const j = await finished(f.manager);
+  assert.equal(j.status, 'passed', j.error);
+  assert.equal(phase(j.models[0], 'sampling').value.family, 'gpt-oss');
+  assert.equal(f.options('gpt-oss-20b').temp, '1');
+  const probes = f.requests.filter(r => QUALITY.some(q => q.prompt === r.prompt));
+  assert.ok(probes.length > 0 && probes.every(r => r.reasoningEffort === 'low' && r.maxTokens === 512));
 });

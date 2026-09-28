@@ -61,7 +61,7 @@ test('tune duration grows with model size and stays a range',()=>{
   const small=g.tuneMinutes(2.5),big=g.tuneMinutes(12);
   assert.ok(small.low<small.high&&big.low<big.high);assert.ok(big.high>small.high);
   assert.ok(small.low>=5);assert.deepEqual(g.tuneMinutes(null),g.tuneMinutes(8));
-  assert.deepEqual(g.TUNE_STEPS.map(s=>s.id),['kv','context','drafting','batch']);
+  assert.deepEqual(g.TUNE_STEPS.map(s=>s.id),['sampling','kv','context','drafting','batch']);
 });
 
 test('roles: Laya is routing, embed/rerank excluded from the prompt suite, vision is chat',()=>{
@@ -109,4 +109,14 @@ test('the model manager phrases every recommendation kind exactly like guided.ts
   for(const [inputs,budget] of cases){const rec=g.recommend(inputs,budget);kinds.add(rec.kind+(rec.verdict||rec.reason||(rec.moe?'moe':'')));assert.equal(say(rec,budget),rec.text);}
   assert.ok(kinds.size>=5,[...kinds].join());
   assert.match(core.translate('en-GB','mm.fit.rec.smaller',{floor:1,budget:2}),/quantisation/);
+});
+
+test('tuning pre-flight lists the sampling step first and formats the recommended values in a fixed order (#308)',()=>{
+  assert.equal(g.TUNE_STEPS[0].id,'sampling');
+  const plan=g.parseSamplingPlan({tier:'family',source:'Qwen3 family table',values:{top_k:20,temperature:0.6,min_p:0,top_p:0.95,junk:1,repeat_penalty:'x'},family:'qwen3',note:'thinking-mode values'});
+  assert.deepEqual(g.samplingValueList(plan),['temperature 0.6','top_p 0.95','top_k 20','min_p 0']);
+  assert.equal(plan.family,'qwen3');assert.equal(plan.note,'thinking-mode values');
+  assert.deepEqual(g.samplingValueList(g.parseSamplingPlan({tier:'preset',source:'Task preset: general',values:{}})),[]);
+  for(const bad of [null,undefined,{},{tier:'guess',source:'x',values:{}},{tier:'family',values:{}},{tier:'family',source:'x'},'text'])assert.equal(g.parseSamplingPlan(bad),null,JSON.stringify(bad));
+  assert.deepEqual(g.samplingValueList(null),[]);
 });
