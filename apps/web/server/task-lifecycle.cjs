@@ -9,6 +9,20 @@
 //
 // Offline, no model calls, no UI. See docs/spec-agent-execution.md and the #511 fit-gap
 // analysis: "lifecycle lacks planned/verifying/reviewing/changes_requested/merged/blocked".
+//
+// Honesty constraint (2026-09-28 review, #522): today's job kinds (chat, code, browser,
+// research, source) have no real reviewer and no real merge step — `approval.requested` /
+// `approval.decided` are the per-tool-call write-approval gate (a human clicking Allow/Decline
+// on one command), not a task-level code review, and `job.completed` just means the harness
+// finished, not that anyone reviewed or merged the result. The derivation below therefore
+// never reaches `reviewing`, `changes_requested` or `merged` from today's real event stream —
+// it only reaches `planned`, `implementing`, `verifying` and `blocked`. The full transition
+// table below still defines the review/merge states and the legal moves into and out of them,
+// so `transition()` keeps working for a future caller that has a real review/merge feature:
+// such a caller opts in by setting an explicit `review: true` (on `approval.requested` /
+// `approval.decided`) or `merged: true` (on `job.completed`) flag in the event's `data`, which
+// nothing in this codebase does today. Until that exists, those three states are reachable only
+// from tests exercising this module directly, by design.
 
 const STATES = Object.freeze([
   'planned',
@@ -23,7 +37,9 @@ const STATE_SET = new Set(STATES);
 const INITIAL_STATE = 'planned';
 
 // Guarded transition table: the only legal moves. `merged` is terminal (no outgoing edges).
-// Anything not listed here is illegal and `transition()` throws for it.
+// Anything not listed here is illegal and `transition()` throws for it. `reviewing`,
+// `changes_requested` and `merged` are part of this table for a future real review/merge
+// feature to drive (see the module header); today's derivation never targets them.
 const TRANSITIONS = Object.freeze({
   planned: Object.freeze(['implementing', 'blocked']),
   implementing: Object.freeze(['verifying', 'reviewing', 'merged', 'blocked']),
@@ -67,16 +83,18 @@ function transition(from, to) {
   return to;
 }
 
-// Caller-chosen `progress` stage tokens that this layer treats as meaningful. Any other
-// stage string (the vast majority of existing job kinds use free-text stages for UI
-// display) is ignored here, exactly as before this module existed.
-const CANONICAL_STAGES = new Set(['implementing', 'verifying', 'reviewing']);
+// Caller-chosen `progress` stage tokens this layer treats as meaningful. Deliberately does
+// NOT include 'reviewing': a free-text progress stage is never treated as evidence that a
+// real review happened. Any other stage string (the vast majority of existing job kinds use
+// free-text stages for UI display) is ignored here, exactly as before this module existed.
+const CANONICAL_STAGES = new Set(['implementing', 'verifying']);
 
 // Decision strings observed across existing approval call sites (approvals.cjs uses
 // approve/deny/approve_all; browser-service/code-harness relay whatever askApproval
 // resolves to, including 'denied' for an automatic policy refusal, and 'aborted' for a
-// cancelled wait). Anything not recognized as an approval is treated as a decline: a
-// vision-layer reviewer should never silently treat an unrecognized answer as "approved".
+// cancelled wait). Only consulted for an event explicitly marked `review: true` (see module
+// header) — today nothing sets that flag, so this table is exercised only by tests until a
+// real reviewer exists.
 const APPROVE_DECISIONS = new Set(['approve', 'approve_all', 'allow', 'allow_once', 'allowed']);
 
 function isApproved(decision) {
@@ -84,12 +102,23 @@ function isApproved(decision) {
 }
 
 // One step of the fold: applies a single existing jobs.cjs journal event to a lifecycle
-// state and returns the next state. Unrecognized/irrelevant event types (step.*, tool.*,
-// artifact.created, checkpoint.created, tool.uncertain, plan.*, assistant.output, and
-// `progress` events with a non-canonical stage) are no-ops, by design: most existing job
-// kinds never touch review/verification concepts and must keep deriving a harmless state
-// instead of throwing.
-function applyEvent(state, event) {
+// state and returns the next state. Exported as a low-level primitive so a caller that
+// already loops over a job's events once (jobs.cjs's own `derive()`) can fold the lifecycle
+// in that same pass instead of re-reading the journal a second time.
+//
+// - `job.created` / unrecognized types (step.*, tool.*, artifact.created, checkpoint.created,
+//   tool.uncertain, plan.*, assistant.output) are no-ops.
+// - `job.started` moves to `implementing`.
+// - `progress` only acts on the canonical stages above.
+// - `approval.requested` / `approval.decided` are today's per-tool-call write-approval gate,
+//   not a task-level review: they are no-ops UNLESS the event's data explicitly opts in with
+//   `review: true`, in which case a request moves to `reviewing` and a decision resolves it —
+//   approved back to `implementing`, declined to `changes_requested`.
+// - `job.completed` means the harness finished, not that anyone reviewed or merged it: it
+//   moves to `verifying`, UNLESS the event's data explicitly opts in with `merged: true`, in
+//   which case it moves to `merged`.
+// - `job.failed` / `job.cancelled` / `job.interrupted` all move to `blocked`.
+function step(state, event) {
   if (!event || typeof event.type !== 'string') return state;
   const data = event.data || {};
   switch (event.type) {
@@ -100,11 +129,11 @@ function applyEvent(state, event) {
     case 'progress':
       return CANONICAL_STAGES.has(data.stage) ? advance(state, data.stage) : state;
     case 'approval.requested':
-      return advance(state, 'reviewing');
+      return data.review === true ? advance(state, 'reviewing') : state;
     case 'approval.decided':
-      return advance(state, isApproved(data.decision) ? 'implementing' : 'changes_requested');
+      return data.review === true ? advance(state, isApproved(data.decision) ? 'implementing' : 'changes_requested') : state;
     case 'job.completed':
-      return advance(state, 'merged');
+      return advance(state, data.merged === true ? 'merged' : 'verifying');
     case 'job.failed':
     case 'job.cancelled':
     case 'job.interrupted':
@@ -134,7 +163,7 @@ function advance(from, to) {
 function foldEvents(events, fromState = INITIAL_STATE) {
   assertKnownState(fromState, 'fromState');
   let state = fromState;
-  for (const event of events || []) state = applyEvent(state, event);
+  for (const event of events || []) state = step(state, event);
   return state;
 }
 
@@ -164,6 +193,7 @@ module.exports = {
   TaskLifecycleError,
   canTransition,
   transition,
+  step,
   foldEvents,
   deriveLifecycle,
   safeDeriveLifecycle,

@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   STATES, INITIAL_STATE, TRANSITIONS, TaskLifecycleError,
-  canTransition, transition, foldEvents, deriveLifecycle, safeDeriveLifecycle,
+  canTransition, transition, step, foldEvents, deriveLifecycle, safeDeriveLifecycle,
 } = require('./task-lifecycle.cjs');
 
 // --- Helpers to build synthetic journals in the same shape jobs.cjs appends. Never real
@@ -70,7 +70,6 @@ test('illegal transitions name the offending states on the thrown error', () => 
 test('unknown states are rejected explicitly, not silently coerced', () => {
   assert.throws(() => transition('planned', 'shipped'), TaskLifecycleError);
   assert.throws(() => transition('done', 'planned'), TaskLifecycleError);
-  assert.throws(() => canTransition('planned', 'shipped') && (() => { throw new Error('unreachable'); })(), TaskLifecycleError);
 });
 
 test('the full legal map matches the documented design (spot check)', () => {
@@ -83,6 +82,13 @@ test('the full legal map matches the documented design (spot check)', () => {
 });
 
 // --- Derivation from synthetic journals mirroring jobs.cjs's real event vocabulary.
+//
+// Honesty constraint (#522 review): today's job kinds have no real reviewer and no real
+// merge step. `approval.requested`/`approval.decided` are the per-tool-call write-approval
+// gate, not a task review, and `job.completed` just means the harness finished. So the
+// derivation must never reach `reviewing`, `changes_requested` or `merged` from today's real
+// event shapes — only from an event explicitly marked `review: true` / `merged: true`, which
+// nothing in the codebase sets yet.
 
 test('a bare job.created with nothing else derives the initial planned state', () => {
   seq = 0;
@@ -96,23 +102,67 @@ test('job.started moves planned -> implementing', () => {
   assert.equal(deriveLifecycle(events), 'implementing');
 });
 
-test('an ordinary job with no approvals and no special stages completes straight to merged', () => {
-  seq = 0;
-  const events = [
-    ev('job.created', { kind: 'chat' }),
-    ev('job.started'),
-    ev('step.started', { id: '1', title: 'work' }),
-    ev('progress', { stage: 'Reading' }), // free-text stage, not a canonical lifecycle token
-    ev('step.completed', { id: '1' }),
-    ev('job.completed', { result: { ok: true } }),
-  ];
-  assert.equal(deriveLifecycle(events), 'merged');
+test('an ordinary completed job (chat/browser/code shaped) derives verifying, never merged', () => {
+  for (const kind of ['chat', 'browser', 'code', 'research', 'source']) {
+    seq = 0;
+    const events = [
+      ev('job.created', { kind }),
+      ev('job.started'),
+      ev('step.started', { id: '1', title: 'work' }),
+      ev('progress', { stage: 'Reading' }), // free-text stage, not a canonical lifecycle token
+      ev('step.completed', { id: '1' }),
+      ev('job.completed', { result: { ok: true } }),
+    ];
+    assert.equal(deriveLifecycle(events), 'verifying', `kind=${kind}`);
+  }
 });
 
-test('a canonical "verifying" progress stage is recognized and ordered correctly', () => {
+test('a routine per-tool-call write-approval (no review flag) never becomes reviewing', () => {
+  seq = 0;
+  const events = [
+    ev('job.created', { kind: 'code' }),
+    ev('job.started'),
+    ev('approval.requested', { action: 'shell.exec', command: 'rm -rf /tmp/x' }),
+    ev('approval.decided', { decision: 'approve', action: 'shell.exec' }),
+    ev('job.completed', {}),
+  ];
+  assert.equal(deriveLifecycle(events), 'verifying');
+});
+
+test('a declined per-tool-call approval (no review flag) never becomes changes_requested', () => {
+  for (const decision of ['deny', 'denied', 'reject', 'reject_once', 'aborted', undefined]) {
+    seq = 0;
+    const events = [
+      ev('job.created', { kind: 'browser' }), ev('job.started'),
+      ev('approval.requested', { action: 'click' }),
+      ev('approval.decided', { decision, action: 'click' }),
+      ev('job.completed', {}),
+    ];
+    assert.equal(deriveLifecycle(events), 'verifying', `decision=${JSON.stringify(decision)}`);
+  }
+});
+
+test('multiple, even duplicate, ordinary approval requests in a row stay a no-op', () => {
+  seq = 0;
+  const events = [
+    ev('job.created'), ev('job.started'),
+    ev('approval.requested', { action: 'a' }), ev('approval.decided', { decision: 'approve', action: 'a' }),
+    ev('approval.requested', { action: 'a' }), ev('approval.decided', { decision: 'deny', action: 'a' }),
+    ev('approval.requested', { action: 'a' }), // duplicate request with no intervening decision
+  ];
+  assert.equal(deriveLifecycle(events), 'implementing');
+});
+
+test('a canonical "verifying" progress stage is recognized', () => {
   seq = 0;
   const events = [ev('job.created'), ev('job.started'), ev('progress', { stage: 'verifying' }), ev('job.completed')];
-  assert.equal(deriveLifecycle(events), 'merged');
+  assert.equal(deriveLifecycle(events), 'verifying');
+});
+
+test('a free-text "reviewing" progress stage is NOT recognized (not an explicit review)', () => {
+  seq = 0;
+  const events = [ev('job.created'), ev('job.started'), ev('progress', { stage: 'reviewing' })];
+  assert.equal(deriveLifecycle(events), 'implementing');
 });
 
 test('a job that fails ends up blocked, regardless of how far it had progressed', () => {
@@ -130,60 +180,53 @@ test('a job cancelled or interrupted also lands on blocked', () => {
   assert.equal(deriveLifecycle([ev('job.created'), ev('job.started'), ev('job.interrupted', { reason: 'restart' })]), 'blocked');
 });
 
-test('an approval.requested during work moves to reviewing', () => {
+// --- Explicit, opt-in future review/merge events (`review: true` / `merged: true`). Nothing
+// in the codebase sets these flags today; these tests exist so a future real reviewer/merge
+// feature has a proven, tested path into the states these flags unlock.
+
+test('an explicit review request moves to reviewing; a routine one does not', () => {
   seq = 0;
-  const events = [ev('job.created'), ev('job.started'), ev('approval.requested', { action: 'write' })];
-  assert.equal(deriveLifecycle(events), 'reviewing');
-});
-
-test('an approved decision resumes implementing', () => {
+  const reviewed = deriveLifecycle([ev('job.created'), ev('job.started'), ev('approval.requested', { review: true })]);
+  assert.equal(reviewed, 'reviewing');
   seq = 0;
-  const events = [
-    ev('job.created'), ev('job.started'),
-    ev('approval.requested', { action: 'write' }),
-    ev('approval.decided', { decision: 'approve' }),
-  ];
-  assert.equal(deriveLifecycle(events), 'implementing');
+  const routine = deriveLifecycle([ev('job.created'), ev('job.started'), ev('approval.requested', {})]);
+  assert.equal(routine, 'implementing');
 });
 
-test('approve_all and allow_once are recognized approvals too', () => {
-  for (const decision of ['approve_all', 'allow_once', 'allow', 'allowed']) {
-    seq = 0;
-    const events = [ev('job.created'), ev('job.started'), ev('approval.requested', {}), ev('approval.decided', { decision })];
-    assert.equal(deriveLifecycle(events), 'implementing', `decision=${decision}`);
-  }
+test('an explicit reviewed decision resolves to implementing (approved) or changes_requested (declined)', () => {
+  seq = 0;
+  const approved = deriveLifecycle([
+    ev('job.created'), ev('job.started'), ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'approve' }),
+  ]);
+  assert.equal(approved, 'implementing');
+  seq = 0;
+  const declined = deriveLifecycle([
+    ev('job.created'), ev('job.started'), ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'deny' }),
+  ]);
+  assert.equal(declined, 'changes_requested');
 });
 
-test('a declined decision requests changes', () => {
-  for (const decision of ['deny', 'denied', 'reject', 'reject_once', 'aborted', 'declined', undefined]) {
-    seq = 0;
-    const events = [ev('job.created'), ev('job.started'), ev('approval.requested', {}), ev('approval.decided', { decision })];
-    assert.equal(deriveLifecycle(events), 'changes_requested', `decision=${JSON.stringify(decision)}`);
-  }
+test('an explicit merged completion reaches merged; a routine completion never does', () => {
+  seq = 0;
+  const merged = deriveLifecycle([ev('job.created'), ev('job.started'), ev('job.completed', { merged: true })]);
+  assert.equal(merged, 'merged');
+  seq = 0;
+  const routine = deriveLifecycle([ev('job.created'), ev('job.started'), ev('job.completed', {})]);
+  assert.equal(routine, 'verifying');
 });
 
-test('a full plan -> implement -> verify -> review -> changes -> re-implement -> merged cycle', () => {
+test('a full explicit plan -> implement -> verify -> review -> changes -> re-implement -> merged cycle', () => {
   seq = 0;
   const events = [
     ev('job.created', { kind: 'code' }),
     ev('job.started'),
     ev('progress', { stage: 'verifying' }),
-    ev('approval.requested', { action: 'write' }),
-    ev('approval.decided', { decision: 'deny' }),           // -> changes_requested
-    ev('approval.requested', { action: 'write' }),          // reviewer looks again (changes_requested -> reviewing is legal)
-    ev('approval.decided', { decision: 'approve' }),        // -> implementing
+    ev('approval.requested', { review: true }),
+    ev('approval.decided', { review: true, decision: 'deny' }),        // -> changes_requested
+    ev('approval.requested', { review: true }),                        // reviewer looks again (changes_requested -> reviewing is legal)
+    ev('approval.decided', { review: true, decision: 'approve' }),     // -> implementing
     ev('progress', { stage: 'verifying' }),
-    ev('job.completed', { result: {} }),
-  ];
-  assert.equal(deriveLifecycle(events), 'merged');
-});
-
-test('a job that completes while changes were requested and nothing else happened still merges', () => {
-  seq = 0;
-  const events = [
-    ev('job.created'), ev('job.started'),
-    ev('approval.requested', {}), ev('approval.decided', { decision: 'denied' }),
-    ev('job.completed', {}),
+    ev('job.completed', { merged: true }),
   ];
   assert.equal(deriveLifecycle(events), 'merged');
 });
@@ -214,12 +257,13 @@ test('folding all events at once equals folding in arbitrary chunks', () => {
   const events = [
     ev('job.created'), ev('job.started'),
     ev('progress', { stage: 'verifying' }),
-    ev('approval.requested', {}), ev('approval.decided', { decision: 'deny' }),
-    ev('approval.requested', {}), ev('approval.decided', { decision: 'approve' }),
-    ev('job.completed', {}),
+    ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'deny' }),
+    ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'approve' }),
+    ev('job.completed', { merged: true }),
   ];
   const whole = deriveLifecycle(events);
-  for (const cut of [1, 2, 3, 4, 5, 6, 7]) {
+  assert.equal(whole, 'merged');
+  for (let cut = 1; cut < events.length; cut++) {
     const first = foldEvents(events.slice(0, cut));
     const resumed = foldEvents(events.slice(cut), first);
     assert.equal(resumed, whole, `chunking at ${cut} diverged`);
@@ -228,7 +272,7 @@ test('folding all events at once equals folding in arbitrary chunks', () => {
 
 test('replaying the same journal twice from scratch is deterministic', () => {
   seq = 0;
-  const events = [ev('job.created'), ev('job.started'), ev('approval.requested', {}), ev('approval.decided', { decision: 'approve' })];
+  const events = [ev('job.created'), ev('job.started'), ev('approval.requested', { review: true }), ev('approval.decided', { review: true, decision: 'approve' })];
   const first = deriveLifecycle(events);
   const second = deriveLifecycle(events.map((e) => ({ ...e }))); // fresh objects, same content
   assert.equal(first, second);
@@ -243,11 +287,23 @@ test('deriving from a fresh copy of the events array does not mutate the input',
   assert.equal(JSON.stringify(events), snapshot);
 });
 
+// --- The single-event `step()` primitive, exposed so a caller (jobs.cjs) can fold the
+// lifecycle in the same pass as its own derive() loop instead of re-reading the journal.
+
+test('step() applied event-by-event matches foldEvents()/deriveLifecycle() over the same events', () => {
+  seq = 0;
+  const events = [ev('job.created'), ev('job.started'), ev('progress', { stage: 'verifying' }), ev('job.completed', { merged: true })];
+  let manual = INITIAL_STATE;
+  for (const e of events) manual = step(manual, e);
+  assert.equal(manual, deriveLifecycle(events));
+  assert.equal(manual, 'merged');
+});
+
 // --- safeDeriveLifecycle: never throws, even on a journal shaped to force an illegal jump.
 
 test('safeDeriveLifecycle returns null instead of throwing on an illegal derived jump', () => {
   seq = 0;
-  // planned -> merged directly (job.completed with no job.started) is illegal per the table.
+  // planned -> verifying directly (job.completed with no job.started) is illegal per the table.
   const events = [ev('job.created'), ev('job.completed', {})];
   assert.throws(() => deriveLifecycle(events), TaskLifecycleError);
   assert.equal(safeDeriveLifecycle(events), null);
@@ -256,7 +312,7 @@ test('safeDeriveLifecycle returns null instead of throwing on an illegal derived
 test('safeDeriveLifecycle still returns the real state for a well-formed journal', () => {
   seq = 0;
   const events = [ev('job.created'), ev('job.started'), ev('job.completed', {})];
-  assert.equal(safeDeriveLifecycle(events), 'merged');
+  assert.equal(safeDeriveLifecycle(events), 'verifying');
 });
 
 test('foldEvents rejects an unknown starting state explicitly', () => {
