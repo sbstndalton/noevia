@@ -16,6 +16,9 @@ const TURN_BOX_CAP = 20;
  */
 function requestShapeError(body) {
   if (body.mode !== undefined && !MODES.has(body.mode)) return { status: 400, error: 'mode must be "chat" or "cowork"' };
+  // A pinned Skill (#272) is resolved by the chat loop; Cowork tasks do not carry one yet, and a
+  // pin must never be dropped silently.
+  if (body.skill !== undefined && body.skill !== null && body.mode === 'cowork') return { status: 400, error: 'A pinned Skill applies to chat turns only; Cowork tasks do not accept one yet.' };
   if (body.turnToolboxes !== undefined) {
     const v = body.turnToolboxes;
     if (!Array.isArray(v) || v.length > TURN_BOX_CAP || v.some((id) => typeof id !== 'string' || !id || id.length > 80)) {
