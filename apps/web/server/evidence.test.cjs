@@ -148,6 +148,51 @@ test('a task’s revision never repeats, even once compaction drops the record t
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('a corrupt revisions sidecar is rebuilt from the log, never silently treated as empty', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-evidence-corrupt-sidecar-'));
+  try {
+    const store = ev.createStore(dir);
+    store.append({ taskId: 't1', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    store.append({ taskId: 't1', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    store.append({ taskId: 't2', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    // Corrupt the sidecar by hand: truncated JSON, the kind a crash mid-write could leave.
+    const sidecar = path.join(dir, 'evidence-task-revisions.json');
+    fs.writeFileSync(sidecar, '{"t1": 2, "t2":', { mode: 0o600 });
+    // The next append for t2 must not silently treat the corrupt file as empty (which would
+    // reissue t2's already-used revision 1) or erase t1's mark from the rebuilt file.
+    const next = store.append({ taskId: 't2', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    assert.equal(next.revision, 2, 't2 continues from what the log itself still shows');
+    const rebuilt = JSON.parse(fs.readFileSync(sidecar, 'utf8'));
+    assert.deepEqual(rebuilt, { t1: 2, t2: 2 }, 't1’s high-water mark survived the corruption, rebuilt from the log');
+    // And t1's own next revision is unaffected — nothing was lost.
+    const t1next = store.append({ taskId: 't1', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    assert.equal(t1next.revision, 3);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a sidecar that parses to null, an array or a bare number is rejected the same as corrupt JSON', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-evidence-bad-sidecar-'));
+  try {
+    const store = ev.createStore(dir);
+    store.append({ taskId: 't1', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    const sidecar = path.join(dir, 'evidence-task-revisions.json');
+    for (const bad of ['null', '[1,2,3]', '42', '"just a string"']) {
+      fs.writeFileSync(sidecar, bad, { mode: 0o600 });
+      const next = store.append({ taskId: 't1', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+      assert.ok(next.revision > 1, `revision still advances past what the log shows for ${bad}`);
+    }
+    // Values of the wrong shape inside an otherwise-plain object are dropped, not trusted.
+    fs.writeFileSync(sidecar, JSON.stringify({ t1: 'not-a-number', t2: -5, t3: 4.5, t4: 9 }), { mode: 0o600 });
+    const next = store.append({ taskId: 't2', model: 'm', category: 'vision', identityHash: 'h', result: 'passed', value: null });
+    // t2's bad entry (-5) is dropped; the log itself already shows t2 has never been used here,
+    // so its true next revision is computed from scratch, not from the rejected -5.
+    assert.equal(next.revision, 1);
+    const after = JSON.parse(fs.readFileSync(sidecar, 'utf8'));
+    assert.equal(after.t3, undefined, 'a non-integer value is dropped, not carried forward');
+    assert.equal(after.t4, 9, 'a valid entry alongside bad ones is preserved');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the evidence log stays bounded and keeps the newest records per model, category and identity', () => {
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const { createStore } = require('./evidence.cjs');

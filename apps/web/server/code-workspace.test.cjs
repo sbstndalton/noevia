@@ -670,21 +670,20 @@ test('claim on an empty repository (no commits yet) records base and head as nul
   assert.equal(ws.headSha(ids(1)), null);
 });
 
-test('headSha trusts the task’s own tree once it is handed to another user, the same way trust() already covers the source repository', () => {
-  // Real chown is faked out (as in the other owner tests: this suite does not run as root), but
-  // the "dubious ownership" refusal itself is simulated faithfully — including reading the SAME
-  // trust file `trust()` writes — so this fails without the fix (headSha() reads the tree
-  // directly) and passes once headSha() trusts the tree before reading it.
+test('headSha never trusts or reads an owner-held tree live, and the trust file is left untouched', () => {
+  // Trusting an agent-owned tree here would lift git's "dubious ownership" refusal for a tree
+  // the harness fully controls: an agent could point .git/HEAD at a ref that is a symlink to a
+  // file only root can read, and have rev-parse hand its contents back as a "commit sha" — a
+  // real leak (another tenant's files, a secret), not a hypothetical one. So headSha() must
+  // neither trust nor even attempt to read the tree while an owner is recorded; the
+  // authoritative head only ever comes from branchHead(), read from the SOURCE repository once
+  // release() has reclaimed ownership.
   const repo = repoWith();
   const dir = temp('noevia-ws-');
   const trustFile = path.join(dir, 'code-workspaces', 'trusted-repositories.gitconfig');
-  let ownedTree = null;
+  const calls = [];
   const run = (args, cwd, env) => {
-    if (ownedTree && cwd && path.resolve(cwd) === ownedTree && sub(args) === 'rev-parse') {
-      let trusted = false;
-      try { trusted = fs.readFileSync(trustFile, 'utf8').includes(ownedTree); } catch { /* not trusted yet */ }
-      if (!trusted) throw Object.assign(Error('git failed'), { stderr: `fatal: detected dubious ownership in repository at '${ownedTree}'` });
-    }
+    calls.push({ args: [...args], cwd });
     return execFileSync('git', args, { cwd, env: { ...process.env, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000 }).trim();
   };
   // `owner` set (mode defaults to 'clone', matching CODE_HARNESS_USER in production); chown is
@@ -692,13 +691,14 @@ test('headSha trusts the task’s own tree once it is handed to another user, th
   const ws = createCodeWorkspaces({ dir, treeRoot: temp('noevia-shared-'), owner: { uid: 1000, gid: 1000 }, epoch: 'test', run, chown: () => {} });
   const claim = ws.claim({ taskId: ids(1), repoPath: repo });
   assert.equal(claim.mode, 'clone');
-  // Only now, after the claim itself succeeded, does the simulated refusal start applying to
-  // the tree — mirroring a real handover, which happens once the tree already exists.
-  ownedTree = fs.realpathSync(claim.path);
-  assert.equal(fs.readFileSync(trustFile, 'utf8').includes(ownedTree), false, 'the tree is not trusted yet');
-  const head = ws.headSha(ids(1));
-  assert.match(head, /^[0-9a-f]{40}$/, 'headSha still reads the commit despite the simulated ownership refusal');
-  assert.ok(fs.readFileSync(trustFile, 'utf8').includes(ownedTree), 'headSha trusted the tree before reading it');
+  const ownedTree = fs.realpathSync(claim.path);
+  const trustBefore = fs.readFileSync(trustFile, 'utf8');
+  assert.equal(trustBefore.includes(ownedTree), false, 'the tree was never trusted by claim() either');
+  calls.length = 0;
+  assert.equal(ws.headSha(ids(1)), null, 'an owner-held tree reports no live head at all');
+  assert.equal(calls.length, 0, 'no git call is made against the tree — not even to check it');
+  assert.equal(fs.readFileSync(trustFile, 'utf8'), trustBefore, 'the trust file is byte-for-byte unchanged');
+  assert.equal(fs.readFileSync(trustFile, 'utf8').includes(ownedTree), false, 'the tree is still never trusted');
 });
 
 test('headSha is null for a task id that never claimed a workspace', () => {

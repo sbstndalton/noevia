@@ -165,9 +165,18 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         // `ctx` is still valid here: jobs.run does not append the job's terminal event until this
         // whole function returns, which happens only after this `finally` completes.
         if (scope) {
-          ctx.checkpoint({ branch: workspace.branch, task: String(prompt).slice(0, 120),
-            identityHash: scope.identityHash, identity: scope.identity, meta,
-            baseSha: workspace.baseSha ?? null, headSha: releasedWorkspace?.headSha ?? null });
+          // Best-effort: this `finally` may already be unwinding a real error from the try
+          // block above (a `throw` inside a `finally` replaces it), and a full disk or a job
+          // already finished by a race is exactly the ordinary failure this append can hit. The
+          // task's true outcome — the result or the error the try block produced — must reach
+          // the caller either way; losing the corrected head is a lesser problem than that.
+          try {
+            ctx.checkpoint({ branch: workspace.branch, task: String(prompt).slice(0, 120),
+              identityHash: scope.identityHash, identity: scope.identity, meta,
+              baseSha: workspace.baseSha ?? null, headSha: releasedWorkspace?.headSha ?? null });
+          } catch (error) {
+            log({ at: now(), taskId, event: 'code.cleanup_failed', what: 'corrected checkpoint', error: String(error?.message || error) });
+          }
         }
       }
     }).catch(() => {

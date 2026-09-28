@@ -474,6 +474,43 @@ test('the recorded head matches the branch in the SOURCE repository even after a
   assert.notEqual(job.checkpoint.headSha, job.checkpoint.baseSha, 'the release-time auto-commit moved the branch past base');
 });
 
+test('a throw from the corrected, post-release checkpoint is caught and logged, never masking the job’s real outcome', async () => {
+  const dir = temp('noevia-hjobs-');
+  const realJobs = createJobs({ dir });
+  const workspaces = createCodeWorkspaces({ dir, epoch: 'test' });
+  const logs = [];
+  let checkpointCalls = 0;
+  // `ctx.checkpoint` is called exactly twice by code-harness.cjs: once at the very start (before
+  // anything can fail), and once — the corrected one this test targets — inside the `finally`
+  // after release(). Everything else (the mid-run snapshot) goes through `ctx.event`, untouched.
+  const jobs = { ...realJobs, run: (id, work) => realJobs.run(id, (ctx) => work({
+    ...ctx,
+    checkpoint: (data) => {
+      checkpointCalls++;
+      if (checkpointCalls === 2) throw new Error('disk full, simulated');
+      return ctx.checkpoint(data);
+    },
+  })) };
+  const harness = createCodeHarness({
+    jobs, workspaces, log: (entry) => logs.push(entry),
+    engine: () => ({ baseUrl: 'http://engine.test/v1', model: 'synthetic-coder', apiKey: null, contextTokens: 8192 }),
+    askApproval: async () => 'deny',
+  });
+  const started = await harness.start({
+    repoPath: repo(), prompt: 'fix',
+    connect: async () => ({ agent: {}, prompt: async () => ({ stopReason: 'end_turn' }) }),
+  });
+  for (let i = 0; i < 200 && !['completed', 'failed', 'cancelled'].includes(realJobs.get(started.taskId)?.status); i++) {
+    await new Promise((res) => setTimeout(res, 5));
+  }
+  const job = realJobs.get(started.taskId);
+  assert.equal(job.status, 'completed', 'the real outcome is delivered even though the corrected checkpoint failed');
+  assert.ok(job.result, 'the result the run actually produced is still recorded');
+  assert.ok(job.checkpoint, 'the earlier checkpoint is still on record — nothing is left with no checkpoint at all');
+  assert.ok(logs.some((l) => l.event === 'code.cleanup_failed' && l.what === 'corrected checkpoint' && /disk full, simulated/.test(l.error)),
+    'the failure is logged, not swallowed silently');
+});
+
 test('a silent harness produces an honest record rather than zeroes', async () => {
   const r = await run({ script: async () => {} });
   const meta = r.job.result.meta;

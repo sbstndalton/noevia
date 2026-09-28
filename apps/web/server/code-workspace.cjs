@@ -304,19 +304,22 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
   /**
    * The current commit at the head of the task's own branch, read from the worktree the code
    * already holds open — no new host access, just the same sandboxed `git` this module already
-   * runs against that tree. `null` when the task holds no live workspace, or the tree has no
-   * commits yet (nothing to read is not an error here).
+   * runs against that tree. `null` when the task holds no live workspace, the tree has no
+   * commits yet, or (below) the tree is one noevia does not fully control.
    */
   function headSha(taskId) {
     const record = read(taskId);
     if (!record || record.status !== 'held') return null;
     // A tree handed to the harness user (`owner`, the sandbox case — clone mode by default, see
-    // `mode` above) is "dubious ownership" to git run as noevia, the same refusal `trust()`
-    // exists to lift for the source repository at claim time. Reading HEAD is not writing to the
-    // tree, and HOSTILE_OFF already disables the hostile levers `rev-parse` could reach anyway,
-    // so the task's own tree gets the same trust. Without this, every live read here on a
-    // sandboxed task returns `null` even though the commit is right there.
-    if (record.owner) trust(record.path);
+    // `mode` above) is never read live, and is never trusted to lift git's "dubious ownership"
+    // refusal either: that refusal is exactly what stops root's own git from following whatever
+    // an agent put in that tree. `trust()`-ing it would let an agent point `.git/HEAD` at a ref
+    // that is a symlink to a file only root can read, and have `rev-parse` hand its contents
+    // back here as a "commit sha" — a real information leak (other tenants' files, secrets),
+    // not a hypothetical one. The authoritative head for an owned tree comes ONLY from
+    // `branchHead()` below, read from the source repository once `release()` has reclaimed
+    // ownership; a task still running under a harness user simply reports no live head.
+    if (record.owner) return null;
     try { return run([...HOSTILE_OFF, 'rev-parse', 'HEAD'], record.path, gitEnv()) || null; }
     catch { return null; }
   }

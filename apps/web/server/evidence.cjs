@@ -43,8 +43,36 @@ function createStore(dir, { maxBytes = 1024 * 1024, keepPerKey = 50 } = {}) {
   // not just a gap. This file holds one integer per task, not a whole record, so it stays cheap
   // even though (unlike the log) nothing ever evicts a task from it.
   const revisionsFile = path.join(dir, 'evidence-task-revisions.json');
+  const isPlainRevisionMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  // Rebuilt only from what the log can still prove — the same fallback nextRevision() already
+  // falls back to per-task, just computed for every task at once so a corrupt sidecar can be
+  // replaced with something trustworthy rather than with nothing.
+  function revisionsFromLog() {
+    const map = {};
+    for (const r of list()) {
+      if (typeof r?.taskId !== 'string' || !Number.isInteger(r.revision)) continue;
+      if (!(r.taskId in map) || r.revision > map[r.taskId]) map[r.taskId] = r.revision;
+    }
+    return map;
+  }
   function loadRevisions() {
-    try { return JSON.parse(fs.readFileSync(revisionsFile, 'utf8')); } catch { return {}; }
+    let raw = null, existed = false;
+    try { raw = JSON.parse(fs.readFileSync(revisionsFile, 'utf8')); existed = true; }
+    catch (e) { existed = e?.code !== 'ENOENT'; }
+    if (isPlainRevisionMap(raw)) {
+      // Accept only a plain object, and only sane values in it: a hand-edited or half-written
+      // file must not smuggle a negative or non-integer "revision" past nextRevision()'s max().
+      const clean = {};
+      for (const [taskId, revision] of Object.entries(raw)) if (Number.isInteger(revision) && revision >= 0) clean[taskId] = revision;
+      return clean;
+    }
+    // A file that does not exist yet is the ordinary first-use case: empty is correct, and
+    // saving `{}` merged with one task's entry loses nothing. A file that EXISTS but fails to
+    // parse as a plain object (corrupt JSON, a bare `null`, an array, a number...) is different:
+    // append() below always writes back `loadRevisions() + this one task`, so treating a corrupt
+    // file as merely empty would silently erase every OTHER task's high-water mark on the very
+    // next append. Rebuild from the log instead of ever returning an unearned empty map.
+    return existed ? revisionsFromLog() : {};
   }
   function saveRevisions(map) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
