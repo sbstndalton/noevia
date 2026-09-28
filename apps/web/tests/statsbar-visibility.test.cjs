@@ -46,5 +46,10 @@ test('shown on a chat view with messages and telemetry', () => {
 // stops passing view.kind through cannot silently reintroduce the #365 regression.
 test('App.tsx gates the StatsBar render on shouldShowStatsBar(view.kind, ...)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../src/App.tsx'), 'utf8');
-  assert.match(src, /shouldShowStatsBar\(view\.kind, messages\.length, view\.kind === 'chat' && !!replyTelemetryByChat\[view\.chatId\]\) && <StatsBar/);
+  assert.match(src, /const showStats = shouldShowStatsBar\(view\.kind, messages\.length, view\.kind === 'chat' && !!replyTelemetryByChat\[view\.chatId\]\);/);
+  // #527: the page strip (or, in phone-sized space, its screen-reader line) and the model sheet's
+  // copy are both behind that same gate; nothing else renders a StatsBar.
+  assert.match(src, /\{showStats && <StatsBar \{\.\.\.statsProps\} variant=\{phoneSpace \? 'announce' : 'default'\} \/>\}/);
+  assert.match(src, /sheetStatus=\{phoneSpace && showStats \? <StatsBar \{\.\.\.statsProps\} variant="sheet" \/> : null\}/);
+  assert.equal(src.match(/<StatsBar\b/g).length, 2);
 });

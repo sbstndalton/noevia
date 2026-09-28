@@ -91,5 +91,6 @@ test('the Chat/Cowork toggle moves a thumb on the considered token and the mode 
   assert.match(system, /\.composer-mode-toggle::before \{[^}]*transition: transform var\(--motion-considered\) var\(--ease-considered\);/);
   assert.match(system, /\.composer-mode-toggle\[data-mode='cowork'\]::before \{ transform: translateX/);
   const bar = fs.readFileSync(path.join(__dirname, '../src/components/ComposerModeBar.tsx'), 'utf8');
-  assert.match(bar, /className="composer-mode-toggle" data-mode=\{mode\} role="radiogroup"/);
+  // #527: the phone composer's compact chip adds a class; the mode stays on the same element.
+  assert.match(bar, /className=\{`composer-mode-toggle\$\{compact \? ' is-compact' : ''\}`\} data-mode=\{mode\} role="radiogroup"/);
 });
