@@ -23,7 +23,47 @@
 //      If the folder cannot be worked out, storage tools are refused outright (fail closed).
 // Every write still goes through the approval card; nothing here widens what a chat may do.
 
+const { createValidator } = require('./stream-guard.cjs');
+
 const PRIVATE_TOOLBOXES = new Set(['diary']);
+
+// ── Stream-guard integration (#516) ─────────────────────────────────────────
+// An optional, additive check: when enabled, tool-call arguments are validated
+// against a restricted JSON-schema subset registered per tool name, using the
+// same incremental validator the streaming path uses (stream-guard.cjs). It is
+// fed the arguments in one chunk here because by the time a tool call reaches
+// `toolRefusal` its arguments have already fully arrived off the SSE stream;
+// the validator itself is what is incremental, not this call site.
+//
+// OFF by default: this is a code flag, never a live/user preference, and no
+// tool has a registered schema yet, so enabling it with no registrations is
+// still a no-op. Flipping it on and registering schemas does not touch any
+// other egress rule below. `__setStreamGuardEnabledForTests` exists only so
+// tests can exercise both states; production code should not call it.
+let STREAM_GUARD_ENABLED = false;
+const TOOL_ARGUMENT_SCHEMAS = Object.create(null);
+
+/** Registers (or clears, with schema=null/undefined) a restricted JSON-schema
+ *  for a tool's arguments. Only consulted when STREAM_GUARD_ENABLED is true. */
+function setToolArgumentSchema(toolName, schema) {
+  if (schema) TOOL_ARGUMENT_SCHEMAS[toolName] = schema;
+  else delete TOOL_ARGUMENT_SCHEMAS[toolName];
+}
+
+function __setStreamGuardEnabledForTests(enabled) {
+  STREAM_GUARD_ENABLED = !!enabled;
+}
+
+/** First schema violation in a tool's arguments against its registered schema,
+ *  or null when the flag is off, no schema is registered, or they validate. */
+function validateToolArguments(toolName, rawArgs) {
+  if (!STREAM_GUARD_ENABLED) return null;
+  const schema = TOOL_ARGUMENT_SCHEMAS[toolName];
+  if (!schema) return null;
+  const validator = createValidator(schema);
+  const text = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs ?? {});
+  return validator.feed(text) || validator.end();
+}
 
 function isExternalProvider(provider) {
   return !!provider && (provider.kind === 'chatgpt-oauth' || provider.external === true);
@@ -101,8 +141,10 @@ function pathArguments(args, depth = 0, out = []) {
 /** Why this tool call may not run for an external provider, or null. `storage` is the account's
  *  storage connection (authService.getStorage). Diary tools are refused by name as well. */
 function toolRefusal({ provider, toolName, rawArgs, storage }) {
-  if (!isExternalProvider(provider)) return null;
   const name = String(toolName || '');
+  const guardViolation = validateToolArguments(name, rawArgs);
+  if (guardViolation) return `ERROR: ${name} arguments failed schema validation (${guardViolation.message}), so it was not run.`;
+  if (!isExternalProvider(provider)) return null;
   const label = provider.label || 'an external provider';
   if (/^diary_/.test(name)) return `ERROR: ${name} is not available with ${label}: Diary content is never sent to an external provider.`;
   if (!STORAGE_TOOL.test(name)) return null;
@@ -127,4 +169,15 @@ function toolRefusal({ provider, toolName, rawArgs, storage }) {
   return null;
 }
 
-module.exports = { PRIVATE_TOOLBOXES, isExternalProvider, egressRefusal, stripPrivateToolboxes, toolRefusal, diaryFolderFor, canonicalPath };
+module.exports = {
+  PRIVATE_TOOLBOXES,
+  isExternalProvider,
+  egressRefusal,
+  stripPrivateToolboxes,
+  toolRefusal,
+  diaryFolderFor,
+  canonicalPath,
+  setToolArgumentSchema,
+  validateToolArguments,
+  __setStreamGuardEnabledForTests,
+};
