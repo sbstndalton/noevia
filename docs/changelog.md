@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web ad71baf — 2026-09-28 (provider edit in place and hosted context size)
+
+### Services
+
+- **Web:** [#537](https://github.com/sbstndalton/noevia/pull/537) — `cowork-web:ad71baf`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** web-only build and activation through the installed preflight (`--no-build --no-deps --wait web`); the generic overlay script was not used.
+
+Providers can be edited in place, and a hosted provider can state its context size (whole tokens, 2048 to 2,000,000). Closes #535 and #536. Server and frontend only.
+
+Exact source `ad71baf1fb299f250ad9f673a063052216ecd43d`. A candidate check in the built image returned `parseContextTokens('65536')` = `{value:65536}` before cutover. Web is healthy with zero restarts, started `2026-09-28T22:28:36Z`, image `sha256:b2a07e0b6ff0`. Public root returns 200 and unauthenticated `/api/profile` returns 401. The served `index-YXY0J30A.js` and `index-PT_ypkNu.css` exist in the image `dist/assets`. Saved providers were preserved: the shared file still holds the default and NVIDIA Build rows (ids unchanged), and the server workspace module loads both from a copy of the file without printing keys. Non-web containers kept their IDs and start times; the only change is the known embed crash loop (#336), which is unrelated. No model runs.
+
+Rollback: restore `config/.env.bak.before-ad71baf`, point `current` at `releases/0f5d9f2`, and use the installed web-only no-build preflight. Previous releases, images and the Compose backup `docker-compose.yml.bak.before-ad71baf` remain available.
+
 ## Release web 0f5d9f2 — 2026-09-28 (NVIDIA Build provider preset)
 
 ### Services
