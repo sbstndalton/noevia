@@ -1,0 +1,28 @@
+name: Persona KV study harness
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/persona-kv/**'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/persona-kv-study.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/persona-kv/**'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/persona-kv-study.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Fake llama.cpp on 127.0.0.1 only; no model, no package installation.
+      - run: node --require ./apps/web/tests/hermetic-network.cjs --test experiments/persona-kv/*.test.cjs
