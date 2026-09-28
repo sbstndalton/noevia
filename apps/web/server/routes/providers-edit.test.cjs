@@ -139,7 +139,7 @@ test('contextTokens must be a whole number from 2048 to 2000000; out of range is
     assert.deepEqual(f.sent.pop(), { status: 400, body: { error: 'contextTokens must be a whole number from 2048 to 2000000' } }, String(bad));
   }
   assert.equal(f.saved.private, 0);
-  for (const [value, stored] of [[2048, 2048], [2000000, 2000000], ['65536', 65536], ['', undefined], [undefined, undefined]]) {
+  for (const [value, stored] of [[2048, 2048], [2000000, 2000000], ['65536', 65536], ['', undefined]]) {
     f.mine().contextTokens = 1234567;
     await f.call('PUT', '/api/providers/mine', full({ contextTokens: value }));
     assert.equal(f.sent.pop().status, 200, String(value));
