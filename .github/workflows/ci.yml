@@ -42,10 +42,12 @@ jobs:
               - '.nvmrc'
               - '.npmrc'
               - 'compose.*.yaml'
+              - 'docs/spec-model-loader-api-v1.md'
             diary:
               - 'services/diary/**'
             model_manager:
               - 'services/model-manager/**'
+              - 'docs/spec-model-loader-api-v1.md'
             docling:
               - 'services/docling/**'
             sidecars:
