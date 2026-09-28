@@ -389,12 +389,12 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .chat-composer-inner > .composer-model { min-width: 0; max-width: 100%; }
 @media (max-width: 430px) {
   .composer-inner.chat-composer-inner { column-gap: 6px; }
-  .app .reasoning-pill > span:first-child { display: none; }
+  .app .reasoning-pill > .reasoning-pill-label { display: none; }
   .app .reasoning-pill.glass { padding-inline: 10px 8px; }
 }
 /* The forced Phone preview caps #root at 430px without narrowing the browser viewport. */
 :root[data-layout='mobile'][data-device='desktop'] .composer-inner.chat-composer-inner { column-gap: 6px; }
-:root[data-layout='mobile'][data-device='desktop'] .app .reasoning-pill > span:first-child { display: none; }
+:root[data-layout='mobile'][data-device='desktop'] .app .reasoning-pill > .reasoning-pill-label { display: none; }
 :root[data-layout='mobile'][data-device='desktop'] .app .reasoning-pill.glass { padding-inline: 10px 8px; }
 
 /* ── One row geometry for projects and chats (visual pass, 2026-09-18) ─────────

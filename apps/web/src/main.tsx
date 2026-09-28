@@ -24,6 +24,8 @@ import './styles/materials.css';
 import './styles/theme-contemporary.css';
 import './styles/system.css';
 import './styles/families.css';
+// #510: phone-width declutter; loads last so it wins over the family overrides it lightens.
+import './styles/phone-declutter.css';
 
 startLogoAppearance();
 startFitToViewport();
