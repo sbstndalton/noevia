@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web ab70db5 — 2026-09-28 (portable Skills contract and sampling provenance)
+
+### Services
+
+- **Web:** [#507](https://github.com/sbstndalton/noevia/pull/507), [#508](https://github.com/sbstndalton/noevia/pull/508) — `cowork-web:ab70db5`.
+- **Diary:** no deployed change; #480 remains merged but undeployed.
+- **Model manager:** no deployed change; #483 remains merged but undeployed, model-loader stays `1c87ab0`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** web-only build and activation through the installed preflight.
+
+Projects expose portable Skill manifests and an exact-version content read while retaining the existing Sources review UI contract. Tenant ownership, reviewed/enabled state, stale-version rejection and core tool approvals remain enforced. Source sampling recommendations now come from a bounded, commit-pinned `generation_config.json` fetch and carry provenance and artifact scope. They are reported metadata only, without a new UI, automatic application or model qualification. #272 and #308 remain open for their later client/invocation and sampling-quality work.
+
+Exact source `ab70db58f664cf85562c93daa302f8d9392ae57b` passed 2,528 combined tests with no failures or skips, typecheck, production build and design lint. The individual slices also passed synthetic tenant-isolation HTTP checks and source-removal/artifact-staleness checks. Both PRs passed root exact-SHA reviews before push and merge plus all CI checks. Archive SHA-256 matched locally/remotely: `d5fe9581460954c1eeda974903afbdb8623230cc9d870eb8a44ab04e7dc60762`.
+
+Web is healthy with zero restarts, started at `2026-09-28T02:26:31.396294407Z`. Public root returns 200, unauthenticated profile and new API routes 401, version `ab70db5`; `index-DRDnsqcu.js` and `index--htmrLTo.css` return 200 and exist in the image. The deployed server contains both new API implementations. Available memory remained about 9.0 GiB. All non-web IDs/images remained unchanged; all start times/restart counts stayed unchanged except the known missing-GGUF embedding crash loop (#336), from 3,198 to 3,199. No sidecar, model, corpus, preset or tuning action was performed.
+
+Dedicated Luna Chrome verification, reviewed by root, confirmed the deployed version and rendered authenticated desktop shell and Appearance settings in its own tab. Logo colors remained Default leaves; no preferences, native selector options or palette test were changed. The owned tab was closed and the user’s existing tab left untouched. Mobile-specific rendering and physical Safari were not re-verified for this backend-only release.
+
+Rollback: restore `config/.env.bak.before-ab70db5`, point `current` at `releases/b272746`, and use the installed web-only no-build preflight. Previous releases, images and Compose backups remain available.
+
 ## Release web b272746 — 2026-09-28 (calendar logo and tuner answer handling)
 
 ### Services
