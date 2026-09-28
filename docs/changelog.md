@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 0f5d9f2 — 2026-09-28 (NVIDIA Build provider preset)
+
+### Services
+
+- **Web:** [#534](https://github.com/sbstndalton/noevia/pull/534) — `cowork-web:0f5d9f2`.
+- **Diary:** no change.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** web-only build and activation through the installed preflight (`--no-build --no-deps --wait web`); the generic overlay script was not used.
+
+Adds an NVIDIA Build (free trial) provider preset. Egress rules classify a provider as external by its URL, so `https://integrate.api.nvidia.com/v1` is treated as an external provider while local endpoints stay internal. Server and frontend only.
+
+Exact source `0f5d9f22ad0f0c9368c7b182852f722c5c29be5a`; all PR #534 CI checks were green. Archive SHA-256 `1b9fb96cbad6c4132c930532533f862483fcbcde401917d69320529a41879de9` matched locally and remotely. A network-disabled candidate container returned `isExternalProvider` true for the NVIDIA URL and false for a local llama URL before cutover.
+
+Web is healthy with zero restarts, started `2026-09-28T22:05:11Z`, image `sha256:218f617c8a74`. Public root returns 200 and unauthenticated `/api/profile` returns 401. The served `index-CDPEbze5.js` and `index-DblQT3ZR.css` exist in the image `dist/assets`. The in-container check returned true for the NVIDIA URL. All non-web container IDs, start times and restart counts were unchanged except the known embedding crash loop (already at 4,361 restarts before the release, 4,371 after). No sidecar, model, tune, private Diary access or real provider request was performed.
+
+Rollback: restore `config/.env.bak.before-0f5d9f2`, point `current` at `releases/8f92a01`, and use the installed web-only no-build preflight. Previous releases, images and the Compose backup `docker-compose.yml.bak.before-0f5d9f2` remain available.
+
 ## Release web ab70db5 — 2026-09-28 (portable Skills contract and sampling provenance)
 
 ### Services
