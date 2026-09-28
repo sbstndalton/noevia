@@ -37,14 +37,6 @@ test('sidebar titles are capped at their row and end in an ellipsis until the ma
   assert.match(fit, /\.sidebar-label\.is-overflowing \.sidebar-label-text \{ max-width: none; overflow: visible; \}/);
 });
 
-test('the toast centres without a transform its enter animation would override', () => {
-  const rule = fit.match(/\.save-error \{([^}]*)\}/);
-  assert.ok(rule, 'a .save-error rule');
-  assert.match(rule[1], /margin-inline: auto/);
-  assert.match(rule[1], /transform: none/);
-  assert.match(rule[1], /calc\(100% - 32px\)/, 'capped by its containing block, not 100vw');
-});
-
 test('grids that overflowed use minmax(0, 1fr) tracks', () => {
   for (const selector of ['.tool-catalogue-main', '.identity-colors', '.identity-icons']) {
     assert.match(fit, new RegExp(`\\${selector} \\{ grid-template-columns: [^;]*minmax\\(0, 1fr\\)`), selector);

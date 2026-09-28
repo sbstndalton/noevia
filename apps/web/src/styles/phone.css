@@ -775,12 +775,6 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
 .sidebar .sidebar-label-text { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
 .sidebar :is(.proj-row, .chat-row):is(:hover, :has(:focus-visible)) .sidebar-label.is-overflowing .sidebar-label-text { max-width: none; overflow: visible; }
 
-/* The toast centres with auto margins, not left: 50% + translateX(-50%): its enter animation
-   animates transform, so while it ran the toast sat half its width to the right, past a phone's
-   edge. Its width is capped by its containing block (100%), not the viewport (100vw): inside
-   the drawer that block can be the drawer. */
-.save-error { left: 0; right: 0; width: fit-content; max-width: min(560px, calc(100% - 32px)); margin-inline: auto; transform: none; }
-
 /* Grids whose tracks must not grow past their container for one long item: 1fr alone has a
    min-content floor, minmax(0, 1fr) does not. */
 .tool-catalogue-main { grid-template-columns: minmax(0, 1fr); overflow-wrap: anywhere; }
