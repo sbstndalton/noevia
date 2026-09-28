@@ -15,7 +15,7 @@ import { buildSearchResults, matchingDestinations, searchResultKey } from '../si
 import type { SearchResultKind } from '../sidebar-search';
 import { fetchToolboxes, fetchProfile } from '../api';
 import type { McpStatus } from '../api';
-import { usePhoneWidth } from '../phone-width';
+import { useSpaceTier } from '../space-tier';
 import { notifyWorkspaceChanged } from './data/workspace-changed';
 import { mcpFooterSummary } from '../mcp-summary';
 import { ShellIcon } from './ShellIcon';
@@ -148,8 +148,9 @@ export function Sidebar({
   // the CSS viewport a desktop browser reports, so matchMedia alone misses it. Honour the forced
   // layout the same way the stylesheet does.
   const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && (window.matchMedia('(max-width: 519px)').matches || document.documentElement.dataset.layout === 'mobile'));
-  // #510: below 768px each project row keeps one ⋯ and its new-chat pencil moves into that menu.
-  const phoneRows = usePhoneWidth();
+  // #510: in phone-sized space (tier 2) each project row keeps one ⋯ and its new-chat pencil
+  // moves into that menu.
+  const phoneRows = useSpaceTier() === 2;
   const drawer = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);

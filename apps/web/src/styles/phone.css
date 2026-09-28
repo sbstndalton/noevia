@@ -68,8 +68,9 @@
 /* ── The phone chat surface ────────────────────────────────────────────────
    The composer sits on the bottom edge and the transcript scrolls behind it,
    instead of the whole column being centred with the prompt stranded in the
-   middle of the screen. */
-@media (max-width: 700px) {
+   middle of the screen. #510: from phone-sized space (tier 2 in space-tiers.css), which
+   includes 701–767px portrait tablets and short windows, not only under 700px. */
+@media (max-width: 767px), (max-height: 599px) {
   .app .chat-workspace { display: flex; flex-direction: column; min-height: 0; }
   .app .chat-workspace > .transcript { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--space-4); }
   .app .chat-workspace > .composer { flex: none; padding: 6px 10px 0; }

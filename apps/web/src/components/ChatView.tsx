@@ -27,7 +27,6 @@ import { insertMention, turnBoxesFor, type PermittedBox } from '../tool-catalogu
 import { readDraft, writeDraft, clearDraft } from '../chat-drafts';
 import { onCancelEdit, focusAfterRender, type EditFocusState } from '../edit-focus';
 import { isCoarsePointerDevice } from '../composer-focus';
-import { usePhoneWidth } from '../phone-width';
 
 /** What one send carries besides its text: per-turn boxes, a fallback notice, or a Cowork task. */
 export interface SendTurn { turnToolboxes?: string[]; notice?: string | null; cowork?: { repository: string } }
@@ -54,8 +53,8 @@ interface ChatViewProps {
   onBack: (() => void) | null;
   onOpenModels: () => void;
   onOpenSettings: () => void;
-  /** #510: on a phone the header's sliders open this chat's own settings — its project's, or,
-   *  for a chat outside a project, its model and tools — instead of a second way into Settings. */
+  /** #510: the header's sliders open this chat's own settings — its project's, or, for a chat
+   *  outside a project, its model and tools — instead of a second way into Settings. */
   onEditProject?: (projectId: string) => void;
   /** Home only (#239): the latest chats to pick up from, with their project names. */
   recent?: { id: string; title: string; projectId: string | null; projectName: string | null; updatedAt: number }[];
@@ -316,9 +315,8 @@ export function ChatView({
 
 
   const openModels = () => { if (!project && freeContext) setFreeModels(true); else onOpenModels(); };
-  const phone = usePhoneWidth();
-  const headerSettings = !phone ? { label: t('settings.title'), open: onOpenSettings }
-    : project && onEditProject ? { label: t('sidebar.projectSettings'), open: () => onEditProject(project.id) }
+  // #510: the header's sliders open this chat's own settings (Settings is in the account menu).
+  const headerSettings = project && onEditProject ? { label: t('sidebar.projectSettings'), open: () => onEditProject(project.id) }
     : { label: t('modelPopup.title'), open: openModels };
   // Always defer to the chat's own context object once it exists, exactly like a project (App.tsx)
   // does — gating this on routing==='auto' || model let a manual choice with no model yet picked
