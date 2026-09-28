@@ -47,7 +47,7 @@ write fallback.
 | Administration | `/api/admin/users`, `/api/admin/users/{id}`, `/api/admin/users/{id}/disabled`, `/api/admin/users/{id}/recovery`, `/api/admin/invitations`, `/api/admin/features`, `/api/admin/features/{name}`, `/api/admin/decision-settings`, `/api/admin/decision-settings/test`, `/api/admin/web-address` | GET/PUT/POST/DELETE by operation | `routes/auth.cjs`, `routes/features.cjs`, `routes/web-address.cjs` |
 | Personal data | `/api/account/preferences`, `/api/account/instructions`, `/api/account/memory`, `/api/account/retention`, `/api/usage`, `/api/usage/aggregate`, `/api/export/conversations`, `/api/import/conversations` | GET/PUT/POST by operation | `routes/account.cjs`, `routes/usage.cjs`, `routes/export.cjs`, `routes/import.cjs` |
 | Chat and approvals | `/api/workspace`, `/api/freechats`, `/api/freechats/{id}`, `/api/chats/{id}/history`, `/api/chats/{id}/context`, `/api/chats/{id}/context-window`, `/api/chat`, `/api/tool-approvals/{id}`, `/api/toolboxes`, `/api/toolboxes/permitted` | GET/POST/PUT/DELETE by operation | `routes/chat-lists.cjs`, `routes/chat.cjs`, `routes/approvals.cjs`, `routes/toolboxes.cjs` |
-| Projects and sources | `/api/projects`, `/api/projects/{id}`, `/api/projects/{id}/config`, `/api/projects/{id}/chats`, `/api/projects/{id}/chats/{chatId}`, `/api/projects/{id}/upload`, `/api/projects/{id}/files`, `/api/projects/{id}/documents`, `/api/projects/{id}/documents/pages`, `/api/projects/{id}/documents/original`, `/api/projects/{id}/assets`, `/api/projects/{id}/assets/{assetId}`, `/api/projects/{id}/source-jobs/{jobId}`, `/api/projects/{id}/sources/sync`, `/api/projects/{id}/instruction-skills`, `/api/projects/{id}/skills/install` | GET/POST/PUT/DELETE by operation; uploads and downloads may be binary | `routes/projects.cjs` |
+| Projects and sources | `/api/projects`, `/api/projects/{id}`, `/api/projects/{id}/config`, `/api/projects/{id}/chats`, `/api/projects/{id}/chats/{chatId}`, `/api/projects/{id}/upload`, `/api/projects/{id}/files`, `/api/projects/{id}/documents`, `/api/projects/{id}/documents/pages`, `/api/projects/{id}/documents/original`, `/api/projects/{id}/assets`, `/api/projects/{id}/assets/{assetId}`, `/api/projects/{id}/source-jobs/{jobId}`, `/api/projects/{id}/sources/sync`, `/api/projects/{id}/instruction-skills`, `/api/projects/{id}/instruction-skills/manifests`, `/api/projects/{id}/instruction-skills/manifests/{skillId}/content`, `/api/projects/{id}/skills/install` | GET/POST/PUT/DELETE by operation; uploads and downloads may be binary | `routes/projects.cjs` |
 | Storage and connectors | `/api/integrations/storage`, `/api/integrations/storage/test`, `/api/integrations/storage/files/{path}`, `/api/integrations/storage/folder`, `/api/integrations/storage/file`, `/api/integrations/storage/nextcloud/start`, `/api/integrations/storage/nextcloud/poll`, `/api/connectors`, `/api/connectors/gdrive/connect`, `/api/connectors/gdrive/disconnect`, `/api/connectors/gdrive/policy`, `/api/connectors/gdrive/backup-copy`, `/api/connectors/nextcloud/policy` | GET/POST/PUT/DELETE by operation | `routes/storage.cjs`, `routes/connectors.cjs` |
 | Diary | `/api/diary/source`, `/api/diary/today`, `/api/diary/history`, `/api/diary/exchanges`, `/api/diary/context`, `/api/diary/local-exchange`, `/api/diary/storage-status`, `/api/diary/storage-import`, `/api/diary/workspace-import`, `/api/diary/workspace-export`, `/api/diary/files`, `/api/diary/file`, `/api/profile/diary-connectors`, `/api/profile/diary-connectors/{id}`, plus the Diary workspace/entry calls made through `diaryRequest()` | GET/POST/PUT/DELETE by operation; exchange/export streams and archive bodies are route-specific | `routes/diary.cjs`, `routes/projects.cjs` |
 | Models and routing | `/api/stats`, `/api/health`, `/api/providers`, `/api/providers/{id}`, `/api/providers/test`, `/api/auto-roles`, `/api/routing-default`, `/api/reasoning-settings`, `/api/sampling-settings`, `/api/models/installed`, `/api/models/capabilities`, `/api/models/hardware`, `/api/models/estimate`, `/api/models/evidence`, `/api/models/evidence/recheck`, `/api/models/evidence/import`, `/api/models/load`, `/api/models/unload`, `/api/models/delete`, `/api/models/presets/reload`, `/api/models/calibration`, `/api/models/calibration/cancel`, `/api/models/autotune`, `/api/models/autotune/cancel`, `/api/models/autotune/resume`, `/api/models/autotune/untuned`, `/api/model-manager/*` | GET/POST/PUT/DELETE by operation; jobs may stream | `routes/health.cjs`, `routes/providers.cjs`, `routes/models.cjs`, `routes/reasoning-settings.cjs`, `routes/sampling-settings.cjs` |
@@ -62,3 +62,54 @@ documents, exports, and imports may use binary payloads. The browser's
 [`api.ts`](../apps/web/src/api.ts) and component-specific clients contain the
 request shapes; the corresponding `routes/*.cjs` factories define status and
 response bodies.
+
+## Portable instruction Skill manifest v1
+
+An authenticated web or native client lists project Skills with
+`GET /api/projects/{id}/instruction-skills/manifests`. This additive route
+returns `{ "schemaVersion": 1, "skills": [...] }` without instruction bodies.
+The existing `GET/PUT /instruction-skills` response still contains bodies for
+the current Sources UI. Both routes use the core's project ownership lookup.
+
+Each manifest has a project-scoped stable `id` (derived from project ID and
+filename), `file`, `name`, `description`, optional `versionLabel`, `version`
+(the lowercase SHA-256 digest of the complete copied Markdown), `status`,
+`valid`, `error`, `origin`, `compatibility`, `license`, `requirements`, and
+`resolvable`. The digest, rather than the human version label, identifies the
+exact artifact. `status` is `review`, `updated`, `enabled`, `disabled`, or
+`invalid`. `requirements` contains declared `toolboxes` and `allowedTools`
+plus `unsupportedToolboxes` and `unselectedToolboxes` at discovery time. The
+former compares declarations with toolboxes currently offered by core; the
+latter names known boxes not selected for the project. Requirements and `allowed-tools` are
+informational metadata: they grant no tools, credentials, or approvals, and the
+client must not treat them as an authorization result. An unknown toolbox blocks
+portable content resolution with `422`; a merely unselected known toolbox is
+reported for the user to configure through the existing toolbox picker.
+
+To read the reviewed instructions, call
+`GET /api/projects/{id}/instruction-skills/manifests/{skillId}/content?version={sha256}`.
+It returns `{ "manifest": ..., "content": "..." }` only when that exact
+version remains enabled and reviewed in the owning project. A missing project or
+Skill returns `404`, an absent or malformed version `400`, a changed, disabled,
+or unreviewed version `409`. A client must refresh discovery after `409`, then
+obtain the owner's review before using a changed version. Disabling one Skill
+blocks its subsequent reads and future chat injection without changing others;
+instructions already loaded into an in-flight model request cannot be recalled.
+
+An imported Skill's `origin` records `kind: published`, `publisher`,
+`repository`, `sourceRef`, `sourcePath`, `digest`, and `retrievedAt`. The directory currently
+copies `SKILL.md` from Anthropic's moving `main` branch. `sourceRef` is therefore
+**not** an immutable Git commit; `digest` pins the exact copied bytes held by
+this project. Local uploads and edits are `project-file`; attached folder files
+are `attached-folder`. Replacing imported content clears its published origin.
+Updates require the existing explicit review step. No background update or
+remote re-fetch occurs during resolution.
+
+Portable v1 supports Markdown instructions only. It does not fetch, store, or
+execute bundled assets or scripts, and its restricted frontmatter rejects
+executable metadata. `compatibility`, `license`, and `allowed-tools` are
+descriptive fields, not runtime grants. To use a Skill in an assistant turn,
+the client invokes the existing project chat route; core continues to select
+tools and enforce tenant scope, tool policy, and every write approval. The
+manifest/content pair lets clients select the same reviewed version; it does
+not create an arbitrary Skill execution engine.
