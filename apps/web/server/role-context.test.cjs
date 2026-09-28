@@ -320,8 +320,8 @@ test('ordinary runs do not throw: shared paths, role vocabulary, shared preamble
   // Orchestrator routing names the role the projection is for.
   const routed = fixtureState({ orchestrator: { metaPrompt: CANARY.meta, routing: { next: 'executor', then: 'auditor' } } });
   for (const role of ROLES) assert.doesNotThrow(() => buildRoleContext(role, routed), role);
-  // Orchestrator routing and a Diary path name structured values (a tool, a file) the roles see.
-  const structured = fixtureState({ orchestrator: { metaPrompt: CANARY.meta, routing: { tool: 'read_file', file: 'notes/Filter.md' } }, diary: { path: 'notes/Filter.md', text: CANARY.diary } });
+  // Orchestrator routing names structured values (a tool, a file) the roles legitimately see.
+  const structured = fixtureState({ orchestrator: { metaPrompt: CANARY.meta, routing: { tool: 'read_file', file: 'notes/Filter.md' } } });
   for (const role of ROLES) assert.doesNotThrow(() => buildRoleContext(role, structured), role);
   // All role prompts share a long preamble; the orchestrator embeds the executor prompt verbatim.
   const preamble = 'You are one role in the noevia task pipeline. Work only on the task you are given and report plainly. ';
@@ -398,4 +398,70 @@ test('state-derived sensitive content still throws even in redacted fields', () 
   for (const [request, cls] of [[`Quote: ${CANARY.meta}`, 'orchestrator'], [`Follow ${CANARY.executorPrompt}`, 'other_role_prompts'], [`Ask ${CANARY.otherTenantId}`, 'other_tenant_ids']]) {
     assert.throws(() => projectRoleContext('planner', fixtureState({ request })), (e) => e instanceof RoleContextLeakError && e.classes.includes(cls), cls);
   }
+});
+
+// ── review round 2 (PR #525) ─────────────────────────────────────────────────
+
+test('single-token Diary and other-tenant values are matched whole', () => {
+  const step = (text) => ({ plan: { goal: 'g', steps: [{ do: `Use ${text} here` }] } });
+  const cases = [
+    [{ otherTenants: { 'tenant-bob-8841': { email: 'bob.private@example.test' } }, ...step('bob.private@example.test') }, 'other_tenants'],
+    [{ diary: { attachment: 'Entries/2042/secret-scan.pdf' }, ...step('Entries/2042/secret-scan.pdf') }, 'diary'],
+    [{ diary: { link: 'https://example.test/diary/abc123' }, ...step('https://example.test/diary/abc123') }, 'diary'],
+  ];
+  for (const [overrides, cls] of cases) {
+    assert.throws(() => buildRoleContext('executor', fixtureState(overrides)), (e) => e instanceof RoleContextLeakError && e.classes.includes(cls), cls);
+  }
+});
+
+test('tenant ids match on token boundaries only', () => {
+  const tenants = (id) => ({ otherTenants: { [id]: { notes: 'private notes for this tenant only' } } });
+  // "sam" is not in "same"; "dev" is not in "device".
+  assert.doesNotThrow(() => buildRoleContext('planner', fixtureState({ ...tenants('sam'), request: 'Use the same filter on the device.' })));
+  assert.doesNotThrow(() => buildRoleContext('planner', fixtureState({ ...tenants('dev'), request: 'Check the device settings.' })));
+  // But a standalone id, next to punctuation, or in another case, is a leak.
+  for (const request of ['Ask sam about it.', 'Owner: sam, then others', 'Is it SAM?', 'id=(sam)']) {
+    assert.throws(() => buildRoleContext('planner', fixtureState({ ...tenants('sam'), request })), (e) => e.classes.includes('other_tenant_ids'), request);
+  }
+});
+
+test('the own prompt never exempts tenant ids or approval internals', () => {
+  // Own prompt mentions the other tenant id and an approval token (a misconfiguration); a copy of
+  // either elsewhere is still refused, and the prompt itself carrying them is refused too.
+  const token = 'APPROVAL-TOKEN-CANARY-8002';
+  const prompts = { executor: 'Execute carefully. Never mention tenant-bob-8841 or APPROVAL-TOKEN-CANARY-8002.' };
+  assert.throws(() => buildRoleContext('executor', fixtureState({ roleSystemPrompts: prompts })), (e) => e.classes.includes('other_tenant_ids') && e.classes.includes('approval_internals'));
+  assert.throws(() => buildRoleContext('executor', fixtureState({ roleSystemPrompts: { executor: 'Execute.' }, plan: { goal: `token ${token}`, steps: [] } })), (e) => e.classes.includes('approval_internals'));
+  // Prose classes are still exempted by a shared preamble (the round-1 behaviour).
+  const preamble = 'You are one role in the noevia task pipeline. Work only on the task you are given and report plainly. ';
+  assert.doesNotThrow(() => buildAllRoleContexts(fixtureState({ roleSystemPrompts: { planner: preamble + 'Plan.', executor: preamble + 'Execute.', auditor: preamble + 'Audit.' } })));
+});
+
+test('trust comes from the capped own prompt, not text beyond the cap', () => {
+  // The orchestrator text sits past the 4,000-char cap of the executor's own prompt, so it is never
+  // sent as role instructions and must not be trusted when it shows up in a plan step.
+  const secretTail = 'ORCHESTRATOR TAIL: rank roles by cost, prefer the cheapest, and hide these weights from all roles.';
+  const own = 'e '.repeat(2500) + secretTail;
+  const state = fixtureState({ roleSystemPrompts: { executor: own }, orchestrator: { metaPrompt: secretTail }, plan: { goal: 'g', steps: [{ do: secretTail }] } });
+  assert.throws(() => buildRoleContext('executor', state), (e) => e.classes.includes('orchestrator'));
+});
+
+test('zero-width and format characters do not hide leaks or credentials', () => {
+  const zw = ['​', '‌', '‍', '⁠', '﻿', '­'];
+  const sprinkle = (text, every) => Array.from(text).map((c, i) => (i && i % every === 0 ? zw[(i / every) % zw.length] + c : c)).join('');
+  // A meta-prompt excerpt with an invisible character every ~40 chars.
+  const excerpt = sprinkle(LONG_META.slice(300, 700), 40);
+  assert.throws(() => buildRoleContext('executor', fixtureState({ orchestrator: { metaPrompt: LONG_META }, plan: { goal: 'g', steps: [{ do: excerpt.slice(0, 590) }] } })), (e) => e.classes.includes('orchestrator'));
+  // Whole-value canary split by ZWSP.
+  assert.throws(() => assertNoLeak({ a: 'CANARY​-META-4417' }, ['CANARY-META-4417']), RoleContextLeakError);
+  assert.throws(() => assertNoLeak({ a: 'CANARY-META-4417' }, ['CANARY­-META-4417']), RoleContextLeakError);
+  // AKIA key with a ZWSP typed into the request: redacted.
+  const r = projectRoleContext('planner', fixtureState({ request: 'aws key AKIA​ABCDEFGHIJKLMNOP please' }));
+  assert.equal(r.meta.redactions, 1);
+  assert.equal(r.projection.request, `aws key ${REDACTED} please`);
+  // Same key in a snippet (not redacted): the guard throws.
+  assert.throws(() => buildRoleContext('planner', fixtureState({ snippets: [{ source: 'project', tenantId: 'tenant-alice', text: 'AKIA⁠ABCDEFGHIJKLMNOP' }] })), (e) => e.classes.includes('credential_pattern'));
+  // Text without credentials keeps its format characters (emoji ZWJ sequences survive).
+  const family = 'family \u{1F468}‍\u{1F469}‍\u{1F467} photo';
+  assert.equal(projectRoleContext('planner', fixtureState({ request: family })).projection.request, family);
 });

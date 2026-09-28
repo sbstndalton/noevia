@@ -308,6 +308,14 @@ function serializeProjection(projection) {
 
 // ── leak detection ──────────────────────────────────────────────────────────
 
+// Zero-width and other format characters (\p{Cf}: U+200B/C/D, U+2060, U+FEFF, …) and the soft
+// hyphen are invisible and would otherwise split a canary or a key so nothing matches. They are
+// removed before every comparison (haystacks, needles, excerpt folding, credential redaction).
+const FORMAT_CHARS = /[\p{Cf}\u00AD]/gu;
+function stripFormat(text) {
+  return text.replace(FORMAT_CHARS, '');
+}
+
 function escapeNonAscii(text) {
   return text.replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 }
@@ -342,19 +350,33 @@ function haystacks(projection) {
     const decoded = decodeLiteralEscapes(h);
     if (decoded !== h) expanded.push(decoded);
   }
-  const nfkc = expanded.map((h) => h.normalize('NFKC'));
+  const stripped = expanded.map(stripFormat).filter((h, i) => h !== expanded[i]);
+  const all = expanded.concat(stripped);
+  const nfkc = all.map((h) => stripFormat(h.normalize('NFKC')));
   const folded = nfkc.map((h) => h.toLowerCase());
-  return expanded.concat(nfkc, folded);
+  return all.concat(nfkc, folded);
 }
 
 function needles(item) {
   const text = String(item);
-  const nfkc = text.normalize('NFKC');
-  return [...new Set([text, escapeNonAscii(text), JSON.stringify(text).slice(1, -1), nfkc.toLowerCase()])];
+  const bare = stripFormat(text);
+  const nfkc = stripFormat(bare.normalize('NFKC'));
+  return [...new Set([text, bare, escapeNonAscii(text), JSON.stringify(text).slice(1, -1), nfkc.toLowerCase()])].filter(Boolean);
 }
 
-// Returns the forbidden entries (strings or RegExps) found anywhere in the projection.
-function findLeaks(projection, forbidden) {
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Token-boundary match: the needle must not be glued to a letter, digit or underscore on either
+// side, so the id "sam" matches "ask sam" but not "same", and "dev" does not match "device".
+function boundaryRegExp(needle) {
+  return new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(needle)}(?![\\p{L}\\p{N}_])`, 'u');
+}
+
+// Returns the forbidden entries (strings or RegExps) found anywhere in the projection. With
+// `{ boundary: true }` string entries only match on token boundaries (used for tenant ids).
+function findLeaks(projection, forbidden, { boundary = false } = {}) {
   const hay = haystacks(projection);
   const hits = [];
   for (const item of forbidden || []) {
@@ -365,7 +387,10 @@ function findLeaks(projection, forbidden) {
     }
     if (typeof item !== 'string' || item.length === 0) continue;
     const ns = needles(item);
-    if (hay.some((h) => ns.some((n) => h.includes(n)))) hits.push(item);
+    if (boundary) {
+      const res = ns.map(boundaryRegExp);
+      if (hay.some((h) => res.some((re) => re.test(h)))) hits.push(item);
+    } else if (hay.some((h) => ns.some((n) => h.includes(n)))) hits.push(item);
   }
   return hits;
 }
@@ -411,15 +436,16 @@ const VOCABULARY = new Set([
   'done', 'skipped', 'failed', 'label', 'source', 'text', 'name', 'description', 'passed', 'note',
 ].map((w) => fold(w)));
 
-// A short single token (no whitespace, ≤ 64 chars) — a path, enum or identifier. For prose classes
-// (orchestrator text, role prompts, Diary, other-tenant data) such values are not matched whole,
-// since they collide with legitimate structured fields; long prose is still matched by excerpt.
+// A short single token (no whitespace, ≤ 64 chars) — a path, enum or identifier. Only for the
+// orchestrator's text and other roles' prompts are such values not matched whole (routing names a
+// tool or a role the projection legitimately contains). Diary and other-tenant values are always
+// matched whole, however short: a single-token email, key, filename or URL is still private.
 function isStructuredToken(value) {
   return /^\S{1,64}$/.test(value);
 }
 
 function fold(text) {
-  return String(text).normalize('NFKC').toLowerCase().replace(/\s+/g, ' ');
+  return stripFormat(stripFormat(String(text)).normalize('NFKC')).toLowerCase().replace(/\s+/g, ' ');
 }
 
 function leafStrings(value, out = [], depth = 0) {
@@ -435,8 +461,10 @@ function credentialValues(state) {
 }
 
 // Redacts credentials the user typed into free text (request, project instructions): pattern
-// matches and verbatim copies of the state's own credential values. If only the NFKC form reveals a
-// credential (e.g. full-width characters), the NFKC form is what gets redacted and kept.
+// matches and verbatim copies of the state's own credential values. If only the normalised form
+// (format characters stripped, then NFKC) reveals a credential — full-width characters, a zero-width
+// space inside a key — that normalised form is what gets redacted and kept. Otherwise the user's
+// text is left exactly as typed (so emoji ZWJ sequences survive).
 function redactCredentials(text, known, counter) {
   if (typeof text !== 'string') return text;
   const redactOnce = (input) => {
@@ -452,7 +480,7 @@ function redactCredentials(text, known, counter) {
     return { out, n };
   };
   let { out, n } = redactOnce(text);
-  const nfkc = out.normalize('NFKC');
+  const nfkc = stripFormat(stripFormat(out).normalize('NFKC'));
   if (nfkc !== out) {
     const second = redactOnce(nfkc);
     if (second.n > 0) { out = second.out; n += second.n; }
@@ -479,8 +507,6 @@ function sensitiveClasses(state, role) {
     classes.other_tenants.push(...leafStrings(state.snippets.filter((s) => isPlainObject(s) && s.tenantId !== undefined && s.tenantId !== state.tenantId).map((s) => s.text)));
     classes.diary.push(...leafStrings(state.snippets.filter((s) => isPlainObject(s) && typeof s.source === 'string' && fold(s.source).trim() === 'diary').map((s) => s.text)));
   }
-  classes.diary = prose(classes.diary);
-  classes.other_tenants = prose(classes.other_tenants);
   classes.approval_internals = leafStrings((Array.isArray(state.approvals) ? state.approvals : []).map((a) => (isPlainObject(a) ? [...APPROVAL_SENSITIVE_KEYS.map((k) => a[k]), ...(isPlainObject(a.card) ? APPROVAL_SENSITIVE_KEYS.map((k) => a.card[k]) : [])] : undefined)));
   // Other tenants' ids are forbidden too, even when short.
   const otherIds = [];
@@ -500,21 +526,26 @@ function windowSet(text) {
   return set;
 }
 
-function valueWindows(folded) {
-  const points = Array.from(folded);
-  if (points.length < EXCERPT_WINDOW) return [];
-  const out = [];
-  for (let i = 0; i + EXCERPT_WINDOW <= points.length; i += EXCERPT_STRIDE) out.push(points.slice(i, i + EXCERPT_WINDOW).join(''));
-  out.push(points.slice(points.length - EXCERPT_WINDOW).join(''));
-  return out;
+// True if a copied excerpt (≥ 63 folded code points) of `value` appears in the projection, not
+// counting windows that also occur in `trusted` (the role's own capped prompt, which may
+// legitimately share a preamble with other prompts or be embedded in the orchestrator's text).
+// Windows are generated lazily with an early exit; the projection side is bounded by CAPS.total.
+// Sensitive values are not length-capped: an excerpt from deep inside a large Diary entry must
+// still be caught, and the cost is linear (one window per EXCERPT_STRIDE code points).
+function excerptLeaked(value, projectionWindows, trustedWindows) {
+  const points = Array.from(fold(value));
+  if (points.length < EXCERPT_WINDOW) return false;
+  const hit = (i) => {
+    const w = points.slice(i, i + EXCERPT_WINDOW).join('');
+    return projectionWindows.has(w) && !trustedWindows.has(w);
+  };
+  for (let i = 0; i + EXCERPT_WINDOW <= points.length; i += EXCERPT_STRIDE) if (hit(i)) return true;
+  return hit(points.length - EXCERPT_WINDOW);
 }
 
-// True if a copied excerpt (≥ 63 folded code points) of `value` appears in the projection, not
-// counting windows that also occur in `trusted` (the role's own prompt, which may legitimately
-// share a preamble with other prompts or be embedded in the orchestrator's text).
-function excerptLeaked(value, projectionWindows, trustedWindows) {
-  return valueWindows(fold(value)).some((w) => projectionWindows.has(w) && !trustedWindows.has(w));
-}
+// Classes the role's own prompt can never exempt: a tenant id, an approval id/token or a credential
+// is not made safe by also appearing in the prompt.
+const NEVER_EXEMPT = new Set(['credentials', 'other_tenant_ids', 'approval_internals']);
 
 function guardProjection(projection, state, role) {
   const leaked = [];
@@ -525,14 +556,16 @@ function guardProjection(projection, state, role) {
     return d === h ? [fold(h)] : [fold(h), fold(d)];
   }).join('\u0000');
   const projectionWindows = windowSet(foldedProjection);
-  const own = isPlainObject(state.roleSystemPrompts) && typeof state.roleSystemPrompts[role] === 'string' ? state.roleSystemPrompts[role] : '';
-  const foldedOwn = fold(own);
+  // Trust only the capped own prompt actually sent, never text beyond the field cap.
+  const foldedOwn = typeof projection.role_instructions === 'string' ? fold(projection.role_instructions) : '';
   const trustedWindows = windowSet(foldedOwn);
+  const noTrust = new Set();
   for (const name of Object.keys(classes).sort()) {
-    const values = classes[name].filter((v) => name === 'credentials' || !foldedOwn.includes(fold(v)));
+    const exemptable = !NEVER_EXEMPT.has(name);
+    const values = classes[name].filter((v) => !exemptable || !foldedOwn.includes(fold(v)));
     if (!values.length) continue;
-    const whole = findLeaks(projection, values).length > 0;
-    const excerpt = !whole && values.some((v) => excerptLeaked(v, projectionWindows, trustedWindows));
+    const whole = findLeaks(projection, values, { boundary: name === 'other_tenant_ids' }).length > 0;
+    const excerpt = !whole && values.some((v) => excerptLeaked(v, projectionWindows, exemptable ? trustedWindows : noTrust));
     if (whole || excerpt) leaked.push(name);
   }
   if (findLeaks(projection, CREDENTIAL_PATTERNS).length) leaked.push('credential_pattern');
