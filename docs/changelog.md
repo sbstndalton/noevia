@@ -8,6 +8,30 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web c90046e — 2026-09-28 (server memory recovery and sidebar corrections)
+
+### Services
+
+- **Web:** [#499](https://github.com/sbstndalton/noevia/pull/499), [#500](https://github.com/sbstndalton/noevia/pull/500), [#501](https://github.com/sbstndalton/noevia/pull/501), [#504](https://github.com/sbstndalton/noevia/pull/504) — `cowork-web:c90046e`.
+- **Diary:** no deployed change; #480 remains merged but undeployed.
+- **Model manager:** no deployed change; #483 remains merged but undeployed, model-loader stays `1c87ab0`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** gracefully unloaded an idle 9B chat-model child through the native router API, then activated web only through the installed preflight. No host or sidecar restart, model preset change, or swap configuration change.
+
+The host had about 2.3 GiB available while two chat-model children held about 14.3 GiB of GPU-backed system memory, largely absent from Docker's memory display. Both reported no active or deferred requests; the 9B child also reported zero processed prompt/generated tokens. Rechecking those idle gauges and gracefully unloading that child raised available memory to about 9.7 GiB and reduced GTT from 15.3 GB to 7.7 GB. The 4B child remained loaded. This establishes the source of the current pressure, not the sole cause of the earlier OOM incident.
+
+Web-mediated native model admission now serializes eviction/loading, verifies successful eviction, and refuses a conflicting load. This does not impose a host-wide memory limit on other router clients. The release also versions the core browser API contract, reduces static Brotli warmup cost, fixes Chat/Code selection shape and hidden-drawer indicator geometry, and keeps sidebar rows above the account footer without opaque heading bands.
+
+Exact source: `c90046e29407e6d6be01e97db706d1e533248ca1`. Required local verification passed: 2,508 tests, typecheck, production build, design lint, 206 sidebar checks, 416 mode-switch checks, and existing phone drawer/settings QA. An initial performance timing assertion failed under heavy concurrent load; the bounded full rerun passed without changing that assertion. All PR CI checks passed, including the image build. Deployment required more than 8 GiB available before building; archive SHA-256 matched locally/remotely (`20f85743cb095fdfe00f28d8e7dba059d5d38afc857d72523b3c0fa0756b09d1`).
+
+Verified `current` → `releases/c90046e`, healthy web with zero restarts, public root 200, unauthenticated profile 401, version c90046e, and served `index-BARUzto6.js` / `index-CeuNTAQ0.css` both 200 and present in the image. Every non-web container retained its ID, start time, image and restart count. Available memory remained about 9.7 GiB after deployment. Environment and Compose backups are retained as `*.bak.before-c90046e`.
+
+Dedicated Luna live Chrome verification was dispatched immediately after activation and reviewed by root. Desktop Chat → Code → Chat, rounded inset selection and separate sidebar footer passed in the current Contemporary dark/sage theme. Mobile Chrome emulation reached 393×852, but CUA input timed out before the navigation drawer opened; live mobile drawer behavior remains unverified. Root corrected the report’s unsupported inference that Chat/Code was absent on mobile. Synthetic mobile coverage above remains separate. Physical Safari and real inference were not tested.
+
+Rollback: point `current` at `releases/7a3f736`, restore `config/.env.bak.before-c90046e`, and run the same installed web-only no-build preflight. Model files were not changed; normal later demand can reload the unloaded model.
+
 ## Release web 7a3f736 — 2026-09-27 (theme consistency, navigation search, backup memory)
 
 ### Services
