@@ -21,11 +21,22 @@ const FAMILIES = Object.freeze([
     quirks: { harmony: true, reasoningEffort: 'low', qualityBudget: 512 } },
   { id: 'deepseek-r1', label: 'DeepSeek R1 distill', match: /deepseek[-_. ]?r1/i,
     values: { temperature: 0.6, top_p: 0.95 }, quirks: {} },
+  // Qwen3.5 must precede Qwen3, whose pattern also matches it. Card (thinking mode, general tasks):
+  // https://huggingface.co/Qwen/Qwen3.5-9B and https://huggingface.co/Qwen/Qwen3.5-4B list
+  // temperature 1.0, top_p 0.95, top_k 20, min_p 0.0 (plus a presence penalty this runtime
+  // setting set does not carry). It differs from Qwen3's 0.6, so it has its own entry.
+  { id: 'qwen3.5', label: 'Qwen3.5', match: /qwen[-_. ]?3[-_. ]?5/i,
+    values: { temperature: 1.0, top_p: 0.95, top_k: 20, min_p: 0 }, quirks: {}, note: 'thinking-mode values' },
   { id: 'qwen3', label: 'Qwen3', match: /qwen[-_. ]?3/i,
     // The card splits thinking from non-thinking; these are the thinking-mode values.
     values: { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 }, quirks: {}, note: 'thinking-mode values' },
   { id: 'llama-3', label: 'Llama 3', match: /llama[-_. ]?3/i,
     values: { temperature: 0.6, top_p: 0.9 }, quirks: {} },
+  // Gemma 4 card (verified 2026-09-28): https://huggingface.co/google/gemma-4-E2B-it and
+  // https://huggingface.co/google/gemma-4-E4B-it recommend temperature 1.0, top_p 0.95, top_k 64,
+  // and their generation_config.json agrees. The card gives no min_p.
+  { id: 'gemma-4', label: 'Gemma 4', match: /gemma[-_. ]?4/i,
+    values: { temperature: 1.0, top_p: 0.95, top_k: 64 }, quirks: {} },
   { id: 'gemma-3', label: 'Gemma 3', match: /gemma[-_. ]?3/i,
     values: { temperature: 1.0, top_p: 0.95, top_k: 64, min_p: 0 }, quirks: {} },
   { id: 'devstral', label: 'Devstral / Mistral', match: /devstral|mistral/i,

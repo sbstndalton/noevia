@@ -5,7 +5,8 @@ const { fields } = require('./llamacpp-presets.cjs');
 
 test('family matching is table driven, and specific families win over the base architecture', () => {
   const cases = { 'gpt-oss-20b': 'gpt-oss', 'unsloth/gpt_oss:20b': 'gpt-oss', 'DeepSeek-R1-Distill-Qwen-7B': 'deepseek-r1',
-    'Qwen3-30B-A3B-GGUF:Q4_K_M': 'qwen3', 'Llama-3.1-8B-Instruct': 'llama-3', 'gemma-3-27b-it': 'gemma-3',
+    'Qwen3-30B-A3B-GGUF:Q4_K_M': 'qwen3', 'Qwen3.5-4B-UD-Q8_K_XL': 'qwen3.5', 'Qwen3.5-9B-UD-Q4_K_XL': 'qwen3.5',
+    'gemma-4-E2B_q4_0-it': 'gemma-4', 'gemma-4-E4B-it-qat-UD-Q4_K_XL': 'gemma-4', 'Llama-3.1-8B-Instruct': 'llama-3', 'gemma-3-27b-it': 'gemma-3',
     'Devstral-Small': 'devstral', 'Phi-4-reasoning': 'phi-4', 'Qwen2.5-7B': null, 'unknown-model': null, '': null };
   for (const [name, id] of Object.entries(cases)) assert.equal(familyOf(name)?.id ?? null, id, name);
   assert.equal(hasHarmonyReasoning('gpt-oss-20b'), true);
@@ -51,4 +52,16 @@ test('ini conversion uses llama-server names, rounds, and drops invalid entries'
   assert.deepEqual(toIniOptions({ temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, repeat_penalty: 1.05, extra: 1 }),
     { temp: '0.6', 'top-p': '0.95', 'top-k': '20', 'min-p': '0', 'repeat-penalty': '1.05' });
   assert.deepEqual(toIniOptions({ temperature: 5, top_k: -1, top_p: NaN }), {});
+});
+
+test('Gemma 4 and Qwen3.5 use their own card values, not Gemma 3 or Qwen3', () => {
+  for (const name of ['gemma-4-E2B_q4_0-it', 'gemma-4-E4B-it-qat-UD-Q4_K_XL']) {
+    const r = resolveSamplingRecommendation({ model: name });
+    assert.equal(r.tier, 'family'); assert.deepEqual(r.values, { temperature: 1, top_p: 0.95, top_k: 64 });
+  }
+  for (const name of ['Qwen3.5-4B-UD-Q8_K_XL', 'Qwen3.5-9B-UD-Q4_K_XL']) {
+    const r = resolveSamplingRecommendation({ model: name });
+    assert.equal(r.familyId, 'qwen3.5'); assert.deepEqual(r.values, { temperature: 1, top_p: 0.95, top_k: 20, min_p: 0 });
+  }
+  assert.equal(resolveSamplingRecommendation({ model: 'Qwen3-8B' }).values.temperature, 0.6);
 });

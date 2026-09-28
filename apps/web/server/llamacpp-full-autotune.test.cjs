@@ -5,7 +5,7 @@ const { createModelManager } = require('./model-manager.cjs');
 const { createPresetStore } = require('./llamacpp-presets.cjs');
 const { QUALITY, qualityCheck, newModel } = require('./llamacpp-full-autotune.cjs');
 
-function fixture(t, { models = ['synthetic'], onChat, onUnload, badQ4 = true, badF16 = false, noHead = false, rejectAll = false, rejectModel = '', badBatch = false, failFinal = false, formattedQuality = false, reasoningOnly = false, truncatedWorkloads = false, idleTimeoutMs = 300000, loseIdentityAfterStart = false, reloadFail = false, unloadPolls = 0, unloadStuck = false } = {}) {
+function fixture(t, { badSampling = false, models = ['synthetic'], onChat, onUnload, badQ4 = true, badF16 = false, noHead = false, rejectAll = false, rejectModel = '', badBatch = false, failFinal = false, formattedQuality = false, reasoningOnly = false, truncatedWorkloads = false, idleTimeoutMs = 300000, loseIdentityAfterStart = false, reloadFail = false, unloadPolls = 0, unloadStuck = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'full-tune-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const ini = path.join(dir, 'models.ini'), stateFile = path.join(dir, 'tune.json');
@@ -34,7 +34,7 @@ function fixture(t, { models = ['synthetic'], onChat, onUnload, badQ4 = true, ba
       if (opts.signal?.aborted) throw Error('aborted');
       const q = QUALITY.find(q => q.prompt === prompt);
       let text = q ? q.expected : prompt.startsWith('List the whole numbers') ? Array.from({ length: 60 }, (_, i) => i + 1).join(', ') : 'Synthetic answer';
-      if (q && (rejectAll || b.model === rejectModel || (badF16 && o['cache-type-k'] === 'f16') || (badQ4 && ['q5_0', 'q5_1', 'q4_0'].includes(o['cache-type-k'])))) text = 'wrong';
+      if (q && (rejectAll || (badSampling && o.temp) || b.model === rejectModel || (badF16 && o['cache-type-k'] === 'f16') || (badQ4 && ['q5_0', 'q5_1', 'q4_0'].includes(o['cache-type-k'])))) text = 'wrong';
       if (badBatch && q && o['ubatch-size']) text = 'wrong';
       if (failFinal && q && manager.autotune.status().body.job?.phase === 'Verifying saved profile') text = 'wrong';
       if (formattedQuality && q) text = q.id === 'extraction' ? '`' + text + '`' : '**' + text + '**';
@@ -532,14 +532,34 @@ test('sampling step applies the family recommendation through the preset write p
   assert.equal(o['cache-type-k'], 'q8_0');
 });
 
-test('sampling step restores models.ini exactly and stops when the sampled profile fails its quality probes', async t => {
-  const f = fixture(t, { models: ['Qwen3-8B-Instruct'], rejectAll: true });
+test('a failing sampling probe restores models.ini exactly, records why, and the tune carries on to complete', async t => {
+  const f = fixture(t, { models: ['Qwen3-8B-Instruct'], badSampling: true });
+  let atKv = null;
   await f.manager.autotune.start('Qwen3-8B-Instruct', { confirmPause: true });
   const j = await finished(f.manager), item = j.models[0], p = phase(item, 'sampling');
+  assert.equal(j.status, 'passed', j.error);
+  assert.equal(p.status, 'passed'); assert.equal(p.value.skipped, true); assert.equal(p.value.failed, true);
+  assert.match(p.value.reason, /Quality checks failed/); assert.equal(p.steps[0].status, 'failed');
+  assert.equal(phase(item, 'kv').status, 'passed'); assert.equal(item.result.kv, 'q8_0');
+  assert.equal(item.result.sampling.failed, true);
+  const o = f.options('Qwen3-8B-Instruct');
+  for (const k of ['temp', 'top-p', 'top-k', 'min-p', 'repeat-penalty']) assert.equal(o[k], undefined, k);
+  // Restored byte-identically before KV ran: the first KV probe saw no sampling keys.
+  atKv = f.requests.find(r => r.options['cache-type-k'] === 'f16');
+  assert.equal(atKv.options.temp, undefined);
+  assert.ok(j.log.some(l => /models\.ini was restored/.test(l.text)));
+});
+
+test('a sampling failure that cannot be restored still stops the job as unsafe', async t => {
+  let edited = false;
+  const f = fixture(t, { models: ['Qwen3-8B-Instruct'], badSampling: true, onChat: ({ ini, o }) => { if (o.temp && !edited) { edited = true; fs.appendFileSync(ini, '\n; external operator edit\n'); } } });
+  await f.manager.autotune.start('Qwen3-8B-Instruct', { confirmPause: true });
+  const j = await finished(f.manager);
   assert.equal(j.status, 'failed');
-  assert.equal(p.status, 'failed'); assert.equal(p.restored, true);
-  assert.equal(fs.readFileSync(f.ini, 'utf8'), f.original);
-  assert.equal(phase(item, 'kv').status, 'pending');
+  assert.match(j.error, /inspect models.ini/);
+  assert.equal(phase(j.models[0], 'sampling').status, 'failed');
+  assert.equal(phase(j.models[0], 'kv').status, 'pending');
+  assert.match(fs.readFileSync(f.ini, 'utf8'), /external operator edit/);
 });
 
 test('sampling step never overwrites sampling an operator already set, per model or in the defaults', async t => {

@@ -399,6 +399,15 @@ function createFullAutotuner({ request, rawModels, presets, maintenance, applyUn
       delete p._beforeText; save();
     } catch (e) {
       const restored = await restorePhase(j, p);
+      // Sampling is an optional nicety: a failure there must not fail a tune that the measured
+      // phases would complete. Once models.ini is confirmed restored, record why and go on.
+      // Cancellation, outside edits and unsafe restores still stop the job as for any phase.
+      if (p.id === 'sampling' && restored && !cancelled && !e.cancelled && !e.fatal) {
+        for (const s of p.steps) if (s.status !== 'skipped') { s.status = 'failed'; s.reason = e.message; }
+        p.status = 'passed'; p.reason = e.message; p.value = { skipped: true, failed: true, reason: e.message };
+        p.finishedAt = now(); note(j, 'Recommended sampling was not applied and models.ini was restored: ' + e.message);
+        return;
+      }
       p.status = cancelled || e.cancelled ? 'interrupted' : 'failed'; p.reason = e.message;
       for (const s of p.steps) if (s.status === 'running') { s.status = 'interrupted'; s.reason = e.message; }
       p.finishedAt = now(); save();
