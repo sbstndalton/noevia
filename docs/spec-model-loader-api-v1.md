@@ -153,6 +153,7 @@ verbatim (comments and layout kept).
 | Written | 200 | `{"ok": true, "revision": "<sha256 of text>"}` | new text |
 | Missing or blank `text` | 400 | `text is required` | unchanged |
 | Text does not parse as ini | 400 | `models.ini text does not parse` | unchanged |
+| Same `[section]` more than once | 400 | `models.ini has duplicate sections: [name]` | unchanged |
 | Over 1 MiB | 413 | `models.ini exceeds the editor limit` | unchanged |
 | Stale or missing `baseRevision` | 409 / 400 | see above | unchanged |
 | Filesystem error | 500 | `models.ini could not be written safely; nothing was changed` | unchanged |
