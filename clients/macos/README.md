@@ -15,7 +15,8 @@ holds only **NoeviaKit**, a Swift package with a typed async client for the core
   every response except a 5xx. It reports the release version from `/api/ready`, which is
   documented to equal the served `/version.json`.
 - **Sign in with a code (#555).** Where the server offers it (its `nativeClientAuth`
-  feature, off by default), this is the preferred sign-in. It follows the OAuth 2.0 device
+  feature is off by default and can only be switched on with `TRUST_PROXY=true`), this is
+  the preferred sign-in. It follows the OAuth 2.0 device
   flow (RFC 8628):
 
   ```swift
@@ -86,7 +87,9 @@ the server's `nativeClientAuth` feature is off, the password path below is the o
   refresh never arrives, the client keeps its old pair and retries with the same refresh
   token. The server accepts that retry for 60 seconds, while the new pair it issued has not
   been used. After that, the retry counts as reuse and revokes the device, so the person
-  approves a new code.
+  approves a new code. If someone else replayed a stolen refresh token inside that window,
+  this client's next refresh is refused as reuse and the device is revoked for both of
+  them. That surfaces as `.unauthorised`, and the server audits it.
 - **The Keychain is the source of truth.** A new pair is saved first and used only once the
   save succeeded. If the Keychain refuses the save, the refresh or sign-in throws
   `credentialStore(_:)` and the client keeps the pair it had.

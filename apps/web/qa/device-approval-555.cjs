@@ -32,7 +32,7 @@ async function shots(page,name){
 }
 (async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'noevia-device-qa-'));
- const server=spawn(process.execPath,['server/index.cjs'],{cwd:web,stdio:'ignore',env:{...process.env,UI_DATA_DIR:dir,UI_PORT:'31255',UI_HOST:'127.0.0.1',PUBLIC_ORIGIN:origin,LEGACY_AUTH_COMPAT:'false',NOEVIA_FEATURE_NATIVE_CLIENT_AUTH:'true',DIARY_AUTH_TOKEN:'synthetic-only',INFERENCE_BASE_URL:'http://127.0.0.1:1',DIARY_BASE_URL:'http://127.0.0.1:1',MODEL_MANAGER_KIND:'none',MCP_SERVERS:'',MCP_SERVER_URL:''}});
+ const server=spawn(process.execPath,['server/index.cjs'],{cwd:web,stdio:'ignore',env:{...process.env,UI_DATA_DIR:dir,UI_PORT:'31255',UI_HOST:'127.0.0.1',PUBLIC_ORIGIN:origin,LEGACY_AUTH_COMPAT:'false',NOEVIA_FEATURE_NATIVE_CLIENT_AUTH:'true',TRUST_PROXY:'true',DIARY_AUTH_TOKEN:'synthetic-only',INFERENCE_BASE_URL:'http://127.0.0.1:1',DIARY_BASE_URL:'http://127.0.0.1:1',MODEL_MANAGER_KIND:'none',MCP_SERVERS:'',MCP_SERVER_URL:''}});
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try{
   for(let i=0;i<200;i++){try{if((await fetch(origin+'/api/setup/status')).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
@@ -57,9 +57,8 @@ async function shots(page,name){
   await admin.getByText(/Only approve if you started this sign-in yourself/).waitFor();
   // Shared browsers: the page says which account the app will be signed in to.
   await admin.getByText('Approving signs the app in to your account: Synthetic admin (adminqa).').waitFor();
-  // TRUST_PROXY is off (as behind the tunnel): the shared socket address is not shown as the requester.
-  assert.equal(await admin.getByText(/Requested from/).count(),0);
-  await admin.getByText(/^Requested at /).waitFor();
+  // The feature needs TRUST_PROXY (review N3), so the requester's address is real and shown.
+  await admin.getByText(/^Requested from 127\.0\.0\.1 at /).waitFor();
   assert.equal((await native('/api/auth/device/token',{grant_type:DEVICE_GRANT,device_code:flow.body.device_code})).status,400,'still pending on the confirmation screen');
   await shots(admin,'confirm');
   await admin.getByRole('button',{name:'Approve Synthetic Mac',exact:true}).click();

@@ -53,7 +53,12 @@ const LIMITS = Object.freeze({
   codeGlobal: { limit: 200, windowMs: WINDOW },    //   ...and a backstop for the whole server
   tokenCredential: { limit: 150, windowMs: WINDOW }, // POST /device/token per presented device code or refresh token
   tokenUnknown: { limit: 300, windowMs: WINDOW },  //   unknown credentials: one bucket (per address when trusted)
-  tokenGlobal: { limit: 5000, windowMs: WINDOW },  //   backstop for known credentials
+  // Backstop for device-code polls only (review N1). Refreshes never touch it: a refresh token
+  // cannot be minted without an approval and already has its own 150. Each device code counts
+  // toward it for its first 20 polls only, so the at most 200 codes a window allows (20 × 200 =
+  // 4,000) cannot fill it, and polls that are only slow_down/authorization_pending stop counting.
+  tokenGlobal: { limit: 5000, windowMs: WINDOW },
+  tokenGlobalShare: { limit: 20, windowMs: WINDOW },
   verify: { limit: 20, windowMs: WINDOW },         // lookups + decisions per signed-in account
 });
 
@@ -213,9 +218,12 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     tokenState: db.prepare('SELECT used_at FROM device_tokens WHERE token_hash=?'),
     markUsed: db.prepare('UPDATE device_tokens SET used_at=?, replaced_by=? WHERE token_hash=? AND used_at IS NULL'),
     setReplacedBy: db.prepare('UPDATE device_tokens SET replaced_by=? WHERE token_hash=?'),
-    deleteToken: db.prepare('DELETE FROM device_tokens WHERE token_hash=? AND used_at IS NULL'),
+    // A discarded successor stays in the table, marked used with no successor of its own, so
+    // presenting it later is reuse and revokes the grant (review N2). Only if still unused.
+    discard: db.prepare('UPDATE device_tokens SET used_at=?, replaced_by=NULL WHERE token_hash=? AND used_at IS NULL'),
     grantsByUser: db.prepare('SELECT user_id, count(*) AS n FROM device_grants GROUP BY user_id'),
     deleteAllGrants: db.prepare('DELETE FROM device_grants'),
+    deleteAllAuthorizations: db.prepare('DELETE FROM device_authorizations'),
     dropAccess: db.prepare("DELETE FROM device_tokens WHERE grant_id=? AND kind='access'"),
     touchGrant: db.prepare('UPDATE device_grants SET last_used_at=? WHERE id=?'),
     deleteGrant: db.prepare('DELETE FROM device_grants WHERE id=?'),
@@ -322,8 +330,10 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
    * The refresh grant. A refresh token is single use, with one exception (review F3): for
    * REFRESH_GRACE_MS after its first use, while the token that replaced it has not been used, it
    * may be presented again. That is a client retrying after the answer was lost in transit. The
-   * unused successor is then discarded and a new pair issued; the window is measured from the
-   * first use and never extended. Any other second use is reuse and revokes the whole grant.
+   * unused successor is then discarded (marked used, not deleted) and a new pair issued, and the
+   * grace use is audited as device.refresh_grace; the window is measured from the first use and
+   * never extended. Any other second use, including presenting a discarded successor, is reuse
+   * and revokes the whole grant.
    */
   function exchangeRefreshToken(body, at, retrying = false) {
     const token = typeof body?.refresh_token === 'string' ? body.refresh_token : '';
@@ -345,8 +355,10 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     if (!user || user.disabled_at) return oauthError('invalid_grant', 'The account is not available.');
     const rotated = db.transaction(() => {
       if (inGrace) {
-        // Discard the successor only if it is still unused (it may have been used meanwhile).
-        if (q.deleteToken.run(row.replaced_by).changes !== 1) return null;
+        // Discard the successor only if it is still unused (it may have been used meanwhile). It is
+        // kept, not deleted: whoever holds it and presents it later triggers reuse detection. That
+        // is how a thief who replayed the previous token inside the window gets caught (N2).
+        if (q.discard.run(at, row.replaced_by).changes !== 1) return null;
         q.dropAccess.run(row.grant_id);
         q.touchGrant.run(at, row.grant_id);
         const pair = issuePair(row.grant_id, row.grant_expires_at, at);
@@ -361,7 +373,10 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
       q.setReplacedBy.run(pair.refreshHash, row.token_hash);
       return pair.body;
     })();
-    if (rotated) return { status: 200, body: rotated };
+    if (rotated) {
+      if (inGrace) audit('device.refresh_grace', null, row.user_id, { grantId: row.grant_id, clientName: row.client_name });
+      return { status: 200, body: rotated };
+    }
     // Lost a race: re-read once, so a concurrent first use is judged by the same grace rule.
     return retrying ? revokeForReuse() : exchangeRefreshToken(body, at, true);
   }
@@ -390,7 +405,9 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
       if (limited(bucket, LIMITS.tokenUnknown)) return tooMany('token requests with unknown credentials');
       return oauthError('invalid_grant', grant === DEVICE_GRANT_TYPE ? 'Unknown device code.' : 'Unknown refresh token.');
     }
-    if (limited(`device-token:credential:${hash}`, LIMITS.tokenCredential) || limited('device-token:global', LIMITS.tokenGlobal)) {
+    if (limited(`device-token:credential:${hash}`, LIMITS.tokenCredential)) return tooMany('token requests');
+    if (grant === DEVICE_GRANT_TYPE && !limited(`device-token:global-share:${hash}`, LIMITS.tokenGlobalShare)
+      && limited('device-token:global', LIMITS.tokenGlobal)) {
       return tooMany('token requests');
     }
     const at = now();
@@ -470,6 +487,8 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
    */
   function revokeAll(actorId, reason) {
     const affected = q.grantsByUser.all();
+    // Pending and approved-but-unredeemed requests too: none may turn into a grant afterwards.
+    q.deleteAllAuthorizations.run();
     if (!affected.length) return 0;
     q.deleteAllGrants.run();
     let total = 0;

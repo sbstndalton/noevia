@@ -144,6 +144,29 @@ test('F4: revokeAll deletes every grant and audits each account once', async (t)
   assert.equal(f.deviceAuth.revokeAll('admin-actor', 'feature-off'), 0);
 });
 
+test('N3: native-app sign-in cannot be enabled without TRUST_PROXY', () => {
+  const { createFeatures } = require('./features.cjs');
+  const store = () => { const m = new Map(); return { get: (k) => m.get(k), set: (k, v) => m.set(k, v) }; };
+  const off = createFeatures({ env: { NOEVIA_FEATURE_NATIVE_CLIENT_AUTH: 'true' }, store: store() });
+  assert.equal(off.enabled('nativeClientAuth'), false, 'even the env var cannot switch it on');
+  assert.equal(off.flags().nativeClientAuth, false);
+  assert.match(off.describe().find((f) => f.name === 'nativeClientAuth').unavailable, /Needs TRUST_PROXY on so sign-in limits can tell clients apart/);
+  const admin = createFeatures({ env: {}, store: store() });
+  assert.throws(() => admin.set('nativeClientAuth', true, 'admin'), (e) => e.status === 409 && /TRUST_PROXY/.test(e.message));
+  assert.equal(createFeatures({ env: { NOEVIA_FEATURE_NATIVE_CLIENT_AUTH: 'true', TRUST_PROXY: 'true' }, store: store() }).enabled('nativeClientAuth'), true);
+});
+
+test('revokeAll also clears pending and approved sign-in requests', async (t) => {
+  const f = await fixture(t);
+  const pending = f.deviceAuth.start(req(), { client_name: 'Pending' }).body;
+  const approvedCode = f.deviceAuth.start(req(), { client_name: 'Approved' }).body;
+  f.deviceAuth.decide(f.userId, approvedCode.user_code, true);
+  f.deviceAuth.revokeAll('admin-actor', 'feature-off');
+  assert.equal(f.auth.db.prepare('SELECT count(*) AS n FROM device_authorizations').get().n, 0);
+  assert.equal(f.deviceAuth.token(req(), { grant_type: device.DEVICE_GRANT_TYPE, device_code: approvedCode.device_code }).body.error, 'invalid_grant', 'an approved code cannot be redeemed after the switch-off');
+  assert.equal(f.deviceAuth.lookup(f.userId, pending.user_code).status, 404);
+});
+
 test('F1: lookups and the device list hide the socket address unless it is trusted', async (t) => {
   const f = await fixture(t);
   const started = f.deviceAuth.start(req('10.9.9.9'), { client_name: 'Hidden' }).body;

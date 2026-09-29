@@ -16,6 +16,7 @@ process.env.UI_DATA_DIR = dataDir;
 process.env.PUBLIC_ORIGIN = 'http://localhost';
 process.env.LEGACY_AUTH_COMPAT = 'false';
 delete process.env.NOEVIA_FEATURE_NATIVE_CLIENT_AUTH; // administrator-controlled, so it can be toggled
+process.env.TRUST_PROXY = 'true'; // N3: without it the feature is unavailable and cannot be switched on
 
 const ORIGIN = 'http://localhost';
 const PASSWORD = 'synthetic toggle password';

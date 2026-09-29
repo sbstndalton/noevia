@@ -75,7 +75,14 @@ allowed one. When the public origin is https, the session cookies are `Secure`, 
 client on a LAN `http://` address cannot keep this session.
 
 **Device sign-in (preferred).** This is available while the `nativeClientAuth` feature is
-on (`NOEVIA_FEATURE_NATIVE_CLIENT_AUTH`, or Settings → Features). It is **off by default**.
+on (`NOEVIA_FEATURE_NATIVE_CLIENT_AUTH`, or Settings → Features). It is **off by default**,
+and it **can only be switched on while `TRUST_PROXY=true`**. Otherwise it is reported as
+unavailable ("Needs TRUST_PROXY on so sign-in limits can tell clients apart"), and even the
+environment variable cannot enable it. Behind a reverse proxy such as the Cloudflare tunnel
+without `TRUST_PROXY`, every request carries the proxy's address. Per-client limits on new
+sign-ins would then be one shared bucket that anyone could fill. So enabling the feature
+means configuring the proxy to append the client address to `X-Forwarded-For` and setting
+`TRUST_PROXY=true`.
 While it is off, every route below and the `/device` page answer `404`, and nothing else
 changes. It is the OAuth 2.0 Device Authorization Grant (RFC 8628). A PKCE loopback redirect
 was not used for three reasons. The core has no OAuth authorization endpoint or redirect
@@ -109,17 +116,24 @@ flow also works when the approving browser is on another device, such as a phone
    Rate limits on this endpoint never use the address alone. A malformed request
    (`unsupported_grant_type`, `invalid_request`) is refused before anything is charged. A
    well-formed request is charged to the credential it presents (its device code or refresh
-   token): 150 per credential per 15 minutes, with a server-wide backstop of 5000. A device
-   code or refresh token the server does not know goes to a separate bucket of 300 per 15
-   minutes (per address when `TRUST_PROXY` is on). So junk requests can never use up a real
-   device's budget.
+   token), 150 per credential per 15 minutes. Device-code polls also count toward a
+   server-wide backstop of 5000, but each code counts only for its first 20 polls. So pending
+   codes, at most 200 per window, cannot fill it by polling. Refreshes never count toward it:
+   a refresh token cannot exist without an approval and has its own limit. A device code or
+   refresh token the server does not know goes to a separate bucket of 300 per 15 minutes
+   (per address when `TRUST_PROXY` is on). So junk requests, and polls from pending codes,
+   can never use up a real device's refresh budget.
 4. `{ grant_type: "refresh_token", refresh_token }` on the same endpoint rotates both tokens.
    The previous access token stops working at once. A refresh token presented a second time
    is **reuse**: the server revokes the whole grant, audits `device.refresh_reuse`, and
    answers `invalid_grant`. There is one exception, for a client whose refresh answer was
    lost in transit. For 60 seconds after its first use, the previous refresh token is accepted
    again **if the token that replaced it has not been used**. The unused successor is then
-   discarded and a new pair issued. The window counts from the first use and is not extended
+   discarded and a new pair issued, and the event is audited as `device.refresh_grace`. The
+   discarded successor is kept, marked used. **Presenting it later is reuse and revokes the
+   grant.** So if a thief replays a stolen previous token inside the window, the real
+   client's next refresh, with the token the thief made obsolete, signs both out and
+   records `device.refresh_reuse`. The window counts from the first use and is not extended
    by retries. Once the successor has been used, the old token is reuse. A client must save a
    new pair durably (NoeviaKit: to the Keychain) before using it.
 
@@ -128,8 +142,9 @@ their SHA-256. Each approval creates one **grant**: a device, bound to the appro
 account (the tenant). A grant ends after 7 idle days or 30 days in total, the same as a
 session. Disabling the account, a password reset and account deletion revoke all of its
 grants. **Turning the feature off revokes every device**: an administrator switching it off,
-or the server starting with it off, deletes every grant and records one `device.revoke_all`
-entry per affected account. Turning it on again revives nothing; each device must be
+or the server starting with it off (including because `TRUST_PROXY` is not set), deletes
+every grant and every pending or approved sign-in request. It records one
+`device.revoke_all` entry per affected account. Turning it on again revives nothing; each device must be
 approved again.
 
 A device token is sent only as `Authorization: Bearer nva_…`. A query-string token is
@@ -165,7 +180,8 @@ unless `TRUST_PROXY` is on). `lastUsedAt` is
 updated at most once a minute. `DELETE /api/auth/devices/{id}` revokes one. Its tokens are
 deleted, so the next request with them is `401`. Another account's id is `404`. Both need a
 browser session. The audit log records `device.approve`, `device.deny`, `device.token`
-(tokens issued), `device.refresh_reuse`, `device.revoke` and `device.revoke_all`.
+(tokens issued), `device.refresh_grace`, `device.refresh_reuse`, `device.revoke` and
+`device.revoke_all`.
 
 ## Portable instruction Skill manifest v1
 
