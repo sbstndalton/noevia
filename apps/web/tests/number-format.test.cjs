@@ -53,3 +53,41 @@ test('model sizes use the locale separators', () => {
   assert.equal(formatModelSizeGB(null, 'de-DE'), null);
   assert.equal(formatModelSizeGB(0, 'de-DE'), null);
 });
+
+// #592/#597: percent and duration helpers, in en-GB, de-DE and fr-FR.
+const { formatPercent, formatDuration } = load('number-format.ts');
+const NUMBER_FORMAT_CODE = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/number-format.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+function loadWith(intl) { const out = {}; vm.runInNewContext(NUMBER_FORMAT_CODE, { exports: out, Intl: intl, Map, Number, Object, Math }); return out; }
+
+test('percent uses the locale percent format', () => {
+  const SP = '[\\u00a0\\u202f]';
+  assert.equal(formatPercent(27, 'en-GB'), '27%');
+  assert.match(formatPercent(27, 'de-DE'), new RegExp(`^27${SP}%$`));
+  assert.match(formatPercent(27, 'fr-FR'), new RegExp(`^27${SP}%$`));
+  assert.match(formatPercent(0, 'de-DE'), new RegExp(`^0${SP}%$`));
+  assert.match(formatPercent(27.5, 'de-DE', 1), new RegExp(`^27,5${SP}%$`));
+  assert.match(formatPercent(27.5, 'fr-FR', 1), new RegExp(`^27,5${SP}%$`));
+  assert.match(formatPercent(150, 'de-DE'), new RegExp(`^150${SP}%$`));
+  assert.doesNotMatch(formatPercent(27, 'de-DE'), /^27%$/);
+});
+
+test('duration keeps the two-unit shape and localises the unit names', () => {
+  const de = formatDuration(3600 + 14 * 60 + 5, 'de-DE');
+  assert.match(formatDuration(3600 + 14 * 60, 'en-GB'), /^1\s?h(?:ou)?r?,? 14\s?min/i);
+  assert.match(de, /1\s?Std\.?,? 14\s?Min/);
+  assert.doesNotMatch(de, /\b1h\b/);
+  assert.match(formatDuration(13 * 86400 + 15 * 3600, 'fr-FR'), /13\s?j.*15\s?h/);
+  assert.match(formatDuration(13 * 86400 + 15 * 3600, 'de-DE'), /13\s?Tg?\.?,? 15\s?Std/);
+  assert.match(formatDuration(45, 'de-DE'), /^45\s?Sek/);
+  assert.match(formatDuration(600, 'fr-FR'), /^10\s?min/);
+  assert.match(formatDuration(-5, 'en-GB'), /^0\s?s/);
+  assert.match(formatDuration(Number.NaN, 'en-GB'), /^0\s?s/);
+});
+
+test('duration falls back to unit formatting, then to English letters', () => {
+  const bare = loadWith({ NumberFormat: Intl.NumberFormat });
+  assert.match(bare.formatDuration(4440, 'de-DE'), /1\s?Std\.?\s+14\s?Min/);
+  const broken = loadWith({ NumberFormat: function (l, o) { if (o && o.style === 'unit') throw new RangeError('no'); return new Intl.NumberFormat(l, o); } });
+  assert.equal(broken.formatDuration(4440, 'de-DE'), '1h 14m');
+  assert.equal(broken.formatDuration(13 * 86400 + 15 * 3600, 'de-DE'), '13d 15h');
+});
