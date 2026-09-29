@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web + model-loader 435ba54 — 2026-09-29 (locale gaps, backend uptime_s, tierId)
+
+### Services
+
+- **Web:** [#602](https://github.com/sbstndalton/noevia/pull/602) (changelog), [#599](https://github.com/sbstndalton/noevia/pull/599) (fixes #592, #596, #597, #598, #601: locale gaps left after #587 for numbers, percents, uptime, statuses and server-supplied words) — `cowork-web:435ba54`, image `sha256:51c831f9c5ac3586e036056a7ecaaced8481ae95ec298d3a5f115d7f8b6246cd`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** [#599](https://github.com/sbstndalton/noevia/pull/599) (`uptime_s` on backends, `tierId` in the llama.cpp schema) — `cowork-model-loader:435ba54`, image `sha256:c53b88c6c34783abe7363e2914715e9e820a2bc44e355ee48bcc5ce7ecca102c`, built as an overlay (`FROM cowork-model-loader:b8755fb`, `COPY app /srv/app`, import check).
+- **Code sandbox, OCR, Docling:** no change.
+- No feature flag was changed and `TRUST_PROXY` was not touched.
+
+Exact source `435ba5419f2b448f8d78a208bbe58b474888aee7`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `366325c94b60002e4bc7fd43f03ff13875b72a103bbcf676198a0aa60fbf7413`, matched on the server), to `releases/435ba54`. All PR #599 checks were green before the squash merge. Web was built with `deploy/tools/build-web-release.sh 435ba54 apps/web` (stamp verified). Standalone web candidate on a loopback port with no production mounts: `/` 200, `/api/profile` 401, `version.json` `435ba54`, 82 dist files. Model-loader candidate: `app.api/main/discover/services` import cleanly.
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180`, one service at a time (`web`, then `model-loader`); `.env` and Compose YAMLs were backed up as `*.bak.before-435ba54`. The restart-alert baseline was re-acked.
+
+Checks: web and model-loader healthy, zero restarts; public root 200 three times, `/api/profile` 401, `/api/auth/device/code` 404, `/version.json` `435ba54`; 53 served asset files (including `index-*.js`/`index-f8aq2N0j.css`, `theme.js`, `lens.js`, `glass-highlight.js`) byte-identical to the image `dist`; web and model-loader logs clean. `astraReview`, `constrainedPlanDecoding` and `nativeClientAuth` are off. Model-loader `/api/v1/health` 200, `/api/v1/backends` includes `uptime_s` for every backend, and the `/api/v1/sections` schema carries `tierId` on all 10 tiers (read from inside the web container with the token header). Follow-up: [#603](https://github.com/sbstndalton/noevia/issues/603) (exited backends report an uptime).
+
+Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only differences are the two recreated containers (web, model-loader). Diary (`cowork-diary:f6444b4`), laya and every other container are identical.
+
+Rollback: web, `ln -sfn /mnt/docker/appdata/cowork/releases/ef6a83f /mnt/docker/appdata/cowork/current`, `COWORK_VERSION=ef6a83f` in `.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. Model-loader: `MODEL_MANAGER_VERSION=b8755fb` and the same command for `model-loader`. `.env.bak.before-435ba54` and the Compose backups were kept; previous images are retained.
+
+---
+
 ## Release web ef6a83f — 2026-09-29 (unreadable sources excluded, Sources typography, lazy project folders)
 
 ### Services
