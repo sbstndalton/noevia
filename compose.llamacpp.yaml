@@ -64,10 +64,12 @@ services:
       LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB: ${LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB:-4}
       MODEL_LOADER_URL: http://model-loader:8090
       MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN}
-      # Who writes models.ini: web (default) or model-loader (single writer, #295).
-      MODELS_INI_WRITER: ${MODELS_INI_WRITER:-web}
+      # Who writes models.ini: model-loader (default, the single writer, #295/#269) or web.
+      # Rollback to web: set MODELS_INI_WRITER=web AND drop :ro below, then recreate web.
+      MODELS_INI_WRITER: ${MODELS_INI_WRITER:-model-loader}
     volumes:
-      - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config
+      # Read-only: web only reads models.ini; model-loader writes it through PUT /api/v1/models-ini.
+      - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config:ro
       - ${LLAMACPP_MODELS_DIR}:/models:ro
       - ${LLAMACPP_CACHE_DIR}:/cache:ro
   diary:

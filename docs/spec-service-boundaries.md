@@ -223,10 +223,10 @@ keeps it together.
 | Maintenance gate | `modelManager.enterInference` (`llamacpp-manager.cjs` `maintenance.enter`), taken in `handleRequest` and in research/RAG | in memory | — | — |
 
 The web container mounts `LLAMACPP_MODELS_DIR` read-only and `LLAMACPP_CACHE_DIR` read-only for
-header reads and sizing, and `LLAMACPP_CONFIG_DIR` read-write at `/llamacpp-config`. Model-loader
+header reads and sizing, and `LLAMACPP_CONFIG_DIR` at `/llamacpp-config` (read-only since #269). Model-loader
 mounts `/models`, `/config` and `/data` read-write plus `docker.sock`, but not the cache; llama
-mounts `/config` read-only (`compose.llamacpp.yaml`). So the two `models.ini` writers are web
-(`/llamacpp-config`) and model-loader (`/config`). Evidence,
+mounts `/config` read-only (`compose.llamacpp.yaml`). Model-loader (`/config`) is the only
+`models.ini` writer; before #295/#269 web (`/llamacpp-config`) wrote it too. Evidence,
 calibration, autotune and download state live in web's `DATA_DIR`, keyed by a hash of
 `MODEL_MANAGER_BASE_URL` (`index.cjs`).
 
@@ -606,6 +606,7 @@ Recorded for follow-up; none is fixed by this document.
    separately (the legacy bearer path is enabled with nothing to check it against).
 4. **`models.ini` has two writers** (§6.3): web through `/llamacpp-config` (rw) and model-loader
    through `/config` (rw); llama only reads it (`/config:ro`, `compose.llamacpp.yaml`).
+   **Fixed (#295, #269):** model-loader is the single writer and web's mount is `:ro`.
 5. **The browser executor runs in the web process** (§6.4). Not deployed.
 6. **Fixed (#296).** The egress proxy used to bind `0.0.0.0` by default (`code-egress.cjs`), so it
    listened on every network web joins, not only `code`. It now resolves web's own address on the

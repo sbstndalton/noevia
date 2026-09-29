@@ -171,8 +171,8 @@ outcome by reading the file back rather than by retrying blindly.
 
 | Mode | Behaviour |
 | --- | --- |
-| `web` (default, flag not set) | Web writes `models.ini` itself, atomically, in process. Model-loader writes only through its own screens. |
-| `model-loader` | Web prepares the whole file, sends `PUT /models-ini` with `baseRevision`, and never writes the file. Requires `MODEL_LOADER_URL`. Web still reads the file directly. |
+| `model-loader` (default in `compose.llamacpp.yaml`) | Model-loader is the single writer. Web prepares the whole file, sends `PUT /models-ini` with `baseRevision`, and never writes the file; its `/llamacpp-config` mount is `:ro`. Requires `MODEL_LOADER_URL`. Web still reads the file directly. |
+| `web` (code default when unset; rollback) | Web writes `models.ini` itself, atomically, in process; needs the `:ro` removed from its mount. On a read-only mount, startup logs an error and every save returns 503 `models.ini is on a read-only mount while MODELS_INI_WRITER=web, so nothing was changed`. |
 | anything else | Startup error `unsupported MODELS_INI_WRITER`. |
 
 Mapping of `PUT /models-ini` results to web errors (`apps/web/server/models-ini-writer.cjs`):
@@ -217,9 +217,9 @@ sent text means it committed (success); equals `baseRevision` means it did not (
   status code documented here, is breaking and needs `/api/v2` or a coordinated release
   (model-loader image and web release together, see spec 5.7).
 
-## 7. Remaining work for #269 (not in this change)
+## 7. Single writer (#269, done)
 
-- Owner flips `MODELS_INI_WRITER=model-loader` after releasing a model-loader image that
-  contains `PUT /models-ini` (d738f8e or later) and verifying a preset save.
-- Only then mount web's `/llamacpp-config` read-only. Doing it earlier breaks the default
-  `web` writer mode.
+- `MODELS_INI_WRITER=model-loader` went live on 2026-09-25 with model-loader f6444b4.
+- `compose.llamacpp.yaml` now defaults the flag to `model-loader` and mounts web's
+  `/llamacpp-config` read-only. Rollback: remove `:ro` and set `MODELS_INI_WRITER=web`, then
+  recreate web (see docs/deployment.md, "models.ini writer").

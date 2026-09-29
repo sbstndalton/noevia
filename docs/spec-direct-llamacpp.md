@@ -60,7 +60,9 @@ hardware API. MTP artifact detection remains separate from runtime support.
 
 Set `LLAMACPP_PRESET_PATH` to the app-visible **existing** native INI file. Bind its
 parent directory into both processes; a single-file bind will not follow atomic
-renames. The web process requires directory write permission. Only administrators
+renames. Web mounts the directory read-only and model-loader writes it
+(`MODELS_INI_WRITER=model-loader`, #269); only the `web` rollback mode needs directory write
+permission for the web process. Only administrators
 can read/edit these shared profiles. No endpoint permits arbitrary file paths,
 commands, remote URLs, templates or credentials.
 

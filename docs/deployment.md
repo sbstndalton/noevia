@@ -406,18 +406,30 @@ docker compose --env-file $ENV config -q
 
 ### models.ini writer (`MODELS_INI_WRITER`, #295)
 
-`MODELS_INI_WRITER` (web env, `compose.llamacpp.yaml`) picks who writes `models.ini`:
-`web` (default, the historical in-process atomic rename) or `model-loader` (web sends the
-prepared file to model-loader's `PUT /api/v1/models-ini`; model-loader is the single writer).
-Order: first bump `MODEL_MANAGER_VERSION` to an image that has the endpoint, then add
-`MODELS_INI_WRITER=model-loader` to the `.env` and recreate web. With an older or stopped
+**Model-loader is the single writer of `models.ini`, and web mounts `/llamacpp-config`
+read-only** (#269). `MODELS_INI_WRITER` (web env) picks the writer: `model-loader` (the default
+in `compose.llamacpp.yaml` and `deploy/examples/unraid-llamacpp.override.yml`: web prepares the
+file and sends it to model-loader's `PUT /api/v1/models-ini`) or `web` (the historical
+in-process atomic rename; the code default when the variable is unset outside those files).
+Web still reads `models.ini` directly; it writes nothing under `/llamacpp-config` in
+`model-loader` mode. Model-loader needs an image with the endpoint (d738f8e or later). With an older or stopped
 model-loader, preset saves, calibration and autotune fail with an explicit 503 and leave the
 file unchanged. A token mismatch gets its own 503 ("check MODEL_LOADER_TOKEN"). Each replace
 leaves `models.ini.noevia-backup-<baseRevision>` (0600, never pruned) plus a rotating
-`models.ini.bak-<timestamp>` in the config dir; a failed backup aborts the write. Rollback is
-removing the line (or setting `web`) and recreating web; to restore content, copy the
-`models.ini.noevia-backup-<revision>` you want back over `models.ini`. Web's
-`/llamacpp-config` mount stays read-write until a follow-up makes it `:ro`.
+`models.ini.bak-<timestamp>` in the config dir; a failed backup aborts the write. To restore
+content, copy the `models.ini.noevia-backup-<revision>` you want back over `models.ini`.
+
+Rollback to the web writer takes **both** steps, then a recreate of web only: remove `:ro`
+from web's `${LLAMACPP_CONFIG_DIR}:/llamacpp-config` mount and set `MODELS_INI_WRITER=web`.
+Setting only the flag leaves web on a read-only mount: startup logs
+`[models-ini] MODELS_INI_WRITER=web but /llamacpp-config is not writable`, chat keeps working,
+and preset saves, calibration and autotune return an explicit 503 ("models.ini is on a
+read-only mount while MODELS_INI_WRITER=web, so nothing was changed") without touching the file.
+Model-loader and llama need no restart for either direction.
+
+The live Compose Manager file (`/boot/config/plugins/compose.manager/projects/Cowork/docker-compose.override.yml`)
+is a hand-kept copy: apply the same two lines there (the `MODELS_INI_WRITER` default and the
+`:ro` on web's `/llamacpp-config` volume) when shipping this change.
 
 ### Diary tenant key (M2) — first rollout
 
