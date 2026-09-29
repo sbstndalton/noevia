@@ -35,7 +35,7 @@ for (const [locale, name] of Object.entries(LOCALES)) core.registerCatalogue(loc
 const { mcpFooterSummary } = load('mcp-summary', '.');
 
 // A minimal stand-in for useT()'s Translate function: real interpolation, real catalogue text.
-const t = (locale) => Object.assign((key, params) => core.translate(locale, key, params), { locale, plural: () => '' });
+const t = (locale) => Object.assign((key, params) => core.translate(locale, key, params), { locale, plural: (key, count, params) => core.translatePlural(locale, key, count, params) });
 
 const server = (id, extra = {}) => ({ id, auth: 'none', error: null, discovered: 1, ...extra });
 
@@ -95,4 +95,28 @@ test('the base catalogue and every locale keep {count}/{added} in the new keys',
     assert.match(table['sidebar.mcpServersPartlyAdded'], /\{count\}/, locale);
     assert.match(table['sidebar.mcpServersPartlyAdded'], /\{added\}/, locale);
   }
+});
+
+test('#627 the footer counts and words come from the catalogue, in each locale’s plural forms and number format', () => {
+  const two = { configured: true, discovered: 1234, servers: [server('a', { directory: true }), server('b', { directory: true })] };
+  assert.equal(mcpFooterSummary(two, t('de-DE')).label, 'MCP · 1.234 Werkzeuge · 2 Server');
+  assert.equal(mcpFooterSummary(two, t('fr-FR')).label.replace(/[\u202f\u00a0]/g, ' '), 'MCP · 1 234 outils · 2 serveurs');
+  assert.equal(mcpFooterSummary(two, t('en-GB')).label, 'MCP · 1,234 tools · 2 servers');
+  const builtIn = { configured: true, discovered: 175, servers: [server('a'), server('b'), server('c')] };
+  assert.equal(mcpFooterSummary(builtIn, t('de-DE')).label, 'MCP · 175 Werkzeuge · 3 Server (integriert)');
+  assert.equal(mcpFooterSummary(builtIn, t('fr-FR')).label, 'MCP · 175 outils · 3 serveurs (intégrés)');
+  // One tool is singular; zero is plural in English and German, singular in French.
+  const one = { configured: true, discovered: 1, servers: [server('solo')] };
+  assert.equal(mcpFooterSummary(one, t('en-GB')).label, 'MCP · 1 tool');
+  assert.equal(mcpFooterSummary(one, t('de-DE')).label, 'MCP · 1 Werkzeug');
+  assert.equal(mcpFooterSummary({ ...one, discovered: 0 }, t('en-GB')).label, 'MCP · 0 tools');
+  assert.equal(mcpFooterSummary({ ...one, discovered: 0 }, t('fr-FR')).label, 'MCP · 0 outil');
+  const down = { configured: true, discovered: 4, servers: [server('a'), server('b', { error: 'timed out' })] };
+  assert.equal(mcpFooterSummary(down, t('de-DE')).label, 'MCP · 4 Werkzeuge · b ausgefallen');
+  assert.equal(mcpFooterSummary(down, t('fr-FR')).label, 'MCP · 4 outils · b : indisponible');
+  const dead = { configured: true, discovered: 0, servers: [server('a', { error: 'x' }), server('b', { error: 'y' })] };
+  assert.equal(mcpFooterSummary(dead, t('de-DE')).label, 'MCP · nicht verfügbar');
+  assert.equal(mcpFooterSummary(dead, t('fr-FR')).label, 'MCP · indisponible');
+  for (const locale of ['en-GB', ...Object.keys(LOCALES)]) for (const key of ['sidebar.mcpTools.one', 'sidebar.mcpTools.other', 'sidebar.mcpServersAllAdded', 'sidebar.mcpUnavailable', 'sidebar.mcpDown'])
+    assert.ok(core.translate(locale, key), `${locale} ${key}`);
 });
