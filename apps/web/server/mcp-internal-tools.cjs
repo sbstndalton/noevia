@@ -44,21 +44,19 @@ function uploadPathFor(project, base) {
   return project.projectFolder ? `${project.projectFolder}/${classify(base)}/${base}` : base;
 }
 
-/** The plain name writeTextFile takes to rewrite `file` in place. An upload into the project
- *  folder is stored under its path but written by its bare name (uploads.ingest puts the folder
- *  back); anything else carrying a folder is not a file these tools can write back. */
-function writeNameFor(project, file) {
-  if (!file.name.includes('/')) return file.name;
-  const base = file.name.slice(file.name.lastIndexOf('/') + 1);
-  if (project.projectFolder && file.name === uploadPathFor(project, base)) return base;
-  throw new Error(`"${file.name}" is not in this project's upload folder, so it cannot be edited here.`);
-}
+/** An upload into the project's own storage folder, detected the way ownsFile does. */
+const isProjectUpload = (project, file) => !!(project.projectFolder && file.attachment && file.source === project.projectFolder);
 
 /** Files that came from an attached storage folder are owned by the server —
  *  the sync loop rewrites them — so editing one here would be undone silently.
- *  Uploads are ours to change. */
-function assertEditable(file) {
+ *  Uploads into the project's storage folder are not edited in place yet: the write path
+ *  recomputes their destination from the storage connection at write time, so the written
+ *  name is not guaranteed to be the resolved one (follow-up to #642). Only a local upload,
+ *  stored under its plain name, is rewritten here. */
+function assertEditable(project, file) {
+  if (isProjectUpload(project, file)) throw new Error(`"${file.name}" is a file uploaded to this project's storage folder; editing uploads with tools isn't supported yet. Use project_create_file to write a new file.`);
   if (file.source) throw new Error(`"${file.name}" comes from the attached folder "${file.source}" and is kept in sync from there. Edit it in that folder instead.`);
+  if (file.name.includes('/')) throw new Error(`"${file.name}" is stored under a folder path; editing it with tools isn't supported yet. Use project_create_file to write a new file.`);
   if (file.attachment && file.attachment.state === 'stored') throw new Error(`"${file.name}" is stored in its original format and has no editable text.`);
   if (file.document) throw new Error(`"${file.name}" is an extracted document, not an editable text file.`);
 }
@@ -203,13 +201,12 @@ function createInternalTools(ports) {
       handler: async (args, ctx) => {
         const project = requireProject(ports, ctx);
         const file = findFile(project, args.name);
-        assertEditable(file);
-        const target = writeNameFor(project, file);
+        assertEditable(project, file);
         const addition = String(args.text == null ? '' : args.text);
         if (!addition) throw new Error('there is nothing to append');
         const next = `${file.content || ''}${(file.content || '').endsWith('\n') || !file.content ? '' : '\n'}${addition}`;
         if (Buffer.byteLength(next) > MAX_TEXT_BYTES) throw new Error('that would make the file too large to write in one call');
-        await ports.writeTextFile(project, target, next);
+        await ports.writeTextFile(project, file.name, next);
         return `Appended ${addition.length} chars to "${file.name}".`;
       },
     },
@@ -229,8 +226,7 @@ function createInternalTools(ports) {
       handler: async (args, ctx) => {
         const project = requireProject(ports, ctx);
         const file = findFile(project, args.name);
-        assertEditable(file);
-        const target = writeNameFor(project, file);
+        assertEditable(project, file);
         const find = String(args.find == null ? '' : args.find);
         if (!find) throw new Error('find must not be empty');
         const replace = String(args.replace == null ? '' : args.replace);
@@ -249,7 +245,7 @@ function createInternalTools(ports) {
         }
         const next = parts.join(replace);
         if (Buffer.byteLength(next) > MAX_TEXT_BYTES) throw new Error('that would make the file too large to write in one call');
-        await ports.writeTextFile(project, target, next);
+        await ports.writeTextFile(project, file.name, next);
         return `Replaced ${found} occurrence${found === 1 ? '' : 's'} in "${file.name}".`;
       },
     },

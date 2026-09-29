@@ -11,15 +11,20 @@ const { createInternalTools } = require('./mcp-internal-tools.cjs');
 const FOLDER = 'noevia projects/Synthetic QA';
 const NOTES = `${FOLDER}/Text/synthetic-notes.md`;
 
+// The shape uploads.ingest gives a connected upload: its storage path as the name, the project
+// folder as its source, and an attachment record (uploads.cjs).
+const upload = (group, base, content, attachment = {}) => ({ name: `${FOLDER}/${group}/${base}`, content, source: FOLDER,
+  attachment: { id: 'a'.repeat(64), bytes: content.length, group, state: 'ready', ...attachment } });
+
 function fixtures() {
   const a = {
-    id: 'proj-a', projectFolder: FOLDER,
+    id: 'proj-a', projectFolder: FOLDER, sourceFolders: [FOLDER, 'Reference/Other'],
     files: [
-      { name: NOTES, content: 'SYNTHETIC-NOTES-CANARY: the launch is on Thursday.' },
-      { name: `${FOLDER}/Text/plan.md`, content: 'plan in the upload folder' },
+      upload('Text', 'synthetic-notes.md', 'SYNTHETIC-NOTES-CANARY: the launch is on Thursday.'),
+      upload('Text', 'plan.md', 'plan in the upload folder'),
       { name: 'Reference/Other/plan.md', content: 'plan from an attached folder', source: 'Reference/Other' },
-      { name: `${FOLDER}/Text/binary.txt`, content: 'UNREADABLE-CANARY', attachment: { state: 'stored', group: 'Text' } },
-      { name: `${FOLDER}/Documents/broken.pdf`, content: '', document: { state: 'failed' } },
+      upload('Text', 'binary.txt', 'UNREADABLE-CANARY', { state: 'stored' }),
+      { ...upload('Documents', 'broken.pdf', '', { state: 'failed' }), document: { state: 'failed' } },
       { name: 'local-upload.md', content: 'a local upload keeps its bare name' },
     ],
   };
@@ -127,22 +132,28 @@ test('unreadable files (#586) resolve by bare name but their contents are never 
   }
 });
 
-test('the Project documents write tools reach an upload by bare name and write it back in place', async () => {
-  const { internal, written, a } = tools();
+test('the write tools refuse a connected upload with an accurate reason, while reads by bare name still work', async () => {
+  const { internal, written, a, read, mcpRead } = tools();
   const ctx = { userId: 'alice', projectId: a.id };
-  await internal.project_append_file.handler({ name: 'synthetic-notes.md', text: 'Appended.' }, ctx);
-  await internal.project_replace_text.handler({ name: NOTES, find: 'Thursday', replace: 'Friday' }, ctx);
-  await internal.project_append_file.handler({ name: 'local-upload.md', text: 'more' }, ctx);
-  // uploads.ingest puts `${projectFolder}/Text/` back in front of the bare name, so the same file is rewritten.
-  assert.deepEqual(written.map((w) => w.name), ['synthetic-notes.md', 'synthetic-notes.md', 'local-upload.md']);
-  // A file synced from an attached folder stays read-only here, whichever name reaches it.
-  await assert.rejects(() => internal.project_append_file.handler({ name: 'Other/plan.md', text: 'x' }, ctx), /attached folder/);
-  // Creating a bare name that already exists as an upload would overwrite it; refused.
-  await assert.rejects(() => internal.project_create_file.handler({ name: 'synthetic-notes.md', text: 'x' }, ctx), /already exists/);
-  // A path-named file outside the upload folder layout is not written under the wrong name.
+  const uploadRefusal = new RegExp(`^"${NOTES}" is a file uploaded to this project's storage folder; editing uploads with tools isn't supported yet\\. Use project_create_file to write a new file\\.$`);
+  for (const name of ['synthetic-notes.md', NOTES]) {
+    await assert.rejects(() => internal.project_append_file.handler({ name, text: 'Appended.' }, ctx), (e) => uploadRefusal.test(e.message) && !/attached folder/.test(e.message));
+    await assert.rejects(() => internal.project_replace_text.handler({ name, find: 'Thursday', replace: 'Friday' }, ctx), (e) => uploadRefusal.test(e.message));
+  }
+  assert.match(await read('synthetic-notes.md'), /SYNTHETIC-NOTES-CANARY: the launch is on Thursday/, 'the refused edits changed nothing and reading still works');
+  assert.match(await mcpRead('synthetic-notes.md'), /SYNTHETIC-NOTES-CANARY/);
+  // A file synced from an attached folder keeps its own message, whichever name reaches it.
+  await assert.rejects(() => internal.project_append_file.handler({ name: 'Other/plan.md', text: 'x' }, ctx), /comes from the attached folder "Reference\/Other"/);
+  // A path-named file of no known origin is refused rather than written under another name.
   const odd = { id: 'odd', projectFolder: FOLDER, files: [{ name: 'Elsewhere/odd.md', content: 'x' }] };
   const t = createInternalTools({ getProject: () => odd, writeTextFile: async () => { throw new Error('must not write'); } });
-  await assert.rejects(() => t.project_append_file.handler({ name: 'odd.md', text: 'y' }, { projectId: 'odd' }), /not in this project's upload folder/);
+  await assert.rejects(() => t.project_append_file.handler({ name: 'odd.md', text: 'y' }, { projectId: 'odd' }), /stored under a folder path; editing it with tools isn't supported yet/);
+  assert.deepEqual(written, [], 'nothing was written');
+  // A local upload (plain name, no storage) is still edited in place under its own name.
+  await internal.project_append_file.handler({ name: 'local-upload.md', text: 'more' }, ctx);
+  assert.deepEqual(written.map((w) => w.name), ['local-upload.md']);
+  // Creating a bare name that already exists as an upload would overwrite it; refused.
+  await assert.rejects(() => internal.project_create_file.handler({ name: 'synthetic-notes.md', text: 'x' }, ctx), /already exists/);
 });
 
 test('the tool descriptions tell the model to pass the listed name or a unique bare name', async () => {
@@ -152,6 +163,6 @@ test('the tool descriptions tell the model to pass the listed name or a unique b
   const { internal, a } = tools();
   assert.match(internal.project_read_file.description, /listed name .*if unique/);
   const listing = await internal.project_list_files.handler({}, { userId: 'alice', projectId: a.id });
-  assert.ok(listing.includes(`${NOTES} — text`), 'the listing shows the name the reader accepts verbatim');
+  assert.ok(listing.includes(`${NOTES} — `), 'the listing shows the name the reader accepts verbatim');
   assert.match(listing, /exactly as shown/);
 });
