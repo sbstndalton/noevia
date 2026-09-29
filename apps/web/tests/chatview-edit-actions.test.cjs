@@ -5,17 +5,17 @@
 // worth mocking here, so this asserts directly on the markup ChatView emits for the edit actions.
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const src = fs.readFileSync(path.join(__dirname, '../src/components/ChatView.tsx'), 'utf8');
-const block = src.slice(src.indexOf('msg-edit-actions'), src.indexOf('Everything after this message is replaced'));
+const block = src.slice(src.indexOf('msg-edit-actions'), src.indexOf("t('chat.edit.note')"));
 
 test('the edit actions block exists and is scoped correctly for the assertions below', () => {
-  assert.ok(block.includes('Save'), 'msg-edit-actions block not found as expected');
+  assert.ok(block.includes('chat.edit.save'), 'msg-edit-actions block not found as expected');
 });
 test('Save & re-run uses the shared primary button classes', () => {
-  const save = block.slice(0, block.indexOf('Save &amp; re-run'));
+  const save = block.slice(0, block.indexOf("t('chat.edit.save')"));
   assert.match(save, /className="btn btn-primary"/);
 });
 test('Cancel uses the shared secondary button class, not the dead "secondary" class', () => {
-  const cancel = block.slice(block.indexOf('Save &amp; re-run'));
+  const cancel = block.slice(block.indexOf("t('chat.edit.save')"));
   assert.match(cancel, /className="btn btn-secondary"/);
   assert.doesNotMatch(cancel, /className="secondary"/);
 });
