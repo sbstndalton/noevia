@@ -2,8 +2,8 @@
 'use strict';
 // Persona-swap KV-cache study for issue #518. NO RUN WITHOUT PER-RUN OWNER APPROVAL.
 //
-// Compares, against one llama.cpp server slot, how expensive it is to switch persona (Astra, Sol,
-// Jev, Luna) under five arms:
+// Compares, against one llama.cpp server slot, how expensive it is to switch persona (Planner, Executor,
+// Laya, Auditor) under five arms:
 //   cold             persona after the shared prefix, slot erased before every request (full prefill)
 //   persona-first    persona placed BEFORE the shared prefix, prompt cache only
 //   after-prefix     persona placed AFTER the shared prefix, prompt cache only

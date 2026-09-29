@@ -44,7 +44,7 @@ Current routing follow-up: [routing labels measured on Laya](19-routing-labels.m
 
 **Terminology (doc 13 §13.1), used throughout:**
 - **A. Specialised discriminative model:** one narrow task, e.g. `Qwen3-Reranker` for RAG ranking (live since `67f336e`).
-- **B. Generic System-One decision model:** bounded orchestration decisions through `decide()`. Candidates: Laya, SemIf-style option-logit readout, Jev (reference); floor: heuristics. **Unresolved.**
+- **B. Generic System-One decision model:** bounded orchestration decisions through `decide()`. Candidates: Laya, SemIf-style option-logit readout, a closed System-1 API (reference); floor: heuristics. **Unresolved.**
 - **C. System-Two generative model:** Qwen, Gemma, gpt-oss.
 
 The live reranker is a class-A component. It is not the generic System One, and its gains say nothing about class B.
@@ -52,8 +52,8 @@ The live reranker is a class-A component. It is not the generic System One, and 
 ## 1. Executive summary
 
 1. **The best local System One today is a technique, not a product.** Reading option logits from
-   an ordinary local model gets close to Jev on everyday decisions. The independent JevBench
-   results show SemIf, zero-shot Qwen3.5-4B, at 74.7 against Jev at 75.4; the gap is on the hard
+   an ordinary local model gets close to the closed API on everyday decisions. The independent System-1 benchmark
+   results show SemIf, zero-shot Qwen3.5-4B, at 74.7 against the closed API at 75.4; the gap is on the hard
    tier. noevia can do this on the llama.cpp engine it already runs (`logprobs`), with a model it
    already has. For RAG, a purpose-built reranker (Qwen3-Reranker on llama.cpp's `/v1/rerank`)
    fits better still.
@@ -101,7 +101,7 @@ The live reranker is a class-A component. It is not the generic System One, and 
 | 8 | Can output evaluation safely control retries? | Only with calibrated confidence, a hard retry cap, and "ask the user" or "best answer + notice" as the terminal state; unsafe before calibration | Evaluator false-PASS/false-FAIL rates |
 | 9 | How much code disappears? | About 155 lines, 3 prompts, 12 thresholds, 8 regexes; net lines rise; the win is structural | High (doc 10) |
 | 10 | What % of work stays local? | Unknown; target ≥ 95% of ordinary requests | Doc 9 "fully local / 100" |
-| 11 | When does remote help? | Hard-tier reasoning and decisions (frontier ≈ 95% vs ≈ 60–75% local on JevBench hard), missing capabilities, very long context | Configuration D vs C |
+| 11 | When does remote help? | Hard-tier reasoning and decisions (frontier ≈ 95% vs ≈ 60–75% local on the benchmark's hard tier), missing capabilities, very long context | Configuration D vs C |
 | 12 | Can System Two die without losing the session? | Not today for chat. Yes after doc 6 (M4) | Failure-injection suite |
 | 13 | Cold reload / resume latency? | Unmeasured; it will be load time plus rebuilt-context prefill | Doc 5 §5.8 |
 | 14 | Is KV restoration practical? | llama.cpp supports slot save/restore; compatibility is strict (doc 6 §6.6); router-mode behaviour unverified | Measure; optimisation only |
@@ -109,7 +109,7 @@ The live reranker is a class-A component. It is not the generic System One, and 
 | 16 | Which subscriptions include third-party inference? | None, for third-party *apps*. Claude and ChatGPT subscriptions work only inside their own clients, which noevia can host unmodified in Code mode | High (primary docs) |
 | 17 | Can subscriptions reduce metered spend? | Yes for **Code mode** via vendor CLIs; not for chat | High |
 | 18 | Behaviour at subscription limits? | Show it, then offer the next tier that policy allows; never a silent switch to metered | Design (doc 7 §7.4) |
-| 19 | When is paying for Jev justified? | As a benchmark reference, and possibly as an opt-in remote decision backend for the hard-tier decisions local models get wrong, if doc 9 shows a gain worth $0.04 per 1,000 decisions and the state may leave the machine | Configuration E (needs approval) |
+| 19 | When is paying for a closed System-1 API justified? | As a benchmark reference, and possibly as an opt-in remote decision backend for the hard-tier decisions local models get wrong, if doc 9 shows a gain worth $0.04 per 1,000 decisions and the state may leave the machine | Configuration E (needs approval) |
 | 20 | Can every remote provider vanish without breaking core functions? | Yes by design: the decision floor is the heuristic and the generation floor is local (doc 7 §7.6). True of today's noevia too, apart from web search and optional connectors | High |
 | 21 | **Can noevia switch among local models mid-task, using System One and a capability database, for higher quality with the smallest suitable model per phase?** | Architecturally yes (docs 5, 6, 12); empirically unknown | Configurations H vs G |
 | 22 | **Does adaptive switching beat choosing once at the start?** | Unknown. Expected: yes on long multi-phase tasks where two models fit; no on short chats or single-slot hardware. The design falls back to choose-once when a swap will not pay | H3 in doc 12 §12.9 |
@@ -204,8 +204,8 @@ Stop point: after (4), for your review, before any production wiring.
 
 ## Sources (primary unless marked)
 
-- JevBench v1.2 (independent): https://github.com/fstandhartinger/jevbench and https://raw.githubusercontent.com/fstandhartinger/jevbench/main/RESULTS-v1.2.md
-- TypeSafe Jev docs: https://docs.typesafe.ai/models
+- Public System-1 benchmark v1.2 (independent): https://github.com/fstandhartinger/jevbench and https://raw.githubusercontent.com/fstandhartinger/jevbench/main/RESULTS-v1.2.md
+- Closed System-1 API (vendor) docs: https://docs.typesafe.ai/models
 - SemIf: https://github.com/TheoLeeCJ/SemIf
 - Bespoke Nimble: https://github.com/bespokelabsai/nimble
 - Kev: https://github.com/jaredpalmer/kev and https://huggingface.co/jaredpalmer/kev-0.6b

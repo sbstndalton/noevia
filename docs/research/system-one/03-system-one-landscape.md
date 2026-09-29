@@ -1,12 +1,12 @@
 # 3. System-One landscape (verified 2026-09-21)
 
-"System One" in this sense is days old. TypeSafe launched **Jev** on 15 September 2026; within a
+"System One" in this sense is days old. A vendor launched **a closed System-1 API** on 15 September 2026; within a
 week there were a dozen open reproductions. Treat everything here as a snapshot that will age fast.
 
 **Evidence labels:**
 - **[P]** primary source: the repository, model card or vendor docs, read directly.
 - **[V]** vendor claim, meaning the project's own number about itself.
-- **[B]** independent benchmark: JevBench v1.2 ([repo](https://github.com/fstandhartinger/jevbench), [results](https://raw.githubusercontent.com/fstandhartinger/jevbench/main/RESULTS-v1.2.md), run by one operator, v1.2.3 cost-corrected 19 Sep 2026).
+- **[B]** independent benchmark: a public System-1 benchmark, v1.2 ([repo](https://github.com/fstandhartinger/jevbench), [results](https://raw.githubusercontent.com/fstandhartinger/jevbench/main/RESULTS-v1.2.md), run by one operator, v1.2.3 cost-corrected 19 Sep 2026).
 - **[C]** community or press claim, not verified.
 - **[—]** unknown.
 
@@ -28,7 +28,7 @@ causal LM with no trained head (SemIf does it zero-shot on base weights [P]). It
 available on any local GGUF model through llama.cpp's `logprobs` / `n_probs` output [P: llama.cpp
 server README].
 
-## JevBench v1.2 [B]
+## System-1 benchmark v1.2 [B]
 
 Composite score = geometric mean of Intelligence, Calibration, Speed and Cost, 25% each. 534
 decisions across six task families: routing, adequacy judging, policy checks, intent, ordinal
@@ -36,7 +36,7 @@ scoring and extraction. Tiers: easy, standard, judge and hard.
 
 | System | Open? | Score | Easy / Std / Judge / Hard | p50 raw | Ran on |
 |---|---|---|---|---|---|
-| Jev 1.13.0 | closed API | 75.4 | 100 / 99.0 / 94.5 / 74.1 | 0.65 s | vendor API |
+| Closed System-1 API (vendor), 1.13.0 | closed API | 75.4 | 100 / 99.0 / 94.5 / 74.1 | 0.65 s | vendor API |
 | SemIf (Qwen3.5-4B) | MIT, zero-shot | 74.7 | 100 / 97.9 / 95.2 / 59.5 | 0.20 s | RunPod GPU |
 | djev (DiffusionGemma) | Apache-2.0 | 74.3 | 100 / 97.9 / 93.2 / 69.5 | 0.24 s | vendor API |
 | Qwen3-32B zero-shot ("jqv") | open | 70.1 | 100 / 95.8 / 92.5 / 64.5 | 0.75 s | H100 |
@@ -45,15 +45,15 @@ scoring and extraction. Tiers: easy, standard, judge and hard.
 | kev 0.6B | Apache-2.0 | 66.7 | 100 / 81.2 / 66.4 / 40.0 | 0.59 s | RTX 3090 |
 | kev 4B | Apache-2.0 | 62.2 | 100 / 91.7 / 85.6 / 42.3 | 0.55 s | RTX 3090 |
 | Bespoke Nimble 9B | open | 61.8 | 100 / 94.8 / 89.0 / 65.5 | 0.39 s | A40 |
-| GPT-5.6 Luna (low) | API | 66.2 | 100 / 97.9 / 96.6 / 94.5 | 0.97 s | OpenAI API |
-| DeepSeek V4.1 Flash | API | 57.8 | 98.6 / 99.0 / 93.2 / 95.0 | 1.42 s | DeepSeek API |
+| Closed cloud API model A (low) | API | 66.2 | 100 / 97.9 / 96.6 / 94.5 | 0.97 s | vendor API |
+| Closed cloud API model B | API | 57.8 | 98.6 / 99.0 / 93.2 / 95.0 | 1.42 s | vendor API |
 | GLiNER2 | open | 53.0 | 97.2 / 66.7 / 45.9 / 36.4 | 0.31 s | CPU |
 
 How to read this for noevia:
 
 - **Frontier APIs are the most accurate** on the hard tier (≈95%) but lose on speed and cost. The
   composite rewards cheapness, which is why a closed API does not top it.
-- **Zero-shot logit readout on a 4B general model (SemIf) nearly matches Jev** on
+- **Zero-shot logit readout on a 4B general model (SemIf) nearly matches the closed API** on
   easy/standard/judge, and trails on hard (59.5 vs 74.1).
 - **Encoder-sized models (Laya, OpenDecision) are much weaker** on hard decisions (≈34%). They are
   CPU-friendly, but they are bases to fine-tune, not drop-in engines.
@@ -63,12 +63,12 @@ How to read this for noevia:
 
 ## Candidates in detail
 
-### Jev (TypeSafe): reference, closed [P docs.typesafe.ai]
-- API only: `POST https://api.typesafe.ai/v1/systemone`, model `jev-1.13.0`. State plus questions
+### Closed System-1 API (vendor): reference, closed [P vendor docs]
+- API only: one `POST` endpoint and one versioned model (1.13.0). State plus questions
   with optional instructions and criteria. Text only.
 - Limits: 64k tokens per request, 32k for state plus the longest question. Rate limit 1,200
   requests/min.
-- **Pricing: $0.042 per million input tokens, output free.** JevBench measures about **$0.04 per
+- **Pricing: $0.042 per million input tokens, output free.** The benchmark measures about **$0.04 per
   1,000 decisions** [B].
 - No weights, no parameter count, no self-hosting [P]. "Not trained on customer requests"; zero
   data retention is enterprise-only [P].
@@ -76,13 +76,13 @@ How to read this for noevia:
   be the default, because it is network-dependent, sends state to a US vendor, and is
   single-vendor.
 
-### SemIf (formerly OpenJev): the strongest open option on quality [P github.com/TheoLeeCJ/SemIf]
+### SemIf: the strongest open option on quality [P github.com/TheoLeeCJ/SemIf]
 - MIT. Zero-shot option-logit readout. No trained head needed.
 - Models: Qwen3-0.6B, MiniCPM5-2B, **Qwen3.5-4B**, Qwen3-Reranker-4B.
 - Runtimes: PyTorch CUDA, MLX, MPS, and a **llama.cpp/GGUF build for the browser (WebGPU)**.
 - Shared-state prefix reuse: prefill a long state once, branch across many questions.
 - [V] on an RTX 3090: 21 criteria in 1.02 s median, versus 5.33 s for JSON generation. Qwen3.5-4B
-  balanced accuracy 0.813; agreement with the TypeSafe subset 0.845 (Jev itself 0.883).
+  balanced accuracy 0.813; agreement with the vendor subset 0.845 (the closed API itself 0.883).
 - **Why it matters most:** it shows that the technique, not a special model, carries most of the
   value. noevia can reproduce it on its existing llama.cpp engine with an already-downloaded model.
 
@@ -96,7 +96,7 @@ How to read this for noevia:
 - Prompt limit **2,048 tokens**; enums and booleans only, up to 26 choices.
 - Runtimes: MLX and CUDA. **No GGUF/llama.cpp** [P].
 - [V] Latency: 106 ms on an H100, 444 ms on an M5 Pro. Agreement: 90.1% own holdout (base model
-  66.4%, Jev 93.2%).
+  66.4%, the closed API 93.2%).
 - Licence not stated in the README [P].
 - Too big to sit permanently beside a System-Two model on modest hardware.
 
@@ -132,8 +132,8 @@ How to read this for noevia:
 - These are purpose-trained query–passage scorers, and the obvious first backend for use case B.
 
 ### Named but not verified
-- **NanoJev, mini-jev:** appear only in secondary articles, not in JevBench. Not assessed [C].
-- **"Laya 33 ms beats Jev":** the GPU single-question figure versus Jev's network round-trip.
+- **Smaller spin-offs of the closed API:** appear only in secondary articles, not in the benchmark. Not assessed [C].
+- **"Laya 33 ms beats the closed API":** the GPU single-question figure versus the closed API's network round-trip.
   Not like for like [C].
 
 ## Candidate matrix
@@ -148,7 +148,7 @@ How to read this for noevia:
 | SemIf (as a Python sidecar) | 4B | MIT | yes | slow | browser GGUF only | model's | yes | [B] 72.6 | 1 week old |
 | Nimble | 9B | [—] | yes | no | no | 2k | yes | [B] 65.3 | 1 week old |
 | djev | [—] | Apache-2.0 | yes | no | no | [—] | yes | [B] 65.4 | 1 week old |
-| Jev | [—] | closed | **no** | n/a | n/a | 64k | yes | [B] 82.7 | vendor-backed |
+| Closed System-1 API | [—] | closed | **no** | n/a | n/a | 64k | yes | [B] 82.7 | vendor-backed |
 
 ## Conclusion (for review)
 
@@ -158,13 +158,13 @@ How to read this for noevia:
    - The 4B option-logit approach remains one class-B candidate, not the chosen one.
 1. **The strongest local option today is not a new model; it is a technique.** Option-logit
    readout, run through the llama.cpp engine noevia already operates, on a model noevia already
-   has. SemIf's numbers [V, B] suggest a 4B model gets most of Jev's quality on everyday
+   has. SemIf's numbers [V, B] suggest a 4B model gets most of the closed API's quality on everyday
    decisions. That is exactly the size noevia already runs as its fast model.
 2. **For RAG, a purpose-built reranker beats a general decision model.** Qwen3-Reranker on
    `/v1/rerank` needs no new runtime.
 3. **Laya is the only realistic "always resident on CPU" model**, and it needs fine-tuning.
    Revisit once noevia has a labelled set of its own decisions: the benchmark corpus in doc 9
    produces exactly that set.
-4. **Jev is a yardstick and an opt-in fallback, never a dependency.**
+4. **The closed API is a yardstick and an opt-in fallback, never a dependency.**
 5. Everything in this ecosystem is under a week old. Pin versions, keep the interface generic,
    and expect to swap backends.

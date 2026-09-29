@@ -119,7 +119,7 @@ test('the tool approval card, Code task cards and the sidebar note are catalogue
   for (const literal of ['Approval required for', 'This changes data in your account', 'Could not send the decision']) assert.ok(!tools.includes(literal), `ToolCalls.tsx still holds "${literal}"`);
   assert.doesNotMatch(tools, /\n\s+(?:Allow once|Decline|Allow for this chat)\n/, 'the three buttons are catalogue text');
   const code = read('src/components/code/CodePanel.tsx');
-  for (const literal of ['Last reported plan', 'Reported plan', 'Assistant output', 'Showing the first 32 KiB', 'Not reviewed by Astra', 'Astra suggests accepting', 'Accept change', 'You accepted this change', 'Nobody answered in time', 'Network: nothing was requested', 'Not reported by this harness', 'tool calls ·'])
+  for (const literal of ['Last reported plan', 'Reported plan', 'Assistant output', 'Showing the first 32 KiB', 'Not reviewed by the Planner', 'The Planner suggests accepting', 'Accept change', 'You accepted this change', 'Nobody answered in time', 'Network: nothing was requested', 'Not reported by this harness', 'tool calls ·'])
     assert.ok(!code.includes(literal), `CodePanel.tsx still holds "${literal}"`);
   assert.ok(!read('src/components/code/useActiveCodeTasks.ts').includes('setError(cause'), 'the hook no longer stores an English message');
   assert.ok(!read('src/components/Sidebar.tsx').includes('{codeTasks.error}'), 'the sidebar words its own note');

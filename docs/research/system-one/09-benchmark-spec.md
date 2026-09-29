@@ -47,7 +47,7 @@ of work, under the user's standing constraints:
 | **B** | local System Two only: one model, all tools offered, no routing, plain top-k RAG |
 | **C** | local System One + local System Two (all decision purposes on local backends) |
 | **D** | C + remote escalation (metered, only after local attempts; **needs user approval of spend**) |
-| **E** | C with Jev as the decision backend (**needs approval**; cost ≈ $0.04 per 1,000 decisions [B]) |
+| **E** | C with a closed System-1 API as the decision backend (**needs approval**; cost ≈ $0.04 per 1,000 decisions [B]) |
 | **F** | frontier-heavy reference (quality ceiling; **needs approval**) |
 | **G** | *choose once*: System One picks the best single local model at the start, no switching |
 | **H** | *adaptive*: G + mid-task re-evaluation and switching (doc 12), with the capability database |

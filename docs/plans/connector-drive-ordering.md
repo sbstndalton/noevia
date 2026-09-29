@@ -10,6 +10,6 @@ Implemented: connector list reads commit only when current. Drive action start a
 - Real Chrome UI via `qa/connector-drive-ordering.cjs`: held pending poll then Cancel, reconnect, connected-state policy update, stale poll failure, action recovery, current load retry and poll stop/resume.
 - Synthetic timer ticks invoke the actual interval callback; synthetic APIs use no live Google/OAuth account.
 - 375/768/1440 CSS pixels in light/dark, overflow and keyboard focus checks; mobile light and desktop dark screenshots inspected.
-- Sol independent review and Impeccable detector: no actionable findings.
+- Independent model review and Impeccable detector: no actionable findings.
 
 Physical devices, screen readers and production integrations were not tested. No merge or deployment.

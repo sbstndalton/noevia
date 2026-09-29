@@ -7,7 +7,7 @@ It remains off by default. The original mocked-only implementation below is hist
 Implemented with injected mocked providers, disabled and unavailable in production. The
 Experimental settings registry exposes a separate Step supervision entry with an explicit
 unavailable reason. Neither an admin setting nor an environment override can activate it
-without a future provider integration. No Jev/Laya endpoint, SDK, model or credential is added.
+without a future provider integration. No remote System-1 API or Laya endpoint, SDK, model or credential is added.
 
 `createStepSupervision({enabled, provider, deadlineMs})` accepts a provider with
 `decide({round, goal, outputs, choices}, {signal})`. The response is exactly

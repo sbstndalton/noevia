@@ -11,7 +11,7 @@ implementation**, and it does not answer any question about one. Evidence tags a
 | Class | Name | Job | Examples | Interface in noevia |
 |---|---|---|---|---|
 | **A** | **Specialised discriminative model** | One narrow scoring task it was trained for | `Qwen3-Reranker-0.6B` (RAG ranking, live); the embedding model (`nomic-embed-text-v1`) | Its own purpose, e.g. `rag.rerank`, through `decisions.rank()` or a dedicated call |
-| **B** | **Generic System-One decision model** | Bounded orchestration decisions: pick, judge, stop, escalate | Candidates: Laya, SemIf-style option-logit readout (4B or smaller), Jev (remote reference); floor: deterministic heuristics | `decide({ state, question, choices, constraints })`, provider-independent (doc 4) |
+| **B** | **Generic System-One decision model** | Bounded orchestration decisions: pick, judge, stop, escalate | Candidates: Laya, SemIf-style option-logit readout (4B or smaller), a closed System-1 API (remote reference); floor: deterministic heuristics | `decide({ state, question, choices, constraints })`, provider-independent (doc 4) |
 | **C** | **System-Two generative model** | Generation, reasoning, coding, synthesis | Qwen3.5-4B/9B, Gemma-4 E2B/E4B, gpt-oss-20B | Chat and Code paths |
 
 ```
@@ -24,7 +24,7 @@ noevia decision layer  (decide / rank; validation, deadline, fallback, logging: 
 ├── B. Generic System-One (UNRESOLVED; this doc)
 │   └── model selection, mid-task switching, tool selection, retry/continue/stop,
 │       output evaluation, escalation, context utility, residency
-│       → backend: laya | llama-logit (SemIf-style) | jev | heuristic
+│       → backend: laya | llama-logit (SemIf-style) | remote | heuristic
 │
 └── C. System-Two generators
     └── Qwen / Gemma / gpt-oss …
@@ -63,14 +63,14 @@ approval.
   (`temperature_by_options`).
 
 **Typed-decision interface [P].**
-- The request shape is Jev's: `system_one(state, {id: {type: choice|score|noul, instructions,
+- The request shape is the closed API's: `system_one(state, {id: {type: choice|score|noul, instructions,
   criteria}})`.
 - `choice` returns probabilities plus a confidence (1 − normalised entropy); `score` returns an
   expected level plus a distribution; `noul` returns P(true).
 - All questions are scored in one batched forward pass. The state is truncated from the left to
   `max_len` (512 tokens; 1,024 for the typed-decisions and multilingual checkpoints).
 - Options must fit a 192-token head budget (256 multilingual). Accuracy collapses past about 20
-  options (Banking77: 0.425 vs Jev 0.870 [V]).
+  options (Banking77: 0.425 vs the closed API 0.870 [V]).
 
 This maps onto `decide()` directly: `choice`, `score` and `noul` are three of doc 4's kinds, and
 `act_probability` fits the `abstain` / low-confidence path.
@@ -94,7 +94,7 @@ The weight file sizes mean bf16 storage.
 **CPU performance.**
 - About 140 ms for 3 questions on Apple-silicon CPU, warm [P, wrapper README].
 - 193–464 ms on CPU per the card [V].
-- JevBench ran it on a 4-thread Ryzen 5 3600: raw p50 0.79 s, with the benchmark's ×2 + 0.15 s
+- The System-1 benchmark ran it on a 4-thread Ryzen 5 3600: raw p50 0.79 s, with the benchmark's ×2 + 0.15 s
   adjustment [B].
 - A cold checkpoint build takes about 7.4 s on CPU [V].
 - DaServer (24 threads, Zen 5) is untested [—].
@@ -106,7 +106,7 @@ The weight file sizes mean bf16 storage.
 | Held-out task families (zero-shot) | 0.651 accuracy, ECE 0.204 | [V] |
 | Agent-style typed-decisions workflows, zero-shot | **0.362** (random 0.318, majority class 0.461) | [V] |
 | Same workflows after fine-tuning on their training split | 0.766 | [V] |
-| JevBench tiers: easy / standard / judge / **hard** | 94.4 / 72.9 / 69.2 / **34.1** | [B] |
+| Benchmark tiers: easy / standard / judge / **hard** | 94.4 / 72.9 / 69.2 / **34.1** | [B] |
 | ECE before → after temperature refit | 0.466 → 0.081 | [V] |
 | Coverage at 50%, in-task | 0.947 accuracy | [V] |
 | Accuracy on non-Latin scripts | 0.000 at 0.952 confidence | [V] |
@@ -166,7 +166,7 @@ The Mac is a 16 GB M2 with unified memory, which gives the same conclusion.
 | Candidate (class B unless noted) | Where it runs | Resident footprint | Competes with System Two for | Evidence |
 |---|---|---|---|---|
 | Deterministic heuristic | in process | ≈ 0 | nothing | [M] |
-| Jev | remote API | 0 local | nothing (network, cost, state leaves the box) | [P] |
+| Closed System-1 API | remote API | 0 local | nothing (network, cost, state leaves the box) | [P] |
 | **Laya typed-decisions**, ONNX | web process, CPU | fp32 ≈ 2.0 GB; bf16 ≈ 0.9 GB; int8 ≈ 0.5 GB | RAM only; outside the llama cap | [P] fp32, [E] others |
 | Laya multilingual | web process, CPU | ≈ 0.7–1.4 GB | RAM only | [E] |
 | Qwen3-0.6B, option-logit | separate CPU llama.cpp (like `embed`) | ≈ 0.6 GB Q8 + ≈ 0.2 GB KV | RAM only | [E] |
@@ -182,9 +182,9 @@ Reading:
   gpt-oss-20B plus a Q4 4B is over the 14 GB cap, and the second router slot now holds the
   reranker. So every call would either swap models (seconds) or queue on the System-Two slot.
 - Only four candidates can stay resident at any time without competing for the llama.cpp slots
-  or cap: the heuristic, Laya, a 0.6–1.7B CPU logit model, and Jev (remote).
+  or cap: the heuristic, Laya, a 0.6–1.7B CPU logit model, and the closed API (remote).
 
-## 13.5 Comparison plan: Laya vs option-logit vs Jev vs the rest
+## 13.5 Comparison plan: Laya vs option-logit vs the closed API vs the rest
 
 **Candidates.** Each runs through `decide()` as a backend, on identical inputs:
 
@@ -200,7 +200,7 @@ Reading:
 | S2L | option-logit on the loaded System Two | zero extra residency; measured against each System-Two model |
 | SEMIF | SemIf itself (its llama.cpp/GGUF build, or MPS on the Mac) | kept separate from Q4 so our recreation is checked against the original; it is MIT and available [P], so include it |
 | K06 | kev-0.6B | only if the Python sidecar cost is acceptable; otherwise note and skip |
-| J | Jev 1.13.0 | remote reference; **needs your approval** (synthetic state only; about $0.04 per 1,000 decisions [B]) |
+| J | Closed System-1 API 1.13.0 | remote reference; **needs your approval** (synthetic state only; about $0.04 per 1,000 decisions [B]) |
 
 **Decision set.** Synthetic only, from doc 9 plus doc 12. About 600 labelled decisions, split
 60/20/20 into train/calibration/test so that L1 and L2 never see test data. The test split is
@@ -265,7 +265,7 @@ whatever System Two is loaded".**
 - When the loaded System Two is itself a 4B-class model, reading option logits off it costs no
   extra memory. The price is quality that shifts with the loaded model, and waiting for the one
   generation slot.
-- JevBench's 74.7 for SemIf [B] is per-decision quality on a 32 GB GPU with the model always
+- The benchmark's 74.7 for SemIf [B] is per-decision quality on a 32 GB GPU with the model always
   loaded, which is exactly the condition noevia lacks.
 - To be settled by the §13.5 system-level run (Q4 and S2L against L1/L2 and Q06/Q17).
 
@@ -281,7 +281,7 @@ whatever System Two is loaded".**
      - cheap fine-tuning.
    - Risks:
      - near-chance zero-shot on agent workflows (0.362);
-     - weak on hard decisions (34.1 on JevBench);
+     - weak on hard decisions (34.1 on the benchmark);
      - over 20 options breaks it (irrelevant for noevia, where the switching set has 7 actions);
      - a 512/1,024-token state limit means a compact state summary is required, which doc 12's
        handover note already provides;
@@ -293,7 +293,7 @@ whatever System Two is loaded".**
    - It is the fallback if Laya's fine-tune fails the decision rule.
 3. **Not recommended as the always-resident generic model:** a dedicated 4B (13.6 Q24), SemIf's
    PyTorch runtime, kev (Python runtime), Nimble/djev (no local path on this hardware).
-4. **Always present:** the heuristic floor. Jev stays a reference, and an opt-in remote backend
+4. **Always present:** the heuristic floor. The closed API stays a reference, and an opt-in remote backend
    only if policy allows cloud.
 
 Nothing here is chosen yet. The ranking above is a prior for which experiments to run first.
@@ -320,7 +320,7 @@ In order:
    DaServer while gpt-oss-20B is the System Two. That needs a maintenance window you start (D2).
 5. **Laya L2** fine-tune on the training split, if L1 is promising (about 2 h on a rented
    2×T4-class GPU, or longer on the Mac's MPS). Rented GPU time needs your approval.
-6. **Jev (J)** on the same frozen test split, as the reference. **Needs your approval** (remote,
+6. **The closed API (J)** on the same frozen test split, as the reference. **Needs your approval** (remote,
    synthetic state, about $0.04 per 1,000 decisions).
 7. **System-level run:** doc 12's switching tasks with the top two local backends plus H,
    measuring task success, wall time including swaps, and peak memory. Apply the §13.5 decision
