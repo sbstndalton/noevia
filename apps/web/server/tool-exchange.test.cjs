@@ -183,12 +183,15 @@ test('different names, values and array order remain distinct', async () => {
 
 for (const decision of ['deny', 'timeout']) {
   test(`${decision} is reused without another approval or execution`, async () => {
-    const f = fixture({ decision, rounds: [[call('a')], [call('b', 'write', equivalent)], [call('c')]] });
+    // The duplicate is in the same round as well as in later ones: a decline ends the reply after
+    // its round (#666), a timeout lets the model answer, so both still show the reuse.
+    const f = fixture({ decision, rounds: [[call('a'), call('b', 'write', equivalent)], [call('c')], [call('d')]] });
     await f.run();
     assert.equal(f.approvals.length, 1);
     assert.equal(f.executions.length, 0);
     const results = f.events.filter(e => e.type === 'tool_result');
-    assert.equal(results.length, 3);
+    assert.equal(results.length, decision === 'deny' ? 2 : 4);
+    assert.equal(f.events.some(e => e.type === 'paused' && e.reason === 'declined'), decision === 'deny');
     assert.ok(results.every(e => e.text === results[0].text && e.text.startsWith('ERROR')));
   });
 }

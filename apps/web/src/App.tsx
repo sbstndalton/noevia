@@ -47,6 +47,7 @@ import type {
   Message,
   Project,
   ProjectFile,
+  ReplyPause,
   ReplyTelemetry,
   ToolCallView,
 } from './types';
@@ -65,7 +66,7 @@ import { EditProjectModal } from './components/EditProjectModal';
 import { Inspector } from './components/Inspector';
 import { StatsBar } from './components/StatsBar';
 import { finishedToolCall, pendingToolCall, settleToolCalls } from './tool-call-state';
-import { editBase, modelHistory, persistableMessage, rerunBase, storedPause } from './applied-writes';
+import { declinedNames, editBase, modelHistory, persistableMessage, rerunBase, storedPause } from './applied-writes';
 import { mergeTranscripts } from './transcript-merge';
 import { adoptMergedTranscript, enqueueKeyed, latestGate, resolveLoadedHistory, shouldSaveChat, upsertChatMeta } from './chat-save';
 import { readLastPlace, writeLastPlace, clearLastPlace, type LastPlace } from './last-view';
@@ -981,10 +982,13 @@ export default function App(): JSX.Element {
           } else if (ev.type === 'paused') {
             // #658: step supervision stopped the reply after tool steps that finished. Not a
             // failure: the reply ends normally ('done' follows) with a note of what was saved.
+            // #666: or the person declined a write, and the reply ended with no model text.
             const applied = typeof ev.applied === 'number' && Number.isInteger(ev.applied) && ev.applied >= 0 ? ev.applied : 0;
+            const declined = declinedNames(ev.declined);
+            const pause: ReplyPause = ev.reason === 'declined' && declined.length ? { reason: 'declined', applied, declined } : { reason: 'supervision', applied };
             setMessagesByChat((prev) => ({
               ...prev,
-              [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId ? { ...m, paused: { reason: 'supervision', applied } } : m)),
+              [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId ? { ...m, paused: pause } : m)),
             }));
           } else if (ev.type === 'error') {
             throw new Error(ev.text || 'Generation failed');

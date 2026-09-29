@@ -444,6 +444,8 @@ export async function saveChatHistory(chatId: string, history: HistoryEntry[], b
 //     and succeeded (#658)
 //   { type:'paused', reason:'supervision', applied, text } — the reply ends here, normally, after
 //     tool steps that finished; `applied` changes were saved (#658). Followed by 'done'.
+//   { type:'paused', reason:'declined', applied, declined, text } — the person declined a write,
+//     so the model is not asked for more text; `declined` names those tools (#666).
 //   { type:'done', model } { type:'diary', decision }
 //   { type:'telemetry', phase, model?, timeToFirstToken? }
 //   { type:'usage', cumulative prompt/completion/total tokens, provider rate,
@@ -476,8 +478,10 @@ export async function* streamChat(
   repeatOf?: boolean;
   /** 'tool_result' (#658): a write that ran and succeeded. 'paused': how many changes were saved. */
   applied?: boolean | number;
-  /** 'paused' (#658): why the reply ended before a final answer ('supervision'). */
+  /** 'paused' (#658): why the reply ended before a final answer ('supervision' or, #666, 'declined'). */
   reason?: string;
+  /** 'paused' with reason 'declined' (#666): the tools the person declined. */
+  declined?: string[];
   decision?: string;
   reasoning?: string;
   reasoningEffort?: string;

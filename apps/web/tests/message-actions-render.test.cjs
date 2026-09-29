@@ -92,6 +92,7 @@ test('Copy reads the reply\'s own Markdown `content`, and the row is withheld fo
   // `body` is the message's own `content`, or the Stopped placeholder worded in the active language (#634).
   assert.match(src, /const body = messageBodyText\(t, m\);/);
   assert.match(src, /content=\{body\}/);
-  assert.match(src, /\{body && !m\.error && !\(streaming && isLast\) && \(/);
+  // #667: a last reply that ended on a note with no text (paused, declined, saved changes) keeps the row, for Regenerate.
+  assert.match(src, /\{\(body \|\| \(m\.paused && isLast && !m\.coworkTask\)\) && !m\.error && !\(streaming && isLast\) && \(/);
   assert.match(src, /canRegenerate=\{isLast && !m\.coworkTask\}/);
 });

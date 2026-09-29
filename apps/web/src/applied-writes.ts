@@ -18,6 +18,14 @@ export function modelHistory(messages: Message[]): ModelHistoryEntry[] {
       out.push({ role: 'tool', name: c.name, content: c.result || '', applied: true,
         ...(c.target ? { target: c.target } : {}), ...(c.args ? { args: c.args } : {}) });
     }
+    // #666: writes the user declined (or did not answer in time). The reply that asked for them
+    // has no text after the decline, so the model is told they did not run. The on-screen note
+    // itself is never sent.
+    for (const c of m.toolCalls || []) {
+      if (c && c.status === 'denied' && c.applied !== true && typeof c.name === 'string') {
+        out.push({ role: 'tool', name: c.name, content: c.result || '', declined: true });
+      }
+    }
   }
   return out;
 }
@@ -60,6 +68,18 @@ export function persistableMessage(m: Message): Message | null {
 /** The `paused` field read back from a saved history entry, if it is well formed. */
 export function storedPause(h: Pick<HistoryEntry, 'paused'>): Message['paused'] {
   const p = h.paused;
-  if (!p || (p.reason !== 'supervision' && p.reason !== 'stopped') || !Number.isInteger(p.applied) || p.applied < 0) return undefined;
+  if (!p || (p.reason !== 'supervision' && p.reason !== 'stopped' && p.reason !== 'declined') || !Number.isInteger(p.applied) || p.applied < 0) return undefined;
+  if (p.reason === 'declined') {
+    const declined = declinedNames(p.declined);
+    return declined.length ? { reason: 'declined', applied: p.applied, declined } : undefined;
+  }
   return { reason: p.reason, applied: p.applied };
+}
+
+/** #666: the tool names a `paused` event or a saved entry says were declined: tool-name shaped
+ *  strings only, each once, at most a few. Anything else is dropped. */
+export function declinedNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const names = value.filter((n): n is string => typeof n === 'string' && /^[\w.-]{1,80}$/.test(n));
+  return Array.from(new Set(names)).slice(0, 8);
 }
