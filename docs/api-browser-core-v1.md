@@ -122,7 +122,10 @@ flow also works when the approving browser is on another device, such as a phone
    a refresh token cannot exist without an approval and has its own limit. A device code or
    refresh token the server does not know goes to a separate bucket of 300 per 15 minutes
    (per address when `TRUST_PROXY` is on). So junk requests, and polls from pending codes,
-   can never use up a real device's refresh budget.
+   can never use up a real device's refresh budget. Each grant may refresh at most 30 times
+   per 15 minutes (`429 slow_down`, checked before rotating, so the current pair keeps
+   working). Otherwise every refresh would mint a token with a fresh budget and one device
+   could loop without limit.
 4. `{ grant_type: "refresh_token", refresh_token }` on the same endpoint rotates both tokens.
    The previous access token stops working at once. A refresh token presented a second time
    is **reuse**: the server revokes the whole grant, audits `device.refresh_reuse`, and
@@ -135,7 +138,11 @@ flow also works when the approving browser is on another device, such as a phone
    client's next refresh, with the token the thief made obsolete, signs both out and
    records `device.refresh_reuse`. The window counts from the first use and is not extended
    by retries. Once the successor has been used, the old token is reuse. A client must save a
-   new pair durably (NoeviaKit: to the Keychain) before using it.
+   new pair durably (NoeviaKit: to the Keychain) before using it. Used refresh tokens older
+   than the window are pruned on each rotation. Only the latest link, the token just
+   replaced, is kept, together with any discarded successors. So reuse detection covers the
+   previous token and every discarded one, and presenting an older, pruned token is
+   `invalid_grant` without a revoke.
 
 Tokens are 256-bit random values (`nva_…` access, `nvr_…` refresh). The server stores only
 their SHA-256. Each approval creates one **grant**: a device, bound to the approving

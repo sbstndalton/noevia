@@ -59,6 +59,9 @@ const LIMITS = Object.freeze({
   // 4,000) cannot fill it, and polls that are only slow_down/authorization_pending stop counting.
   tokenGlobal: { limit: 5000, windowMs: WINDOW },
   tokenGlobalShare: { limit: 20, windowMs: WINDOW },
+  // Refreshes per grant (review R1). Each refresh mints a new token with a fresh per-credential
+  // budget, so without this one approved device could rotate in a loop without limit.
+  tokenGrant: { limit: 30, windowMs: WINDOW },
   verify: { limit: 20, windowMs: WINDOW },         // lookups + decisions per signed-in account
 });
 
@@ -221,6 +224,12 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     // A discarded successor stays in the table, marked used with no successor of its own, so
     // presenting it later is reuse and revokes the grant (review N2). Only if still unused.
     discard: db.prepare('UPDATE device_tokens SET used_at=?, replaced_by=NULL WHERE token_hash=? AND used_at IS NULL'),
+    // R1: used links older than the grace window are dropped, except the latest one (the token
+    // being rotated now), which is what reuse detection of the previous token needs. Discarded
+    // successors (used, replaced_by NULL) are kept for the grant's life: presenting one is how a
+    // thief who replayed inside the window is caught (N2). They only arise from audited grace uses.
+    prune: db.prepare(`DELETE FROM device_tokens WHERE grant_id=? AND kind='refresh' AND used_at IS NOT NULL
+      AND replaced_by IS NOT NULL AND used_at<=? AND token_hash<>?`),
     grantsByUser: db.prepare('SELECT user_id, count(*) AS n FROM device_grants GROUP BY user_id'),
     deleteAllGrants: db.prepare('DELETE FROM device_grants'),
     deleteAllAuthorizations: db.prepare('DELETE FROM device_authorizations'),
@@ -353,6 +362,8 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     }
     const user = q.userRow.get(row.user_id);
     if (!user || user.disabled_at) return oauthError('invalid_grant', 'The account is not available.');
+    // R1: refused before rotating, so a refused refresh leaves the current pair working.
+    if (!retrying && limited(`device-token:grant:${row.grant_id}`, LIMITS.tokenGrant)) return tooMany('refreshes for this device');
     const rotated = db.transaction(() => {
       if (inGrace) {
         // Discard the successor only if it is still unused (it may have been used meanwhile). It is
@@ -363,6 +374,7 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
         q.touchGrant.run(at, row.grant_id);
         const pair = issuePair(row.grant_id, row.grant_expires_at, at);
         q.setReplacedBy.run(pair.refreshHash, row.token_hash);
+        q.prune.run(row.grant_id, at - REFRESH_GRACE_MS, row.token_hash);
         return pair.body;
       }
       // Two concurrent refreshes with one token: the loser sees changes 0 and is looked at again.
@@ -371,6 +383,7 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
       q.touchGrant.run(at, row.grant_id);
       const pair = issuePair(row.grant_id, row.grant_expires_at, at);
       q.setReplacedBy.run(pair.refreshHash, row.token_hash);
+      q.prune.run(row.grant_id, at - REFRESH_GRACE_MS, row.token_hash);
       return pair.body;
     })();
     if (rotated) {

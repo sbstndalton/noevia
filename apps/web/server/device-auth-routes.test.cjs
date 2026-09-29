@@ -408,6 +408,20 @@ test('N2: a thief replaying T0 inside the window is caught when the real client 
   assert.ok(auditActions('device.refresh_reuse').some((d) => d.clientName === 'Stolen Mac'), 'the reuse is audited');
 });
 
+test('R1: one approved device cannot refresh in an unbounded loop', async () => {
+  let tokens = await signInDevice(admin, 'Looping Mac', '10.0.12.1');
+  for (let i = 1; i <= 30; i++) {
+    const r = await refresh(tokens.refresh_token);
+    assert.equal(r.status, 200, `refresh ${i}`);
+    tokens = r.json;
+  }
+  const limited = await refresh(tokens.refresh_token);
+  assert.equal(limited.status, 429, 'the 31st refresh on one grant in 15 minutes is refused');
+  assert.equal(limited.json.error, 'slow_down');
+  // Refused, not revoked: the current access token still works, and the refresh token is not spent.
+  assert.equal((await asDevice(tokens.access_token, '/api/workspace')).status, 200);
+});
+
 // Last, because it uses up the administrator's lookup budget for the rest of the window.
 test('code guessing in the browser is limited per account', async () => {
   let last;

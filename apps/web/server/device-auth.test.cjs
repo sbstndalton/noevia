@@ -144,6 +144,58 @@ test('F4: revokeAll deletes every grant and audits each account once', async (t)
   assert.equal(f.deviceAuth.revokeAll('admin-actor', 'feature-off'), 0);
 });
 
+const refreshRows = (f) => f.auth.db.prepare("SELECT token_hash, used_at, replaced_by FROM device_tokens WHERE kind='refresh'").all();
+
+test('R1: used refresh rows are pruned past the grace window, keeping only the latest link', async (t) => {
+  const f = await fixture(t);
+  let tokens = await approved(f);
+  for (let i = 0; i < 20; i++) {
+    f.clock.t += 2 * 60 * 1000; // two minutes apart: each previous link is past the window
+    tokens = f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: tokens.refresh_token }).body;
+    assert.ok(tokens.refresh_token, `refresh ${i}`);
+  }
+  const rows = refreshRows(f);
+  assert.equal(rows.filter((r) => r.used_at === null).length, 1, 'one live refresh token');
+  assert.equal(rows.filter((r) => r.used_at !== null).length, 1, 'only the latest used link survives');
+  // That latest link is still what reuse detection needs.
+  const previous = rows.find((r) => r.used_at !== null);
+  const live = rows.find((r) => r.used_at === null);
+  assert.equal(previous.replaced_by, live.token_hash);
+});
+
+test('R1: pruning keeps N2 detection: a discarded successor still revokes the grant', async (t) => {
+  const f = await fixture(t);
+  const refresh = (token) => f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: token });
+  const t0 = await approved(f);
+  const t1 = refresh(t0.refresh_token).body; // the real client holds T1
+  const t2 = refresh(t0.refresh_token).body; // a thief replays T0 inside the window
+  assert.ok(t2.refresh_token);
+  // The thief keeps refreshing for a while, long past the window, so pruning runs many times.
+  let thief = t2;
+  for (let i = 0; i < 10; i++) {
+    f.clock.t += 5 * 60 * 1000;
+    thief = refresh(thief.refresh_token).body;
+    assert.ok(thief.access_token, `thief refresh ${i}`);
+  }
+  // Much later the real client presents T1: still reuse, the grant (and the thief) is revoked.
+  const caught = refresh(t1.refresh_token);
+  assert.equal(caught.body.error, 'invalid_grant');
+  assert.equal(f.deviceAuth.authenticate(bearerReq(thief.access_token)), null);
+  assert.ok(f.audits.some(([a]) => a === 'device.refresh_reuse'));
+});
+
+test('R1: the per-grant refresh budget is checked before rotating', async (t) => {
+  const f = await fixture(t);
+  let tokens = await approved(f);
+  for (let i = 0; i < device.LIMITS.tokenGrant.limit; i++) {
+    tokens = f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: tokens.refresh_token }).body;
+  }
+  const refused = f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: tokens.refresh_token });
+  assert.equal(refused.status, 429);
+  assert.ok(f.deviceAuth.authenticate(bearerReq(tokens.access_token)), 'refused, not rotated: the current pair still works');
+  assert.equal(refreshRows(f).filter((r) => r.used_at === null).length, 1);
+});
+
 test('N3: native-app sign-in cannot be enabled without TRUST_PROXY', () => {
   const { createFeatures } = require('./features.cjs');
   const store = () => { const m = new Map(); return { get: (k) => m.get(k), set: (k, v) => m.set(k, v) }; };
