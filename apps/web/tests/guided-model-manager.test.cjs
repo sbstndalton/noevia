@@ -111,9 +111,10 @@ test('the guided flow keeps the Laya guard and never starts a run by itself (#80
 
 test('the model manager phrases every recommendation kind exactly like guided.ts text (en-US), so the two cannot drift (#293)',()=>{
   const core=load('i18n/core.ts');load('i18n/models/index.ts');
-  // en-US shares the spelling of guided.ts ("quantization"); en-GB differs only there.
-  const say=(rec,budget)=>rec.kind==='use'?core.translate('en-US',rec.verdict==='tight'?'mm.fit.rec.useTight':'mm.fit.rec.use',{ctx:rec.ctx.toLocaleString('en-US'),kv:rec.kv,total:rec.totalGib,budget})
-    :rec.kind==='smaller'?core.translate('en-US',rec.moe?'mm.fit.rec.smallerMoe':'mm.fit.rec.smaller',{floor:rec.floorGib,budget})
+  // en-US shares the spelling of guided.ts ("quantization"); en-GB differs only there. The sizes carry
+  // their own unit now (#636: the catalogue never prints one), which the panel passes in ready-made.
+  const say=(rec,budget)=>rec.kind==='use'?core.translate('en-US',rec.verdict==='tight'?'mm.fit.rec.useTight':'mm.fit.rec.use',{ctx:rec.ctx.toLocaleString('en-US'),kv:rec.kv,total:`${rec.totalGib} GiB`,budget:`${budget} GiB`})
+    :rec.kind==='smaller'?core.translate('en-US',rec.moe?'mm.fit.rec.smallerMoe':'mm.fit.rec.smaller',{floor:`${rec.floorGib} GiB`,budget:`${budget} GiB`})
     :rec.reason==='not-chat'?core.translate('en-US','mm.fit.rec.notChat'):core.translate('en-US','mm.fit.rec.noLayout',{arch:rec.arch||core.translate('en-US','mm.fit.unknownArch')});
   const cases=[[nine,14],[nine,10.2],[{...nine,modelGib:20,moe:true},14],[{...nine,modelGib:20},14],[{...nine,chat:false},14],[{...nine,sizeable:false,rows:[]},14],[{...nine,sizeable:false,rows:[],arch:''},14]];
   const kinds=new Set();

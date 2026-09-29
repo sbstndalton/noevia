@@ -89,7 +89,9 @@ test('German catalogue translates both actions', async () => {
 test('Copy reads the reply\'s own Markdown `content`, and the row is withheld for an in-flight or errored reply', () => {
   const fs = require('node:fs');
   const src = fs.readFileSync(path.join(__dirname, '../src/components/ChatView.tsx'), 'utf8');
-  assert.match(src, /content=\{m\.content\}/);
-  assert.match(src, /\{m\.content && !m\.error && !\(streaming && isLast\) && \(/);
+  // `body` is the message's own `content`, or the Stopped placeholder worded in the active language (#634).
+  assert.match(src, /const body = messageBodyText\(t, m\);/);
+  assert.match(src, /content=\{body\}/);
+  assert.match(src, /\{body && !m\.error && !\(streaming && isLast\) && \(/);
   assert.match(src, /canRegenerate=\{isLast && !m\.coworkTask\}/);
 });
