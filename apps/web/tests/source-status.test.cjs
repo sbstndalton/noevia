@@ -68,3 +68,11 @@ test('resolveSkippedToast: nothing to show and nothing previously shown is a no-
   assert.equal(r.signature, '');
   assert.equal(r.show, undefined);
 });
+test('#577: an accepted upload with no readable text is never reported as saved', () => {
+  const { uploadUnreadableReason } = exportsObject;
+  assert.match(uploadUnreadableReason({ attachment: { state: 'stored', group: 'Text', reason: 'This file is not readable as text' } }), /^Not readable · This file is not readable/);
+  assert.match(uploadUnreadableReason({ document: { state: 'failed', error: 'worker refused' } }), /Not readable · worker refused/);
+  assert.equal(uploadUnreadableReason({ attachment: { state: 'ready', group: 'Text' } }), '');
+  assert.equal(uploadUnreadableReason({ attachment: { state: 'stored', group: 'Other' } }), '');
+  assert.equal(uploadUnreadableReason({ attachment: { state: 'vision', group: 'Images' } }), '');
+});
