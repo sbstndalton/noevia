@@ -45,3 +45,21 @@ test('provider reasoning stays in the display transcript and out of subsequent h
   assert.equal(history[0].reasoning, undefined);
   assert.equal(turns['2026-09-10'][0].reasoning, 'Provider reasoning');
 });
+test('#664 Diary history carries applied writes after their assistant turn, and only applied ones', () => {
+  const turns = { '2026-09-10': [
+    { role: 'user', content: 'log it' },
+    { role: 'assistant', content: 'done', tools: [
+      { name: 'extras_write', result: 'saved', applied: true, target: 'notes/a.md', args: '{"x":1}' },
+      { name: 'extras_write', result: 'declined', applied: false },
+      { name: 'extras_read', result: 'ok' },
+    ] },
+    { role: 'user', content: 'again' },
+  ] };
+  const { history } = diaryExchangeTarget('2026-09-10', turns, new Date('2026-09-10T15:00:00Z'));
+  assert.deepEqual(JSON.parse(JSON.stringify(history)), [
+    { role: 'user', content: 'log it' },
+    { role: 'assistant', content: 'done' },
+    { role: 'tool', name: 'extras_write', content: 'saved', applied: true, target: 'notes/a.md', args: '{"x":1}' },
+    { role: 'user', content: 'again' },
+  ]);
+});
