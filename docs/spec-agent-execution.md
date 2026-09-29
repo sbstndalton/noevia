@@ -440,6 +440,23 @@ noevia reported as "Not a git repository". It now names exactly the repositories
 registered in a trust file of its own (work tree and git directory both), and reports what git
 actually said for anything else.
 
+### Astra review — 2026-09-28 (#519, `features.astraReview`, off, not evaluated live)
+
+With the flag on, a task that finished on its own gets one more step after its grant is revoked
+and its workspace released. `code-workspace.cjs` `change()` reads `git diff base..head` from the
+source repository (drivers, textconv and external diff off); `role-context.cjs`'s `reviewer`
+projection (Astra) carries the request, capabilities, reported plan, a server-side run summary and
+the bounded diff — no approval ids, arguments, grants or tokens — and its leak guard refuses the
+review if the diff holds the engine key, the task's proxy token or a credential. The verdict
+(`code-review-verdict.cjs`: approve / request changes, findings; no other fields) is validated by
+the stream guard with one bounded correction, recorded as `review.requested|completed|failed`
+job events (no lifecycle authority), and shown on a final `review_change` approval card. Only the
+person's answer accepts; there is no standing allow, and a timeout or cancel is not accepted. No
+provider, a refused context, an error, a timeout or an invalid verdict all fail closed to the same
+card marked "Not reviewed", with the reason. The production reviewer calls the default local
+provider and refuses an external one. Flag off, the journal and task view are unchanged (tested).
+Live evaluation on the real engine needs owner authorisation.
+
 ---
 
 ## 4. Durable work
