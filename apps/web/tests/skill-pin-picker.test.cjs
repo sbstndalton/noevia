@@ -78,8 +78,8 @@ test('Sources shows where a skill came from and why bundled scripts block it', a
     assert.equal(skillOriginText({ kind: 'published' }), 'Published by an external source, copied');
   });
   const source = fs.readFileSync(path.join(__dirname, '../src/components/InstructionSkills.tsx'), 'utf8');
-  assert.match(source, /skillOriginText\(skill\.origin\)/);
-  assert.match(source, /Chat never runs Skill scripts/);
+  assert.match(source, /skillOriginText\(skill\.origin, t\)/);
+  assert.match(source, /projects\.skills\.scripts'/);
 });
 
 test('the composer sends the chosen pin with that one message only, and App forwards it to /api/chat', () => {
@@ -107,7 +107,6 @@ test('Retry resends the pin its message was sent with, and the project home comp
 
 test('Sources labels an enabled skill that has scripts as unusable in chat, and cannot enable one (#567)', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/components/InstructionSkills.tsx'), 'utf8');
-  assert.match(source, /Can't be used in chat \(has scripts\)/);
-  assert.match(source, /skill\.status === 'enabled' && skill\.scripts\?\.length \? SCRIPTS_STATE : labels\[skill\.status\]/);
+  assert.match(source, /skill\.status === 'enabled' && skill\.scripts\?\.length \? t\('projects\.skills\.scriptsState'\) : t\(STATUS_KEY\[skill\.status\]\)/);
   assert.match(source, /\(skill\.status !== 'enabled' && !!skill\.scripts\?\.length\)/);
 });
