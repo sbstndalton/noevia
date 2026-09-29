@@ -7,7 +7,7 @@ function load(file) {
   const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src', file), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports_ = {}; vm.runInNewContext(code, { exports: exports_, Intl, Map, Number }); return exports_;
 }
-const { formatNumber, localizeLeadingNumber } = load('number-format.ts');
+const { formatNumber, localizeLeadingNumber, formatCompact } = load('number-format.ts');
 const { formatModelSizeGB } = load('model-size.ts');
 const NNBSP = ' ';
 
@@ -82,6 +82,23 @@ test('duration keeps the two-unit shape and localises the unit names', () => {
   assert.match(formatDuration(600, 'fr-FR'), /^10\s?min/);
   assert.match(formatDuration(-5, 'en-GB'), /^0\s?s/);
   assert.match(formatDuration(Number.NaN, 'en-GB'), /^0\s?s/);
+});
+
+test('compact counts use the locale suffix and separator, not an English k/M/B (#600)', () => {
+  // ICU versions differ on the exact case and spacing, so match the shape, not the bytes.
+  assert.match(formatCompact(1234567, 'en-GB'), /^1\.2\s?m$/i);
+  assert.match(formatCompact(2500000000, 'en-GB'), /^2\.5\s?bn?$/i);
+  assert.match(formatCompact(1234567, 'de-DE'), /^1,2\s?Mio\.$/);
+  assert.match(formatCompact(2500000000, 'de-DE'), /^2,5\s?Mrd\.$/);
+  assert.match(formatCompact(1234567, 'fr-FR'), /^1,2\s?M$/);
+  assert.match(formatCompact(15000, 'fr-FR'), /^15\s?k$/i);
+  // The old hand-built "1.2M" / "2.4M" must never come back for a German reader.
+  assert.doesNotMatch(formatCompact(2400000, 'de-DE'), /\d[.]\d/);
+  for (const l of ['en-GB', 'de-DE', 'fr-FR']) {
+    assert.equal(formatCompact(999, l), '999');
+    assert.equal(formatCompact(0, l), '0');
+  }
+  assert.match(formatCompact(1234567, 'not a locale'), /1/);
 });
 
 test('duration falls back to unit formatting, then to English letters', () => {

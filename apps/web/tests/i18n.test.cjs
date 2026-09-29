@@ -518,3 +518,42 @@ test('service-supplied model manager words are translated per locale from stable
   assert.equal(core.translate('de-DE','mm.spec.off'),'Aus');
   assert.match(core.translate('de-DE','mm.evidence.lim.autotune-quality'),/^Drei deterministische/);
 });
+
+// #600: every Advanced field the model manager schema can send has its label and help in the
+// catalogue, keyed by the stable field id, in every locale. The ids are read from the service's own
+// schema. The ids come from tests/fixtures/model-manager-field-ids.json (inside apps/web, so the
+// in-image run has it too); services/model-manager/tests/test_api.py keeps that fixture equal to
+// ini.py, so a field added there without a translation fails one of the two suites.
+test('every Advanced field id the service sends has a translated label and help in every locale (#600)',()=>{
+  const ids=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/model-manager-field-ids.json'),'utf8'));
+  assert.ok(ids.length>=90,`found ${ids.length} field ids in the fixture`);
+  assert.equal(new Set(ids).size,ids.length,'field ids are unique');
+  const EN_MODELS=ENSEG.models;
+  const NAME_LABELS=new Set(['flash-attn','spec-draft-n-max','spec-draft-n-min','spec-draft-p-min','spec-draft-p-split','threads-batch']);
+  for(const id of ids)for(const part of ['label','help']){
+    const k=`mm.field.${id}.${part}`;
+    assert.ok(EN_MODELS[k],`${k} missing from the English models segment`);
+    for(const l of Object.keys(FILES)){
+      const text=core.translate(l,k);
+      assert.ok(text&&text!==k,`${l}: ${k} has no translation`);
+      // Help is always prose. A label may be a parameter name ("Draft n_max") or product name that reads the same.
+      if(part==='help'||!NAME_LABELS.has(id))assert.notEqual(text,EN_MODELS[k],`${l}: ${k} is still English`);
+    }
+  }
+  // Nothing in the catalogue for a field the service does not send.
+  const known=new Set(ids);
+  for(const k of Object.keys(EN_MODELS)){const m=/^mm\.field\.(.+)\.(label|help)$/.exec(k);if(m)assert.ok(known.has(m[1]),`${k} has no field in ini.py`);}
+  assert.equal(core.translate('de-DE','mm.field.ctx-size.label'),'Kontextgröße');
+  assert.equal(core.translate('fr-FR','mm.field.ngl.label'),'Couches GPU');
+});
+
+test('chat meta words and the harness context line are catalogue keys in every locale (#600)',()=>{
+  assert.equal(core.translate('en-GB','chat.meta.tokens',{tokens:'1,234'}),'1,234 tokens');
+  assert.equal(core.translate('de-DE','chat.meta.tokens',{tokens:'1.234'}),'1.234 Tokens');
+  assert.equal(core.translate('de-DE','code.meta.context',{percent:'33 %',size:'24.576'}),'Kontext 33 % von 24.576');
+  assert.equal(core.translatePlural('fr-FR','code.meta.commandsFailed',2,{failed:1}),'2 commandes, 1 en échec');
+  assert.equal(core.translatePlural('en-GB','code.meta.commands',1),'1 command');
+  for(const l of Object.keys(FILES))for(const k of ['chat.meta.tokens','chat.meta.split','code.meta.context','code.meta.commands.one','code.meta.commandsFailed.other']){
+    const text=core.translate(l,k);assert.ok(text&&text!==k,`${l}: ${k}`);
+  }
+});
