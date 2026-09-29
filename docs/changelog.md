@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web ffdcd9b — 2026-09-29 (project tools edit uploads in place, phone-preview stacking, Code header inset, French wording, byte plural)
+
+### Services
+
+- **Web:** [#654](https://github.com/sbstndalton/noevia/pull/654) (fixes #648: project tools edit uploaded files in place, with conditional writes pinned to the approved path), [#656](https://github.com/sbstndalton/noevia/pull/656) (fixes #650, #651, #652, #653: phone-preview project stacking, Code header inset, French wording and role names, byte plural) — `cowork-web:ffdcd9b`, image `sha256:9ae2ff183175e0eb5f0884960ff8337f6f034ec5d6c5fb24bac63a6e35b34b01`. [#649](https://github.com/sbstndalton/noevia/pull/649) was the previous changelog.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:381760c`. `git diff --stat 6e7eeba ffdcd9b -- services/` is empty, so no model-loader image was built.
+- **Code sandbox, OCR, Docling:** no change.
+- No feature flag was changed and `TRUST_PROXY` was not touched.
+
+Exact source `ffdcd9b6da2f91d46138ff7911bab9da41813708`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `b16d8abe82130fb21571dbb8cef1c368bdabe39850439c325cb55a8e9079ab19`, matched on the server), to `releases/ffdcd9b`. Both PRs had all checks green before their squash merges (#654 as `3b1443c`, then #656 as `ffdcd9b`, still MERGEABLE after #654), and main CI on `ffdcd9b` was green before cutover. Web was built with `deploy/tools/build-web-release.sh ffdcd9b apps/web` (stamp verified). Standalone web candidate on a loopback port with no production mounts and a synthetic token: `/` 200, `/api/profile` 401, `/api/auth/device/code` 404, `version.json` `ffdcd9b`, 82 dist files.
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180`, targeting `web` only; `.env` and the Compose YAMLs were backed up as `*.bak.before-ffdcd9b`. The restart-alert baseline was re-acked.
+
+Checks: web healthy, zero restarts; public root 200 three times, `/api/profile` 401, `/api/auth/device/code` 404, `/version.json` `ffdcd9b`; all 82 files served publicly are byte-identical to the image `dist`; web logs clean. `astraReview`, `constrainedPlanDecoding` and `nativeClientAuth` are off (no `NOEVIA_FEATURE_*` override set for them, defaults apply; the device-code route returns 404).
+
+Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only difference is the recreated web container (`f7fb5a43b12e` to `9750cf4a77b1`, started 2026-09-29T11:24:00Z). Diary (`cowork-diary:f6444b4`), model-loader, laya and every other container are identical.
+
+Rollback: web, `ln -sfn /mnt/docker/appdata/cowork/releases/6e7eeba /mnt/docker/appdata/cowork/current`, `COWORK_VERSION=6e7eeba` in `.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. `.env.bak.before-ffdcd9b` and the Compose backups were kept; previous images are retained.
+
+---
+
 ## Release web 6e7eeba — 2026-09-29 (project files by bare name, phone-preview drawer, English size sentences, Auto label, timer start)
 
 ### Services
