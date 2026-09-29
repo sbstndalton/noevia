@@ -616,3 +616,25 @@ test('the #624 strings exist in every locale, in that locale’s words and with 
     assert.equal(ph(text),ph(en[k]),`${l}: ${k} placeholders`);
   }
 });
+
+test('every locale writes tokens per second one way across every catalogue and segment (#661)',()=>{
+  // "24,4 tok/s" beside "24,4 tokens/s" in one Spanish view read as two different units.
+  const UNIT=/(?:tok|tokens?|jetons?)\/s\b/gi;
+  const EXPECTED={'en-GB':'tokens/s','en-US':'(inherits en-GB)','de-DE':'Token/s','es-ES':'tokens/s','fr-FR':'jetons/s','it-IT':'token/s','nb-NO':'tokens/s','nl-NL':'tokens/s','pt-BR':'tokens/s','sv-SE':'tokens/s'};
+  assert.deepEqual(Object.keys(EXPECTED).sort(),Object.keys(core.CATALOGUES).sort(),'a new locale needs an entry here');
+  for(const locale of Object.keys(EXPECTED)){
+    const tables=[core.CATALOGUES[locale],...SEGMENT_NAMES.map(s=>core.SEGMENTS[s][locale])].filter(Boolean);
+    const found=new Map();
+    for(const table of tables)for(const [key,text] of Object.entries(table))for(const m of String(text).matchAll(UNIT))found.set(m[0],[...(found.get(m[0])||[]),key]);
+    assert.deepEqual([...found.keys()],locale==='en-US'?[]:[EXPECTED[locale]],`${locale} mixes tokens-per-second units: ${JSON.stringify([...found].map(([unit,keys])=>[unit,keys.slice(0,3)]))}`);
+  }
+  // The stats bar unit and the sentence form agree for a locale that had drifted.
+  assert.equal(core.translate('es-ES','stats.tokPerSecUnit'),core.translate('es-ES','stats.tokensPerSecond').replace('{value} ',''));
+});
+
+test('the de-DE routing description names the fast role Schnell, like the composer does (#661)',()=>{
+  const text=core.translate('de-DE','features.item.systemOneRouting.description');
+  assert.match(text,/Schnell, Smart oder Code/);
+  assert.doesNotMatch(text,/\bFast\b/);
+  assert.match(text,/neue automatisch geroutete Nachrichten/);
+});
