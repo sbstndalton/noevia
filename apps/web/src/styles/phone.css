@@ -782,7 +782,8 @@ html[data-motion='reduced'] .app-mode-switch.has-thumb > .glass-thumb { transiti
    stopped mid-letter and its box ran far past the row. At rest it is capped at the row; the
    marquee lifts the cap while it runs. SidebarLabel still measures the full width (scrollWidth). */
 .sidebar .sidebar-label-text { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
-.sidebar :is(.proj-row, .chat-row):is(:hover, :has(:focus-visible)) .sidebar-label.is-overflowing .sidebar-label-text { max-width: none; overflow: visible; }
+/* Project rows only: chat rows keep the capped, ellipsised title (see noevia.css). */
+.sidebar .proj-row:is(:hover, :has(:focus-visible)) .sidebar-label.is-overflowing .sidebar-label-text { max-width: none; overflow: visible; }
 
 /* Grids whose tracks must not grow past their container for one long item: 1fr alone has a
    min-content floor, minmax(0, 1fr) does not. */

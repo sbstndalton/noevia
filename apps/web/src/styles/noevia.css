@@ -470,13 +470,16 @@ dialog.folder-picker::backdrop { background:var(--scrim); backdrop-filter:blur(v
 .sidebar-label { display:block; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--text-footnote); }
 .sidebar-label-text { display:inline-block; min-width:100%; white-space:nowrap; }
 .sidebar .proj-row:hover .sidebar-label.is-overflowing,
-.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing,
-.sidebar .chat-row:hover .sidebar-label.is-overflowing,
-.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing { text-overflow:clip; mask-image:linear-gradient(to right,#000 calc(100% - 14px),transparent); }
+.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing { text-overflow:clip; mask-image:linear-gradient(to right,#000 calc(100% - 14px),transparent); }
 .sidebar .proj-row:hover .sidebar-label.is-overflowing .sidebar-label-text,
-.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text,
+.sidebar .proj-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text { animation:sidebar-title-scroll var(--label-duration) var(--delay-hover-intent) var(--ease-considered) infinite alternate; }
+/* Chat rows keep a static right-side ellipsis on hover/focus instead of the marquee: the
+   pin/archive/"..." actions narrow the row (padding-right) and the marquee's translateX
+   slid the title's leading character(s) out of the clipped view. */
+.sidebar .chat-row:hover .sidebar-label.is-overflowing,
+.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing { text-overflow:ellipsis; mask-image:none; }
 .sidebar .chat-row:hover .sidebar-label.is-overflowing .sidebar-label-text,
-.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text { animation:sidebar-title-scroll var(--label-duration) var(--delay-hover-intent) var(--ease-considered) infinite alternate; }
+.sidebar .chat-row:has(:focus-visible) .sidebar-label.is-overflowing .sidebar-label-text { animation:none; transform:none; }
 @media(prefers-reduced-motion:reduce) {
   .sidebar .sidebar-label-text { animation:none !important; }
   .sidebar .proj-row:hover .sidebar-label, .sidebar .proj-row:has(:focus-visible) .sidebar-label,
