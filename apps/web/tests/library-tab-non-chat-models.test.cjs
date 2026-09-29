@@ -31,7 +31,7 @@ test('the meta row shows a short "protected" tag (with a title explaining why) f
 
 test('the expanded detail note distinguishes system, sidecar-protected, and merely non-chat models', () => {
   assert.match(src, /protectedModel \? <p className="mm-note" role="status">\{t\('mm\.card\.protectedLabel'\)\}\{t\('mm\.card\.protectedNote'\)\}<\/p>/);
-  assert.match(src, /!chatModel \|\| missing \? <p className="mm-note" role="status">\{t\(missing \? 'mm\.card\.missingNote' : 'mm\.card\.nonChatNote'\)\}<\/p>/);
+  assert.match(src, /: missing \? null\n\s*: !chatModel \? <p className="mm-note" role="status">\{t\('mm\.card\.nonChatNote'\)\}<\/p>/);
 });
 
 test('DeleteModel\'s own canDelete fallback (folder-scan delete path) is untouched by the sidecarProtected guard', () => {
