@@ -214,3 +214,40 @@ enabled (`instruction-skills.cjs` `pinActive`). This check exists but is **not
 yet wired to a production caller**: `resumeGeneration` is an internal seam with
 no route today. Any future caller must pass `skillActive`, because without it a
 turn that loaded Skills is refused.
+
+### Revoked Skills in earlier turns
+
+The `history` a client sends with the next message can still hold a Skill from
+an earlier reply: a replayed `tool`/`function` message with a
+`read_project_file` or `project_read_file` result, or an assistant reply that
+repeated the body. Core never trusts the client to say which text came from a
+Skill. It decides from its own records (`server/skill-history.cjs`):
+
+- Every Skill version an exchange loads (pinned, automatic or read) is recorded
+  in a ledger in the account's own workspace directory, keyed by project, as the
+  file, name, SHA-256 and SHA-256 fingerprints of its lines. The ledger holds no
+  copy of the body.
+- A disabled Skill still has its reviewed body in the project, so it is
+  recognised even if it was loaded before the ledger existed.
+
+A recorded version is revoked once its file and SHA-256 are no longer an enabled
+Skill of the project, whether it was disabled, changed or removed. Before the
+model request is built, core replaces revoked content in the history with
+`[Skill "<name>" was disabled or changed, and its instructions were removed]`:
+
+- a `tool`/`function` message that is the Skill reader's output for that
+  version, as a whole;
+- any other line naming that version's SHA-256;
+- runs of lines that match its fingerprints verbatim.
+
+The reply also gets a `warning` event saying that earlier replies used the Skill.
+Skills that are still enabled at the same SHA-256 are left untouched, and so is
+any line that also belongs to an enabled Skill. Chats without Skills are left
+untouched too: after the ledger's first read per account, the check runs in
+memory.
+
+Limits: user messages are never rewritten, because the person may have typed
+the text themselves. A paraphrase, or a quotation inside a longer line, is not
+recognised. Text that claims to be from a Skill but matches no server record is
+ordinary history. A compaction summary over the old text stops applying once
+the history it covered changes, and is rebuilt from the scrubbed history.
