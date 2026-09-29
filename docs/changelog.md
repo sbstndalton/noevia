@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web a70f5a0 — 2026-09-29 (locale-aware model numbers; native-client device sign-in, flag off)
+
+### Services
+
+- **Web:** [#585](https://github.com/sbstndalton/noevia/pull/585) (changelog), [#584](https://github.com/sbstndalton/noevia/pull/584) (native client device sign-in, RFC 8628, flag `NOEVIA_FEATURE_NATIVE_CLIENT_AUTH`, default off and unavailable without `TRUST_PROXY=true`; adds `device_authorizations`, `device_grants` and `device_tokens` SQLite tables on start), [#591](https://github.com/sbstndalton/noevia/pull/591) (fixes #587, locale number formatting) — `cowork-web:a70f5a0`, image `sha256:4c54738a17c51b9b23a3a8385b4c5a69ae057ce955e91509b7cfe1ae8e5c68ee`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change (`git diff --stat b8755fb a70f5a0 -- services/` is empty); model-loader stays on `b8755fb`.
+- **Code sandbox, OCR, Docling:** no change.
+- **Not released:** [#593](https://github.com/sbstndalton/noevia/pull/593) (#586/#588/#589) failed the required "Node tests, typecheck, frontend build" check (`same-name projects receive distinct storage folders`), so it was skipped; see [#594](https://github.com/sbstndalton/noevia/issues/594). No feature flag was changed and `TRUST_PROXY` was not touched.
+
+Exact source `a70f5a0ee7c5c974ac0dbdf5593c8a88c7d61ae7`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `72ebf8f4fd7ca25ea95715470382e5470500535c014bcf9b5cf9c416dcad04ed`, matched on the server), to `releases/a70f5a0`. Main CI on that SHA was green. #591 was merged first after all its checks passed. Web was built with `deploy/tools/build-web-release.sh a70f5a0 <context>` (stamp verified). Standalone candidate on a loopback port with no production mounts: `/` 200, `/api/profile` 401, `version.json` `a70f5a0`, 68 asset files.
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180 web`; `.env` and Compose YAMLs were backed up as `*.bak.before-a70f5a0`. The restart-alert baseline was re-acked.
+
+Checks: web healthy, zero restarts; public root 200 three times, `/api/profile` 401, `/version.json` `a70f5a0`; served `index-BnZjcwNG.js`, `index-DSXrbO3N.css`, `theme.js`, `lens.js` and `glass-highlight.js` byte-identical to the image `dist`; web logs clean and the three `device_*` tables (plus indexes) exist. `/api/auth/device/code` returns 404 (flag off). `astraReview` and `constrainedPlanDecoding` off, `nativeClientAuth` and `browserExecutor` unavailable.
+
+Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only difference is the recreated web container. Diary, model-loader, laya, llama, embed, ocr, docling, code-sandbox and every other container are identical.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/b8755fb /mnt/docker/appdata/cowork/current`, `COWORK_VERSION=b8755fb` in `.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. `.env.bak.before-a70f5a0` and the Compose backups were kept. The new `device_*` tables are additive and can stay; the previous image is retained.
+
+---
+
 ## Release web + model-loader b8755fb — 2026-09-28 (md uploads, model-switch race, embed loaded model, delete guard; preflight wrapper refreshed)
 
 ### Services
