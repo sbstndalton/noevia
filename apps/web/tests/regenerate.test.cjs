@@ -12,7 +12,8 @@ function loadPure(relPath) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, require: () => ({}) });
+  // Relative imports of other pure modules resolve (#658: applied-writes); anything else is a stub.
+  vm.runInNewContext(code, { exports, require: (m) => (/^\.\/[\w-]+$/.test(m) && fs.existsSync(path.join(path.dirname(file), `${m}.ts`)) ? loadPure(path.relative(__dirname, path.join(path.dirname(file), `${m}.ts`))) : {}) });
   return exports;
 }
 
@@ -58,6 +59,19 @@ test('the returned plan carries no routing/telemetry/thinking metadata from the 
   assert.equal(JSON.stringify(plan).includes('smart'), false, 'no routing decision leaked into the plan');
   assert.equal(JSON.stringify(plan).includes('chain of thought'), false, 'no reasoning leaked into the plan');
   assert.equal(JSON.stringify(plan).includes('nextcloud_search'), false, 'no tool call leaked into the plan');
+});
+
+test('#658: a reply that saved changes leaves their record, and only that, so the re-run does not make them again', () => {
+  const saved = { name: 'project_append_file', args: '{"name":"n.md","text":"x"}', result: 'Appended 1 chars', status: 'done', applied: true, target: 'noevia projects/P/Text/n.md' };
+  const msgs = [user('u1', 'append x to n.md'), assistantReply('a1', 'Done, appended.', { toolCalls: [saved] })];
+  const plan = planRegenerate(msgs, 'a1');
+  assert.equal(plan.userText, 'append x to n.md');
+  assert.equal(plan.base.length, 2, 'the user turn and the record');
+  const record = plan.base[1];
+  assert.equal(record.content, '');
+  assert.deepEqual(JSON.parse(JSON.stringify(record.paused)), { reason: 'stopped', applied: 1 });
+  assert.equal(record.toolCalls[0].applied, true);
+  for (const leaked of ['smart', 'chain of thought', 'Done, appended', 'tokensPerSecond']) assert.equal(JSON.stringify(plan).includes(leaked), false, leaked);
 });
 
 test('declines when the target is not the last message', () => {

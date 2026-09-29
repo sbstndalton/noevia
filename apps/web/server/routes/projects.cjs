@@ -59,6 +59,12 @@ function createProjectRoutes({
     getProject, saveProjects, createProject, pruneDocuments, sweepDeletedProject, purgeProjectChats, withSourceLock, ensureProjectFolder, indexSource, ownsFile,
     loadChats, saveChats, deleteChat,
   } = store;
+  // #659: a project's first upload turns on its Project documents box (project-docs-default.cjs).
+  // Called before the save that records the upload. Not for the Diary's extras project, whose
+  // tools are chosen per session.
+  const defaultProjectDocs = (project) => project.id !== diaryExtras?.PROJECT_ID
+    && require('../project-docs-default.cjs').applyProjectDocsDefault(project, {
+      offered: (id) => allToolboxes().some((b) => b.id === id), defaults: DEFAULT_TOOLBOXES || ['core'] });
 
   async function handle(req, res, { path: p, authn, url }) {
     // Opt-in asynchronous source processing; the synchronous API remains compatible.
@@ -491,6 +497,7 @@ function createProjectRoutes({
           project.updatedAt = Date.now();
           progress('Indexing extracted text');
           indexSource(project, file);
+          defaultProjectDocs(project);
           saveProjects(PROJECTS);
           return json(res, 200, { name, path: file.name, bytes: bytes.length, document: file.document, attachment: file.attachment });
         });
@@ -519,7 +526,7 @@ function createProjectRoutes({
           if (getProject(id) !== project || (project.files || []).find(f => !f.source && f.name === rawName) !== previous) return json(res, 409, { error: 'Source changed; retry.' });
           project.files = [...(project.files || []).filter(f => f.source || f.name !== rawName), file];
           project.updatedAt = Date.now();
-          indexSource(project, file); saveProjects(PROJECTS);
+          indexSource(project, file); defaultProjectDocs(project); saveProjects(PROJECTS);
           return json(res, 200, { name: rawName, path: rawName, bytes: bytes.length, document: file.document });
         }
         if (!project.projectFolder) {
@@ -542,7 +549,7 @@ function createProjectRoutes({
           file.source = project.projectFolder;
           if (getProject(id) !== project || !project.sourceFolders.includes(file.source)) return json(res, 409, { error: 'Source changed; refresh again.' });
           project.files = [...project.files.filter(f => f.name !== name || f.source !== file.source), file];
-          indexSource(project, file); saveProjects(PROJECTS);
+          indexSource(project, file); defaultProjectDocs(project); saveProjects(PROJECTS);
         }
         return json(res, 200, { name: rawName, path: `${project.projectFolder}/${rawName}`, bytes: bytes.length, document: file?.document });
       });
@@ -769,6 +776,8 @@ function createProjectRoutes({
         for (const f of synced.slice(room)) skipped.push({ folder: f.source, file: f.name, reason: LIMIT_REASON, code: 'limit', retained: false });
         project.files = [...uploaded, ...untouched, ...synced.slice(0, room)];
         require('../uploads.cjs').prune(currentWorkspace(), project);
+        // A file dropped into the project's own upload folder elsewhere is an upload too (#659).
+        defaultProjectDocs(project);
         saveProjects(PROJECTS);
         // Same RAG bookkeeping the config patch does: drop chunks for files that
         // are gone, re-index the ones that arrived or changed.
