@@ -97,8 +97,8 @@ public actor NoeviaClient {
     /// `unsupportedAPIMajor` (state `.incompatible`) for a major this client does not speak.
     @discardableResult
     public func connect() async throws -> ServerInfo {
-        try await withRecovery(idempotent: true, probeBeforeRetry: false) {
-            try await probeReady()
+        try await withRecovery(idempotent: true, probeBeforeRetry: false) { client in
+            try await client.probeReady()
         }
     }
 
@@ -307,19 +307,20 @@ public actor NoeviaClient {
     /// Sends with recovery for idempotent methods only.
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let idempotent = RetryPolicy.isIdempotent(request.httpMethod ?? "GET")
-        return try await withRecovery(idempotent: idempotent, probeBeforeRetry: true) {
-            try await transmit(request)
+        return try await withRecovery(idempotent: idempotent, probeBeforeRetry: true) { client in
+            try await client.transmit(request)
         }
     }
 
-    private func withRecovery<T>(idempotent: Bool, probeBeforeRetry: Bool, _ operation: () async throws -> T) async throws -> T {
+    /// `operation` runs isolated to this actor (explicitly, so every Swift 6 compiler agrees).
+    private func withRecovery<T: Sendable>(idempotent: Bool, probeBeforeRetry: Bool, _ operation: (isolated NoeviaClient) async throws -> T) async throws -> T {
         var failures = 0
         var probe = false
         while true {
             try Task.checkCancellation()
             do {
                 if probe { _ = try await probeReady() }
-                return try await operation()
+                return try await operation(self)
             } catch let transient as Transient {
                 guard idempotent else {
                     // Never resend: the server may already have acted on it.
