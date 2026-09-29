@@ -557,3 +557,62 @@ test('chat meta words and the harness context line are catalogue keys in every l
     const text=core.translate(l,k);assert.ok(text&&text!==k,`${l}: ${k}`);
   }
 });
+
+// #624: every string of one locale, the base and each lazy segment, as [key, text].
+function entriesOf(locale){
+  const name=FILES[locale];
+  const out=Object.entries(load(locale)[name]);
+  for(const s of SEGMENT_NAMES)out.push(...Object.entries(load(`${s}/${locale}`)[`${name}_${SEGMENT_DEFS[s].suffix}`]));
+  return out;
+}
+
+test('de-DE uses the informal "du" everywhere: no formal Sie, Ihr… or Ihnen (#581, #624)',()=>{
+  // A capital Sie/Ihr… inside a sentence, after a lowercase word or a comma, is the formal address;
+  // the third person is lowercase there ("sie", "ihr") and a sentence start or a colon cannot tell.
+  const formal=/[a-zäöüß,] (?:Sie|Ihr(?:e|em|en|er|es)?)\b|\bIhnen\b/;
+  const found=entriesOf('de-DE').filter(([,text])=>formal.test(text)).map(([k])=>k);
+  same(found,[],`formal address in de-DE: ${found.join(', ')}`);
+  assert.match(core.translate('de-DE','sidebar.confirmDeleteProjectBody',{chats:'2 Chats'}),/in deinem verbundenen Speicher/);
+  assert.match(core.translate('de-DE','projects.confirmDeleteBody'),/in deinem verbundenen Speicher/);
+  // The guard itself: it flags the formal sentence and lets the third person through.
+  assert.ok(formal.test('Dateien in Ihrem verbundenen Speicher'));
+  assert.ok(formal.test('Wenn Sie das möchten'));
+  assert.ok(!formal.test('Sie bleiben in deinem Ordner. Ihr Inhalt bleibt.'));
+});
+
+test('fr-FR calls the Settings page "Réglages" everywhere, never "Paramètres" (#624)',()=>{
+  // "Paramètres" as a heading or label for the Settings page is the mixed term; a column of model
+  // parameters ("Paramètres (B)") is a different word and stays.
+  const PARAMETER_COUNTS=new Set(['mm.card.params','mm.filters.params']);
+  const found=entriesOf('fr-FR').filter(([k,text])=>/\bParamètres\b/.test(text)&&!PARAMETER_COUNTS.has(k)).map(([k])=>k);
+  same(found,[],`fr-FR names Settings "Paramètres" in: ${found.join(', ')}`);
+  for(const k of ['settings.title','account.settings','chat.offline.settings','viewLoading.settings','projects.view.projectSettings','projects.menu.settings','sidebar.projectSettings'])
+    assert.match(core.translate('fr-FR',k),/^Réglages/,k);
+  assert.equal(core.translate('fr-FR','customise.appSettings'),'Réglages de l’application');
+});
+
+test('no locale leaves the English page name or a button that does not exist in its own text (#624)',()=>{
+  for(const l of Object.keys(FILES)){
+    assert.doesNotMatch(core.translate(l,'customise.viewServiceStatus'),/Service status/,`${l} names the Service status page in English`);
+    assert.ok(core.translate(l,'customise.viewServiceStatus').includes(core.translate(l,'settings.section.status')),`${l} names the page the way Settings does`);
+    // The Sources hint must name the button the panel really shows.
+    assert.ok(core.translate(l,'projects.skills.addBody').includes(core.translate(l,'projects.view.uploadFiles')),`${l} hint names its own upload button`);
+  }
+  assert.equal(core.translate('fr-FR','code.panel.harness'),'Harnais');
+  assert.equal(core.translate('es-ES','code.panel.harness'),'Arnés');
+});
+
+test('the #624 strings exist in every locale, in that locale’s words and with the same placeholders',()=>{
+  const keys=Object.keys({...EN,...Object.assign({},...SEGMENT_NAMES.map(s=>ENSEG[s]))}).filter(k=>/^(code\.(task\.(plan|output|result)|network|meta\.limitations|review|sidebar|active)|chat\.(approval|effort|statusId)|gdrive\.msg|features\.unavailable\.decision|features\.unavailable\.systemOne|decision\.msg)\./.test(k));
+  assert.ok(keys.length>=80,`found ${keys.length} keys`);
+  // Words that read the same in English and the locale, by nature.
+  const SAME=new Set(['code.review.severity.blocker:de-DE']);
+  const en={...EN,...Object.assign({},...SEGMENT_NAMES.map(s=>ENSEG[s]))};
+  for(const l of Object.keys(FILES))for(const k of keys){
+    const text=core.translate(l,k);
+    assert.ok(text&&text!==k,`${l}: ${k} missing`);
+    if(!SAME.has(`${k}:${l}`))assert.notEqual(text,en[k],`${l}: ${k} is still English`);
+    const ph=s=>(s.match(/\{\w+\}/g)||[]).sort().join();
+    assert.equal(ph(text),ph(en[k]),`${l}: ${k} placeholders`);
+  }
+});
