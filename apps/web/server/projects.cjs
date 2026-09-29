@@ -314,16 +314,39 @@ function createProjectStore({
   // One write path for server-authored project text files (MCP writes, research reports), the
   // same one a browser upload takes: the file lands in the project's storage folder and is
   // re-indexed identically.
-  function writeProjectTextFile(project, name, text) {
+  //
+  // An in-place edit (#648) passes `expectName`, the stored name of the file it read, and
+  // `expectContent`, the text it read. The destination is otherwise recomputed from the storage
+  // connection as it is now, so with storage disconnected an upload stored at
+  // `<folder>/Text/notes.md` would be written as a second, local `notes.md` (and the reverse once
+  // storage is connected). So an edit is refused, with nothing written anywhere, unless the
+  // destination is exactly `expectName` and that file still holds `expectContent`.
+  function writeProjectTextFile(project, name, text, { expectName, expectContent } = {}) {
     return withSourceLock(project, async () => {
       if (getProject(project.id) !== project) throw new Error('the project changed while writing; nothing was saved');
       const uploads = require('./uploads.cjs');
       const bytes = Buffer.from(text, 'utf8');
       uploads.validate(name, bytes);
+      const edit = expectName !== undefined;
+      if (edit) {
+        if (typeof expectName !== 'string' || !expectName) throw new Error('an edit must name the stored file it changes; nothing was saved');
+        const current = (project.files || []).find((f) => f.name === expectName);
+        if (!current) throw new Error(`"${expectName}" is no longer in this project; nothing was saved`);
+        if (expectContent !== undefined && String(current.content || '') !== expectContent) throw new Error(`"${expectName}" changed while this edit was being made; nothing was saved. Read it again and retry.`);
+      }
       const connection = authService.getStorage(currentWorkspace().userId, true);
       const remote = storageClient.isBrowsable(connection) ? connection : null;
-      if (remote && !project.projectFolder) project.projectFolder = await ensureProjectFolder(project);
-      const file = await uploads.ingest(currentWorkspace(), project, name, bytes, { connection: remote });
+      if (edit) {
+        const destination = remote && project.projectFolder ? uploads.destinationFor(project, name, { connection: remote }) : remote ? null : name;
+        if (destination !== expectName) {
+          throw new Error(remote
+            ? `saving now would write "${destination || name}" instead of editing "${expectName}" in place; nothing was saved`
+            : `"${expectName}" is kept in this project's storage, which is not connected right now, so it cannot be edited in place; nothing was saved. Reconnect storage and try again.`);
+        }
+      } else if (remote && !project.projectFolder) project.projectFolder = await ensureProjectFolder(project);
+      const file = await uploads.ingest(currentWorkspace(), project, name, bytes, { connection: remote, storageImpl: storageClient });
+      if (edit && file.name !== expectName) throw new Error(`the edit was stored as "${file.name}", not "${expectName}"; the project list was not changed`);
+      if (getProject(project.id) !== project) throw new Error('the project was removed while writing; the project list was not changed');
       if (remote) project.sourceFolders = [...new Set([...(project.sourceFolders || []), project.projectFolder])];
       project.files = [...(project.files || []).filter((f) => f.name !== file.name), file];
       project.updatedAt = Date.now();

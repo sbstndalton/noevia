@@ -935,6 +935,7 @@ export default function App(): JSX.Element {
               args: ev.args || '',
               status: 'pending',
               approvalId: ev.id,
+              ...(typeof ev.target === 'string' && ev.target ? { target: ev.target } : {}),
             };
             notifyIfAway('Approval needed', 'A tool is waiting for you in noevia.', `approval-${chatId}`, 'approvalNeeded');
             setMessagesByChat((prev) => ({

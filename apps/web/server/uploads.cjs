@@ -63,11 +63,16 @@ function original(workspace, id, file) {
   if (!/^[a-f0-9]{64}$/.test(file.attachment?.id || '')) throw new Error('Original not available');
   return path.join(directory(workspace, id), file.attachment.id);
 }
+/** The name ingest stores an upload under: its storage path with a connection, else the plain name.
+ *  Exported so an in-place edit can check, before writing, that this is the file it means (#648). */
+function destinationFor(project, name, { connection, remotePath } = {}) {
+  return remotePath || (connection ? `${project.projectFolder}/${classify(name)}/${name}` : name);
+}
 async function ingest(workspace, project, name, bytes, { connection, source, remotePath, progress = () => {}, storageImpl = storage, extractDocx = docx.extract } = {}) {
   workspace.assertActive?.();
   validate(name, bytes);
   const group = classify(name), mime = bytes.length <= 8 * 1024 * 1024 ? images[path.extname(name).toLowerCase()] : undefined;
-  const fullName = remotePath || (connection ? `${project.projectFolder}/${group}/${name}` : name);
+  const fullName = destinationFor(project, name, { connection, remotePath });
   const previous = (project.files || []).find(f => f.name === fullName);
   if (!previous && (project.files || []).length >= 60) throw Object.assign(new Error('A project holds at most 60 sources.'), { status: 400 });
   if (mime && !previous && (project.assets || []).length >= 12) throw Object.assign(new Error('A project holds at most 12 vision images.'), { status: 400 });
@@ -176,4 +181,4 @@ function prune(workspace, project) {
     for (const name of names) if (!referenced.has(name)) fs.rmSync(path.join(assetDir, name), { force: true });
   } else delete project.retiredAssets;
 }
-module.exports = { CAP, GROUPS, directory, classify, validate, ingest, original, prune };
+module.exports = { CAP, GROUPS, directory, classify, validate, destinationFor, ingest, original, prune };

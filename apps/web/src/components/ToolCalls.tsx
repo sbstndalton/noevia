@@ -52,6 +52,10 @@ function PendingToolCall({ call }: { call: ToolCallView }): JSX.Element {
       </span>
       {/* Full, unabbreviated arguments. Seeing exactly what the model proposes
           IS the gate — no clamp, no scroll-to-hide, no "show more". */}
+      {/* A project file edit names the exact stored file it would change (#648), resolved by the
+          server from the name above. The model may have passed only a bare name. */}
+      {call.target && <span className="tool-approval-ask" data-testid="tool-approval-target">{t('chat.approval.target')}</span>}
+      {call.target && <pre className="tool-approval-args">{call.target}</pre>}
       {pretty && pretty !== '{}' && <pre className="tool-approval-args">{pretty}</pre>}
       <div className="tool-approval-actions">
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void decide('approve')}>
