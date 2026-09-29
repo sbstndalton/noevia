@@ -180,6 +180,11 @@ function createProjectStore({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    // Reserve (name, never create) the unique folder path now so same-named projects stay distinct.
+    try {
+      const conn = authService.getStorage(currentWorkspace().userId, true);
+      if (storageClient.isBrowsable(conn)) project.reservedFolder = require('./project-folders.cjs').reserveProjectFolder(conn, PROJECT_ROOT_FOLDER, project, PROJECTS);
+    } catch { /* no storage: the first upload allocates */ }
     // The project's own storage folder is NOT created here (#589). Every upload path creates it on
     // the first upload (ensureProjectFolder) and attaches it as a source at that moment, so a
     // project that never receives a file leaves nothing behind in the user's storage.
