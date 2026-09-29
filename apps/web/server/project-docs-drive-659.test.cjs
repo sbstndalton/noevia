@@ -26,7 +26,7 @@ test.before(async () => { google = await startFakeGoogle({ autoApprove: true });
 test.after(async () => { await google.close(); for (const d of temps) fs.rmSync(d, { recursive: true, force: true }); });
 
 // ── (a) Project documents by default for a project with uploads ─────────────────────────────
-const OFFERED = { offered: (id) => ['core', 'project-docs', 'web-search'].includes(id), defaults: ['core'] };
+const OFFERED = { offered: (id) => ['core', 'project-docs', 'web-search'].includes(id), defaults: ['core'], hadUploads: false };
 
 test('the default toolboxes of a project with an upload include the project edit tools; others keep least privilege', () => {
   const upload = { name: 'notes.md', content: 'Zahl: 1' };
@@ -61,6 +61,17 @@ test('the default toolboxes of a project with an upload include the project edit
   const legacy = { id: 'p', files: [upload] };
   applyProjectDocsDefault(legacy, OFFERED);
   assert.deepEqual(legacy.toolboxes, ['core', 'project-docs']);
+  // #659 review: only when uploads FIRST appear. A project that already had uploads (maybe with the
+  // box deliberately unticked) is never changed; nor are noevia's internal projects.
+  const existing = { id: 'p', toolboxes: ['core'], files: [upload, { name: 'new.md', content: 'y' }] };
+  assert.equal(applyProjectDocsDefault(existing, { ...OFFERED, hadUploads: true }), false);
+  assert.equal(applyProjectDocsDefault(existing, { offered: OFFERED.offered, defaults: ['core'] }), false, 'hadUploads is required');
+  assert.deepEqual(existing.toolboxes, ['core']);
+  for (const id of ['cowork-chat-context-abc', 'cowork-diary-extras']) {
+    const internal = { id, toolboxes: ['core'], files: [upload] };
+    assert.equal(applyProjectDocsDefault(internal, OFFERED), false, id);
+    assert.deepEqual(internal.toolboxes, ['core']);
+  }
 });
 
 function routesFixture(projects) {
@@ -91,7 +102,12 @@ function routesFixture(projects) {
     Object.assign(req, { method: 'POST', url: `/api/projects/${id}/upload`, headers: {}, socket: {} });
     return routes(req, { writeHead() {}, end() {} }, { path: `/api/projects/${id}/upload`, authn: { user: { id: 'u1', role: 'member' } }, url: new URL(`http://localhost/api/projects/${id}/upload`) });
   };
-  return { upload, sent, store };
+  const sync = (id) => {
+    const req = Readable.from([]);
+    Object.assign(req, { method: 'POST', url: `/api/projects/${id}/sources/sync`, headers: {}, socket: {} });
+    return routes(req, { writeHead() {}, end() {} }, { path: `/api/projects/${id}/sources/sync`, authn: { user: { id: 'u1', role: 'member' } }, url: new URL(`http://localhost/api/projects/${id}/sources/sync`) });
+  };
+  return { upload, sync, sent, store };
 }
 
 test('uploading the first file to a fresh project turns its Project documents box on, and saves it', async () => {
@@ -106,6 +122,24 @@ test('uploading the first file to a fresh project turns its Project documents bo
   // The Diary's extras project chooses its tools per session: never changed by an upload.
   projects[1].toolboxes = ['core'];
   await f.upload('diary-extras', 'extra.md', 'x');
+  assert.deepEqual(projects[1].toolboxes, ['core']);
+});
+
+test('an existing project that already had uploads keeps its toolboxes after a sync or another upload (#659 review)', async () => {
+  // Uploaded before this change, Project documents never ticked (or unticked on purpose).
+  const projects = [{ id: 'p-old', name: 'Old', toolboxes: ['core'], files: [{ name: 'old.md', content: 'x' }], sourceFolders: [], chats: [] },
+    { id: 'cowork-chat-context-c1', name: 'Chat attachments c1', toolboxes: ['core'], files: [], chats: [] }];
+  const f = routesFixture(projects);
+  await f.sync('p-old');
+  assert.equal(f.sent.at(-1).status, 200, JSON.stringify(f.sent.at(-1)));
+  assert.deepEqual(projects[0].toolboxes, ['core'], 'the automatic sync after deploy changes nothing');
+  await f.upload('p-old', 'more.md', 'y');
+  assert.equal(f.sent.at(-1).status, 200);
+  assert.deepEqual(projects[0].toolboxes, ['core'], 'nor does a later upload');
+  assert.equal(projects[0].docsToolboxDefaulted, undefined);
+  // A free chat's hidden attachments project: its edit tools stay opt-in.
+  await f.upload('cowork-chat-context-c1', 'attached.md', 'z');
+  assert.equal(f.sent.at(-1).status, 200);
   assert.deepEqual(projects[1].toolboxes, ['core']);
 });
 
@@ -132,7 +166,7 @@ test('drive_update_file is conditional: it runs on the version this chat read, a
 
   // Never read in this chat: refused, nothing written.
   let before = updatesBefore();
-  assert.match(await tools.execute(member, 'drive_update_file', { fileId: id, content: 'blind' }, { chatKey: 'chat-1' }), /^ERROR: .*read in full with drive_read_file in this chat.*Nothing was changed/);
+  assert.match(await tools.execute(member, 'drive_update_file', { fileId: id, content: 'blind' }, { chatKey: 'chat-1' }), /^ERROR: .*read in full with drive_read_file in this same reply.*Nothing was changed/);
   assert.equal(updatesBefore(), before);
 
   // Read here, then updated: runs, once.
@@ -228,11 +262,93 @@ test('descriptions: Drive tools say Google Drive by Drive id and not project fil
     assert.match(d[name], /Not for files uploaded to this project; use the project file tools/, name);
   }
   assert.match(d.drive_update_file, /by Drive file id/);
-  assert.match(d.drive_update_file, /Read it with drive_read_file in this chat first/);
+  assert.match(d.drive_update_file, /Read it with drive_read_file first, in the same reply/);
   const { createInternalTools } = require('./mcp-internal-tools.cjs');
   const internal = createInternalTools({});
   for (const name of ['project_append_file', 'project_replace_text']) {
     assert.match(internal[name].description, /upload/, name);
     assert.match(internal[name].description, /not (Google Drive|a Google Drive)/i, name);
   }
+});
+
+// ── #659 review: "read in full" means what the model received, in this exchange ─────────────
+test('a read counts as full only when the exact string the model gets held the whole file (header included)', async () => {
+  const { tools } = await connectedDrive();
+  const cap = 8000;
+  // The boundary the review found: the text alone fits the cap, the header pushes the result over.
+  const tight = idOf(await tools.execute(member, 'drive_create_file', { name: 'b.md', content: 'a'.repeat(cap - 'b.md'.length) }, { exchangeKey: 'x0' }));
+  const read = await tools.execute(member, 'drive_read_file', { fileId: tight }, { exchangeKey: 'x1' });
+  assert.ok(read.length <= cap, `the result fits the chat's cap, so the chat loop never cuts it again (${read.length})`);
+  assert.match(read, /\n\[truncated\]$/);
+  const before = google.state.updates || 0;
+  assert.match(await tools.execute(member, 'drive_update_file', { fileId: tight, content: 'short' }, { exchangeKey: 'x1' }), /^ERROR: only part of this file was read/);
+  assert.equal(google.state.updates || 0, before, 'no PATCH');
+  assert.equal(google.files.get(tight).body.length, cap - 'b.md'.length, 'the file keeps its tail');
+  // Exactly fitting, header included: complete, and the update runs.
+  const exact = idOf(await tools.execute(member, 'drive_create_file', { name: 'c.md', content: 'a'.repeat(cap - 'c.md:\n'.length) }, { exchangeKey: 'x0' }));
+  const whole = await tools.execute(member, 'drive_read_file', { fileId: exact }, { exchangeKey: 'x2' });
+  assert.equal(whole.length, cap);
+  assert.doesNotMatch(whole, /\[truncated\]/);
+  assert.match(await tools.execute(member, 'drive_update_file', { fileId: exact, content: 'short' }, { exchangeKey: 'x2' }), /^Updated c\.md/);
+});
+
+test('a read (or the reply\'s own update) counts only in the exchange that made it', async () => {
+  const { tools } = await connectedDrive();
+  const id = idOf(await tools.execute(member, 'drive_create_file', { name: 'plan.md', content: 'v1' }, { chatKey: 'chat', exchangeKey: 'A0' }));
+  await tools.execute(member, 'drive_read_file', { fileId: id }, { chatKey: 'chat', exchangeKey: 'A' });
+  const before = google.state.updates || 0;
+  assert.match(await tools.execute(member, 'drive_update_file', { fileId: id, content: 'from memory' }, { chatKey: 'chat', exchangeKey: 'B' }),
+    /^ERROR: .*in this same reply \(a read from an earlier message does not count\).*Nothing was changed/);
+  assert.equal(google.state.updates || 0, before);
+  assert.match(await tools.execute(member, 'drive_update_file', { fileId: id, content: 'v2' }, { chatKey: 'chat', exchangeKey: 'A' }), /^Updated/);
+  // The record left by A's own update does not carry into a later request either.
+  assert.match(await tools.execute(member, 'drive_update_file', { fileId: id, content: 'v3' }, { chatKey: 'chat', exchangeKey: 'C' }), /^ERROR: /);
+  assert.equal(google.files.get(id).body.toString(), 'v2');
+});
+
+test('through the chat loop: read in one request, update in the next is refused; read and update in one request runs', async () => {
+  const { tools } = await connectedDrive();
+  const id = idOf(await tools.execute(member, 'drive_create_file', { name: 'notes.md', content: 'v1' }, { exchangeKey: 'setup' }));
+  const dir = temp('noevia-659-exchange-');
+  const turns = [];
+  const fetch = async () => ({ ok: true, body: (async function* () { for (const c of (turns.shift() || [])) yield Buffer.from(`data: ${JSON.stringify(c)}\n\n`); })() });
+  const call = (name, args, cid = 'call-1') => [{ choices: [{ delta: { tool_calls: [{ index: 0, id: cid, function: { name, arguments: JSON.stringify(args) } }] } }] }];
+  const say = (text) => [{ choices: [{ delta: { content: text } }] }];
+  const { handleChat } = createChatHandler({
+    modelManager: { enabled: true, health: async () => ({ ok: true, body: { all_models_loaded: [{ model_name: 'm', loaded: true, recipe_options: { ctx_size: 32768 } }] } }) },
+    reasoningEffort: require('./reasoning-effort.cjs'), authService: { audit() {} }, crypto, path, fs, fetch,
+    HISTORY_CAP: 20, DEFAULT_PROVIDER_ID: 'default', createToolExchange,
+    currentWorkspace: () => ({ userId: member.id, dir, assetDir: () => '/synthetic-only' }),
+    getProject: () => ({ id: 'p', model: 'm', assets: [] }), skillsIndexFor: () => [], getProvider: () => ({ id: 'default', baseUrl: 'http://fixture.invalid' }),
+    providerHeaders: () => ({}), autoRoles: () => null, visionDescriptions: new Map(), visionProbe: createVisionProbe({ fetchImpl: fetch }),
+    chatSkillRouter: { select: async () => ({ loaded: [] }) }, oauthServerIds: () => new Set(), accountReady: () => true,
+    chatToolRouter: { select: async (ids) => ({ ids, routed: false }) }, DEFAULT_TOOLBOXES: [], CONNECTOR_BOXES: new Set(['gdrive']), connectedBoxes: () => ['gdrive'],
+    toolPolicy: { mode: (_u, _n, write) => (write ? 'ask' : 'allow') },
+    requestScope: { getStore: () => ({ workspace: { userId: member.id }, authn: { user: member } }) },
+    resolveTools: () => ({ tools: tools.box.tools, dropped: [] }), isWriteTool: (n) => !tools.reads.has(n),
+    rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: (x) => ({ text: String(x) }), diaryExtras: require('./diary-extras.cjs'),
+    DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: () => {}, saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
+    lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
+    allToolboxes: () => [], executeToolCall: async (_p, name, args, _a, _s, _o, options) => tools.execute(member, name, JSON.parse(args), options),
+    chatWideApproved: () => false, awaitApproval: async () => 'approve', recordUsage() {}, recordToolUse() {},
+    writeTargetFor: (name, raw, { user }) => (tools.names.has(name) ? tools.describeTarget(user, name, raw) : null),
+  });
+  const run = async (message) => {
+    const events = [], res = new EventEmitter();
+    res.writeHead = () => {}; res.write = (l) => { if (l.startsWith('data: ')) events.push(JSON.parse(l.slice(6))); }; res.end = () => { res.writableEnded = true; res.emit('finish'); };
+    await handleChat({}, res, { projectId: 'p', chatId: 'chat-x', message });
+    return events.filter((e) => e.type === 'tool_result');
+  };
+  turns.push(call('drive_read_file', { fileId: id }), say('It says v1.'));
+  assert.match((await run('What does notes.md say?'))[0].text, /v1/);
+  turns.push(call('drive_update_file', { fileId: id, content: 'v1 plus more' }), say('ok'));
+  const later = await run('Now add "plus more" to it.');
+  assert.match(later[0].text, /^ERROR: drive_update_file replaces the whole file/, 'a later request cannot rely on the earlier read');
+  assert.equal(later[0].applied, undefined);
+  assert.equal(google.files.get(id).body.toString(), 'v1');
+  turns.push(call('drive_read_file', { fileId: id }), call('drive_update_file', { fileId: id, content: 'v1 plus more' }, 'call-2'), say('done'));
+  const same = await run('Read it again and add "plus more".');
+  assert.match(same[1].text, /^Updated notes\.md/);
+  assert.equal(same[1].applied, true);
+  assert.equal(google.files.get(id).body.toString(), 'v1 plus more');
 });

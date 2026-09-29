@@ -10,9 +10,14 @@
 // Why here, and stored, rather than computed at chat time or folded into Core:
 //  - The project's `toolboxes` list is what the composer and the model popup show as ticked. A
 //    box added only inside the chat loop would be sent while showing unticked.
-//  - It is added the first time the project holds an upload (an upload, or a file synced into
-//    the project's own upload folder), and a marker records that. Unticking it afterwards is a
-//    choice this never overrides.
+//  - It is added only at the moment uploads FIRST appear in the project (the caller passes
+//    whether it had any before the change), and a marker records that. So a project that already
+//    had uploads before this existed (possibly with the box deliberately unticked) is never
+//    changed by a later upload or sync, and unticking it afterwards is never overridden.
+//  - noevia's internal projects are left alone: the Diary's extras project (its tools are chosen
+//    per Diary session) and the hidden per-chat attachments project of a free chat
+//    (`cowork-chat-context-*`). Files attached to a free chat are reference material for that
+//    one conversation; its edit tools stay opt-in there ("Tools for this chat").
 //  - A project without uploads (only attached folders, or nothing) keeps exactly what it had.
 //    An empty toolbox list is a deliberate "no tools" and is left alone. Core stays the same
 //    for every chat, and the box is only added where the server offers it (the internal MCP
@@ -27,14 +32,23 @@ function hasUploads(project) {
     .some((f) => f && (!f.source || (project.projectFolder && f.source === project.projectFolder)));
 }
 
+/** noevia's own hidden projects: the Diary extras project and a free chat's attachments. */
+function internalProject(project) {
+  const id = String((project && project.id) || '');
+  return id === 'cowork-diary-extras' || id.startsWith('cowork-chat-context-');
+}
+
 /**
- * Adds the Project documents box to `project.toolboxes` the first time the project holds an
- * upload. Mutates the project; the caller saves it. Returns true when the project changed.
- * @param {object} project
- * @param {{ offered: (id: string) => boolean, defaults: string[] }} options
+ * Adds the Project documents box to `project.toolboxes` when uploads first appear in it.
+ * Mutates the project; the caller saves it. Returns true when the project changed.
+ * @param {object} project                 the project AFTER the change
+ * @param {{ offered: (id: string) => boolean, defaults: string[], hadUploads: boolean }} options
+ *   `hadUploads`: hasUploads(project) BEFORE the change. Required: when it is true (or missing),
+ *   nothing is added.
  */
-function applyProjectDocsDefault(project, { offered, defaults }) {
-  if (!project || project.docsToolboxDefaulted === true || !hasUploads(project)) return false;
+function applyProjectDocsDefault(project, { offered, defaults, hadUploads }) {
+  if (hadUploads !== false) return false; // only the transition from no uploads to some
+  if (!project || internalProject(project) || project.docsToolboxDefaulted === true || !hasUploads(project)) return false;
   if (!offered(BOX)) return false; // not offered on this server: decide again once it is
   const current = Array.isArray(project.toolboxes) ? project.toolboxes : [...defaults];
   if (!current.length) return false; // "no tools" was chosen on purpose
@@ -43,4 +57,4 @@ function applyProjectDocsDefault(project, { offered, defaults }) {
   return true;
 }
 
-module.exports = { applyProjectDocsDefault, hasUploads, BOX };
+module.exports = { applyProjectDocsDefault, hasUploads, internalProject, BOX };

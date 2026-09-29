@@ -19,7 +19,7 @@ const TOOLS = [
   fn('drive_get_metadata', 'Get a Google Drive file\'s name, type, size, dates and link.', ID, ['fileId']),
   fn('drive_list_recent', 'List the most recently changed files in Google Drive.', { limit: { type: 'integer', minimum: 1, maximum: 25 } }),
   fn('drive_create_file', `Create a new text file in the user's Google Drive. ${NOT_PROJECT}`, { name: { type: 'string' }, content: { type: 'string' }, mimeType: { type: 'string', description: 'text/plain (default), text/markdown, text/csv or application/json' } }, ['name', 'content']),
-  fn('drive_update_file', `Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file in this chat first. ${NOT_PROJECT}`, { ...ID, content: { type: 'string' } }, ['fileId', 'content']),
+  fn('drive_update_file', `Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. ${NOT_PROJECT}`, { ...ID, content: { type: 'string' } }, ['fileId', 'content']),
   fn('drive_trash_file', 'Move a Google Drive file to the trash (recoverable for 30 days).', ID, ['fileId']),
 ];
 const READS = ['drive_search_files', 'drive_read_file', 'drive_get_metadata', 'drive_list_recent'];
@@ -34,7 +34,8 @@ const LABELS = {
 const DRIVE_ID = /^[\w-]{1,200}$/;
 // The writes that change an existing file, whose card names that file.
 const EXISTING_FILE_WRITES = new Set(['drive_update_file', 'drive_trash_file']);
-const READ_TTL_MS = 6 * 60 * 60 * 1000;
+// A record lives only as long as its exchange can (approvals included); it is keyed by exchange anyway.
+const READ_TTL_MS = 30 * 60 * 1000;
 const READ_MAX = 2000;
 
 const line = (f) => `- ${f.name} (id ${f.id}) · ${f.mimeType || 'file'}${f.size ? ` · ${f.size} bytes` : ''}${f.modifiedTime ? ` · changed ${f.modifiedTime}` : ''}`;
@@ -50,20 +51,25 @@ function createDriveTools({ accounts, cap = 8000, now = Date.now }) {
   const names = new Set(TOOLS.map((t) => t.function.name));
   const connected = (user) => { try { return accounts.forUser(user).drive.state().state === 'connected'; } catch { return false; } };
 
-  // #659: the Drive version each chat read, per account, chat and file. drive_update_file
-  // replaces a whole file, so it runs only against the version this chat read in full: a file
-  // changed elsewhere since, read only in part, or never read here is refused, nothing written.
+  // #659: the Drive version each reply read, per account, exchange and file. drive_update_file
+  // replaces a whole file, so it runs only against the version the model has IN FRONT OF IT: read
+  // in full in the same exchange (one POST /api/chat; `scope.exchangeKey`). A read from an earlier
+  // message does not count: read results are not resent on later turns, so the model would be
+  // rebuilding the file from memory. A file changed elsewhere since, read only in part, or not read
+  // in this exchange is refused, nothing written. Direct callers without an exchange (tests) are
+  // scoped by `chatKey`.
   const reads = new Map(); // key -> { version, complete, at }
-  const readKey = (user, chatKey, id) => `${(user && user.id) || ''}\u0000${chatKey || ''}\u0000${id}`;
-  function remember(user, chatKey, id, version, complete) {
+  const scopeOf = ({ exchangeKey = null, chatKey = null } = {}) => (exchangeKey ? `x:${exchangeKey}` : `c:${chatKey || ''}`);
+  const readKey = (user, scope, id) => `${(user && user.id) || ''}\u0000${scopeOf(scope)}\u0000${id}`;
+  function remember(user, scope, id, version, complete) {
     if (version === undefined || version === null || !id) return;
-    const key = readKey(user, chatKey, id);
+    const key = readKey(user, scope, id);
     reads.delete(key);
     reads.set(key, { version: String(version), complete, at: now() });
     while (reads.size > READ_MAX) reads.delete(reads.keys().next().value);
   }
-  function lastRead(user, chatKey, id) {
-    const hit = reads.get(readKey(user, chatKey, id));
+  function lastRead(user, scope, id) {
+    const hit = reads.get(readKey(user, scope, id));
     return hit && now() - hit.at <= READ_TTL_MS ? hit : null;
   }
 
@@ -93,7 +99,8 @@ function createDriveTools({ accounts, cap = 8000, now = Date.now }) {
     }
   }
 
-  async function execute(user, name, args, { chatKey = null } = {}) {
+  async function execute(user, name, args, { chatKey = null, exchangeKey = null } = {}) {
+    const scope = { chatKey, exchangeKey };
     let files;
     try {
       const { drive } = accounts.forUser(user);
@@ -105,21 +112,30 @@ function createDriveTools({ accounts, cap = 8000, now = Date.now }) {
         case 'drive_get_metadata': { const f = await files.metadata(args); return `${line(f)}${f.webViewLink ? `\nLink: ${f.webViewLink}` : ''}`; }
         case 'drive_read_file': {
           const r = await files.read(args);
-          const text = r.text.slice(0, cap);
-          const partial = r.truncated || r.text.length > cap;
-          remember(user, chatKey, r.meta.id, r.meta.version, !partial);
-          return `${r.meta.name}:\n${text}${partial ? '\n[truncated]' : ''}`;
+          // "Read in full" means the EXACT string the model receives held the whole file: the
+          // header counts against the cap, and `cap` is the chat's own tool-result cap (index.cjs
+          // passes TOOL_RESULT_CAP), so a complete result is never cut again by the chat loop.
+          const header = `${r.meta.name}:\n`;
+          const whole = header + r.text;
+          if (!r.truncated && whole.length <= cap) {
+            remember(user, scope, r.meta.id, r.meta.version, true);
+            return whole;
+          }
+          remember(user, scope, r.meta.id, r.meta.version, false);
+          const marker = '\n[truncated]';
+          return header + r.text.slice(0, Math.max(0, cap - header.length - marker.length)) + marker;
         }
-        case 'drive_create_file': { const f = await files.create(args); remember(user, chatKey, f.id, f.version, true); return `Created ${f.name} (id ${f.id})${f.webViewLink ? `: ${f.webViewLink}` : ''}`; }
+        case 'drive_create_file': { const f = await files.create(args); remember(user, scope, f.id, f.version, true); return `Created ${f.name} (id ${f.id})${f.webViewLink ? `: ${f.webViewLink}` : ''}`; }
         case 'drive_update_file': {
           const id = typeof args.fileId === 'string' ? args.fileId.trim() : '';
-          const seen = DRIVE_ID.test(id) ? lastRead(user, chatKey, id) : null;
+          const seen = DRIVE_ID.test(id) ? lastRead(user, scope, id) : null;
           // An id that is not a Drive id falls through to files.update, which refuses it by name.
-          if (DRIVE_ID.test(id) && !seen) return 'ERROR: drive_update_file replaces the whole file, so it only runs on a file read in full with drive_read_file in this chat. Read it first. Nothing was changed.';
-          if (seen && !seen.complete) return 'ERROR: only part of this file was read in this chat, so replacing it would drop the rest. Nothing was changed.';
+          if (DRIVE_ID.test(id) && !seen) return 'ERROR: drive_update_file replaces the whole file, so it only runs on a file read in full with drive_read_file in this same reply (a read from an earlier message does not count). Read it again first. Nothing was changed.';
+          if (seen && !seen.complete) return 'ERROR: only part of this file was read, so replacing it would drop the rest. Nothing was changed.';
           const f = await files.update(args, seen ? { expectVersion: seen.version } : {});
-          // What this chat wrote is what it now knows, so a further edit here is checked against it.
-          remember(user, chatKey, f.id, f.version, true);
+          // What this reply wrote is what it now has in front of it, so a further edit in the same
+          // reply is checked against it. It lapses with the reply, like a read.
+          remember(user, scope, f.id, f.version, true);
           return `Updated ${f.name} (id ${f.id}).`;
         }
         case 'drive_trash_file': { const f = await files.trash(args); return `Moved ${f.name} to the Drive trash.`; }

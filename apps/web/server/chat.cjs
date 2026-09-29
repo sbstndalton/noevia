@@ -59,12 +59,16 @@ function appliedToolNote(entry) {
 }
 function normalizeReplayHistory(mapped, newMessage) {
   const out = [];
+  // Applied changes with no turn before them (the first message was edited and re-run, #658
+  // review): strict templates need a user turn first, so they lead the first user turn instead.
+  const leading = [];
   for (const entry of mapped) {
     const last = out[out.length - 1];
     if ((entry.role === 'tool' || entry.role === 'function') && entry.applied === true) {
       // A reply that failed or paused has no assistant text of its own to attach to.
       if (last && last.role === 'assistant') last.content = `${last.content}\n\n${appliedToolNote(entry)}`;
       else if (last) out.push({ role: 'assistant', content: appliedToolNote(entry) });
+      else leading.push(appliedToolNote(entry));
       continue;
     }
     if (entry.role === 'tool' || entry.role === 'function') {
@@ -84,6 +88,9 @@ function normalizeReplayHistory(mapped, newMessage) {
     const last = out[out.length - 1];
     if (last && last.role === 'user') last.content = `${last.content}\n\n${newMessage}`;
     else out.push({ role: 'user', content: newMessage });
+  }
+  if (leading.length && out[0] && out[0].role === 'user') {
+    out[0] = { ...out[0], content: `${leading.join('\n\n')}\n\n${out[0].content}` };
   }
   return out;
 }
@@ -739,7 +746,7 @@ function createChatHandler({
       const outcome = { failed: false };
       const result = String(await runTool(call, async () => {
         turn?.started(call.id);
-        const out = await executeToolCall(project, call.name, call.args, allowedToolNames, chatSignal.signal, outcome, { chatKey });
+        const out = await executeToolCall(project, call.name, call.args, allowedToolNames, chatSignal.signal, outcome, { chatKey, exchangeKey });
         recordToolUse(chatWorkspace, call.name);
         return out;
       }));
@@ -762,6 +769,9 @@ function createChatHandler({
     const contextId=chatId || spaceId;
     // Which conversation a Drive read belongs to, so an update can be checked against it (#659).
     const chatKey = chatId || spaceId || null;
+    // This one request (#659 review): a Drive read counts for an update only within the exchange
+    // that read it, since read results are not resent to the model on later turns.
+    const exchangeKey = crypto.randomUUID();
     // Writes that succeeded in THIS exchange (#658): how many the reply reports if it pauses.
     const appliedWrites = [];
     let paused = false;
@@ -1236,7 +1246,7 @@ function createChatHandler({
             if (chatWideApproved(userId, chatId)) turn?.approval(tc.id, {action:'approve_all', inherited:true});
             turn?.started(tc.id);
             markWriteAttempt();
-            const options = { chatKey, ...(editTarget !== null ? { editTarget: editTargets.targetDigest(editTarget) } : {}) };
+            const options = { chatKey, exchangeKey, ...(editTarget !== null ? { editTarget: editTargets.targetDigest(editTarget) } : {}) };
             try { result = await executeToolCall(project, tc.name, tc.args, allowedToolNames, chatSignal.signal, outcome, options); }
             catch (error) { turn?.uncertain(tc.id); throw error; }
             ran = true;

@@ -40,6 +40,16 @@ export function rerunBase(messages: Message[], index: number): Message[] {
   return record ? [...messages.slice(0, index), record] : messages.slice(0, Math.max(0, index - 1));
 }
 
+/** The transcript to resend on when the user message at `index` is edited and re-run. Everything
+ *  from that message on is dropped as before, EXCEPT the records of changes the dropped replies
+ *  already saved (#658 review): those writes happened, so the model must still be told they are
+ *  done, or it proposes them again. */
+export function editBase(messages: Message[], index: number): Message[] {
+  const kept = messages.slice(0, Math.max(0, index));
+  const records = messages.slice(Math.max(0, index)).map(appliedRecord).filter((m): m is Message => m !== null);
+  return [...kept, ...records];
+}
+
 /** What a reply is saved as. A failed reply is not saved, unless it saved changes: then its
  *  record is, so a reload still shows (and tells the model) what was done. */
 export function persistableMessage(m: Message): Message | null {

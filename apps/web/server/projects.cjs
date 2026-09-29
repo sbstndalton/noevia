@@ -184,7 +184,7 @@ function createProjectStore({
     // (#659), unless the caller chose the toolboxes itself.
     if (!Array.isArray(body.toolboxes)) {
       require('./project-docs-default.cjs').applyProjectDocsDefault(project, {
-        offered: (id) => (sanitizeToolboxes([id]) || []).includes(id), defaults: defaultToolboxes() });
+        offered: (id) => (sanitizeToolboxes([id]) || []).includes(id), defaults: defaultToolboxes(), hadUploads: false });
     }
     // Reserve (name, never create) the unique folder path now so same-named projects stay distinct.
     try {

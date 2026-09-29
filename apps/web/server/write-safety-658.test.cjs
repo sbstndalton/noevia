@@ -146,6 +146,36 @@ test('a Retry after a failed reply that saved a change sends that change as done
   assert.equal(events.at(-1).type, 'done');
 });
 
+test('Edit and re-run keeps the records of changes the dropped replies saved, so the model is told they are done (#658 review)', async (t) => {
+  const exports = {};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/applied-writes.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports, require: () => ({}) });
+  const saved = { name: 'synthetic_append', args: JSON.stringify(APPEND), status: 'done', applied: true, target: TARGET, result: 'Appended.' };
+  const transcript = [
+    { id: 'u1', role: 'user', content: 'Add "Zusatz: 2" to qa-notes.md' },
+    { id: 'a1', role: 'assistant', content: 'Added it.', toolCalls: [saved] },
+    { id: 'u2', role: 'user', content: 'And read it back' },
+    { id: 'a2', role: 'assistant', content: 'It says…', toolCalls: [{ name: 'synthetic_read', args: '{}', status: 'done', result: 'text' }] },
+  ];
+  // Editing the second message: the first exchange stays whole; nothing else was saved.
+  const middle = exports.editBase(transcript, 2);
+  assert.equal(JSON.stringify(middle.map((m) => m.id)), JSON.stringify(['u1', 'a1']));
+  // Editing the FIRST message drops both replies, but the change a1 saved keeps its record.
+  const first = exports.editBase(transcript, 0);
+  assert.equal(first.length, 1);
+  assert.deepEqual({ id: first[0].id, content: first[0].content, applied: first[0].toolCalls[0].applied }, { id: 'a1', content: '', applied: true });
+  assert.equal(JSON.stringify(first).includes('Added it.'), false, 'none of the dropped reply text is resent');
+  // Before this, Edit resent msgs.slice(0, index): nothing about the saved change survived.
+  assert.equal(JSON.parse(JSON.stringify(exports.modelHistory(transcript.slice(0, 0)))).length, 0);
+
+  const h = harness(t);
+  h.state.turns.push([say('It is already there.')]);
+  await h.send({ message: 'Add "Zusatz: 2" to qa-notes.md, please', history: JSON.parse(JSON.stringify(exports.modelHistory(first))) });
+  assert.equal(h.state.executed.length, 0);
+  const sent = h.state.requests[0].messages.filter((m) => m.role !== 'system');
+  assert.deepEqual(sent.map((m) => m.role), ['user'], 'strict templates: one user turn, first');
+  assert.match(sent[0].content, /^Already done earlier in this chat: synthetic_append ran after the user approved it[\s\S]*<\/untrusted>\n\nAdd "Zusatz: 2" to qa-notes\.md, please$/);
+});
+
 test('replayed history: an applied entry attaches to its reply, or stands in for a reply that has no text', () => {
   const entry = { role: 'tool', name: 'synthetic_append', content: 'ok', applied: true, args: '{"a":1}' };
   const withText = normalizeReplayHistory([{ role: 'user', content: 'q' }, { role: 'assistant', content: 'Appended.' }, entry], 'next');

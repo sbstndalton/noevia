@@ -65,7 +65,7 @@ import { EditProjectModal } from './components/EditProjectModal';
 import { Inspector } from './components/Inspector';
 import { StatsBar } from './components/StatsBar';
 import { finishedToolCall, pendingToolCall, settleToolCalls } from './tool-call-state';
-import { modelHistory, persistableMessage, rerunBase, storedPause } from './applied-writes';
+import { editBase, modelHistory, persistableMessage, rerunBase, storedPause } from './applied-writes';
 import { mergeTranscripts } from './transcript-merge';
 import { adoptMergedTranscript, enqueueKeyed, latestGate, resolveLoadedHistory, shouldSaveChat, upsertChatMeta } from './chat-save';
 import { readLastPlace, writeLastPlace, clearLastPlace, type LastPlace } from './last-view';
@@ -1151,7 +1151,8 @@ export default function App(): JSX.Element {
       if (!text) return;
       const projectId =
         view.kind === 'chat' ? view.projectId ?? activeChatMeta?.projectId ?? null : null;
-      void handleSend(chatId, projectId, text, msgs.slice(0, index));
+      // #658: the records of changes saved by the dropped replies stay (editBase).
+      void handleSend(chatId, projectId, text, editBase(msgs, index));
     },
     [activeChatMeta, handleSend, streamingChats, view],
   );

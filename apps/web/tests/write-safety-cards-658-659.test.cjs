@@ -32,6 +32,9 @@ test('the pending card carries the Drive kind and the repeat flag; a finished ch
   assert.match(app, /ev\.type === 'paused'/, 'a pause is handled before the error branch, as its own event');
   assert.match(app, /const history = modelHistory\(existing\)/);
   assert.match(app, /rerunBase\(msgs, index\)/, 'Retry keeps the record of saved changes');
+  assert.match(app, /void handleSend\(chatId, projectId, text, editBase\(msgs, index\)\)/, 'Edit and re-run keeps them too (#658 review)');
+  const diary = fs.readFileSync(path.join(__dirname, '../src/components/DiaryView.tsx'), 'utf8');
+  assert.match(diary, /finishedToolCall\(calls\[index\], \{ name: ev\.name, text: ev\.text, applied: ev\.applied === true, target: ev\.target \}/, 'Diary chips keep `applied` too');
 });
 
 async function withSsr(run) {

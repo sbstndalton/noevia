@@ -59,12 +59,15 @@ function createProjectRoutes({
     getProject, saveProjects, createProject, pruneDocuments, sweepDeletedProject, purgeProjectChats, withSourceLock, ensureProjectFolder, indexSource, ownsFile,
     loadChats, saveChats, deleteChat,
   } = store;
-  // #659: a project's first upload turns on its Project documents box (project-docs-default.cjs).
-  // Called before the save that records the upload. Not for the Diary's extras project, whose
-  // tools are chosen per session.
-  const defaultProjectDocs = (project) => project.id !== diaryExtras?.PROJECT_ID
+  // #659: when uploads first appear in a project, its Project documents box is turned on
+  // (project-docs-default.cjs). `hadUploads` is taken under the source lock before the change,
+  // so a project that already had uploads is never changed by a later upload or sync. Not for
+  // noevia's internal projects (the Diary extras project, a free chat's attachments).
+  const { hasUploads } = require('../project-docs-default.cjs');
+  const defaultProjectDocs = (project, hadUploads) => project.id !== diaryExtras?.PROJECT_ID
+    && !(typeof diaryExtras?.internalProject === 'function' && diaryExtras.internalProject(project))
     && require('../project-docs-default.cjs').applyProjectDocsDefault(project, {
-      offered: (id) => allToolboxes().some((b) => b.id === id), defaults: DEFAULT_TOOLBOXES || ['core'] });
+      offered: (id) => allToolboxes().some((b) => b.id === id), defaults: DEFAULT_TOOLBOXES || ['core'], hadUploads });
 
   async function handle(req, res, { path: p, authn, url }) {
     // Opt-in asynchronous source processing; the synchronous API remains compatible.
@@ -479,6 +482,7 @@ function createProjectRoutes({
         uploads.validate(inputName, inputBytes.subarray(0,1));
         return await withSourceLock(project, async () => {
           if (getProject(id) !== project) return json(res, 409, { error: 'Project changed; retry.' });
+          const hadUploads = hasUploads(project); // #659: the box is added only when uploads first appear
           const connection = authService.getStorage(authn.user.id, true);
           const remote = storageClient.isBrowsable(connection) ? connection : null;
           const progress = requestScope.getStore()?.sourceProgress || (() => {});
@@ -497,7 +501,7 @@ function createProjectRoutes({
           project.updatedAt = Date.now();
           progress('Indexing extracted text');
           indexSource(project, file);
-          defaultProjectDocs(project);
+          defaultProjectDocs(project, hadUploads);
           saveProjects(PROJECTS);
           return json(res, 200, { name, path: file.name, bytes: bytes.length, document: file.document, attachment: file.attachment });
         });
@@ -511,6 +515,7 @@ function createProjectRoutes({
       if (bytes.length > DOCUMENT_UPLOAD_CAP) return json(res, 413, { error: 'File exceeds the 25 MB limit.' });
       return await withSourceLock(project, async () => {
         if (getProject(id) !== project) return json(res, 409, { error: 'Project changed; retry.' });
+        const hadUploads = hasUploads(project); // #659: the box is added only when uploads first appear
         const connection = authService.getStorage(authn.user.id, true);
         if (!storageClient.isBrowsable(connection)) {
           // Remote storage is optional. Keep local uploads as project sources,
@@ -526,7 +531,7 @@ function createProjectRoutes({
           if (getProject(id) !== project || (project.files || []).find(f => !f.source && f.name === rawName) !== previous) return json(res, 409, { error: 'Source changed; retry.' });
           project.files = [...(project.files || []).filter(f => f.source || f.name !== rawName), file];
           project.updatedAt = Date.now();
-          indexSource(project, file); defaultProjectDocs(project); saveProjects(PROJECTS);
+          indexSource(project, file); defaultProjectDocs(project, hadUploads); saveProjects(PROJECTS);
           return json(res, 200, { name: rawName, path: rawName, bytes: bytes.length, document: file.document });
         }
         if (!project.projectFolder) {
@@ -549,7 +554,7 @@ function createProjectRoutes({
           file.source = project.projectFolder;
           if (getProject(id) !== project || !project.sourceFolders.includes(file.source)) return json(res, 409, { error: 'Source changed; refresh again.' });
           project.files = [...project.files.filter(f => f.name !== name || f.source !== file.source), file];
-          indexSource(project, file); defaultProjectDocs(project); saveProjects(PROJECTS);
+          indexSource(project, file); defaultProjectDocs(project, hadUploads); saveProjects(PROJECTS);
         }
         return json(res, 200, { name: rawName, path: `${project.projectFolder}/${rawName}`, bytes: bytes.length, document: file?.document });
       });
@@ -678,6 +683,7 @@ function createProjectRoutes({
       if (!project) return json(res, 404, { error: 'no such project' });
       return await withSourceLock(project, async () => {
         if (getProject(id) !== project) return json(res, 409, { error: 'Project changed; retry.' });
+        const hadUploads = hasUploads(project); // #659: the box is added only when uploads first appear
         const connection = authService.getStorage(authn.user.id, true);
         const fromFolders = [];
         const skipped = [];
@@ -777,7 +783,7 @@ function createProjectRoutes({
         project.files = [...uploaded, ...untouched, ...synced.slice(0, room)];
         require('../uploads.cjs').prune(currentWorkspace(), project);
         // A file dropped into the project's own upload folder elsewhere is an upload too (#659).
-        defaultProjectDocs(project);
+        defaultProjectDocs(project, hadUploads);
         saveProjects(PROJECTS);
         // Same RAG bookkeeping the config patch does: drop chunks for files that
         // are gone, re-index the ones that arrived or changed.
