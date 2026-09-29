@@ -521,11 +521,12 @@ test('service-supplied model manager words are translated per locale from stable
 
 // #600: every Advanced field the model manager schema can send has its label and help in the
 // catalogue, keyed by the stable field id, in every locale. The ids are read from the service's own
-// schema source, so a field added there without a translation fails here.
+// schema. The ids come from tests/fixtures/model-manager-field-ids.json (inside apps/web, so the
+// in-image run has it too); services/model-manager/tests/test_api.py keeps that fixture equal to
+// ini.py, so a field added there without a translation fails one of the two suites.
 test('every Advanced field id the service sends has a translated label and help in every locale (#600)',()=>{
-  const ini=fs.readFileSync(path.join(__dirname,'../../../services/model-manager/app/ini.py'),'utf8');
-  const ids=[...ini.matchAll(/^\s+Field\("([a-z0-9-]+)",/gm)].map(m=>m[1]);
-  assert.ok(ids.length>=90,`found ${ids.length} field ids in ini.py`);
+  const ids=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/model-manager-field-ids.json'),'utf8'));
+  assert.ok(ids.length>=90,`found ${ids.length} field ids in the fixture`);
   assert.equal(new Set(ids).size,ids.length,'field ids are unique');
   const EN_MODELS=ENSEG.models;
   const NAME_LABELS=new Set(['flash-attn','spec-draft-n-max','spec-draft-n-min','spec-draft-p-min','spec-draft-p-split','threads-batch']);

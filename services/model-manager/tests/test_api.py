@@ -47,6 +47,19 @@ def test_schema_fields_carry_stable_ids_beside_the_english_text(client):
     assert len({f["id"] for f in fields}) == len(fields), "ids are unique across groups"
 
 
+def test_web_field_id_fixture_matches_the_schema():
+    # apps/web/tests/i18n.test.cjs checks every id in this fixture has a translated label and help;
+    # this keeps the fixture equal to the schema, in order, so neither side can drift alone.
+    import json
+    from pathlib import Path
+    from app import ini
+    fixture = Path(__file__).resolve().parents[3] / "apps/web/tests/fixtures/model-manager-field-ids.json"
+    if not fixture.exists():  # the model-manager image ships without the web app
+        import pytest
+        pytest.skip("apps/web not present")
+    assert json.loads(fixture.read_text()) == [f.key for f in ini.ALL_FIELDS]
+
+
 def _snapshot_with_state(monkeypatch, status, started_at):
     import asyncio
     from app import services
