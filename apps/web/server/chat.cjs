@@ -617,14 +617,24 @@ function createChatHandler({
       }
       return skillRevocation;
     };
-    // A skill body the model fetched itself (read_project_file) is loaded too, at the version read.
-    const noteSkillRead = (rawArgs) => {
-      let name;
-      try { name = JSON.parse(rawArgs || '{}').name; } catch { return; }
-      const file = project && (project.files || []).find((f) => f.name === name);
-      const skill = file && instructionSkills.inspect(file, project);
-      if (skill && skill.status === 'enabled') loadedSkills.set(file.name, { hash: skill.hash, name: skill.name });
+    // A skill body the model fetched itself is loaded too, at the version read. Tracked by WHAT was
+    // read, not by which tool read it: read_project_file, the Project documents box's
+    // project_read_file (same reader through MCP) or anything else. A successful call that names a
+    // skill file, or whose result carries a skill's SHA-256 (the reader's heading), counts. Tracking
+    // too much only makes revocation stricter, which is the safe direction.
+    const noteSkillRead = (rawArgs, result) => {
+      if (!project) return;
+      let name = null;
+      try { const args = JSON.parse(rawArgs || '{}'); if (args && typeof args.name === 'string') name = args.name; } catch { /* no usable args */ }
+      const text = String(result ?? '');
+      let added = false;
+      for (const skill of instructionSkills.list(project)) {
+        if (skill.status !== 'enabled' || loadedSkills.has(skill.file)) continue;
+        if (skill.file === name || text.includes(skill.hash)) { loadedSkills.set(skill.file, { hash: skill.hash, name: skill.name }); added = true; }
+      }
+      if (added) recordLoadedSkills();
     };
+    const loadedSkillRecords = () => [...loadedSkills].map(([file, { hash, name }]) => ({ file, name, contentHash: hash }));
     const revocationText = () => `Skill ${skillRevocation.map((s) => JSON.stringify(s.name)).join(', ')} was disabled or changed during this reply, so no further steps were run.`;
     const refuseForRevokedSkill = (name, userId) => {
       authService?.audit?.('tool.denied', userId, userId, { tool: name, reason: 'skill-revoked' });
@@ -662,7 +672,7 @@ function createChatHandler({
       // resolved with its error text rather than 'outcome_unknown', which would halt the turn.
       turn?.result(call.id, framed, { failed: false, originalBytes: Buffer.byteLength(result) });
       if (outcome.failed === true || /^ERROR\b/.test(result)) return null;
-      if (call.name === 'read_project_file') noteSkillRead(call.args);
+      noteSkillRead(call.args, result);
       const note = 'The following was fetched for you; use it.';
       const hasSystem = roundMessages.some((m) => m.role === 'system');
       const base = hasSystem ? roundMessages.map((m, i) => (i === roundMessages.findIndex((x) => x.role === 'system') && typeof m.content === 'string' ? { ...m, content: `${m.content}\n\n${note}` } : m))
@@ -700,8 +710,12 @@ function createChatHandler({
     if(body.compactOnly){send({type:'done',model});res.end();return;}
     const turn = durableChat?.enabled && !spaceId?.startsWith('diary')
       ? durableChat.start(chatWorkspace, { projectId, conversationId: chatId || contextId,
-          messages: wire, model: { providerId:provider.id, id:model, effort, maxTokens:prepared.maxTokens, limit }, skill: pinnedSkill?.record }) : null;
+          messages: wire, model: { providerId:provider.id, id:model, effort, maxTokens:prepared.maxTokens, limit }, skill: pinnedSkill?.record,
+          skills: loadedSkillRecords() }) : null;
     execution.turn = turn;
+    // Every skill this exchange loaded is journaled on the turn (#272), so a continuation can verify
+    // all of them, not only the pin. Called again whenever a read loads another skill.
+    function recordLoadedSkills() { turn?.skillsLoaded(loadedSkillRecords()); }
     const reportRevocation = () => {
       if (!skillRevocation || skillRevocationReported) return;
       skillRevocationReported = true;
@@ -941,7 +955,13 @@ function createChatHandler({
         break;
       }
       // Cut off mid-stream by a revoked skill: keep what was already shown, request no tools.
-      if (skillRevocation) { turn?.partial(roundContent); break; }
+      if (skillRevocation) {
+        turn?.partial(roundContent);
+        // Chips for calls already streamed this round would otherwise stay pending: each gets a
+        // result saying it was not run (none of them was executed).
+        for (const [i, slot] of toolCalls) send({ type: 'tool_result', index: toolOffset + i, name: slot.name, text: `ERROR: ${revocationText()} ${slot.name || 'This tool'} was not run.`.slice(0, 300) });
+        break;
+      }
 
       // Fallback: some models/non-streaming paths return nothing on stream. One
       // non-streaming retry is safe for generation (no side effects, unlike diary).
@@ -1103,13 +1123,14 @@ function createChatHandler({
           turn?.result(tc.id, framedResult, { failed: outcome.failed === true, originalBytes: Buffer.byteLength(String(result)) });
           send({ type: 'tool_result', index: toolOffset + toolIndex, name: tc.name, text: result.slice(0, 300) });
           roundMessages.push({ role: 'tool', tool_call_id: tc.id, content: framedResult });
-          if (tc.name === 'read_project_file' && !/^ERROR\b/.test(String(result))) noteSkillRead(tc.args);
+          if (outcome.failed !== true && !/^ERROR\b/.test(String(result))) noteSkillRead(tc.args, result);
         }
       }
 
       if (turn?.snapshot().calls.some(c => c.status === 'outcome_unknown')) break;
       if (toolCalls.size) toolOffset += Math.max(...toolCalls.keys()) + 1;
       if (round === 2 || toolCalls.size === 0) break; // last round or no tools requested
+      if (skillRevocation) break; // revoked during this round's tools: no supervisor call, one error
       const supervised = await require('./step-supervision.cjs').superviseNextStep(
         spaceId?.startsWith('diary') ? null : stepSupervision,
         { round, messages: roundMessages, signal: chatSignal.signal });

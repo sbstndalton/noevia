@@ -179,8 +179,12 @@ that Skill's body is removed from the prompt before any model request.
 
 ### Revocation during an exchange
 
-A Skill counts as loaded in an exchange when the exchange pinned it, loaded it
-automatically, or the model read it with `read_project_file`. Core records the
+A Skill counts as loaded in an exchange when the exchange pinned it or loaded it
+automatically. It also counts when the model read it, which core tracks by what
+was read rather than by tool name. A successful tool call counts if it names the
+Skill's file (for example `read_project_file`, or the Project documents box's
+`project_read_file`). It also counts if its result contains the Skill's
+SHA-256. Core records the
 SHA-256 it loaded and compares it with the project as stored now, not with the
 exchange's snapshot. The check runs before each model round and before each tool
 call. It runs again after an approval card is answered, before dispatch. While a
@@ -190,14 +194,23 @@ changed, awaiting review, removed, or its project is gone:
 - The pending tool call is not run, even if it was approved. Its result is an
   `ERROR` telling the model it was not run, and the audit log records
   `tool.denied` with reason `skill-revoked`.
-- A streaming reply is cut off. Text already shown stays.
-- No further model round starts. The reply ends with an `error` event carrying
+- A streaming reply is cut off. Text already shown stays. Each tool call
+  already streamed in that round gets an `ERROR` `tool_result` saying it was not
+  run.
+- No further model round starts, and step supervision is not consulted. The reply ends with an `error` event carrying
   `code: "skill_revoked"`, and the durable turn is interrupted.
 
 Skills the exchange did not load are not consulted, so disabling one never stops
 an exchange that did not use it. "Allow for this chat" approvals belong to the
 chat rather than to any Skill. They are unchanged, and so are all three approval
-actions. The durable-turn continuation seam (`chat-turns.cjs`
-`resumeGeneration`) refuses a turn that recorded a pin unless the caller's
-`skillActive(record)` confirms that exact version is still enabled
-(`instruction-skills.cjs` `pinActive`).
+actions.
+
+The durable turn checkpoint records the pin as `skill`, and every loaded Skill
+as `skills: [{ file, name, contentHash }]`. `skills` is updated when a read
+loads another Skill and is absent when none was loaded. The continuation seam
+(`chat-turns.cjs` `resumeGeneration`) refuses the turn unless the caller's
+`skillActive(record)` confirms that each of those exact versions is still
+enabled (`instruction-skills.cjs` `pinActive`). This check exists but is **not
+yet wired to a production caller**: `resumeGeneration` is an internal seam with
+no route today. Any future caller must pass `skillActive`, because without it a
+turn that loaded Skills is refused.
