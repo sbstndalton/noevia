@@ -45,11 +45,13 @@ test('a server-formatted quantity keeps its unit and decimal count', () => {
 
 test('model sizes use the locale separators', () => {
   assert.equal(formatModelSizeGB(3.3, 'en-GB'), '3.3 GB');
-  assert.equal(formatModelSizeGB(3.3, 'de-DE'), '3,3 GB');
-  assert.equal(formatModelSizeGB(3.3, 'fr-FR'), '3,3 GB');
-  assert.equal(formatModelSizeGB(5300, 'de-DE'), '5.300 GB');
-  assert.equal(formatModelSizeGB(5300.04, 'fr-FR'), `5${NNBSP}300 GB`);
-  assert.equal(formatModelSizeGB(3, 'de-DE'), '3 GB');
+  // #636: the unit is the locale's own name for a gigabyte ("Go" in French), with the locale's own gap.
+  const plain = (v) => v.replace(/[  ]/g, ' ');
+  assert.equal(plain(formatModelSizeGB(3.3, 'de-DE')), '3,3 GB');
+  assert.equal(plain(formatModelSizeGB(3.3, 'fr-FR')), '3,3 Go', 'French says Go, not GB');
+  assert.equal(plain(formatModelSizeGB(5300, 'de-DE')), '5.300 GB');
+  assert.equal(plain(formatModelSizeGB(5300.04, 'fr-FR')), '5 300 Go');
+  assert.equal(plain(formatModelSizeGB(3, 'de-DE')), '3 GB');
   assert.equal(formatModelSizeGB(null, 'de-DE'), null);
   assert.equal(formatModelSizeGB(0, 'de-DE'), null);
 });

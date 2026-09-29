@@ -16,10 +16,12 @@ test('small files read in bytes and kilobytes, never as 0.00 MB', () => {
   assert.match(plain(formatBytes(0, 'en-GB')), /^0 /);
 });
 
-test('the unit steps up at 1024 and stops at gigabytes', () => {
+test('the unit steps up at 1024 and stops at terabytes', () => {
   assert.equal(plain(formatBytes(1024 * 1024, 'en-GB')), '1 MB');
   assert.equal(plain(formatBytes(3.3 * 1024 ** 3, 'en-GB')), '3.3 GB');
-  assert.equal(plain(formatBytes(5000 * 1024 ** 3, 'en-GB')), '5,000 GB');
+  assert.equal(plain(formatBytes(5.3 * 1024 ** 4, 'en-GB')), '5.3 TB');
+  assert.equal(plain(formatBytes(5.3 * 1024 ** 4, 'fr-FR')), '5,3 To');
+  assert.equal(plain(formatBytes(3.3 * 1024 ** 3, 'fr-FR')), '3,3 Go');
   assert.equal(plain(formatBytes(150 * 1024, 'en-GB')), '150 kB');
 });
 
