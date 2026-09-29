@@ -40,10 +40,13 @@ public struct RetryPolicy: Sendable, Equatable {
 public struct ClientEnvironment: Sendable {
     public var sleep: @Sendable (Duration) async throws -> Void
     public var random: @Sendable () -> Double
+    /// The wall clock, for device-token expiry (#555).
+    public var now: @Sendable () -> Date
 
-    public init(sleep: @escaping @Sendable (Duration) async throws -> Void, random: @escaping @Sendable () -> Double) {
+    public init(sleep: @escaping @Sendable (Duration) async throws -> Void, random: @escaping @Sendable () -> Double, now: @escaping @Sendable () -> Date = { Date() }) {
         self.sleep = sleep
         self.random = random
+        self.now = now
     }
 
     public static let live = ClientEnvironment(

@@ -36,6 +36,16 @@ public enum NoeviaError: Error, Sendable, Equatable {
     case invalidResponse(String)
     /// The credential store (Keychain) failed.
     case credentialStore(String)
+    /// The server has no device sign-in (404): an older core, or its `nativeClientAuth`
+    /// feature is off. Password sign-in still works.
+    case deviceSignInUnavailable
+    /// The person chose Deny on the approval screen.
+    case deviceSignInDenied
+    /// The code expired before it was approved, or can no longer be used. Start again.
+    case deviceSignInExpired
+    /// 403 `browser_session_required`: a device token may not do this (administration and
+    /// account security). Do it in a browser where the account is signed in.
+    case browserSessionRequired
 }
 
 extension NoeviaError: LocalizedError {
@@ -71,6 +81,14 @@ extension NoeviaError: LocalizedError {
             return "The server answered in an unexpected format (\(detail))."
         case .credentialStore(let detail):
             return "The saved sign-in could not be read or written (\(detail))."
+        case .deviceSignInUnavailable:
+            return "This Noevia server does not offer app sign-in with a code. Ask its administrator to turn on Native app sign-in, or sign in with your password."
+        case .deviceSignInDenied:
+            return "The sign-in was denied in the browser."
+        case .deviceSignInExpired:
+            return "The sign-in code expired. Start again."
+        case .browserSessionRequired:
+            return "This needs a browser where you are signed in to Noevia. Apps cannot change security settings or administer the server."
         }
     }
 }

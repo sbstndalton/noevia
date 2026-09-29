@@ -38,16 +38,81 @@ struct LoginResponse: Decodable, Sendable {
     let csrfToken: String?
 }
 
-/// `GET /api/auth/session` body (routes/auth.cjs): `{ user, csrfToken, legacy }`.
+/// `GET /api/auth/session` body (routes/auth.cjs): `{ user, csrfToken, legacy }`. For a device
+/// token (routes/device-auth.cjs) it also carries `device` and `accountRole`, and `user.role` is
+/// always `member`: a device never acts as an administrator.
 struct SessionResponse: Decodable, Sendable {
     let user: User
     let csrfToken: String?
     let legacy: Bool?
+    let device: DeviceSession?
 }
 
-/// `{ error: string }`, the JSON error body used by every JSON route.
+/// The signed-in device, from `GET /api/auth/session` with a device token.
+public struct DeviceSession: Decodable, Sendable, Equatable {
+    /// The id Settings → Security and login lists and revokes.
+    public let id: String
+    /// The name the app gave when it started the sign-in.
+    public let clientName: String
+    /// When the grant ends at the latest (30 days after approval), whatever the refreshes.
+    public let expiresAt: Date?
+
+    enum CodingKeys: String, CodingKey { case id, clientName, expiresAt }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        clientName = try c.decode(String.self, forKey: .clientName)
+        expiresAt = c.millisecondsDate(.expiresAt)
+    }
+}
+
+/// `{ error: string }`, the JSON error body used by every JSON route. Some refusals add a
+/// machine-readable `code`, e.g. `browser_session_required`.
 struct ErrorBody: Decodable, Sendable {
     let error: String
+    let code: String?
+}
+
+/// A started device sign-in, from `POST /api/auth/device/code` (RFC 8628 §3.2). Show
+/// `userCode` and `verificationURL` to the person, then call
+/// `NoeviaClient.completeDeviceSignIn(_:)`. The device code itself stays inside NoeviaKit.
+public struct DeviceAuthorization: Sendable, Equatable {
+    /// The short code the person compares on the approval screen, e.g. `BCDF-GHJK`.
+    public let userCode: String
+    /// The approval page, e.g. `https://noevia.example.com/device`.
+    public let verificationURL: URL
+    /// The approval page with the code filled in, for a "Open in browser" button.
+    public let verificationURLComplete: URL?
+    /// How long the code stays valid.
+    public let expiresIn: Duration
+    /// The minimum wait between polls, as the server asked.
+    public let interval: Duration
+    let deviceCode: String
+}
+
+/// The wire shape of `POST /api/auth/device/code` 200.
+struct DeviceCodeResponse: Decodable, Sendable {
+    let device_code: String
+    let user_code: String
+    let verification_uri: String
+    let verification_uri_complete: String?
+    let expires_in: Int
+    let interval: Int?
+}
+
+/// The wire shape of `POST /api/auth/device/token` 200 (RFC 6749 §5.1).
+struct TokenResponse: Decodable, Sendable {
+    let access_token: String
+    let token_type: String
+    let expires_in: Int
+    let refresh_token: String
+}
+
+/// An OAuth error body (RFC 6749 §5.2, RFC 8628 §3.5): `{ error, error_description }`.
+struct OAuthErrorBody: Decodable, Sendable {
+    let error: String
+    let error_description: String?
 }
 
 /// `GET /api/workspace` (apps/web/server/routes/chat-lists.cjs): the account's own projects

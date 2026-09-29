@@ -6,7 +6,8 @@
 //   node clients/macos/NoeviaKit/scripts/generate-fixtures.cjs
 // The password sign-in body cannot be produced this way (auth.cjs needs better-sqlite3 and
 // argon2), so auth-login-password__auth.cjs-passwordLogin.json is written by hand below from
-// auth.cjs passwordLogin()/publicUser()/issueSession().
+// auth.cjs passwordLogin()/publicUser()/issueSession(). The device sign-in bodies (#555) run the
+// real device-auth.cjs on node:sqlite (Node 22.5 or later); see deviceFixtures().
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -85,11 +86,82 @@ async function main() {
   await listRoutes(request('GET'), {}, { path: '/api/workspace', authn: { user } });
   write('workspace__routes-chat-lists.cjs.json', JSON.parse(JSON.stringify(take().body)));
 
+  await deviceFixtures(user);
+
   // Error bodies: http.cjs unauthorized() and index.cjs's CSRF gate.
   write('error-unauthorized__http.cjs.json', { error: 'unauthorized' });
   write('error-csrf__index.cjs.json', { error: 'invalid CSRF token' });
   write('error-signin__auth.cjs-passwordLogin.json', { error: 'sign-in failed' });
   console.log(`fixtures written to ${path.relative(repo, out)}`);
+}
+
+// Native-client sign-in (#555). The bodies come from the REAL device-auth.cjs running on an
+// in-memory node:sqlite database (a small shim supplies better-sqlite3's transaction()). Only the
+// random values (device code, user code, tokens) are replaced with fixed synthetic ones after
+// their shape is checked, so re-running produces identical files.
+async function deviceFixtures(user) {
+  const { DatabaseSync } = require('node:sqlite');
+  const device = require(path.join(server, 'device-auth.cjs'));
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON; CREATE TABLE users(id TEXT PRIMARY KEY, disabled_at INTEGER);');
+  db.transaction = (fn) => (...args) => {
+    db.exec('BEGIN');
+    try { const result = fn(...args); db.exec('COMMIT'); return result; } catch (e) { db.exec('ROLLBACK'); throw e; }
+  };
+  db.prepare('INSERT INTO users(id) VALUES(?)').run(user.id);
+  let clock = 1790000000000;
+  const auth = device.createDeviceAuth({
+    db, audit: () => {}, publicUser: () => user, rate: { rateLimited: () => false },
+    clientAddress: () => '192.168.1.20', origin: () => 'https://noevia.example.test', now: () => clock,
+  });
+  const req = { headers: { 'user-agent': 'NoeviaKit/0.1 (macOS)' } };
+  const expect = (cond, what) => { if (!cond) throw new Error(`unexpected device-auth shape: ${what}`); };
+
+  const started = auth.start(req, { client_name: 'Synthetic Mac' });
+  expect(started.status === 200 && /^[A-Za-z0-9_-]{43}$/.test(started.body.device_code) && /^[A-Z]{4}-[A-Z]{4}$/.test(started.body.user_code), 'start');
+  const pending = auth.token(req, { grant_type: device.DEVICE_GRANT_TYPE, device_code: started.body.device_code });
+  clock += 1000;
+  const slow = auth.token(req, { grant_type: device.DEVICE_GRANT_TYPE, device_code: started.body.device_code });
+  expect(pending.body.error === 'authorization_pending' && slow.body.error === 'slow_down', 'polling');
+  auth.decide(user.id, started.body.user_code, true);
+  const issued = auth.token(req, { grant_type: device.DEVICE_GRANT_TYPE, device_code: started.body.device_code });
+  expect(issued.status === 200 && issued.body.access_token.startsWith('nva_') && issued.body.refresh_token.startsWith('nvr_'), 'token');
+  const rotated = auth.token(req, { grant_type: 'refresh_token', refresh_token: issued.body.refresh_token });
+  // Read before the reuse below, which (correctly) revokes the whole grant.
+  const authn = auth.authenticate({ headers: { authorization: `Bearer ${rotated.body.access_token}` } });
+  // Past the retry grace window (review F3), a second use of the old refresh token is reuse.
+  clock += device.REFRESH_GRACE_MS + 1;
+  const reused = auth.token(req, { grant_type: 'refresh_token', refresh_token: issued.body.refresh_token });
+  expect(rotated.status === 200 && reused.body.error === 'invalid_grant', 'refresh');
+  const denied = auth.start(req, { client_name: 'Synthetic Mac' });
+  auth.decide(user.id, denied.body.user_code, false);
+  const deniedPoll = auth.token(req, { grant_type: device.DEVICE_GRANT_TYPE, device_code: denied.body.device_code });
+  const late = auth.start(req, { client_name: 'Synthetic Mac' });
+  clock += device.DEVICE_CODE_TTL_MS;
+  const expired = auth.token(req, { grant_type: device.DEVICE_GRANT_TYPE, device_code: late.body.device_code });
+
+  const code = 'BCDF-GHJK';
+  write('device-code__device-auth.cjs-start.json', {
+    ...started.body, device_code: 'synthetic-device-code', user_code: code,
+    verification_uri_complete: started.body.verification_uri_complete.replace(started.body.user_code, code),
+  });
+  write('device-token__device-auth.cjs-token.json', { ...issued.body, access_token: 'nva_synthetic-access-1', refresh_token: 'nvr_synthetic-refresh-1' });
+  write('device-token-rotated__device-auth.cjs-token.json', { ...rotated.body, access_token: 'nva_synthetic-access-2', refresh_token: 'nvr_synthetic-refresh-2' });
+  write('device-pending__device-auth.cjs-token.json', pending.body);
+  write('device-slow-down__device-auth.cjs-token.json', slow.body);
+  write('device-denied__device-auth.cjs-token.json', deniedPoll.body);
+  write('device-expired__device-auth.cjs-token.json', expired.body);
+  write('device-refresh-reuse__device-auth.cjs-token.json', reused.body);
+
+  // GET /api/auth/session for a device token: routes/device-auth.cjs createDeviceAuthRoutes().account.
+  expect(authn && authn.device, 'authenticate');
+  const { createDeviceAuthRoutes } = require(path.join(server, 'routes/device-auth.cjs'));
+  const routes = createDeviceAuthRoutes({ json, authResult: () => true, readJson: async () => ({}), deviceAuth: auth, authService: {}, enabled: () => true });
+  await routes.account(request('GET'), {}, { path: '/api/auth/session', authn: { ...authn, device: { ...authn.device, id: 'synthetic-device-id' } } });
+  write('auth-session-device__routes-device-auth.cjs.json', take().body);
+  // index.cjs's browser-only gate for a device token.
+  write('error-browser-session__index.cjs.json', { error: 'This needs a signed-in browser session.', code: 'browser_session_required' });
+  db.close();
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
