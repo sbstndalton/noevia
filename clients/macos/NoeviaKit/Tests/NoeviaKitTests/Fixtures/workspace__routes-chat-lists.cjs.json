@@ -1,0 +1,76 @@
+{
+  "projects": [
+    {
+      "icon": "book",
+      "color": "#3a6ea5",
+      "id": "proj-1790000000000-abc123",
+      "name": "Synthetic research",
+      "goal": "A synthetic goal",
+      "instructions": "Answer briefly.",
+      "pinned": true,
+      "archived": false,
+      "sourceFolders": [
+        "Noevia/Synthetic research"
+      ],
+      "memories": [],
+      "files": [
+        {
+          "name": "notes.md",
+          "content": "synthetic file body"
+        }
+      ],
+      "model": "synthetic-model",
+      "routing": "auto",
+      "modes": [
+        "chat",
+        "code"
+      ],
+      "toolboxes": [
+        "core"
+      ],
+      "projectFolder": "Noevia/Synthetic research",
+      "chats": [
+        {
+          "id": "chat-a",
+          "title": "First question",
+          "updatedAt": 1789999995000,
+          "preview": "What is…",
+          "pinned": true
+        },
+        {
+          "id": "chat-b"
+        }
+      ],
+      "createdAt": 1789913600000,
+      "updatedAt": 1790000000000
+    },
+    {
+      "id": "proj-legacy",
+      "name": "Legacy project",
+      "goal": "",
+      "instructions": "",
+      "memories": [],
+      "files": [],
+      "chats": []
+    }
+  ],
+  "freeChats": [
+    {
+      "id": "free-1",
+      "title": "A free chat",
+      "updatedAt": 1789999999000,
+      "preview": "hello",
+      "pinned": false,
+      "archived": false
+    },
+    {
+      "id": "free-2",
+      "title": "A Cowork task",
+      "updatedAt": 1789999998000,
+      "preview": "",
+      "pinned": false,
+      "archived": true,
+      "mode": "cowork"
+    }
+  ]
+}
