@@ -17,7 +17,8 @@ test('the Load/Unload button only renders when the model is not system, sidecar-
 });
 
 test('a missing-file preset gets an explanatory note (after the system and sidecar notes) and no MTP/tune controls', () => {
-  assert.match(src, /!chatModel \|\| missing \? <p className="mm-note" role="status">\{t\(missing \? 'mm\.card\.missingNote' : 'mm\.card\.nonChatNote'\)\}<\/p>/);
+  assert.match(src, /\{missing && !open && <p className="mm-note" role="status">\{t\('mm\.card\.missingNote'\)\}<\/p>\}/, 'the card itself carries the note');
+  assert.match(src, /\{missing \? <p className="mm-note" role="status">\{t\('mm\.card\.missingNote'\)\}<\/p>\n\s*: !file && \(system \|\| protectedModel\)/, 'Details leads with the missing note, even for system models');
   assert.match(src, /runtimeOptions && !missing && <MtpControl/);
 });
 
