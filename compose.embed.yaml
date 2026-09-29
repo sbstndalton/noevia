@@ -13,8 +13,11 @@
 # `EMBEDDING_BASE_URL` is the only switch web reads (apps/web/server/rag.cjs):
 # point it at this service to use it; leave it unset to embed against the
 # main inference endpoint instead. Per docs/spec-service-boundaries.md §2,
-# this service is `default`-network only — it does not need `models`, since
-# it is not managed by model-loader.
+# this service was `default`-network only. It now also joins `models` so the
+# model loader (which is on `models` only, because it holds the Docker socket
+# and must not be on `default`) can reach it for the status probe (issue #549).
+# Joining `models` exposes embed to llama/web/model-loader only; the reverse
+# (putting model-loader on `default`) would expose the socket holder to Diary.
 #
 # The live embed image's tag/digest is not recorded, so this overlay pins the
 # `embed` service to the SAME image digest as compose.llamacpp.yaml's `llama`
@@ -71,7 +74,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    networks: [default]
+    networks: [default, models]
     # No published ports: web (and, if ever pointed at it, diary) reach it
     # only over the default network, matching docs/spec-service-boundaries.md §2.
     # [live: verify] whether the live `default` network here is this project's
@@ -86,3 +89,8 @@ services:
       # mismatch on the live box cannot block web from starting at all.
       embed:
         condition: service_started
+
+networks:
+  # Also declared by compose.llamacpp.yaml; the merge is idempotent. Declared here so
+  # this overlay still validates when used without the llama.cpp overlay.
+  models: {}

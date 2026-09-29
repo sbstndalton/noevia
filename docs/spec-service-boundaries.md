@@ -117,7 +117,7 @@ membership (a Mermaid node can sit in only one subgraph, so the diagram does not
 | docling | `cowork-docling:${DOCLING_VERSION}` | ocr (internal) | none | read-only, offline models, 6 GiB | `compose.docling.yaml` |
 | kiwix | `kiwix-serve:3.7.0` | kiwix (internal) | none | read-only ZIMs | `deploy/examples/kiwix.override.yml` |
 | code-sandbox | `cowork-code-sandbox:${CODE_SANDBOX_VERSION}` | code (internal) | none | read-only, uid 1000, `cap_drop: ALL`, 3 GiB | `deploy/examples/code-sandbox.override.yml` |
-| embed | pinned llama.cpp, CPU | default | none | CPU-only embedding model | live override only **[live: verify]** |
+| embed | pinned llama.cpp, CPU | default, models | none | CPU-only embedding model | live override only **[live: verify]** |
 
 ## 3. Dependency and data-flow map
 
