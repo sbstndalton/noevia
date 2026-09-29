@@ -78,13 +78,30 @@ filename), `file`, `name`, `description`, optional `versionLabel`, `version`
 `resolvable`. The digest, rather than the human version label, identifies the
 exact artifact. `status` is `review`, `updated`, `enabled`, `disabled`, or
 `invalid`. `requirements` contains declared `toolboxes` and `allowedTools`
-plus `unsupportedToolboxes` and `unselectedToolboxes` at discovery time. The
+plus `unsupportedToolboxes` and `unselectedToolboxes` at discovery time, and
+`scripts`, the Skill's bundled executable files. The
 former compares declarations with toolboxes currently offered by core; the
 latter names known boxes not selected for the project. Requirements and `allowed-tools` are
 informational metadata: they grant no tools, credentials, or approvals, and the
 client must not treat them as an authorization result. An unknown toolbox blocks
 portable content resolution with `422`; a merely unselected known toolbox is
-reported for the user to configure through the existing toolbox picker.
+reported for the user to configure through the existing toolbox picker, and is
+enforced when the Skill is used (see below). `allowed-tools` is limited to 32
+entries and 1,024 characters, `compatibility` to 500 characters.
+
+`assets` lists the other project files in a `<dir>/SKILL.md` Skill's directory,
+each with its own SHA-256 `version` and `executable` (a file under `scripts/`,
+an executable extension, or a `#!` first line). A root `SKILL.md` or a
+single-file Skill has no assets. Chat has no tool that executes project files,
+so a Skill with any executable asset is `resolvable: false`: its content read
+returns `422`, a pin is refused with `422 skill_scripts_unsupported`, and it is
+never loaded automatically. Its assets stay ordinary text sources. A later
+runner would have to go through the qualified code sandbox and the existing
+approval gate.
+
+The Sources list (`GET/PUT /instruction-skills`) additionally carries each
+Skill's portable `id`, `origin` and `scripts`, so the web client shows where a
+Skill came from, its SHA-256, and why bundled scripts block it.
 
 To read the reviewed instructions, call
 `GET /api/projects/{id}/instruction-skills/manifests/{skillId}/content?version={sha256}`.
@@ -93,8 +110,9 @@ version remains enabled and reviewed in the owning project. A missing project or
 Skill returns `404`, an absent or malformed version `400`, a changed, disabled,
 or unreviewed version `409`. A client must refresh discovery after `409`, then
 obtain the owner's review before using a changed version. Disabling one Skill
-blocks its subsequent reads and future chat injection without changing others;
-instructions already loaded into an in-flight model request cannot be recalled.
+blocks its subsequent reads and future chat injection without changing others.
+It also revokes the Skill inside an exchange that is already running (see
+"Revocation during an exchange" below).
 
 An imported Skill's `origin` records `kind: published`, `publisher`,
 `repository`, `sourceRef`, `sourcePath`, `digest`, and `retrievedAt`. The directory currently
@@ -105,7 +123,7 @@ are `attached-folder`. Replacing imported content clears its published origin.
 Updates require the existing explicit review step. No background update or
 remote re-fetch occurs during resolution.
 
-Portable v1 supports Markdown instructions only. It does not fetch, store, or
+Portable v1 supports Markdown instructions only. It does not fetch or
 execute bundled assets or scripts, and its restricted frontmatter rejects
 executable metadata. `compatibility`, `license`, and `allowed-tools` are
 descriptive fields, not runtime grants. To use a Skill in an assistant turn,
@@ -132,8 +150,14 @@ Refusals happen before any retrieval, model or tool work and return
 another project or tenant), `404 skill_version_unknown`,
 `409 skill_version_changed` (the reviewed version was replaced on disk),
 `409 skill_version_unreviewed`, `409 skill_disabled`, `409 skill_hash_mismatch`
-(version, label and content hash disagree), `422 skill_invalid`, and
-`422 skill_unsupported_requirements`. A resolved pin is echoed as `skill`
+(version, label and content hash disagree), `422 skill_invalid`,
+`422 skill_unsupported_requirements`, `422 skill_scripts_unsupported`, and
+`422 skill_requirements_unmet` (with `missing`: a required toolbox that this
+request does not carry after the project selection, per-message
+`turnToolboxes`, the Diary add-on and sign-in filters. The Skill never adds the
+toolbox). If the chosen provider then strips a required box (the Diary is never
+offered to an external provider), the stream ends with an `error` event carrying
+`code: "skill_requirements_unmet"` before any model request. A resolved pin is echoed as `skill`
 (`id`, `file`, `name`, `versionLabel`, `version`, `contentHash`, `origin`) on
 the stream's `meta` event and recorded on the durable turn checkpoint when that
 seam is enabled. Without `skill` the turn is unchanged. A pin selects
@@ -141,3 +165,52 @@ instructions only: tool choice, tool policy and every write approval are
 unchanged. Cowork-mode requests refuse a pin with
 `400 skill_pin_unsupported_mode` rather than drop it. Types
 are in [`api-contract.ts`](../apps/web/src/api-contract.ts).
+
+The web composer uses this same contract. Its Skill selector lists the
+manifests that are `enabled` and `resolvable`, and sends `skill_<id>@<version>`
+with that one message. "Automatic" (the default) sends no pin. The selector is
+re-read after each reply, so a Skill that was disabled or changed drops out.
+A native client does the same with the manifest list and `POST /api/chat`.
+
+Automatic Skill loading uses the same checks. The router only considers
+enabled Skills that are `resolvable` and whose required toolboxes this request
+carries. If the provider strips a box that an automatically loaded Skill needs,
+that Skill's body is removed from the prompt before any model request.
+
+### Revocation during an exchange
+
+A Skill counts as loaded in an exchange when the exchange pinned it or loaded it
+automatically. It also counts when the model read it, which core tracks by what
+was read rather than by tool name. A successful tool call counts if it names the
+Skill's file (for example `read_project_file`, or the Project documents box's
+`project_read_file`). It also counts if its result contains the Skill's
+SHA-256. Core records the
+SHA-256 it loaded and compares it with the project as stored now, not with the
+exchange's snapshot. The check runs before each model round and before each tool
+call. It runs again after an approval card is answered, before dispatch. While a
+reply streams, it runs at most once a second. If a loaded Skill is disabled,
+changed, awaiting review, removed, or its project is gone:
+
+- The pending tool call is not run, even if it was approved. Its result is an
+  `ERROR` telling the model it was not run, and the audit log records
+  `tool.denied` with reason `skill-revoked`.
+- A streaming reply is cut off. Text already shown stays. Each tool call
+  already streamed in that round gets an `ERROR` `tool_result` saying it was not
+  run.
+- No further model round starts, and step supervision is not consulted. The reply ends with an `error` event carrying
+  `code: "skill_revoked"`, and the durable turn is interrupted.
+
+Skills the exchange did not load are not consulted, so disabling one never stops
+an exchange that did not use it. "Allow for this chat" approvals belong to the
+chat rather than to any Skill. They are unchanged, and so are all three approval
+actions.
+
+The durable turn checkpoint records the pin as `skill`, and every loaded Skill
+as `skills: [{ file, name, contentHash }]`. `skills` is updated when a read
+loads another Skill and is absent when none was loaded. The continuation seam
+(`chat-turns.cjs` `resumeGeneration`) refuses the turn unless the caller's
+`skillActive(record)` confirms that each of those exact versions is still
+enabled (`instruction-skills.cjs` `pinActive`). This check exists but is **not
+yet wired to a production caller**: `resumeGeneration` is an internal seam with
+no route today. Any future caller must pass `skillActive`, because without it a
+turn that loaded Skills is refused.
