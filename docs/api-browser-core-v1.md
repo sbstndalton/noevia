@@ -224,21 +224,33 @@ repeated the body. Core never trusts the client to say which text came from a
 Skill. It decides from its own records (`server/skill-history.cjs`):
 
 - Every Skill version an exchange loads (pinned, automatic or read) is recorded
-  in a ledger in the account's own workspace directory, keyed by project, as the
-  file, name, SHA-256 and SHA-256 fingerprints of its lines. The ledger holds no
-  copy of the body.
-- A disabled Skill still has its reviewed body in the project, so it is
-  recognised even if it was loaded before the ledger existed.
+  in a ledger in the account's own workspace directory, keyed by project. Each
+  entry holds the file, name, SHA-256, the chats that loaded it, and SHA-256
+  fingerprints of its lines. The ledger holds no copy of the body. It keeps up
+  to 64 versions per project. Over the cap, versions that are still enabled are
+  dropped before revoked ones. An unreadable ledger is moved aside to
+  `skill-history.json.corrupt`, and malformed entries are dropped on load.
+  Nothing is written for an account whose workspace was deleted.
+- A Skill that is disabled now, and has no ledger entry, is recognised from the
+  project by its SHA-256 only. That covers a Skill loaded before the ledger
+  existed, and never matches text of a Skill that was switched off without ever
+  being enabled.
 
 A recorded version is revoked once its file and SHA-256 are no longer an enabled
 Skill of the project, whether it was disabled, changed or removed. Before the
 model request is built, core replaces revoked content in the history with
-`[Skill "<name>" was disabled or changed, and its instructions were removed]`:
+`[Skill "<name>" was disabled or changed, and its instructions were removed]`.
+It checks again against the project as stored just before the first model
+request, so a Skill disabled while the request was prepared is caught too.
 
-- a `tool`/`function` message that is the Skill reader's output for that
-  version, as a whole;
-- any other line naming that version's SHA-256;
-- runs of lines that match its fingerprints verbatim.
+- A `tool`/`function` message that is the Skill reader's output for that
+  version is replaced as a whole, in any chat of the project.
+- Any other line naming that version's SHA-256 is replaced, in any chat of the
+  project.
+- A verbatim echo of its body is replaced only in a chat the ledger says loaded
+  that version. It must be a run of at least two identifying lines, or one
+  identifying line of 80 characters or more. A single common line shared with a
+  Skill is never enough, and code fences are never taken.
 
 The reply also gets a `warning` event saying that earlier replies used the Skill.
 Skills that are still enabled at the same SHA-256 are left untouched, and so is
@@ -247,7 +259,10 @@ untouched too: after the ledger's first read per account, the check runs in
 memory.
 
 Limits: user messages are never rewritten, because the person may have typed
-the text themselves. A paraphrase, or a quotation inside a longer line, is not
-recognised. Text that claims to be from a Skill but matches no server record is
-ordinary history. A compaction summary over the old text stops applying once
+the text themselves. System messages are not scrubbed either: core builds them
+from the current project, and in-flight revocation (above) covers Skills loaded
+into them. A paraphrase, or a quotation inside a longer
+line, is not recognised. An echo in a chat with no ledger record of the Skill is
+not recognised. Text that claims to be from a Skill but matches no server record
+is ordinary history. A compaction summary over the old text stops applying once
 the history it covered changes, and is rebuilt from the scrubbed history.

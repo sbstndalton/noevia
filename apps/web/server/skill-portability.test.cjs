@@ -407,12 +407,17 @@ test('history (#546): a skill removed from the project is revoked through the le
   assert.equal(JSON.stringify(turn2.requests[0].messages).includes('ZX-41'), false);
 });
 
-test('history (#546): a disabled skill loaded before the ledger existed is still recognised from the project', async (t) => {
+test('history (#546): a disabled skill loaded before the ledger existed is recognised by its SHA-256 only', async (t) => {
   const fixture = project({ content: body({ text: A_TEXT }) });
   const readOut = skills.read(fixture, fixture.files[0], fixture);
   disable(fixture);
   const r = await run(t, { fixture, dir: account(t), router: noRouter, reqBody: { history: readHistory(readOut) } });
-  assert.equal(JSON.stringify(r.requests[0].messages).includes('ZX-41'), false);
+  const sent = JSON.stringify(nonSystem(r.requests[0]));
+  assert.equal(sent.includes(skills.hash(fixture.files[0].content)), false, 'the reader output naming it is removed');
+  assert.equal(sent.includes('A synthetic fixture skill'), false);
+  assert.match(sent, /was disabled or changed/);
+  // With no ledger entry there is no record that this chat loaded it, so an echo stays (documented limit).
+  assert.match(sent, /Here is my synthetic answer/);
 });
 
 test('history (#546): another tenant\'s or another project\'s skill with the same name is not affected', async (t) => {
@@ -465,24 +470,115 @@ test('skill-history scrub: short lines extend a match, lines of an enabled skill
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-skill-hist-unit-'));
   try {
     const ledger = skillHistory.createSkillHistory({ fs, path });
-    const revokedBody = body({ text: 'Always cite the synthetic ledger code ZX-41 in every reply.\nBe terse.\nShared line kept by the enabled skill.' });
+    const revokedBody = body({ text: 'Always cite the synthetic ledger code ZX-41 in every reply.\nBe terse.\nNever mention the synthetic weather service.\nShared line kept by the enabled skill.' });
     const p = project({ content: revokedBody, other: true });
     const otherFile = p.files.find((f) => f.name === OTHER);
     otherFile.content = body({ name: 'other-helper', text: 'Shared line kept by the enabled skill.' });
     p.instructionSkills[OTHER] = { enabled: true, reviewedHash: skills.hash(otherFile.content) };
-    assert.equal(ledger.record(dir, p.id, { file: FILE, name: 'synthetic-helper', hash: skills.hash(revokedBody), content: revokedBody }), true);
-    assert.equal(ledger.record(dir, p.id, { file: FILE, name: 'synthetic-helper', hash: skills.hash(revokedBody), content: revokedBody }), false, 'idempotent');
+    const version = { file: FILE, name: 'synthetic-helper', hash: skills.hash(revokedBody), content: revokedBody };
+    assert.equal(ledger.record(dir, p, version, { chatId: 'chat-1' }), true);
+    assert.equal(ledger.record(dir, p, version, { chatId: 'chat-1' }), false, 'idempotent');
     assert.equal(fs.readFileSync(path.join(dir, skillHistory.FILE), 'utf8').includes('ZX-41'), false, 'the ledger keeps fingerprints, not text');
-    const messages = [{ role: 'assistant', content: 'Intro.\n\nAlways cite the synthetic ledger code ZX-41 in every reply.\nBe terse.\n\nShared line kept by the enabled skill.\nBe terse.\nOutro.' }];
-    assert.equal(ledger.scrub({ dir, project: p, messages }).messages, messages, 'enabled: nothing to do, same array back');
+    const messages = [{ role: 'assistant', content: 'Intro.\n\nAlways cite the synthetic ledger code ZX-41 in every reply.\nBe terse.\nNever mention the synthetic weather service.\n\nShared line kept by the enabled skill.\nBe terse.\nOutro.' }];
+    assert.equal(ledger.scrub({ dir, project: p, messages, chatId: 'chat-1' }).messages, messages, 'enabled: nothing to do, same array back');
     disable(p);
-    const out = ledger.scrub({ dir, project: p, messages });
+    const out = ledger.scrub({ dir, project: p, messages, chatId: 'chat-1' });
     assert.deepEqual(out.removed, ['synthetic-helper']);
     assert.equal(out.messages[0].content, `Intro.\n\n${skillHistory.placeholder(['synthetic-helper'])}\n\nShared line kept by the enabled skill.\nBe terse.\nOutro.`);
     assert.equal(messages[0].content.includes('ZX-41'), true, 'the input is not mutated');
+    assert.equal(ledger.scrub({ dir, project: p, messages, chatId: 'chat-2' }).messages, messages, 'a chat that never loaded it: its text is not matched');
     // A fresh handler reads the same ledger from disk.
     const reloaded = skillHistory.createSkillHistory({ fs, path });
     const removed = structuredClone(p); removed.files.shift(); delete removed.instructionSkills[FILE];
-    assert.deepEqual(reloaded.scrub({ dir, project: removed, messages }).removed, ['synthetic-helper']);
+    assert.deepEqual(reloaded.scrub({ dir, project: removed, messages, chatId: 'chat-1' }).removed, ['synthetic-helper']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ── #546 review follow-ups ──
+
+const CODE_SKILL = 'Always cite the synthetic ledger code ZX-41 in every reply.\nNever mention the synthetic weather service.\n```python\nimport numpy as np\n```\nLet me know if you have any questions.';
+
+test('history (#546 review): one common line and a code fence shared with a revoked skill stay, with no warning', async (t) => {
+  const dir = account(t);
+  const fixture = project({ content: body({ text: CODE_SKILL }) });
+  await run(t, { fixture, dir, reqBody: { skill: pinOf(fixture) }, router: noRouter }); // this chat loaded it
+  disable(fixture);
+  const code = 'Here is the synthetic script:\n```python\nimport numpy as np\nprint(np.zeros(3))\n```\nLet me know if you have any questions.';
+  const history = [{ role: 'user', content: 'write synthetic code' }, { role: 'assistant', content: code }];
+  const r = await run(t, { fixture, dir, router: noRouter, reqBody: { history } });
+  assert.equal(nonSystem(r.requests[0])[1].content, code, 'the code block reaches the model unchanged');
+  assert.equal(r.events.some((e) => e.type === 'warning'), false);
+  // A real echo (two identifying lines) in another chat that never loaded the skill is not matched either.
+  const echoOf = [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'Always cite the synthetic ledger code ZX-41 in every reply.\nNever mention the synthetic weather service.' }];
+  const other = await run(t, { fixture, dir, router: noRouter, reqBody: { chatId: 'another-chat', history: echoOf } });
+  assert.match(JSON.stringify(nonSystem(other.requests[0])), /ZX-41/);
+  assert.equal(other.events.some((e) => e.type === 'warning'), false);
+  // The same echo in the chat that loaded it is removed.
+  const same = await run(t, { fixture, dir, router: noRouter, reqBody: { history: echoOf } });
+  assert.equal(JSON.stringify(same.requests[0].messages).includes('ZX-41'), false);
+});
+
+test('history (#546 review): switching off a skill that was never enabled leaves history unchanged', async (t) => {
+  const content = body({ text: A_TEXT });
+  const fixture = project({ content });
+  fixture.instructionSkills[FILE] = { enabled: false, reviewedHash: null }; // awaiting review
+  skills.setSelection(fixture, { file: FILE, enabled: false }); // switched off from review
+  assert.equal(skills.list(fixture)[0].status, 'disabled');
+  const r = await run(t, { fixture, dir: account(t), router: noRouter, reqBody: { history: echoHistory } });
+  assert.equal(nonSystem(r.requests[0])[1].content, echo);
+  assert.equal(r.events.some((e) => e.type === 'warning'), false);
+});
+
+test('history (#546 review): a skill disabled while the request is prepared is removed before the first model request', async (t) => {
+  const dir = account(t);
+  const fixture = project({ content: body({ text: A_TEXT }) });
+  await run(t, { fixture, dir, reqBody: { skill: pinOf(fixture) }, router: noRouter, rounds: [{ content: echo }] });
+  // Enabled when the history is first checked; disabled by the time routing finishes.
+  const r = await run(t, { fixture, dir, router: async () => { disable(fixture); return { loaded: [] }; }, reqBody: { history: echoHistory } });
+  assert.equal(r.requests.length, 1);
+  assert.equal(JSON.stringify(r.requests[0].messages).includes('ZX-41'), false);
+  assert.match(r.events.filter((e) => e.type === 'warning').at(-1)?.text || '', /Skill "synthetic-helper", which is now disabled or changed/);
+});
+
+test('skill-history (#546 review): an inactive account records nothing and its folder is not recreated', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-skill-hist-gone-'));
+  try {
+    const dir = path.join(root, 'deleted-account');
+    const ledger = skillHistory.createSkillHistory({ fs, path });
+    const p = project();
+    const ok = ledger.record(dir, p, { file: FILE, name: 'synthetic-helper', hash: skills.hash(p.files[0].content), content: p.files[0].content },
+      { chatId: 'c', assertActive: () => { throw Error('Workspace was deleted'); } });
+    assert.equal(ok, false);
+    assert.equal(fs.existsSync(dir), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('skill-history (#546 review): a corrupt ledger is moved aside, and malformed entries are dropped without breaking chat', async (t) => {
+  const dir = account(t);
+  fs.writeFileSync(path.join(dir, skillHistory.FILE), '{not json');
+  const p = project({ content: body({ text: A_TEXT }) });
+  const version = { file: FILE, name: 'synthetic-helper', hash: skills.hash(p.files[0].content), content: p.files[0].content };
+  assert.equal(skillHistory.createSkillHistory({ fs, path }).record(dir, p, version, { chatId: 'fixture-chat' }), true);
+  assert.equal(fs.readFileSync(path.join(dir, `${skillHistory.FILE}.corrupt`), 'utf8'), '{not json', 'the unreadable file is kept');
+  assert.ok(JSON.parse(fs.readFileSync(path.join(dir, skillHistory.FILE), 'utf8')).projects[p.id].length === 1);
+  // Structurally bad entries next to a good one.
+  const good = JSON.parse(fs.readFileSync(path.join(dir, skillHistory.FILE), 'utf8')).projects[p.id][0];
+  fs.writeFileSync(path.join(dir, skillHistory.FILE), JSON.stringify({ v: 1, projects: { [p.id]: [null, 7, { file: 3 }, { file: FILE, hash: 'short' }, good], other: 'x' } }));
+  disable(p);
+  const r = await run(t, { fixture: p, dir, router: noRouter, reqBody: { history: echoHistory } });
+  assert.equal(r.reply, null, 'chat still runs');
+  assert.equal(JSON.stringify(r.requests[0].messages).includes('ZX-41'), false, 'the valid entry still applies');
+});
+
+test('skill-history (#546 review): at the cap, versions still enabled are evicted before revoked ones', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-skill-hist-cap-'));
+  try {
+    const ledger = skillHistory.createSkillHistory({ fs, path, maxVersions: 3 });
+    const files = ['a', 'b', 'c', 'd'].map((n) => ({ name: `${n}/SKILL.md`, content: body({ name: n, text: `Synthetic instruction line for ${n}.\nSecond synthetic line for skill ${n}.` }) }));
+    const p = { id: 'cap-project', files, instructionSkills: Object.fromEntries(files.map((f) => [f.name, { enabled: true, reviewedHash: skills.hash(f.content) }])) };
+    p.instructionSkills['a/SKILL.md'].enabled = false; // a: recorded first, now revoked
+    for (const f of files) ledger.record(dir, p, { file: f.name, name: f.name[0], hash: skills.hash(f.content), content: f.content }, { chatId: 'c' });
+    const kept = JSON.parse(fs.readFileSync(path.join(dir, skillHistory.FILE), 'utf8')).projects[p.id].map((e) => e.name);
+    assert.deepEqual(kept, ['a', 'c', 'd'], 'the oldest enabled version went, the revoked one stayed');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
