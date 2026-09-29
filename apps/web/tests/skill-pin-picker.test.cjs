@@ -71,7 +71,7 @@ test('Sources shows where a skill came from and why bundled scripts block it', a
   await withSsr(async (server) => {
     const { skillOriginText } = await server.ssrLoadModule('/src/components/InstructionSkills.tsx');
     assert.equal(skillOriginText(undefined), '');
-    assert.equal(skillOriginText({ kind: 'project-file' }), 'Project file');
+    assert.equal(skillOriginText({ kind: 'project-file' }), 'Uploaded to this project');
     assert.equal(skillOriginText({ kind: 'attached-folder' }), 'From an attached folder');
     assert.equal(skillOriginText({ kind: 'published', publisher: 'Synthetic', sourcePath: 'skills/x/SKILL.md', retrievedAt: '2026-09-01T10:00:00.000Z' }),
       'Published by Synthetic (skills/x/SKILL.md), copied on 2026-09-01');

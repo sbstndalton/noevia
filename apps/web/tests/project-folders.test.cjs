@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { projectFolderName, createProjectFolder } = require('../server/project-folders.cjs');
+const { projectFolderName, createProjectFolder, reserveProjectFolder } = require('../server/project-folders.cjs');
 
 test('readable project folders sanitize separators and traversal without embedding IDs', () => {
   assert.equal(projectFolderName('Random questions'), 'Random questions');
@@ -34,4 +34,17 @@ test('concurrent first uploads into one project share a single folder allocation
   const paths = await Promise.all([1,2].map(()=>createProjectFolder(storage,{kind:'webdav'},'projects',project)));
   assert.deepEqual(paths,['projects/Research','projects/Research']);
   assert.deepEqual(calls,['projects','projects/Research']);
+});
+
+test('reserved folders are distinct without creating anything, and the first upload creates exactly the reserved path (#589)', async () => {
+  const projects = [];
+  const mk = (id) => { const p = { id, name: 'Design' }; p.reservedFolder = reserveProjectFolder({ kind: 'webdav' }, 'root', p, projects); projects.push(p); return p; };
+  const [a, b] = [mk('a'), mk('b')];
+  assert.deepEqual([a.reservedFolder, b.reservedFolder], ['root/Design', 'root/Design (2)']);
+  const made = [];
+  const storage = { async createFolder(_c, f) { made.push(f); return { existed: false }; } };
+  assert.equal(await createProjectFolder(storage, { kind: 'webdav' }, 'root', b), 'root/Design (2)');
+  // A reserved name someone else took meanwhile falls through to the next free one.
+  const taken = { async createFolder(_c, f) { return { existed: f === 'root/Design' }; } };
+  assert.equal(await createProjectFolder(taken, { kind: 'webdav' }, 'root', { id: 'c', name: 'Design', reservedFolder: 'root/Design' }), 'root/Design (2)');
 });
