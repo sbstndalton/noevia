@@ -105,3 +105,21 @@ test('Sources notice and disclosure summaries use the caption token, not the 16p
   assert.ok(rule, 'rule present');
   assert.match(rule[1], /font-size:\s*var\(--text-caption\)/);
 });
+
+test('a not-readable reason is worded by the catalogue from its id, and old files still translate (#607)', () => {
+  const { uploadUnreadableReason, attachmentReason, documentError } = exportsObject;
+  const t = (key, params) => `[${key}${params ? JSON.stringify(params) : ''}]`;
+  assert.equal(uploadUnreadableReason({ attachment: { state: 'stored', group: 'Text', reason: 'English text', reasonId: 'binaryText' } }, t), '[projects.view.notReadable] · [projects.view.reason.binaryText]');
+  // Stored before ids existed: only the exact sentence noevia wrote is recognised.
+  assert.equal(attachmentReason({ reason: 'This file is not readable as text — it looks like binary data despite its extension. The original is kept.' }, t), '[projects.view.reason.binaryText]');
+  assert.equal(attachmentReason({ reason: 'Not valid UTF-8; read as windows-1252. Characters outside that encoding may be wrong — re-save the file as UTF-8 if anything looks mangled.' }, t), '[projects.view.reason.encoding{"encoding":"windows-1252"}]');
+  assert.equal(attachmentReason({ reasonId: 'docxPartialLimit', reason: 'x' }, t), '[projects.view.reason.docxPartial] [projects.view.reason.limitReached]');
+  // Text from a library or another service has no id: it is shown as sent.
+  assert.equal(attachmentReason({ reason: 'zip exploded' }, t), 'zip exploded');
+  assert.equal(attachmentReason({ reasonId: 'someFutureId', reason: 'zip exploded' }, t), 'zip exploded');
+  assert.equal(documentError({ error: 'x', errorId: 'noOcrText' }, t), '[projects.view.reason.noOcrText]');
+  assert.equal(uploadUnreadableReason({ document: { state: 'failed', error: 'worker refused' } }, t), '[projects.view.notReadable] · worker refused');
+  assert.match(sourceStatus({ document: { state: 'failed', errorId: 'noNativeText', error: 'x' } }, t), /^\[projects\.view\.notReadable\] · \[projects\.view\.reason\.noNativeText\]/);
+  // Without a translator nothing changes for English callers.
+  assert.equal(attachmentReason({ reason: 'English text', reasonId: 'binaryText' }), 'English text');
+});
