@@ -138,7 +138,7 @@ test('the write tools edit a connected upload in place (#648) and keep refusing 
   // A connected upload, by bare name: written as its plain name with the stored path pinned, which
   // the write path turns into exactly that storage object (project-edit-in-place.test.cjs).
   await internal.project_append_file.handler({ name: 'synthetic-notes.md', text: 'Appended.' }, ctx(NOTES));
-  assert.deepEqual(written.pop(), { project: a.id, name: 'synthetic-notes.md', text: 'SYNTHETIC-NOTES-CANARY: the launch is on Thursday.\nAppended.', expectName: NOTES, expectContent: 'SYNTHETIC-NOTES-CANARY: the launch is on Thursday.' });
+  assert.deepEqual(written.pop(), { project: a.id, name: 'synthetic-notes.md', text: 'SYNTHETIC-NOTES-CANARY: the launch is on Thursday.\nAppended.', expectName: NOTES, expectContent: 'SYNTHETIC-NOTES-CANARY: the launch is on Thursday.', expectAttachment: 'a'.repeat(64) });
   assert.match(await read('synthetic-notes.md'), /SYNTHETIC-NOTES-CANARY/, 'reading by bare name still works');
   assert.match(await mcpRead('synthetic-notes.md'), /SYNTHETIC-NOTES-CANARY/);
   // A file synced from an attached folder keeps its own message, whichever name reaches it.

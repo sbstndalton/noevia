@@ -68,7 +68,7 @@ function original(workspace, id, file) {
 function destinationFor(project, name, { connection, remotePath } = {}) {
   return remotePath || (connection ? `${project.projectFolder}/${classify(name)}/${name}` : name);
 }
-async function ingest(workspace, project, name, bytes, { connection, source, remotePath, progress = () => {}, storageImpl = storage, extractDocx = docx.extract } = {}) {
+async function ingest(workspace, project, name, bytes, { connection, source, remotePath, progress = () => {}, storageImpl = storage, extractDocx = docx.extract, ifMatch } = {}) {
   workspace.assertActive?.();
   validate(name, bytes);
   const group = classify(name), mime = bytes.length <= 8 * 1024 * 1024 ? images[path.extname(name).toLowerCase()] : undefined;
@@ -80,7 +80,7 @@ async function ingest(workspace, project, name, bytes, { connection, source, rem
     progress('Saving to Nextcloud / storage');
     await storageImpl.createFolder(connection, `${project.projectFolder}/${group}`);
     workspace.assertActive?.();
-    await storageImpl.writeFile(connection, fullName, bytes);
+    await (ifMatch ? storageImpl.writeFile(connection, fullName, bytes, { ifMatch }) : storageImpl.writeFile(connection, fullName, bytes));
   }
   workspace.assertActive?.();
   progress('Saving original');

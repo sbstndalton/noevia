@@ -49,10 +49,15 @@ function pinnedEdit(project, args, ctx) {
 }
 
 /** Writes the new text over exactly `plan.file`. The write path refuses, and writes nothing, when
- *  the destination it would use is not that stored name (storage disconnected, say) or when the
- *  file changed after it was read here. */
+ *  the destination it would use is not that stored name (storage disconnected, say), when the
+ *  file changed after it was read here, or when the copy in storage is no longer the version
+ *  noevia read (changed, moved or deleted there since the last sync). */
 function writeInPlace(ports, project, plan, text) {
-  return ports.writeTextFile(project, plan.writeName, text, { expectName: plan.file.name, expectContent: String(plan.file.content || '') });
+  return ports.writeTextFile(project, plan.writeName, text, {
+    expectName: plan.file.name,
+    expectContent: String(plan.file.content || ''),
+    expectAttachment: plan.file.attachment ? plan.file.attachment.id : null,
+  });
 }
 
 function createInternalTools(ports) {

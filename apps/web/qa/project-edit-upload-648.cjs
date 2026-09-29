@@ -22,9 +22,11 @@ const web = path.resolve(process.env.APP_DIR || path.join(__dirname, '..'));
 const shots = process.env.QA_SCREENSHOTS || path.join(os.tmpdir(), 'noevia-qa-648');
 const FILE = 'qa-648-notes.md', ORIGINAL = '# Synthetic notes\n\nQA648 day one: arrive.\n', APPEND = 'QA648-APPENDED: day two, museum.';
 
-/** Minimal WebDAV: PROPFIND/GET/PUT/MKCOL over an in-memory tree. Records every PUT. */
+/** Minimal WebDAV: PROPFIND/GET/PUT/MKCOL over an in-memory tree, with ETags and If-Match (412).
+ *  Records every PUT with the If-Match it carried. */
 function startDav() {
-  const tree = { '': [] }, bodies = {}, puts = [];
+  const tree = { '': [] }, bodies = {}, puts = [], etags = {};
+  let serial = 0;
   const parentOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''), nameOf = (p) => p.split('/').pop();
   const link = (p) => { const parent = parentOf(p); if (tree[parent] && !tree[parent].includes(nameOf(p))) tree[parent].push(nameOf(p)); };
   const server = http.createServer((req, res) => {
@@ -33,7 +35,7 @@ function startDav() {
       if (tree[p] === undefined) {
         if (bodies[p] === undefined) { res.writeHead(404); return res.end(); }
         res.writeHead(207, { 'Content-Type': 'application/xml' });
-        return res.end(`<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/${encodeURI(p)}</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>${bodies[p].length}</d:getcontentlength></d:prop></d:propstat></d:response></d:multistatus>`);
+        return res.end(`<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/${encodeURI(p)}</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>${bodies[p].length}</d:getcontentlength><d:getetag>${etags[p].replace(/"/g, '&quot;')}</d:getetag></d:prop></d:propstat></d:response></d:multistatus>`);
       }
       const rows = [`<d:response><d:href>/dav/${encodeURI(p)}/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>`];
       for (const name of tree[p]) {
@@ -44,11 +46,20 @@ function startDav() {
       return res.end(`<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">${rows.join('')}</d:multistatus>`);
     }
     if (req.method === 'GET') { if (bodies[p] === undefined) { res.writeHead(404); return res.end(); } res.writeHead(200); return res.end(bodies[p]); }
-    if (req.method === 'PUT') { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => { bodies[p] = Buffer.concat(c); puts.push(p); link(p); res.writeHead(201); res.end(); }); return; }
+    if (req.method === 'PUT') {
+      const c = []; req.on('data', (d) => c.push(d));
+      req.on('end', () => {
+        const ifMatch = req.headers['if-match'];
+        puts.push({ path: p, ifMatch });
+        if (ifMatch && etags[p] !== ifMatch) { res.writeHead(412); return res.end(); }
+        bodies[p] = Buffer.concat(c); etags[p] = `"qa648-${++serial}"`; link(p); res.writeHead(201); res.end();
+      });
+      return;
+    }
     if (req.method === 'MKCOL') { if (tree[p] !== undefined) { res.writeHead(405); return res.end(); } tree[p] = []; link(p); res.writeHead(201); return res.end(); }
     res.writeHead(405); res.end();
   });
-  return new Promise((r) => server.listen(0, '127.0.0.1', () => r({ server, port: server.address().port, bodies, puts })));
+  return new Promise((r) => server.listen(0, '127.0.0.1', () => r({ server, port: server.address().port, bodies, puts, etags })));
 }
 
 /** A model that appends to the file by its bare name, then reports what the tool returned. */
@@ -123,7 +134,7 @@ async function api(page, url, body, method = body === undefined ? 'GET' : 'POST'
     assert.match(String(saved.projectFolder), /^noevia projects\/QA 648 Project/, 'the project got its own storage folder');
     assert.deepEqual(saved.files.map((f) => f.name), [storedPath], 'the upload is stored under its folder path');
     assert.equal(String(dav.bodies[storedPath]), ORIGINAL);
-    const putsBefore = dav.puts.length;
+    const putsBefore = dav.puts.length, etagBefore = dav.etags[storedPath];
     console.log(`PASS setup: upload stored as "${storedPath}"`);
 
     // A project chat: the model calls project_append_file with the bare name.
@@ -156,7 +167,7 @@ async function api(page, url, body, method = body === undefined ? 'GET' : 'POST'
     assert.equal(model.toolResults.length, 1, 'the model got exactly one tool result');
     assert.match(model.toolResults[0], new RegExp(`Appended ${APPEND.length} chars to "${storedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), 'the tool edited the stored file: ' + model.toolResults[0].slice(0, 300));
     assert.equal(String(dav.bodies[storedPath]), `${ORIGINAL}${APPEND}`, 'the storage object holds the appended text');
-    assert.deepEqual(dav.puts.slice(putsBefore), [storedPath], 'exactly one write, to the same storage object');
+    assert.deepEqual(dav.puts.slice(putsBefore), [{ path: storedPath, ifMatch: etagBefore }], 'exactly one write, to the same storage object, conditional on the ETag it had');
     assert.deepEqual(Object.keys(dav.bodies).filter((k) => k.endsWith(FILE)), [storedPath], 'no duplicate file in storage');
     saved = (await api(page, '/api/workspace')).body.projects.find((p) => p.id === project.id);
     assert.deepEqual(saved.files.map((f) => f.name), [storedPath], 'no duplicate in the source list');

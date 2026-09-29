@@ -32,12 +32,28 @@ function world(t) {
     historyPath: (id) => path.join(dir, `${id}.json`),
     assetDir: (id) => path.join(dir, 'assets', id),
   };
-  const storage = { connected: true, objects: new Map(), writes: [] };
+  // Fake WebDAV storage with ETags. `put(p, text)` is a change made in storage by someone else;
+  // `beforePut` runs just before a PUT lands (a change racing the edit); `noEtag` models a server
+  // that reports none. `writeCalls` counts every writeFile call, including refused ones.
+  const storage = { connected: true, objects: new Map(), etags: new Map(), writes: [], writeCalls: [], versionChecks: [], reads: [], serial: 0, noEtag: false, beforePut: null };
+  storage.put = (p, text) => { storage.objects.set(p, text); storage.etags.set(p, `etag-${++storage.serial}`); };
   const indexed = [], unindexed = [];
   const storageClient = {
     isBrowsable: () => storage.connected,
     createFolder: async () => {},
-    writeFile: async (_conn, p, bytes) => { storage.writes.push(p); storage.objects.set(p, Buffer.from(bytes).toString('utf8')); },
+    fileVersion: async (_conn, p) => { storage.versionChecks.push(p); return storage.objects.has(p) ? { exists: true, etag: storage.noEtag ? '' : storage.etags.get(p) } : { exists: false }; },
+    readBinaryFile: async (_conn, p) => {
+      storage.reads.push(p);
+      if (!storage.objects.has(p)) throw Object.assign(new Error('storage returned 404'), { status: 404 });
+      return Buffer.from(storage.objects.get(p), 'utf8');
+    },
+    writeFile: async (_conn, p, bytes, opts = {}) => {
+      storage.writeCalls.push({ path: p, ifMatch: opts.ifMatch });
+      if (storage.beforePut) { const hook = storage.beforePut; storage.beforePut = null; hook(p); }
+      if (opts.ifMatch !== undefined && storage.etags.get(p) !== opts.ifMatch) throw Object.assign(new Error(`"${p}" changed in storage before it could be written (412)`), { status: 409, code: 'changed' });
+      storage.writes.push(p);
+      storage.put(p, Buffer.from(bytes).toString('utf8'));
+    },
   };
   const store = createProjectStore({
     fs, path,
@@ -179,7 +195,9 @@ test('the write path refuses an edit whose file changed or vanished after it was
   await assert.rejects(() => w.store.writeProjectTextFile(p, 'other.md', 'x', { expectName: `${ROOT}/Trip/Text/other.md`, expectContent: '' }), /no longer in this project; nothing was saved/);
   await assert.rejects(() => w.store.writeProjectTextFile(p, 'notes.md', 'x', { expectName: '' }), /must name the stored file/);
   // A plain name that lands elsewhere than the expected file: refused before storage is touched.
-  await assert.rejects(() => w.store.writeProjectTextFile(p, 'notes.txt', 'x', { expectName: stored, expectContent: 'v1\n' }), /instead of editing/);
+  await assert.rejects(() => w.store.writeProjectTextFile(p, 'notes.txt', 'x', { expectName: stored, expectContent: 'v1\n', expectAttachment: p.files[0].attachment.id }), /instead of editing/);
+  // An edit that does not say which stored version it was planned against is refused too.
+  await assert.rejects(() => w.store.writeProjectTextFile(p, 'notes.md', 'x', { expectName: stored, expectContent: 'v1\n' }), /changed since this edit was prepared/);
   assert.equal(w.storage.writes.length, writes);
   assert.equal(w.storage.objects.get(stored), 'v1\n');
 });
@@ -254,6 +272,113 @@ test('an edit is refused without a pin, or pinned to a different file than it no
   // A read never carries one, even if the scope had one.
   await w.asUser(() => w.executeToolCall({ id: p.id }, 'project_list_files', '{}', null, undefined, {}, { editTarget: 'x'.repeat(64) }));
   assert.equal(w.tokens.at(-1).t, undefined);
+});
+
+// ── Storage as the authority: never overwrite what changed there since the last sync ──
+
+const originalsOf = (w) => {
+  const dir = path.join(w.dir, 'project-uploads');
+  return fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map(String).sort() : [];
+};
+const CHANGED = /changed in storage since noevia last read it .*Nothing was saved\. Sync this project's Sources first, then try again\./;
+
+test('the edit reads the file back from storage and writes with If-Match on the ETag it saw', async (t) => {
+  const w = world(t);
+  const p = await w.project('Trip', { 'notes.md': 'v1\n' });
+  const stored = `${ROOT}/Trip/Text/notes.md`;
+  const etag = w.storage.etags.get(stored);
+  w.storage.writeCalls.length = 0;
+  await w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored));
+  assert.deepEqual(w.storage.versionChecks, [stored]);
+  assert.deepEqual(w.storage.reads, [stored]);
+  assert.deepEqual(w.storage.writeCalls, [{ path: stored, ifMatch: etag }], 'one conditional PUT on the ETag that was checked');
+  assert.equal(w.storage.objects.get(stored), 'v1\nv2');
+});
+
+test('a file edited in storage since the last sync is refused, and writeFile is never called', async (t) => {
+  const w = world(t);
+  const p = await w.project('Trip', { 'notes.md': 'v1\n' });
+  const stored = `${ROOT}/Trip/Text/notes.md`;
+  w.storage.put(stored, 'v1\nEDITED IN NEXTCLOUD\n'); // not re-synced: noevia still holds v1
+  const before = snapshot(w, p), originals = originalsOf(w);
+  w.storage.writeCalls.length = 0;
+  await assert.rejects(() => w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored)), CHANGED);
+  await assert.rejects(() => w.tools.project_replace_text.handler({ name: 'notes.md', find: 'v1', replace: 'v0' }, w.ctxFor(p, stored)), CHANGED);
+  assert.deepEqual(w.storage.writeCalls, [], 'no PUT was attempted');
+  assert.equal(w.storage.objects.get(stored), 'v1\nEDITED IN NEXTCLOUD\n', 'the edit made in storage survives');
+  assert.deepEqual(snapshot(w, p).files, before.files);
+  assert.equal(w.indexed.length, before.indexed);
+  assert.deepEqual(originalsOf(w), originals);
+  // Without an ETag the byte check alone still refuses.
+  w.storage.noEtag = true;
+  await assert.rejects(() => w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored)), CHANGED);
+  assert.deepEqual(w.storage.writeCalls, []);
+});
+
+test('a file deleted or moved in storage (404) is refused and not resurrected; so is another account\'s storage', async (t) => {
+  const w = world(t);
+  const p = await w.project('Trip', { 'notes.md': 'v1\n' });
+  const stored = `${ROOT}/Trip/Text/notes.md`;
+  w.storage.objects.delete(stored); w.storage.etags.delete(stored);
+  w.storage.writeCalls.length = 0;
+  const before = snapshot(w, p);
+  await assert.rejects(() => w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored)), CHANGED);
+  assert.deepEqual(w.storage.writeCalls, []);
+  assert.equal(w.storage.objects.has(stored), false, 'not written back');
+  assert.deepEqual(snapshot(w, p).files, before.files);
+  // A reconnect to a different account: the same path holds other bytes there. Refused.
+  w.storage.put(stored, 'someone else\'s notes.md\n');
+  await assert.rejects(() => w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored)), CHANGED);
+  assert.deepEqual(w.storage.writeCalls, []);
+  assert.equal(w.storage.objects.get(stored), 'someone else\'s notes.md\n');
+});
+
+test('a change landing between the check and the PUT gets 412: refused, nothing half-written', async (t) => {
+  const w = world(t);
+  const p = await w.project('Trip', { 'notes.md': 'v1\n' });
+  const stored = `${ROOT}/Trip/Text/notes.md`;
+  const before = snapshot(w, p), originals = originalsOf(w);
+  w.storage.beforePut = (target) => w.storage.put(target, 'v1\nRACED IN\n');
+  await assert.rejects(() => w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored)), CHANGED);
+  assert.equal(w.storage.objects.get(stored), 'v1\nRACED IN\n', 'the concurrent change is what storage holds');
+  assert.equal(w.storage.writes.length, before.writes, 'the conditional PUT did not land');
+  assert.deepEqual(snapshot(w, p).files, before.files, 'the source list is unchanged');
+  assert.equal(w.indexed.length, before.indexed, 'nothing reindexed');
+  assert.deepEqual(originalsOf(w), originals, 'no new original saved');
+});
+
+test('a sync that makes the file partial (or re-reads it) between plan and lock is refused', async (t) => {
+  const w = world(t);
+  const p = await w.project('Trip', { 'notes.md': 'v1\n' });
+  const stored = `${ROOT}/Trip/Text/notes.md`;
+  let release;
+  const held = new Promise((r) => { release = r; });
+  // A folder sync holds the source lock; the edit plans against the ready file, then queues.
+  const sync = w.store.withSourceLock(p, async () => {
+    await held;
+    const [file] = p.files;
+    p.files = [{ ...file, attachment: { ...file.attachment, state: 'partial', reasonId: 'encoding' } }];
+  });
+  const edit = w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored));
+  await new Promise((r) => setImmediate(r));
+  w.storage.writeCalls.length = 0;
+  release();
+  await sync;
+  await assert.rejects(edit, /changed since this edit was prepared; nothing was saved\. Sync this project's Sources/);
+  assert.deepEqual(w.storage.writeCalls, []);
+  assert.equal(w.storage.objects.get(stored), 'v1\n');
+
+  // Same text, different stored version (the sync re-read other bytes): refused as well.
+  const q = await w.project('Other', { 'notes.md': 'same\n' });
+  const qStored = `${ROOT}/Other/Text/notes.md`;
+  let release2;
+  const held2 = new Promise((r) => { release2 = r; });
+  const sync2 = w.store.withSourceLock(q, async () => { await held2; q.files = [{ ...q.files[0], attachment: { ...q.files[0].attachment, id: 'f'.repeat(64) } }]; });
+  const edit2 = w.tools.project_append_file.handler({ name: 'notes.md', text: 'x' }, w.ctxFor(q, qStored));
+  await new Promise((r) => setImmediate(r));
+  release2(); await sync2;
+  await assert.rejects(edit2, /changed since this edit was prepared/);
+  assert.equal(w.storage.objects.get(qStored), 'same\n');
 });
 
 // ── The chat loop: what the approval card shows and what runs after it ──
