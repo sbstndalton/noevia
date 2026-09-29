@@ -180,14 +180,9 @@ function createProjectStore({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    // Its own folder in the user's storage, and attached as a source so
-    // anything dropped in it — by noevia or by the user, from any device —
-    // is picked up on the next sync.
-    const ownFolder = await ensureProjectFolder(project);
-    if (ownFolder) {
-      project.projectFolder = ownFolder;
-      project.sourceFolders = [ownFolder];
-    }
+    // The project's own storage folder is NOT created here (#589). Every upload path creates it on
+    // the first upload (ensureProjectFolder) and attaches it as a source at that moment, so a
+    // project that never receives a file leaves nothing behind in the user's storage.
     PROJECTS.unshift(project);
     saveProjects(PROJECTS);
     // Index any files that arrived with the create call (same RAG bookkeeping
@@ -347,7 +342,7 @@ function createProjectStore({
   function indexSource(project, file) {
     const workspace = currentWorkspace();
     workspace.assertActive?.();
-    if (require('./instruction-skills.cjs').inspect(file, project) || !file.content) {
+    if (require('./instruction-skills.cjs').inspect(file, project) || !file.content || require('./source-readability.cjs').isUnreadable(file)) {
       if (file.document) file.document.indexing = 'unavailable';
       rag.deleteProjectFile(project.id, file.name, workspace.userId);
       return;

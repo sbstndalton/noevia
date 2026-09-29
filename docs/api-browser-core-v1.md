@@ -245,7 +245,7 @@ An imported Skill's `origin` records `kind: published`, `publisher`,
 `repository`, `sourceRef`, `sourcePath`, `digest`, and `retrievedAt`. The directory currently
 copies `SKILL.md` from Anthropic's moving `main` branch. `sourceRef` is therefore
 **not** an immutable Git commit; `digest` pins the exact copied bytes held by
-this project. Local uploads and edits are `project-file`; attached folder files
+this project. Local uploads and edits, including files in the project's own upload folder, are `project-file`; files from a linked (attached) folder
 are `attached-folder`. Replacing imported content clears its published origin.
 Updates require the existing explicit review step. No background update or
 remote re-fetch occurs during resolution.

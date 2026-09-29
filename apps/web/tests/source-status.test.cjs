@@ -8,7 +8,7 @@ const exportsObject = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/source-status.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText, { exports: exportsObject });
-const { sourceStatus, sourceRefreshIssues, sourceRefreshEntries, skippedSignature, resolveSkippedToast } = exportsObject;
+const { sourceStatus, sourceRefreshIssues, sourceRefreshEntries, skippedSignature, resolveSkippedToast, isUnreadableSource } = exportsObject;
 test('source rows distinguish partial, new failure and stale text', () => {
   assert.match(sourceStatus({ document: { state: 'partial', pages: 2, pageStatus: [{number: 2, status:'ocr-needed'}] } }), /Partially readable.*check pages 2/);
   assert.match(sourceStatus({ document: { state: 'failed', stale: false } }), /Not readable/);
@@ -75,4 +75,33 @@ test('#577: an accepted upload with no readable text is never reported as saved'
   assert.equal(uploadUnreadableReason({ attachment: { state: 'ready', group: 'Text' } }), '');
   assert.equal(uploadUnreadableReason({ attachment: { state: 'stored', group: 'Other' } }), '');
   assert.equal(uploadUnreadableReason({ attachment: { state: 'vision', group: 'Images' } }), '');
+});
+
+test('isUnreadableSource mirrors the server predicate (#586)', () => {
+  const serverSide = require('../server/source-readability.cjs').isUnreadable;
+  const cases = [
+    { name: 'b.txt', content: '', attachment: { state: 'stored', group: 'Text', bytes: 4 } },
+    { name: 'ok.txt', content: 'x', attachment: { state: 'ready', group: 'Text', bytes: 1 } },
+    { name: 'a.pdf', content: '', document: { state: 'failed' } },
+    { name: 'a.pdf', content: 'earlier', document: { state: 'failed', stale: true } },
+    { name: 'i.png', content: '', attachment: { state: 'vision', group: 'Images', bytes: 1 } },
+    { name: 'legacy.md', content: 'text' },
+  ];
+  for (const c of cases) assert.equal(isUnreadableSource(c), serverSide(c), c.name);
+  assert.equal(isUnreadableSource(cases[0]), true);
+});
+
+test('Sources lists unreadable originals apart from Text and leaves them out of the count (#586)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../src/components/ProjectView.tsx'), 'utf8');
+  assert.match(src, /const readableFiles = project\.files\.filter\(\(f\) => !isUnreadableSource\(f\)\)/);
+  assert.match(src, /const sourceCount = readableFiles\.length/);
+  assert.match(src, /readableFiles\.filter\(f => fileGroup\(f\) === group\)/);
+  assert.match(src, /unreadableFiles\.map\(renderFile\)/);
+});
+
+test('Sources notice and disclosure summaries use the caption token, not the 16px default (#588)', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../src/styles/noevia.css'), 'utf8');
+  const rule = /\.project-sources summary,[^{]*\.instruction-skills p[^{]*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'rule present');
+  assert.match(rule[1], /font-size:\s*var\(--text-caption\)/);
 });
