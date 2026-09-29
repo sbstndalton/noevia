@@ -980,6 +980,7 @@ export const EN_GB = {
   'chat.paused.stoppedApplied.one': "{count} change was saved before this reply ended.",
   'chat.paused.stoppedApplied.other': "{count} changes were saved before this reply ended.",
   'chat.paused.declined': "No change was made: you declined {tools}.",
+  'chat.paused.declinedNone': "No change was made.",
   'chat.paused.declinedApplied.one': "{count} change was saved. You declined {tools}, so nothing else was changed.",
   'chat.paused.declinedApplied.other': "{count} changes were saved. You declined {tools}, so nothing else was changed.",
   'chat.approval.allowOnce': "Allow once",

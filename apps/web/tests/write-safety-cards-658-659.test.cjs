@@ -24,17 +24,20 @@ test('the pending card carries the Drive kind and the repeat flag; a finished ch
   assert.equal('repeatOf' in plain, false);
   const done = finishedToolCall(card, { name: 'drive_update_file', text: 'Updated plan.md (id abc).', applied: true }, 4000);
   assert.deepEqual({ ...done }, { name: 'drive_update_file', args: '{}', result: 'Updated plan.md (id abc).', status: 'done', target: 'plan.md (id abc)', targetKind: 'drive', applied: true });
-  const declined = finishedToolCall(card, { name: 'drive_update_file', text: 'ERROR: the user declined to run drive_update_file.' }, 4000);
+  const declined = finishedToolCall(card, { name: 'drive_update_file', text: 'ERROR: the user declined to run drive_update_file.', declined: true }, 4000);
   assert.equal(declined.status, 'denied');
   assert.equal('applied' in declined, false);
+  // #666 review: only the server's flag says "declined"; a tool's own error text never does.
+  assert.equal(finishedToolCall(card, { name: 'synthetic_lookup', text: 'ERROR: the user was not found.' }, 4000).status, 'done');
+  assert.equal(finishedToolCall(card, { name: 'drive_update_file', text: 'ERROR: not run.', notRun: true }, 4000).status, 'stopped');
   const app = fs.readFileSync(path.join(__dirname, '../src/App.tsx'), 'utf8');
-  assert.match(app, /finishedToolCall\(done >= 0 \? tools\[done\] : undefined, \{ name: ev\.name, text: ev\.text, applied: ev\.applied === true, target: ev\.target \}/);
+  assert.match(app, /finishedToolCall\(done >= 0 \? tools\[done\] : undefined, \{ name: ev\.name, text: ev\.text, applied: ev\.applied === true, target: ev\.target, declined: ev\.declined === true, notRun: ev\.notRun === true \}/);
   assert.match(app, /ev\.type === 'paused'/, 'a pause is handled before the error branch, as its own event');
   assert.match(app, /const history = modelHistory\(existing\)/);
   assert.match(app, /rerunBase\(msgs, index\)/, 'Retry keeps the record of saved changes');
   assert.match(app, /void handleSend\(chatId, projectId, text, editBase\(msgs, index\)\)/, 'Edit and re-run keeps them too (#658 review)');
   const diary = fs.readFileSync(path.join(__dirname, '../src/components/DiaryView.tsx'), 'utf8');
-  assert.match(diary, /finishedToolCall\(calls\[index\], \{ name: ev\.name, text: ev\.text, applied: ev\.applied === true, target: ev\.target \}/, 'Diary chips keep `applied` too');
+  assert.match(diary, /finishedToolCall\(calls\[index\], \{ name: ev\.name, text: ev\.text, applied: ev\.applied === true, target: ev\.target, declined: ev\.declined === true, notRun: ev\.notRun === true \}/, 'Diary chips keep `applied` too');
 });
 
 async function withSsr(run) {

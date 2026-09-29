@@ -969,6 +969,7 @@ export const ES_ES: Catalogue = {
   'chat.paused.stoppedApplied.one': "Se guardó {count} cambio antes de que terminara esta respuesta.",
   'chat.paused.stoppedApplied.other': "Se guardaron {count} cambios antes de que terminara esta respuesta.",
   'chat.paused.declined': "No se cambió nada: rechazaste {tools}.",
+  'chat.paused.declinedNone': "No se cambió nada.",
   'chat.paused.declinedApplied.one': "Se guardó {count} cambio. Rechazaste {tools}, así que no se cambió nada más.",
   'chat.paused.declinedApplied.other': "Se guardaron {count} cambios. Rechazaste {tools}, así que no se cambió nada más.",
   'chat.approval.allowOnce': "Permitir una vez",

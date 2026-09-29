@@ -77,7 +77,7 @@ const sse = (events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join
         events = [
           { type: 'tool', index: 0, name: 'project_append_file', args: APPEND_ARGS },
           { type: 'tool_pending', id: 'ap-qa-666', index: 0, name: 'project_append_file', args: APPEND_ARGS, target: TARGET, repeatOf: true },
-          { type: 'tool_result', index: 0, name: 'project_append_file', text: DECLINED },
+          { type: 'tool_result', index: 0, name: 'project_append_file', text: DECLINED, declined: true },
           { type: 'paused', reason: 'declined', applied: 0, declined: ['project_append_file'], text: DECLINED_NOTE },
           { type: 'telemetry', phase: 'complete', model: 'synthetic-model' },
           { type: 'done', model: 'synthetic-model' },

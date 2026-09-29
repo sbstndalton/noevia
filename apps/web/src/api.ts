@@ -480,8 +480,11 @@ export async function* streamChat(
   applied?: boolean | number;
   /** 'paused' (#658): why the reply ended before a final answer ('supervision' or, #666, 'declined'). */
   reason?: string;
-  /** 'paused' with reason 'declined' (#666): the tools the person declined. */
-  declined?: string[];
+  /** 'paused' with reason 'declined' (#666): the tools the person declined. 'tool_result': true when
+   *  the call was not approved (declined or timed out), set by the server, never read from text. */
+  declined?: string[] | boolean;
+  /** 'tool_result' (#666 review): a write skipped because an earlier one in the reply was declined. */
+  notRun?: boolean;
   decision?: string;
   reasoning?: string;
   reasoningEffort?: string;

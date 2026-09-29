@@ -984,8 +984,7 @@ export default function App(): JSX.Element {
             // failure: the reply ends normally ('done' follows) with a note of what was saved.
             // #666: or the person declined a write, and the reply ended with no model text.
             const applied = typeof ev.applied === 'number' && Number.isInteger(ev.applied) && ev.applied >= 0 ? ev.applied : 0;
-            const declined = declinedNames(ev.declined);
-            const pause: ReplyPause = ev.reason === 'declined' && declined.length ? { reason: 'declined', applied, declined } : { reason: 'supervision', applied };
+            const pause: ReplyPause = ev.reason === 'declined' ? { reason: 'declined', applied, declined: declinedNames(ev.declined) } : { reason: 'supervision', applied };
             setMessagesByChat((prev) => ({
               ...prev,
               [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId ? { ...m, paused: pause } : m)),
@@ -998,7 +997,7 @@ export default function App(): JSX.Element {
             // state, so an approved or refused call stops offering buttons
             // that would now 404.
             const done = typeof ev.index === 'number' ? ev.index : tools.findIndex((t) => t && t.name === ev.name);
-            const chip = finishedToolCall(done >= 0 ? tools[done] : undefined, { name: ev.name, text: ev.text, applied: ev.applied === true, target: ev.target }, TOOL_RESULT_LIMIT);
+            const chip = finishedToolCall(done >= 0 ? tools[done] : undefined, { name: ev.name, text: ev.text, applied: ev.applied === true, target: ev.target, declined: ev.declined === true, notRun: ev.notRun === true }, TOOL_RESULT_LIMIT);
             if (done >= 0) tools[done] = chip; else tools.push(chip);
             setMessagesByChat((prev) => ({
               ...prev,

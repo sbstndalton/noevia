@@ -310,7 +310,7 @@ test('actual chat request indexes the exact skill filename even when its display
 
 for(const decision of ['approve','deny','approve_all'])test(`native manager preserves write approval action ${decision}`,async()=>{
  const f=fixture({native:true,decision,rounds:[[call('native-a'),call('native-b','write','{"a":2}')]]});
- await f.run();assert.equal(f.executions.length,decision==='deny'?0:2);assert.equal(f.approvals.length,decision==='approve_all'?1:2);assert.equal(f.events.find(e=>e.type==='context').limit,32768);
+ await f.run();assert.equal(f.executions.length,decision==='deny'?0:2);/* #666 review: after a decline the next write in the round gets no card */assert.equal(f.approvals.length,decision==='approve'?2:1);assert.equal(f.events.find(e=>e.type==='context').limit,32768);
 });
 
 test('text streamed before a tool call is marked as preamble, the final answer is not', async () => {

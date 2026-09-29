@@ -969,6 +969,7 @@ export const DE_DE: Catalogue = {
   'chat.paused.stoppedApplied.one': "{count} Änderung wurde gespeichert, bevor diese Antwort endete.",
   'chat.paused.stoppedApplied.other': "{count} Änderungen wurden gespeichert, bevor diese Antwort endete.",
   'chat.paused.declined': "Es wurde nichts geändert: Du hast {tools} abgelehnt.",
+  'chat.paused.declinedNone': "Es wurde nichts geändert.",
   'chat.paused.declinedApplied.one': "{count} Änderung wurde gespeichert. Du hast {tools} abgelehnt, sonst wurde nichts geändert.",
   'chat.paused.declinedApplied.other': "{count} Änderungen wurden gespeichert. Du hast {tools} abgelehnt, sonst wurde nichts geändert.",
   'chat.approval.allowOnce': "Einmal erlauben",

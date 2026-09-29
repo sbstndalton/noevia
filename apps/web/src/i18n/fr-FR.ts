@@ -969,6 +969,7 @@ export const FR_FR: Catalogue = {
   'chat.paused.stoppedApplied.one': "{count} modification a été enregistrée avant la fin de cette réponse.",
   'chat.paused.stoppedApplied.other': "{count} modifications ont été enregistrées avant la fin de cette réponse.",
   'chat.paused.declined': "Rien n’a été modifié : vous avez refusé {tools}.",
+  'chat.paused.declinedNone': "Rien n’a été modifié.",
   'chat.paused.declinedApplied.one': "{count} modification a été enregistrée. Vous avez refusé {tools}, rien d’autre n’a donc été modifié.",
   'chat.paused.declinedApplied.other': "{count} modifications ont été enregistrées. Vous avez refusé {tools}, rien d’autre n’a donc été modifié.",
   'chat.approval.allowOnce': "Autoriser une fois",

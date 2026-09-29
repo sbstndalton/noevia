@@ -793,9 +793,14 @@ function createChatHandler({
     const exchangeKey = crypto.randomUUID();
     // Writes that succeeded in THIS exchange (#658): how many the reply reports if it pauses.
     const appliedWrites = [];
-    // Writes the person declined on their approval card in THIS exchange (#666): the reply ends
-    // after that round with a fixed note instead of more model text.
+    // Writes the person declined on their approval card in THIS exchange (#666): later writes in
+    // the same round do not run, and the reply ends after that round with a fixed note instead of
+    // more model text. Diary extras keep their earlier flow (their client has no note for it).
     const declinedWrites = [];
+    const declineEndsReply = !spaceId?.startsWith('diary');
+    // The exact results that mean "not approved" (declined or timed out) and "not run after a
+    // decline": the chip is told explicitly (`declined` / `notRun`), never by reading tool text.
+    const notApprovedResults = new Set(), notRunResults = new Set();
     let paused = false;
     let prepared,limit,limitSource,summarizeContext,requestStartedAt=Date.now();
     try {
@@ -1178,6 +1183,14 @@ function createChatHandler({
             const userId = requestScope.getStore()?.workspace?.userId || null;
             // A call requested under a skill that has since been disabled or changed never runs (#272).
             if (revokedSkills()) return refuseForRevokedSkill(tc.name, userId);
+            // #666 review: a write after one the person declined in this reply is not asked about
+            // and does not run; the reply ends after this round anyway.
+            if (declinedWrites.length && isWriteTool(tc.name)) {
+              authService.audit('tool.denied', userId, userId, { tool: tc.name, reason: 'earlier-decline' });
+              result = `ERROR: ${tc.name} was not run because an earlier write in this reply was declined. Nothing was changed.`;
+              notRunResults.add(result);
+              return result;
+            }
             // The account's tool policy (Settings → Connectors). Writes are always at least `ask`.
             const refusedForEgress = egressToolRefusal(chatUser?.id || userId, tc.name, tc.args);
             if (refusedForEgress) {
@@ -1243,7 +1256,8 @@ function createChatHandler({
                   ? `ERROR: the user did not respond in time, so ${tc.name} was not run. Ask before trying again.`
                   : `ERROR: the user declined to run ${tc.name}. Do not retry it; ask what they would prefer.`;
                 authService.audit('tool.denied', userId, userId, { tool: tc.name, reason: decision });
-                if (decision === 'deny') declinedWrites.push(tc.name);
+                notApprovedResults.add(result);
+                if (decision === 'deny' && declineEndsReply) declinedWrites.push(tc.name);
                 return result;
               }
             }
@@ -1305,7 +1319,8 @@ function createChatHandler({
             writesDone.record(requestScope.getStore()?.workspace?.userId || null, chatId, writePrint);
           }
           send({ type: 'tool_result', index: toolOffset + toolIndex, name: tc.name, text: result.slice(0, 300),
-            ...(applied ? { applied: true } : {}), ...(applied && cardTarget !== null ? { target: cardTarget } : {}) });
+            ...(applied ? { applied: true } : {}), ...(applied && cardTarget !== null ? { target: cardTarget } : {}),
+            ...(notApprovedResults.has(result) ? { declined: true } : {}), ...(notRunResults.has(result) ? { notRun: true } : {}) });
           roundMessages.push({ role: 'tool', tool_call_id: tc.id, content: framedResult });
           if (outcome.failed !== true && !/^ERROR\b/.test(String(result))) noteSkillRead(tc.args, result);
         }
@@ -1313,7 +1328,7 @@ function createChatHandler({
 
       if (turn?.snapshot().calls.some(c => c.status === 'outcome_unknown')) break;
       if (toolCalls.size) toolOffset += Math.max(...toolCalls.keys()) + 1;
-      if (declinedWrites.length && !skillRevocation) {
+      if (declineEndsReply && declinedWrites.length && !skillRevocation) {
         // #666: the person declined a write. Small models ignore the declined result and still
         // say the change was made, so the model is not asked for more text: the reply ends here
         // with a fixed note (words the client shows in its own language, never model text). Every

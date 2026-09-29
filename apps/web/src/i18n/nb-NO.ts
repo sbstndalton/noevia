@@ -969,6 +969,7 @@ export const NB_NO: Catalogue = {
   'chat.paused.stoppedApplied.one': "{count} endring ble lagret før dette svaret sluttet.",
   'chat.paused.stoppedApplied.other': "{count} endringer ble lagret før dette svaret sluttet.",
   'chat.paused.declined': "Ingenting ble endret: Du avslo {tools}.",
+  'chat.paused.declinedNone': "Ingenting ble endret.",
   'chat.paused.declinedApplied.one': "{count} endring ble lagret. Du avslo {tools}, så ingenting annet ble endret.",
   'chat.paused.declinedApplied.other': "{count} endringer ble lagret. Du avslo {tools}, så ingenting annet ble endret.",
   'chat.approval.allowOnce': "Tillat én gang",

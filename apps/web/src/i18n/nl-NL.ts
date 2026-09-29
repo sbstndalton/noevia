@@ -969,6 +969,7 @@ export const NL_NL: Catalogue = {
   'chat.paused.stoppedApplied.one': "{count} wijziging is opgeslagen voordat dit antwoord stopte.",
   'chat.paused.stoppedApplied.other': "{count} wijzigingen zijn opgeslagen voordat dit antwoord stopte.",
   'chat.paused.declined': "Er is niets gewijzigd: je hebt {tools} geweigerd.",
+  'chat.paused.declinedNone': "Er is niets gewijzigd.",
   'chat.paused.declinedApplied.one': "{count} wijziging is opgeslagen. Je hebt {tools} geweigerd, dus verder is er niets gewijzigd.",
   'chat.paused.declinedApplied.other': "{count} wijzigingen zijn opgeslagen. Je hebt {tools} geweigerd, dus verder is er niets gewijzigd.",
   'chat.approval.allowOnce': "Eenmalig toestaan",

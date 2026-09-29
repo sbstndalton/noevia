@@ -969,6 +969,7 @@ export const SV_SE: Catalogue = {
   'chat.paused.stoppedApplied.one': "{count} ändring sparades innan svaret avslutades.",
   'chat.paused.stoppedApplied.other': "{count} ändringar sparades innan svaret avslutades.",
   'chat.paused.declined': "Inget ändrades: Du avvisade {tools}.",
+  'chat.paused.declinedNone': "Inget ändrades.",
   'chat.paused.declinedApplied.one': "{count} ändring sparades. Du avvisade {tools}, så inget annat ändrades.",
   'chat.paused.declinedApplied.other': "{count} ändringar sparades. Du avvisade {tools}, så inget annat ändrades.",
   'chat.approval.allowOnce': "Tillåt en gång",

@@ -32,6 +32,9 @@ test('declined note: fixed wording, the tool name, and any saved change, in ever
     assert.equal(pausedNoteText(en, { reason: 'declined', applied: 0, declined: ['project_append_file'] }), 'No change was made: you declined project_append_file.');
     assert.equal(pausedNoteText(en, { reason: 'declined', applied: 1, declined: ['project_append_file'] }), '1 change was saved. You declined project_append_file, so nothing else was changed.');
     assert.equal(pausedNoteText(en, { reason: 'declined', applied: 2, declined: ['a_tool', 'b_tool'] }), '2 changes were saved. You declined a_tool, b_tool, so nothing else was changed.');
+    // #666 review: a decline whose names did not survive says so in general words.
+    assert.equal(pausedNoteText(en, { reason: 'declined', applied: 0, declined: [] }), 'No change was made.');
+    assert.equal(pausedNoteText(en, { reason: 'declined', applied: 1 }), '1 change was saved before this reply ended.');
     // The #658 notes are unchanged.
     assert.equal(pausedNoteText(en, { reason: 'supervision', applied: 0 }), 'Step supervision paused this reply before any further steps. Nothing was changed.');
     for (const locale of LOCALES) {
@@ -42,6 +45,7 @@ test('declined note: fixed wording, the tool name, and any saved change, in ever
         assert.ok(text.includes('project_append_file'), `${locale} ${key} names the tool: ${text}`);
         assert.doesNotMatch(text, /\{(tools|count)\}/, `${locale} ${key} fills every placeholder`);
         if (applied) assert.ok(text.includes(String(applied)), `${locale} ${key} says how many were saved`);
+        if (!applied) assert.notEqual(pausedNoteText(t, { reason: 'declined', applied: 0, declined: [] }), 'chat.paused.declinedNone', `${locale} has the general note`);
         if (locale !== 'en-GB') assert.notEqual(text, pausedNoteText(en, { reason: 'declined', applied, declined: ['project_append_file'] }), `${locale} ${key} is translated`);
       }
     }
@@ -79,8 +83,12 @@ test('Regenerate on a paused or declined reply: nothing saved re-runs plainly; s
     const plan = planRegenerate([user, mixed], 'a2');
     assert.equal(plan.base.length, 2, 'the user turn and the record of the saved change stay');
     assert.equal(plan.base[1].content, '');
+    assert.deepEqual(plan.base[1].toolCalls.map((c) => c.status), ['done'], 'the declined call is not part of the record');
+    assert.equal(JSON.stringify(plan.base[1].paused), JSON.stringify({ reason: 'declined', applied: 1, declined: ['project_append_file'] }), 'the record still reads as a decline');
     const history = modelHistory(plan.base);
-    assert.deepEqual(history.map((e) => [e.role, e.applied === true, e.declined === true]), [['user', false, false], ['assistant', false, false], ['tool', true, false], ['tool', false, true]],
-      'the saved change is sent as done (never replayed); the declined one as not run');
+    assert.deepEqual(history.map((e) => [e.role, e.applied === true, e.declined === true]), [['user', false, false], ['assistant', false, false], ['tool', true, false]],
+      'the saved change is sent as done (never replayed); the declined call is not replayed: Regenerate means try again');
+    // Outside a re-run, the declined call of a reply still in the transcript is sent as not run.
+    assert.deepEqual(modelHistory([user, mixed]).map((e) => [e.role, e.applied === true, e.declined === true]), [['user', false, false], ['assistant', false, false], ['tool', true, false], ['tool', false, true]]);
   });
 });

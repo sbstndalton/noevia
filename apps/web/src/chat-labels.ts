@@ -94,6 +94,8 @@ export function pausedNoteText(t: Translator & { plural: (key: string, count: nu
     // #666: the person declined a write, so the reply ended with no model text. Tool names are
     // shown as the card showed them.
     const tools = (pause.declined || []).join(', ');
+    // No tool name to show (a malformed event or saved entry): the same facts in general words.
+    if (!tools) return pause.applied > 0 ? t.plural('chat.paused.stoppedApplied', pause.applied, { count }) : t('chat.paused.declinedNone');
     return pause.applied > 0 ? t.plural('chat.paused.declinedApplied', pause.applied, { count, tools }) : t('chat.paused.declined', { tools });
   }
   if (pause.reason === 'supervision') {

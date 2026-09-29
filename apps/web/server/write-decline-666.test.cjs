@@ -21,7 +21,7 @@ const toolCalls = (...calls) => sse({ choices: [{ delta: { tool_calls: calls.map
 const say = (text) => sse({ choices: [{ delta: { content: text } }] });
 
 /** One handler; `turns` scripts the model and `decisions` answers the approval cards in order. */
-function harness(t, { decisions = [] } = {}) {
+function harness(t, { decisions = [], readResult = 'Zahl: 1' } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-666-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const state = { turns: [], requests: [], executed: [], audits: [], asked: [] };
@@ -33,7 +33,7 @@ function harness(t, { decisions = [] } = {}) {
   const { handleChat } = createChatHandler({
     modelManager: { enabled: true, health: async () => ({ ok: true, body: { all_models_loaded: [{ model_name: 'answer-model', loaded: true, recipe_options: { ctx_size: 32768 } }] } }) },
     reasoningEffort: require('./reasoning-effort.cjs'),
-    authService: { audit: (...a) => state.audits.push(a) },
+    authService: { audit: (...a) => state.audits.push(a), diaryEnabled: () => true },
     crypto: require('node:crypto'), path, fs, fetch,
     HISTORY_CAP: 40, DEFAULT_PROVIDER_ID: 'default', createToolExchange,
     currentWorkspace: () => ({ userId: 'synthetic-user', dir, assetDir: () => '/synthetic-only' }),
@@ -53,17 +53,17 @@ function harness(t, { decisions = [] } = {}) {
     DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: () => {}, saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
     lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
     allToolboxes: () => [],
-    executeToolCall: async (_p, name, args) => { state.executed.push({ name, args: JSON.parse(args) }); return name === 'synthetic_read' ? 'Zahl: 1' : `Appended 10 chars to "${TARGET}".`; },
+    executeToolCall: async (_p, name, args) => { state.executed.push({ name, args: JSON.parse(args) }); return name === 'synthetic_read' ? readResult : `Appended 10 chars to "${TARGET}".`; },
     chatWideApproved: () => false,
     awaitApproval: async (card) => { state.asked.push(card.id); return decisions.shift() || 'deny'; },
     recordUsage() {}, recordToolUse() {},
     writeTargetFor: async (name) => (name === 'synthetic_append' ? { target: TARGET } : null),
   });
-  async function send(body) {
+  async function send(body, authn) {
     const events = [], res = new EventEmitter();
     res.writeHead = () => {}; res.write = (line) => { if (line.startsWith('data: ')) events.push(JSON.parse(line.slice(6))); };
     res.end = () => { res.writableEnded = true; res.emit('finish'); };
-    await handleChat({}, res, { projectId: 'synthetic-project', chatId: 'chat-a', ...body });
+    await handleChat({}, res, { projectId: 'synthetic-project', chatId: 'chat-a', ...body }, authn);
     return events;
   }
   return { state, send };
@@ -85,7 +85,8 @@ test('a declined write ends the reply: no further model round, a fixed note, and
   assert.equal(h.state.requests.length, 1, 'the model is not asked for text after the decline');
   assert.equal(events.some((e) => e.type === 'delta' && /appended/i.test(e.text)), false, 'no claim that the change was made');
   const result = events.find((e) => e.type === 'tool_result');
-  assert.equal(result.text, DECLINED, 'the chip gets the declined result, which the client shows as "declined"');
+  assert.equal(result.text, DECLINED, 'the chip gets the declined result');
+  assert.equal(result.declined, true, 'and an explicit flag: the client never infers a decline from text');
   assert.equal(result.applied, undefined);
   const paused = events.find((e) => e.type === 'paused');
   assert.deepEqual({ reason: paused.reason, applied: paused.applied, declined: paused.declined }, { reason: 'declined', applied: 0, declined: ['synthetic_append'] });
@@ -126,6 +127,7 @@ test('a read-only call and an approval that timed out keep their normal flow (on
   h.state.turns.push([toolCalls(['synthetic_append', APPEND, 'call-1'])], [say('I did not get an answer in time, so nothing was changed.')]);
   const events = await h.send({ message: 'append it' });
   assert.equal(h.state.requests.length, 2, 'the model answers after a timeout, as before');
+  assert.equal(events.find((e) => e.type === 'tool_result').declined, true, 'not approved, so the chip reads declined');
   assert.equal(events.some((e) => e.type === 'paused'), false);
 
   const read = harness(t);
@@ -134,6 +136,47 @@ test('a read-only call and an approval that timed out keep their normal flow (on
   assert.equal(read.state.asked.length, 0);
   assert.equal(read.state.requests.length, 2);
   assert.equal(readEvents.some((e) => e.type === 'paused'), false);
+});
+
+test('after a decline, a later write in the same round gets no card and does not run', async (t) => {
+  const h = harness(t, { decisions: ['deny', 'approve'] });
+  h.state.turns.push([toolCalls(['synthetic_append', APPEND, 'call-a'], ['synthetic_read', { name: 'qa-notes.md' }, 'call-r'], ['synthetic_append', { ...APPEND, text: '\nZusatz: 3' }, 'call-b'])], [say(CLAIM)]);
+  const events = await h.send({ message: 'Append two lines.' });
+  assert.equal(h.state.asked.length, 1, 'only the first write was asked about');
+  assert.equal(events.filter((e) => e.type === 'tool_pending').length, 1, 'no card for the second write');
+  assert.deepEqual(h.state.executed.map((e) => e.name), ['synthetic_read'], 'the read ran; neither write did');
+  const [a, r, b] = events.filter((e) => e.type === 'tool_result');
+  assert.equal(a.declined, true);
+  assert.equal(r.declined, undefined);
+  assert.equal(b.text, 'ERROR: synthetic_append was not run because an earlier write in this reply was declined. Nothing was changed.');
+  assert.equal(b.notRun, true);
+  assert.equal(b.declined, undefined, 'skipped, not declined by the person');
+  assert.ok(h.state.audits.some(([kind, , , d]) => kind === 'tool.denied' && d.reason === 'earlier-decline'));
+  const paused = events.find((e) => e.type === 'paused');
+  assert.deepEqual({ applied: paused.applied, declined: paused.declined }, { applied: 0, declined: ['synthetic_append'] });
+  assert.equal(h.state.requests.length, 1);
+});
+
+test('a tool error that happens to start "ERROR: the user" is not a decline', async (t) => {
+  const h = harness(t, { readResult: 'ERROR: the user was not found in the synthetic directory.' });
+  h.state.turns.push([toolCalls(['synthetic_read', { name: 'someone' }, 'call-1'])], [say('No such user.')]);
+  const events = await h.send({ message: 'look them up' });
+  const result = events.find((e) => e.type === 'tool_result');
+  assert.equal(result.declined, undefined);
+  assert.equal(events.some((e) => e.type === 'paused'), false);
+  assert.equal(h.state.requests.length, 2, 'the model answers as usual');
+});
+
+test('diary extras keep their earlier flow: a decline does not end the reply there', async (t) => {
+  const h = harness(t, { decisions: ['deny'] });
+  h.state.turns.push([toolCalls(['synthetic_append', APPEND, 'call-1'])], [say('Understood, I left it as it is.')]);
+  const events = await h.send({ spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'synthetic-session', message: 'append it' }, { user: { id: 'synthetic-user' } });
+  assert.equal(events.filter((e) => e.type === 'error').length, 0, JSON.stringify(events.filter((e) => e.type === 'error')));
+  assert.equal(h.state.asked.length, 1, 'the write still asked');
+  assert.equal(h.state.executed.length, 0);
+  assert.equal(events.find((e) => e.type === 'tool_result').declined, true);
+  assert.equal(events.some((e) => e.type === 'paused'), false, 'no pause event: its client has no note for it');
+  assert.equal(h.state.requests.length, 2, 'the model answers after the decline, as before');
 });
 
 test('the next turn is told the declined call did not run; the on-screen note is never sent', async (t) => {
@@ -150,7 +193,8 @@ test('the next turn is told the declined call did not run; the on-screen note is
   // The pause survives a save and reload; junk does not.
   const restored = storedPause({ paused: { reason: 'declined', applied: 0, declined: ['synthetic_append', 'synthetic_append'] } });
   assert.equal(JSON.stringify(restored), JSON.stringify({ reason: 'declined', applied: 0, declined: ['synthetic_append'] }));
-  assert.equal(storedPause({ paused: { reason: 'declined', applied: 0, declined: ['bad name"; drop'] } }), undefined);
+  assert.equal(JSON.stringify(storedPause({ paused: { reason: 'declined', applied: 0, declined: ['bad name"; drop'] } })), JSON.stringify({ reason: 'declined', applied: 0, declined: [] }),
+    'a bad name is dropped; the note falls back to general words, never the supervision wording');
   assert.equal(storedPause({ paused: { reason: 'declined', applied: -1, declined: ['x'] } }), undefined);
   // Regenerate on a declined reply with nothing saved re-runs from before the user turn.
   assert.equal(rerunBase(transcript, 1).length, 0);
