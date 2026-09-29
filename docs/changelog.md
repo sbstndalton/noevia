@@ -8,6 +8,32 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web + model-loader 682a45e — 2026-09-28 (embed status, Browser-mode flag, model-loader rope fixes, live round 2 fixes; embed on the models network)
+
+### Services
+
+- **Web:** [#557](https://github.com/sbstndalton/noevia/pull/557), [#558](https://github.com/sbstndalton/noevia/pull/558), [#559](https://github.com/sbstndalton/noevia/pull/559), [#560](https://github.com/sbstndalton/noevia/pull/560), [#561](https://github.com/sbstndalton/noevia/pull/561), [#570](https://github.com/sbstndalton/noevia/pull/570) (fixes #562-#567) — `cowork-web:682a45e`, image `sha256:5b863e479d077318a99c3e478455b0f5cabea10b6db77d630afb1c38d9020e21`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** [#557](https://github.com/sbstndalton/noevia/pull/557) (embed status) and [#569](https://github.com/sbstndalton/noevia/pull/569) (never write rope keys the GGUF owns; duplicate-section rejection, #568) — `cowork-model-loader:682a45e`, image `sha256:4c1da884df83acebd56051e02ee844b4dfd3bf849c8bad2ab300d63815bec785`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** live `docker-compose.override.yml` `embed.networks` is now `[default, models]` (#549; `models` was already declared); no image change. #556 (NoeviaKit macOS client) is on main and not deployed. No feature flag or `MODELS_INI_WRITER` was set.
+
+Exact source `682a45e7c5b9696e3854d02fa672052179230658`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `62e777b19247d79aa377ba77185e4016fc056f2658143ee4a8ce8c676b67536d`, matched on the server), to `releases/682a45e`. PR #570 was merged first after all its checks passed. Web was built from `apps/web` with the repo Dockerfile and **`--build-arg COWORK_VERSION=682a45e`**; without the build arg `dist/version.json` says `0.2.0+<hash>` (the first build had this and was replaced before cutover). Model-loader was built from `services/model-manager`. Candidates: web standalone returned `/` 200, `/api/profile` 401, `version.json` `682a45e`, 65 asset files; model-loader `app.api/main/services/discover` import cleanly.
+
+Cutover used the installed guarded `up.sh` one service at a time (`web`, then `model-loader`, then `embed`), each with `--no-build --no-deps --wait`. `up.sh` must be run from the Compose Manager project directory (`/boot/config/plugins/compose.manager/projects/Cowork`); run from elsewhere it fails closed with "could not validate Compose JSON". `up.sh` re-acked the restart-alert baseline.
+
+Checks: web healthy, zero restarts; public root 200 three times, `/api/profile` 401, `/version.json` `682a45e`, served `index-ChIYCx9M.js` and `index-CmIqOpBa.css` byte-identical to the image `dist`; web and model-loader logs clean (MCP discovery only). `astraReview`, `constrainedPlanDecoding` and `browserExecutor` all report false. Model-loader healthy, zero restarts; `/api/v1/health` 200; `/api/v1/sections` and `/api/v1/backends` return 200 from inside the web container using the `X-Model-Loader-Token` header (token never printed); backends lists `cowork-embed-1` as running, no "connection refused". Embed recreated on both `cowork_default` and `cowork_models`, healthy, zero restarts (its old restart count was 4463); `POST http://embed:8080/v1/embeddings` from web returns a vector and model-loader reaches `embed:8080/health` (200).
+
+models.ini (#568): backed up as `models.ini.bak.20260928-214146-before-568`, then exactly `rope-scaling = linear` and `rope-scale = 8.0` removed from `[gemma-3-12b-it-qat-Q4_0]`; no duplicate section names. `cowork-llama-1` was deliberately **not restarted** (owner offline), so its running 12B args still reflect the old file until the next restart; the file itself is fixed.
+
+Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only differences are the three recreated containers (web, model-loader, embed). Diary, laya, llama, ocr, docling, code-sandbox, kiwix and every other container are identical.
+
+Rollback: web, `ln -sfn /mnt/docker/appdata/cowork/releases/349a450 /mnt/docker/appdata/cowork/current`, `COWORK_VERSION=349a450` in `.env`, then the guarded `up.sh` (from the project directory) for `web`. Model-loader: `MODEL_MANAGER_VERSION=1c87ab0` and `up.sh ... model-loader`. Embed: restore `docker-compose.override.yml.bak.before-embed-models-net` and `up.sh ... embed`. `.env.bak.before-682a45e` and the Compose backups `*.bak.before-682a45e` were kept; previous images are retained.
+
+---
+
 ## Release web 349a450 — 2026-09-28 (sampling recommendations, Skills revocation, Astra review behind a flag)
 
 ### Services
