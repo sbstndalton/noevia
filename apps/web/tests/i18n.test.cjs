@@ -473,3 +473,18 @@ test('the chat model picker, Auto summary, system label, Diary storage and file 
   for(const file of MODELS_MODULES)assert.doesNotMatch(fs.readFileSync(path.join(SRC,file),'utf8'),/SYSTEM_MODEL_LABEL/,`${file} renders the English system label`);
   assert.equal(core.translate('de-DE','routing.fast',{model:'m'}),'Schnell: m');
 });
+
+// #587: the "not loaded" state word must not be the Unload button's word, and the capability tags
+// on a model card ("dense", "embeddings", "reranking") are translated in every non-English locale.
+test('model card state and capability tags are translated, and the state is not the Unload verb',()=>{
+  const EN_MODELS=ENSEG.models;
+  for(const l of Object.keys(FILES)){
+    assert.notEqual(core.translate(l,'mm.card.unloaded'),core.translate(l,'mm.card.unload'),`${l}: the unloaded state reads like the Unload button`);
+    for(const k of ['mm.tag.dense','mm.tag.embeddings','mm.tag.reranking']){
+      if(l==='fr-FR'&&k==='mm.tag.dense')continue;// "dense" is the French word too
+      assert.notEqual(core.translate(l,k).toLowerCase(),EN_MODELS[k].toLowerCase(),`${l} ${k} is still the English word`);
+    }
+  }
+  assert.equal(core.translate('de-DE','mm.card.unloaded'),'Nicht geladen');
+  assert.equal(core.translate('nl-NL','mm.card.unloaded'),'Niet geladen');
+});
