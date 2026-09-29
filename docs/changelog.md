@@ -8,6 +8,30 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web + model-loader b8755fb — 2026-09-28 (md uploads, model-switch race, embed loaded model, delete guard; preflight wrapper refreshed)
+
+### Services
+
+- **Web:** [#572](https://github.com/sbstndalton/noevia/pull/572) (changelog), [#576](https://github.com/sbstndalton/noevia/pull/576) (#571 follow-ups), [#582](https://github.com/sbstndalton/noevia/pull/582) (#579, #580, #581 i18n), [#583](https://github.com/sbstndalton/noevia/pull/583) (fixes #577 `.md` uploads under Docling and #578 first-try model-switch 503) — `cowork-web:b8755fb`, image `sha256:5f9f0832d74d9ec32da84044ff12561a1ddb83cd26d41fb1eda4f3d175d8c559`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** [#576](https://github.com/sbstndalton/noevia/pull/576) (delete guard, #336), [#582](https://github.com/sbstndalton/noevia/pull/582) (backend probe reports the embed loaded model, #580) — `cowork-model-loader:b8755fb`, image `sha256:85623589b3fe9f63d25e595b5111b6f92caa6b54bdc4e4bcad895991951afaf6`.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** [#575](https://github.com/sbstndalton/noevia/pull/575) (`deploy/tools/build-web-release.sh`; `up.sh` resolves its own project directory). The installed `/mnt/docker/appdata/cowork/tools/preflight/{up.sh,check.php,web-env-keys.txt,README.md,test_check.php}` were refreshed from this release; the old copies are kept as `*.bak.before-b8755fb`. #584 is under security review and was not merged or deployed. No feature flag was changed.
+
+Exact source `b8755fb120de140606b66be0fec18a31d8a253ff`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `823022895659ed0faa359de2b2ddbd63034f9d59f734bb9f1820b3025ff0a566`, matched on the server), to `releases/b8755fb`. PR #583 was merged first after all its checks passed. Web was built with `deploy/tools/build-web-release.sh b8755fb <context>` (stamp verified by the script); model-loader from `services/model-manager`. `test_check.php` passes on the server; `test_wrapper.py` could not run there (no python3 on the host) and passed in CI. Candidates: web standalone `/` 200, `/api/profile` 401, `version.json` `b8755fb`, 65 asset files; model-loader `app.api/main/discover/services` import cleanly.
+
+Cutover used the refreshed guarded `up.sh`, one service at a time (`web`, then `model-loader`), each with `--no-build --no-deps --wait --wait-timeout 180`. It was run from `/` and worked, which confirms the cwd-independent project lookup from #575. It re-acked the restart-alert baseline.
+
+Checks: web and model-loader healthy, zero restarts; public root 200 three times, `/api/profile` 401, `/version.json` `b8755fb`, served `index-B10eD_gz.js`, `index-NW1foXSN.css`, `theme.js`, `lens.js` and `glass-highlight.js` byte-identical to the image `dist`; web and model-loader logs clean. `astraReview` and `constrainedPlanDecoding` false, `browserExecutor` false and unavailable (no Playwright in the image); `nativeClientAuth` is not in the feature registry. Model-loader `/api/v1/health` 200; `/api/v1/backends` lists `cowork-embed-1` running with loaded model `nomic-embed-text-v1` (#580) and llama running `gemma-4-E2B_q4_0-it`. Delete guard, read-only check (nothing deleted): `model_holders` on the `nomic-embed-text-v1` entry returns `cowork-embed-1 (its command runs nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf)` plus `cowork-web-1 (EMBEDDING_MODEL is set to nomic-embed-text-v1)`.
+
+Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only differences are the two recreated containers (web, model-loader). Diary, laya, llama, embed, ocr, docling, code-sandbox, kiwix and every other container are identical.
+
+Rollback: web, `ln -sfn /mnt/docker/appdata/cowork/releases/682a45e /mnt/docker/appdata/cowork/current`, `COWORK_VERSION=682a45e` in `.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. Model-loader: `MODEL_MANAGER_VERSION=682a45e` and the same command for `model-loader`. Preflight: copy each `*.bak.before-b8755fb` back over its file in `tools/preflight/`. `.env.bak.before-b8755fb` and the Compose backups `*.bak.before-b8755fb` were kept; previous images are retained.
+
+---
+
 ## Release web + model-loader 682a45e — 2026-09-28 (embed status, Browser-mode flag, model-loader rope fixes, live round 2 fixes; embed on the models network)
 
 ### Services
