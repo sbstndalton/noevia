@@ -9,7 +9,8 @@ not print environment values, credentials or volume driver options.
 # From the repository root, using its Compose file and .env:
 bash deploy/preflight/up.sh -- -d --build
 
-# DaServer, from the existing Cowork Compose Manager project directory:
+# DaServer, from any directory (the wrapper cds to the Compose Manager project,
+# or $COWORK_PROJECT_DIR if set):
 bash /mnt/docker/appdata/cowork/tools/preflight/up.sh \
   --env-file /mnt/docker/appdata/cowork/config/.env -- \
   -d --no-build --wait --wait-timeout 120
