@@ -18,7 +18,7 @@ test('ModelCard imports the chat-generation-model check and derives protectedMod
 
 test('Tune is hidden for any non-chat (embedding/reranking) model, not just Laya', () => {
   // #421: the button also carries a per-model aria-label now, between className and onClick.
-  assert.match(src, /\{!system && chatModel && <button className="popup-tab" aria-label=\{t\('mm\.card\.tuneNamed', \{ model: m\.name \}\)\} onClick=\{onConfigure\}>\{t\('mm\.card\.tune'\)\}<\/button>\}/);
+  assert.match(src, /\{!system && !missing && chatModel && <button className="popup-tab" aria-label=\{t\('mm\.card\.tuneNamed', \{ model: m\.name \}\)\} onClick=\{onConfigure\}>\{t\('mm\.card\.tune'\)\}<\/button>\}/);
 });
 
 test('Delete is hidden for a model a live sidecar depends on (protectedModel), matching the system-model treatment', () => {
@@ -31,7 +31,7 @@ test('the meta row shows a short "protected" tag (with a title explaining why) f
 
 test('the expanded detail note distinguishes system, sidecar-protected, and merely non-chat models', () => {
   assert.match(src, /protectedModel \? <p className="mm-note" role="status">\{t\('mm\.card\.protectedLabel'\)\}\{t\('mm\.card\.protectedNote'\)\}<\/p>/);
-  assert.match(src, /!chatModel \? <p className="mm-note" role="status">\{t\('mm\.card\.nonChatNote'\)\}<\/p>/);
+  assert.match(src, /!chatModel \|\| missing \? <p className="mm-note" role="status">\{t\(missing \? 'mm\.card\.missingNote' : 'mm\.card\.nonChatNote'\)\}<\/p>/);
 });
 
 test('DeleteModel\'s own canDelete fallback (folder-scan delete path) is untouched by the sidecarProtected guard', () => {

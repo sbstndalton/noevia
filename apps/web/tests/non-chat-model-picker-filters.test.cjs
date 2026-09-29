@@ -20,14 +20,14 @@ const modelsSettingsSrc = fs.readFileSync(path.join(__dirname, '../src/component
 
 test('ModelPopup (composer Manual picker) filters with isChatGenerationModel, not matchesModelUse', () => {
   assert.match(modelPopupSrc, /import \{ isChatGenerationModel \} from '\.\.\/model-kind';/);
-  assert.match(modelPopupSrc, /const chatModels = models\.filter\(\(m\) => isChatGenerationModel\(m\.name, m\.labels\)\);/);
+  assert.match(modelPopupSrc, /const chatModels = models\.filter\(\(m\) => !m\.missingFile && isChatGenerationModel\(m\.name, m\.labels\)\);/);
   assert.doesNotMatch(modelPopupSrc, /import \{ matchesModelUse/, 'ModelPopup must no longer import the incomplete all-use filter');
   assert.doesNotMatch(modelPopupSrc, /matchesModelUse\(m\.labels/, 'ModelPopup must no longer filter models with matchesModelUse');
 });
 
 test('ModelsSettings (Routing tab) filters Fast/Smart/Code with isChatGenerationModel', () => {
   assert.match(modelsSettingsSrc, /import \{ isChatGenerationModel \} from '\.\.\/\.\.\/model-kind';/);
-  assert.match(modelsSettingsSrc, /const chatModels = models\.filter\(\(m\) => isChatGenerationModel\(m\.name, m\.labels\)\);/);
+  assert.match(modelsSettingsSrc, /const chatModels = models\.filter\(\(m\) => !m\.missingFile && isChatGenerationModel\(m\.name, m\.labels\)\);/);
 });
 
 test("#442: ModelsSettings' vision selector is chat-generation models further narrowed to an actual vision label", () => {

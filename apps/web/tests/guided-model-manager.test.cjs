@@ -89,6 +89,17 @@ test('recovery lists failed, interrupted, resumable-cancelled and stale jobs wit
   assert.deepEqual(g.recoveryItems({now,autotune:{status:'interrupted',model:'m'},calibration:null,downloads:[]})[0].actions,['retry'],'a legacy run without phases restarts');
 });
 
+test('#551: a finished run for a model that is no longer installed is not offered for recovery; installed models and unknown lists are unaffected',()=>{
+  const now=Date.parse('2026-09-28T12:00:00Z');
+  const stale={id:'t1',model:'synthetic-20b-Q4_K_M',status:'failed',error:'No KV cache type passed quality and throughput checks.',models:[{}]};
+  assert.equal(g.recoveryItems({now,autotune:stale,calibration:null,downloads:[],installed:['Synthetic-4B']}).length,0,'uninstalled: no Resume');
+  assert.deepEqual(g.recoveryItems({now,autotune:stale,calibration:null,downloads:[],installed:['Synthetic-4B','synthetic-20b-Q4_K_M']}).map(i=>i.actions.join()),['resume'],'installed: history kept');
+  assert.equal(g.recoveryItems({now,autotune:stale,calibration:null,downloads:[],installed:null}).length,1,'an unreadable model list never hides a real problem');
+  assert.equal(g.recoveryItems({now,autotune:stale,calibration:null,downloads:[]}).length,1,'no list supplied: unchanged');
+  assert.deepEqual(g.recoveryItems({now,autotune:{...stale,status:'running',startedAt:now-3*3600e3},calibration:null,downloads:[],installed:[]}).map(i=>i.actions.join()),['cancel'],'a stuck running job can always be cancelled');
+  assert.equal(g.recoveryItems({now,autotune:null,calibration:{id:'c',model:'old',status:'failed'},downloads:[{id:'d',filename:'x.gguf',status:'error'}],installed:[]}).length,1,'stale calibration dropped, failed download kept');
+});
+
 test('the guided flow keeps the Laya guard and never starts a run by itself (#80/#81/#83)',()=>{
   const src=fs.readFileSync(path.join(__dirname,'../src/components/models/GuidedOptimize.tsx'),'utf8');
   const guard=src.indexOf('if (isSystemModel(model)) return'),steps=src.indexOf('<FitStep');
