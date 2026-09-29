@@ -101,6 +101,7 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
   // One provider as the client sees it: never the plaintext key.
   function listRow(pr, authn) {
     const contextTokens = validContextTokens(pr.contextTokens);
+    const capabilities = effectiveCapabilities(pr);
     return {
       id: pr.id,
       label: pr.label,
@@ -111,7 +112,7 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
       shared: !!pr.shared,
       defaultModel: pr.defaultModel || undefined,
       ...(contextTokens ? { contextTokens } : {}),
-      capabilities: effectiveCapabilities(pr),
+      ...(Object.keys(capabilities).length ? { capabilities } : {}),
       ...(egress.isTrialTermsHost(pr) ? { external: true } : {}),
       ...(chatgpt.isChatGptProvider(pr) ? { kind: chatgpt.KIND, external: true, connection: chatgptOAuth.status(authn?.user?.id).state } : {}),
     };
