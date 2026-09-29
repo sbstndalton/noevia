@@ -68,6 +68,9 @@ function createAstraReview({ enabled = () => false, provider = null, deadlineMs 
           log({ event: 'code.review_refused', classes: error.classes });
           return fail('context_refused', `The change was not sent for review because it would have carried ${error.classes.join(', ').replaceAll('_', ' ')}.`);
         }
+        // The diff is budgeted to fit (role-context.cjs capChange); what can still overflow is
+        // the rest of the projection, and the plain reason is the same either way.
+        if (error?.code === 'too_large') return fail('too_large', 'The change is too large to review.');
         return fail('context_invalid', 'The change could not be prepared for review.');
       }
       const controller = new AbortController();

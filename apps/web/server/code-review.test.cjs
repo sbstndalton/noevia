@@ -388,7 +388,13 @@ test('the reviewer projection is allowlisted and bounded; ROLES stays the three 
   const files = Array.from({ length: 30 }, (_, i) => ({ path: `f${i}.js`, patch: 'x'.repeat(5000) }));
   const p = buildRoleContext(REVIEW_ROLE, { tenantId: 't-1', taskId: 'task', request: 'r', approvals: [{ id: 'appr-SECRET-1', decision: 'approve', args: 'ARGS' }],
     change: { baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), files } });
-  assert.equal(p.change.files.length, 20);
+  // The total budget runs out before the file cap with 5,000-character patches...
+  assert.equal(p.change.files.length, 6);
+  // ...and the file cap binds when the patches are small.
+  const many = buildRoleContext(REVIEW_ROLE, { tenantId: 't-1', taskId: 'task', request: 'r',
+    change: { files: Array.from({ length: 30 }, (_, i) => ({ path: `f${i}.js`, patch: '+x' })) } });
+  assert.equal(many.change.files.length, 20);
+  assert.equal(many.change.truncated, true);
   assert.equal(p.change.truncated, true);
   const total = p.change.files.reduce((n, f) => n + Array.from(f.patch || '').length, 0);
   assert.ok(total <= 24000, `patch budget ${total}`);
@@ -412,4 +418,33 @@ test('engine reviewer: sends only the instructions and the projection, refuses a
   assert.equal(sent.length, 1, 'nothing sent to an external provider');
   const failing = createEngineReviewer({ fetch: async () => ({ ok: false, status: 500 }), engine: () => ({ baseUrl: 'http://e/v1' }) });
   await assert.rejects(failing.review({ instructions: 'i', context: 'c', schema: VERDICT_SCHEMA }, {}), /500/);
+});
+
+// A max-size diff where almost every character grows when JSON-escaped: tabs, quotes,
+// backslashes and control characters, in the patches and in the paths.
+const escapeHeavyChange = () => ({ baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40),
+  files: Array.from({ length: 30 }, (_, i) => ({ path: `d"\t\\${i}\u0001`.repeat(40), patch: '\t"\\\u0001\u001f\n'.repeat(5000) })) });
+
+test('an escape-heavy max-size diff is budgeted by its serialised length and still reviewed', async () => {
+  const state = { tenantId: 't-1', taskId: 'task', request: 'fix it', change: escapeHeavyChange() };
+  const p = buildRoleContext(REVIEW_ROLE, state);
+  assert.equal(p.change.truncated, true);
+  assert.ok(p.change.files.length > 0);
+  const diffCost = Array.from(JSON.stringify(p.change.files)).length;
+  assert.ok(diffCost <= 24000 + 64, `diff serialises to ${diffCost}`);
+  assert.ok(Array.from(require('./role-context.cjs').serializeProjection(p)).length <= 40000);
+  // Through the reviewer: sent, not refused as "could not be prepared".
+  const provider = fakeProvider([APPROVE]);
+  const outcome = await createAstraReview({ enabled: () => true, provider }).review({ state });
+  assert.equal(outcome.ok, true, JSON.stringify(outcome));
+  assert.equal(provider.calls.length, 1);
+});
+
+test('a projection still too large for the total says "too large to review", in plain words', async () => {
+  // The diff is budgeted; an escape-heavy request on top of it can still overflow the total.
+  const state = { tenantId: 't-1', taskId: 'task', request: '\u0001'.repeat(4000), change: escapeHeavyChange() };
+  const provider = fakeProvider([APPROVE]);
+  const outcome = await createAstraReview({ enabled: () => true, provider }).review({ state });
+  assert.deepEqual(outcome, { ok: false, code: 'too_large', reason: 'The change is too large to review.' });
+  assert.equal(provider.calls.length, 0);
 });

@@ -240,6 +240,24 @@ function capExecution(execution) {
 
 // The change under review (#519): a bounded diff read by noevia from the source repository, never
 // from the harness. Per-file and total caps; anything cut is marked, never silently dropped.
+//
+// Budgets are counted in SERIALISED code points — what `projectRoleContext` measures against
+// CAPS.total — not raw ones: a tab, quote or control character costs 2-6 once JSON-escaped, and
+// a diff full of them must be cut here rather than tip the whole projection over the total.
+const serialisedCost = (text) => Array.from(JSON.stringify(text)).length - 2;
+const CHANGE_ENTRY_OVERHEAD = serialisedCost('{"path":"","patch":""},');
+function fitSerialised(value, max) {
+  const text = value.normalize('NFC');
+  if (serialisedCost(text) <= max) return text;
+  const room = max - serialisedCost(TRUNCATION_MARK);
+  let kept = '', used = 0;
+  for (const point of text) {
+    const cost = serialisedCost(point);
+    if (used + cost > room) break;
+    kept += point; used += cost;
+  }
+  return kept + TRUNCATION_MARK;
+}
 function capChange(change) {
   if (!isPlainObject(change)) return undefined;
   const out = { files: [], truncated: change.truncated === true };
@@ -249,15 +267,18 @@ function capChange(change) {
   let budget = CAPS.changeTotal;
   for (const file of Array.isArray(change.files) ? change.files : []) {
     if (out.files.length >= CAPS.changeFiles) { out.truncated = true; break; }
-    if (!isPlainObject(file)) continue;
-    const filePath = capText(file.path, CAPS.identifier * 2);
-    if (filePath === undefined) continue;
+    if (!isPlainObject(file) || typeof file.path !== 'string') continue;
+    const filePath = fitSerialised(file.path, CAPS.identifier * 2);
+    const pathCost = serialisedCost(filePath) + CHANGE_ENTRY_OVERHEAD;
+    if (pathCost > budget) { out.truncated = true; break; }
+    budget -= pathCost;
     const entry = { path: filePath };
-    if (typeof file.patch === 'string' && budget > 0) {
-      const patch = capText(file.patch, Math.min(CAPS.changePatch, budget));
+    const room = Math.min(CAPS.changePatch, budget);
+    if (typeof file.patch === 'string' && room > serialisedCost(TRUNCATION_MARK)) {
+      const patch = fitSerialised(file.patch, room);
       if (patch !== file.patch.normalize('NFC')) out.truncated = true;
       entry.patch = patch;
-      budget -= Array.from(patch).length;
+      budget -= serialisedCost(patch);
     } else if (typeof file.patch === 'string') out.truncated = true;
     out.files.push(entry);
   }
