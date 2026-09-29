@@ -90,20 +90,15 @@ test('#613 a stopped engine\'s raw service notes read in the interface language;
     const text = describeBackendError(tFor(locale), `container is ${state}`);
     assert.doesNotMatch(text, /^container is/, `${locale} ${state}`);
   }
-  // The strings the service sends today (services/model-manager hw.py and services.py).
-  for (const raw of ['docker unreachable', 'container not found', 'warming up…', 'port unknown', 'connection refused', 'timeout',
-    'request failed', 'invalid response', 'not reachable from the model loader (Docker reports it healthy)']) {
+  // The strings the service sends today. The list is a fixture (the web image has no services/ folder);
+  // services/model-manager/tests/test_api.py keeps it equal to hw.py and services.py.
+  const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/model-manager-backend-notes.json'), 'utf8'));
+  assert.ok(fixture.notes.length >= 9);
+  for (const raw of fixture.notes) {
     assert.notEqual(backendErrorId(raw), null, raw);
     assert.notEqual(describeBackendError(de, raw), raw, `${raw} is translated`);
   }
-  for (const file of ['hw.py', 'services.py']) {
-    const py = fs.readFileSync(path.join(__dirname, '../../../services/model-manager/app', file), 'utf8');
-    for (const m of py.matchAll(/(?:BackendStats\(ok=False, error=|return None, )"([^"{]+)"/g)) {
-      const raw = m[1];
-      if (/^no models configured$|none loaded/.test(raw)) continue; // a soft note: the probe ran, nothing is loaded
-      assert.notEqual(backendErrorId(raw), null, `service message "${raw}" in ${file} has no id`);
-    }
-  }
+  for (const soft of fixture.soft) assert.equal(backendErrorId(soft), null, `${soft} is a soft note, shown as sent`);
 });
 
 test('#613 the hardware and overview tabs go through describeBackendError', () => {
