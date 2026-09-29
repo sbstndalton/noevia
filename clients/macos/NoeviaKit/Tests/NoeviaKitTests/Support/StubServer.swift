@@ -59,6 +59,10 @@ final class StubServer: Sendable {
     var host: String { origin.host! }
 
     func on(_ method: String, _ path: String, _ replies: StubReply...) {
+        on(method, path, replies: replies)
+    }
+
+    func on(_ method: String, _ path: String, replies: [StubReply]) {
         state.withLock { $0.routes["\(method) \(path)"] = replies }
     }
 
@@ -82,10 +86,10 @@ final class StubServer: Sendable {
     }
 
     /// A client wired to this server with a recording, instant sleeper.
-    func client(store: any CredentialStore = InMemoryCredentialStore(), policy: RetryPolicy = .default, sleeps: SleepRecorder = SleepRecorder(), random: Double = 0.5) throws -> NoeviaClient {
+    func client(store: any CredentialStore = InMemoryCredentialStore(), policy: RetryPolicy = .default, sleeps: SleepRecorder = SleepRecorder(), random: Double = 0.5, clock: TestClock = TestClock()) throws -> NoeviaClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
-        let environment = ClientEnvironment(sleep: { await sleeps.record($0) }, random: { random })
+        let environment = ClientEnvironment(sleep: { await sleeps.record($0) }, random: { random }, now: { clock.now })
         return try NoeviaClient(serverURL: origin, credentialStore: store, configuration: configuration, retryPolicy: policy, environment: environment)
     }
 }
@@ -93,6 +97,13 @@ final class StubServer: Sendable {
 actor SleepRecorder {
     private(set) var delays: [Duration] = []
     func record(_ d: Duration) { delays.append(d) }
+}
+
+/// A wall clock the test sets, for device-token expiry.
+final class TestClock: Sendable {
+    private let value = Mutex(Date(timeIntervalSince1970: 1_790_000_000))
+    var now: Date { value.withLock { $0 } }
+    func advance(_ seconds: TimeInterval) { value.withLock { $0 = $0.addingTimeInterval(seconds) } }
 }
 
 final class StubURLProtocol: URLProtocol, @unchecked Sendable {

@@ -3,11 +3,20 @@ import Foundation
 /// A typed client for the Noevia core's v1 browser API (docs/api-browser-core-v1.md), for the
 /// native macOS client (#273). It holds one account's session for one server.
 ///
-/// It authenticates exactly as the browser does, because that is all the core offers today:
-/// password sign-in issues the `cowork_session` and `cowork_csrf` cookies, which live in an
-/// in-memory jar (never the shared system cookie store) and, between launches, in a
-/// `CredentialStore`. Mutating requests send `X-CSRF-Token`. No `Origin` header is sent: the
-/// core's Origin check (auth.cjs `originValid`) admits a request without one, as it does curl.
+/// It signs in one of two ways:
+///
+/// - **Device sign-in (#555, preferred where the server offers it).** `startDeviceSignIn` gets a
+///   short code, the person approves it in a browser where they are signed in, and
+///   `completeDeviceSignIn` receives this device's own access and refresh tokens. Requests then
+///   carry `Authorization: Bearer` and no cookies and no CSRF header. The access token is renewed
+///   with the refresh token before it expires or after a 401, one refresh at a time. The device
+///   is listed, and revocable, in the web app's Settings → Security and login.
+/// - **Browser session.** Password sign-in issues the `cowork_session` and `cowork_csrf` cookies,
+///   which live in an in-memory jar (never the shared system cookie store). Mutating requests
+///   send `X-CSRF-Token`.
+///
+/// Either credential is kept between launches in a `CredentialStore`. No `Origin` header is
+/// sent: the core's Origin check (auth.cjs `originValid`) admits a request without one.
 ///
 /// Only GET and HEAD are ever retried. A transport error or 502/503 on one of those puts the
 /// client in `.reconnecting`, backs off with jitter, re-checks `/api/ready`, then resends,
@@ -20,6 +29,8 @@ public actor NoeviaClient {
     public private(set) var state: ConnectionState = .idle
     public private(set) var serverInfo: ServerInfo?
     public private(set) var user: User?
+    /// The signed-in device when this client uses a device token, from `GET /api/auth/session`.
+    public private(set) var deviceSession: DeviceSession?
 
     private let session: URLSession
     private let store: any CredentialStore
@@ -27,7 +38,25 @@ public actor NoeviaClient {
     private let environment: ClientEnvironment
     private let requestTimeout: TimeInterval
     private var jar = SessionCookieJar()
+    /// Device-flow tokens. When set, requests use them and never the cookie jar.
+    private var tokens: DeviceTokens?
+    /// The refresh in flight, shared by every request that needs it: a refresh token is single
+    /// use, so two refreshes with the same one would make the server revoke this device.
+    private var refreshTask: Task<Void, any Error>?
     private var observers: [UUID: AsyncStream<ConnectionState>.Continuation] = [:]
+
+    /// A token this close to expiry is renewed before use.
+    static let refreshLeeway: TimeInterval = 60
+    static let deviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"
+
+    /// How requests are authenticated right now.
+    public enum Credential: Sendable, Equatable { case none, browserSession, deviceToken }
+
+    public var credential: Credential {
+        tokens != nil ? .deviceToken : jar.hasSession ? .browserSession : .none
+    }
+
+    private var signedIn: Bool { credential != .none }
 
     static let userAgent = "NoeviaKit/0.1 (macOS)"
 
@@ -87,7 +116,7 @@ public actor NoeviaClient {
 
     /// The state to show once the core has answered: signed in or not.
     private func reachableState(_ info: ServerInfo) -> ConnectionState {
-        jar.hasSession ? .connected(info) : .unauthorised
+        signedIn ? .connected(info) : .unauthorised
     }
 
     // MARK: - Connect and version negotiation
@@ -151,7 +180,8 @@ public actor NoeviaClient {
         let previous = jar
         jar.clear()
         let data: Data, http: HTTPURLResponse
-        do { (data, http) = try await send(makeRequest("/api/auth/login/password", method: "POST", body: body)) }
+        // No credential rides along: a device token beside a sign-in would be refused.
+        do { (data, http) = try await send(makeRequest("/api/auth/login/password", method: "POST", body: body), credentials: false) }
         catch { jar = previous; throw error }
         switch http.statusCode {
         case 200:
@@ -176,6 +206,9 @@ public actor NoeviaClient {
                 setState(serverInfo.map(reachableState) ?? .unauthorised)
                 throw NoeviaError.insecureSessionCookie
             }
+            // The browser session replaces any device token held before.
+            tokens = nil
+            deviceSession = nil
             try await store.save(credential)
             user = login.user
             if let info = serverInfo { setState(.connected(info)) }
@@ -197,10 +230,18 @@ public actor NoeviaClient {
         try await ensureNegotiated()
         guard let credential = try await store.load(serverOrigin: originKey) else {
             jar.clear()
+            tokens = nil
             user = nil
             if let info = serverInfo { setState(reachableState(info)) }
             return nil
         }
+        if let saved = credential.deviceTokens {
+            jar.clear()
+            tokens = saved
+            do { return try await currentUser() }
+            catch NoeviaError.unauthorised { return nil }
+        }
+        tokens = nil
         if credential.secure && origin.scheme == "http" {
             try? await store.delete(serverOrigin: originKey)
             setState(.unauthorised)
@@ -219,26 +260,34 @@ public actor NoeviaClient {
         let (data, http) = try await send(makeRequest("/api/auth/session", method: "GET"))
         let response = try await decode(SessionResponse.self, data, http)
         user = response.user
+        deviceSession = tokens == nil ? nil : response.device
         if let info = serverInfo { setState(.connected(info)) }
         return response.user
     }
 
-    /// `POST /api/auth/logout` with the CSRF header. Never retried. The local session is
-    /// removed even when the server cannot be told; the error is then rethrown so the UI can
-    /// say the server-side session was not revoked (it lapses after 7 idle days).
+    /// `POST /api/auth/logout`. Never retried. With a browser session it carries the CSRF
+    /// header; with a device token the server revokes this device (its grant and every token in
+    /// it). The local credential is removed even when the server cannot be told; the error is
+    /// then rethrown so the UI can say the server-side credential was not revoked (a session
+    /// lapses after 7 idle days; a device can also be revoked from the web app's Settings).
     public func signOut() async throws {
         var failure: (any Error)?
-        if jar.hasSession {
+        if signedIn {
             do {
                 let (data, http) = try await send(makeRequest("/api/auth/logout", method: "POST", body: Data("{}".utf8)))
                 if !(200..<300).contains(http.statusCode) && http.statusCode != 401 {
                     failure = Self.statusError(http.statusCode, data)
                 }
+            } catch NoeviaError.unauthorised {
+                // Already signed out on the server (the device was revoked, or the refresh
+                // token was refused): nothing left to revoke.
             } catch {
                 failure = error
             }
         }
         jar.clear()
+        tokens = nil
+        deviceSession = nil
         user = nil
         do { try await store.delete(serverOrigin: originKey) } catch { failure = failure ?? error }
         switch state {
@@ -273,7 +322,7 @@ public actor NoeviaClient {
     }
 
     private func requireSession() throws {
-        guard jar.hasSession else {
+        guard signedIn else {
             setState(.unauthorised)
             throw NoeviaError.unauthorised
         }
@@ -291,11 +340,18 @@ public actor NoeviaClient {
         return request
     }
 
-    /// Adds the jar's cookies and, for a mutating request, `X-CSRF-Token` (as the SPA's
-    /// `apiFetch` does), at send time so a retry always carries the current session.
-    private func authorise(_ request: URLRequest) -> URLRequest {
+    /// Adds the credential at send time, so a retry always carries the current one. A device
+    /// token goes in `Authorization` with no cookies (the core refuses a request carrying both)
+    /// and no CSRF header (it is not an ambient credential). Otherwise the jar's cookies and, for
+    /// a mutating request, `X-CSRF-Token` (as the SPA's `apiFetch` does). With
+    /// `credentials: false` nothing is added.
+    private func authorise(_ request: URLRequest, credentials: Bool) -> URLRequest {
         var request = request
-        guard let url = request.url else { return request }
+        guard credentials, let url = request.url else { return request }
+        if let tokens {
+            request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
+            return request
+        }
         if let cookie = jar.header(for: url) { request.setValue(cookie, forHTTPHeaderField: "Cookie") }
         let method = (request.httpMethod ?? "GET").uppercased()
         if !["GET", "HEAD", "OPTIONS"].contains(method), let csrf = jar.csrfToken {
@@ -304,11 +360,27 @@ public actor NoeviaClient {
         return request
     }
 
-    /// Sends with recovery for idempotent methods only.
-    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    /// Sends with recovery for idempotent methods only. With a device token, an access token
+    /// about to expire is refreshed first, and a 401 is answered by one refresh and one resend.
+    /// Resending is safe even for a POST: a 401 comes from the core's authentication gate,
+    /// before any route runs.
+    private func send(_ request: URLRequest, credentials: Bool = true) async throws -> (Data, HTTPURLResponse) {
+        guard credentials, let current = tokens else { return try await sendOnce(request, credentials: credentials) }
+        if current.accessExpiresAt.timeIntervalSince(environment.now()) <= Self.refreshLeeway {
+            try await refreshDeviceTokens(from: current)
+        }
+        let sentWith = tokens
+        let first = try await sendOnce(request, credentials: true)
+        guard first.1.statusCode == 401, let held = tokens else { return first }
+        // Another request may already have renewed the token this one was sent with.
+        if held == sentWith { try await refreshDeviceTokens(from: held) }
+        return try await sendOnce(request, credentials: true)
+    }
+
+    private func sendOnce(_ request: URLRequest, credentials: Bool) async throws -> (Data, HTTPURLResponse) {
         let idempotent = RetryPolicy.isIdempotent(request.httpMethod ?? "GET")
         return try await withRecovery(idempotent: idempotent, probeBeforeRetry: true) { client in
-            try await client.transmit(request)
+            try await client.transmit(request, credentials: credentials)
         }
     }
 
@@ -345,8 +417,8 @@ public actor NoeviaClient {
 
     /// One send. Applies cookies, checks the API major on every response, and classifies
     /// transport errors and 502/503 as `Transient`.
-    private func transmit(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let request = authorise(request)
+    private func transmit(_ request: URLRequest, credentials: Bool = true) async throws -> (Data, HTTPURLResponse) {
+        let request = authorise(request, credentials: credentials)
         let data: Data, response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
@@ -365,7 +437,7 @@ public actor NoeviaClient {
             setState(.incompatible(servedMajor: served))
             throw NoeviaError.unsupportedAPIMajor(served: served, supported: APIContract.supportedMajors)
         }
-        if jar.ingest(http, url: url), let credential = jar.credential(serverOrigin: originKey), url.path != "/api/auth/login/password" {
+        if jar.ingest(http, url: url), tokens == nil, let credential = jar.credential(serverOrigin: originKey), url.path != "/api/auth/login/password" {
             // A session cookie changed outside sign-in; keep the store in step.
             try? await store.save(credential)
         }
@@ -388,9 +460,122 @@ public actor NoeviaClient {
 
     private func dropSession() async {
         jar.clear()
+        tokens = nil
+        deviceSession = nil
         user = nil
         try? await store.delete(serverOrigin: originKey)
         setState(.unauthorised)
+    }
+
+    // MARK: - Device sign-in (#555)
+
+    /// `POST /api/auth/device/code`: starts a device sign-in (RFC 8628). Show the returned
+    /// `userCode` and `verificationURL`, then call `completeDeviceSignIn(_:)`. Sends no
+    /// credential. Throws `deviceSignInUnavailable` when the server does not offer it.
+    public func startDeviceSignIn(clientName: String) async throws -> DeviceAuthorization {
+        try await ensureNegotiated()
+        let body = try JSONSerialization.data(withJSONObject: ["client_name": clientName])
+        let (data, http) = try await send(makeRequest("/api/auth/device/code", method: "POST", body: body), credentials: false)
+        switch http.statusCode {
+        case 200:
+            guard let wire = try? JSONDecoder().decode(DeviceCodeResponse.self, from: data),
+                  let url = Self.webURL(wire.verification_uri), wire.expires_in > 0, !wire.device_code.isEmpty
+            else { throw NoeviaError.invalidResponse("POST /api/auth/device/code") }
+            return DeviceAuthorization(
+                userCode: wire.user_code, verificationURL: url,
+                verificationURLComplete: wire.verification_uri_complete.flatMap(Self.webURL),
+                expiresIn: .seconds(wire.expires_in), interval: .seconds(max(1, wire.interval ?? 5)),
+                deviceCode: wire.device_code
+            )
+        case 404: throw NoeviaError.deviceSignInUnavailable
+        default: throw Self.statusError(http.statusCode, data)
+        }
+    }
+
+    /// Polls `POST /api/auth/device/token` until the person approves or denies the sign-in in the
+    /// browser, or the code expires. Waits `interval` between polls and slows down when the
+    /// server asks. On approval the tokens replace any browser session, are saved to the
+    /// credential store, and the account is read with `GET /api/auth/session`. A dropped poll
+    /// is simply polled again. Cancel the calling task to stop waiting.
+    @discardableResult
+    public func completeDeviceSignIn(_ authorization: DeviceAuthorization) async throws -> User {
+        try await ensureNegotiated()
+        let body = try JSONSerialization.data(withJSONObject: ["grant_type": Self.deviceGrantType, "device_code": authorization.deviceCode])
+        var interval = authorization.interval
+        var waited: Duration = .zero
+        while true {
+            if waited >= authorization.expiresIn { throw NoeviaError.deviceSignInExpired }
+            try await environment.sleep(interval)
+            try Task.checkCancellation()
+            waited += interval
+            let data: Data, http: HTTPURLResponse
+            do { (data, http) = try await send(makeRequest("/api/auth/device/token", method: "POST", body: body), credentials: false) }
+            catch NoeviaError.transport { continue }
+            catch NoeviaError.http(let status, _) where policy.retryableStatuses.contains(status) { continue }
+            if http.statusCode == 200 {
+                try await adoptTokens(data)
+                return try await currentUser()
+            }
+            if http.statusCode == 404 { throw NoeviaError.deviceSignInUnavailable }
+            guard [400, 429].contains(http.statusCode), let error = try? JSONDecoder().decode(OAuthErrorBody.self, from: data) else {
+                throw Self.statusError(http.statusCode, data)
+            }
+            switch error.error {
+            case "authorization_pending": continue
+            case "slow_down": interval += .seconds(5)   // RFC 8628 §3.5
+            case "access_denied": throw NoeviaError.deviceSignInDenied
+            case "expired_token", "invalid_grant": throw NoeviaError.deviceSignInExpired
+            default: throw NoeviaError.http(status: http.statusCode, message: error.error_description ?? error.error)
+            }
+        }
+    }
+
+    /// Stores a token response as this client's credential, replacing any browser session.
+    private func adoptTokens(_ data: Data) async throws {
+        guard let wire = try? JSONDecoder().decode(TokenResponse.self, from: data),
+              wire.token_type.caseInsensitiveCompare("Bearer") == .orderedSame,
+              !wire.access_token.isEmpty, !wire.refresh_token.isEmpty
+        else { throw NoeviaError.invalidResponse("POST /api/auth/device/token") }
+        let next = DeviceTokens(accessToken: wire.access_token, refreshToken: wire.refresh_token,
+                                accessExpiresAt: environment.now().addingTimeInterval(TimeInterval(wire.expires_in)))
+        jar.clear()
+        tokens = next
+        try await store.save(SessionCredential(serverOrigin: originKey, deviceTokens: next))
+    }
+
+    /// Renews the access token with the refresh token, at most one refresh at a time: every
+    /// caller that needs one while it runs waits for the same one. Never resent: a refresh token
+    /// is single use. A refused refresh (the device was revoked, or the server saw the refresh
+    /// token twice and revoked the device) drops the credential and throws `.unauthorised`.
+    private func refreshDeviceTokens(from current: DeviceTokens) async throws {
+        if let running = refreshTask { return try await running.value }
+        guard tokens == current else { return } // already renewed by someone else
+        let task = Task { try await self.performRefresh(current) }
+        refreshTask = task
+        defer { refreshTask = nil }
+        try await task.value
+    }
+
+    private func performRefresh(_ current: DeviceTokens) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["grant_type": "refresh_token", "refresh_token": current.refreshToken])
+        let (data, http) = try await sendOnce(makeRequest("/api/auth/device/token", method: "POST", body: body), credentials: false)
+        switch http.statusCode {
+        case 200:
+            try await adoptTokens(data)
+        case 400, 401:
+            await dropSession()
+            throw NoeviaError.unauthorised
+        case 404:
+            throw NoeviaError.deviceSignInUnavailable
+        default:
+            throw Self.statusError(http.statusCode, data)
+        }
+    }
+
+    /// An http(s) URL from the server, or nil.
+    static func webURL(_ text: String) -> URL? {
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), url.host != nil else { return nil }
+        return url
     }
 
     static let transientCodes: Set<URLError.Code> = [
@@ -419,6 +604,8 @@ public actor NoeviaClient {
         let message = errorMessage(data)
         switch status {
         case 401: return .unauthorised
+        case 403 where (try? JSONDecoder().decode(ErrorBody.self, from: data))?.code == "browser_session_required":
+            return .browserSessionRequired
         case 403: return .forbidden(message ?? "forbidden")
         case 429: return .rateLimited
         default: return .http(status: status, message: message)

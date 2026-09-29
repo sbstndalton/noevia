@@ -1,0 +1,7 @@
+{
+  "access_token": "nva_synthetic-access-2",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "nvr_synthetic-refresh-2",
+  "scope": "api"
+}

@@ -43,6 +43,7 @@ write fallback.
 | Browser operation | Paths used by the SPA | Methods | Route owner |
 | --- | --- | --- | --- |
 | Startup and account | `/api/ready`, `/api/setup/status`, `/api/setup/complete`, `/api/auth/login/password`, `/api/auth/login/passkey/options`, `/api/auth/login/passkey/verify`, `/api/auth/invitations/accept`, `/api/auth/recovery/complete`, `/api/auth/session`, `/api/auth/logout` | GET for readiness/status/session; POST for the rest | `routes/health.cjs`, `routes/auth.cjs` |
+| Native-client sign-in (feature `nativeClientAuth`, see below) | `/api/auth/device/code`, `/api/auth/device/token`, `/api/auth/device/lookup`, `/api/auth/device/approve`, `/api/auth/devices`, `/api/auth/devices/{id}`, the `/device` page | POST for the flow; GET/DELETE for the device list | `routes/device-auth.cjs`, `device-auth.cjs` |
 | Profile and security | `/api/profile`, `/api/profile/features`, `/api/profile/onboarding`, `/api/profile/appearance`, `/api/profile/sharing`, `/api/profile/app-passwords`, `/api/profile/app-passwords/{id}`, `/api/auth/passkeys/register/options`, `/api/auth/passkeys/register/verify`, `/api/auth/passkeys/{id}`, `/api/auth/sessions/{id}` | GET/PATCH/PUT/POST/DELETE by operation | `routes/auth.cjs` |
 | Administration | `/api/admin/users`, `/api/admin/users/{id}`, `/api/admin/users/{id}/disabled`, `/api/admin/users/{id}/recovery`, `/api/admin/invitations`, `/api/admin/features`, `/api/admin/features/{name}`, `/api/admin/decision-settings`, `/api/admin/decision-settings/test`, `/api/admin/web-address` | GET/PUT/POST/DELETE by operation | `routes/auth.cjs`, `routes/features.cjs`, `routes/web-address.cjs` |
 | Personal data | `/api/account/preferences`, `/api/account/instructions`, `/api/account/memory`, `/api/account/retention`, `/api/usage`, `/api/usage/aggregate`, `/api/export/conversations`, `/api/import/conversations` | GET/PUT/POST by operation | `routes/account.cjs`, `routes/usage.cjs`, `routes/export.cjs`, `routes/import.cjs` |
@@ -62,6 +63,88 @@ documents, exports, and imports may use binary payloads. The browser's
 [`api.ts`](../apps/web/src/api.ts) and component-specific clients contain the
 request shapes; the corresponding `routes/*.cjs` factories define status and
 response bodies.
+
+## Native clients: authentication (#555)
+
+A non-browser client (the macOS app's NoeviaKit, a script) has two ways to sign in.
+
+**Browser-equivalent session.** `POST /api/auth/login/password` with the same cookies and
+CSRF header as the browser. A request **without** an `Origin` header passes the Origin
+check. This is part of the v1 contract. A request that does send `Origin` must send an
+allowed one. When the public origin is https, the session cookies are `Secure`, so a
+client on a LAN `http://` address cannot keep this session.
+
+**Device sign-in (preferred).** This is available while the `nativeClientAuth` feature is
+on (`NOEVIA_FEATURE_NATIVE_CLIENT_AUTH`, or Settings → Features). It is **off by default**.
+While it is off, every route below and the `/device` page answer `404`, and nothing else
+changes. It is the OAuth 2.0 Device Authorization Grant (RFC 8628). A PKCE loopback redirect
+was not used for three reasons. The core has no OAuth authorization endpoint or redirect
+handling. The public address often differs from the address a LAN client uses. And a device
+flow also works when the approving browser is on another device, such as a phone.
+
+1. `POST /api/auth/device/code` with `{ "client_name": "Noevia for Mac" }` (JSON or
+   form-encoded, no credential) returns `{ device_code, user_code, verification_uri,
+   verification_uri_complete, expires_in: 600, interval: 5 }`. `user_code` is `XXXX-XXXX`
+   from an alphabet with no vowels. `client_name` is required. It is shown to the person
+   with control characters removed, cut to 60 characters. Limit: 10 per address per 15
+   minutes (`429`).
+2. The person opens `verification_uri` (`/device`, with `?code=` in the complete form) in a
+   browser where they are signed in, or signs in there first. The page looks the code up
+   with `POST /api/auth/device/lookup { user_code }`. It shows the app's name, the code to
+   compare, the requesting address and the time. The person chooses Approve or Deny
+   (`POST /api/auth/device/approve { user_code, approve }`). Both need a cookie session and
+   CSRF. A device token, or the legacy `UI_AUTH_TOKEN` bearer, gets `403
+   browser_session_required`. Lookups and decisions are limited to 20 per account per 15
+   minutes (`429`). An unknown, expired or already decided code is `404`.
+3. The client polls `POST /api/auth/device/token` with `{ grant_type:
+   "urn:ietf:params:oauth:grant-type:device_code", device_code }`. It gets `400` with
+   `authorization_pending`, `slow_down` (the interval grows by 5 s), `access_denied`,
+   `expired_token` or `invalid_grant`, per RFC 6749 §5.2, until approval. It then gets `200
+   { access_token, token_type: "Bearer", expires_in: 3600, refresh_token, scope: "api" }`,
+   with `Cache-Control: no-store`. The device code is single use. Limit on this endpoint: 240
+   per address per 15 minutes.
+4. `{ grant_type: "refresh_token", refresh_token }` on the same endpoint rotates both tokens.
+   The previous access token stops working at once. A refresh token presented a second time
+   is **reuse**: the server revokes the whole grant, audits `device.refresh_reuse`, and
+   answers `invalid_grant`.
+
+Tokens are 256-bit random values (`nva_…` access, `nvr_…` refresh). The server stores only
+their SHA-256. Each approval creates one **grant**: a device, bound to the approving
+account (the tenant). A grant ends after 7 idle days or 30 days in total, the same as a
+session. Disabling the account, a password reset and account deletion revoke all of its
+grants. Turning the feature off stops every device token at once, and turning it back on
+revives the grants that have not expired.
+
+A device token is sent only as `Authorization: Bearer nva_…`. A query-string token is
+ignored. It authorises the same v1 routes as the browser, as the same user, with three
+differences:
+
+- **Never an administrator.** The request's effective role is `member`, so every
+  administrator gate refuses it. `GET /api/auth/session` returns that user plus
+  `accountRole`, `csrfToken: null` and `device: { id, clientName, expiresAt }`.
+- **Never account security.** The router answers `403 { code: "browser_session_required" }`
+  before any route runs for these paths: `/api/admin/*`, `/api/auth/passkeys/*`,
+  `/api/auth/sessions/*`, `/api/auth/devices*`, `/api/auth/device/lookup|approve`,
+  `/api/profile` itself, `/api/profile/app-passwords*`, `/api/profile/diary-connectors*`,
+  `/api/profile/sharing`, `/api/integrations/storage/nextcloud/*`, a write to
+  `/api/integrations/storage` or `/api/integrations/storage/test`, `/api/mcp-keys/*`,
+  `/api/mcp-oauth/*` and `/api/providers/chatgpt*`. A device therefore cannot mint more
+  credentials or approve another device.
+- **No CSRF.** A bearer token is not sent by the browser on its own, so the CSRF header
+  does not apply. Cookies and a device bearer **together** are refused with `400
+  ambiguous_credentials`, so neither can ride along with the other. A request with an
+  `Origin` header on a write still has to pass the Origin check, as a browser write does.
+
+Tenant scope, tool policy and all three write approvals are unchanged: a device answers its
+own approval cards through `/api/tool-approvals/{id}`. `POST /api/auth/logout` with a device
+token revokes that device.
+
+**Devices in Settings.** `GET /api/auth/devices` lists the caller's own grants: `{ devices:
+[{ id, clientName, createdAt, lastUsedAt, expiresAt, ip, userAgent }] }`. `lastUsedAt` is
+updated at most once a minute. `DELETE /api/auth/devices/{id}` revokes one. Its tokens are
+deleted, so the next request with them is `401`. Another account's id is `404`. Both need a
+browser session. The audit log records `device.approve`, `device.deny`, `device.token`
+(tokens issued), `device.refresh_reuse` and `device.revoke`.
 
 ## Portable instruction Skill manifest v1
 

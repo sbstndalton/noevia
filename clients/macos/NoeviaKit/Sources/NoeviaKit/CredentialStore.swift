@@ -1,9 +1,10 @@
 import Foundation
 import Security
 
-/// The only thing NoeviaKit ever persists: the account's own browser-equivalent session
-/// (`cowork_session` and `cowork_csrf`). Never a password, and never a service secret
-/// (Diary, tenant, provider or legacy `UI_AUTH_TOKEN` keys stay on the server).
+/// The only thing NoeviaKit ever persists: the account's own sign-in for one server. That is
+/// either a browser-equivalent session (`cowork_session` and `cowork_csrf`) or, after a device
+/// sign-in (#555), this device's own access and refresh tokens. Never a password, and never a
+/// service secret (Diary, tenant, provider or legacy `UI_AUTH_TOKEN` keys stay on the server).
 public struct SessionCredential: Codable, Sendable, Equatable {
     /// Scheme, host and port of the server the session belongs to.
     public let serverOrigin: String
@@ -11,12 +12,43 @@ public struct SessionCredential: Codable, Sendable, Equatable {
     public let csrfToken: String
     /// The server marked the cookies `Secure`: they are only ever sent over https.
     public let secure: Bool
+    /// Device-flow tokens. When present the client authenticates with `Authorization: Bearer`
+    /// and sends no cookies, and the cookie fields are empty. Items saved before #555 have no
+    /// such key and still decode.
+    public let deviceTokens: DeviceTokens?
 
     public init(serverOrigin: String, sessionToken: String, csrfToken: String, secure: Bool) {
         self.serverOrigin = serverOrigin
         self.sessionToken = sessionToken
         self.csrfToken = csrfToken
         self.secure = secure
+        self.deviceTokens = nil
+    }
+
+    /// A device sign-in's credential: tokens, no cookies.
+    public init(serverOrigin: String, deviceTokens: DeviceTokens) {
+        self.serverOrigin = serverOrigin
+        self.sessionToken = ""
+        self.csrfToken = ""
+        self.secure = false
+        self.deviceTokens = deviceTokens
+    }
+}
+
+/// One device's tokens from `POST /api/auth/device/token` (apps/web/server/device-auth.cjs).
+/// Both are opaque 256-bit values and the server keeps only their hashes. The access token lasts
+/// an hour. The refresh token is single use: every refresh returns a new pair, and presenting a
+/// spent refresh token again makes the server revoke this device entirely.
+public struct DeviceTokens: Codable, Sendable, Equatable {
+    public let accessToken: String
+    public let refreshToken: String
+    /// When the access token stops working, by this device's clock.
+    public let accessExpiresAt: Date
+
+    public init(accessToken: String, refreshToken: String, accessExpiresAt: Date) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.accessExpiresAt = accessExpiresAt
     }
 }
 

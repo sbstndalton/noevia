@@ -1,0 +1,4 @@
+{
+  "error": "This needs a signed-in browser session.",
+  "code": "browser_session_required"
+}
