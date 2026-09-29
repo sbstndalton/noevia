@@ -91,3 +91,21 @@ test('the composer sends the chosen pin with that one message only, and App forw
   assert.match(chatView, /useSkillPinOptions\(project\?\.id \?\? null, [^)]*streaming[^)]*, mode !== 'cowork'\)/, 'refreshed after each reply; never offered to Cowork tasks');
   assert.match(app, /\.\.\.\(turn\.skill \? \{ skill: turn\.skill \} : \{\}\)/);
 });
+
+test('Retry resends the pin its message was sent with, and the project home composer can pin (#562, #564)', () => {
+  const app = fs.readFileSync(path.join(__dirname, '../src/App.tsx'), 'utf8');
+  const view = fs.readFileSync(path.join(__dirname, '../src/components/ProjectView.tsx'), 'utf8');
+  assert.match(app, /sentSkillPins\.current\.set\(userMsg\.id, turn\.skill\)/, 'the pin is remembered per user message');
+  assert.match(app, /const pin = sentSkillPins\.current\.get\(msgs\[index - 1\]\.id\);\n\s+void handleSend\(chatId, projectId, msgs\[index - 1\]\.content, msgs\.slice\(0, index - 1\), pin \? \{ skill: pin \} : \{\}\)/);
+  assert.match(app, /pendingFirstSend\.current = \{ chatId, projectId, text, \.\.\.\(skill \? \{ skill \} : \{\}\) \}/);
+  assert.match(app, /pending\.skill \? \{ skill: pending\.skill \} : \{\}/);
+  assert.match(view, /<SkillPinSelect options=\{skillOptions\}/);
+  assert.match(view, /onSendFirst\(project\.id, text, skillPin \? \(skillPin as SkillPin\) : undefined\)/);
+});
+
+test('Sources labels an enabled skill that has scripts as unusable in chat, and cannot enable one (#567)', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/components/InstructionSkills.tsx'), 'utf8');
+  assert.match(source, /Can't be used in chat \(has scripts\)/);
+  assert.match(source, /skill\.status === 'enabled' && skill\.scripts\?\.length \? SCRIPTS_STATE : labels\[skill\.status\]/);
+  assert.match(source, /\(skill\.status !== 'enabled' && !!skill\.scripts\?\.length\)/);
+});

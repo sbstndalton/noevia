@@ -57,3 +57,21 @@ test('an empty task list renders nothing — the caller shows the empty hint, no
   const html = render(React.createElement(CodingTaskList, { tasks: [], onOpen: () => {} }));
   assert.equal(html, '<ul class="coding-task-list"></ul>');
 }));
+
+test('CodingProjectList and the Code picker hide archived projects (#566)', () => withModule('/src/components/CodingSidebarLists.tsx', async ({ CodingProjectList }, React, render) => {
+  const projects = [
+    { id: 'p1', name: 'Garden planner', icon: 'folder', color: 'default' },
+    { id: 'p2', name: 'Archived synthetic project', icon: 'folder', color: 'default', archived: true },
+  ];
+  const html = render(React.createElement(CodingProjectList, { projects, onOpen: () => {} }));
+  assert.match(html, /Garden planner/);
+  assert.doesNotMatch(html, /Archived synthetic project/);
+  await withModule('/src/components/CodingWorkspace.tsx', ({ CodeProjectPicker }, R, renderPicker) => {
+    const picker = renderPicker(R.createElement(CodeProjectPicker, { projects, onOpen: () => {} }));
+    assert.match(picker, /Garden planner/);
+    assert.doesNotMatch(picker, /Archived synthetic project/);
+    const onlyArchived = renderPicker(R.createElement(CodeProjectPicker, { projects: [projects[1]], onOpen: () => {} }));
+    assert.doesNotMatch(onlyArchived, /Archived synthetic project/);
+    assert.match(onlyArchived, /Create a project/);
+  });
+}));

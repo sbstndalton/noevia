@@ -131,3 +131,28 @@ test('tuning pre-flight lists the sampling step first and formats the recommende
   for(const bad of [null,undefined,{},{tier:'guess',source:'x',values:{}},{tier:'family',values:{}},{tier:'family',source:'x'},'text'])assert.equal(g.parseSamplingPlan(bad),null,JSON.stringify(bad));
   assert.deepEqual(g.samplingValueList(null),[]);
 });
+
+test('the sampling source and note translate from stable ids, and old server strings still map (#565)',()=>{
+  const core=load('i18n/core.ts');load('i18n/models/index.ts');
+  const fresh=g.parseSamplingPlan({tier:'family',source:'Qwen3.5 family table',sourceId:'family-table',values:{temperature:1},family:'qwen3.5',familyLabel:'Qwen3.5',note:'thinking-mode values',noteId:'thinking-mode'});
+  assert.deepEqual(g.samplingPlanParts(fresh),{familyName:'Qwen3.5',note:'thinking-mode',rawNote:null});
+  // A server that predates the ids: the English strings are recognised instead.
+  const legacy=g.parseSamplingPlan({tier:'family',source:'Gemma 4 family table',values:{temperature:1},family:'gemma-4',note:'thinking-mode values'});
+  assert.deepEqual(g.samplingPlanParts(legacy),{familyName:'Gemma 4',note:'thinking-mode',rawNote:null});
+  const other=g.parseSamplingPlan({tier:'family',source:'Phi-4 family table',values:{temperature:0.8},family:'phi-4',note:'something new'});
+  assert.deepEqual(g.samplingPlanParts(other),{familyName:'Phi-4',note:null,rawNote:'something new'});
+  assert.equal(g.samplingPlanParts(g.parseSamplingPlan({tier:'model-card',source:'generation_config.json',values:{temperature:1}})).familyName,null);
+  // Every locale catalogue carries both keys, translated (a locale's tune.sampling.tier.family sentence is the English reference).
+  const dir=path.join(__dirname,'../src/i18n/models');
+  const en=fs.readFileSync(path.join(dir,'en-GB.ts'),'utf8');
+  const enSentence=/'mm\.tune\.sampling\.tier\.familyNamed': '([^']+)'/.exec(en)[1];
+  for(const locale of ['de-DE','es-ES','fr-FR','it-IT','nb-NO','nl-NL','pt-BR','sv-SE']){
+    const text=fs.readFileSync(path.join(dir,locale+'.ts'),'utf8');
+    const sentence=new RegExp('\'mm\\.tune\\.sampling\\.tier\\.familyNamed\': "([^"]+)"').exec(text)?.[1];
+    assert.ok(sentence,locale+' has the family sentence');assert.match(sentence,/\{family\}/,locale);
+    assert.notEqual(sentence,enSentence,locale+' is translated');assert.doesNotMatch(sentence,/family table/i,locale);
+    const note=new RegExp('\'mm\\.tune\\.sampling\\.note\\.thinkingMode\': "([^"]+)"').exec(text)?.[1];
+    assert.ok(note&&!/thinking/i.test(note),locale+' translates the note');
+  }
+  assert.equal(core.translate('en-GB','mm.tune.sampling.tier.familyNamed',{family:'Qwen3.5'}),enSentence.replace('{family}','Qwen3.5'));
+});
