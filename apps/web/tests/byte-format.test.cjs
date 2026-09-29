@@ -37,3 +37,32 @@ test('bad input and an unknown locale still give text', () => {
   assert.match(plain(formatBytes(-5, 'en-GB')), /^0 /);
   assert.match(formatBytes(2048, 'xx-invalid-locale-zz'), /2/);
 });
+
+// #653: CLDR's SHORT English byte is "byte" for every count ("109 byte"). The byte tier is spelled out and
+// inflected by the locale's own plural rules instead; kilobytes and up keep their symbols.
+test('#653 a size under 1 KB reads with a correct singular and plural in every shipped locale', () => {
+  const expected = {
+    'en-GB': ['1 byte', '109 bytes'], 'en-US': ['1 byte', '109 bytes'],
+    'de-DE': ['1 Byte', '109 Byte'], 'fr-FR': ['1 octet', '109 octets'],
+    es: ['1 byte', '109 bytes'], 'pt-BR': ['1 byte', '109 bytes'],
+    it: ['1 byte', '109 byte'], nl: ['1 byte', '109 byte'], nb: ['1 byte', '109 byte'], sv: ['1 byte', '109 byte'],
+  };
+  for (const [locale, [one, many]] of Object.entries(expected)) {
+    assert.equal(plain(formatBytes(1, locale)), one, `${locale} singular`);
+    assert.equal(plain(formatBytes(109, locale)), many, `${locale} plural`);
+  }
+  assert.doesNotMatch(plain(formatBytes(109, 'en-GB')), /109 byte$/, 'the bug: "109 byte"');
+  assert.equal(plain(formatBytes(0, 'en-GB')), '0 bytes');
+  // The tier above is untouched.
+  assert.equal(plain(formatBytes(1024, 'en-GB')), '1 kB');
+  assert.equal(plain(formatBytes(2048, 'fr-FR')), '2 ko');
+});
+
+test('#653 the binary sizes name a byte with a symbol, which has no plural to get wrong', () => {
+  const { formatBinaryBytes } = ex;
+  assert.equal(plain(formatBinaryBytes(1, 'en-GB')), '1 B');
+  assert.equal(plain(formatBinaryBytes(109, 'en-GB')), '109 B');
+  assert.equal(plain(formatBinaryBytes(109, 'de-DE')), '109 B');
+  assert.equal(plain(formatBinaryBytes(109, 'fr-FR')), '109 o');
+  assert.doesNotMatch(plain(formatBinaryBytes(109, 'en-GB')), /byte/i);
+});
