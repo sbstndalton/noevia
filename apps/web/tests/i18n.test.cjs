@@ -488,3 +488,33 @@ test('model card state and capability tags are translated, and the state is not 
   assert.equal(core.translate('de-DE','mm.card.unloaded'),'Nicht geladen');
   assert.equal(core.translate('nl-NL','mm.card.unloaded'),'Niet geladen');
 });
+
+// #597/#598: the words the model manager service and server send as English (benchmark status,
+// Advanced group titles, tune drafting labels, evidence limitations) are translated from stable ids
+// in every non-English locale, keep their placeholders, and the ids match what the server sends.
+test('service-supplied model manager words are translated per locale from stable ids',()=>{
+  const EN_MODELS=ENSEG.models;
+  const ids={
+    'mm.bench.status.':['idle','starting','running','cancelling','done','cancelled','error'],
+    'mm.tier.':['common','runtime','rope','moe','multimodal','speculative','lora','cpu','reasoning','misc'],
+    'mm.spec.':['off','mtp','mtp-deep','mtp-shallow','ngram'],
+    'mm.evidence.lim.':['autotune-quality','autotune-budget','vision-probe','single-reply','calibration-budget','benchmark-median','source-unverified'],
+  };
+  same(require('../server/evidence-limitations.cjs').LIMITATION_IDS.slice().sort(),ids['mm.evidence.lim.'].slice().sort(),'server limitation ids match the catalogue');
+  // Some words read the same in French or Spanish ("Multimodal / vision"); German is the strict check. Names (RoPE / YaRN, MTP, N-gram, Mixture-of-Experts, LoRA, "Error") may match.
+  const MAY_MATCH=new Set(['mm.tier.rope','mm.spec.ngram','mm.spec.mtp','mm.tier.moe','mm.tier.lora','mm.bench.status.error']);
+  for(const [prefix,list] of Object.entries(ids))for(const id of list){
+    const k=prefix+id;
+    assert.ok(k in EN_MODELS,`${k} missing from the English models segment`);
+    for(const l of Object.keys(FILES)){
+      const text=core.translate(l,k);
+      assert.ok(text&&text!==k,`${l}: ${k} has no translation`);
+      if(l==='de-DE'&&!MAY_MATCH.has(k))assert.notEqual(text,EN_MODELS[k],`${l}: ${k} is still English`);
+      for(const p of EN_MODELS[k].match(/\{\w+\}/g)||[])assert.ok(text.includes(p),`${l}: ${k} lost ${p}`);
+    }
+  }
+  assert.equal(core.translate('de-DE','mm.bench.status.done'),'Fertig');
+  assert.equal(core.translate('fr-FR','mm.tier.speculative'),'Décodage spéculatif');
+  assert.equal(core.translate('de-DE','mm.spec.off'),'Aus');
+  assert.match(core.translate('de-DE','mm.evidence.lim.autotune-quality'),/^Drei deterministische/);
+});
