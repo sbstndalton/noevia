@@ -626,4 +626,7 @@ export const IT_IT: Catalogue = {
   'device.invalid': "Il codice non è valido o è scaduto. Controllalo o ricomincia dall’app.",
   'device.tooMany': "Troppi tentativi. Attendi qualche minuto e riprova.",
   'device.failed': "Impossibile raggiungere noevia. Controlla la connessione e riprova.",
+  'device.requestedAt': "Richiesto alle {time}.",
+  'device.approvingAs': "Approvando, l’app accede al tuo account: {name} ({username}).",
+  'device.switchAccount': "Non sei tu? Esci",
 };

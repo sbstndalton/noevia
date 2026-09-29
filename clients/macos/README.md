@@ -82,10 +82,16 @@ the server's `nativeClientAuth` feature is off, the password path below is the o
   because it is not a cookie.
 - A device grant, like a session, ends after 7 idle days or 30 days in total. The person then
   approves a new code.
-- **A lost refresh response signs the device out.** Refresh tokens rotate and are single
-  use. If the server rotated one but the answer never arrived, the next refresh presents the
-  old token. The server treats that as reuse and revokes the device, so the person approves a
-  new code. This is the intended trade-off of reuse detection.
+- **Lost refresh answers.** Refresh tokens rotate and are single use. If the answer to a
+  refresh never arrives, the client keeps its old pair and retries with the same refresh
+  token. The server accepts that retry for 60 seconds, while the new pair it issued has not
+  been used. After that, the retry counts as reuse and revokes the device, so the person
+  approves a new code.
+- **The Keychain is the source of truth.** A new pair is saved first and used only once the
+  save succeeded. If the Keychain refuses the save, the refresh or sign-in throws
+  `credentialStore(_:)` and the client keeps the pair it had.
+- **Turning the server's feature off signs every device out.** Turning it on again does not
+  bring them back.
 
 ## Build and test
 

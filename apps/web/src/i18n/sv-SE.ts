@@ -626,4 +626,7 @@ export const SV_SE: Catalogue = {
   'device.invalid': "Koden är ogiltig eller har gått ut. Kontrollera den eller börja om i appen.",
   'device.tooMany': "För många försök. Vänta några minuter och försök igen.",
   'device.failed': "noevia kunde inte nås. Kontrollera anslutningen och försök igen.",
+  'device.requestedAt': "Begärd kl. {time}.",
+  'device.approvingAs': "När du godkänner loggas appen in på ditt konto: {name} ({username}).",
+  'device.switchAccount': "Inte du? Logga ut",
 };

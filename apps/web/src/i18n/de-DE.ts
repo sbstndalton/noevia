@@ -626,4 +626,7 @@ export const DE_DE: Catalogue = {
   'device.invalid': "Dieser Code ist ungültig oder abgelaufen. Prüfe ihn oder starte die Anmeldung in der App neu.",
   'device.tooMany': "Zu viele Versuche. Warte ein paar Minuten und versuche es erneut.",
   'device.failed': "noevia ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
+  'device.requestedAt': "Angefordert um {time}.",
+  'device.approvingAs': "Beim Zulassen wird die App mit deinem Konto angemeldet: {name} ({username}).",
+  'device.switchAccount': "Nicht du? Abmelden",
 };

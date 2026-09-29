@@ -530,7 +530,11 @@ public actor NoeviaClient {
         }
     }
 
-    /// Stores a token response as this client's credential, replacing any browser session.
+    /// Stores a token response as this client's credential, replacing any browser session. The
+    /// Keychain is the source of truth: the pair is saved first and adopted only once saved. If
+    /// the save fails, the error surfaces and the client keeps the pair it had. After a refresh,
+    /// the server accepts that previous refresh token again for a minute while the unsaved
+    /// successor stays unused (its retry grace window), so a retry can still succeed.
     private func adoptTokens(_ data: Data) async throws {
         guard let wire = try? JSONDecoder().decode(TokenResponse.self, from: data),
               wire.token_type.caseInsensitiveCompare("Bearer") == .orderedSame,
@@ -538,9 +542,9 @@ public actor NoeviaClient {
         else { throw NoeviaError.invalidResponse("POST /api/auth/device/token") }
         let next = DeviceTokens(accessToken: wire.access_token, refreshToken: wire.refresh_token,
                                 accessExpiresAt: environment.now().addingTimeInterval(TimeInterval(wire.expires_in)))
+        try await store.save(SessionCredential(serverOrigin: originKey, deviceTokens: next))
         jar.clear()
         tokens = next
-        try await store.save(SessionCredential(serverOrigin: originKey, deviceTokens: next))
     }
 
     /// Renews the access token with the refresh token, at most one refresh at a time: every

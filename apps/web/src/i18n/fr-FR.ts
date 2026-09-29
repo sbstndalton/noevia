@@ -626,4 +626,7 @@ export const FR_FR: Catalogue = {
   'device.invalid': "Ce code n’est pas valide ou a expiré. Vérifiez-le ou recommencez dans l’app.",
   'device.tooMany': "Trop de tentatives. Patientez quelques minutes, puis réessayez.",
   'device.failed': "Impossible de joindre noevia. Vérifiez votre connexion, puis réessayez.",
+  'device.requestedAt': "Demandé à {time}.",
+  'device.approvingAs': "En approuvant, l’app sera connectée à votre compte : {name} ({username}).",
+  'device.switchAccount': "Ce n’est pas vous ? Se déconnecter",
 };

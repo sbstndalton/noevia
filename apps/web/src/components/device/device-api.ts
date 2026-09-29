@@ -5,10 +5,11 @@
 import { apiFetch } from '../../api';
 
 /** A pending sign-in request, as the approval screen shows it. */
-export interface DeviceRequest { clientName: string; userCode: string; requestedAt: number; expiresAt: number; ip: string; userAgent: string }
+/** `ip` is null unless the server trusts a proxy to report it (TRUST_PROXY); otherwise it would be the tunnel's. */
+export interface DeviceRequest { clientName: string; userCode: string; requestedAt: number; expiresAt: number; ip: string | null; userAgent: string }
 
 /** One signed-in device (a grant) in Settings → Security and login. */
-export interface SignedInDevice { id: string; clientName: string; createdAt: number; lastUsedAt: number; expiresAt: number; ip: string; userAgent: string }
+export interface SignedInDevice { id: string; clientName: string; createdAt: number; lastUsedAt: number; expiresAt: number; ip: string | null; userAgent: string }
 
 /** A refusal with its HTTP status, so a screen can say "expired" rather than "offline". */
 export class DeviceApiError extends Error {

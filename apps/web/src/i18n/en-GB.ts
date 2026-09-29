@@ -637,6 +637,9 @@ export const EN_GB = {
   'device.invalid': "That code is not valid or has expired. Check it, or start again in the app.",
   'device.tooMany': "Too many attempts. Wait a few minutes and try again.",
   'device.failed': "noevia could not be reached. Check your connection and try again.",
+  'device.requestedAt': "Requested at {time}.",
+  'device.approvingAs': "Approving signs the app in to your account: {name} ({username}).",
+  'device.switchAccount': "Not you? Sign out",
 } as const;
 
 export type MessageKey = keyof typeof EN_GB;

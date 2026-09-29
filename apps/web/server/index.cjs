@@ -93,7 +93,10 @@ const authService = createAuth({
     .filter(Boolean),
 });
 const decisionSettings = require('./decision-settings.cjs').createDecisionSettings({ store: require('./features.cjs').settingsStore(authService.db), audit: (action,actor,detail)=>authService.audit(action,actor,actor,detail) });
-const features = require('./features.cjs').createFeatures({ store: require('./features.cjs').settingsStore(authService.db), audit: (action, actor, detail) => authService.audit(action, actor, actor, detail), availability:{stepSupervision:decisionSettings.unavailable,toolGate:decisionSettings.unavailable,systemOneRouting:()=>decisionSettings.unavailable() && require('./system-one-router.cjs').configuration().reason} });
+const features = require('./features.cjs').createFeatures({ store: require('./features.cjs').settingsStore(authService.db), audit: (action, actor, detail) => authService.audit(action, actor, actor, detail),
+  // #555 F4: switching native-app sign-in off is a revoke, not a pause (deviceAuth is built below).
+  onChange: (name, enabled, actorId) => { if (name === 'nativeClientAuth' && !enabled) deviceAuth.revokeAll(actorId, 'feature-off'); },
+  availability:{stepSupervision:decisionSettings.unavailable,toolGate:decisionSettings.unavailable,systemOneRouting:()=>decisionSettings.unavailable() && require('./system-one-router.cjs').configuration().reason} });
 const featureRoutes = require('./routes/features.cjs').createFeatureRoutes({ features, json, readJson, decisionSettings });
 const pluginDirectoryRoutes = require('./routes/plugin-directory.cjs').createPluginDirectoryRoutes({ json });
 // Settings → Data: the signed-in user's conversations as a ZIP (routes/export.cjs).
@@ -633,7 +636,11 @@ const deviceAuth = require('./device-auth.cjs').createDeviceAuth({
   db: authService.db, audit: authService.audit, publicUser: authService.publicUser, rate: createRateLimiter(),
   clientAddress: (req) => require('./auth.cjs').clientAddress(req, process.env.TRUST_PROXY === 'true'),
   origin: () => authService.origin || process.env.PUBLIC_ORIGIN || '',
+  // Without TRUST_PROXY every request carries the tunnel's address: not shown, not rate-limited on.
+  addressesTrusted: process.env.TRUST_PROXY === 'true',
 });
+// Started with the feature off: grants from an earlier "on" period are revoked, not kept dormant.
+if (!nativeClientAuth()) deviceAuth.revokeAll(null, 'feature-off');
 const requestAuth = require('./device-auth.cjs').createRequestAuth({ enabled: nativeClientAuth, deviceAuth, authService });
 const deviceRoutes = require('./routes/device-auth.cjs').createDeviceAuthRoutes({ json, authResult, readJson, deviceAuth, authService, enabled: nativeClientAuth });
 const authRoutes = require('./routes/auth.cjs').createAuthRoutes({

@@ -27,7 +27,7 @@ async function fixture(t) {
   const audits = [];
   const deviceAuth = device.createDeviceAuth({
     db: auth.db, publicUser: auth.publicUser, rate: createRateLimiter(), clientAddress: (r) => r.socket.remoteAddress,
-    audit: (...a) => { audits.push(a); auth.audit(...a); }, origin: () => ORIGIN, now: () => clock.t,
+    audit: (...a) => { audits.push(a); auth.audit(...a); }, origin: () => ORIGIN, now: () => clock.t, addressesTrusted: true,
   });
   return { auth, deviceAuth, clock, audits, userId: setup.body.user.id };
 }
@@ -99,9 +99,74 @@ test('reuse detection revokes the chain and is audited with the account as targe
   const f = await fixture(t);
   const tokens = await approved(f);
   const rotated = f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: tokens.refresh_token }).body;
+  f.clock.t += device.REFRESH_GRACE_MS + 1; // past the retry grace window
   assert.equal(f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: tokens.refresh_token }).body.error, 'invalid_grant');
   assert.equal(f.deviceAuth.authenticate(bearerReq(rotated.access_token)), null);
   assert.ok(f.audits.some(([action, , target]) => action === 'device.refresh_reuse' && target === f.userId));
+});
+
+test('F3: the previous refresh token works for 60 s while its successor is unused, then is reuse', async (t) => {
+  const f = await fixture(t);
+  const tokens = await approved(f);
+  const refresh = (token) => f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: token });
+  assert.equal(refresh(tokens.refresh_token).status, 200); // answer lost in transit
+  f.clock.t += device.REFRESH_GRACE_MS - 1000;
+  const retry = refresh(tokens.refresh_token);
+  assert.equal(retry.status, 200, 'retried inside the window');
+  assert.ok(f.deviceAuth.authenticate(bearerReq(retry.body.access_token)));
+  // The window is measured from the first use, not extended by retries.
+  f.clock.t += 2000;
+  assert.equal(refresh(tokens.refresh_token).body.error, 'invalid_grant');
+  assert.equal(f.deviceAuth.authenticate(bearerReq(retry.body.access_token)), null, 'outside the window it is reuse');
+  assert.equal(f.audits.filter(([a]) => a === 'device.refresh_reuse').length, 1);
+});
+
+test('F3: a used successor makes the previous refresh token reuse even inside the window', async (t) => {
+  const f = await fixture(t);
+  const tokens = await approved(f);
+  const refresh = (token) => f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: token });
+  const second = refresh(tokens.refresh_token).body;
+  const third = refresh(second.refresh_token).body;
+  assert.equal(refresh(tokens.refresh_token).body.error, 'invalid_grant');
+  assert.equal(f.deviceAuth.authenticate(bearerReq(third.access_token)), null);
+});
+
+test('F4: revokeAll deletes every grant and audits each account once', async (t) => {
+  const f = await fixture(t);
+  const a = await approved(f, 'One');
+  const b = await approved(f, 'Two');
+  assert.equal(f.deviceAuth.revokeAll('admin-actor', 'feature-off'), 2);
+  assert.equal(f.deviceAuth.authenticate(bearerReq(a.access_token)), null);
+  assert.equal(f.deviceAuth.authenticate(bearerReq(b.access_token)), null);
+  assert.equal(f.auth.db.prepare('SELECT count(*) AS n FROM device_tokens').get().n, 0);
+  const revokes = f.audits.filter(([action]) => action === 'device.revoke_all');
+  assert.deepEqual(revokes.map(([, actor, target, detail]) => [actor, target, detail.count, detail.reason]), [['admin-actor', f.userId, 2, 'feature-off']]);
+  assert.equal(f.deviceAuth.revokeAll('admin-actor', 'feature-off'), 0);
+});
+
+test('F1: lookups and the device list hide the socket address unless it is trusted', async (t) => {
+  const f = await fixture(t);
+  const started = f.deviceAuth.start(req('10.9.9.9'), { client_name: 'Hidden' }).body;
+  assert.equal(f.deviceAuth.lookup(f.userId, started.user_code).body.ip, '10.9.9.9', 'the unit fixture trusts addresses');
+  const hidden = device.createDeviceAuth({ db: f.auth.db, publicUser: f.auth.publicUser, rate: createRateLimiter(), clientAddress: (r) => r.socket.remoteAddress,
+    audit: () => {}, origin: () => ORIGIN, now: () => f.clock.t, addressesTrusted: false });
+  assert.equal(hidden.lookup(f.userId, started.user_code).body.ip, null);
+  await approved(f, 'Listed');
+  assert.ok(hidden.list(f.userId).every((d) => d.ip === null));
+});
+
+test('F1: token limits key on the credential; unknown credentials share one bounded bucket', async (t) => {
+  const f = await fixture(t);
+  const tokens = await approved(f);
+  let limited = 0;
+  for (let i = 0; i < device.LIMITS.tokenUnknown.limit + 5; i++) {
+    const r = f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: `nvr_unknown${i}` });
+    if (r.status === 429) limited++;
+  }
+  assert.equal(limited, 5);
+  // Malformed requests are refused before any bucket is charged.
+  for (let i = 0; i < 50; i++) assert.equal(f.deviceAuth.token(req(), { grant_type: 'nope' }).status, 400);
+  assert.equal(f.deviceAuth.token(req(), { grant_type: 'refresh_token', refresh_token: tokens.refresh_token }).status, 200);
 });
 
 test('a password reset revokes every device, like every session', async (t) => {

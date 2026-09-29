@@ -626,4 +626,7 @@ export const NL_NL: Catalogue = {
   'device.invalid': "Die code is ongeldig of verlopen. Controleer hem of begin opnieuw in de app.",
   'device.tooMany': "Te veel pogingen. Wacht een paar minuten en probeer het opnieuw.",
   'device.failed': "noevia is niet bereikbaar. Controleer je verbinding en probeer het opnieuw.",
+  'device.requestedAt': "Aangevraagd om {time}.",
+  'device.approvingAs': "Bij goedkeuren wordt de app aangemeld bij je account: {name} ({username}).",
+  'device.switchAccount': "Niet jij? Afmelden",
 };

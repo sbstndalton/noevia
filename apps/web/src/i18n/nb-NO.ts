@@ -626,4 +626,7 @@ export const NB_NO: Catalogue = {
   'device.invalid': "Koden er ugyldig eller utløpt. Sjekk den, eller start på nytt i appen.",
   'device.tooMany': "For mange forsøk. Vent noen minutter og prøv igjen.",
   'device.failed': "Får ikke kontakt med noevia. Sjekk tilkoblingen og prøv igjen.",
+  'device.requestedAt': "Forespurt kl. {time}.",
+  'device.approvingAs': "Når du godkjenner, logges appen på kontoen din: {name} ({username}).",
+  'device.switchAccount': "Ikke deg? Logg ut",
 };

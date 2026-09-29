@@ -55,6 +55,11 @@ async function shots(page,name){
   assert.equal(await title.evaluate(el=>el===document.activeElement),true,'focus moves to the question');
   assert.equal((await admin.locator('.device-code').textContent()).trim(),flow.body.user_code);
   await admin.getByText(/Only approve if you started this sign-in yourself/).waitFor();
+  // Shared browsers: the page says which account the app will be signed in to.
+  await admin.getByText('Approving signs the app in to your account: Synthetic admin (adminqa).').waitFor();
+  // TRUST_PROXY is off (as behind the tunnel): the shared socket address is not shown as the requester.
+  assert.equal(await admin.getByText(/Requested from/).count(),0);
+  await admin.getByText(/^Requested at /).waitFor();
   assert.equal((await native('/api/auth/device/token',{grant_type:DEVICE_GRANT,device_code:flow.body.device_code})).status,400,'still pending on the confirmation screen');
   await shots(admin,'confirm');
   await admin.getByRole('button',{name:'Approve Synthetic Mac',exact:true}).click();
@@ -67,6 +72,8 @@ async function shots(page,name){
   assert.equal(tokens.status,200);
   assert.equal((await native('/api/workspace',undefined,tokens.body.access_token)).status,200);
   assert.equal((await native('/api/admin/users',undefined,tokens.body.access_token)).status,403,'never administration');
+  const linked=await fetch(origin+'/api/connectors/gdrive/policy',{method:'PUT',headers:{'Content-Type':'application/json',authorization:`Bearer ${tokens.body.access_token}`},body:JSON.stringify({tools:[],mode:'allow'})});
+  assert.equal(linked.status,403,'never connector policy');
 
   // 4. Settings → Security and login lists the app with its last-used time; Revoke signs it out.
   await admin.goto(origin);
@@ -91,6 +98,15 @@ async function shots(page,name){
   await guest.getByRole('button',{name:'Sign in with password'}).click();
   await guest.getByRole('button',{name:'Set up later'}).click();
   await guest.getByRole('heading',{name:'Sign in an app'}).waitFor();
+  await guest.getByRole('button',{name:'Continue',exact:true}).click();
+  await guest.getByRole('heading',{name:'Sign in Unknown laptop?'}).waitFor();
+  // "Not you? Sign out" signs this browser out and comes back to the same code.
+  await guest.getByRole('button',{name:'Not you? Sign out',exact:true}).click();
+  await guest.getByLabel('Password').waitFor();
+  assert.match(guest.url(),new RegExp(`/device\\?code=${second.body.user_code}$`));
+  await guest.getByLabel('Username').fill('adminqa');await guest.getByLabel('Password').fill(PASSWORD);
+  await guest.getByRole('button',{name:'Sign in with password'}).click();
+  await guest.getByRole('button',{name:'Set up later'}).click();
   await guest.getByRole('button',{name:'Continue',exact:true}).click();
   await guest.getByRole('heading',{name:'Sign in Unknown laptop?'}).waitFor();
   await guest.getByRole('button',{name:'Deny',exact:true}).click();

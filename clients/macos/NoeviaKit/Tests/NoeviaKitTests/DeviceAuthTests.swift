@@ -29,6 +29,15 @@ enum DeviceFixtures {
     }
 }
 
+/// A Keychain that reads but refuses every write, like a locked or misconfigured keychain.
+actor SaveFailingStore: CredentialStore {
+    private let initial: SessionCredential?
+    init(_ initial: SessionCredential?) { self.initial = initial }
+    func load(serverOrigin: String) async throws -> SessionCredential? { initial }
+    func save(_ credential: SessionCredential) async throws { throw NoeviaError.credentialStore("synthetic keychain failure") }
+    func delete(serverOrigin: String) async throws {}
+}
+
 private func json(_ data: Data?) throws -> [String: String] {
     let body = try #require(data)
     let object = try JSONSerialization.jsonObject(with: body)
@@ -242,6 +251,55 @@ struct DeviceAuthTests {
     func browserOnlyRefusal() {
         #expect(NoeviaClient.statusError(403, Fixture.data("error-browser-session__index.cjs.json")) == .browserSessionRequired)
         #expect(NoeviaClient.statusError(403, Fixture.data("error-csrf__index.cjs.json")) == .forbidden("invalid CSRF token"))
+    }
+
+    @Test("F3: if the Keychain cannot save the rotated pair, it is not adopted and the error surfaces")
+    func refreshNotAdoptedWhenStoreFails() async throws {
+        let server = StubServer()
+        server.readyForDeviceSignIn(DeviceFixtures.rotated)
+        server.on("GET", "/api/workspace", .json(401, fixture: "error-unauthorized__http.cjs.json"), .json(fixture: "workspace__routes-chat-lists.cjs.json"))
+        let store = SaveFailingStore(DeviceFixtures.stored(for: server))
+        let client = try server.client(store: store)
+        _ = try await client.restoreSession()
+
+        await #expect(throws: NoeviaError.credentialStore("synthetic keychain failure")) { _ = try await client.workspace() }
+        // The Keychain is the source of truth: memory still holds the old pair, which the server
+        // accepts again for a minute while the unsaved successor is unused (retry grace window).
+        #expect(await client.credential == .deviceToken)
+        #expect(try await store.load(serverOrigin: server.origin.absoluteString)?.deviceTokens?.refreshToken == "nvr_synthetic-refresh-1")
+        #expect(server.requests("GET", "/api/workspace").count == 1, "no resend with a pair that was not kept")
+        _ = try await client.workspace()
+        let next = try #require(server.requests("GET", "/api/workspace").last)
+        #expect(next.header("Authorization") == "Bearer nva_synthetic-access-1", "the unsaved pair was never used")
+    }
+
+    @Test("F3: a refresh whose answer is lost is retried with the same refresh token")
+    func lostRefreshAnswerRetriesWithSameToken() async throws {
+        let server = StubServer()
+        server.readyForDeviceSignIn(.failure(.networkConnectionLost), DeviceFixtures.rotated)
+        server.on("GET", "/api/workspace", .json(401, fixture: "error-unauthorized__http.cjs.json"), .json(401, fixture: "error-unauthorized__http.cjs.json"), .json(fixture: "workspace__routes-chat-lists.cjs.json"))
+        let store = InMemoryCredentialStore([DeviceFixtures.stored(for: server)])
+        let client = try server.client(store: store)
+        _ = try await client.restoreSession()
+
+        do { _ = try await client.workspace(); Issue.record("expected a transport error") }
+        catch NoeviaError.transport { /* the refresh POST is never resent within the call */ }
+        #expect(await client.credential == .deviceToken, "a lost answer is not a sign-out")
+        _ = try await client.workspace()
+        let refreshes = server.requests("POST", "/api/auth/device/token")
+        #expect(try refreshes.map { try json($0.body)["refresh_token"] } == ["nvr_synthetic-refresh-1", "nvr_synthetic-refresh-1"])
+        #expect(try await store.load(serverOrigin: server.origin.absoluteString)?.deviceTokens?.refreshToken == "nvr_synthetic-refresh-2")
+    }
+
+    @Test("F3: device sign-in that cannot be saved to the Keychain fails instead of holding tokens only in memory")
+    func signInNotAdoptedWhenStoreFails() async throws {
+        let server = StubServer()
+        server.readyForDeviceSignIn(DeviceFixtures.issued)
+        let client = try server.client(store: SaveFailingStore(nil))
+        let authorization = try await client.startDeviceSignIn(clientName: "Synthetic Mac")
+        await #expect(throws: NoeviaError.credentialStore("synthetic keychain failure")) { try await client.completeDeviceSignIn(authorization) }
+        #expect(await client.credential == .none)
+        #expect(server.requests("GET", "/api/auth/session").isEmpty)
     }
 
     @Test("A credential saved before device sign-in still decodes; a device one round-trips")

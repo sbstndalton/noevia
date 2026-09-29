@@ -626,4 +626,7 @@ export const ES_ES: Catalogue = {
   'device.invalid': "Ese código no es válido o ha caducado. Revísalo o vuelve a empezar en la app.",
   'device.tooMany': "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
   'device.failed': "No se ha podido conectar con noevia. Comprueba tu conexión y vuelve a intentarlo.",
+  'device.requestedAt': "Solicitado a las {time}.",
+  'device.approvingAs': "Al aprobar, la app inicia sesión en tu cuenta: {name} ({username}).",
+  'device.switchAccount': "¿No eres tú? Cerrar sesión",
 };

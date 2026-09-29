@@ -626,4 +626,7 @@ export const PT_BR: Catalogue = {
   'device.invalid': "Esse código é inválido ou expirou. Confira-o ou comece de novo no app.",
   'device.tooMany': "Tentativas demais. Aguarde alguns minutos e tente novamente.",
   'device.failed': "Não foi possível acessar o noevia. Verifique sua conexão e tente novamente.",
+  'device.requestedAt': "Solicitado às {time}.",
+  'device.approvingAs': "Ao aprovar, o app entra na sua conta: {name} ({username}).",
+  'device.switchAccount': "Não é você? Sair",
 };

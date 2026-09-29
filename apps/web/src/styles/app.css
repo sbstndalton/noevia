@@ -96,6 +96,9 @@ body { margin: 0; background: var(--bg); }
 .device-card .device-code-input { font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
 .device-card .device-warning { font-size: var(--text-footnote); }
 .device-card .device-link { display: block; padding: 11px 14px; border-radius: var(--radius-button); text-align: center; text-decoration: none; font-weight: 700; }
+.device-card .device-account { color: var(--text); }
+/* A quiet text action: the card's buttons are filled by default (and recoloured later in this file). */
+.auth-card.device-card .device-switch { padding: 4px; background: none; color: var(--text-secondary); font-weight: 500; text-decoration: underline; }
 
 /* Setup wizard */
 .wizard-card { width: min(460px, 100%); }

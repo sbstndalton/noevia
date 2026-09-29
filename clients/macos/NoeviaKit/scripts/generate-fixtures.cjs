@@ -129,6 +129,8 @@ async function deviceFixtures(user) {
   const rotated = auth.token(req, { grant_type: 'refresh_token', refresh_token: issued.body.refresh_token });
   // Read before the reuse below, which (correctly) revokes the whole grant.
   const authn = auth.authenticate({ headers: { authorization: `Bearer ${rotated.body.access_token}` } });
+  // Past the retry grace window (review F3), a second use of the old refresh token is reuse.
+  clock += device.REFRESH_GRACE_MS + 1;
   const reused = auth.token(req, { grant_type: 'refresh_token', refresh_token: issued.body.refresh_token });
   expect(rotated.status === 200 && reused.body.error === 'invalid_grant', 'refresh');
   const denied = auth.start(req, { client_name: 'Synthetic Mac' });

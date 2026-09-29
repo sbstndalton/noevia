@@ -117,7 +117,7 @@ test('full flow: start, approve in the browser, token, API call, refresh with ro
   assert.equal(lookup.status, 200);
   assert.equal(lookup.json.clientName, 'NoeviaKit test Mac');
   assert.equal(lookup.json.userCode, flow.user_code);
-  assert.equal(lookup.json.ip, '10.0.0.5');
+  assert.equal(lookup.json.ip, null, 'TRUST_PROXY is off here: the socket address is not shown');
 
   // Approval without CSRF is refused like any other signed-in write.
   const noCsrf = await request('/api/auth/device/approve', { method: 'POST', body: { user_code: flow.user_code, approve: true }, headers: { cookie: admin.cookie, origin: ORIGIN } });
@@ -167,12 +167,14 @@ test('full flow: start, approve in the browser, token, API call, refresh with ro
   assert.equal((await asDevice(first.access_token, '/api/workspace')).status, 401);
   assert.equal((await asDevice(second.access_token, '/api/workspace')).status, 200);
 
-  // Presenting the spent refresh token again revokes the whole chain.
+  // Once the successor has been used, presenting the spent refresh token again revokes the chain.
+  const successor = (await request('/api/auth/device/token', { method: 'POST', body: { grant_type: 'refresh_token', refresh_token: second.refresh_token } })).json;
+  assert.ok(successor.access_token);
   const reuse = await request('/api/auth/device/token', { method: 'POST', body: { grant_type: 'refresh_token', refresh_token: first.refresh_token } });
   assert.equal(reuse.status, 400);
   assert.equal(reuse.json.error, 'invalid_grant');
-  assert.equal((await asDevice(second.access_token, '/api/workspace')).status, 401);
-  const chainDead = await request('/api/auth/device/token', { method: 'POST', body: { grant_type: 'refresh_token', refresh_token: second.refresh_token } });
+  assert.equal((await asDevice(successor.access_token, '/api/workspace')).status, 401);
+  const chainDead = await request('/api/auth/device/token', { method: 'POST', body: { grant_type: 'refresh_token', refresh_token: successor.refresh_token } });
   assert.equal(chainDead.json.error, 'invalid_grant');
 
   // A fresh device, revoked from Settings, is refused on its very next request.
@@ -295,15 +297,83 @@ test('requests are validated and rate limited', async () => {
   assert.equal((await request('/api/auth/device/code', { method: 'GET' })).status, 405);
   assert.equal((await request('/api/auth/device/token', { method: 'POST', body: { grant_type: 'password' } })).json.error, 'unsupported_grant_type');
   assert.equal((await request('/api/auth/device/token', { method: 'POST', body: 'not json' })).json.error, 'invalid_request');
-  // Ten starts per address per 15 minutes; the eleventh is 429. Another address is unaffected.
+  // Behind the tunnel every request shares one address (TRUST_PROXY off, as here), so starts are
+  // limited per client name, not per address: ten per name per 15 minutes, other names unaffected.
   const ip = '10.0.6.1';
-  for (let i = 0; i < 8; i++) assert.equal((await request('/api/auth/device/code', { method: 'POST', body: { client_name: `Burst ${i}` }, ip })).status, 200);
-  assert.equal((await request('/api/auth/device/code', { method: 'POST', body: { client_name: 'Burst 8' }, ip })).status, 200);
-  assert.equal((await request('/api/auth/device/code', { method: 'POST', body: { client_name: 'Burst 9' }, ip })).status, 200);
-  const limited = await request('/api/auth/device/code', { method: 'POST', body: { client_name: 'Burst 10' }, ip });
+  for (let i = 0; i < 10; i++) assert.equal((await request('/api/auth/device/code', { method: 'POST', body: { client_name: 'Burst Mac' }, ip })).status, 200);
+  const limited = await request('/api/auth/device/code', { method: 'POST', body: { client_name: 'Burst Mac' }, ip });
   assert.equal(limited.status, 429);
-  assert.equal((await request('/api/auth/device/code', { method: 'POST', body: { client_name: 'Elsewhere' }, ip: '10.0.6.2' })).status, 200);
-  // Code guessing in the browser is limited per account (20 per window).
+  assert.equal((await request('/api/auth/device/code', { method: 'POST', body: { client_name: 'Another app' }, ip })).status, 200, 'the same address can still start other sign-ins');
+});
+
+test('F1: junk token requests from the shared address never lock out a real device', async () => {
+  const tokens = await signInDevice(admin, 'Flooded Mac', '10.0.7.1');
+  const ip = '10.0.7.9'; // the attacker shares the address of every other client behind the tunnel
+  let unknownLimited = 0;
+  for (let i = 0; i < 800; i++) { // well over 241, and 400 unknown credentials exceed their bucket
+    const body = i % 4 === 0 ? { grant_type: 'password' }
+      : i % 4 === 1 ? 'not json'
+      : i % 4 === 2 ? { grant_type: 'refresh_token', refresh_token: `nvr_junk${i}` }
+      : { grant_type: DEVICE_GRANT, device_code: `junk${i}` };
+    const r = await request('/api/auth/device/token', { method: 'POST', body, ip });
+    assert.ok([400, 429].includes(r.status), `junk request ${i} -> ${r.status}`);
+    if (r.status === 429) unknownLimited++;
+  }
+  assert.ok(unknownLimited > 0, 'unknown credentials have their own, bounded bucket');
+  const refreshed = await request('/api/auth/device/token', { method: 'POST', body: { grant_type: 'refresh_token', refresh_token: tokens.refresh_token }, ip });
+  assert.equal(refreshed.status, 200, refreshed.text);
+  // A pending device's polls are not blocked by the flood either.
+  const flow = await startFlow('Polling after flood', ip);
+  const poll = await request('/api/auth/device/token', { method: 'POST', body: { grant_type: DEVICE_GRANT, device_code: flow.device_code }, ip });
+  assert.equal(poll.json.error, 'authorization_pending');
+});
+
+test('F1: with TRUST_PROXY off the shared socket address is not shown as the requester', async () => {
+  const flow = await startFlow('Addressless Mac', '10.0.8.1');
+  const lookup = await admin.write('/api/auth/device/lookup', { user_code: flow.user_code });
+  assert.equal(lookup.status, 200);
+  assert.equal(lookup.json.ip, null);
+  await admin.write('/api/auth/device/approve', { user_code: flow.user_code, approve: false });
+});
+
+test('F2: a device token cannot link connectors or change their tool policy', async () => {
+  const tokens = await signInDevice(admin, 'Connector Mac', '10.0.9.1');
+  for (const [method, url, body] of [
+    ['POST', '/api/connectors/gdrive/connect', {}],
+    ['POST', '/api/connectors/gdrive/disconnect', {}],
+    ['PUT', '/api/connectors/gdrive/policy', { tools: ['drive_write'], mode: 'allow' }],
+    ['PUT', '/api/connectors/gdrive/backup-copy', { enabled: true }],
+    ['PUT', '/api/connectors/nextcloud/policy', { tools: [], mode: 'allow' }],
+  ]) {
+    const r = await asDevice(tokens.access_token, url, { method, body });
+    assert.equal(r.status, 403, `${method} ${url} -> ${r.status}`);
+    assert.equal(r.json.code, 'browser_session_required');
+  }
+  assert.notEqual((await asDevice(tokens.access_token, '/api/connectors')).status, 403, 'reading the connector list stays allowed');
+});
+
+test('F3: a retried refresh within the grace window succeeds; reuse after the successor is used revokes', async () => {
+  const first = await signInDevice(admin, 'Retrying Mac', '10.0.10.1');
+  const refresh = (token) => request('/api/auth/device/token', { method: 'POST', body: { grant_type: 'refresh_token', refresh_token: token } });
+  const lost = await refresh(first.refresh_token); // the client never saw this answer
+  assert.equal(lost.status, 200);
+  const retried = await refresh(first.refresh_token);
+  assert.equal(retried.status, 200, 'the previous refresh token is accepted while its successor is unused');
+  assert.equal((await asDevice(retried.json.access_token, '/api/workspace')).status, 200);
+  // The discarded successor is now an unknown credential: invalid_grant, or 429 once the F1 flood
+  // above has filled the unknown-credential bucket. Either way it no longer works.
+  const discarded = await refresh(lost.json.refresh_token);
+  assert.ok([400, 429].includes(discarded.status) && discarded.json.error !== undefined && !discarded.json.access_token, 'the unused successor is replaced');
+  assert.equal((await asDevice(retried.json.access_token, '/api/workspace')).status, 200, 'replacing an unused successor is not reuse');
+  // Once the newest successor has been used, the old token is reuse and the device is revoked.
+  const next = await refresh(retried.json.refresh_token);
+  assert.equal(next.status, 200);
+  assert.equal((await refresh(first.refresh_token)).json.error, 'invalid_grant');
+  assert.equal((await asDevice(next.json.access_token, '/api/workspace')).status, 401);
+});
+
+// Last, because it uses up the administrator's lookup budget for the rest of the window.
+test('code guessing in the browser is limited per account', async () => {
   let last;
   for (let i = 0; i < 21; i++) last = await admin.write('/api/auth/device/lookup', { user_code: 'BCDF-GHJK' });
   assert.equal(last.status, 429);

@@ -11,8 +11,10 @@
 //
 // Tokens are 256-bit random values. Only their SHA-256 is stored. An access token lasts an hour.
 // A refresh token rotates on every use, and a refresh token presented twice revokes the whole
-// grant (reuse detection, per the OAuth 2.0 Security BCP). The grant itself lives as long as a
-// browser session: 7 idle days and 30 days in total (auth.cjs IDLE_MS/ABSOLUTE_MS).
+// grant (reuse detection, per the OAuth 2.0 Security BCP), except for a retry within 60 s while
+// its successor is still unused (REFRESH_GRACE_MS). The grant itself lives as long as a browser
+// session: 7 idle days and 30 days in total (auth.cjs IDLE_MS/ABSOLUTE_MS). Switching the feature
+// off deletes every grant (revokeAll, wired in index.cjs).
 //
 // A request with a device access token acts as the same account, but never as an administrator
 // (the effective role is `member`), and never on the account-security routes listed in
@@ -35,11 +37,24 @@ const ACCESS_PREFIX = 'nva_';
 const REFRESH_PREFIX = 'nvr_';
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
 
-// Rate limits (fixed windows from auth.cjs createRateLimiter).
+// How long the refresh token just replaced stays usable, while its successor is unused: a client
+// whose refresh answer was lost in transit retries with the old one (#555 review F3).
+const REFRESH_GRACE_MS = 60 * 1000;
+
+// Rate limits (fixed windows from auth.cjs createRateLimiter). Behind the Cloudflare tunnel with
+// TRUST_PROXY off every request shares one socket address, so nothing that a stranger can fill
+// is keyed on the address alone (#555 review F1). Token requests are charged to the credential
+// they present; an unknown credential goes to its own bucket and never touches a real device's.
+// Malformed requests are refused before any bucket is charged.
+const WINDOW = 15 * 60 * 1000;
 const LIMITS = Object.freeze({
-  code: { limit: 10, windowMs: 15 * 60 * 1000 },     // POST /device/code per address
-  token: { limit: 240, windowMs: 15 * 60 * 1000 },   // POST /device/token per address (polls + refreshes)
-  verify: { limit: 20, windowMs: 15 * 60 * 1000 },   // lookups + decisions per signed-in account
+  codeName: { limit: 10, windowMs: WINDOW },       // POST /device/code per client name
+  codeAddress: { limit: 10, windowMs: WINDOW },    //   ...and per address, only when TRUST_PROXY makes it real
+  codeGlobal: { limit: 200, windowMs: WINDOW },    //   ...and a backstop for the whole server
+  tokenCredential: { limit: 150, windowMs: WINDOW }, // POST /device/token per presented device code or refresh token
+  tokenUnknown: { limit: 300, windowMs: WINDOW },  //   unknown credentials: one bucket (per address when trusted)
+  tokenGlobal: { limit: 5000, windowMs: WINDOW },  //   backstop for known credentials
+  verify: { limit: 20, windowMs: WINDOW },         // lookups + decisions per signed-in account
 });
 
 // Paths a device token can never use, whatever the method: the account's security settings,
@@ -66,6 +81,10 @@ const BROWSER_ONLY = Object.freeze([
 // files through the connection stays allowed.
 const BROWSER_ONLY_EXACT = Object.freeze(new Set(['/api/profile']));
 const BROWSER_ONLY_WRITES = Object.freeze(new Set(['/api/integrations/storage', '/api/integrations/storage/test']));
+// Every write under these prefixes: linking or unlinking a connector account (Google Drive) and
+// its per-tool allow/ask/block policy (Drive, Nextcloud). A stolen token could otherwise link the
+// thief's Drive or pre-allow tools, which would outlive the token's revocation (review F2).
+const BROWSER_ONLY_WRITE_PREFIXES = Object.freeze(['/api/connectors/']);
 
 function digest(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -123,7 +142,8 @@ function hasSessionCookie(req) {
 function browserOnly(pathname, method = 'GET') {
   const p = String(pathname || '');
   if (BROWSER_ONLY_EXACT.has(p)) return true;
-  if (BROWSER_ONLY_WRITES.has(p) && !['GET', 'HEAD'].includes(String(method).toUpperCase())) return true;
+  const write = !['GET', 'HEAD'].includes(String(method).toUpperCase());
+  if (write && (BROWSER_ONLY_WRITES.has(p) || BROWSER_ONLY_WRITE_PREFIXES.some((prefix) => p.startsWith(prefix)))) return true;
   return BROWSER_ONLY.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
 }
 
@@ -147,10 +167,15 @@ function ensureDeviceSchema(db) {
     CREATE TABLE IF NOT EXISTS device_tokens(
       token_hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES device_grants(id) ON DELETE CASCADE,
       kind TEXT NOT NULL CHECK(kind IN ('access','refresh')), created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL, used_at INTEGER
+      expires_at INTEGER NOT NULL, used_at INTEGER, replaced_by TEXT
     );
     CREATE INDEX IF NOT EXISTS device_tokens_grant_idx ON device_tokens(grant_id);
   `);
+  // replaced_by: the hash of the refresh token that succeeded this one (review F3). Guarded for
+  // databases created by an earlier build of this branch.
+  if (!db.prepare('PRAGMA table_info(device_tokens)').all().some((c) => c.name === 'replaced_by')) {
+    db.exec('ALTER TABLE device_tokens ADD COLUMN replaced_by TEXT');
+  }
 }
 
 const oauthError = (error, description, status = 400) => ({ status, body: { error, error_description: description } });
@@ -164,8 +189,10 @@ const oauthError = (error, description, status = 400) => ({ status, body: { erro
  * @param {(req:object) => string} deps.clientAddress
  * @param {() => string} deps.origin                         the public origin, for verification_uri
  * @param {() => number} [deps.now]
+ * @param {boolean} [deps.addressesTrusted]  TRUST_PROXY: only then is a client address a real,
+ *        per-client value worth showing or rate limiting on. Off, it is the tunnel's address.
  */
-function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, now = Date.now }) {
+function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, now = Date.now, addressesTrusted = false }) {
   ensureDeviceSchema(db);
   const q = {
     sweep: db.prepare('DELETE FROM device_authorizations WHERE expires_at<=?'),
@@ -180,10 +207,15 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     userRow: db.prepare('SELECT * FROM users WHERE id=?'),
     insertGrant: db.prepare('INSERT INTO device_grants(id,user_id,client_name,created_at,last_used_at,expires_at,ip,user_agent) VALUES(?,?,?,?,?,?,?,?)'),
     insertToken: db.prepare('INSERT INTO device_tokens(token_hash,grant_id,kind,created_at,expires_at) VALUES(?,?,?,?,?)'),
-    tokenRow: db.prepare(`SELECT t.token_hash, t.kind, t.expires_at AS token_expires_at, t.used_at, g.id AS grant_id, g.user_id,
+    tokenRow: db.prepare(`SELECT t.token_hash, t.kind, t.expires_at AS token_expires_at, t.used_at, t.replaced_by, g.id AS grant_id, g.user_id,
         g.client_name, g.expires_at AS grant_expires_at, g.last_used_at
       FROM device_tokens t JOIN device_grants g ON g.id=t.grant_id WHERE t.token_hash=?`),
-    markUsed: db.prepare('UPDATE device_tokens SET used_at=? WHERE token_hash=? AND used_at IS NULL'),
+    tokenState: db.prepare('SELECT used_at FROM device_tokens WHERE token_hash=?'),
+    markUsed: db.prepare('UPDATE device_tokens SET used_at=?, replaced_by=? WHERE token_hash=? AND used_at IS NULL'),
+    setReplacedBy: db.prepare('UPDATE device_tokens SET replaced_by=? WHERE token_hash=?'),
+    deleteToken: db.prepare('DELETE FROM device_tokens WHERE token_hash=? AND used_at IS NULL'),
+    grantsByUser: db.prepare('SELECT user_id, count(*) AS n FROM device_grants GROUP BY user_id'),
+    deleteAllGrants: db.prepare('DELETE FROM device_grants'),
     dropAccess: db.prepare("DELETE FROM device_tokens WHERE grant_id=? AND kind='access'"),
     touchGrant: db.prepare('UPDATE device_grants SET last_used_at=? WHERE id=?'),
     deleteGrant: db.prepare('DELETE FROM device_grants WHERE id=?'),
@@ -203,19 +235,29 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     q.insertToken.run(digest(access), grantId, 'access', at, accessExpires);
     q.insertToken.run(digest(refresh), grantId, 'refresh', at, Math.min(at + REFRESH_IDLE_MS, grantExpiresAt));
     return {
-      access_token: access, token_type: 'Bearer', expires_in: Math.max(1, Math.floor((accessExpires - at) / 1000)),
-      refresh_token: refresh, scope: 'api',
+      refreshHash: digest(refresh),
+      body: {
+        access_token: access, token_type: 'Bearer', expires_in: Math.max(1, Math.floor((accessExpires - at) / 1000)),
+        refresh_token: refresh, scope: 'api',
+      },
     };
   }
+
+  const limited = (key, { limit, windowMs }) => rate.rateLimited(key, limit, windowMs);
+  const tooMany = (what) => ({ status: 429, body: { error: 'slow_down', error_description: `Too many ${what}. Try again later.` } });
 
   /** POST /api/auth/device/code */
   function start(req, body) {
     const address = clientAddress(req);
-    if (rate.rateLimited(`device-code:${address}`, LIMITS.code.limit, LIMITS.code.windowMs)) {
-      return { status: 429, body: { error: 'slow_down', error_description: 'Too many sign-in requests from this address. Try again later.' } };
-    }
+    // Validate before charging anything, then charge per client name (and per address only when
+    // TRUST_PROXY makes the address real), with one server-wide backstop.
     const clientName = cleanClientName(body?.client_name) || cleanClientName(body?.client_id);
     if (!clientName) return oauthError('invalid_request', 'client_name is required.');
+    if (limited('device-code:global', LIMITS.codeGlobal)
+      || limited(`device-code:name:${clientName.toLowerCase()}`, LIMITS.codeName)
+      || (addressesTrusted && limited(`device-code:address:${address}`, LIMITS.codeAddress))) {
+      return tooMany('sign-in requests');
+    }
     const at = now();
     const deviceCode = randomSecret();
     let userCode = '';
@@ -269,14 +311,21 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
       const grantId = crypto.randomBytes(16).toString('hex');
       const expiresAt = at + GRANT_ABSOLUTE_MS;
       q.insertGrant.run(grantId, user.id, row.client_name, at, at, expiresAt, row.ip, row.user_agent);
-      return { grantId, userId: user.id, tokens: issuePair(grantId, expiresAt, at) };
+      return { grantId, userId: user.id, tokens: issuePair(grantId, expiresAt, at).body };
     })();
     if (!issued) return oauthError('invalid_grant', 'The sign-in request is no longer valid.');
     audit('device.token', issued.userId, issued.userId, { grantId: issued.grantId, clientName: row.client_name });
     return { status: 200, body: issued.tokens };
   }
 
-  function exchangeRefreshToken(body, at) {
+  /**
+   * The refresh grant. A refresh token is single use, with one exception (review F3): for
+   * REFRESH_GRACE_MS after its first use, while the token that replaced it has not been used, it
+   * may be presented again. That is a client retrying after the answer was lost in transit. The
+   * unused successor is then discarded and a new pair issued; the window is measured from the
+   * first use and never extended. Any other second use is reuse and revokes the whole grant.
+   */
+  function exchangeRefreshToken(body, at, retrying = false) {
     const token = typeof body?.refresh_token === 'string' ? body.refresh_token : '';
     const row = token.startsWith(REFRESH_PREFIX) ? q.tokenRow.get(digest(token)) : null;
     if (!row || row.kind !== 'refresh') return oauthError('invalid_grant', 'Unknown refresh token.');
@@ -285,7 +334,9 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
       audit('device.refresh_reuse', null, row.user_id, { grantId: row.grant_id, clientName: row.client_name });
       return oauthError('invalid_grant', 'This refresh token was already used. The device was signed out.');
     };
-    if (row.used_at) return revokeForReuse();
+    const inGrace = row.used_at && row.replaced_by && at - row.used_at <= REFRESH_GRACE_MS
+      && q.tokenState.get(row.replaced_by)?.used_at === null;
+    if (row.used_at && !inGrace) return revokeForReuse();
     if (row.grant_expires_at <= at || row.token_expires_at <= at || row.last_used_at + REFRESH_IDLE_MS <= at) {
       q.deleteGrant.run(row.grant_id);
       return oauthError('invalid_grant', 'The device sign-in expired. Sign in again.');
@@ -293,26 +344,57 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     const user = q.userRow.get(row.user_id);
     if (!user || user.disabled_at) return oauthError('invalid_grant', 'The account is not available.');
     const rotated = db.transaction(() => {
-      // Two concurrent refreshes with one token: the loser sees changes 0 and is a reuse.
-      if (q.markUsed.run(at, row.token_hash).changes !== 1) return null;
+      if (inGrace) {
+        // Discard the successor only if it is still unused (it may have been used meanwhile).
+        if (q.deleteToken.run(row.replaced_by).changes !== 1) return null;
+        q.dropAccess.run(row.grant_id);
+        q.touchGrant.run(at, row.grant_id);
+        const pair = issuePair(row.grant_id, row.grant_expires_at, at);
+        q.setReplacedBy.run(pair.refreshHash, row.token_hash);
+        return pair.body;
+      }
+      // Two concurrent refreshes with one token: the loser sees changes 0 and is looked at again.
+      if (q.markUsed.run(at, null, row.token_hash).changes !== 1) return null;
       q.dropAccess.run(row.grant_id);
       q.touchGrant.run(at, row.grant_id);
-      return issuePair(row.grant_id, row.grant_expires_at, at);
+      const pair = issuePair(row.grant_id, row.grant_expires_at, at);
+      q.setReplacedBy.run(pair.refreshHash, row.token_hash);
+      return pair.body;
     })();
-    if (!rotated) return revokeForReuse();
-    return { status: 200, body: rotated };
+    if (rotated) return { status: 200, body: rotated };
+    // Lost a race: re-read once, so a concurrent first use is judged by the same grace rule.
+    return retrying ? revokeForReuse() : exchangeRefreshToken(body, at, true);
+  }
+
+  /** The presented credential's hash when it names a stored device code or refresh token. */
+  function knownCredential(grant, credential) {
+    const hash = digest(credential);
+    if (grant === DEVICE_GRANT_TYPE) return q.byDeviceCode.get(hash) ? hash : '';
+    return credential.startsWith(REFRESH_PREFIX) && q.tokenState.get(hash) ? hash : '';
   }
 
   /** POST /api/auth/device/token: the device-code exchange and the refresh grant. */
   function token(req, body) {
-    const address = clientAddress(req);
-    if (rate.rateLimited(`device-token:${address}`, LIMITS.token.limit, LIMITS.token.windowMs)) {
-      return { status: 429, body: { error: 'slow_down', error_description: 'Too many token requests from this address. Try again later.' } };
+    const grant = body?.grant_type;
+    if (grant !== DEVICE_GRANT_TYPE && grant !== 'refresh_token') {
+      return oauthError('unsupported_grant_type', 'Use the device_code or refresh_token grant.');
+    }
+    const credential = grant === DEVICE_GRANT_TYPE ? body.device_code : body.refresh_token;
+    if (typeof credential !== 'string' || !credential || credential.length > 256) {
+      return oauthError('invalid_request', grant === DEVICE_GRANT_TYPE ? 'device_code is required.' : 'refresh_token is required.');
+    }
+    // Charged to the credential, never to the (shared) address: junk cannot use up a device's budget.
+    const hash = knownCredential(grant, credential);
+    if (!hash) {
+      const bucket = addressesTrusted ? `device-token:unknown:${clientAddress(req)}` : 'device-token:unknown';
+      if (limited(bucket, LIMITS.tokenUnknown)) return tooMany('token requests with unknown credentials');
+      return oauthError('invalid_grant', grant === DEVICE_GRANT_TYPE ? 'Unknown device code.' : 'Unknown refresh token.');
+    }
+    if (limited(`device-token:credential:${hash}`, LIMITS.tokenCredential) || limited('device-token:global', LIMITS.tokenGlobal)) {
+      return tooMany('token requests');
     }
     const at = now();
-    if (body?.grant_type === DEVICE_GRANT_TYPE) return exchangeDeviceCode(body, at);
-    if (body?.grant_type === 'refresh_token') return exchangeRefreshToken(body, at);
-    return oauthError('unsupported_grant_type', 'Use the device_code or refresh_token grant.');
+    return grant === DEVICE_GRANT_TYPE ? exchangeDeviceCode(body, at) : exchangeRefreshToken(body, at);
   }
 
   /**
@@ -355,8 +437,10 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     const found = pendingByUserCode(userCode, now());
     if (!found) return { status: 404, body: { error: 'That code is not valid or has expired.' } };
     const { row, code } = found;
+    // Without TRUST_PROXY the address is the tunnel's, the same for everyone: showing it would
+    // falsely reassure the person that the request came from them (review F1).
     return { status: 200, body: { clientName: row.client_name, userCode: formatUserCode(code), requestedAt: row.created_at,
-      expiresAt: row.expires_at, ip: row.ip, userAgent: row.user_agent } };
+      expiresAt: row.expires_at, ip: addressesTrusted ? row.ip : null, userAgent: row.user_agent } };
   }
 
   /** Approve or deny a pending request for `userId`. Audited either way. */
@@ -377,7 +461,23 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
   function list(userId) {
     const at = now();
     q.sweepGrants.run(at, at - REFRESH_IDLE_MS);
-    return q.list.all(userId, at);
+    return q.list.all(userId, at).map((d) => (addressesTrusted ? d : { ...d, ip: null }));
+  }
+
+  /**
+   * Deletes every grant, and so every device token (review F4: switching the feature off is a
+   * revoke, not a pause). One audit entry per affected account. Returns the number deleted.
+   */
+  function revokeAll(actorId, reason) {
+    const affected = q.grantsByUser.all();
+    if (!affected.length) return 0;
+    q.deleteAllGrants.run();
+    let total = 0;
+    for (const { user_id: userId, n } of affected) {
+      total += n;
+      audit('device.revoke_all', actorId || null, userId, { count: n, reason });
+    }
+    return total;
   }
 
   /** Deletes one of `userId`'s grants and every token in it. Takes effect on the next request. */
@@ -389,7 +489,7 @@ function createDeviceAuth({ db, audit, publicUser, rate, clientAddress, origin, 
     return true;
   }
 
-  return { start, token, authenticate, lookup, decide, list, revoke };
+  return { start, token, authenticate, lookup, decide, list, revoke, revokeAll };
 }
 
 /**
@@ -419,5 +519,5 @@ function createRequestAuth({ enabled, deviceAuth, authService }) {
 module.exports = {
   createDeviceAuth, createRequestAuth, ensureDeviceSchema, browserOnly, bearerToken, hasSessionCookie, normalizeUserCode, cleanClientName,
   DEVICE_GRANT_TYPE, ACCESS_PREFIX, REFRESH_PREFIX, ACCESS_TTL_MS, DEVICE_CODE_TTL_MS, POLL_INTERVAL_MS, REFRESH_IDLE_MS,
-  GRANT_ABSOLUTE_MS, LIMITS, BROWSER_ONLY,
+  GRANT_ABSOLUTE_MS, REFRESH_GRACE_MS, LIMITS, BROWSER_ONLY,
 };
