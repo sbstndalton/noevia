@@ -41,6 +41,13 @@ test('truncates to before the user turn and returns that turn\'s text', () => {
   assert.deepEqual(plan.base, [msgs[0], msgs[1]]);
 });
 
+test('the plan carries the Skill pin the user turn was sent with, and none when it had none (#571)', () => {
+  const pin = `skill_${'a'.repeat(32)}@${'b'.repeat(64)}`;
+  const pinned = planRegenerate([{ ...user('u1', 'q'), skill: pin }, assistantReply('a1', 'a')], 'a1');
+  assert.equal(pinned.skill, pin);
+  assert.equal('skill' in planRegenerate([user('u1', 'q'), assistantReply('a1', 'a')], 'a1'), false);
+});
+
 test('the returned plan carries no routing/telemetry/thinking metadata from the old reply', () => {
   const msgs = [user('u1', 'question'), assistantReply('a1', 'answer', { toolScope: 'nextcloud', skillScope: 'writing' })];
   const plan = planRegenerate(msgs, 'a1');
@@ -91,6 +98,6 @@ test('App.tsx wires Regenerate through planRegenerate + the existing handleSend 
   const fn = src.slice(src.indexOf('const regenerateLast = useCallback'), src.indexOf('const startFreeChat = useCallback'));
   assert.match(fn, /if \(streamingChats\[chatId\]\) return;/);
   assert.match(fn, /planRegenerate\(msgs, messageId\)/);
-  assert.match(fn, /void handleSend\(chatId, projectId, plan\.userText, plan\.base\);/);
+  assert.match(fn, /void handleSend\(chatId, projectId, plan\.userText, plan\.base, plan\.skill \? \{ skill: plan\.skill \} : \{\}\);/);
   assert.doesNotMatch(fn, /apiFetch\(|fetch\(/, 'regenerateLast must not call a new endpoint directly');
 });
