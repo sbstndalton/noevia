@@ -23,6 +23,7 @@ jobs:
       diary: ${{ steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
       model_manager: ${{ steps.filter.outputs.model_manager == 'true' || steps.filter.outputs.ci == 'true' }}
       docling: ${{ steps.filter.outputs.docling == 'true' || steps.filter.outputs.ci == 'true' }}
+      macos: ${{ steps.filter.outputs.macos == 'true' || steps.filter.outputs.ci == 'true' }}
       images: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
       sidecars: ${{ steps.filter.outputs.sidecars }}
       deploy: ${{ steps.filter.outputs.deploy }}
@@ -50,6 +51,8 @@ jobs:
               - 'docs/spec-model-loader-api-v1.md'
             docling:
               - 'services/docling/**'
+            macos:
+              - 'clients/macos/**'
             sidecars:
               - 'services/laya/**'
               - 'services/model-manager/**'
@@ -204,6 +207,30 @@ jobs:
       - run: python -m pytest -q
         if: env.RUN_JOB == 'true'
 
+  macos-client-tests:
+    name: macOS client (NoeviaKit) tests
+    needs: changes
+    runs-on: macos-15
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.macos }}
+    defaults:
+      run:
+        working-directory: clients/macos/NoeviaKit
+    steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No macOS client changes; skipping."
+      - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
+      - run: swift --version
+        if: env.RUN_JOB == 'true'
+      # URLProtocol stubs only: no network, no server, no Keychain writes.
+      - run: swift build
+        if: env.RUN_JOB == 'true'
+      - run: swift test
+        if: env.RUN_JOB == 'true'
+
   docker-build:
     name: Docker images build
     needs: changes
@@ -277,7 +304,7 @@ jobs:
   ci-required:
     name: CI required
     if: always()
-    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, docker-build]
+    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, macos-client-tests, docker-build]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
