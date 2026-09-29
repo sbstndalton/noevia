@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web b6fda27 — 2026-09-29 (model-loader is the models.ini writer, read-only preset mount, declined-write note, auto-tune arithmetic replies, Diary retry records)
+
+### Services
+
+- **Web:** [#669](https://github.com/sbstndalton/noevia/pull/669) (fixes #668: localized tok/s units in Models Benchmarks), [#670](https://github.com/sbstndalton/noevia/pull/670) (fixes #664: Diary retries keep applied-write records), [#672](https://github.com/sbstndalton/noevia/pull/672) (fixes #328: auto-tune shows the mismatched answer and accepts "a - b = n" replies), [#673](https://github.com/sbstndalton/noevia/pull/673) (fixes #269: model-loader is the default models.ini writer and web mounts the preset directory read-only), [#674](https://github.com/sbstndalton/noevia/pull/674) (fixes #666, #667: declined write ends the reply with a fixed note, text-less replies keep Regenerate) — `cowork-web:b6fda27`, image `sha256:c5d5cf73cd50d17822623c3ee35789042ce3396bfb19b7c336c854c673a66082`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change — `cowork-model-loader:381760c`. No `services/` diff from `4dc8ccf`, so no model-loader image was built.
+- **Code sandbox, OCR, Docling:** no change.
+- **Deploy/infra:** one edit to the live Compose Manager override (#269), see below.
+
+Exact source `b6fda2728bbe90176a79f9d42439aa0d732087fc`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `049147c6b14935184a9a0d5a8145ba67b7c188861d3e8e6aafa645d03dd74964`, matched on the server), to `releases/b6fda27`. Main CI on `b6fda27` was green before cutover. Web was built with `deploy/tools/build-web-release.sh b6fda27 apps/web` (stamp verified).
+
+Override edit (#269): in the web service of `/boot/config/plugins/compose.manager/projects/Cowork/docker-compose.override.yml`, `MODELS_INI_WRITER` default changed from `web` to `model-loader` and the `/llamacpp-config` mount gained `:ro`. Only those two lines differ from `docker-compose.override.yml.bak.before-b6fda27`. `.env` already set `MODELS_INI_WRITER=model-loader`. `COWORK_VERSION` set to `b6fda27` (`.env.bak.before-b6fda27` kept).
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180`, targeting `web` only.
+
+Checks: web healthy, zero restarts; `docker inspect` shows `/llamacpp-config` RW=false and `touch /llamacpp-config/.probe` in web fails with "Read-only file system"; no `[models-ini]` lines in web logs; `version.json` `b6fda27`; public root 200, `/api/profile` 401; the served `index-Di65Hgdx.js` and `index-CHiiGa9G.css` are byte-identical to the image `dist` (82 files). Model-loader answers `GET /api/v1/health` and `GET /api/v1/sections` (200) from web with its token. Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only difference is the recreated web container (`68b8b502537c` to `1aebaea3b64f`, started 2026-09-29T18:23:10Z).
+
+Rollback: restore the override (`cp -p .../Cowork/docker-compose.override.yml.bak.before-b6fda27 .../Cowork/docker-compose.override.yml`, or remove `:ro` and set the default back to `web`), `ln -sfn /mnt/docker/appdata/cowork/releases/4dc8ccf /mnt/docker/appdata/cowork/current`, `COWORK_VERSION=4dc8ccf` in `.env` (or restore `.env.bak.before-b6fda27`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. Previous images are retained.
+
+---
+
 ## Release web 4dc8ccf — 2026-09-29 (storage edit messages, no retry of conditional writes, phone chat header, unit wording, write-safety cards)
 
 ### Services
