@@ -38,6 +38,61 @@ def test_schema_groups_carry_stable_ids_beside_the_english_label(client):
     assert len({g["tierId"] for g in schema}) == len(schema)
 
 
+def test_schema_fields_carry_stable_ids_beside_the_english_text(client):
+    # #600: the web client translates each field's label and help from its id; the English text
+    # stays as the fallback for older clients and for a field it has no translation for.
+    fields = [f for g in client.get("/api/v1/sections").json()["schema"] for f in g["fields"]]
+    assert len(fields) > 50
+    assert all(f["id"] and f["id"] == f["key"] and f["label"] for f in fields), "every field has an id and its English label"
+    assert len({f["id"] for f in fields}) == len(fields), "ids are unique across groups"
+
+
+def _snapshot_with_state(monkeypatch, status, started_at):
+    import asyncio
+    from app import services
+
+    class _Image:
+        tags = ["synthetic:latest"]
+        short_id = "sha256:abc"
+
+    class _Container:
+        name = "cowork-llama-1"
+        short_id = "abc123"
+        image = _Image()
+
+        def __init__(self):
+            self.status = status
+            self.attrs = {"State": {"StartedAt": started_at}, "NetworkSettings": {"Ports": {}}, "Config": {}, "HostConfig": {}}
+
+    class _Containers:
+        def get(self, name):
+            return _Container()
+
+    class _Client:
+        containers = _Containers()
+
+    async def no_probe(name, port):
+        return None, "port unknown"
+
+    monkeypatch.setattr(services, "_docker_client", lambda: _Client())
+    monkeypatch.setattr(services, "_effective_container_names", lambda: ["cowork-llama-1"])
+    monkeypatch.setattr(services, "_probe_loaded_model", no_probe)
+    return asyncio.run(services.snapshot_llama_backends())[0]
+
+
+def test_only_a_running_backend_reports_uptime(monkeypatch):
+    # #603: StartedAt is when a container last started, so an exited one must not show it as uptime.
+    from datetime import datetime, timedelta, timezone
+    started = (datetime.now(timezone.utc) - timedelta(days=13, hours=16)).strftime("%Y-%m-%dT%H:%M:%S.000000000Z")
+    running = _snapshot_with_state(monkeypatch, "running", started)
+    assert running.uptime_s is not None and running.uptime_s > 13 * 86400 and running.uptime.startswith("13d")
+    for status in ("exited", "created", "paused", "restarting", "dead"):
+        b = _snapshot_with_state(monkeypatch, status, started)
+        assert b.status == status
+        assert b.uptime_s is None and b.uptime is None, status
+        assert b.started_at, "the start time itself is still reported"
+
+
 def test_uptime_is_sent_in_seconds_beside_the_english_string():
     # #597: the client formats the span in its own language; `uptime` stays for older clients.
     from datetime import datetime, timedelta, timezone
