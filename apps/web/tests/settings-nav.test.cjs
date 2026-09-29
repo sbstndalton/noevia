@@ -73,7 +73,7 @@ test('three Back/close round trips through Models & routing never regress the re
   }
 });
 
-// #304 (HIGH, Opus review): a reload used to restore the app straight into a detour view with no
+// #304 (HIGH, model review): a reload used to restore the app straight into a detour view with no
 // return target recorded for it, so the very first Settings close resolved right back into the
 // same detour, forever — reload turned the loop back on.
 test('restoring straight into a detour (a reload mid-loop, or data written before this fix) resolves to the fresh fallback, not the detour', () => {
@@ -99,7 +99,7 @@ test('the persisted view is the return target while a Settings-launched detour i
   assert.equal(j(persistedView(direct, { kind: 'archived' })), j({ kind: 'archived' }));
 });
 
-// #304 (MED, Opus review): a deleted chat/project must never remain the return target, even when
+// #304 (MED, model review): a deleted chat/project must never remain the return target, even when
 // it is not the view on screen (Models & routing was opened from it, then it was deleted from
 // Archived chats or another tab).
 test('a deleted chat is dropped as the return target and replaced with the given fallback', () => {
