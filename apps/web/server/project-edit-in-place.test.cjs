@@ -315,6 +315,25 @@ test('a file edited in storage since the last sync is refused, and writeFile is 
   assert.deepEqual(w.storage.writeCalls, []);
 });
 
+test('a server that reports no ETag gets no edit: refused even when the bytes match, and writeFile is never called', async (t) => {
+  const w = world(t);
+  const p = await w.project('Trip', { 'notes.md': 'v1\n' });
+  const stored = `${ROOT}/Trip/Text/notes.md`;
+  w.storage.noEtag = true; // fileVersion answers { exists: true, etag: '' }; the bytes still match
+  const before = snapshot(w, p), originals = originalsOf(w);
+  w.storage.writeCalls.length = 0;
+  for (const call of [
+    () => w.tools.project_append_file.handler({ name: 'notes.md', text: 'v2' }, w.ctxFor(p, stored)),
+    () => w.tools.project_replace_text.handler({ name: 'notes.md', find: 'v1', replace: 'v0' }, w.ctxFor(p, stored)),
+  ]) await assert.rejects(call, /cannot be edited in place: this storage server does not report file versions \(ETags\).*Nothing was saved/);
+  assert.deepEqual(w.storage.versionChecks.slice(-2), [stored, stored], 'the version was asked for');
+  assert.deepEqual(w.storage.writeCalls, [], 'no PUT, conditional or not');
+  assert.equal(w.storage.objects.get(stored), 'v1\n');
+  assert.deepEqual(snapshot(w, p).files, before.files);
+  assert.equal(w.indexed.length, before.indexed);
+  assert.deepEqual(originalsOf(w), originals);
+});
+
 test('a file deleted or moved in storage (404) is refused and not resurrected; so is another account\'s storage', async (t) => {
   const w = world(t);
   const p = await w.project('Trip', { 'notes.md': 'v1\n' });

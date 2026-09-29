@@ -80,7 +80,7 @@ async function ingest(workspace, project, name, bytes, { connection, source, rem
     progress('Saving to Nextcloud / storage');
     await storageImpl.createFolder(connection, `${project.projectFolder}/${group}`);
     workspace.assertActive?.();
-    await (ifMatch ? storageImpl.writeFile(connection, fullName, bytes, { ifMatch }) : storageImpl.writeFile(connection, fullName, bytes));
+    await (ifMatch !== undefined ? storageImpl.writeFile(connection, fullName, bytes, { ifMatch }) : storageImpl.writeFile(connection, fullName, bytes));
   }
   workspace.assertActive?.();
   progress('Saving original');

@@ -313,8 +313,10 @@ function createProjectStore({
   }
   const changedInStorage = (stored) => `"${stored}" changed in storage since noevia last read it (it was edited, moved or deleted there, or storage is now a different account). Nothing was saved. Sync this project's Sources first, then try again.`;
   /** Before an in-place edit of a stored file (#648): the file must still exist in storage with
-   *  exactly the bytes noevia holds (sha256 === attachment.id). Returns the ETag to write against
-   *  ('' when the server reports none; the byte check then stands alone). Throws otherwise. */
+   *  exactly the bytes noevia holds (sha256 === attachment.id), and the server must report an
+   *  ETag, which the write is made conditional on. Without one a change landing between this
+   *  check and the PUT would be overwritten, so the edit is refused (as removeEmptyFolder refuses
+   *  a DELETE without one). Returns the ETag; throws otherwise. */
   async function confirmStoredVersion(connection, stored, current) {
     if (!current || !current.attachment || !/^[a-f0-9]{64}$/.test(String(current.attachment.id || ''))) throw new Error(changedInStorage(stored));
     let version, remoteBytes;
@@ -325,7 +327,8 @@ function createProjectStore({
     } catch { throw new Error(changedInStorage(stored)); }
     const digest = require('node:crypto').createHash('sha256').update(remoteBytes).digest('hex');
     if (digest !== current.attachment.id) throw new Error(changedInStorage(stored));
-    return version.etag || '';
+    if (!version.etag) throw new Error(`"${stored}" cannot be edited in place: this storage server does not report file versions (ETags), so noevia cannot make sure a change made there meanwhile is not overwritten. Nothing was saved. Use project_create_file to write a new file instead.`);
+    return version.etag;
   }
   // One write path for server-authored project text files (MCP writes, research reports), the
   // same one a browser upload takes: the file lands in the project's storage folder and is
@@ -379,7 +382,7 @@ function createProjectStore({
       } else if (remote && !project.projectFolder) project.projectFolder = await ensureProjectFolder(project);
       let file;
       try {
-        file = await uploads.ingest(currentWorkspace(), project, name, bytes, { connection: remote, storageImpl: storageClient, ...(ifMatch ? { ifMatch } : {}) });
+        file = await uploads.ingest(currentWorkspace(), project, name, bytes, { connection: remote, storageImpl: storageClient, ...(edit && remote ? { ifMatch } : {}) });
       } catch (err) {
         if (err && err.code === 'changed') throw new Error(changedInStorage(expectName));
         throw err;
