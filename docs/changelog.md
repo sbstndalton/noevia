@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 349a450 — 2026-09-28 (sampling recommendations, Skills revocation, Astra review behind a flag)
+
+### Services
+
+- **Web:** [#539](https://github.com/sbstndalton/noevia/pull/539), [#540](https://github.com/sbstndalton/noevia/pull/540), [#541](https://github.com/sbstndalton/noevia/pull/541), [#542](https://github.com/sbstndalton/noevia/pull/542), [#543](https://github.com/sbstndalton/noevia/pull/543), [#544](https://github.com/sbstndalton/noevia/pull/544) — `cowork-web:349a450`.
+- **Diary:** no change. #538 (`0867ec9`, Diary requirements) is on main but was not rolled out; Diary stays on `cowork-diary:f6444b4` until the owner authorises it.
+- **Model manager:** no change.
+- **Code sandbox:** no change.
+- **OCR:** no change.
+- **Docling:** no change.
+- **Deploy/infra:** web-only build and activation through the installed preflight (`--no-build --no-deps --wait web`); the generic overlay script was not used.
+
+Includes the optional llama.cpp constrained-decoding module for the plan artifact (#517, flag reports unavailable), the web to model-loader `/api/v1` contract doc and tests (#269), per-model sampling recommendations and the auto-tune Sampling phase with i18n (#308), in-flight Skills revocation and web pinning (#272), and the Astra review step in Code mode (#519, `NOEVIA_FEATURE_ASTRA_REVIEW`, default off). The persona-swap experiments harness (#518) is not part of the image. No feature flag was set or changed.
+
+Exact source `349a45080fa1514281d14759630e46134941954d`, archived from a fresh clone of `origin/main` (archive SHA-256 `2aff03974eeb5c22d4fbf2d29cdfa08db4fcda5df08f94ce56f16ea79b977f88` matched locally and on the server). Lockfiles were unchanged since `ad71baf`. The image was built from the release directory with the repository Dockerfile (the in-build unit tests ran and passed; `npm ci` was cached), tagged `cowork-web:349a450`, image `sha256:f3916685fcb8a30d71c88c9bc69be264a07bf6e8c2dc0a3f2038399b461ba5f6`. A network-disabled candidate container reported version `349a450`, `/api/profile` 401, `dist/index.html` plus 65 asset files, and both `server/sampling-recommendation.cjs` and `server/code-review.cjs` present before cutover.
+
+Web is healthy with zero restarts, started `2026-09-29T00:20:10Z`. Public root returned 200 three times, unauthenticated `/api/profile` returns 401 and `/version.json` says `349a450`. The served `index-BTdwnJ6-.js` and `index-sYzZaw8b.css` exist in the image `dist/assets`. Web logs since start are clean (MCP discovery only). In the container `astraReview` and `constrainedPlanDecoding` both report false. A before/after snapshot of the 42 non-web containers (id, StartedAt, restart count, image) is identical, including the known embed crash loop (#336). The restart-alert baseline was re-acked by `up.sh`. No model runs, tune, private Diary access or new harness installation.
+
+Rollback: restore `config/.env.bak.before-349a450`, point `current` at `releases/ad71baf`, and use the installed web-only no-build preflight. Previous releases, images (`cowork-web:ad71baf`) and the Compose Manager backups `docker-compose.yml.bak.before-349a450` and `docker-compose.override.yml.bak.before-349a450` remain available.
+
 ## Release web ad71baf — 2026-09-28 (provider edit in place and hosted context size)
 
 ### Services
