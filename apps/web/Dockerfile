@@ -12,6 +12,12 @@ WORKDIR /app
 # default for local/no-arg builds, so it is treated the same as unset.
 ARG COWORK_VERSION
 ENV STAMP_VERSION=$COWORK_VERSION
+# Release builds (deploy/tools/build-web-release.sh) set REQUIRE_RELEASE_VERSION=1
+# so a missing COWORK_VERSION fails here instead of shipping version.json as
+# 0.2.0+... (issue #574). Plain local builds are unaffected.
+ARG REQUIRE_RELEASE_VERSION=0
+RUN if [ "$REQUIRE_RELEASE_VERSION" = 1 ] && { [ -z "$COWORK_VERSION" ] || [ "$COWORK_VERSION" = dev ]; }; then \
+      echo "COWORK_VERSION build-arg is required for a release build" >&2; exit 1; fi
 COPY package.json package-lock.json ./
 # Prefer IPv4 for registry lookups: hosts with a broken IPv6 route otherwise time out.
 RUN NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit

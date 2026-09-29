@@ -63,6 +63,7 @@ jobs:
               - 'compose.yaml'
               - 'compose.*.yaml'
               - 'deploy/**'
+              - 'apps/web/Dockerfile'
               - 'docs/deployment.md'
             docs:
               - 'docs/**'
@@ -299,12 +300,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  deploy-tests:
+    name: Deploy tooling shell/wrapper tests
+    needs: changes
+    runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.deploy }}
+    steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        run: echo "No deploy changes; skipping."
+      - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
+      - run: python3 deploy/preflight/test_wrapper.py
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-build-web-release.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-sidecar-restart-alert.sh
+        if: env.RUN_JOB == 'true'
+
   # Single aggregate result. Passes when every job succeeded or was skipped;
   # fails on any failure or cancellation.
   ci-required:
     name: CI required
     if: always()
-    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, macos-client-tests, docker-build]
+    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, macos-client-tests, docker-build, deploy-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results

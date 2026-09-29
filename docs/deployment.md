@@ -295,9 +295,12 @@ sidecars** during a web-only release:
 
 Before any Compose `up` on Unraid, validate resolved writable mounts with the
 [host-side preflight](../deploy/preflight/README.md). The installed wrapper is
-`/mnt/docker/appdata/cowork/tools/preflight/up.sh`; call it from the existing
-Compose Manager project directory with `--env-file ... --` followed by the usual
-`up` options. It rejects writable `/boot` paths/device aliases without changing
+`/mnt/docker/appdata/cowork/tools/preflight/up.sh`; call it with
+`--env-file ... --` followed by the usual `up` options. It resolves the Compose
+project itself (`COWORK_PROJECT_DIR`, else
+`/boot/config/plugins/compose.manager/projects/Cowork`), so the caller's cwd no
+longer matters (#574); it exits with a message naming the directory if none is found.
+Use an absolute `--env-file` path. It rejects writable `/boot` paths/device aliases without changing
 state bindings. Direct Compose Manager GUI startup bypasses this helper.
 
 ```sh
@@ -308,7 +311,7 @@ ssh root@100.70.173.74 "set -e
 cd /mnt/docker/appdata/cowork/releases && mkdir -p $SHA && tar -xzf $SHA.tar.gz -C $SHA && rm -f $SHA.tar.gz
 cd /mnt/docker/appdata/cowork && cp config/.env config/.env.bak.\$(date +%Y%m%d%H%M%S)
 cd /boot/config/plugins/compose.manager/projects/Cowork
-COWORK_SOURCE_DIR=/mnt/docker/appdata/cowork/releases/$SHA COWORK_VERSION=$SHA docker compose --env-file /mnt/docker/appdata/cowork/config/.env build web
+bash /mnt/docker/appdata/cowork/releases/$SHA/deploy/tools/build-web-release.sh $SHA /mnt/docker/appdata/cowork/releases/$SHA/apps/web
 # Stop here if candidate verification fails (see the image-test mounts below).
 ln -sfn /mnt/docker/appdata/cowork/releases/$SHA /mnt/docker/appdata/cowork/current
 sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=$SHA/' /mnt/docker/appdata/cowork/config/.env
@@ -326,8 +329,11 @@ as `STAMP_VERSION` (`compose.yaml` `web.build.args` → `apps/web/Dockerfile` `A
 COWORK_VERSION` / `ENV STAMP_VERSION`), which `apps/web/scripts/stamp-icons.cjs`
 uses to version the favicon/manifest icon URLs and `apps/web/src/stale-shell-guard.ts`
 uses to detect a stale cached shell. Nothing extra to do here — this is
-automatic as long as `COWORK_VERSION=$SHA` is set on the `build` command, as
-it already is above.
+automatic as long as the build is stamped with `$SHA`. Use
+`deploy/tools/build-web-release.sh <sha>` for release builds: it passes
+`COWORK_VERSION` plus `REQUIRE_RELEASE_VERSION=1` (the Dockerfile then fails if the
+version is empty or `dev`) and checks the built image's `dist/version.json` equals
+the SHA. A bare `docker build` without the build-arg stamps `0.2.0+...` (#574).
 
 Ordinary desktop/Android browsers pick up a fresh favicon and app shell on the
 next load automatically (the guard force-reloads once if the running bundle's
