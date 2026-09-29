@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web ef6a83f — 2026-09-29 (unreadable sources excluded, Sources typography, lazy project folders)
+
+### Services
+
+- **Web:** [#595](https://github.com/sbstndalton/noevia/pull/595) (changelog), [#593](https://github.com/sbstndalton/noevia/pull/593) (fixes #586, #588, #589: unreadable uploads kept out of retrieval and sources, Sources typography, delete-dialog copy, lazy storage folder with name reservation) — `cowork-web:ef6a83f`, image `sha256:12c84baa4f4f2d7744f4d77df50e46e579571abbaa8835c702f5c7a99c296c42`.
+- **Diary:** no change — `cowork-diary:f6444b4`.
+- **Model manager:** no change (`git diff --stat b8755fb ef6a83f -- services/model-manager` is empty); model-loader stays on `b8755fb`.
+- **Code sandbox, OCR, Docling:** no change.
+- **Not released:** [#599](https://github.com/sbstndalton/noevia/pull/599) (#592/#596/#597/#598, plus model-manager `uptime_s` and `tierId`) had no CI checks and conflicts with main in `ProjectView.tsx`; see [#601](https://github.com/sbstndalton/noevia/issues/601). No feature flag was changed and `TRUST_PROXY` was not touched.
+
+Exact source `ef6a83fc4d42742f85ca73528f4e8a74c92ccf00`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `542b546ae96a41fb119a467f1d64bc2899cac6cd07b587e47c93b9ebeb3a923b`, matched on the server), to `releases/ef6a83f`. Main CI on that SHA was green. Web was built with `deploy/tools/build-web-release.sh ef6a83f apps/web` (stamp verified). Standalone candidate on a loopback port with no production mounts: `/` 200, `/api/profile` 401, `version.json` `ef6a83f`.
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180 web`; `.env` and Compose YAMLs were backed up as `*.bak.before-ef6a83f`. The restart-alert baseline was re-acked.
+
+Checks: web healthy, zero restarts; public root 200 three times, `/api/profile` 401, `/version.json` `ef6a83f`; served `index-BK7x-LxY.js`, `index-f8aq2N0j.css`, `theme.js`, `lens.js` and `glass-highlight.js` byte-identical to the image `dist`; web logs clean. `/api/auth/device/code` returns 404. `astraReview`, `constrainedPlanDecoding` and `nativeClientAuth` are off.
+
+Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only difference is the recreated web container. Diary, model-loader and every other container are identical.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/a70f5a0 /mnt/docker/appdata/cowork/current`, `COWORK_VERSION=a70f5a0` in `.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. `.env.bak.before-ef6a83f` and the Compose backups were kept; the previous image is retained.
+
+---
+
 ## Release web a70f5a0 — 2026-09-29 (locale-aware model numbers; native-client device sign-in, flag off)
 
 ### Services
