@@ -8,6 +8,23 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 53da4ce — 2026-09-30 (web + Laya: configurable decision deadline)
+
+### Services
+
+- **Web:** [#690](https://github.com/sbstndalton/noevia/pull/690) (web decision deadline cap raised to 2000 ms); image `cowork-web:53da4ce`.
+- **Laya:** configurable worker deadline `LAYA_DECISION_TIMEOUT_S` (0.5 to 2.0 s, default 1.3); image `cowork-laya:0.3.5-noevia2`, set to 1.8 s.
+- **Diary, Model manager, Code sandbox, OCR, Docling:** no change.
+- **Deploy/infra:** live Compose `laya` service gains `LAYA_DECISION_TIMEOUT_S: ${LAYA_DECISION_TIMEOUT_S:-1.3}`, new image tag and build context `laya/noevia2-53da4ce`; `.env` gains `LAYA_DECISION_TIMEOUT_S=1.8` and `COWORK_VERSION=53da4ce`.
+
+Exact source `53da4cee498d4b973024c332935aca9540b00175` (CI green on that commit), `git archive` of a fresh clone, extracted to `releases/53da4ce`. The running Laya was actually `cowork-laya:0.3.5-recovery-2ffd153` (the worker-recovery build), not `noevia1`; `noevia2` uses the same pattern (`FROM cowork-laya:0.3.5-noevia1` plus `services/laya/server.py` from the release), so dependencies and model files are unchanged and the recovery behaviour is kept. Laya was recreated alone with the guarded `up.sh --profile laya --no-build --no-deps --wait laya`: healthy, zero restarts, `/health` 200, no `LAYA_DECISION_TIMEOUT_S` warning in its log (the service logs only on a refused value), `LAYA_DECISION_TIMEOUT_S=1.8` present in the container environment.
+
+Web was built with `deploy/tools/build-web-release.sh` (first attempt hung in the in-build Vite test `request-cache-cap.test.cjs` for 27 minutes on an I/O-loaded host and was killed before any cutover; the rerun passed) and started with the guarded web-only `up.sh`. Web healthy, zero restarts, `/` 200, `/api/profile` 401, `/llamacpp-config` RW=false, served `index-*.js` and `index-CHiiGa9G.css` byte-identical to the container. Every other container kept its ID, `StartedAt` and restart count.
+
+Web decision deadline: stored `decision:configuration` changed from 1500 to 2000 ms (URL unchanged) through `createDecisionSettings().save` against the app's own settings store. The running process caches the value at startup, so web was restarted once afterwards and reads back 2000. Zero supervise records since the restart at the time of writing.
+
+Rollback: Laya: restore `docker-compose.yml` from `docker-compose.yml.bak.before-53da4ce` in the Compose Manager project, remove `LAYA_DECISION_TIMEOUT_S` from `.env` (or restore `.env.bak.before-53da4ce`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env --profile laya -- -d --no-build --no-deps --wait laya` (image `cowork-laya:0.3.5-recovery-2ffd153` retained). Web: `ln -sfn /mnt/docker/appdata/cowork/releases/2c1aee7 /mnt/docker/appdata/cowork/current`, set `COWORK_VERSION=2c1aee7`, same `up.sh` with `web`; to restore the old web deadline store `timeoutMs` 1500 the same way and restart web.
+
 ## Release web 2c1aee7 — 2026-09-30 (Create-project dialog files stored in connected storage)
 
 ### Services
