@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web c70d1a9 — 2026-09-30 (auto-tune relative quality gate, Tune panel fixes)
+
+### Services
+
+- **Web:** [#691](https://github.com/sbstndalton/noevia/pull/691) (auto-tune judges settings against the model's own baseline; Tune panel status and counts fixed, #328); image `cowork-web:c70d1a9`.
+- **Laya, Diary, Model manager, Code sandbox, OCR, Docling:** no change (Laya stays `cowork-laya:0.3.5-noevia2`).
+- **Deploy/infra:** no Compose change; `.env` only `COWORK_VERSION=c70d1a9`.
+
+Exact source `c70d1a9` (CI green on that commit), `git archive` of a fresh clone, extracted to `releases/c70d1a9`. Built with `deploy/tools/build-web-release.sh` (first attempt, no hang; stamped `c70d1a9`) and started with the guarded web-only `up.sh ... --no-build --no-deps --wait web`. Web healthy, zero restarts, `/` 200 locally and publicly, `/api/profile` 401, `/llamacpp-config` RW=false, public `index-DlCSqcVV.js` and `index-CHiiGa9G.css` byte-identical to the container. Every other container kept its ID, `StartedAt` and restart count. Stored decision deadline read back read-only through the settings module: 2000 ms. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/53da4ce /mnt/docker/appdata/cowork/current`, restore `config/.env.bak.before-c70d1a9` (or set `COWORK_VERSION=53da4ce`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web` (image `cowork-web:53da4ce` retained).
+
 ## Release 53da4ce — 2026-09-30 (web + Laya: configurable decision deadline)
 
 ### Services
