@@ -35,7 +35,7 @@ test('a free chat (no project, no per-chat choice) starts on Auto, not whatever 
  // A project stays whatever it is explicitly set to (manual, no model chosen yet): unaffected.
  assert.equal(label({},[{name:'Hot',loaded:true}]),'Hot');
 });
-test('a free chat only says Auto when the server would really route it that way (Opus review, #305)',()=>{
+test('a free chat only says Auto when the server would really route it that way (model review, #305)',()=>{
  // Without Fast/Smart roles configured, chat.cjs falls back to the loaded model server-side —
  // the label must match, not promise a routing decision that will not happen.
  assert.equal(label(null,[{name:'Hot',loaded:true}],false),'Hot');
@@ -48,7 +48,7 @@ test('a free chat only says Auto when the server would really route it that way 
 });
 test('an unknown catalogue or another provider never declares a model missing',()=>{
  assert.equal(label({model:'Gone'},null),'Gone');
- assert.equal(label({model:'claude-x',provider:'anthropic'},[]),'claude-x');
+ assert.equal(label({model:'remote-model-a',provider:'remote-provider'},[]),'remote-model-a');
 });
 test('warns when a unified-memory GPU may borrow nearly all host RAM',()=>{
  const {sharedMemoryRisk:risk}=exports_;

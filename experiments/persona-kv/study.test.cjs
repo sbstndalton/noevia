@@ -91,8 +91,8 @@ test('summarize excludes step 0, separates revisits, and computes speed-up again
   const step = (arm, n, role, revisit, ttft, promptN, cacheN, actionMs = 0) => ({ type: 'step', arm, repeat: 1, step: n, role, revisit, error: null,
     ttftMs: ttft, switchMs: ttft + actionMs, promptN, cacheN, reuseRatio: S.reuseRatio(cacheN, promptN), promptMs: null });
   const records = [
-    step('cold', 0, 'astra', false, 999, 100, 0), step('cold', 1, 'sol', false, 100, 100, 0), step('cold', 2, 'astra', true, 100, 100, 0),
-    step('after-prefix', 0, 'astra', false, 999, 100, 0), step('after-prefix', 1, 'sol', false, 25, 20, 80), step('after-prefix', 2, 'astra', true, 25, 20, 80),
+    step('cold', 0, 'planner', false, 999, 100, 0), step('cold', 1, 'executor', false, 100, 100, 0), step('cold', 2, 'planner', true, 100, 100, 0),
+    step('after-prefix', 0, 'planner', false, 999, 100, 0), step('after-prefix', 1, 'executor', false, 25, 20, 80), step('after-prefix', 2, 'planner', true, 25, 20, 80),
     { type: 'save', arm: 'restore-prefix', ms: 4, error: null },
   ];
   const s = S.summarize(records, { arms: ['cold', 'after-prefix'] });
@@ -108,20 +108,20 @@ test('summarize excludes step 0, separates revisits, and computes speed-up again
 });
 
 test('summarize ignores errored rows in means but counts them', () => {
-  const ok = { type: 'step', arm: 'cold', step: 1, role: 'sol', error: null, ttftMs: 10, switchMs: 10, promptN: 1, cacheN: 0, reuseRatio: 0 };
-  const bad = { type: 'step', arm: 'cold', step: 2, role: 'jev', error: 'timeout', ttftMs: null, switchMs: null, promptN: null, cacheN: null, reuseRatio: null };
+  const ok = { type: 'step', arm: 'cold', step: 1, role: 'executor', error: null, ttftMs: 10, switchMs: 10, promptN: 1, cacheN: 0, reuseRatio: 0 };
+  const bad = { type: 'step', arm: 'cold', step: 2, role: 'laya', error: 'timeout', ttftMs: null, switchMs: null, promptN: null, cacheN: null, reuseRatio: null };
   const g = S.summarize([ok, bad], { arms: ['cold'] }).arms[0].switches;
   assert.equal(g.requests, 2); assert.equal(g.errors, 1); assert.equal(g.ttftMsMean, 10);
 });
 
 test('layouts: persona-first starts with the persona, after-prefix keeps the shared prefix as the leading bytes', () => {
   const prefix = sharedPrefix(6);
-  const a = S.buildPrompt('after-prefix', 'astra', 't', prefix), s = S.buildPrompt('after-prefix', 'sol', 't', prefix);
+  const a = S.buildPrompt('after-prefix', 'planner', 't', prefix), s = S.buildPrompt('after-prefix', 'executor', 't', prefix);
   assert.ok(a.startsWith(prefix) && s.startsWith(prefix));
-  const pa = S.buildPrompt('persona-first', 'astra', 't', prefix);
-  assert.ok(pa.startsWith(PERSONAS.astra));
+  const pa = S.buildPrompt('persona-first', 'planner', 't', prefix);
+  assert.ok(pa.startsWith(PERSONAS.planner));
   assert.equal(sharedPrefix(6), prefix, 'prefix is deterministic');
-  assert.throws(() => S.buildPrompt('nope', 'astra', 't', prefix));
+  assert.throws(() => S.buildPrompt('nope', 'planner', 't', prefix));
 });
 
 test('matrix: five arms, sequence order, revisit flags and slot actions', () => {
@@ -130,10 +130,10 @@ test('matrix: five arms, sequence order, revisit flags and slot actions', () => 
   assert.equal(m.length, 2 * 5 * (SEQUENCE.length + 1));
   const rp = m.filter(r => r.repeat === 1 && r.arm === 'restore-persona');
   assert.deepEqual(rp[0].actions, ['erase', 'completion:prefix-only', 'save:prefix']);
-  assert.deepEqual(rp[1].actions, ['restore:prefix', 'completion', 'save:astra']);
-  const revisit = rp.find(r => r.step === 4); // astra again
+  assert.deepEqual(rp[1].actions, ['restore:prefix', 'completion', 'save:planner']);
+  const revisit = rp.find(r => r.step === 4); // planner again
   assert.equal(revisit.revisit, true);
-  assert.deepEqual(revisit.actions, ['restore:astra', 'completion']);
+  assert.deepEqual(revisit.actions, ['restore:planner', 'completion']);
   assert.deepEqual(m.find(r => r.arm === 'cold' && r.step === 1).actions, ['erase', 'completion']);
   assert.deepEqual(m.find(r => r.arm === 'after-prefix' && r.step === 1).actions, ['completion']);
   assert.equal(m.find(r => r.arm === 'persona-first' && r.step === 0).layout, 'persona-first');
@@ -208,7 +208,7 @@ test('full run: records timings, slot save/restore sequencing and cache reuse', 
     const startRp = firstRestorePersonaSave.lastIndexOf('save:noevia-persona-kv-T1-prefix.bin');
     assert.deepEqual(firstRestorePersonaSave.slice(startRp - 2, startRp + 6), [
       'erase:', 'completion:', 'save:noevia-persona-kv-T1-prefix.bin',
-      'restore:noevia-persona-kv-T1-prefix.bin', 'completion:', 'save:noevia-persona-kv-T1-astra.bin',
+      'restore:noevia-persona-kv-T1-prefix.bin', 'completion:', 'save:noevia-persona-kv-T1-planner.bin',
       'restore:noevia-persona-kv-T1-prefix.bin', 'completion:',
     ]);
     // every completion is streamed, cache_prompt is on, and the prefix-only warm-up asks for one token
@@ -227,9 +227,9 @@ test('persona revisit restores that persona state and reuses more than the prefi
     const rp = res.records.filter(r => r.type === 'step' && r.arm === 'restore-persona');
     const first = rp.find(r => r.step === 0), revisit = rp.find(r => r.step === 4);
     assert.equal(rp.find(r => r.step === 1).restored.state, 'prefix');
-    assert.equal(revisit.restored.state, 'astra');
+    assert.equal(revisit.restored.state, 'planner');
     assert.ok(revisit.revisit);
-    // saved after astra's task 0; revisit uses task 0 again? step 4 -> task 0, so persona + task both cached
+    // saved after planner's task 0; revisit uses task 0 again? step 4 -> task 0, so persona + task both cached
     assert.ok(revisit.cacheN > first.cacheN);
     assert.ok(res.summary.arms[1].revisits.requests === 4);
   });

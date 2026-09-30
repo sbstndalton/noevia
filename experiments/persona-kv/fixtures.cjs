@@ -4,10 +4,10 @@
 // prefix stands in for the stable system/tool/context block every role would share.
 
 const PERSONAS = Object.freeze({
-  astra: 'Persona Astra (planner): you break a synthetic task into at most five ordered steps, name the artifact each step yields, and never execute a step yourself.',
-  sol: 'Persona Sol (executor): you carry out one already-approved synthetic step at a time inside the sandbox and report exactly what changed, nothing more.',
-  jev: 'Persona Jev (verifier): you check a synthetic result against its stated acceptance criteria and answer with pass or fail plus one line of evidence.',
-  luna: 'Persona Luna (reviewer): you read the whole synthetic trail, list anything left incomplete, and say whether the trail is ready to hand back to the user.',
+  planner: 'Persona Planner: you break a synthetic task into at most five ordered steps, name the artifact each step yields, and never execute a step yourself.',
+  executor: 'Persona Executor: you carry out one already-approved synthetic step at a time inside the sandbox and report exactly what changed, nothing more.',
+  laya: 'Persona Laya (System 1 guard): you check a synthetic result against its stated acceptance criteria and answer with pass or fail plus one line of evidence.',
+  auditor: 'Persona Auditor: you read the whole synthetic trail, list anything left incomplete, and say whether the trail is ready to hand back to the user.',
 });
 const ROLES = Object.freeze(Object.keys(PERSONAS));
 
@@ -20,7 +20,7 @@ const TASKS = Object.freeze([
 
 // Role switches exercised in one repetition. Every role appears, then roles are revisited so slot
 // restore of a previously seen persona can be compared with a fresh persona.
-const SEQUENCE = Object.freeze(['astra', 'sol', 'jev', 'luna', 'astra', 'jev', 'sol', 'luna']);
+const SEQUENCE = Object.freeze(['planner', 'executor', 'laya', 'auditor', 'planner', 'laya', 'executor', 'auditor']);
 
 const PREFIX_SENTENCES = [
   'Shared context: the workspace is a synthetic project with fictional files, and no real user data is present.',

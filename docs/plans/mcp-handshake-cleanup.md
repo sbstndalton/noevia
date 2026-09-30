@@ -9,7 +9,7 @@ Implemented: `connect()` now owns cleanup until it returns a successfully initia
 - 51 focused MCP tests passed, including handshake failure stages crossed with DELETE success, refusal, network failure and timeout; no-session and successful-session lifecycle checks.
 - Full web suite: 1273 tests passed.
 - Typecheck and production build passed.
-- Independent Sol review: no actionable findings.
+- Independent model review: no actionable findings.
 - Synthetic transports only; no live MCP endpoint, credential, or private corpus was used.
 
 ## Limits

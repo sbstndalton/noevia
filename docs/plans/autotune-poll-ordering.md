@@ -11,6 +11,6 @@ Cancel continues to accept HTTP202/running while server abort/restoration finish
 - 1247 unit tests, typecheck and production build passed.
 - `qa/autotune-poll-ordering.cjs` bundles/mounts the shipped React component with real CSS and synthetic APIs/timer ticks: cancelled/passed/failed versus older running,202/running cancellation, stale errors, one completion callback, restart, model switch/unmount and current error retry.
 - Chrome375/768/1440 CSS pixels, light/dark, overflow/keyboard focus; mobile light and desktop dark component screenshots inspected. This is a component harness, not the entire model-manager shell.
-- Sol independent review and Impeccable detector: no actionable findings.
+- Independent model review and Impeccable detector: no actionable findings.
 
 No live model, benchmark, production configuration, or private data was used. Physical device/screen reader behavior remains untested. Draft for review; no merge/deployment.

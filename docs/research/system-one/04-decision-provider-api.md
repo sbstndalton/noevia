@@ -45,7 +45,7 @@ EXECUTOR (deterministic)        ← runs the choice under the same policy again
  *   selected: string | string[] | number | null,  // null = abstained
  *   scores: Record<string, number>,               // calibrated probabilities (choice/noul) or relevance (rank)
  *   confidence: number,                            // calibrated top probability, 0–1
- *   source: string,                                // backend id that answered: 'llama-logit', 'rerank', 'laya', 'jev', 'heuristic', 'default'
+ *   source: string,                                // backend id that answered: 'llama-logit', 'rerank', 'laya', 'remote', 'heuristic', 'default'
  *   metadata: { latencyMs: number, calibrated: boolean, fellBack?: string, model?: string, tokens?: number },
  * }} DecisionResult
  */
@@ -103,12 +103,12 @@ make noevia leave the machine; it can only pick that exit when policy has alread
 | `embed` | cosine on the existing embedding endpoint | rank | what D2/D3/D4 do today |
 | `laya` | ONNX Runtime in-process (CPU) | choice, noul, score | only after fine-tuning on noevia's own decisions |
 | `sidecar` | HTTP to a Python decision server (SemIf, Kev, Nimble) | per server | for candidates without a llama.cpp path |
-| `jev` | TypeSafe API | choice, noul, score | remote; `context.cloud` must be `'allowed'`; API key; never default |
+| `remote` | a closed System-1 API (vendor) | choice, noul, score | remote; `context.cloud` must be `'allowed'`; API key; never default |
 | `disabled` | always the fallback | — | the kill switch |
 
 **Model classes (doc 13):**
 - `llama-rerank` and `embed` serve **class A** purposes: specialised discriminative models such as the live `rag.rerank`.
-- `heuristic`, `llama-logit`, `laya`, `sidecar` and `jev` are candidates for **class B**, the generic System-One decisions.
+- `heuristic`, `llama-logit`, `laya`, `sidecar` and `remote` are candidates for **class B**, the generic System-One decisions.
 - A class-A backend is never placed in a class-B chain just because it can emit scores.
 
 Configuration (per purpose, not global, because the best backend differs per task):
@@ -116,7 +116,7 @@ Configuration (per purpose, not global, because the best backend differs per tas
 ```ini
 DECISION_PROVIDERS=route.model:llama-logit>heuristic, rag.rerank:llama-rerank>embed, tools.select:llama-rerank>embed, eval.output:llama-logit>default
 DECISION_MODEL=<model id for llama-logit>          # empty = use whatever small model is resident
-DECISION_REMOTE=off                                 # 'jev' to allow it as a last step, when policy allows cloud
+DECISION_REMOTE=off                                 # 'remote' to allow it as a last step, when policy allows cloud
 DECISION_SHADOW=route.model,rag.rerank              # run, log, but act on the fallback's answer
 ```
 
@@ -150,7 +150,7 @@ back out.
 ```
 purpose's configured local backend(s)  ──fail/timeout/low-confidence──▶  heuristic (today's code)
         │                                                                        │
-        └── optional remote (jev) only if policy.cloud==='allowed' AND DECISION_REMOTE ──▶ safe default
+        └── optional remote (closed API) only if policy.cloud==='allowed' AND DECISION_REMOTE ──▶ safe default
 ```
 
 | Failure | Behaviour |

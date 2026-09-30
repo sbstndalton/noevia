@@ -11,6 +11,6 @@ The original mount/action example was unreachable because action controls are hi
 - 1247 unit tests, typecheck and production build passed.
 - `qa/backup-status-ordering.cjs` exercises the real settings UI with deferred synthetic APIs: successive action and Google/action overlap, stale success/error, earlier response during a later POST, initial loading gate, current status retry and separate action errors.
 - Chrome at375/768/1440 CSS pixels in light/dark: no horizontal overflow and visible keyboard focus. Mobile light and desktop dark screenshots inspected.
-- Impeccable detector: no findings. Independent Sol review: no actionable findings.
+- Impeccable detector: no findings. Independent model review: no actionable findings.
 
 No live backup, Google endpoint, private data, physical device or screen reader was used. Endpoint contracts, server operation exclusivity, polling, and recovery-key flow remain unchanged. Draft for review; no merge or deployment.

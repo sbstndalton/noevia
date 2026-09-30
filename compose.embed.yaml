@@ -45,7 +45,7 @@ services:
       - "none"
       - "--embedding"  # [live: verify] not spelled out in deployment.md; required for /v1/embeddings
       - "--model"
-      - "/models/${EMBED_MODEL_FILE:?Set the nomic-embed-text-v1 Q8_0 gguf filename}"  # [live: verify] exact filename
+      - "/models/${EMBED_MODEL_FILE:?Set the embedding model's GGUF filename}"  # [live: verify] exact filename
       - "--host"
       - "0.0.0.0"
       - "--port"

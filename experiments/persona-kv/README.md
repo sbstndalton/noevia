@@ -1,6 +1,6 @@
 # Persona-swap KV-cache study
 
-Offline harness for [issue #518](https://github.com/sbstndalton/noevia/issues/518) (part of #511, M7). It measures the cost of switching between the Astra, Sol, Jev and Luna personas on one llama.cpp slot: persona after a stable shared prefix vs at the start, slot save/restore vs cold prefill, and TTFT plus prompt-eval tokens (`timings.cache_n` / `timings.prompt_n`) per switch. Fixtures are synthetic.
+Offline harness for [issue #518](https://github.com/sbstndalton/noevia/issues/518) (part of #511, M7). It measures the cost of switching between the Planner, Executor, Laya and Auditor personas on one llama.cpp slot: persona after a stable shared prefix vs at the start, slot save/restore vs cold prefill, and TTFT plus prompt-eval tokens (`timings.cache_n` / `timings.prompt_n`) per switch. Fixtures are synthetic.
 
 **No run without owner approval.** The script refuses to contact a server unless `--i-have-approval` is passed, and the owner approves each run from [docs/handoffs/2026-09-28-run-plan-518.md](../../docs/handoffs/2026-09-28-run-plan-518.md). Nothing imports this directory from the product; it writes only under `--out` and never touches `models.ini` or any server config.
 
