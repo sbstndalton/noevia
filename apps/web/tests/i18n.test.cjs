@@ -498,7 +498,7 @@ test('service-supplied model manager words are translated per locale from stable
     'mm.bench.status.':['idle','starting','running','cancelling','done','cancelled','error'],
     'mm.tier.':['common','runtime','rope','moe','multimodal','speculative','lora','cpu','reasoning','misc'],
     'mm.spec.':['off','mtp','mtp-deep','mtp-shallow','ngram'],
-    'mm.evidence.lim.':['autotune-quality','autotune-budget','vision-probe','single-reply','calibration-budget','benchmark-median','source-unverified'],
+    'mm.evidence.lim.':['autotune-quality','autotune-budget','autotune-baseline-skipped','vision-probe','single-reply','calibration-budget','benchmark-median','source-unverified'],
   };
   same(require('../server/evidence-limitations.cjs').LIMITATION_IDS.slice().sort(),ids['mm.evidence.lim.'].slice().sort(),'server limitation ids match the catalogue');
   // Some words read the same in French or Spanish ("Multimodal / vision"); German is the strict check. Names (RoPE / YaRN, MTP, N-gram, Mixture-of-Experts, LoRA, "Error") may match.

@@ -157,3 +157,36 @@ test('the sampling source and note translate from stable ids, and old server str
   }
   assert.equal(core.translate('en-GB','mm.tune.sampling.tier.familyNamed',{family:'Qwen3.5'}),enSentence.replace('{family}','Qwen3.5'));
 });
+
+// #328: the Tune panel after the 2026-09-30 E2B run (job bb20d010's shape, synthetic values).
+const e2bRun=[{phases:[
+  {id:'sampling',status:'passed',value:{skipped:true,failed:true,reason:'Quality checks failed: arithmetic (mismatch).'}},
+  {id:'kv',status:'failed'},{id:'context',status:'pending'},{id:'drafting',status:'pending'},{id:'batch',status:'pending'}]}];
+test('#328 an optional sampling step that did not apply reads not applied or skipped, never passed',()=>{
+  assert.equal(g.phaseState(e2bRun[0].phases[0]),'not-applied');
+  assert.equal(g.phaseState({id:'sampling',status:'passed',value:{skipped:true,reason:'No recommended sampling values'}}),'skipped');
+  assert.equal(g.phaseState({id:'sampling',status:'passed',value:{applied:true}}),'passed');
+  assert.equal(g.phaseState({id:'kv',status:'passed',value:{kv:'q8_0'}}),'passed');
+  assert.equal(g.phaseState({id:'sampling',status:'failed'}),'failed');
+});
+test('#328 progress counts only settings a run applied',()=>{
+  assert.deepEqual(g.appliedSettings(e2bRun),{done:0,total:4});
+  const done=[{phases:[{id:'sampling',status:'passed',value:{applied:true}},...['kv','context','drafting','batch'].map(id=>({id,status:'passed',value:{}}))]}];
+  assert.deepEqual(g.appliedSettings(done),{done:5,total:5});
+  assert.deepEqual(g.appliedSettings([...e2bRun,...done]),{done:5,total:9});
+});
+test('#328 a server sentence inside a catalogue sentence loses its own full stop only',()=>{
+  assert.equal(g.withoutFinalStop('No KV cache type passed quality and throughput checks.'),'No KV cache type passed quality and throughput checks');
+  assert.equal(g.withoutFinalStop('Answered arithmetic: "69".. '),'Answered arithmetic: "69"');
+  assert.equal(g.withoutFinalStop('Cancelled'),'Cancelled');
+  assert.equal(g.withoutFinalStop('v1.5 is loaded'),'v1.5 is loaded');
+});
+test('#328 the floor note lists the server\'s own KV candidates, else this build\'s default',()=>{
+  assert.deepEqual(g.kvCandidatesFrom(['f16','q8_0','q5_1','q5_0','q4_0']),['f16','q8_0','q5_1','q5_0','q4_0']);
+  assert.deepEqual(g.kvCandidatesFrom(undefined),['f16','q8_0','q5_1','q5_0']);
+  assert.deepEqual(g.kvCandidatesFrom(['f16','<b>']),['f16','q8_0','q5_1','q5_0'],'unknown types are not trusted');
+  assert.ok(!g.kvCandidatesFrom(undefined).some(g.belowKvFloor));
+});
+test('#328 model names are listed once',()=>{
+  assert.deepEqual(g.uniqueNames(['a','b','a','c','b']),['a','b','c']);
+});
