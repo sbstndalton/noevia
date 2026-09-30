@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 2c1aee7 — 2026-09-30 (Create-project dialog files stored in connected storage)
+
+### Services
+
+- **Web:** [#688](https://github.com/sbstndalton/noevia/pull/688) (fixes #687: files added in the Create-project dialog are stored in connected storage; legacy dialog files move to the project folder on the first approved edit, bound to the storage account) — `cowork-web:2c1aee7`, image `sha256:14d2ada5ac8ab0a7a06f7c3f194f1bb95af6266e8dc51d7535e17426c12bc3a1`.
+- **Diary, Model manager, Code sandbox, OCR, Docling:** no change.
+- **Deploy/infra:** no compose, override or `.env` key change.
+
+Exact source `2c1aee79436f1f8140b4f015345516820dfe71f0`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `488ce821357c739a4714c6fe8bd0e49b96bb19655b4ed434e0fe30e6c5602d48`, matched on the server), to `releases/2c1aee7`. Main CI on `2c1aee7` was green before cutover. Web was built with `deploy/tools/build-web-release.sh 2c1aee7 apps/web` (stamp verified). `COWORK_VERSION` set to `2c1aee7` (`.env.bak.before-2c1aee7` kept).
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180`, targeting `web` only.
+
+Checks: web healthy, zero restarts; zero error markers in web logs; `/llamacpp-config` RW=false; public root 200, `/api/profile` 401; the served `index-D3jigXrH.js` and `index-CHiiGa9G.css` are byte-identical to the image `dist`. Before/after snapshot of all 34 running containers (id, StartedAt, restart count): the only difference is the recreated web container (started 2026-09-30T10:18:19Z). Snapshots kept as `snap-before-2c1aee7.txt` / `snap-after-2c1aee7.txt`; older `.snap-*-92dfd2a` and `snap/*b4bed07*` files removed.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/92dfd2a /mnt/docker/appdata/cowork/current`, restore `.env` from `.env.bak.before-2c1aee7` (or set `COWORK_VERSION=92dfd2a`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. Previous images are retained.
+
+---
+
 ## Release web 92dfd2a — 2026-09-30 (Auto-tune link in Advanced mode, System-One gate fits Laya limits, reload mid-reply keeps the turn)
 
 ### Services
