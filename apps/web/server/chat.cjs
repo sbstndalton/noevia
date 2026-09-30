@@ -117,6 +117,9 @@ function createChatHandler({
   // #648: whether a tool is one of noevia's own project file edits, whose target is resolved and
   // shown on the approval card and pinned for the call. By name when not wired (the stricter side).
   projectEditTool = (name) => require('./project-edit-target.cjs').EDIT_TOOLS.has(name),
+  // #687: whether this account's storage is browsable now. A plain-named project file is edited by
+  // moving it into the project folder when it is, so the card must show that path. Not wired: false.
+  editStorageConnected = () => false,
   // #659: the resolved target of any other write whose card should name what it changes (the
   // Google Drive tools). async (name, rawArgs, { user, chatKey }) => null (no target to show)
   // | { target, kind } | { error } (refused before the card; nothing is written).
@@ -1240,7 +1243,7 @@ function createChatHandler({
             // here: there is nothing to approve, and nothing is written.
             let editTarget = null;
             if (projectEditTool(tc.name)) {
-              const resolvedEdit = editTargets.resolveEditTarget(project ? getProject(project.id) : null, tc.args);
+              const resolvedEdit = editTargets.resolveEditTarget(project ? getProject(project.id) : null, tc.args, { storageConnected: editStorageConnected(userId) === true });
               if (resolvedEdit.error) {
                 authService.audit('tool.denied', userId, userId, { tool: tc.name, reason: 'edit-target' });
                 return `ERROR: ${resolvedEdit.error.replace(/\.?$/, '.')} ${tc.name} was not run and nothing was changed.`;
@@ -1314,7 +1317,7 @@ function createChatHandler({
             // And a project file edit whose name now lands on a different file (or none) than the
             // one the card showed: the approval was for that file, not for whatever the name means now.
             if (editTarget !== null) {
-              const again = editTargets.resolveEditTarget(project ? getProject(project.id) : null, tc.args);
+              const again = editTargets.resolveEditTarget(project ? getProject(project.id) : null, tc.args, { storageConnected: editStorageConnected(userId) === true });
               if (again.path !== editTarget) {
                 authService.audit('tool.denied', userId, userId, { tool: tc.name, reason: 'edit-target-changed' });
                 return `ERROR: the project's files changed after approval, so ${JSON.stringify(editTarget)} ${again.error ? 'can no longer be edited' : `is no longer the file this name refers to (it now means ${JSON.stringify(again.path)})`}. ${tc.name} was not run and nothing was changed. Ask again if the edit is still wanted.`;
