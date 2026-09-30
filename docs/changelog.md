@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web b4bed07 — 2026-09-30 (provider capabilities are data, roles renamed Planner/Executor/Laya/Auditor, plannerReview flag)
+
+### Services
+
+- **Web:** [#676](https://github.com/sbstndalton/noevia/pull/676) (fixes #675: provider capabilities are data, no vendor host or model literals in `reasoning-effort.cjs`), [#678](https://github.com/sbstndalton/noevia/pull/678) (roles renamed Planner/Executor/Laya/Auditor; feature flag `astraReview` renamed `plannerReview` with one-release back-compat: a stored DB key is copied on boot, `NOEVIA_FEATURE_ASTRA_REVIEW` env fallback, API alias) — `cowork-web:b4bed07`, image `sha256:73ce1c622a109af64901bd6ea627f7ef6c58eaf6a583b8858e28c2d447eed4fa`.
+- **Diary, Model manager, Code sandbox, OCR, Docling:** no change.
+- **Deploy/infra:** no compose or override change.
+
+Exact source `b4bed07d4b217ce51f6e5a4c6c71fb047cb3e194`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `2527bab6065aa451f203a36270abf30ebefaa2a4cbb74084410207b6e02c124c`, matched on the server), to `releases/b4bed07`. Main CI on `b4bed07` was green before cutover. Web was built with `deploy/tools/build-web-release.sh b4bed07 apps/web` (stamp verified). `.env` did not set `NOEVIA_FEATURE_ASTRA_REVIEW`, so no `NOEVIA_FEATURE_PLANNER_REVIEW` line was added. `COWORK_VERSION` set to `b4bed07` (`.env.bak.before-b4bed07` kept).
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180`, targeting `web` only.
+
+Checks: web healthy, zero restarts; no `[features]` lines and no errors in web logs (no legacy key was stored, so no migration line); `/llamacpp-config` RW=false; public root 200, `/api/profile` 401; the served `index-CeEP-Mhh.js` and `index-CHiiGa9G.css` are byte-identical to the image `dist`; the features registry in the container lists `plannerReview` and no `astraReview`. Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only difference is the recreated web container (started 2026-09-30T08:45:34Z).
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/b6fda27 /mnt/docker/appdata/cowork/current`, restore `.env` from `.env.bak.before-b4bed07` (or set `COWORK_VERSION=b6fda27`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. Previous images are retained.
+
+---
+
 ## Release web b6fda27 — 2026-09-29 (model-loader is the models.ini writer, read-only preset mount, declined-write note, auto-tune arithmetic replies, Diary retry records)
 
 ### Services
