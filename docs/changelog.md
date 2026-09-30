@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release web 92dfd2a — 2026-09-30 (Auto-tune link in Advanced mode, System-One gate fits Laya limits, reload mid-reply keeps the turn)
+
+### Services
+
+- **Web:** [#683](https://github.com/sbstndalton/noevia/pull/683) (fixes #680: Go to Auto-tune works in Advanced mode), [#685](https://github.com/sbstndalton/noevia/pull/685) (fixes #682: System-One tool gate fits Laya's option limits; fallback `cause` codes in decision logs; "unsupported" status), [#684](https://github.com/sbstndalton/noevia/pull/684) (fixes #679: reload mid-reply keeps the turn; the server appends an interrupted reply to the chat history file on disconnect) — `cowork-web:92dfd2a`, image `sha256:0bc9061c28a0bf8b6030d6bb5770cff3b1dec3fcab54185be18f54e0e6d67e09`.
+- **Diary, Model manager, Code sandbox, OCR, Docling:** no change.
+- **Deploy/infra:** no compose, override or `.env` key change.
+
+Exact source `92dfd2af56947c0aad314230c8c22c1d0e6287dd`, `git archive` of a fresh clone of `origin/main` (archive SHA-256 `5bf46b606d14b3eb3c259a98f9c876a7467286c91fd1d762c70a1bd3fa3d3622`, matched on the server), to `releases/92dfd2a`. Main CI on `92dfd2a` was green before cutover. Web was built with `deploy/tools/build-web-release.sh 92dfd2a apps/web` (stamp verified). `COWORK_VERSION` set to `92dfd2a` (`.env.bak.before-92dfd2a` kept).
+
+Cutover used the guarded `up.sh` with `--no-build --no-deps --wait --wait-timeout 180`, targeting `web` only.
+
+Checks: web healthy, zero restarts; zero error markers and no `[system-one]` lines in web logs; `/llamacpp-config` RW=false; public root 200, `/api/profile` 401; the served `index-JW8NVv0e.js` and `index-CHiiGa9G.css` are byte-identical to the image `dist`. Before/after snapshot of all 34 running containers (id, StartedAt, restart count, image): the only difference is the recreated web container (started 2026-09-30T09:43:46Z). `system-one-decisions.jsonl` had no records appended since cutover (no `cause` records yet); the new `cause` field is not yet exercised live.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/b4bed07 /mnt/docker/appdata/cowork/current`, restore `.env` from `.env.bak.before-92dfd2a` (or set `COWORK_VERSION=b4bed07`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. Previous images are retained.
+
+---
+
 ## Release web b4bed07 — 2026-09-30 (provider capabilities are data, roles renamed Planner/Executor/Laya/Auditor, plannerReview flag)
 
 ### Services
