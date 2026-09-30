@@ -17,7 +17,7 @@ function loadPure(relPath) {
   return exports;
 }
 
-const { planRegenerate } = loadPure('../src/regenerate.ts');
+const { planRegenerate, resendOutcome } = loadPure('../src/regenerate.ts');
 
 const user = (id, content) => ({ id, role: 'user', content });
 // A "loaded" assistant reply carrying the metadata a real turn accumulates: routing decision,
@@ -112,6 +112,17 @@ test('App.tsx wires Regenerate through planRegenerate + the existing handleSend 
   const fn = src.slice(src.indexOf('const regenerateLast = useCallback'), src.indexOf('const startFreeChat = useCallback'));
   assert.match(fn, /if \(streamingChats\[chatId\]\) return;/);
   assert.match(fn, /planRegenerate\(msgs, messageId\)/);
-  assert.match(fn, /void handleSend\(chatId, projectId, plan\.userText, plan\.base, plan\.skill \? \{ skill: plan\.skill \} : \{\}\);/);
+  // #682: plus a text-free resend marker (kind and the replaced reply's routed role).
+  assert.match(fn, /void handleSend\(chatId, projectId, plan\.userText, plan\.base, \{ \.\.\.\(plan\.skill \? \{ skill: plan\.skill \} : \{\}\), resend: resendOutcome\('regenerate', msgs\[msgs\.length - 1\]\) \}\);/);
   assert.doesNotMatch(fn, /apiFetch\(|fetch\(/, 'regenerateLast must not call a new endpoint directly');
+});
+
+// #682: the resend marker carries only enumerated routing values of the replaced reply, never text.
+test('resendOutcome keeps only the kind and the routed role/status of the replaced reply', () => {
+  const plain = (v) => JSON.parse(JSON.stringify(v)); // the module runs in its own vm realm
+  const reply = { id: 'a1', role: 'assistant', content: 'SYNTHETIC reply text', routingDecision: { effectiveRole: 'fast', status: 'accepted', offered: [{ id: 'fast', label: 'SYNTHETIC label' }], scores: { fast: 0.9 } } };
+  assert.deepEqual(plain(resendOutcome('regenerate', reply)), { kind: 'regenerate', role: 'fast', status: 'accepted' });
+  assert.deepEqual(plain(resendOutcome('retry', { id: 'a2', role: 'assistant', content: 'x', error: true })), { kind: 'retry' });
+  assert.deepEqual(plain(resendOutcome('regenerate', { ...reply, routingDecision: { effectiveRole: 'SYNTHETIC injected', status: 'weird' } })), { kind: 'regenerate' });
+  assert.deepEqual(plain(resendOutcome('regenerate', undefined)), { kind: 'regenerate' });
 });
