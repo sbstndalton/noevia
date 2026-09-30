@@ -27,7 +27,7 @@ const count = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefine
 /** Follows one reply's stream events and builds the transcript entry the client would have saved. */
 function createTurnRecord({ now = Date.now } = {}) {
   const startedAt = now();
-  let content = '', reasoning = '', model, routingDecision, sources, stats, paused, failed = false;
+  let content = '', reasoning = '', narration = '', model, routingDecision, sources, stats, paused, failed = false;
   const tools = [];
   function observe(ev) {
     if (!ev || typeof ev !== 'object') return;
@@ -48,6 +48,7 @@ function createTurnRecord({ now = Date.now } = {}) {
         const at = content.lastIndexOf(text);
         if (at >= 0) content = content.slice(0, at) + content.slice(at + text.length);
         reasoning += (reasoning ? '\n\n' : '') + text.trim();
+        narration += (narration ? '\n\n' : '') + text.trim();
         break;
       }
       case 'delta':
@@ -109,7 +110,9 @@ function createTurnRecord({ now = Date.now } = {}) {
       return { role: 'assistant', content: '', toolCalls: calls.filter((c) => c.status !== 'denied'),
         paused: paused?.reason === 'declined' ? paused : { reason: 'stopped', applied } };
     }
-    const text = content.trimStart();
+    // A reply cut off after tool steps and before any answer keeps what the model said before
+    // them (its narration, shown with the thinking while streaming) as its text, so it is not lost.
+    const text = content.trim() ? content.trimStart() : narration;
     const note = paused || (applied ? { reason: 'stopped', applied } : undefined);
     // No answer and no note: the language-neutral Stopped placeholder (#634), which keeps
     // Regenerate on the reply. Its unfinished thinking is not kept.

@@ -65,14 +65,14 @@ function harness(t, { approvals = createApprovals(), onPending = null, workspace
     CONNECTOR_BOXES: new Set(['gdrive']), connectedBoxes: () => [],
     toolPolicy: { mode: (_user, _name, write) => (write ? 'ask' : 'allow') },
     requestScope: { getStore: () => ({ workspace: { userId: 'synthetic-user-a' } }) },
-    resolveTools: () => ({ tools: ['synthetic_append'].map((name) => ({ type: 'function', function: { name, parameters: { type: 'object' } } })), dropped: [] }),
+    resolveTools: () => ({ tools: ['synthetic_append', 'synthetic_read'].map((name) => ({ type: 'function', function: { name, parameters: { type: 'object' } } })), dropped: [] }),
     isWriteTool: (name) => name === 'synthetic_append',
     rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: (text) => ({ text: String(text) }),
     diaryExtras: require('./diary-extras.cjs'),
     DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: () => {}, saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
     lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
     allToolboxes: () => [],
-    executeToolCall: async (_p, name, args) => { state.executed.push({ name, args: JSON.parse(args) }); return `Appended 10 chars to "${TARGET}".`; },
+    executeToolCall: async (_p, name, args) => { state.executed.push({ name, args: JSON.parse(args) }); return name === 'synthetic_read' ? 'Zahl: 1' : `Appended 10 chars to "${TARGET}".`; },
     chatWideApproved: () => false,
     awaitApproval: (card) => { const p = approvals.awaitApproval(card); if (onPending) onPending(card, state, disconnect); return p; },
     recordUsage() {}, recordToolUse() {},
@@ -195,6 +195,26 @@ test('the reply is kept in the requesting account\'s workspace only', async (t) 
   assert.deepEqual(readStored(h.b, 'chat-679'), [USER], 'another account with the same chat id is untouched');
 });
 
+test('an error caused by the disconnect (an aborted round-2 compaction) does not drop the kept reply', async (t) => {
+  const context = require('./chat-context.cjs');
+  const realMeasure = context.measure;
+  let rounds = 0, h = null;
+  // Round 2 needs compacting; the client leaves during it and the compaction fails as aborted.
+  t.mock.method(context, 'measure', (...args) => { const m = realMeasure(...args); return ++rounds === 2 ? { ...m, used: m.threshold + 1 } : m; });
+  t.mock.method(context, 'compactContinuation', async () => { h.state.res.emit('close'); await tick(); throw new Error('This operation was aborted'); });
+  h = harness(t);
+  store(h.a, 'chat-679', [USER]);
+  h.state.turns.push([say('I will read the notes first.'), toolCall('synthetic_read', { name: 'qa-679.md' }, 'call-r')], [say('never requested')]);
+  await h.send({ message: USER.content });
+  assert.equal(rounds, 2, 'the second round started');
+  assert.equal(h.state.requests.length, 1, 'no second model request after the disconnect');
+  const history = readStored(h.a, 'chat-679');
+  assert.equal(history.length, 2, 'the reply is kept, not dropped as failed: ' + JSON.stringify(history));
+  assert.equal(history[1].content, 'I will read the notes first.', 'the round-1 text is kept');
+  assert.deepEqual(history[1].toolCalls.map((c) => [c.name, c.status, c.result]), [['synthetic_read', 'done', 'Zahl: 1']]);
+  assert.equal(history[1].paused, undefined);
+});
+
 test('the record follows the stream the way the client does', () => {
   const r = createTurnRecord();
   r.observe({ type: 'meta', route: 'smart', routingDecision: { role: 'smart' } });
@@ -204,7 +224,11 @@ test('the record follows the stream the way the client does', () => {
   r.observe({ type: 'tool_result', index: 0, name: 'synthetic_read', text: 'x'.repeat(5000) });
   r.observe({ type: 'tool_pending', index: 1, id: 'ap-1', name: 'synthetic_append', args: '{"a":1}', target: TARGET });
   const e = r.assistantEntry();
-  assert.equal(e.model, 'Stopped', 'no answer text and nothing saved');
+  assert.equal(e.content, 'I will check first.', 'cut off before an answer: the narration before the tools is kept as its text');
+  assert.equal(e.model, 'Assistant · Auto (smart)');
+  const bare = createTurnRecord();
+  bare.observe({ type: 'tool_pending', index: 0, id: 'ap-2', name: 'synthetic_append', args: '{}' });
+  assert.equal(bare.assistantEntry().model, 'Stopped', 'no text at all and nothing saved: the Stopped placeholder');
   assert.equal(e.toolCalls[0].result.length, 4000, 'results are clipped as the chip clips them');
   assert.deepEqual({ status: e.toolCalls[1].status, target: e.toolCalls[1].target, approvalId: e.toolCalls[1].approvalId }, { status: 'stopped', target: TARGET, approvalId: undefined });
 

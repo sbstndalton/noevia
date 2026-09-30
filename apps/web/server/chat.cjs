@@ -368,7 +368,9 @@ function createChatHandler({
     const record = typeof body.chatId === 'string' && body.chatId && !spaceId?.startsWith('diary') && !body.compactOnly && chatWorkspace
       ? require('./chat-interrupted-turn.cjs').createTurnRecord() : null;
     if (record) Object.assign(execution, { record, workspace: chatWorkspace, aborted: () => chatSignal.signal.aborted });
-    const send = (obj) => { preparation?.event(obj); record?.observe(obj); if (!res.destroyed && !chatSignal.signal.aborted) res.write(`data: ${JSON.stringify(obj)}\n\n`); };
+    // An error raised after the client left is the disconnect itself (an aborted compaction or
+    // request), not a failed reply: the kept reply must not be dropped as failed (#679 review).
+    const send = (obj) => { preparation?.event(obj); if (!(obj?.type === 'error' && chatSignal.signal.aborted)) record?.observe(obj); if (!res.destroyed && !chatSignal.signal.aborted) res.write(`data: ${JSON.stringify(obj)}\n\n`); };
 
     // One streamed journaled exchange; never retry implicitly after a disconnect.
     if (spaceId === 'diary') {
