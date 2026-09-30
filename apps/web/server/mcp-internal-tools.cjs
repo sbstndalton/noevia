@@ -42,10 +42,10 @@ function cleanName(raw) {
  *  that arrives without a pin was never tied to a file on a card, so it is refused as well. */
 function pinnedEdit(ports, project, args, ctx) {
   // Resolved exactly as the chat loop resolved it for the card, storage state included (#687).
-  const plan = planEdit(project, args.name, { storageConnected: typeof ports.storageConnected === 'function' && ports.storageConnected() === true });
+  const plan = planEdit(project, args.name, { storageAccount: typeof ports.storageAccount === 'function' ? ports.storageAccount() : null });
   const pinned = ctx && typeof ctx.editTarget === 'string' ? ctx.editTarget : '';
   if (!pinned) throw new Error('this edit was not tied to a file when it was approved, so nothing was changed');
-  if (pinned !== targetDigest(plan.target)) throw new Error(`${JSON.stringify(String(args.name))} now refers to "${plan.target}", which is not the file that was approved. Nothing was changed; ask again.`);
+  if (pinned !== targetDigest(plan.target, plan.account)) throw new Error(`${JSON.stringify(String(args.name))} now refers to "${plan.target}", which is not the file that was approved. Nothing was changed; ask again.`);
   return plan;
 }
 
@@ -59,7 +59,7 @@ function writeInPlace(ports, project, plan, text) {
     expectContent: String(plan.file.content || ''),
     expectAttachment: plan.file.attachment ? plan.file.attachment.id : null,
     // #687: a plain-named file moved into the project folder by this edit, at the approved path.
-    ...(plan.adopt ? { adoptTo: plan.target } : {}),
+    ...(plan.adopt ? { adoptTo: plan.target, adoptAccount: plan.account } : {}),
   });
 }
 

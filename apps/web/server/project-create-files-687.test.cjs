@@ -18,7 +18,7 @@ const { createProjectStore } = require('./projects.cjs');
 const { createInternalTools } = require('./mcp-internal-tools.cjs');
 const internal = require('./mcp-internal.cjs');
 const skills = require('./instruction-skills.cjs');
-const { EDIT_TOOLS, targetDigest, resolveEditTarget } = require('./project-edit-target.cjs');
+const { EDIT_TOOLS, targetDigest, resolveEditTarget, storageAccount } = require('./project-edit-target.cjs');
 
 const ROOT = 'noevia projects';
 const NOTES = 'Line one.\nLine two.\nLine three.\n';
@@ -36,6 +36,12 @@ function world(t) {
   // `beforePut` runs just before a PUT lands (a change racing the edit); `noEtag` models a server
   // that reports none. `writeCalls` counts every writeFile call, including refused ones.
   const storage = { folderCreations: [], takenFolders: new Set(), folderFails: false, failWrites: false, connected: true, objects: new Map(), etags: new Map(), writes: [], writeCalls: [], versionChecks: [], reads: [], serial: 0, noEtag: false, beforePut: null };
+  // Case-insensitive storage (as many Nextcloud/SMB-backed servers are) when `caseInsensitive`.
+  const fold = (k) => (storage.caseInsensitive && typeof k === 'string' ? k.toLowerCase() : k);
+  for (const m of [storage.objects, storage.etags]) for (const op of ['get', 'set', 'has', 'delete']) { const f = m[op].bind(m); m[op] = (k, ...rest) => f(fold(k), ...rest); }
+  storage.user = 'synthetic-user-a';
+  storage.conn = () => (storage.connected ? { kind: 'webdav', url: 'http://storage.invalid/', username: storage.user } : { kind: 'local' });
+  storage.account = () => (storage.connected ? storageAccount(storage.conn()) : null);
   storage.put = (p, text) => { storage.objects.set(p, text); storage.etags.set(p, `etag-${++storage.serial}`); };
   const indexed = [], unindexed = [];
   const storageClient = {
@@ -64,7 +70,7 @@ function world(t) {
     rag: { indexProjectFile: async (...args) => { indexed.push(args); return { ok: true, stored: 1, embedded: 1 }; }, deleteProjectFile: (...args) => unindexed.push(args) },
     storageClient,
     documentSources: { prune() {}, directory: () => path.join(dir, 'docs') },
-    authService: { getStorage: () => (storage.connected ? { kind: 'webdav', url: 'http://storage.invalid/' } : { kind: 'local' }) },
+    authService: { getStorage: () => storage.conn() },
     currentWorkspace: () => workspace,
     PROJECTS: workspace.projects, FREE_CHATS: workspace.freeChats,
     sanitizeToolboxes: (boxes) => (Array.isArray(boxes) ? boxes : null),
@@ -83,7 +89,7 @@ function world(t) {
     getProject: store.getProject, diary: async () => ({}),
     readProjectFile: async () => 'unused', ragAvailable: () => false, search: async () => [],
     writeTextFile: store.writeProjectTextFile,
-    storageConnected: () => storage.connected,
+    storageAccount: () => storage.account(),
   });
 
   // noevia's own MCP server, reached the way production reaches it: the chat's executeToolCall puts
@@ -158,7 +164,7 @@ async function chat(t, w, p, { rounds, onApproval, chatWide = false, router = nu
     modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null, allToolboxes: () => [{ id: 'core' }],
     executeToolCall: async (...args) => { executed.push(args[1]); return w.executeToolCall(...args); },
     chatWideApproved: () => chatWide,
-    editStorageConnected: (userId) => userId === 'user-a' && w.storage.connected,
+    editStorageAccount: (userId) => (userId === 'user-a' ? w.storage.account() : null),
     awaitApproval: async (a) => { approvals.push(a.id); await onApproval?.(); return 'approve'; }, recordUsage() {}, recordToolUse() {},
   });
   await w.asUser(() => handleChat({}, res, { projectId: p.id, chatId: 'chat-687', message: 'synthetic request' }, { user: { id: 'user-a' } }));
@@ -179,7 +185,8 @@ function legacyProject(w, name = 'qa-687-project', file = 'qa-687-notes.md', con
   w.workspace.projects.unshift(p);
   return p;
 }
-const ctx = (w, p, target) => w.ctxFor(p, target);
+// A token for an approved edit: a move into the folder is bound to the storage account as well.
+const ctx = (w, p, target, account = w.storage.account()) => ({ userId: 'user-a', projectId: p.id, editTarget: targetDigest(target, target.includes('/') ? account : null) });
 
 test('create with files, storage connected: the file is stored in the project folder like an upload', async (t) => {
   const w = world(t);
@@ -195,7 +202,7 @@ test('create with files, storage connected: the file is stored in the project fo
   assert.deepEqual(w.storage.writeCalls.map((c) => c.path), [stored]);
   assert.ok(w.indexed.some((a) => a[1] === stored), 'indexed under its stored name');
   assert.ok(!w.indexed.some((a) => a[1] === 'qa-687-notes.md'), 'never indexed under the plain name');
-  assert.equal(resolveEditTarget(p, JSON.stringify({ name: 'qa-687-notes.md' }), { storageConnected: true }).path, stored);
+  assert.equal(resolveEditTarget(p, JSON.stringify({ name: 'qa-687-notes.md' }), { storageAccount: 'acct' }).path, stored);
 });
 
 test('create with files, then append: edited in place with If-Match, the card path is the stored path', async (t) => {
@@ -279,7 +286,7 @@ test('an existing affected project whose reserved folder is taken: refused, noth
   // The folder that now exists is recorded, so the next card tells the truth and the edit lands there.
   assert.equal(p.projectFolder, `${ROOT}/qa-687-project (2)`);
   const real = `${ROOT}/qa-687-project (2)/Text/qa-687-notes.md`;
-  assert.equal(resolveEditTarget(p, JSON.stringify({ name: 'qa-687-notes.md' }), { storageConnected: true }).path, real);
+  assert.equal(resolveEditTarget(p, JSON.stringify({ name: 'qa-687-notes.md' }), { storageAccount: 'acct' }).path, real);
   await w.asUser(() => w.tools.project_append_file.handler({ name: 'qa-687-notes.md', text: 'x' }, ctx(w, p, real)));
   assert.equal(w.storage.objects.get(real), `${NOTES}x`);
 });
@@ -309,16 +316,17 @@ test('an existing affected project: storage state changing between the card and 
   const p = legacyProject(w);
   const target = `${ROOT}/qa-687-project/Text/qa-687-notes.md`;
   // Card shown with storage connected, disconnected before the call runs: it now means the plain name.
+  const approved = ctx(w, p, target);
   w.storage.connected = false;
-  await assert.rejects(w.tools.project_append_file.handler({ name: 'qa-687-notes.md', text: 'x' }, ctx(w, p, target)),
+  await assert.rejects(w.tools.project_append_file.handler({ name: 'qa-687-notes.md', text: 'x' }, approved),
     /now refers to "qa-687-notes\.md", which is not the file that was approved\. Nothing was changed/);
   // And the reverse: approved as the plain name, storage connected meanwhile.
   w.storage.connected = true;
-  await assert.rejects(w.tools.project_append_file.handler({ name: 'qa-687-notes.md', text: 'x' }, ctx(w, p, 'qa-687-notes.md')),
+  await assert.rejects(w.tools.project_append_file.handler({ name: 'qa-687-notes.md', text: 'x' }, ctx(w, p, 'qa-687-notes.md', null)),
     /not the file that was approved/);
   // The write path on its own refuses an adoption with storage disconnected.
   w.storage.connected = false;
-  await assert.rejects(w.store.writeProjectTextFile(p, 'qa-687-notes.md', 'x', { expectName: 'qa-687-notes.md', expectContent: NOTES, expectAttachment: null, adoptTo: target }),
+  await assert.rejects(w.store.writeProjectTextFile(p, 'qa-687-notes.md', 'x', { expectName: 'qa-687-notes.md', expectContent: NOTES, expectAttachment: null, adoptTo: target, adoptAccount: storageAccount({ kind: 'webdav', url: 'http://storage.invalid/', username: 'synthetic-user-a' }) }),
     /which is not connected right now, so nothing was saved/);
   assert.deepEqual(w.storage.writeCalls, []);
   assert.deepEqual(p.files.map((f) => [f.name, f.content]), [['qa-687-notes.md', NOTES]]);
@@ -336,12 +344,12 @@ test('the refusal stays when the destination genuinely differs from the stored f
   const q = legacyProject(w, 'Dup', 'notes.md');
   q.projectFolder = `${ROOT}/Dup`;
   q.files.push({ name: `${ROOT}/Dup/Text/notes.md`, content: 'stored\n', source: q.projectFolder, attachment: { id: 'e'.repeat(64), group: 'Text', state: 'ready', bytes: 7 } });
-  const plain = resolveEditTarget(q, JSON.stringify({ name: 'notes.md' }), { storageConnected: true });
+  const plain = resolveEditTarget(q, JSON.stringify({ name: 'notes.md' }), { storageAccount: 'acct' });
   assert.ok(plain.error, 'ambiguous or refused, never a silent second target');
   // No folder known at all: refused with a way forward, nothing written.
   const r = legacyProject(w, 'NoReservation');
   delete r.reservedFolder;
-  assert.match(resolveEditTarget(r, JSON.stringify({ name: 'qa-687-notes.md' }), { storageConnected: true }).error, /has no storage folder yet/);
+  assert.match(resolveEditTarget(r, JSON.stringify({ name: 'qa-687-notes.md' }), { storageAccount: 'acct' }).error, /has no storage folder yet/);
   assert.deepEqual(w.storage.writeCalls.map((c) => c.path), [stored], 'only the create-time store');
 });
 
@@ -353,4 +361,66 @@ test('tenant scope: another account\'s affected project is not reachable', async
     /not in a project/);
   assert.deepEqual(w.storage.writeCalls, []);
   assert.equal(p.projectFolder, undefined);
+});
+
+test('an existing affected project: storage reconnected to another account after approval is refused', async (t) => {
+  const w = world(t);
+  const p = legacyProject(w);
+  const target = `${ROOT}/qa-687-project/Text/qa-687-notes.md`;
+  const approved = ctx(w, p, target);
+  const first = w.storage.account();
+  // Same server, another user; then another server. The path is the same, the account is not.
+  for (const change of [() => { w.storage.user = 'synthetic-user-b'; }, () => { w.storage.user = 'synthetic-user-a'; w.storage.conn = () => ({ kind: 'webdav', url: 'http://other-storage.invalid/', username: 'synthetic-user-a' }); }]) {
+    change();
+    assert.notEqual(w.storage.account(), first);
+    assert.equal(resolveEditTarget(p, JSON.stringify({ name: 'qa-687-notes.md' }), { storageAccount: w.storage.account() }).path, target, 'the path alone would still match');
+    await assert.rejects(w.tools.project_append_file.handler({ name: 'qa-687-notes.md', text: 'x' }, approved), /not the file that was approved\. Nothing was changed/);
+    // And at the write path itself, the lock-held check: approved for the first account, another connected now.
+    await assert.rejects(w.store.writeProjectTextFile(p, 'qa-687-notes.md', 'x', { expectName: 'qa-687-notes.md', expectContent: NOTES, expectAttachment: null, adoptTo: target, adoptAccount: first }),
+      /in a different storage account than the one connected now, so nothing was saved/);
+    await assert.rejects(w.store.writeProjectTextFile(p, 'qa-687-notes.md', 'x', { expectName: 'qa-687-notes.md', expectContent: NOTES, expectAttachment: null, adoptTo: target }),
+      /different storage account/, 'no account bound: refused too');
+  }
+  assert.deepEqual(w.storage.writeCalls, []);
+  assert.equal(w.storage.folderCreations.length, 0, 'not even the folder was created');
+  assert.deepEqual(p.files.map((f) => [f.name, f.content]), [['qa-687-notes.md', NOTES]]);
+  // The chat loop binds the account too: the token's digest is path + account.
+  const w2 = world(t);
+  const q = legacyProject(w2);
+  const r = await chat(t, w2, q, { rounds: [{ tool: 'project_append_file', args: { name: 'qa-687-notes.md', text: 'y' } }], onApproval: () => { w2.storage.user = 'synthetic-user-b'; } });
+  assert.equal(r.pending[0].target, target);
+  assert.match(r.results[0].text, /files changed after approval|not the file that was approved|different storage account/);
+  assert.deepEqual(w2.storage.writeCalls, []);
+});
+
+test('create-time storing is create-only: a case-variant name on case-insensitive storage stays in noevia', async (t) => {
+  const w = world(t);
+  w.storage.caseInsensitive = true;
+  const p = await w.store.createProject({ name: 'Case', files: [{ name: 'Notes.md', content: 'first\n' }, { name: 'notes.md', content: 'second\n' }] });
+  const upper = `${ROOT}/Case/Text/Notes.md`;
+  assert.equal(w.storage.objects.get(upper), 'first\n', 'the first file is not overwritten');
+  assert.deepEqual(w.storage.writeCalls.map((c) => c.ifNoneMatch), ['*', '*'], 'every create-time PUT is create-only');
+  assert.deepEqual(p.files.map((f) => f.name), [upper, 'notes.md'], 'the refused one stays in noevia');
+  assert.equal(p.files[1].content, 'second\n');
+  // A file already in the folder (an upload that landed first) is not replaced either.
+  const w2 = world(t);
+  w2.storage.put(`${ROOT}/Pre/Text/a.md`, 'already there\n');
+  const q = await w2.store.createProject({ name: 'Pre', files: [{ name: 'a.md', content: 'dialog\n' }] });
+  assert.equal(w2.storage.objects.get(`${ROOT}/Pre/Text/a.md`), 'already there\n');
+  assert.deepEqual(q.files.map((f) => f.name), ['a.md']);
+});
+
+test('create-time storing makes no folder when no file will be stored (#589)', async (t) => {
+  const w = world(t);
+  const p = await w.store.createProject({ name: 'Nothing', files: [{ name: 'empty.md', content: '' }, { name: 'bad\u0001name.md', content: 'x' }, { name: 'image.png', content: 'x' }] });
+  assert.equal(w.storage.folderCreations.length, 0, 'no folder created');
+  assert.equal(p.projectFolder, undefined);
+  assert.deepEqual(p.sourceFolders, []);
+  assert.deepEqual(w.storage.writeCalls, []);
+  assert.equal(p.files.length, 3, 'the files stay in noevia');
+  // One storable file among them: the folder is made and only that file stored.
+  const q = await w.store.createProject({ name: 'Some', files: [{ name: 'empty.md', content: '' }, { name: 'ok.md', content: 'ok\n' }] });
+  assert.equal(q.projectFolder, `${ROOT}/Some`);
+  assert.deepEqual(w.storage.writeCalls.map((c) => c.path), [`${ROOT}/Some/Text/ok.md`]);
+  assert.deepEqual(q.files.map((f) => f.name), ['empty.md', `${ROOT}/Some/Text/ok.md`]);
 });

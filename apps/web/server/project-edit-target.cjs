@@ -38,16 +38,30 @@ function uploadPathFor(project, base) {
 const isProjectUpload = (project, file) => !!(project.projectFolder && file.attachment && file.source === project.projectFolder);
 
 /**
- * The file an edit named `raw` would change, the plain name to hand the write path, and `target`,
- * the stored path the edit writes (the card shows it). `storageConnected` is whether the account's
- * storage is browsable now; it only matters for a plain-named file (see the header).
- * Throws a model-readable Error when the name does not resolve or the file may not be edited.
- * @returns {{ file: any, writeName: string, target: string, adopt: boolean }}
+ * Which storage account a connection is (#687 review): a digest of its kind, server, bucket and
+ * user, never the secret. A move into the project folder is bound to it, so an approval given
+ * while one account was connected cannot create the file in another one connected since.
+ * `null` for no connection.
  */
-function planEdit(project, raw, { storageConnected = false } = {}) {
+function storageAccount(connection) {
+  if (!connection || typeof connection !== 'object') return null;
+  const where = String(connection.baseUrl || connection.url || '').replace(/\/+$/, '');
+  return crypto.createHash('sha256').update(JSON.stringify(['noevia-storage-account', String(connection.kind || ''), where, String(connection.bucket || ''), String(connection.region || ''), String(connection.username || '')])).digest('hex');
+}
+
+/**
+ * The file an edit named `raw` would change, the plain name to hand the write path, and `target`,
+ * the stored path the edit writes (the card shows it). `storageAccount` is the connected storage
+ * account (storageAccount() of a browsable connection) or null; it only matters for a plain-named
+ * file (see the header), whose plan then carries it as `account`.
+ * Throws a model-readable Error when the name does not resolve or the file may not be edited.
+ * @returns {{ file: any, writeName: string, target: string, adopt: boolean, account: string|null }}
+ */
+function planEdit(project, raw, { storageAccount: account = null } = {}) {
   const found = resolveProjectFile(project, raw);
   if (!found.file) throw new Error(found.error);
   const file = found.file;
+  const storageConnected = typeof account === 'string' && !!account;
   let writeName = file.name, target = file.name, adopt = false;
   if (isProjectUpload(project, file)) {
     const base = file.name.slice(file.name.lastIndexOf('/') + 1);
@@ -75,26 +89,27 @@ function planEdit(project, raw, { storageConnected = false } = {}) {
   if (file.attachment && (file.attachment.state !== 'ready' || classify(writeName) !== 'Text')) {
     throw new Error(`"${file.name}" was only read in part or in another encoding, so writing it back would lose content. Nothing was changed.`);
   }
-  return { file, writeName, target, adopt };
+  return { file, writeName, target, adopt, account: adopt ? account : null };
 }
 
 /**
  * For the chat loop: the stored path an edit tool call would change (for a plain-named file in a
  * project with connected storage, the path it is moved to), resolved against the project as it is
- * now. `{ path }` or `{ error }`.
+ * now. `{ path, account }` (account: the storage account a move is bound to, else null) or `{ error }`.
  */
-function resolveEditTarget(project, rawArgs, { storageConnected = false } = {}) {
+function resolveEditTarget(project, rawArgs, { storageAccount: account = null } = {}) {
   if (!project) return { error: 'this chat is not in a project, so there are no project files to edit.' };
   let args;
   try { args = JSON.parse(rawArgs || '{}'); } catch { return { error: 'the tool arguments were not valid JSON.' }; }
   if (!args || typeof args !== 'object' || Array.isArray(args)) return { error: 'the tool arguments must be a JSON object.' };
-  try { return { path: planEdit(project, args.name, { storageConnected }).target }; }
+  try { const plan = planEdit(project, args.name, { storageAccount: account }); return { path: plan.target, account: plan.account }; }
   catch (err) { return { error: String((err && err.message) || err) }; }
 }
 
 /** What the capability token carries for an approved edit: a fixed-size digest of the path. */
-function targetDigest(storedPath) {
-  return crypto.createHash('sha256').update(`noevia-edit-target\0${String(storedPath)}`).digest('hex');
+/** A move into the project folder (#687) is also bound to the storage account it was approved for. */
+function targetDigest(storedPath, account = null) {
+  return crypto.createHash('sha256').update(`noevia-edit-target\0${String(storedPath)}${account ? `\0${account}` : ''}`).digest('hex');
 }
 
-module.exports = { EDIT_TOOLS, uploadPathFor, isProjectUpload, planEdit, resolveEditTarget, targetDigest };
+module.exports = { EDIT_TOOLS, uploadPathFor, isProjectUpload, planEdit, resolveEditTarget, targetDigest, storageAccount };

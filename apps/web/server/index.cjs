@@ -598,7 +598,7 @@ const { handleChat } = require('./chat.cjs').createChatHandler({
   chatgptOAuth, chatgptEnabled: () => features.enabled('chatgptOAuth'),
   projectEditTool: (name) => require('./project-edit-target.cjs').EDIT_TOOLS.has(name) && !!MCP_INTERNAL_SERVER && mcpState.tools.get(name)?.serverId === MCP_INTERNAL_SERVER.id,
   // #687: a plain-named project file is edited by moving it into the project folder when storage is connected.
-  editStorageConnected: (userId) => { try { return !!userId && storageClient.isBrowsable(authService.getStorage(userId, true)); } catch { return false; } },
+  editStorageAccount: (userId) => { try { const c = userId ? authService.getStorage(userId, true) : null; return c && storageClient.isBrowsable(c) ? require('./project-edit-target.cjs').storageAccount(c) : null; } catch { return null; } },
   // #659: the Google Drive writes name the Drive file they change on the approval card.
   writeTargetFor: (name, rawArgs, { user }) => (driveTools.names.has(name) ? driveTools.describeTarget(user, name, rawArgs) : null),
 });
@@ -897,7 +897,7 @@ if (require.main === module) {
       // than a second kind of file that only the model can make.
       writeTextFile: writeProjectTextFile,
       // #687: the same storage check the chat loop made for the approval card, for this call's account.
-      storageConnected: () => { const userId = requestScope.getStore()?.workspace?.userId; try { return !!userId && storageClient.isBrowsable(authService.getStorage(userId, true)); } catch { return false; } },
+      storageAccount: () => { const userId = requestScope.getStore()?.workspace?.userId; try { const c = userId ? authService.getStorage(userId, true) : null; return c && storageClient.isBrowsable(c) ? require('./project-edit-target.cjs').storageAccount(c) : null; } catch { return null; } },
     });
     const internalServer = mcpInternal.startInternalServer({
       port: MCP_INTERNAL_PORT,

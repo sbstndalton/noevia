@@ -217,7 +217,12 @@ function createProjectStore({
     try {
       await withSourceLock(project, async () => {
         if (getProject(project.id) !== project) return;
-        const pending = project.files.filter((f) => !f.source && !f.attachment && !f.name.includes('/') && uploads.classify(f.name) === 'Text');
+        // Only files that will actually be stored: no folder is created for nothing (#589).
+        const storable = (f) => {
+          if (f.source || f.attachment || f.name.includes('/') || uploads.classify(f.name) !== 'Text') return false;
+          try { uploads.validate(f.name, Buffer.from(f.content, 'utf8')); return true; } catch { return false; }
+        };
+        const pending = project.files.filter(storable);
         if (!pending.length) return;
         if (!project.projectFolder) {
           const folder = await ensureProjectFolder(project);
@@ -229,9 +234,9 @@ function createProjectStore({
         for (const inline of pending) {
           let file;
           try {
-            const bytes = Buffer.from(inline.content, 'utf8');
-            if (!bytes.length) continue;
-            file = await uploads.ingest(currentWorkspace(), project, inline.name, bytes, { connection, storageImpl: storageClient });
+            // Create-only: on case-insensitive storage a case-variant name (or an upload landing
+            // meanwhile) must not replace a file already there; this one then stays in noevia.
+            file = await uploads.ingest(currentWorkspace(), project, inline.name, Buffer.from(inline.content, 'utf8'), { connection, storageImpl: storageClient, ifNoneMatch: '*' });
           } catch (err) {
             console.warn(`[projects] could not store a file of new project ${project.id} in storage; it stays in noevia: ${String((err && err.message) || err)}`);
             continue;
@@ -417,7 +422,9 @@ function createProjectStore({
   // upload does); the write is refused if the destination is anything but `adoptTo`, if storage is
   // not connected, or if something already exists at `adoptTo` in storage (checked first, and the
   // PUT is create-only with If-None-Match, so a file appearing in between is not overwritten).
-  function writeProjectTextFile(project, name, text, { expectName, expectContent, expectAttachment, adoptTo } = {}) {
+  // `adoptAccount` is the storage account (project-edit-target.storageAccount) the move was approved
+  // for; with any other account connected now the write is refused.
+  function writeProjectTextFile(project, name, text, { expectName, expectContent, expectAttachment, adoptTo, adoptAccount } = {}) {
     return withSourceLock(project, async () => {
       if (getProject(project.id) !== project) throw new Error('the project changed while writing; nothing was saved');
       const uploads = require('./uploads.cjs');
@@ -444,6 +451,9 @@ function createProjectStore({
       if (adopt) {
         if (typeof adoptTo !== 'string' || !adoptTo || current.source || current.name.includes('/') || current.name !== name) throw new Error(`"${expectName}" cannot be moved into the project folder; nothing was saved`);
         if (!remote) throw new Error(`"${expectName}" was to be saved as "${adoptTo}" in this project's storage, which is not connected right now, so nothing was saved. Reconnect storage and try again.`);
+        if (typeof adoptAccount !== 'string' || !adoptAccount || require('./project-edit-target.cjs').storageAccount(remote) !== adoptAccount) {
+          throw new Error(`"${expectName}" was approved to be saved as "${adoptTo}" in a different storage account than the one connected now, so nothing was saved. Ask again to save it in this one.`);
+        }
         if (!project.projectFolder) {
           const folder = await ensureProjectFolder(project);
           if (!folder) throw new Error(`Could not create this project's storage folder, so "${expectName}" was not edited. Nothing was saved. Check the storage connection and try again.`);
