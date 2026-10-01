@@ -21,7 +21,8 @@ function repo() {
 }
 function commitIn(tree, file, text) {
   fs.writeFileSync(path.join(tree, file), text);
-  git(tree, 'add', file); git(tree, 'commit', '-qm', `edit ${file}`);
+  // A clone has no identity of its own (CI has no global one either).
+  git(tree, 'add', file); git(tree, '-c', 'user.email=qa@example.invalid', '-c', 'user.name=QA', 'commit', '-qm', `edit ${file}`);
   return git(tree, 'rev-parse', 'HEAD');
 }
 /** A task that made one commit and was released: what the pipeline hands to verify and merge. */
