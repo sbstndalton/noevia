@@ -47,7 +47,7 @@ services:
       # #697: same GGUF file and pooling as the engine's [nomic-embed-text-v1] section (live:
       # /models/nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf, pooling mean), so Diary's
       # stored vectors stay comparable when its embeddings move here. tools/embed-parity-check.cjs
-      # checks it (cosine >= 0.999) before Diary is switched.
+      # checks it (min cosine >= 0.997 over a synthetic sample, top-5 overlap >= 0.9; #720).
       - "--pooling"
       - "mean"
       - "--model"
