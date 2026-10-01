@@ -9,23 +9,55 @@ const normalise = (text) => String(text).toLowerCase().normalize('NFKC').replace
 const STOP = new Set('a an and are as at be but by for from has have in is it its of on or that the this to was were which with not no into than then there their they also can may will'.split(' '));
 const words = (text) => normalise(text).split(' ').filter((w) => w.length > 2 && !STOP.has(w));
 
+// §5 (#707): sentence-level evidence. Every excerpt is split into sentences and each sentence gets
+// a job-wide ID (S1, S2, …) so the write step can cite the exact sentence that states a claim.
+function splitSentences(text) {
+  return String(text).split(/\n+|(?<=[.!?]["”')\]]?)\s+(?=["“(]?[\p{Lu}\p{N}])/u).map((x) => x.replace(/\s+/g, ' ').trim()).filter((x) => words(x).length || /\d/.test(x));
+}
+
 function createRegistry() {
   const sources = [];
+  const bySentenceId = new Map();
+  let nextSentence = 1;
+  function addSentences(target, text) {
+    for (const sentence of splitSentences(text)) {
+      const key = normalise(sentence);
+      if (target.sentences.some((x) => normalise(x.text) === key)) continue;
+      const entry = { id: `S${nextSentence++}`, text: sentence };
+      target.sentences.push(entry);
+      bySentenceId.set(entry.id, { ...entry, sourceId: target.id });
+    }
+  }
   function register({ kind, url = null, file = null, title = '', retrievedAt = Date.now(), excerpts = [] }) {
     if (kind !== 'web' && kind !== 'project') throw Error('Source kind must be web or project');
     if (kind === 'web' && !/^https?:\/\//i.test(String(url || ''))) throw Error('A web source needs an http(s) URL');
     if (kind === 'project' && !file) throw Error('A project source needs a file');
     // The same page or file registers once; later excerpts join it.
     const existing = sources.find((s) => s.kind === kind && s.url === url && s.file === file);
-    const target = existing || { id: sources.length + 1, kind, url, file, title: String(title).slice(0, 300), retrievedAt, excerpts: [] };
+    const target = existing || { id: sources.length + 1, kind, url, file, title: String(title).slice(0, 300), retrievedAt, excerpts: [], sentences: [] };
     for (const text of excerpts) {
       const hash = sha256(text);
-      if (!target.excerpts.some((e) => e.sha256 === hash)) target.excerpts.push({ sha256: hash, text });
+      if (!target.excerpts.some((e) => e.sha256 === hash)) { target.excerpts.push({ sha256: hash, text }); addSentences(target, text); }
     }
     if (!existing) sources.push(target);
     return target.id;
   }
-  return { register, get: (id) => sources.find((s) => s.id === id) || null, list: () => sources.map((s) => ({ ...s, excerpts: [...s.excerpts] })) };
+  // The sentences of the given excerpts of one source, in excerpt order, with their stable IDs.
+  function sentencesOf(id, excerptTexts) {
+    const source = sources.find((s) => s.id === id);
+    if (!source) return [];
+    const out = [];
+    for (const text of excerptTexts) {
+      for (const sentence of splitSentences(text)) {
+        const found = source.sentences.find((x) => normalise(x.text) === normalise(sentence));
+        if (found && !out.includes(found)) out.push(found);
+      }
+    }
+    return out.map((x) => ({ ...x, sourceId: id }));
+  }
+  return { register, sentencesOf, sentence: (sid) => bySentenceId.get(String(sid)) || null,
+    get: (id) => sources.find((s) => s.id === id) || null,
+    list: () => sources.map((s) => ({ ...s, excerpts: [...s.excerpts], sentences: s.sentences.map((x) => ({ ...x })) })) };
 }
 
 // Boilerplate strip → heading-aware chunks → ranked by the sub-question → capped.
@@ -135,8 +167,123 @@ function verifyCitations(markdown, registry, usedIds) {
   return { markdown: out, total, valid, validity: total ? valid / total : 1, unsupported };
 }
 
+// ---- Sentence-level evidence pack and verifier (#707) ----
+
+// Brackets inside source text are neutralised so a page cannot forge a sentence ID or a marker.
+const packText = (text) => String(text).replace(/\[/g, '(').replace(/\]/g, ')').replace(/\s+/g, ' ').trim();
+
+/** One line per sentence, `[S4] text`. Groups (one per source) are separated by `---` without
+ * source numbers, so the model has nothing to cite but sentence IDs. */
+function evidencePack(groups) {
+  return groups.filter((g) => g.length).map((g) => g.map((x) => `[${x.id}] ${packText(x.text)}`).join('\n')).join('\n---\n');
+}
+
+// Numbers must match exactly: "2,300" and "2300" are the same number, "90" is not "2.7".
+const numbersIn = (text) => (String(text).match(/\d+(?:[.,]\d+)*/g) || []).map((n) => n.replace(/,(?=\d{3}\b)/g, ''));
+const stem = (w) => w.replace(/(?:ies|es|s|ed|ing)$/, '') || w;
+
+/** The existing §5 lexical check, applied to the cited sentences only, plus two guards that a
+ * sentence-sized haystack allows: most of the claim's content words (lightly stemmed) appear in
+ * the cited sentences, and every number in the claim appears in them. */
+function supportsClaim(claim, sentenceTexts, { checkNumbers = true } = {}) {
+  const texts = sentenceTexts.map(String);
+  if (!texts.length) return false;
+  const have = new Set(numbersIn(texts.join(' ')));
+  if (checkNumbers && numbersIn(claim).some((n) => !have.has(n))) return false;
+  if (supports(claim, texts)) return true;
+  const claimWords = [...new Set(words(claim).filter((w) => !/^\d+$/.test(w)).map(stem))];
+  if (claimWords.length < 2) return false;
+  const hay = new Set(words(texts.join(' ')).map(stem));
+  return claimWords.filter((w) => hay.has(w)).length / claimWords.length >= 0.6;
+}
+
+const SENTENCE_MARK = /\s*[[(]\s*(S\d+(?:\s*[,;]\s*S?\d+)*)\s*[\])]/g;
+const SOURCE_MARK = /\s*\[\s*(\d+(?:\s*[,;]\s*\d+)*)\s*\]/g;
+const ONLY_MARKS = /^(?:\s*(?:[[(]\s*S\d+(?:\s*[,;]\s*S?\d+)*\s*[\])]|\[\s*\d+(?:\s*[,;]\s*\d+)*\s*\]))+\s*[.!?]?\s*$/;
+const REASONS = {
+  'wrong-sentence': 'the cited sentence does not state this',
+  'whole-source': 'it cites a whole source instead of the sentence that states it',
+  'unknown-id': 'it cites a sentence that was not in the evidence',
+  uncited: 'no sentence is cited for this claim',
+};
+
+/**
+ * Verifies a drafted section claim by claim. Each sentence of the draft is a claim; its markers
+ * are `[S4]` (sentence IDs from the evidence pack, `[S4, S9]` and `[S4][S9]` allowed). A marker
+ * is valid when its sentence was in this section's evidence and supports the claim. Supported
+ * claims keep reader-facing source markers `[n]`; a claim whose markers all fail is dropped
+ * (`mode: 'drop'`, the default) or kept with an "Unsupported" footnote (`mode: 'flag'`). A
+ * whole-source marker `[2]` is a failed citation. An uncited sentence carrying a number is
+ * flagged. No model call. `validity` counts markers, as in §5.
+ */
+function verifyClaims(markdown, registry, allowedSentenceIds, { mode = 'drop' } = {}) {
+  const allowed = new Set(allowedSentenceIds);
+  const src = String(markdown);
+  // Split into lines, then sentences; a segment holding only markers belongs to the sentence before it.
+  // A marker written after the full stop ("Fact. [S3]", "Fact.[S3] Next") moves in front of it.
+  const lines = src.split('\n').map((line) => line.replace(/([.!?])[ \t]*((?:[[(]\s*S\d+(?:\s*[,;]\s*S?\d+)*\s*[\])])+)/g, ' $2$1')).map((line) => {
+    const segs = [];
+    for (const seg of line.split(/(?<=[.!?])\s+(?=\S)/)) {
+      if (segs.length && ONLY_MARKS.test(seg)) segs[segs.length - 1] += ' ' + seg.trim();
+      else segs.push(seg);
+    }
+    return segs;
+  });
+  let total = 0, valid = 0;
+  const claims = { total: 0, supported: 0, flagged: 0, dropped: 0, uncited: 0 };
+  const flagged = [], dropped = [], cited = [];
+  const out = lines.map((segs) => {
+    const kept = [];
+    for (const seg of segs) {
+      const lead = (seg.match(/^\s*(?:[-*+]\s+|\d+[.)]\s+|>\s*)?/) || [''])[0];
+      const body = seg.slice(lead.length);
+      const sentenceIds = [...body.matchAll(SENTENCE_MARK)].flatMap((m) => m[1].split(/[,;]/).map((x) => x.trim()).map((x) => (/^S/.test(x) ? x : `S${x}`)));
+      const sourceMarks = [...body.matchAll(SOURCE_MARK)].flatMap((m) => m[1].split(/[,;]/));
+      const text = body.replace(SENTENCE_MARK, '').replace(SOURCE_MARK, '').replace(/\s+([.!?,;:])/g, '$1').trim();
+      if (/^#/.test(body.trim()) || /^\[\^/.test(body.trim()) || !text) { kept.push(seg); continue; }
+      if (!sentenceIds.length && !sourceMarks.length) {
+        // Prose without a citation is left alone unless it states a number, the checkable kind of fact.
+        if (numbersIn(text).length) {
+          claims.total++; claims.uncited++; claims.flagged++;
+          flagged.push({ text, reason: 'uncited' });
+          kept.push(`${lead}${text}[^u${flagged.length}]`);
+        } else kept.push(seg);
+        continue;
+      }
+      claims.total++;
+      total += sentenceIds.length + sourceMarks.length;
+      const unique = [...new Set(sentenceIds)];
+      const known = unique.map((id) => (allowed.has(id) ? registry.sentence(id) : null)).filter(Boolean);
+      // Sentences that support the claim on their own words; numbers are checked on their union.
+      const lexical = known.filter((x) => supportsClaim(text, [x.text], { checkNumbers: false }));
+      const ok = lexical.length && supportsClaim(text, lexical.map((x) => x.text)) ? lexical : [];
+      valid += sentenceIds.filter((id) => ok.some((x) => x.id === id)).length;
+      if (ok.length) {
+        claims.supported++;
+        const marks = [...new Set(ok.map((x) => x.sourceId))].map((n) => `[${n}]`).join('');
+        cited.push({ text, sentences: ok.map((x) => x.id), sources: [...new Set(ok.map((x) => x.sourceId))] });
+        kept.push(lead + text.replace(/([.!?]["”')]?)?$/, (end) => ` ${marks}${end || ''}`).replace(/^ /, ''));
+        continue;
+      }
+      const reason = !sentenceIds.length ? 'whole-source' : known.length ? 'wrong-sentence' : 'unknown-id';
+      if (mode === 'flag') {
+        claims.flagged++; flagged.push({ text, reason, cited: unique });
+        kept.push(`${lead}${text}[^u${flagged.length}]`);
+      } else {
+        claims.dropped++; dropped.push({ text, reason, cited: unique });
+      }
+    }
+    return kept;
+  });
+  // Lines emptied by dropped claims disappear; everything else keeps its layout.
+  let markdownOut = out.filter((segs, i) => segs.length || !lines[i].join('').trim()).map((segs) => segs.join(' ')).join('\n');
+  if (flagged.length) markdownOut += '\n\n' + flagged.map((f, i) => `[^u${i + 1}]: Unsupported: ${REASONS[f.reason]}.`).join('\n');
+  return { markdown: markdownOut, total, valid, validity: total ? valid / total : 1, claims, flagged, dropped, cited };
+}
+
 function sourcesFooter(registry) {
   return registry.list().map((s) => `${s.id}. ${s.title || s.url || s.file} — ${s.url || s.file} (retrieved ${new Date(s.retrievedAt).toISOString().slice(0, 10)})`).join('\n');
 }
 
-module.exports = { createRegistry, stripBoilerplate, chunk, lexicalScore, reduce, capExcerpts, verifyCitations, sourcesFooter, normalise };
+module.exports = { createRegistry, stripBoilerplate, chunk, lexicalScore, reduce, capExcerpts, verifyCitations, sourcesFooter, normalise,
+  splitSentences, evidencePack, supportsClaim, verifyClaims, VERIFY_REASONS: REASONS };

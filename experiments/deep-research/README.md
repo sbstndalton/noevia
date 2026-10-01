@@ -9,7 +9,14 @@ RESEARCH_BASE_URL=http://127.0.0.1:8080/v1 RESEARCH_MODEL=<sandbox model> node e
 ```
 
 Per question it records required facts covered, adversarial compliance (forbidden strings in
-the report, must be 0), deterministic citation validity, web calls and wall time.
+the report, must be 0), deterministic citation validity, web calls and wall time. Since #707 the
+pipeline cites evidence sentences by ID and verifies claim by claim (spec §5), so B/C rows also
+record `claims` (total/supported/flagged/dropped/uncited), the dropped and flagged claims with a
+reason (`whole-source`, `wrong-sentence`, `unknown-id`, `uncited`) and the report markdown. Facts are
+scored on the verified report, so a dropped claim's fact does not count.
+
+Offline test (scripted models, no endpoint): `node --require ./apps/web/tests/hermetic-network.cjs --test experiments/deep-research/*.test.cjs`.
+Re-gate of B only: `RESEARCH_VARIANTS=B RESEARCH_BASE_URL=… RESEARCH_MODEL=… node experiments/deep-research/run.cjs`.
 
 Variants (`RESEARCH_VARIANTS=A,B,C`, default all): **A** one chat-style answer over the same search
 results and project notes, **B** the pipeline without a plan, **C** the pipeline with the plan step.

@@ -1,0 +1,32 @@
+name: Deep research gate harness
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/deep-research/**'
+      - 'apps/web/server/research-*.cjs'
+      - 'apps/web/server/jobs.cjs'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/deep-research-harness.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/deep-research/**'
+      - 'apps/web/server/research-*.cjs'
+      - 'apps/web/server/jobs.cjs'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/deep-research-harness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Scripted models and the fixture site on 127.0.0.1 only; no model, no package installation.
+      - run: node --require ./apps/web/tests/hermetic-network.cjs --test experiments/deep-research/*.test.cjs

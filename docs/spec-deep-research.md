@@ -83,6 +83,18 @@ Source registry per job:
   sentence carrying `[n]` must share a quoted span or a normalised key phrase with one of that
   source's excerpts. Failing markers are removed and the sentence is marked "unsupported" in a
   footnote list. No model call is used for verification.
+- **Sentence-level citations (#707, replaces the per-source check above for the pipeline):** every
+  excerpt is split into sentences with job-wide IDs (`S1`, `S2`, …, kept in the registry and in
+  `.sources.json`). Per source the model picks relevant sentences by ID; the write step gets only
+  those as an `<EVIDENCE>` pack (`[S4] sentence`, sources separated by `---`, no source numbers,
+  brackets inside source text neutralised) and must end each sentence with the ID of the sentence
+  that states it. The verifier checks each claim against its cited sentences only: the §5 key-phrase
+  check, or ≥ 60 % of the claim's content words, and every number in the claim must appear in the
+  cited sentences. A claim with no supporting cited sentence (whole-source `[n]`, wrong or unknown
+  ID) is dropped (default, `unsupportedClaims: 'drop'`) or footnoted (`'flag'`); an uncited sentence
+  stating a number is footnoted. Supported claims show reader-facing `[n]` source markers. The result,
+  job view and `.sources.json` report `claims: { total, supported, flagged, dropped, uncited }`, and
+  `citationValidity` still counts markers, so it measures the model before repair.
 - Report footer lists sources in id order with title, URL or project file, and retrieval date.
 
 ## 6. Context limits (local models)
