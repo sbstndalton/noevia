@@ -383,8 +383,10 @@ const codeService = require('./code-service.cjs').createCodeService({
   // Planner review (#519, code-review.cjs): off unless features.plannerReview. Advice on a final card
   // the person still answers; it runs on the default provider as the web container reaches it, and
   // refuses an external one. With the flag on it runs through the role engine (#702, role-engine.cjs):
-  // the task's model is pinned, the call streams under the Laya guard, and a different resident
-  // model refuses the review rather than swapping (models-max 1).
+  // the task's model is pinned and the call streams under the Laya guard. Under the model manager's
+  // admission lock, a different resident chat model (the embedding/rerank sidecars excepted) refuses
+  // the review instead of swapping (models-max 1); with nothing resident, the review loads the pinned
+  // model inside that same lock. A client outside this process can still race the router.
   review: (() => {
     const reviewEngine = () => {
       const provider = getProvider(DEFAULT_PROVIDER_ID);
@@ -402,7 +404,9 @@ const codeService = require('./code-service.cjs').createCodeService({
       enabled: () => features.enabled('plannerReview'),
       log,
       provider: require('./code-review.cjs').createEngineReviewer({ fetch: (...args) => globalThis.fetch(...args), log, engine: reviewEngine }),
-      roleEngine: require('./role-engine.cjs').createRoleEngine({ fetch: (...args) => globalThis.fetch(...args), log, engine: reviewEngine }),
+      roleEngine: require('./role-engine.cjs').createRoleEngine({ fetch: (...args) => globalThis.fetch(...args), log, engine: reviewEngine,
+        keep: () => [...require('./model-system.cjs').sidecarModelNames(process.env)],
+        admission: typeof modelManager.withAdmission === 'function' ? (work, signal) => modelManager.withAdmission(work, signal) : null }),
     });
   })(),
 });

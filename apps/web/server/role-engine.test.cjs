@@ -2,7 +2,8 @@
 // The role engine (#702) against a fake streaming engine: offline, synthetic task data only.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createRoleEngine, buildMessages, loadedFromModelList, SHARED_FRAME, schemaConstraint } = require('./role-engine.cjs');
+const { createRoleEngine, buildMessages, loadedFromModelList, sseDeltas, sharedPrefix, SHARED_FRAME, PERSONA_SEPARATOR, ROLE_DEFAULTS, schemaConstraint } = require('./role-engine.cjs');
+const { VERDICT_SCHEMA } = require('./code-review-verdict.cjs');
 const { projectSharedDossier, projectRoleContext, allowedFields, PERSONA_FIELDS, REVISION_FIELDS, RoleContextLeakError, REDACTED } = require('./role-context.cjs');
 const { createPlannerPlan } = require('./planner-plan.cjs');
 const { createPlannerReview } = require('./code-review.cjs');
@@ -54,6 +55,13 @@ const streamOf = (text, pieces = 4) => {
 };
 
 /** A fake engine: a router /models list and a streaming /chat/completions, scripted per request. */
+// Rows the router lists beside the chat models: an embedding sidecar (argv --embedding), a
+// reranker on the keep-list, and the Laya system model — all resident, none a chat model.
+const SIDE_ROWS = [
+  { id: 'synthetic-embed', status: { value: 'loaded', args: ['--model', '/models/embed.gguf', '--embedding'] } },
+  { id: 'synthetic-rerank', status: { value: 'loaded', args: ['--model', '/models/rerank.gguf'] } },
+  { id: 'laya_multilingual_f16', status: { value: 'loaded', args: ['--model', '/models/laya_multilingual_f16.gguf'] } },
+];
 function fakeEngine({ loaded = [MODEL], replies = [], status = null } = {}) {
   const calls = [], probes = [], modelReads = [];
   const engineState = { loaded };
@@ -61,7 +69,7 @@ function fakeEngine({ loaded = [MODEL], replies = [], status = null } = {}) {
     if (url.endsWith('/models')) {
       modelReads.push(url);
       if (engineState.loaded instanceof Error) return { ok: false, status: 503, json: async () => ({}) };
-      return { ok: true, status: 200, json: async () => ({ data: [MODEL, OTHER].map((id) => ({ id, status: { value: engineState.loaded.includes(id) ? 'loaded' : 'unloaded' } })) }) };
+      return { ok: true, status: 200, json: async () => ({ data: [...[MODEL, OTHER].map((id) => ({ id, status: { value: engineState.loaded.includes(id) ? 'loaded' : 'unloaded', args: ['--model', `/models/${id}.gguf`] } })), ...SIDE_ROWS] }) };
     }
     const body = JSON.parse(init.body);
     const probe = { pulled: 0, bytes: 0, cancelled: false, signal: init.signal };
@@ -75,8 +83,16 @@ function fakeEngine({ loaded = [MODEL], replies = [], status = null } = {}) {
   return { fetch, calls, probes, modelReads, engineState };
 }
 
-function engineFor(fake, { provider = null, logs = [], model = MODEL, external = false } = {}) {
-  return createRoleEngine({ fetch: fake.fetch, log: (e) => logs.push(e), engine: () => ({ baseUrl: 'http://engine.invalid/v1', apiKey: 'k-local', model, provider, external }) });
+function engineFor(fake, { provider = null, logs = [], model = MODEL, external = false, admission = null, roleDefaults = {} } = {}) {
+  return createRoleEngine({ fetch: fake.fetch, log: (e) => logs.push(e), keep: () => ['synthetic-rerank'], admission, roleDefaults,
+    engine: () => ({ baseUrl: 'http://engine.invalid/v1', apiKey: 'k-local', model, provider, external }) });
+}
+// Strict chat templates: system first (optional), then user/assistant alternating, ending on user.
+function assertAlternates(messages) {
+  const rest = messages[0]?.role === 'system' ? messages.slice(1) : messages;
+  assert.ok(rest.length >= 1);
+  rest.forEach((m, i) => assert.equal(m.role, i % 2 === 0 ? 'user' : 'assistant', `message ${i} is ${m.role}`));
+  assert.equal(rest.at(-1).role, 'user');
 }
 
 async function pinned(fake, opts = {}) {
@@ -157,10 +173,27 @@ test('pinModel: cold start, single resident model, unreadable router, external p
   assert.equal((await engineFor(ext).pinModel({ taskId: 't', thinking: 'yes' })).code, 'invalid');
 });
 
-test('loadedFromModelList reads router status and a single server without status', () => {
+test('loadedFromModelList: router status only; rows without status are not loaded; keep-list and non-chat rows ignored', () => {
   assert.deepEqual(loadedFromModelList({ data: [{ id: 'a', status: { value: 'loaded' } }, { id: 'b', status: { value: 'unloaded' } }, { id: 'c', status: 'loading' }] }), ['a', 'c']);
-  assert.deepEqual(loadedFromModelList({ data: [{ id: 'solo' }] }), ['solo']);
+  // A single server's list (no status) is not a router saying "loaded".
+  assert.deepEqual(loadedFromModelList({ data: [{ id: 'solo', object: 'model', owned_by: 'llamacpp' }] }), []);
   assert.deepEqual(loadedFromModelList(null), []);
+  assert.deepEqual(loadedFromModelList({ data: SIDE_ROWS }, ['synthetic-rerank']), []);
+  // Without the keep-list the reranker (no embedding/rerank flag in its argv) would count.
+  assert.deepEqual(loadedFromModelList({ data: SIDE_ROWS }), ['synthetic-rerank']);
+  // Non-chat by argv flag or by the model manager's labels, too.
+  assert.deepEqual(loadedFromModelList({ data: [{ id: 'r', status: { value: 'loaded', args: ['--reranking'] } }, { id: 'e', labels: ['embeddings'], status: { value: 'loaded' } }] }), []);
+});
+
+test('keep-list and non-chat models resident beside the pinned one are not a mismatch', async () => {
+  const fake = fakeEngine({ replies: [streamOf(GOOD)] });
+  const session = await pinned(fake);
+  assert.equal((await session.call({ role: 'planner', state: state(), instructions: 'p', schema: SCHEMA })).ok, true);
+  // The router listing is the router's own path (no /v1), like the model manager's.
+  assert.equal(fake.modelReads[0], 'http://engine.invalid/models');
+  // But the same reranker NOT on the keep-list blocks the pin: it is a chat-capable resident.
+  const bare = createRoleEngine({ fetch: fakeEngine().fetch, engine: () => ({ baseUrl: 'http://engine.invalid/v1', model: MODEL }) });
+  assert.equal((await bare.pinModel({ taskId: 't' })).code, 'model_mismatch');
 });
 
 test('halt mid-stream: the first violation aborts the request and stops pulling bytes, then one correction runs', async () => {
@@ -182,12 +215,15 @@ test('halt mid-stream: the first violation aborts the request and stops pulling 
   assert.equal(first.cancelled, true, 'the body reader was cancelled');
   assert.equal(first.signal.aborted, true, 'the HTTP request was aborted');
   assert.equal(second.pulled, streamOf(GOOD).length, 'the corrected answer was read to its end');
-  // The correction is user #3 and carries only the violation; the prefix is unchanged.
+  // The correction is folded into the same user turn, after everything else: roles still alternate
+  // and the whole first prompt is an unchanged prefix of the second.
   const [a, b] = fake.calls.map((c) => c.body.messages);
-  assert.equal(a.length, 3);
-  assert.equal(b.length, 4);
-  assert.deepEqual(b.slice(0, 3), a);
-  assert.equal(b[3].content, `That answer was not valid: {"message":"Unknown property 'extra' at $","path":"$.extra"}. Answer again with only the JSON object.`);
+  assert.equal(a.length, 2);
+  assert.equal(b.length, 2);
+  assertAlternates(a); assertAlternates(b);
+  assert.equal(b[0].content, a[0].content);
+  assert.ok(b[1].content.startsWith(a[1].content));
+  assert.equal(b[1].content.slice(a[1].content.length), `\n\n---\nYour previous answer was not valid: {"message":"Unknown property 'extra' at $","path":"$.extra"}. Answer again with only the JSON object.`);
   const entries = logs.filter((e) => e.event === 'role.call');
   assert.equal(entries.length, 2);
   assert.equal(entries[0].halted, true);
@@ -220,18 +256,22 @@ test('prefix byte-identity across roles and revisions: system and user #1 are id
   // Revision 2: new head SHA, new plan, new diff — the shared prefix must not move.
   const r3 = await session.call({ role: 'auditor', state: state({ revision: 2, execution: { headSha: 'c'.repeat(40) }, change: { baseSha: 'a'.repeat(40), headSha: 'c'.repeat(40), files: [] }, plan: { goal: 'other' } }), instructions: 'Audit it.', schema: SCHEMA });
   const bodies = fake.calls.map((c) => c.body);
-  const prefixOf = (b) => JSON.stringify([b.model, b.chat_template_kwargs, b.messages[0], b.messages[1]]);
+  // One user turn: dossier first, then the persona. The prefix is everything before the separator.
+  const split = (b) => { const u = b.messages[1].content; const i = u.indexOf(PERSONA_SEPARATOR); return [u.slice(0, i), u.slice(i)]; };
+  const prefixOf = (b) => JSON.stringify([b.model, b.chat_template_kwargs, b.messages[0], split(b)[0]]);
+  for (const b of bodies) { assert.equal(b.messages.length, 2); assertAlternates(b.messages); }
   assert.equal(prefixOf(bodies[0]), prefixOf(bodies[1]));
   assert.equal(prefixOf(bodies[0]), prefixOf(bodies[2]));
+  assert.equal(split(bodies[0])[0], sharedPrefix(JSON.stringify({ request: state().request, task_id: 'task-702' })));
   assert.equal(r1.prefix, r2.prefix);
   assert.equal(r1.prefix, r3.prefix);
   assert.equal(bodies[0].messages[0].content, SHARED_FRAME);
-  assert.notEqual(bodies[0].messages[2].content, bodies[1].messages[2].content);
+  assert.notEqual(split(bodies[0])[1], split(bodies[1])[1]);
   // The revision and the SHAs live in the persona block, never in the prefix.
-  assert.ok(!bodies[2].messages[1].content.includes('c'.repeat(40)));
-  assert.ok(!/"revision"/.test(bodies[2].messages[1].content));
-  assert.match(bodies[1].messages[2].content, /"head_sha":"b{40}"/);
-  assert.match(bodies[2].messages[2].content, /"revision":"2"/);
+  assert.ok(!split(bodies[2])[0].includes('c'.repeat(40)));
+  assert.ok(!/"revision"/.test(split(bodies[2])[0]));
+  assert.match(split(bodies[1])[1], /"head_sha":"b{40}"/);
+  assert.match(split(bodies[2])[1], /"revision":"2"/);
   // The frame is byte-constant: a second engine and task produce the very same system message.
   assert.equal(buildMessages({ dossier: '{}', instructions: 'x', fields: '{}' })[0].content, SHARED_FRAME);
 });
@@ -397,6 +437,121 @@ test('review with a role engine: streamed verdict on the pinned model; a mismatc
   // The reviewer's persona carries the diff; the prefix carries none of it.
   const own = projectRoleContext('reviewer', state()).projection;
   assert.ok('change' in own);
-  assert.ok(!fake.calls[0].body.messages[1].content.includes('median.js'));
-  assert.ok(fake.calls[0].body.messages[2].content.includes('median.js'));
+  const user = fake.calls[0].body.messages[1].content;
+  const cut = user.indexOf(PERSONA_SEPARATOR);
+  assert.ok(!user.slice(0, cut).includes('median.js'));
+  assert.ok(user.slice(cut).includes('median.js'));
+  // The reviewer's budget: ROLE_DEFAULTS.reviewer, unless the caller says otherwise.
+  assert.equal(fake.calls[0].body.max_tokens, ROLE_DEFAULTS.reviewer.maxTokens);
+});
+
+test('messages always alternate: system + one user turn, with and without a correction', () => {
+  assertAlternates(buildMessages({ dossier: '{}', instructions: 'i', fields: '{}' }));
+  assertAlternates(buildMessages({ dossier: '{}', instructions: 'i', fields: '{}', correction: { violation: { message: 'm', path: '$' } } }));
+  assert.equal(buildMessages({ dossier: '{}', instructions: 'i', fields: '{}', correction: { violation: {} } }).length, 2);
+  assert.throws(() => assertAlternates([{ role: 'system', content: 's' }, { role: 'user', content: 'a' }, { role: 'user', content: 'b' }]));
+});
+
+test('a maximum-length verdict (12 findings at max length) fits the reviewer budget and passes the guard', async () => {
+  const long = (n, ch) => ch.repeat(n);
+  const verdict = { verdict: 'request_changes', summary: long(600, 's'),
+    findings: Array.from({ length: 12 }, (_, i) => ({ severity: 'major', file: long(240, String.fromCharCode(97 + i)), message: long(600, 'm') })) };
+  const text = JSON.stringify(verdict);
+  // A conservative 3 characters per token: the reply budget still covers the whole verdict.
+  assert.ok(ROLE_DEFAULTS.reviewer.maxTokens >= Math.ceil(text.length / 3), `${text.length} chars vs ${ROLE_DEFAULTS.reviewer.maxTokens} tokens`);
+  assert.ok(ROLE_DEFAULTS.reviewer.maxTokens >= 4000);
+  const fake = fakeEngine({ replies: [streamOf(text, 40)] });
+  const r = await createPlannerReview({ enabled: () => true, roleEngine: engineFor(fake) }).review({ state: state() });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.verdict.findings.length, 12);
+  assert.equal(fake.calls[0].body.max_tokens, ROLE_DEFAULTS.reviewer.maxTokens);
+  assert.ok(Buffer.byteLength(text) < ROLE_DEFAULTS.reviewer.maxBytes);
+  assert.ok(VERDICT_SCHEMA.properties.findings.maxItems === 12);
+});
+
+test('role budgets are configurable per role, and an explicit call value wins', async () => {
+  const fake = fakeEngine({ replies: [streamOf(GOOD), streamOf(GOOD), streamOf(GOOD)] });
+  const pin = await engineFor(fake, { roleDefaults: { reviewer: { maxTokens: 6000 } } }).pinModel({ taskId: 'task-702' });
+  await pin.session.call({ role: 'reviewer', state: state(), instructions: 'r', schema: SCHEMA });
+  await pin.session.call({ role: 'auditor', state: state(), instructions: 'a', schema: SCHEMA });
+  await pin.session.call({ role: 'reviewer', state: state(), instructions: 'r', schema: SCHEMA, maxTokens: 900 });
+  assert.deepEqual(fake.calls.map((c) => c.body.max_tokens), [6000, ROLE_DEFAULTS.auditor.maxTokens, 900]);
+});
+
+test('admission: the residency check and the send run inside one admission, released before the answer streams', async () => {
+  const events = [];
+  let held = false;
+  // A serialising lock like the model manager's withAdmission.
+  let tail = Promise.resolve();
+  const admission = async (work) => {
+    const prev = tail; let release; tail = new Promise((r) => { release = r; });
+    await prev; held = true; events.push('acquire');
+    try { return await work(); } finally { held = false; events.push('release'); release(); }
+  };
+  const fake = fakeEngine();
+  const inner = fake.fetch;
+  fake.fetch = async (url, init) => {
+    events.push(`${url.endsWith('/models') ? 'check' : 'send'}:${held ? 'locked' : 'unlocked'}`);
+    const res = await inner(url, init);
+    if (!url.endsWith('/models')) {
+      // The body is consumed after the lock is released.
+      const reader = res.body.getReader();
+      return { ok: true, status: 200, body: new ReadableStream({ async pull(c) { events.push(`read:${held ? 'locked' : 'unlocked'}`); const { done, value } = await reader.read(); if (done) c.close(); else c.enqueue(value); } }, { highWaterMark: 0 }) };
+    }
+    return res;
+  };
+  const session = (await engineFor(fake, { admission }).pinModel({ taskId: 'task-702' })).session;
+  // A competing admission (say, a chat switching model) queued while the call holds the lock runs
+  // only after the call's send, never between its check and its send.
+  const call = session.call({ role: 'planner', state: state(), instructions: 'p', schema: SCHEMA });
+  const competitor = admission(async () => { events.push('competitor'); });
+  const r = await call;
+  await competitor;
+  assert.equal(r.ok, true);
+  const callStart = events.indexOf('acquire', 2);
+  assert.deepEqual(events.slice(0, 3), ['acquire', 'check:locked', 'release'], 'the pin reads the router under admission');
+  assert.deepEqual(events.slice(callStart, callStart + 4), ['acquire', 'check:locked', 'send:locked', 'release']);
+  assert.ok(events.indexOf('competitor') > events.indexOf('send:locked'));
+  assert.ok(events.filter((e) => e.startsWith('read:')).every((e) => e === 'read:unlocked'));
+});
+
+test('admission: an aborted wait fails as aborted, and a refused residency check sends nothing', async () => {
+  const fake = fakeEngine();
+  let gate; const blocked = new Promise((r) => { gate = r; });
+  let first = true;
+  const admission = async (work, signal) => {
+    if (first) { first = false; return work(); }
+    await Promise.race([blocked, new Promise((_, rej) => signal?.addEventListener('abort', () => rej(signal.reason), { once: true }))]);
+    return work();
+  };
+  const session = (await engineFor(fake, { admission }).pinModel({ taskId: 'task-702' })).session;
+  const controller = new AbortController();
+  const pending = session.call({ role: 'planner', state: state(), instructions: 'p', schema: SCHEMA, signal: controller.signal });
+  setTimeout(() => controller.abort(), 5);
+  assert.equal((await pending).code, 'aborted');
+  assert.equal(fake.calls.length, 0);
+  gate();
+});
+
+test('SSE parsing survives events split across chunks, mid-line and mid multi-byte character', async () => {
+  const words = ['{"answer":"', 'naïve café — ', '日本語 ', '😀🙂', ' done"}'];
+  const raw = Buffer.from(words.map((w) => delta(w)).join('') + finalEvent());
+  // Cut every 3 bytes: lines, JSON and UTF-8 sequences (2-, 3- and 4-byte) all straddle chunks.
+  const pieces = [];
+  for (let i = 0; i < raw.length; i += 3) pieces.push(raw.subarray(i, i + 3));
+  let k = 0;
+  const body = new ReadableStream({ pull(c) { if (k < pieces.length) c.enqueue(new Uint8Array(pieces[k++])); else c.close(); } });
+  const m = { start: 0, bytes: 0, deltas: 0, reasoningDeltas: 0, firstDeltaMs: null, complete: false, timings: {} };
+  let text = '';
+  for await (const d of sseDeltas({ body }, m, () => 0)) text += d;
+  assert.equal(text, words.join(''));
+  assert.equal(m.deltas, words.length);
+  assert.equal(m.bytes, raw.length);
+  assert.equal(m.complete, true);
+  assert.equal(m.timings.cache_n, 790);
+  // CRLF line endings too.
+  const crlf = Buffer.from((delta('é') + finalEvent()).replace(/\n/g, '\r\n'));
+  let t2 = '';
+  for await (const d of sseDeltas({ body: new Response(crlf).body }, { ...m, deltas: 0, bytes: 0, timings: {} }, () => 0)) t2 += d;
+  assert.equal(t2, 'é');
 });

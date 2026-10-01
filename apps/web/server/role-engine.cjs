@@ -2,25 +2,42 @@
 // role-engine.cjs — the pipeline's role engine (#702, part of #511): one pinned model per task, a
 // shared cache prefix across roles, and the Laya streaming halt.
 //
-// One model is resident on this hardware (the engine router runs models-max 1, and #697 adds an
-// inference memory budget). Switching role must therefore never switch model: a task pins its
-// model once (`pinModel`), every role call sends exactly that id, and a call is REFUSED — never
-// sent — whenever the router reports a different model loaded, because sending it would make the
-// router swap. Nothing here ever loads, unloads or swaps a model.
+// One chat model is resident on this hardware (the engine router runs models-max 1, and #697 adds
+// an inference memory budget). Switching role must therefore never switch model: a task pins its
+// model once (`pinModel`), every role call sends exactly that id, and a call is refused whenever
+// the router reports a different chat model loaded or loading, because sending it would make the
+// router swap. Models on the keep-list (the embedding/reranking sidecars, keepAlongside) and
+// non-chat rows (embedding/rerank argv, the Laya system model) never count as "different".
 //
-// Prompt layout (so the engine's KV cache of the common prefix is reused from role to role):
-//   system  = SHARED_FRAME, byte-constant across roles, tasks and revisions;
-//   user #1 = the shared dossier (role-context.cjs projectSharedDossier): the intersection of the
-//             task's roles' allowlists, serialised deterministically, with no revision or SHA;
-//   user #2 = the persona block: the role's instructions and its role-only fields (incl. revision);
-//   user #3 = only on the one bounded correction: the violation, nothing else.
+// Residency check and send are one admission: both run inside `admission(work, signal)` — in
+// production the model manager's withAdmission lock, the same lock chat's makeRoomFor and every
+// load/unload take — and the lock is held until the engine has answered the request's headers
+// (i.e. the router has routed it). So no load or eviction from this web process can slip between
+// the check and the send. A client outside this process talking to the router directly can still
+// race it; that is not prevented here. The lock is released before the answer streams, so long
+// generations never block chat admission.
+//
+// Pinning does not load anything. If no chat model is resident, the pin is "cold" and the first
+// call LOADS the pinned model (router autoload on the request), inside that same admission lock —
+// the path the #697 budget guard hooks into. Nothing here ever unloads or swaps a model.
+//
+// Prompt layout (so the engine's KV cache of the common prefix is reused from role to role), kept
+// to system + ONE user turn so strict chat templates (alternating roles) accept it:
+//   system = SHARED_FRAME, byte-constant across roles, tasks and revisions;
+//   user   = the shared dossier FIRST (role-context.cjs projectSharedDossier: the intersection of the
+//            task's roles' allowlists, serialised deterministically, with no revision or SHA), then
+//            a constant separator, then the persona block (the role's instructions and its
+//            role-only fields, incl. revision), and — only on the one bounded correction — the
+//            violation appended last. Everything up to the end of the dossier is byte-identical
+//            across roles and revisions.
 // `enable_thinking` is pinned per task and sent on every call, so the rendered template of the
 // prefix does not change between calls either.
 //
 // Streaming Laya guard: every call is `stream: true, cache_prompt: true`. Content deltas feed the
 // #516 incremental validator (stream-guard.cjs createValidator, via runGuardedStream); the first
-// violation aborts the HTTP request — the engine stops generating when its client goes away — and
-// one bounded correction runs. Reasoning deltas are never validated (they are not the answer).
+// violation aborts the HTTP request and one bounded correction runs. llama.cpp is expected to stop
+// generating when its client disconnects; that the abort really stops server-side generation is a
+// live check (/metrics tokens_predicted_total), not something these offline tests can prove. Reasoning deltas are never validated (they are not the answer).
 //
 // Optional engine-side constrained decoding reuses the #517 rules (plan-constrained-decoding.cjs:
 // only a provider declaring `jsonSchemaParam`, never with thinking or a harmony-reasoning family, and
@@ -35,6 +52,7 @@ const { runGuardedStream, GuardAbortError, CorrectionFailedError } = require('./
 const { projectRoleContext, projectSharedDossier, serializeProjection, RoleContextLeakError, DOSSIER_ROLES } = require('./role-context.cjs');
 const { supportsJsonSchema, requestPlanArtifact } = require('./plan-constrained-decoding.cjs');
 const { hasHarmonyReasoning } = require('./sampling-recommendation.cjs');
+const { isSystemModel, modelPathFromArgs } = require('./model-system.cjs');
 
 const SHARED_FRAME = [
   'You are one role in a local, multi-step task pipeline.',
@@ -44,9 +62,21 @@ const SHARED_FRAME = [
   'Answer with only the JSON object your role asks for.',
 ].join('\n');
 const DOSSIER_LABEL = 'Task dossier:\n';
+const PERSONA_SEPARATOR = '\n\n---\nYour role:\n';
 const FIELDS_LABEL = '\n\nYour fields:\n';
-const DEFAULT_MAX_TOKENS = 1400;
-const DEFAULT_MAX_BYTES = 64 * 1024;
+const CORRECTION_SEPARATOR = '\n\n---\n';
+// Per-role answer budgets; createRoleEngine({ roleDefaults }) overrides them per role, and a call's
+// explicit maxTokens/maxBytes overrides both. The reviewer's ceiling fits a maximum-length verdict
+// (600-character summary + 12 findings of 600 + 240 characters, ~11k characters).
+const ROLE_DEFAULTS = Object.freeze({
+  planner: Object.freeze({ maxTokens: 1400, maxBytes: 32 * 1024 }),
+  reviewer: Object.freeze({ maxTokens: 4096, maxBytes: 64 * 1024 }),
+  auditor: Object.freeze({ maxTokens: 2048, maxBytes: 32 * 1024 }),
+  executor: Object.freeze({ maxTokens: 2048, maxBytes: 32 * 1024 }),
+});
+const FALLBACK_DEFAULTS = Object.freeze({ maxTokens: 1400, maxBytes: 64 * 1024 });
+const NON_CHAT_ARGS = new Set(['--embedding', '--embeddings', '--rerank', '--reranking']);
+const NON_CHAT_LABELS = /^(embedding|embeddings|rerank|reranking|reranker)$/i;
 const ROUTER_TIMEOUT_MS = 8000;
 const LOADED_STATES = new Set(['loaded', 'loading']);
 const TIMING_KEYS = Object.freeze(['prompt_n', 'cache_n', 'prompt_ms', 'predicted_n', 'predicted_ms']);
@@ -74,35 +104,48 @@ function schemaConstraint({ enabled = false, provider = null, model = null, thin
   } };
 }
 
+/** The shared prefix of the user turn: label + dossier. Everything a role adds comes after it. */
+const sharedPrefix = (dossier) => DOSSIER_LABEL + dossier;
+
 /**
- * The messages of one role call. Pure, so the prefix layout is testable on its own.
+ * The messages of one role call: system + one user turn (strict templates need alternating roles).
+ * Pure, so the prefix layout is testable on its own.
  * @param {{ dossier: string, instructions: string, fields: string, correction?: { violation?: object } | null }} input
  */
 function buildMessages({ dossier, instructions, fields, correction = null }) {
-  const messages = [
-    { role: 'system', content: SHARED_FRAME },
-    { role: 'user', content: DOSSIER_LABEL + dossier },
-    { role: 'user', content: String(instructions) + FIELDS_LABEL + fields },
-  ];
-  if (correction) messages.push({ role: 'user', content: `That answer was not valid: ${JSON.stringify(correction.violation || {})}. Answer again with only the JSON object.` });
-  return messages;
+  let user = sharedPrefix(dossier) + PERSONA_SEPARATOR + String(instructions) + FIELDS_LABEL + fields;
+  if (correction) user += `${CORRECTION_SEPARATOR}Your previous answer was not valid: ${JSON.stringify(correction.violation || {})}. Answer again with only the JSON object.`;
+  return [{ role: 'system', content: SHARED_FRAME }, { role: 'user', content: user }];
 }
 
 /** A short text-free fingerprint of everything the cached prefix depends on. */
-function prefixHash({ model, thinking, messages }) {
-  return crypto.createHash('sha256').update(JSON.stringify([model, thinking, messages[0].content, messages[1].content])).digest('hex').slice(0, 16);
+function prefixHash({ model, thinking, dossier }) {
+  return crypto.createHash('sha256').update(JSON.stringify([model, thinking, SHARED_FRAME, sharedPrefix(dossier)])).digest('hex').slice(0, 16);
 }
 
-/** Model ids an OpenAI-compatible /models answer reports as resident (router or single server). */
-function loadedFromModelList(body) {
+/** True for a router row that is not a chat model: embedding/rerank argv or labels, or Laya. */
+function isNonChatRow(m) {
+  const args = Array.isArray(m?.status?.args) ? m.status.args : [];
+  if (args.some((a) => NON_CHAT_ARGS.has(a))) return true;
+  if (Array.isArray(m?.labels) && m.labels.some((l) => NON_CHAT_LABELS.test(String(l)))) return true;
+  return isSystemModel(m?.id, modelPathFromArgs(args));
+}
+
+/**
+ * Chat-model ids the llama.cpp router's /models answer reports as resident. Router rows are
+ * `{ id, status: { value: 'loaded'|'loading'|'unloaded'|…, args: [argv] } }`. A row with no status
+ * (a single llama-server's list) is NOT counted: only a router that says "loaded"/"loading" makes a
+ * model resident. Keep-list ids and non-chat rows are left out.
+ * @param {any} body @param {string[]} [keep]
+ */
+function loadedFromModelList(body, keep = []) {
   const rows = Array.isArray(body?.data) ? body.data : [];
   const out = [];
   for (const m of rows) {
-    const id = typeof m?.id === 'string' ? m.id : typeof m?.model === 'string' ? m.model : null;
-    if (!id) continue;
+    const id = typeof m?.id === 'string' ? m.id : null;
+    if (!id || keep.includes(id) || isNonChatRow(m)) continue;
     const status = typeof m.status === 'string' ? m.status : m.status?.value;
-    // A single llama-server lists only what it serves and has no status: that model is resident.
-    if (status === undefined || status === null || LOADED_STATES.has(status)) out.push(id);
+    if (LOADED_STATES.has(status)) out.push(id);
   }
   return out;
 }
@@ -163,35 +206,45 @@ async function* sseDeltas(response, m, now) {
 /**
  * @param {{ engine: () => ({ baseUrl?: string|null, apiKey?: string|null, model?: string|null, provider?: any, external?: boolean }),
  *           fetch?: typeof globalThis.fetch, loadedModels?: (() => Promise<string[]>) | null,
+ *           keep?: () => string[], admission?: (work: () => Promise<any>, signal?: AbortSignal) => Promise<any>,
+ *           roleDefaults?: Record<string, { maxTokens?: number, maxBytes?: number }>,
  *           log?: (entry: object) => void, now?: () => number }} deps
- * `loadedModels` answers which models the router has resident; by default the engine's own
- * `/models` list is read (router `status.value`, or a single server's one model).
+ * `loadedModels` answers which chat models the router has resident; by default the router's
+ * `/models` list is read. `keep` names models that may stay resident beside the pinned one (the
+ * embedding/reranking sidecars). `admission` serialises the residency check with the send (the
+ * model manager's withAdmission); without one, they run back to back unlocked.
  */
-function createRoleEngine({ engine, fetch = (url, init) => globalThis.fetch(url, init), loadedModels = null, log = () => {}, now = () => Date.now() }) {
+function createRoleEngine({ engine, fetch = (url, init) => globalThis.fetch(url, init), loadedModels = null, keep = () => [], admission = null, roleDefaults = {}, log = () => {}, now = () => Date.now() }) {
   if (typeof engine !== 'function') throw Error('createRoleEngine needs engine()');
+  const admit = typeof admission === 'function' ? admission : (work) => work();
+  const keepIds = () => { try { const k = keep(); return Array.isArray(k) ? k.filter((x) => typeof x === 'string') : []; } catch { return []; } };
+  const budgetFor = (role) => ({ ...FALLBACK_DEFAULTS, ...(ROLE_DEFAULTS[role] || {}), ...((roleDefaults && roleDefaults[role]) || {}) });
   const record = (entry) => { try { log(entry); } catch { /* logging never changes the outcome */ } };
   const base = (endpoint) => String(endpoint.baseUrl || '').replace(/\/+$/, '');
   const headersFor = (endpoint) => ({ 'Content-Type': 'application/json', ...(endpoint.apiKey && endpoint.apiKey !== 'local' ? { Authorization: `Bearer ${endpoint.apiKey}` } : {}) });
 
   async function readLoaded(endpoint) {
+    const kept = keepIds();
     if (typeof loadedModels === 'function') {
       const ids = await loadedModels();
       if (!Array.isArray(ids)) throw Error('loaded models unreadable');
-      return ids.filter((id) => typeof id === 'string' && id);
+      return ids.filter((id) => typeof id === 'string' && id && !kept.includes(id));
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ROUTER_TIMEOUT_MS);
     timer.unref?.();
     try {
-      const res = await fetch(`${base(endpoint)}/models`, { method: 'GET', redirect: 'error', signal: controller.signal, headers: headersFor(endpoint) });
+      // The router's own listing (the model manager reads the same path without /v1).
+      const res = await fetch(`${base(endpoint).replace(/\/v1$/, '')}/models`, { method: 'GET', redirect: 'error', signal: controller.signal, headers: headersFor(endpoint) });
       if (!res.ok) throw Object.assign(Error('model list failed'), { status: res.status });
-      return loadedFromModelList(await res.json());
+      return loadedFromModelList(await res.json(), kept);
     } finally { clearTimeout(timer); }
   }
 
   return {
     /**
-     * Pin one model for one task. Refuses (never swaps) when another model is resident.
+     * Pin one model for one task. Refuses (never swaps) when another chat model is resident. A cold
+     * pin (nothing resident) loads nothing itself: the first call loads the pinned model.
      * @param {{ taskId: string, model?: string|null, thinking?: boolean, roles?: string[] }} input
      * @returns {Promise<{ ok: true, session: ReturnType<typeof makeSession> } | { ok: false, code: string, reason: string }>}
      */
@@ -203,7 +256,7 @@ function createRoleEngine({ engine, fetch = (url, init) => globalThis.fetch(url,
       if (endpoint.external === true) return fail('external', 'The task pipeline runs only on a local model.');
       if (!endpoint.baseUrl) return fail('unavailable', 'No model is configured for the task pipeline.');
       let loaded;
-      try { loaded = await readLoaded(endpoint); }
+      try { loaded = await admit(() => readLoaded(endpoint)); }
       catch (error) {
         record({ event: 'role.pin_failed', taskId, code: 'router_unavailable', status: Number.isInteger(error?.status) ? error.status : null });
         return fail('router_unavailable', 'The model router could not say which model is loaded, so no model was pinned.');
@@ -241,11 +294,15 @@ function createRoleEngine({ engine, fetch = (url, init) => globalThis.fetch(url,
        * One role call under the pinned model.
        * @param {{ role: string, state: object, instructions: string, schema: object, constrain?: boolean, schemaName?: string,
        *           maxTokens?: number, maxBytes?: number, signal?: AbortSignal | null }} input
+       * maxTokens/maxBytes default to the role's budget (ROLE_DEFAULTS, overridable per engine).
        * @returns {Promise<{ ok: true, text: string, corrected: boolean, attempts: number, constraint: object, prefix: string }
        *                  | { ok: false, code: string, reason: string, constraint?: object }>}
        */
-      async call({ role, state, instructions, schema, constrain = false, schemaName = 'role_answer', maxTokens = DEFAULT_MAX_TOKENS, maxBytes = DEFAULT_MAX_BYTES, signal = null }) {
+      async call({ role, state, instructions, schema, constrain = false, schemaName = 'role_answer', maxTokens = undefined, maxBytes = undefined, signal = null }) {
         if (!pin.roles.includes(role)) return fail('role_not_pinned', 'That role is not part of this task.');
+        const budget = budgetFor(role);
+        if (!Number.isInteger(maxTokens) || maxTokens < 1) maxTokens = budget.maxTokens;
+        if (!Number.isInteger(maxBytes) || maxBytes < 1) maxBytes = budget.maxBytes;
         if (signal?.aborted) return fail('aborted', 'The task was cancelled.');
         if (!state || typeof state !== 'object' || state.taskId !== pin.taskId) return fail('task_mismatch', 'That call belongs to a different task.');
         let endpoint;
@@ -284,15 +341,18 @@ function createRoleEngine({ engine, fetch = (url, init) => globalThis.fetch(url,
           const guarded = await runGuardedStream({
             schema, signal, maxBytes,
             createStream: async ({ attempt, correction, signal: attemptSignal }) => {
-              await assertResident(endpoint, role);
               const messages = buildMessages({ dossier, instructions, fields, correction });
-              prefix = prefixHash({ model: pin.model, thinking: pin.thinking, messages });
+              prefix = prefixHash({ model: pin.model, thinking: pin.thinking, dossier });
               const payload = {
                 model: pin.model, messages, stream: true, cache_prompt: true, stream_options: { include_usage: true },
                 temperature: 0, max_tokens: maxTokens, chat_template_kwargs: { enable_thinking: pin.thinking },
               };
               const m = { start: now(), bytes: 0, deltas: 0, reasoningDeltas: 0, firstDeltaMs: null, complete: false, timings: {} };
-              const r = await requestPlanArtifact({ payload, constraint, log: (e) => record({ ...e, taskId: pin.taskId, role }), send: (p) => send(p, attemptSignal) });
+              // One admission: the residency check and the send (until the engine answers headers).
+              const r = await admit(async () => {
+                await assertResident(endpoint, role);
+                return requestPlanArtifact({ payload, constraint, log: (e) => record({ ...e, taskId: pin.taskId, role }), send: (p) => send(p, attemptSignal) });
+              }, attemptSignal);
               // A rejection is final for this call: the correction does not ask for the schema again.
               if (r.constraint.fallback) { outcome = r.constraint; constraint = { fields: {}, applied: false, mode: null, reason: r.constraint.reason }; }
               else if (!outcome.fallback) outcome = r.constraint;
@@ -325,4 +385,4 @@ function createRoleEngine({ engine, fetch = (url, init) => globalThis.fetch(url,
   }
 }
 
-module.exports = { createRoleEngine, schemaConstraint, buildMessages, prefixHash, loadedFromModelList, sseDeltas, SHARED_FRAME, DOSSIER_LABEL, FIELDS_LABEL, TIMING_KEYS };
+module.exports = { createRoleEngine, schemaConstraint, buildMessages, prefixHash, sharedPrefix, loadedFromModelList, isNonChatRow, sseDeltas, SHARED_FRAME, DOSSIER_LABEL, PERSONA_SEPARATOR, FIELDS_LABEL, ROLE_DEFAULTS, TIMING_KEYS };
