@@ -57,8 +57,9 @@ docker compose up --build -d
 ```
 
 No `.env` is required: every service variable in `compose.yaml` has a working
-default. Open the app at `http://localhost:8021`, or at the host's LAN address
-from another device (e.g. `http://192.168.1.20:8021`) — the first-run wizard
+default. Open the app at `http://localhost:8021` (the port binds to loopback by
+default; to reach it from another device set `COWORK_PORT=8021` in `.env`, e.g.
+`http://192.168.1.20:8021`) — the first-run wizard
 confirms that address as the canonical origin and collects the inference
 endpoint, models, and everything else in the browser.
 

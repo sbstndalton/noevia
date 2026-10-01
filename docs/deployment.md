@@ -325,6 +325,16 @@ Public URL is `https://noevia.daserver.work` via a Cloudflare tunnel (as of 2026
 `cowork.daserver.work` is NXDOMAIN; the hostname
 kept its old name after the rebrand, deliberately).
 
+### Web port is loopback-only (#590)
+
+`compose.yaml` and the Unraid example publish web as `${COWORK_PORT:-127.0.0.1:8021}:8021`, so
+a missing or reset `COWORK_PORT` cannot reopen the port to the LAN. The Cloudflare tunnel
+origin must be `http://127.0.0.1:8021` with a host-networked `cloudflared`. Direct
+`http://<host>:8021` LAN access is intentionally off; it would also let clients spoof
+`X-Forwarded-For` once `TRUST_PROXY=true`. To re-enable it, set `COWORK_PORT=8021` and keep
+`TRUST_PROXY=false`. The Unraid WebUI label points at the public https URL because the
+LAN `[IP]:[PORT]` link no longer resolves.
+
 ## Layout on the box
 
 Unraid Compose Manager plugin, project name **"Cowork"**. Three containers:

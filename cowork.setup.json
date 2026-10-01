@@ -100,10 +100,10 @@
     },
     {
       "name": "COWORK_PORT",
-      "purpose": "Host port for the web UI",
+      "purpose": "Host bind for the web UI ([addr:]port); loopback-only by default",
       "secret": false,
       "human_required": false,
-      "default": "8021"
+      "default": "127.0.0.1:8021"
     },
     {
       "name": "COWORK_STATE_DIR",
