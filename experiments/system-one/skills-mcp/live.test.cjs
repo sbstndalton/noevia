@@ -17,6 +17,7 @@ function defaultHandler(body) {
     const { task, items } = JSON.parse(body.messages[1].content);
     const topic = TOPICS.find(t => task.toLowerCase().includes(t) && !task.toLowerCase().includes(' files'));
     const selected = topic ? items.filter(i => i.label.toLowerCase().startsWith(topic)).map(i => i.id) : [];
+    if (body.messages[0].content.includes('JSON array')) return { content: JSON.stringify(selected), usage: { prompt_tokens: 50, completion_tokens: 6 } };
     return { content: JSON.stringify({ selected, scores: Object.fromEntries(selected.map(id => [id, 0.9])), confidence: 0.9, abstain: !selected.length }), usage: { prompt_tokens: 50, completion_tokens: 10 } };
   }
   const tools = body.tools || [];
@@ -269,8 +270,12 @@ test('selection call turns thinking off, sends the schema and a tight budget to 
     const [b] = selectionBodies(seen);
     assert.deepEqual(b.chat_template_kwargs, { enable_thinking: false });
     assert.equal(b.response_format.type, 'json_schema');
-    assert.deepEqual(b.response_format.json_schema.schema.required, ['selected', 'scores', 'confidence', 'abstain']);
-    assert.equal(b.max_tokens, 192);
+    const schema = b.response_format.json_schema.schema;
+    assert.equal(schema.type, 'array'); assert.equal(schema.uniqueItems, true); assert.equal(schema.maxItems, 4);
+    const offered = JSON.parse(b.messages[1].content).items.map(i => i.id);
+    assert.deepEqual(schema.items.enum, [...offered].sort());
+    assert.ok(JSON.parse(b.messages[1].content).items.every(i => i.label.length <= 60));
+    assert.equal(b.max_tokens, 48);
     assert.equal(b.reasoning_effort, undefined);
     assert.deepEqual(records[0].selectionConstraint, { schema: true, thinkingOff: true, reasoningEffort: false, rejectedStatus: null });
     const task = seen.find(s => !isSelect(s.body) && s.body.max_tokens !== 1).body;
@@ -284,6 +289,7 @@ test('capabilities none sends no schema or thinking field; reasoning-effort send
     const [b] = selectionBodies(seen);
     assert.equal(b.response_format, undefined); assert.equal(b.chat_template_kwargs, undefined); assert.equal(b.reasoning_effort, undefined);
     assert.equal(b.max_tokens, 64);
+    assert.ok(b.messages[0].content.includes('"abstain"'), 'legacy object prompt when no schema');
     seen.length = 0;
     await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one', '--capabilities', 'reasoning-effort']), { cases: oneCase() });
     const [e] = selectionBodies(seen);
@@ -340,4 +346,16 @@ test('starved or empty selection replies fall back with a text-free cause, finis
       assert.equal(r.taskCompleted, true, 'fallback restores baseline tools');
     });
   }
+});
+
+test('IDs-only reply: an unoffered id is rejected by the validator, a truncated array falls back', async () => {
+  const mk = content => body => isSelect(body) ? { content, finish_reason: content.endsWith(']') ? 'stop' : 'length', usage: { prompt_tokens: 9, completion_tokens: 48 } } : defaultHandler(body);
+  await withServer(mk('["skill:not-offered"]'), async baseUrl => {
+    const { records } = await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']), { cases: oneCase() });
+    assert.equal(records[0].fallback, 'unknown-id'); assert.deepEqual(records[0].accepted, []);
+  });
+  await withServer(mk('["skill:cal'), async baseUrl => {
+    const { records } = await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']), { cases: oneCase() });
+    assert.equal(records[0].selectionCause, 'truncated'); assert.notEqual(records[0].fallback, null);
+  });
 });
