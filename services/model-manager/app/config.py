@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     # whether a model fits in system memory, because total RAM is never all yours: sizing
     # against it produces plans that swap or get OOM-killed. Raise it on a busy host.
     host_ram_reserve_gb: float = 32.0
+    # #697: the prompt cache (--cache-ram, MiB) is host RAM, which on a shared-memory GPU is also
+    # the GPU's memory. New and saved sections always carry an explicit value no larger than the
+    # hard maximum; autoconfig and safe defaults write at most the cap.
+    llamacpp_autoconfig_cache_ram_max_mib: int = 1024
+    llamacpp_cache_ram_hard_max_mib: int = 2048
+
+    @property
+    def cache_ram_limits(self) -> tuple[int, int]:
+        """(cap, hard maximum) in MiB; the cap never exceeds the hard maximum."""
+        hard = max(0, int(self.llamacpp_cache_ram_hard_max_mib))
+        return min(max(0, int(self.llamacpp_autoconfig_cache_ram_max_mib)), hard), hard
 
     @field_validator("model_loader_token")
     @classmethod

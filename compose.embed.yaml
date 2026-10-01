@@ -90,6 +90,12 @@ services:
       embed:
         condition: service_started
 
+  # #697: Diary embeds here too. On the shared engine an embedding request would evict the chat
+  # model (one model at a time); LLM_EMBED_BASE_URL sends Diary's embeddings to this sidecar.
+  diary:
+    environment:
+      LLM_EMBED_BASE_URL: http://embed:8080/v1
+
 networks:
   # Also declared by compose.llamacpp.yaml; the merge is idempotent. Declared here so
   # this overlay still validates when used without the llama.cpp overlay.

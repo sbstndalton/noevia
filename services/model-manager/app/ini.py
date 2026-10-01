@@ -104,8 +104,8 @@ RUNTIME_FIELDS: tuple[Field, ...] = (
           help="Reuse KV cache from a previous request when the new prompt shares a prefix. Set to 1 to enable — huge TTFT win for chat continuations (only new tokens are prompt-evaluated). 0 disables. Free, safe, should almost always be on."),
     Field("kv-unified", "Unified KV cache", "select", choices=_ONOFF,
           help="Share one KV cache across all slots (saves memory) vs. per-slot caches (better cache locality)."),
-    Field("cache-ram", "Cache RAM budget (MiB)", "int", placeholder="8192  ·  -1 = unlimited",
-          help="Server-side RAM budget for prefix / prompt caches. -1 = unlimited, 0 = disable."),
+    Field("cache-ram", "Cache RAM budget (MiB)", "int", placeholder="1024",
+          help="Server-side RAM budget for prefix / prompt caches. 0 = disable. Saved values are capped at the hard maximum (LLAMACPP_CACHE_RAM_HARD_MAX_MIB, default 2048); -1 (unlimited) is stored as that maximum."),
     Field("ctx-checkpoints", "SWA / ctx checkpoints", "int", placeholder="e.g. 8",
           help="How many rolling context checkpoints to retain. More = faster context restoration on branching, more memory."),
     Field("checkpoint-min-step", "Checkpoint min step", "int", placeholder="8192",
@@ -627,6 +627,33 @@ def suggest_defaults(summary: dict) -> tuple[dict[str, str], list[str]]:
     return fields, hints
 
 
+def clamp_cache_ram(value: str, hard_max: int | None = None) -> str:
+    """#697: a cache-ram value as it may be stored. -1 (unbounded) and integers above the hard
+    maximum become the hard maximum; anything else is returned unchanged."""
+    hard = settings.cache_ram_limits[1] if hard_max is None else hard_max
+    text = str(value).strip()
+    if not re.fullmatch(r"-?\d+", text):
+        return text
+    n = int(text)
+    return str(hard) if n < 0 or n > hard else str(n)
+
+
+def _bound_cache_ram(cp: configparser.ConfigParser, name: str) -> None:
+    """#697: leave `name` with an explicit, bounded prompt cache. A section with no value (and no
+    '*' default) would run on llama-server's own 8 GiB default; it gets the autoconfig cap."""
+    cap, hard = settings.cache_ram_limits
+    own = cp.get(name, "cache-ram", fallback=None)
+    if own is not None and own.strip() != "":
+        cp.set(name, "cache-ram", clamp_cache_ram(own, hard))
+        return
+    if name == "*":
+        return
+    inherited = cp.get("*", "cache-ram", fallback=None) if cp.has_section("*") else None
+    if inherited is not None and inherited.strip() != "" and clamp_cache_ram(inherited, hard) == inherited.strip():
+        return
+    cp.set(name, "cache-ram", str(cap))
+
+
 def upsert_section(name: str, values: dict[str, str], extras_text: str) -> None:
     with WRITE_LOCK:
         return _upsert_section(name, values, extras_text)
@@ -660,6 +687,7 @@ def _upsert_section(name: str, values: dict[str, str], extras_text: str) -> None
             continue
         cp.set(name, k, v)
 
+    _bound_cache_ram(cp, name)
     _atomic_write(cp)
 
 

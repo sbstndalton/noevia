@@ -93,6 +93,8 @@ const authService = createAuth({
     .filter(Boolean),
 });
 const decisionSettings = require('./decision-settings.cjs').createDecisionSettings({ store: require('./features.cjs').settingsStore(authService.db), audit: (action,actor,detail)=>authService.audit(action,actor,actor,detail) });
+// #697: the inference memory budget (admin setting; INFERENCE_MEMORY_BUDGET_GIB is its initial value).
+const inferenceBudget = require('./inference-budget.cjs').createInferenceBudget({ store: require('./features.cjs').settingsStore(authService.db), audit: (action,actor,detail)=>authService.audit(action,actor,actor,detail) });
 const features = require('./features.cjs').createFeatures({ store: require('./features.cjs').settingsStore(authService.db), audit: (action, actor, detail) => authService.audit(action, actor, actor, detail),
   // #555 F4: switching native-app sign-in off is a revoke, not a pause (deviceAuth is built below).
   onChange: (name, enabled, actorId) => { if (name === 'nativeClientAuth' && !enabled) deviceAuth.revokeAll(actorId, 'feature-off'); },
@@ -207,7 +209,11 @@ const modelManager = createModelManager({
   autoconfig: {
     modelsPath: process.env.LLAMACPP_MODELS_PATH || '',
     budgetGib: Number(process.env.LLAMACPP_AUTOCONFIG_MEMORY_GIB) || require('./llamacpp-autoconfig.cjs').parseMemoryLimit(process.env.LLAMACPP_MEMORY_LIMIT) || 0,
-    cacheRamMaxMib: Number(process.env.LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB) || 1024,
+    // #697: with an inference budget only this explicit figure may lower autoconfig's sizing.
+    explicitBudgetGib: Number(process.env.LLAMACPP_AUTOCONFIG_MEMORY_GIB) || 0,
+    // #697: the prompt-cache cap autoconfig and new presets write, and the hard maximum every write keeps.
+    cacheRamMaxMib: require('./inference-budget.cjs').cacheRamLimits(process.env).capMib,
+    cacheRam: require('./inference-budget.cjs').cacheRamLimits(process.env),
     cachePath: process.env.LLAMACPP_CACHE_PATH || '',
     memoryFloorGib: Number(process.env.LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB) || 2,
   },
@@ -220,7 +226,22 @@ const modelManager = createModelManager({
   baseUrl: MODEL_MANAGER_BASE,
   apiKey: process.env.MODEL_MANAGER_API_KEY || INFERENCE_KEY,
   fetchJson,
+  inferenceBudget,
 });
+// #697 runtime safety net: unload the engine's models when measured inference memory stays
+// above the budget by more than INFERENCE_BUDGET_OVERSHOOT_PCT (default 10). Native engine only.
+const inferenceBudgetWatch = modelManager.kind === 'llamacpp' ? (() => {
+  const watch = require('./inference-budget-watch.cjs');
+  const files = watch.gpuMemoryFiles(process.env);
+  return watch.createInferenceBudgetWatch({
+    budgetGib: inferenceBudget.budgetGib,
+    readGpu: () => watch.readGpuMemory(files),
+    readEngine: watch.engineReaderFromModelLoader({ env: process.env, fetchJson }),
+    listLoaded: async () => { const r = await modelManager.listModels(); return r.ok ? r.body.data.filter(m => ['loaded', 'loading'].includes(m.status.value)).map(m => m.id) : []; },
+    unload: model => modelManager.emergencyUnload(model),
+  });
+})() : null;
+inferenceBudgetWatch?.start();
 // MODELS_INI_WRITER=web with a read-only /llamacpp-config: log it once; saves then fail explicitly (#269).
 require('./models-ini-writer.cjs').reportModelsIniWriter({ mode: process.env.MODELS_INI_WRITER, presetPath: process.env.LLAMACPP_PRESET_PATH });
 
@@ -633,7 +654,7 @@ const providerRoutes = require('./routes/providers.cjs').createProviderRoutes({
 });
 // Statistics, the auto-router roles, the model manager proxy and /api/models/* (routes/models.cjs).
 const modelRoutes = require('./routes/models.cjs').createModelRoutes({
-  json, readBody, readJson, fetchJson, env: process.env, modelManager, getProvider, providerHeaders, DEFAULT_PROVIDER_ID, createVisionProbe, reportedTokenRate, missingRoles, currentWorkspace, service: modelService,
+  json, readBody, readJson, fetchJson, env: process.env, modelManager, getProvider, providerHeaders, DEFAULT_PROVIDER_ID, createVisionProbe, reportedTokenRate, missingRoles, currentWorkspace, service: modelService, inferenceBudget,
 });
 // ── Routing ────────────────────────────────────────────────────────────────
 

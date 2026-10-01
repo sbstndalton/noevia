@@ -1,5 +1,88 @@
 # Deploying noevia to daserver
 
+## Pending: one model at a time within an inference memory budget (#697)
+
+Not deployed yet. DaServer livelocked (2026-09-30, and the 2026-09-27 OOM) when two large models
+plus llama.cpp's default 8 GiB-per-model prompt caches exhausted RAM: on the Radeon iGPU the
+weights and KV live in GTT, system RAM the llama container's `mem_limit` does not count. The
+owner's rule: **one model loaded in the engine, at most 16 GiB for inference**; Laya (its own
+torch service) and the CPU `embed` sidecar sit outside that budget.
+
+What the code does:
+
+- **Budget.** Settings → Models & routing → Your models has an *Inference memory budget* panel
+  (administrators): the budget (2 GiB to host RAM − 4 GiB, read from `/proc/meminfo`) and every
+  model's estimate against it. The figure is stored with the other admin settings;
+  `INFERENCE_MEMORY_BUDGET_GIB` (default 16) is only its first value, so adding RAM later is a
+  settings change, not a redeploy.
+- **Estimate** (`llamacpp-autoconfig.cjs` `estimateFootprint`): (GGUF size + KV at the preset's
+  `ctx-size` and cache types + draft KV + projector and vision scratch + 1 GiB runtime) × 1.05,
+  plus `cache-ram` (unset = llama-server's 8192 MiB; `-1` = unbounded, always refused).
+- **Refusal points.** Every load web asks for: the chat path (`makeRoomFor`, before anything is
+  evicted), the Models page load button, calibration and auto-tune (the shared `/models/load`
+  request), and a proxied model-manager benchmark start. The error names the estimate, its parts
+  and the budget. Autoconfig sizes against min(`LLAMACPP_AUTOCONFIG_MEMORY_GIB` or
+  `LLAMACPP_MEMORY_LIMIT`, the budget) with the prompt-cache cap included, and the model
+  manager's own autoconfig receives the budget from web (`budget_gib`).
+- **Prompt cache.** Every preset write (web preset editor, calibration, auto-tune, and the model
+  loader's section saves and safe-defaults auto-registration) leaves an explicit `cache-ram`:
+  unset becomes `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB` (1024), values above
+  `LLAMACPP_CACHE_RAM_HARD_MAX_MIB` (2048) and `-1` are clamped to it. The model loader's
+  whole-file `PUT /models-ini` stays verbatim (web prepares that text and restores must
+  round-trip).
+- **Runtime safety net** (`inference-budget-watch.cjs`, on by default): every 15 s web reads GPU
+  memory in use from sysfs (`/sys/class/drm/card*/device/mem_info_gtt_used` + `mem_info_vram_used`;
+  the container's own read-only `/sys` already shows them, checked on cowork-web-1: card1) and
+  the llama container's memory from the model loader's `/api/v1/backends`. Two readings in a row
+  above budget × 1.10 unload the engine's models and log one `[inference-budget]` JSON line
+  (numbers and model ids only), then a 60 s cooldown. Knobs: `INFERENCE_BUDGET_WATCH=off`,
+  `INFERENCE_BUDGET_WATCH_INTERVAL_MS`, `INFERENCE_BUDGET_OVERSHOOT_PCT`, `INFERENCE_GTT_USED_PATH`.
+- **Nothing else in the engine.** Measured live before this change, the router served three
+  non-chat sections: `nomic-embed-text-v1` (web already used the `embed` sidecar, but **Diary
+  embedded through the engine** with `LLM_EMBED_MODEL`), `qwen3-reranker-0.6b-q8_0` (the live
+  override set `RERANK_BASE_URL: http://llama:8080/v1` with `NOEVIA_FEATURE_RAG_RERANK: "true"`),
+  and `laya_multilingual_f16` (nothing calls it; Laya runs on torch). With one slot each of the
+  first two would evict the chat model per request. Diary now takes `LLM_EMBED_BASE_URL`
+  (compose.embed.yaml points it at `embed`). Web refuses a reranker on the engine's origin
+  (`rerank-target.cjs`; `RERANK_SHARED_ENGINE=allow` overrides) and keeps cosine top-6, its
+  existing fallback. `compose.rerank.yaml` is an optional CPU reranker sidecar (`--device none
+  --reranking`, 1.5 GiB limit); its CPU latency against the 3 s rerank deadline is unmeasured, so
+  it is not part of this rollout.
+
+Migration note for `models.ini`: the three sections above become unused. Leave them (and their
+files) in place; they are inert once nothing names them. Web refuses to delete the Laya and
+embedding sections through the editor anyway (system and sidecar guards).
+
+Live deploy steps (owner-authorised run only; take the appdata backup first):
+
+1. Ship web from `main` with `deploy/examples/overlay-release.sh` (bumps `COWORK_VERSION`).
+2. Build the model loader from the same release (`services/model-manager` changed) and bump
+   `MODEL_MANAGER_VERSION`; per-service versioning applies.
+3. Ship Diary with `deploy/examples/diary-overlay.sh <sha>` (only `services/diary/agent`
+   changed: `llm.py`, `config.py`, `app.py`).
+4. Edit the live `docker-compose.override.yml` (back it up as
+   `docker-compose.override.yml.bak.before-697`):
+   - `llama.command`: `"--models-max", "2"` → `"--models-max", "1"`;
+   - `web.environment`: set `NOEVIA_FEATURE_RAG_RERANK: "false"` and drop `RERANK_BASE_URL`
+     (web would refuse it anyway and log why); optionally add `INFERENCE_MEMORY_BUDGET_GIB: "16"`
+     and the other #697 variables (code defaults are the values in `.env.example`);
+   - `model-loader.environment`: optionally `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB: "1024"`,
+     `LLAMACPP_CACHE_RAM_HARD_MAX_MIB: "2048"` (code defaults);
+   - add `diary: environment: LLM_EMBED_BASE_URL: http://embed:8080/v1` (`embed` is already on
+     the `default` network Diary uses).
+   No new mounts: sysfs is visible read-only in the web container.
+5. With no model loaded, recreate only the changed services through the preflight wrapper:
+   `up.sh … --no-deps --wait llama model-loader diary web`.
+6. Verify: `docker inspect cowork-llama-1 --format '{{json .Args}}'` shows `--models-max 1`;
+   Settings → Models & routing → Your models shows the budget panel with 16 GiB and an estimate
+   per model; loading a chat model then another leaves one loaded; the web log has no
+   `[inference-budget]` line at idle; a Diary retrieval does not load `nomic-embed-text-v1` in the
+   engine (`GET /models` on the router).
+
+Rollback: restore `docker-compose.override.yml.bak.before-697` and the previous `.env` image tags
+(`COWORK_VERSION`, `MODEL_MANAGER_VERSION`, `DIARY_VERSION`), then the same scoped `up.sh`.
+Presets written meanwhile keep their explicit `cache-ram`, which the old code accepts.
+
 ## Laya-only recovery rollout — 2026-09-23
 
 Issue #70 / draft PR #71 implemented automatic replacement of Laya's CPU worker
