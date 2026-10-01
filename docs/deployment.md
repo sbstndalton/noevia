@@ -1,5 +1,123 @@
 # Deploying noevia to daserver
 
+## Pending: one model at a time within an inference memory budget (#697)
+
+Not deployed yet. DaServer livelocked (2026-09-30, and the 2026-09-27 OOM) when two large models
+plus llama.cpp's default 8 GiB-per-model prompt caches exhausted RAM: on the Radeon iGPU the
+weights and KV live in GTT, system RAM the llama container's `mem_limit` does not count. The
+owner's rule: **one model loaded in the engine, at most 16 GiB for inference**; Laya (its own
+torch service) and the CPU `embed`/`rerank` sidecars sit outside that budget.
+
+What the code does:
+
+- **Budget.** Settings → Models & routing → Your models has an *Inference memory budget* panel
+  (administrators): the budget (2 GiB to host RAM − 4 GiB, read from `/proc/meminfo`) and every
+  model's estimate against it. The figure is stored with the other admin settings;
+  `INFERENCE_MEMORY_BUDGET_GIB` (default 16) is only its first value, so adding RAM later is a
+  settings change, not a redeploy.
+- **Estimate** (`llamacpp-autoconfig.cjs` `estimateFootprint`): (GGUF size + KV at the preset's
+  `ctx-size` and cache types + draft KV + projector and vision scratch + 1 GiB runtime) × 1.05,
+  plus `cache-ram` (unset = llama-server's 8192 MiB; `-1` = unbounded, always refused).
+- **Loads web starts are admitted first** (`makeRoomFor`: refused before anything is evicted when
+  over budget, otherwise the other model is unloaded): chat, image description (vision role) and
+  the vision probe, deep research steps, Planner review and plan, the Models page load button,
+  calibration and auto-tune loads, and a proxied model-manager benchmark start. The auto-router's
+  classifier never swaps models: when its (fast) model is not the resident one, or would not fit,
+  it is skipped without a request and the rules decide (decision log `cause: not-resident` /
+  `over-budget`).
+- **Saves are refused when over budget**, in the preset editor and in model-manager section saves
+  through web, so a preset in `models.ini` always fits. That is what bounds clients that load
+  from the router directly (Diary chat, Nextcloud Assistant, the Code sandbox's harness), which
+  web cannot admit. Presets saved before this release are bounded by the cache-ram migration
+  below and by the watchdog.
+- **Autoconfig** sizes against the inference budget (lowered only by an explicit
+  `LLAMACPP_AUTOCONFIG_MEMORY_GIB`; `LLAMACPP_MEMORY_LIMIT` applies only without a budget), with
+  the prompt-cache cap included; the model manager's own autoconfig receives `budget_gib` from web.
+- **Prompt cache.** Every preset write (web preset editor, calibration, auto-tune, and the model
+  loader's section saves and safe-defaults auto-registration) leaves an explicit `cache-ram`:
+  aliases (`cram`, `LLAMA_ARG_CACHE_RAM`) are folded into `cache-ram`, unset becomes
+  `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB` (1024), and values above `LLAMACPP_CACHE_RAM_HARD_MAX_MIB`
+  (2048) or `-1` are clamped to it. On start the model loader writes the same into every chat
+  section that needs it (embedding, reranking and Laya sections are left alone), through its
+  backed-up writer, and logs the sections it changed (`MIGRATE_CACHE_RAM_ON_START=false` turns it
+  off). The engine reads the change on its next reload or restart. The whole-file
+  `PUT /models-ini` stays verbatim (web prepares that text; restores must round-trip).
+- **Runtime safety net** (`inference-budget-watch.cjs`, on by default). Every 15 s web reads GPU
+  memory in use from sysfs (`/sys/class/drm/card*/device/mem_info_gtt_used` + `mem_info_vram_used`;
+  the container's read-only `/sys` already shows them, checked on cowork-web-1: card1) and the
+  **main engine container's anonymous memory** (cgroup `anon`/`rss`, through the model loader's
+  `/api/v1/backends`; `INFERENCE_ENGINE_CONTAINER` names it, default the compose `llama`
+  container, so `embed` and `rerank` are excluded although they share its image). Slack:
+  - GPU counters are device-wide; an idle baseline (sampled whenever no model is loaded, and at
+    startup when nothing is) is subtracted. On DaServer that is ~0.15 GiB (display buffers).
+    Anything else growing on the GPU while a model is loaded still counts.
+  - If web starts with a model already loaded, the baseline is 0 until the first idle reading,
+    so the measure reads up to that baseline high.
+  - Anonymous memory leaves out the page cache of the mmapped GGUF; an older model-loader image
+    without `mem_anon_gb` falls back to usage less the page cache.
+
+  Two readings in a row above budget × 1.10 unload the engine's models and log one
+  `[inference-budget]` JSON line (numbers and model ids only), then a 60 s cooldown. The unloaded
+  model is then refused with an explanation until its preset, or the budget, changes (held in
+  memory; a web restart clears it). Knobs: `INFERENCE_BUDGET_WATCH=off`,
+  `INFERENCE_BUDGET_WATCH_INTERVAL_MS`, `INFERENCE_BUDGET_OVERSHOOT_PCT`, `INFERENCE_GTT_USED_PATH`,
+  `INFERENCE_ENGINE_CONTAINER`.
+- **Nothing else in the engine.** Measured live before this change, the router served three
+  non-chat sections: `nomic-embed-text-v1` (web already used the `embed` sidecar, but **Diary
+  embedded through the engine** with `LLM_EMBED_MODEL`), `qwen3-reranker-0.6b-q8_0` (the live
+  override set `RERANK_BASE_URL: http://llama:8080/v1` with `NOEVIA_FEATURE_RAG_RERANK: "true"`),
+  and `laya_multilingual_f16` (nothing calls it; Laya runs on torch). With one slot each of the
+  first two would evict the chat model per request.
+  - Diary now takes `LLM_EMBED_BASE_URL` (compose.embed.yaml points it at `embed`). The live
+    `embed` runs the same file and pooling as the engine's `[nomic-embed-text-v1]` section
+    (`/models/nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf`, `--pooling mean`), so the Diary
+    index stays valid; `tools/embed-parity-check.cjs` proves it (cosine ≥ 0.999) before the switch.
+  - Web refuses a reranker on the engine's origin (`rerank-target.cjs`; `RERANK_SHARED_ENGINE=allow`
+    overrides) and keeps cosine top-6, its existing fallback. `compose.rerank.yaml` is an optional
+    CPU reranker sidecar (`--device none --reranking`, 1.5 GiB limit, threads and CPU quota from one
+    `RERANK_CPUS`, default 2). The inference key is never sent to it (`RERANK_API_KEY` only). Its CPU
+    latency against the 3 s rerank deadline is unmeasured, so it is not part of this rollout.
+
+Migration note for `models.ini`: the three sections above become unused. Leave them (and their
+files) in place; they are inert once nothing names them. Web refuses to delete the Laya and
+embedding sections through the editor anyway (system and sidecar guards).
+
+Live deploy steps (owner-authorised run only; take the appdata backup first):
+
+1. **Embedding parity, before anything else** (the engine still has two slots, so this does not
+   evict the chat model; run it while chat is idle):
+   `docker exec -i cowork-web-1 node - http://llama:8080 nomic-embed-text-v1 http://embed:8080 nomic-embed-text-v1 < tools/embed-parity-check.cjs`
+   from the release directory. Exit 0 (cosine ≥ 0.999) is required before step 5's Diary change.
+2. Ship web from `main` with `deploy/examples/overlay-release.sh` (bumps `COWORK_VERSION`).
+3. Build the model loader from the same release (`services/model-manager` changed) and bump
+   `MODEL_MANAGER_VERSION`; per-service versioning applies.
+4. Ship Diary with `deploy/examples/diary-overlay.sh <sha>` (only `services/diary/agent`
+   changed: `llm.py`, `config.py`, `app.py`).
+5. Edit the live `docker-compose.override.yml` (back it up as
+   `docker-compose.override.yml.bak.before-697`):
+   - `llama.command`: `"--models-max", "2"` → `"--models-max", "1"`;
+   - `web.environment`: set `NOEVIA_FEATURE_RAG_RERANK: "false"` and drop `RERANK_BASE_URL`
+     (web would refuse it anyway and log why); optionally `INFERENCE_MEMORY_BUDGET_GIB: "16"` and
+     the other #697 variables (code defaults are the values in `.env.example`);
+   - `model-loader.environment`: optionally `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB: "1024"`,
+     `LLAMACPP_CACHE_RAM_HARD_MAX_MIB: "2048"` (code defaults);
+   - add `diary: environment: LLM_EMBED_BASE_URL: http://embed:8080/v1` (`embed` is already on
+     the `default` network Diary uses).
+   No new mounts: sysfs is visible read-only in the web container.
+6. With no model loaded, recreate the model loader **first** (its start-up migration writes
+   explicit `cache-ram` lines; check its log), then the rest, through the preflight wrapper:
+   `up.sh … --no-deps --wait model-loader`, then `up.sh … --no-deps --wait llama diary web`.
+7. Verify: `docker inspect cowork-llama-1 --format '{{json .Args}}'` shows `--models-max 1`;
+   `models.ini` chat sections all carry `cache-ram`; Settings → Models & routing → Your models
+   shows the budget panel with 16 GiB and an estimate per model; loading a chat model then another
+   leaves one loaded; the web log has no `[inference-budget]` line at idle; a Diary retrieval does
+   not load `nomic-embed-text-v1` in the engine (`GET /models` on the router).
+
+Rollback: restore `docker-compose.override.yml.bak.before-697` and the previous `.env` image tags
+(`COWORK_VERSION`, `MODEL_MANAGER_VERSION`, `DIARY_VERSION`), then the same scoped `up.sh`.
+Presets written meanwhile keep their explicit `cache-ram`, which the old code accepts; the
+migration's pre-write copy is the newest `models.ini.bak-*`.
+
 ## Laya-only recovery rollout — 2026-09-23
 
 Issue #70 / draft PR #71 implemented automatic replacement of Laya's CPU worker

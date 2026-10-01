@@ -1,0 +1,69 @@
+# Optional CPU-only RAG reranker sidecar (#697) — an OVERLAY, not part of the base stack.
+#
+#   docker compose -f compose.yaml -f compose.llamacpp.yaml -f compose.embed.yaml -f compose.rerank.yaml up -d
+#
+# The inference engine (`llama`, compose.llamacpp.yaml) holds one model at a time inside the
+# inference memory budget, so the reranker cannot live there: every retrieval would evict the chat
+# model. Web refuses a RERANK_BASE_URL that points at the engine (server/rerank-target.cjs) and
+# falls back to cosine ranking. This service is the supported place for it: a second llama.cpp
+# server, CPU-only like `embed`, with its own small memory limit outside the inference budget.
+#
+# Speed is not yet measured on CPU. Rerank has a deadline (RAG_RERANK_DEADLINE_MS, default 3000);
+# a slower answer falls back to the cosine top results, so chat never waits longer than that.
+# Start with a smaller pool (RAG_RERANK_POOL) and measure before relying on it.
+services:
+  rerank:
+    # Same pinned image as `llama` and `embed`; `--device none` keeps it off the GPU.
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41
+    restart: unless-stopped
+    command:
+      - "--device"
+      - "none"
+      - "-m"
+      - "/models/${RERANK_MODEL_FILE:?Set the reranker GGUF path under the models directory}"
+      - "--alias"
+      - "${RERANK_MODEL:-qwen3-reranker-0.6b-q8_0}"
+      - "--reranking"
+      - "--pooling"
+      - "rank"
+      # One slot of 4096 tokens holds a query and one 4000-character chunk; the batch covers it whole.
+      - "-c"
+      - "4096"
+      - "-b"
+      - "2048"
+      - "-ub"
+      - "2048"
+      - "--parallel"
+      - "1"
+      # One variable sets both the CPU quota and the thread count, so they cannot disagree.
+      - "-t"
+      - "${RERANK_CPUS:-2}"
+      - "--cache-ram"
+      - "0"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+    volumes:
+      - ${LLAMACPP_MODELS_DIR:?Set the existing public models directory}:/models:ro
+    # ~0.6 GiB of Q8 weights, ~0.45 GiB of f16 KV at 4096 tokens, and compute scratch.
+    mem_limit: ${RERANK_MEMORY_LIMIT:-1536m}
+    memswap_limit: ${RERANK_MEMORY_LIMIT:-1536m}
+    cpus: ${RERANK_CPUS:-2}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Web reaches it on `default`; no published ports.
+    networks: [default]
+
+  web:
+    environment:
+      NOEVIA_FEATURE_RAG_RERANK: "true"
+      RERANK_BASE_URL: http://rerank:8080/v1
+      RERANK_MODEL: ${RERANK_MODEL:-qwen3-reranker-0.6b-q8_0}
+      # No inference credential is sent to the sidecar; set RERANK_API_KEY only if you give the
+      # sidecar its own --api-key. The internal network needs none.
+      RERANK_API_KEY: ${RERANK_API_KEY:-}

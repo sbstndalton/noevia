@@ -21,6 +21,15 @@ test('estimate adds model, rescaled KV, projector and reserve, then the 5% margi
   assert.equal(g.estimateGib({...nine,pinnedGib:1.4},32768,'q8_0').totalGib,Math.round((6.2+0.5+1.4+1)*1.05*100)/100);
 });
 
+test('#697: the preset prompt cache is added after the margin, like the server load guard',()=>{
+  const withCache={...nine,cacheRamGib:1};
+  assert.equal(g.estimateGib(withCache,32768,'q8_0').totalGib,Math.round(((6.2+0.5+0+1)*1.05+1)*100)/100);
+  assert.equal(g.estimateGib({...nine,cacheRamGib:null},32768,'q8_0').totalGib,g.estimateGib(nine,32768,'q8_0').totalGib,'unknown cache: unchanged');
+  // The recommendation floor counts it too, so a model that only fits without its cache is not offered.
+  const rec=g.recommend({...withCache,modelGib:7.6},10);
+  assert.equal(rec.kind,'smaller');assert.equal(rec.floorGib,Math.round(((7.6+1)*1.05+1)*100)/100);
+});
+
 test('verdict: fits with headroom, tight within 10% (at least 1 GiB), no when over',()=>{
   assert.equal(g.verdictFor(10,14),'fits');assert.equal(g.verdictFor(13.2,14),'tight');assert.equal(g.verdictFor(14.1,14),'no');
   assert.equal(g.verdictFor(57,64),'fits');assert.equal(g.verdictFor(59,64),'tight');

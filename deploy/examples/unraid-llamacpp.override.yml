@@ -5,6 +5,10 @@ services:
   llama:
     image: ghcr.io/ggml-org/llama.cpp:server-vulkan@sha256:94bd70ef60ef6d670c85999c144f59013e06525d9ee26b3563ab9b2f29d1ea41
     restart: unless-stopped
+    # #697: `--models-max 1` — one resident model. On a shared-memory GPU (AMD APU) weights and KV
+    # live in GTT, system RAM this container's mem_limit does not count; two large models plus
+    # their prompt caches livelocked DaServer. Embeddings and the reranker run as their own CPU
+    # sidecars (compose.embed.yaml, compose.rerank.yaml), never in this engine.
     command: ["--models-preset", "/config/models.ini", "--host", "0.0.0.0", "--port", "8080", "--models-max", "1", "--metrics"]
     devices:
       - ${LLAMACPP_RENDER_DEVICE:?Set the qualified device}:${LLAMACPP_RENDER_DEVICE}
@@ -38,6 +42,10 @@ services:
       LLAMA_CONTAINERS: ${MODEL_LOADER_LLAMA_CONTAINERS:-}
       GPU_VRAM: ${MODEL_LOADER_GPU_VRAM:-}
       HOST_RAM_RESERVE_GB: ${MODEL_LOADER_HOST_RAM_RESERVE_GB:-8}
+      # #697: prompt-cache (--cache-ram, MiB) cap written by autoconfig and new sections, and the
+      # hard maximum any saved value is clamped to.
+      LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB: ${LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB:-1024}
+      LLAMACPP_CACHE_RAM_HARD_MAX_MIB: ${LLAMACPP_CACHE_RAM_HARD_MAX_MIB:-2048}
       # Required: this service holds the Docker socket; only web knows this secret.
       MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN:?Set a random MODEL_LOADER_TOKEN (e.g. openssl rand -hex 32)}
     volumes:
@@ -59,6 +67,21 @@ services:
       LLAMACPP_CACHE_PATH: /cache
       # Calibration stops a step when host available memory falls below this.
       LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB: ${LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB:-4}
+      # #697: one model at a time (llama `--models-max 1` above) within an inference memory budget.
+      # INFERENCE_MEMORY_BUDGET_GIB is only the initial value; administrators change it under
+      # Settings → Models & routing. Loads whose estimate exceeds it are refused.
+      INFERENCE_MEMORY_BUDGET_GIB: ${INFERENCE_MEMORY_BUDGET_GIB:-16}
+      LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB: ${LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB:-1024}
+      LLAMACPP_CACHE_RAM_HARD_MAX_MIB: ${LLAMACPP_CACHE_RAM_HARD_MAX_MIB:-2048}
+      # Runtime safety net: unload when GPU memory in use (sysfs GTT + VRAM, read-only from the
+      # container's /sys) plus the engine container's memory stays above the budget by more than
+      # the overshoot. INFERENCE_GTT_USED_PATH pins the GPU's counter(s); unset reads every card.
+      INFERENCE_BUDGET_WATCH: ${INFERENCE_BUDGET_WATCH:-on}
+      INFERENCE_BUDGET_WATCH_INTERVAL_MS: ${INFERENCE_BUDGET_WATCH_INTERVAL_MS:-15000}
+      INFERENCE_BUDGET_OVERSHOOT_PCT: ${INFERENCE_BUDGET_OVERSHOOT_PCT:-10}
+      INFERENCE_GTT_USED_PATH: ${INFERENCE_GTT_USED_PATH:-}
+      # Only this container's anonymous memory counts (embed/rerank share the image). Blank: llama.
+      INFERENCE_ENGINE_CONTAINER: ${INFERENCE_ENGINE_CONTAINER:-}
       MODEL_LOADER_URL: http://model-loader:8090
       MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN}
       # Who writes models.ini: model-loader (default, the single writer, #295/#269) or web.
