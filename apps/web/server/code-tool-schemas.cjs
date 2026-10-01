@@ -8,10 +8,19 @@
 // error the model cannot act on). With it, the call is refused at once and the agent is told
 // exactly which argument was wrong, as the tool's own error, so it can correct itself locally.
 //
-// What it is NOT: an approval. The guard only ever ADDS automatic refusals of malformed calls.
-// A call that passes is handed, unchanged, to the existing policy in code-harness.cjs and
-// code-actions.cjs — classify(), decide(), the approval card with its three answers. Nothing here
-// returns "allow", and nothing here can make a card disappear.
+// What it is NOT: an approval, and not a containment check. The guard only ever ADDS automatic
+// refusals of malformed calls — the SHAPE of a call: wrong types, a missing or empty required
+// field, NUL or control characters in a path, an unknown kind, oversize content. WHERE a call
+// points is left entirely to the existing policy, unchanged: a write, move or delete outside the
+// workspace is refused by decide() (without a strike), a read or command elsewhere goes to the
+// card as before (#113), and fs/* outside the worktree is refused by the harness's own check.
+// A call that passes is handed, unchanged, to classify(), decide() and the approval card with
+// its three answers. Nothing here returns "allow", and nothing here can make a card disappear.
+//
+// A malformed permission request is answered with the protocol's own reject outcome (so every
+// harness adapter treats it as an ordinary refusal), with the violation in the outcome's `_meta`
+// and in the job journal. A malformed fs/* call is answered with a JSON-RPC Invalid-params error
+// carrying the same structured violation — there is no reject outcome for those.
 //
 // After MAX_VIOLATIONS refusals in one task the guard halts the task: every later call is refused
 // without counting, the harness stops the agent, and the job fails with `result.blocked` set (the
@@ -34,6 +43,8 @@ const ACP_KINDS = Object.freeze(['read', 'edit', 'delete', 'move', 'search', 'ex
 const PATH_KEYS = Object.freeze(['path', 'file_path', 'filePath', 'filepath']);
 
 const pathSchema = { type: 'string', maxLength: PATH_MAX };
+// NUL and the other C0 controls (and DEL): no real file name the agent means contains them.
+const CONTROL = /[\u0000-\u001f\u007f]/;
 const pathProperties = Object.freeze(Object.fromEntries(PATH_KEYS.map((key) => [key, pathSchema])));
 const commandSchema = { type: ['string', 'array'], maxLength: COMMAND_MAX, maxItems: 4096, items: { type: 'string', maxLength: COMMAND_MAX } };
 
@@ -78,19 +89,19 @@ const FS_SCHEMAS = Object.freeze({
 });
 
 const HINTS = Object.freeze({
-  execute: 'Send the shell command as one non-empty string in rawInput.command, and run it inside your working directory.',
-  edit: 'Name the file to change in locations[].path (or rawInput.path), inside your working directory.',
-  delete: 'Name the file to delete in locations[].path (or rawInput.path), inside your working directory.',
-  move: 'Name the file to move in locations[].path (or rawInput.path), inside your working directory.',
-  read: 'Read only paths inside your working directory.',
-  search: 'Search only paths inside your working directory.',
-  fetch: 'Send the address as an http(s) URL in rawInput.url.',
-  other: 'Use only paths inside your working directory.',
+  execute: 'Send the shell command as one non-empty string in rawInput.command.',
+  edit: 'Name the file to change as a non-empty string in locations[].path (or rawInput.path).',
+  delete: 'Name the file to delete as a non-empty string in locations[].path (or rawInput.path).',
+  move: 'Name the file to move as a non-empty string in locations[].path (or rawInput.path).',
+  read: 'Send each path as a plain non-empty string.',
+  search: 'Send each path as a plain non-empty string.',
+  fetch: 'Send the address as a string in rawInput.url.',
+  other: 'Send rawInput as a JSON object and each path as a plain non-empty string.',
   think: 'Send rawInput as a JSON object.',
   switch_mode: 'Send rawInput as a JSON object.',
   kind: `Use one of the ACP tool kinds: ${ACP_KINDS.join(', ')}.`,
-  'fs/read_text_file': 'Send { path } as a path inside your working directory; line and limit, when given, are whole numbers from 1.',
-  'fs/write_text_file': 'Send { path, content } with a path inside your working directory and the whole file as a string.',
+  'fs/read_text_file': 'Send { path } as a plain non-empty string; line and limit, when given, are whole numbers from 1.',
+  'fs/write_text_file': 'Send { path, content } with a plain non-empty path and the whole file as a string.',
 });
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -139,14 +150,12 @@ function pathsOf(toolCall, kind) {
 }
 
 /**
- * One path: a non-empty string without NUL bytes that the task's workspace contains. `contains`
- * answers true, false, or null (the workspace is not held — then the existing policy decides, and
- * this guard adds nothing).
+ * One path's shape: a non-empty string with no NUL or control characters. Where it points is not
+ * judged here (see the header).
  */
-function checkPath(path, at, contains) {
+function checkPath(path, at) {
   if (typeof path !== 'string' || !path.trim()) return { message: `Empty path at ${at}`, path: at };
-  if (path.includes('\0')) return { message: `Path at ${at} contains a NUL byte`, path: at };
-  if (contains(path) === false) return { message: `Path at ${at} is outside the task workspace`, path: at };
+  if (CONTROL.test(path)) return { message: `Path at ${at} contains a NUL or control character`, path: at };
   return null;
 }
 
@@ -154,7 +163,7 @@ function checkPath(path, at, contains) {
  * The schema check for one ACP permission request (the merged ToolCall). Returns null for a
  * well-formed call, or `{message, path, kind, hint}`. Pure: counting and recording are the guard's.
  */
-function checkToolCall(toolCall, { contains = () => null } = {}) {
+function checkToolCall(toolCall) {
   if (!isObject(toolCall)) return { message: 'Type mismatch at $: expected object', path: '$', kind: null, hint: HINTS.kind };
   if (toolCall.kind !== undefined && toolCall.kind !== null && !ACP_KINDS.includes(toolCall.kind)) {
     return { message: `Unknown tool kind ${JSON.stringify(clip(String(toolCall.kind), 40))} at $.kind`, path: '$.kind', kind: null, hint: HINTS.kind };
@@ -165,7 +174,7 @@ function checkToolCall(toolCall, { contains = () => null } = {}) {
   const shape = validate(toolCallSchema(kind), projectToolCall(toolCall, kind));
   if (shape) return { ...shape, kind, hint };
   for (const { path, at } of pathsOf(toolCall, kind)) {
-    const bad = checkPath(path, at, contains);
+    const bad = checkPath(path, at);
     if (bad) return { ...bad, kind, hint };
   }
   const raw = isObject(toolCall.rawInput) ? toolCall.rawInput : null;
@@ -177,27 +186,23 @@ function checkToolCall(toolCall, { contains = () => null } = {}) {
   if (kind === 'edit' || kind === 'delete' || kind === 'move') {
     if (!pathsOf(toolCall, kind).length) return { message: `A ${kind} names no file: missing $.locations[].path`, path: '$.locations', kind, hint };
   }
+  // A fetch needs something to fetch. Which address it names is the policy's question: an
+  // unlisted host or an odd scheme goes to the card exactly as before.
   if (kind === 'fetch') {
-    const url = raw && typeof raw.url === 'string' ? raw.url : null;
-    if (url !== null) {
-      let ok = false;
-      try { ok = /^https?:$/.test(new URL(url).protocol); } catch { ok = false; }
-      if (!ok) return { message: 'Not an http(s) URL at $.rawInput.url', path: '$.rawInput.url', kind, hint };
-    } else if (!classify(toolCall).command) {
-      return { message: 'Missing URL at $.rawInput.url', path: '$.rawInput.url', kind, hint };
-    }
+    const url = raw && typeof raw.url === 'string' ? raw.url.trim() : '';
+    if (!url && !classify(toolCall).command) return { message: 'Missing URL at $.rawInput.url', path: '$.rawInput.url', kind, hint };
   }
   return null;
 }
 
 /** The schema check for `fs/read_text_file` / `fs/write_text_file` params. */
-function checkFsCall(method, params, { contains = () => null, maxBytes = Infinity } = {}) {
+function checkFsCall(method, params, { maxBytes = Infinity } = {}) {
   const hint = HINTS[method];
   const schema = FS_SCHEMAS[method];
   if (!schema) return { message: `Unknown file method ${method}`, path: '$', kind: method, hint: '' };
   const shape = validate(schema, isObject(params) && typeof params.content === 'string' ? { ...params, content: '' } : project(params, schema));
   if (shape) return { ...shape, kind: method, hint };
-  const bad = checkPath(params.path, '$.path', contains);
+  const bad = checkPath(params.path, '$.path');
   if (bad) return { ...bad, kind: method, hint };
   for (const key of ['line', 'limit']) {
     if (params[key] !== undefined && params[key] !== null && params[key] < 1) return { message: `${key} at $.${key} must be 1 or more`, path: `$.${key}`, kind: method, hint };
@@ -222,28 +227,45 @@ function structuredViolation(found, { tool, count, limit, blocked }) {
 
 /** The JSON-RPC error a violation is returned as: Invalid params, the violation in message and data. */
 function violationError(violation) {
-  const lead = violation.blocked
-    ? `noevia refused this malformed tool call and stopped the task (violation ${violation.count} of ${violation.limit}).`
-    : `noevia refused this malformed tool call (violation ${violation.count} of ${violation.limit}). Correct the arguments and call the tool again.`;
-  const message = `${lead} ${violation.violation.message}. ${violation.hint}\n${JSON.stringify({ noeviaViolation: violation })}`;
+  const message = `${violationText(violation)}\n${JSON.stringify({ noeviaViolation: violation })}`;
   return Object.assign(Error(message), { code: -32602, data: { noeviaViolation: violation } });
 }
 
+/** The text a refusal gives the agent: what was wrong, how to fix it, and how many strikes are left. */
+function violationText(violation) {
+  const lead = violation.blocked
+    ? `noevia refused this malformed tool call and stopped the task (violation ${violation.count} of ${violation.limit}).`
+    : `noevia refused this malformed tool call (violation ${violation.count} of ${violation.limit}). Correct the arguments and call the tool again.`;
+  return `${lead} ${violation.violation.message}. ${violation.hint}`;
+}
+
 /**
- * One guard per Code task session. `contains(path)` is the workspace's own containment check for
- * this task; `event(type, data)` appends to the job journal; `log(entry)` is the server log;
- * `onBlocked()` is called once, when the limit is reached, and must stop the agent.
- *
- * Each check returns null (go on, unchanged) or an Error to throw back to the agent. After the
- * limit every call is refused with the same blocked violation, without counting further.
+ * The answer to a malformed permission request: the protocol's own reject outcome (what a person's
+ * Decline sends), with the violation in `_meta` for a bridge that can pass it on (pi, #704).
  */
-function createExecutorGuard({ contains, event = () => {}, log = () => {}, onBlocked = () => {}, limit = MAX_VIOLATIONS, maxBytes = Infinity } = {}) {
-  if (typeof contains !== 'function') throw TypeError('The executor guard needs the workspace containment check');
+function rejectOutcome(selected, violation) {
+  return { ...selected, _meta: { noevia: { reason: violationText(violation), violation } } };
+}
+
+/**
+ * One guard per Code task session. `event(type, data)` appends to the job journal; `log(entry)`
+ * is the server log; `onBlocked()` is called once, when the limit is reached, and must stop the
+ * agent.
+ *
+ * `permission()` returns null (go on, unchanged) or the structured violation to answer with as a
+ * rejection; the fs checks return null or an Error to throw back to the agent. After the limit
+ * every call is refused with the same blocked violation, without counting further.
+ */
+function createExecutorGuard({ event = () => {}, log = () => {}, onBlocked = () => {}, limit = MAX_VIOLATIONS, maxBytes = Infinity } = {}) {
   let count = 0, blocked = null;
   const history = [];
 
   function refuse(found, tool, recordEvent) {
-    if (blocked) return violationError({ ...blocked, tool, kind: found?.kind ?? blocked.kind });
+    if (blocked) {
+      const again = { ...blocked, tool, kind: found?.kind ?? blocked.kind };
+      try { recordEvent(again); } catch { /* the task is ending; the refusal stands either way */ }
+      return again;
+    }
     count++;
     const violation = structuredViolation(found, { tool, count, limit, blocked: count >= limit });
     history.push({ tool, kind: violation.kind, path: violation.violation.path, message: violation.violation.message });
@@ -257,29 +279,29 @@ function createExecutorGuard({ contains, event = () => {}, log = () => {}, onBlo
       } catch (error) { log({ event: 'code.guard_record_failed', error: clip(error?.message || error) }); }
       try { onBlocked(); } catch (error) { log({ event: 'code.guard_halt_failed', error: clip(error?.message || error) }); }
     }
-    return violationError(violation);
+    return violation;
   }
 
   return {
     /** A permission request's merged ToolCall. `action` is the class code-actions gave it, for the record. */
     permission(toolCall, action = null) {
-      const found = blocked ? { kind: null } : checkToolCall(toolCall, { contains });
+      const found = blocked ? { kind: null } : checkToolCall(toolCall);
       if (!found) return null;
       return refuse(found, 'session/request_permission', (v) => event('approval.decided', {
-        decision: 'denied', action, automatic: true, reason: `Malformed tool call: ${v.violation.message}`, violation: v,
+        decision: 'denied', action, automatic: true, reason: violationText(v), violation: v,
       }));
     },
     /** `fs/read_text_file` params. */
     readTextFile(params) {
-      const found = blocked ? { kind: null } : checkFsCall('fs/read_text_file', params, { contains });
+      const found = blocked ? { kind: null } : checkFsCall('fs/read_text_file', params);
       if (!found) return null;
-      return refuse(found, 'fs/read_text_file', (v) => event('tool.completed', { name: 'read_file', failed: true, violation: v }));
+      return violationError(refuse(found, 'fs/read_text_file', (v) => event('tool.completed', { name: 'read_file', failed: true, violation: v })));
     },
     /** `fs/write_text_file` params. */
     writeTextFile(params) {
-      const found = blocked ? { kind: null } : checkFsCall('fs/write_text_file', params, { contains, maxBytes });
+      const found = blocked ? { kind: null } : checkFsCall('fs/write_text_file', params, { maxBytes });
       if (!found) return null;
-      return refuse(found, 'fs/write_text_file', (v) => event('tool.completed', { name: 'write_file', failed: true, violation: v }));
+      return violationError(refuse(found, 'fs/write_text_file', (v) => event('tool.completed', { name: 'write_file', failed: true, violation: v })));
     },
     get violations() { return count; },
     get blocked() { return !!blocked; },
@@ -305,5 +327,5 @@ function useExecutorGuard(enabled) {
 
 module.exports = {
   MAX_VIOLATIONS, ACP_KINDS, PATH_KEYS, RAW_INPUT_SCHEMAS, FS_SCHEMAS, toolCallSchema,
-  checkToolCall, checkFsCall, violationError, createExecutorGuard, executorGuardFlag, useExecutorGuard,
+  checkToolCall, checkFsCall, violationError, violationText, rejectOutcome, createExecutorGuard, executorGuardFlag, useExecutorGuard,
 };

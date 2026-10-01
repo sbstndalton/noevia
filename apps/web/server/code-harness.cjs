@@ -25,7 +25,7 @@ const { readUsage, readContext, readExitCode, codingIdentity, summarize } = requ
 const { MAX_ASSISTANT_OUTPUT_BYTES, MAX_ASSISTANT_OUTPUT_EVENTS } = require('./jobs.cjs');
 const { boundCodePlan, MAX_CODE_PLAN_ENTRIES } = require('./code-plan.cjs');
 const { REVIEW_ACTION } = require('./code-review.cjs');
-const { createExecutorGuard, executorGuardFlag } = require('./code-tool-schemas.cjs');
+const { createExecutorGuard, executorGuardFlag, rejectOutcome } = require('./code-tool-schemas.cjs');
 
 const MAX_TEXT = 4000;                  // what a job event keeps, as chat keeps of a tool result
 const MAX_FILE_BYTES = 8 * 1024 * 1024; // one source file, not a database the agent found
@@ -355,7 +355,6 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
     // refuse a malformed call before the policy below sees it; a call it passes is judged exactly
     // as before, approval card and all.
     const toolGuard = halt ? createExecutorGuard({
-      contains: (target) => workspaces.contains(taskId, target),
       event: (type, data) => ctx.event(type, data), log: record, maxBytes: MAX_FILE_BYTES,
       // Pending approvals are refused now; the agent is stopped on the next turn of the event
       // loop, so the refusal that reached the limit is still delivered to it first.
@@ -377,8 +376,10 @@ function createCodeHarness({ jobs, workspaces, egress = null, askApproval, now =
         ? { ...announced, ...Object.fromEntries(Object.entries(stated).filter(([, v]) => v !== undefined && v !== null)) }
         : stated;
       if (toolGuard) {
+        // Answered as an ordinary refusal (the reject outcome a Decline sends), with the violation
+        // alongside for the agent; the journal records it as an automatic denial.
         const malformed = toolGuard.permission(toolCall, classify(toolCall).action);
-        if (malformed) { counts.approvals++; counts.denied++; throw malformed; }
+        if (malformed) { counts.approvals++; counts.denied++; return rejectOutcome(pickOption(options, 'reject_once'), malformed); }
       }
       let classified = classify(toolCall);
       // The announcement explains the call; it cannot excuse it. A harness that asks is never
