@@ -6,7 +6,7 @@ const { createInferenceBudget, hostRamGib, cacheRamLimits, clampCacheRam, DEFAUL
 const { estimateFootprint, suggest, kvCacheBytes } = require('./llamacpp-autoconfig.cjs');
 const { createPresetStore } = require('./llamacpp-presets.cjs');
 const { createModelManager } = require('./model-manager.cjs');
-const { createInferenceBudgetWatch, gpuMemoryFiles, readGpuMemory, engineReaderFromModelLoader } = require('./inference-budget-watch.cjs');
+const { createInferenceBudgetWatch, gpuMemoryFiles, readGpuMemory, engineReaderFromModelLoader, isEngineContainer } = require('./inference-budget-watch.cjs');
 const { rerankTarget } = require('./rerank-target.cjs');
 const { keepAlongside } = require('./llamacpp-manager.cjs');
 
@@ -238,7 +238,7 @@ test('usage above the budget by more than 10% for two readings unloads the model
   assert.equal(r.state, 'unloaded'); assert.deepEqual(unloaded, ['chat']);
   assert.equal(log.length, 1);
   const event = JSON.parse(log[0].replace('[inference-budget] ', ''));
-  assert.deepEqual(Object.keys(event).sort(), ['budgetGib', 'containerGib', 'event', 'failed', 'gttGib', 'limitGib', 'models', 'usedGib', 'vramGib'].sort());
+  assert.deepEqual(Object.keys(event).sort(), ['baselineGib', 'budgetGib', 'containerGib', 'event', 'failed', 'gttGib', 'limitGib', 'models', 'usedGib', 'vramGib'].sort());
   assert.equal(event.event, 'unload'); assert.equal(event.usedGib, 14); assert.equal(event.limitGib, 13.2);
 });
 
@@ -287,10 +287,59 @@ test('GPU memory comes from the configured sysfs counters, or every DRM card whe
   assert.equal(readGpuMemory(pinned, () => { throw Error('EACCES'); }), null);
 });
 
-test('engine container memory is read from the model manager\'s backend telemetry', async () => {
-  const fetchJson = async url => { assert.match(url, /\/api\/v1\/backends$/); return { ok: true, status: 200, body: { backends: [{ stats: { ok: true, container: { mem_used_gb: 3.5 }, gpu: { shared_used_gb: 9, vram_used_gb: 0.4 } } }, { stats: { ok: false } }] } }; };
-  assert.deepEqual(await engineReaderFromModelLoader({ env: { MODEL_LOADER_URL: 'http://model-loader:8090' }, fetchJson })(), { containerGib: 3.5, gttGib: 9, vramGib: 0.4 });
+test('engine memory counts only the main engine container, as anonymous memory', async () => {
+  // embed and rerank share the engine's image, so the model manager lists them too.
+  const backends = [
+    { name: 'cowork-llama-1', stats: { ok: true, container: { mem_used_gb: 7.5, mem_anon_gb: 3.5 }, gpu: { shared_used_gb: 9, vram_used_gb: 0.4 } } },
+    { name: 'cowork-embed-1', stats: { ok: true, container: { mem_used_gb: 0.9, mem_anon_gb: 0.8 }, gpu: null } },
+    { name: 'cowork-rerank-1', stats: { ok: true, container: { mem_used_gb: 1.2, mem_anon_gb: 1.1 }, gpu: null } },
+    { name: 'cowork-llama-2', stats: { ok: false } },
+  ];
+  const fetchJson = async url => { assert.match(url, /\/api\/v1\/backends$/); return { ok: true, status: 200, body: { backends } }; };
+  const env = { MODEL_LOADER_URL: 'http://model-loader:8090' };
+  assert.deepEqual(await engineReaderFromModelLoader({ env, fetchJson })(), { containerGib: 3.5, gttGib: 9, vramGib: 0.4 }, 'anon, not usage with page cache');
+  assert.deepEqual(await engineReaderFromModelLoader({ env: { ...env, INFERENCE_ENGINE_CONTAINER: 'cowork-embed-1' }, fetchJson })(), { containerGib: 0.8, gttGib: 0, vramGib: 0 }, 'configurable by name');
+  // An older model manager without mem_anon_gb: usage less the page cache.
+  backends[0].stats.container = { mem_used_gb: 4.2 };
+  assert.equal((await engineReaderFromModelLoader({ env, fetchJson })()).containerGib, 4.2);
   assert.equal(await engineReaderFromModelLoader({ env: {}, fetchJson })(), null);
+  assert.equal(isEngineContainer('llama'), true); assert.equal(isEngineContainer('cowork_llama_1'), true);
+  assert.equal(isEngineContainer('cowork-embed-1'), false); assert.equal(isEngineContainer('llama-rerank'), false);
+});
+
+test('an idle GPU baseline, sampled with no model loaded, is not charged to inference', async () => {
+  const used = { gpu: { gttGib: 1.5, vramGib: 0.5 }, engine: { containerGib: 0 } };
+  let loaded = [];
+  const unloaded = [];
+  const w = createInferenceBudgetWatch({ env: {}, budgetGib: () => 12, readGpu: async () => used.gpu, readEngine: async () => used.engine,
+    listLoaded: async () => loaded, unload: async m => { unloaded.push(m); return { ok: true }; }, log: () => {}, now: () => 0 });
+  assert.equal((await w.tick()).baselineGib, 2, 'startup with nothing loaded');
+  loaded = ['chat']; used.gpu.gttGib = 14; // 14.5 GiB on the device, 12.5 GiB of it the model
+  const r = await w.tick();
+  assert.equal(r.state, 'ok'); assert.equal(r.usedGib, 12.5, '12.5 <= 13.2 once the 2 GiB baseline is taken off');
+  used.gpu.gttGib = 15; await w.tick(); assert.equal((await w.tick()).state, 'unloaded');
+  assert.deepEqual(unloaded, ['chat']);
+});
+
+test('without an idle reading the baseline is zero (a model was loaded at startup)', async () => {
+  const w = createInferenceBudgetWatch({ env: {}, budgetGib: () => 12, readGpu: async () => ({ gttGib: 13, vramGib: 0.5 }), readEngine: async () => null,
+    listLoaded: async () => ['chat'], unload: async () => ({ ok: true }), log: () => {}, now: () => 0 });
+  const r = await w.tick();
+  assert.equal(r.baselineGib, 0); assert.equal(r.usedGib, 13.5); assert.equal(r.state, 'over');
+});
+
+test('nothing loaded means nothing to unload, whatever the device reads', async () => {
+  const f = watchFixture({ used: { gpu: { gttGib: 30, vramGib: 0 }, engine: null }, loaded: [] });
+  await f.w.tick(); await f.w.tick(); await f.w.tick();
+  assert.deepEqual(f.unloaded, []);
+});
+
+test('the watchdog hands every model it unloaded to the quarantine with the budget', async () => {
+  const held = [];
+  const w = createInferenceBudgetWatch({ env: {}, budgetGib: () => 12, readGpu: async () => ({ gttGib: 20, vramGib: 0 }), readEngine: async () => null,
+    listLoaded: async () => ['chat'], unload: async () => ({ ok: true }), onUnloaded: (m, b) => held.push([m, b]), log: () => {}, now: () => 0 });
+  await w.tick(); await w.tick();
+  assert.deepEqual(held, [['chat', 12]]);
 });
 
 // ── Reranker routing ─────────────────────────────────────────────────────────
@@ -336,4 +385,115 @@ test('the optional reranker sidecar is CPU-only, bounded and off the engine', ()
   assert.match(service, /mem_limit: \$\{RERANK_MEMORY_LIMIT:-1536m\}/);
   assert.doesNotMatch(service, /devices:/, 'no GPU device');
   assert.match(text, /RERANK_BASE_URL: http:\/\/rerank:8080\/v1/);
+});
+
+// ── Review fixes (#709): quarantine, preset save refusal, aliases, every engine caller ──────
+
+test('a model the watchdog unloaded stays refused until its preset or the budget changes', async t => {
+  const { manager, setBudget } = fixture(t, { budget: 64 });
+  manager.quarantine('small', 64);
+  const held = await manager.load('small');
+  assert.equal(held.status, 409); assert.equal(held.body.code, 'inference_budget_unloaded');
+  assert.match(held.body.error, /unloaded by the memory safety net.*until its settings or the budget change/);
+  assert.equal((await manager.load('chat')).ok, true, 'another model is unaffected');
+  setBudget(48);
+  assert.equal((await manager.load('small')).ok, true, 'a new budget releases it');
+  manager.quarantine('small', 48);
+  assert.equal((await manager.load('small')).status, 409);
+});
+
+test('a preset change releases a quarantined model', async t => {
+  const dir = tmp(t);
+  fs.writeFileSync(path.join(dir, 'q.gguf'), gguf(qwen35));
+  const file = path.join(dir, 'models.ini');
+  fs.writeFileSync(file, 'version = 1\n\n[small]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram = 0\n');
+  const state = { small: 'unloaded' };
+  const manager = createModelManager({ kind: 'llamacpp', baseUrl: 'http://synthetic', presetPath: file, autoconfig: { modelsPath: dir }, inferenceBudget: { budgetGib: () => 64 },
+    fetchJson: async (url, o = {}) => { const p = new URL(url).pathname, b = o.body ? JSON.parse(o.body) : {}; if (p === '/models/load') state[b.model] = 'loaded';
+      return { ok: true, status: 200, body: p === '/models' ? { data: Object.entries(state).map(([id, value]) => ({ id, status: { value } })) } : { success: true } }; } });
+  manager.quarantine('small', 64);
+  assert.equal((await manager.load('small')).status, 409);
+  fs.appendFileSync(file, 'ctx-size = 2048\n');
+  assert.equal((await manager.load('small')).ok, true);
+});
+
+test('saving a preset whose estimate exceeds the budget is refused and nothing is written', async t => {
+  const dir = tmp(t);
+  fs.writeFileSync(path.join(dir, 'q.gguf'), gguf(qwen35));
+  const file = path.join(dir, 'models.ini');
+  fs.writeFileSync(file, 'version = 1\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram = 0\n');
+  const before = fs.readFileSync(file, 'utf8');
+  const calls = [];
+  const manager = createModelManager({ kind: 'llamacpp', baseUrl: 'http://synthetic', presetPath: file, autoconfig: { modelsPath: dir }, inferenceBudget: { budgetGib: () => 3 },
+    fetchJson: async (url) => { calls.push(new URL(url).pathname); return { ok: true, status: 200, body: { data: [{ id: 'm', status: { value: 'unloaded' } }] } }; } });
+  const rev = () => manager.getPreset('m').then(r => r.body.revision);
+  const refused = await manager.applyPreset({ model: 'm', baseRevision: await rev(), confirmReload: true, options: { 'ctx-size': '262144', 'cache-type-k': 'f16', 'cache-type-v': 'f16' } });
+  assert.equal(refused.status, 409); assert.equal(refused.body.code, 'inference_budget');
+  assert.match(refused.body.error, /^Not saved: with these settings m needs about [\d.]+ GiB .*above the 3 GiB/);
+  assert.equal(fs.readFileSync(file, 'utf8'), before); assert.ok(!calls.includes('/models'.concat('?reload=1')));
+  // The model manager's own section save is checked the same way (aliases folded in).
+  assert.equal((await manager.presetRefusal('m', { c: '262144', ctk: 'f16', ctv: 'f16' })).code, 'inference_budget');
+  assert.equal(await manager.presetRefusal('m', { 'ctx-size': '4096', LLAMA_ARG_CACHE_RAM: '0' }), null);
+  assert.match((await manager.presetRefusal('m', { 'ctx-size': '4096', cram: '-1' })).error, /unbounded prompt cache/);
+});
+
+test('cache-ram aliases are canonicalised before clamping in the preset editor', t => {
+  const dir = tmp(t), file = path.join(dir, 'models.ini');
+  fs.writeFileSync(file, 'version = 1\n\n[a]\nmodel = /models/a.gguf\nLLAMA_ARG_CACHE_RAM = 8192\n\n[b]\nmodel = /models/b.gguf\ncram = 512\n');
+  const store = createPresetStore(file, { cacheRam: { capMib: 1024, hardMaxMib: 2048 } });
+  const commit = c => fs.writeFileSync(file, c.text);
+  commit(store.prepare({ model: 'a', baseRevision: store.get('a').revision, options: { 'ctx-size': '8192' } }));
+  const a = fs.readFileSync(file, 'utf8').split('[a]')[1].split('[b]')[0];
+  assert.match(a, /^cache-ram = 2048$/m); assert.doesNotMatch(a, /LLAMA_ARG_CACHE_RAM/);
+  assert.equal(store.get('b').options['cache-ram'], '512', 'the short alias counts as the section\'s value');
+  commit(store.prepare({ model: 'b', baseRevision: store.get('b').revision, options: { 'cache-ram': '4096' } }));
+  const b = fs.readFileSync(file, 'utf8').split('[b]')[1];
+  assert.match(b, /^cache-ram = 2048$/m); assert.doesNotMatch(b, /^cram/m);
+});
+
+test('the classifier never swaps the engine: over budget or not resident, it skips without a request', async () => {
+  const { createAutoRouter } = require('./auto-router.cjs');
+  const fetched = [], recorded = [];
+  const make = admit => createAutoRouter({ roles: () => ({ fast: 'fast-model', smart: 'smart-model' }), provider: () => ({ baseUrl: 'http://llama:8080/v1' }), headers: () => ({}),
+    fetchJson: async (...a) => { fetched.push(a); return { ok: true, status: 200, body: { choices: [{ message: { content: 'SMART' } }] } }; },
+    log: { log() {}, warn() {} }, admit, record: e => recorded.push(e) });
+  assert.equal(await make(async () => ({ cause: 'over-budget' })).classify('hello there'), 'fast');
+  assert.equal(await make(async () => ({ cause: 'not-resident' })).classify('hello there'), 'fast');
+  assert.equal(fetched.length, 0, 'no classifier request reached the engine');
+  assert.deepEqual(recorded, [{ selected: 'fast', fellBack: 'classifier-skipped', cause: 'over-budget' }, { selected: 'fast', fellBack: 'classifier-skipped', cause: 'not-resident' }]);
+  assert.equal(await make(async () => null).classify('hello there'), 'smart', 'resident and within budget: classified as before');
+  assert.equal(fetched.length, 1);
+});
+
+test('other engine callers admit their model first and stop cleanly when refused', async () => {
+  const refusal = Object.assign(Error('over'), { status: 409, publicMessage: 'big needs about 30 GiB to load' });
+  // Vision probe
+  const { createVisionProbe } = require('./vision.cjs');
+  let probed = 0;
+  const probe = createVisionProbe({ fetchImpl: async () => { probed++; return { ok: true }; }, admit: async () => { throw refusal; } });
+  assert.deepEqual(await probe('http://llama:8080', {}, 'big'), { supported: false, reason: 'big needs about 30 GiB to load' });
+  assert.equal(probed, 0);
+  // Planner review
+  const { createEngineReviewer } = require('./code-review.cjs');
+  let reviewed = 0;
+  const reviewer = createEngineReviewer({ engine: () => ({ baseUrl: 'http://llama:8080/v1', model: 'big' }), fetch: async () => { reviewed++; return { ok: true, json: async () => ({}) }; }, admit: async () => { throw refusal; } });
+  await assert.rejects(reviewer.review({ instructions: 'x', context: 'y', schema: {} }), /over/);
+  assert.equal(reviewed, 0);
+  // Planner plan
+  const { createPlannerPlan } = require('./planner-plan.cjs');
+  let planned = 0;
+  const planner = createPlannerPlan({ enabled: () => true, engine: () => ({ baseUrl: 'http://llama:8080/v1', model: 'big' }), fetch: async () => { planned++; return { ok: false, status: 500 }; }, admit: async () => { throw refusal; } });
+  const plan = await planner.generate({ state: { taskId: 'task-1', tenantId: 'tenant-a', request: 'Summarise three synthetic notes.', projectInstructions: 'Keep answers short.', capabilities: [{ name: 'read' }] } });
+  assert.equal(planned, 0);
+  assert.deepEqual(plan, { ok: false, code: 'over_budget', reason: 'big needs about 30 GiB to load' });
+});
+
+test('the embed parity check passes identical vectors and fails diverging ones', async () => {
+  const { check, cosine } = require('../../../tools/embed-parity-check.cjs');
+  assert.equal(Math.round(cosine([1, 0], [1, 0]) * 1000) / 1000, 1); assert.equal(cosine([1, 0], [0, 1]), 0);
+  const fetchFor = vectors => async url => ({ ok: true, json: async () => ({ data: [{ embedding: url.includes('llama') ? vectors[0] : vectors[1] }] }) });
+  assert.equal((await check({ engine: 'http://llama:8080', engineModel: 'e', sidecar: 'http://embed:8080', sidecarModel: 'e', fetchImpl: fetchFor([[0.6, 0.8], [0.6, 0.8]]) })).ok, true);
+  const off = await check({ engine: 'http://llama:8080', engineModel: 'e', sidecar: 'http://embed:8080', sidecarModel: 'e', fetchImpl: fetchFor([[0.6, 0.8], [0.8, 0.6]]) });
+  assert.equal(off.ok, false); assert.ok(off.similarity < 0.999);
+  await assert.rejects(check({ engine: 'http://llama:8080', engineModel: 'e', sidecar: 'http://embed:8080', sidecarModel: 'e', fetchImpl: async () => ({ ok: false, status: 404 }) }), /HTTP 404/);
 });

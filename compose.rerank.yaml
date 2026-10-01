@@ -35,8 +35,9 @@ services:
       - "2048"
       - "--parallel"
       - "1"
+      # One variable sets both the CPU quota and the thread count, so they cannot disagree.
       - "-t"
-      - "${RERANK_THREADS:-4}"
+      - "${RERANK_CPUS:-2}"
       - "--cache-ram"
       - "0"
       - "--host"
@@ -48,7 +49,7 @@ services:
     # ~0.6 GiB of Q8 weights, ~0.45 GiB of f16 KV at 4096 tokens, and compute scratch.
     mem_limit: ${RERANK_MEMORY_LIMIT:-1536m}
     memswap_limit: ${RERANK_MEMORY_LIMIT:-1536m}
-    cpus: ${RERANK_CPUS:-2.0}
+    cpus: ${RERANK_CPUS:-2}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
       interval: 30s
@@ -63,3 +64,6 @@ services:
       NOEVIA_FEATURE_RAG_RERANK: "true"
       RERANK_BASE_URL: http://rerank:8080/v1
       RERANK_MODEL: ${RERANK_MODEL:-qwen3-reranker-0.6b-q8_0}
+      # No inference credential is sent to the sidecar; set RERANK_API_KEY only if you give the
+      # sidecar its own --api-key. The internal network needs none.
+      RERANK_API_KEY: ${RERANK_API_KEY:-}

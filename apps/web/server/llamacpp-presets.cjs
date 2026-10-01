@@ -15,7 +15,7 @@ const fields={
   'ubatch-size':{aliases:['ub','LLAMA_ARG_UBATCH'],valid:integer(32,8192)},
   // #697: prepare() clamps -1 (unbounded) and values above the hard maximum before this check,
   // and writes an explicit value when a section would otherwise run on llama-server's 8 GiB default.
-  'cache-ram':{aliases:['LLAMA_ARG_CACHE_RAM'],valid:integer(0,1048576)},
+  'cache-ram':{aliases:['cram','LLAMA_ARG_CACHE_RAM'],valid:integer(0,1048576)},
   'image-max-tokens':{aliases:['LLAMA_ARG_IMAGE_MAX_TOKENS'],valid:integer(64,16384)},
   'spec-type':{aliases:['LLAMA_ARG_SPEC_TYPE'],valid:choice('none','draft-mtp','ngram-simple','draft-mtp,ngram-simple')},
   'spec-draft-n-max':{aliases:['LLAMA_ARG_SPEC_DRAFT_N_MAX'],valid:integer(1,32)},
@@ -130,4 +130,11 @@ function createPresetStore(file,{writer=null,cacheRam=null}={}) {
   const snapshot=()=>{const data=read();return {text:data.text,revision:data.revision};};
   return {get,prepare,commit,files,snapshot};
 }
-module.exports={createPresetStore,parse,fields};
+// Known option keys under their canonical names (aliases such as LLAMA_ARG_CACHE_RAM or cram
+// folded in); unknown keys are dropped. Later keys win, like the router's last-wins reading.
+function canonicalOptions(options){
+  const out={};
+  for(const [key,value] of Object.entries(options||{})){const c=canonical(String(key).trim().replace(/^-+/,''));if(c&&value!=null)out[c]=String(value).trim();}
+  return out;
+}
+module.exports={createPresetStore,parse,fields,canonical,canonicalOptions};

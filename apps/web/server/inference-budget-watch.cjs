@@ -3,9 +3,20 @@
 // memory GPU (the AMD iGPU on DaServer) model weights and KV live in GTT, which is system RAM the
 // engine container's memory limit does not count, so the kernel can stall the whole host before
 // any OOM kill. Every interval this reads GPU memory in use (GTT plus the small VRAM carve-out,
-// from sysfs) and the engine container's own memory (through the model manager), and when the
-// sum stays above the inference budget by more than the allowed overshoot, it unloads the loaded
-// models through the router. Its log line carries numbers and model ids only, never text.
+// from sysfs) and the main engine container's anonymous memory (through the model manager), and
+// when the sum stays above the inference budget by more than the allowed overshoot, it unloads
+// the loaded models through the router. Its log line carries numbers and model ids only.
+//
+// What is measured, and its slack:
+//  - GPU memory is device-wide. An idle baseline (sampled whenever no model is loaded, and at
+//    startup when nothing is) is subtracted, so the display and other GPU users are not charged
+//    to inference (on DaServer ~0.15 GiB: 14 MiB GTT + 144 MiB VRAM). Anything else that grows
+//    on the GPU while a model is loaded (a transcode, say) still counts against the budget.
+//  - Only the main engine container counts (INFERENCE_ENGINE_CONTAINER, default the compose
+//    `llama` service's container). The CPU embed and rerank sidecars share its image but sit
+//    outside the budget, like Laya.
+//  - Container memory is anonymous memory (cgroup memory.stat anon, or rss on cgroup v1), not
+//    usage, which also holds the page cache of the mmapped model file.
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -39,14 +50,14 @@ function readGpuMemory(files, readFile = f => fs.readFileSync(f, 'utf8')) {
 }
 
 function createInferenceBudgetWatch({
-  budgetGib, readGpu, readEngine = async () => null, listLoaded, unload, log = line => console.warn(line),
+  budgetGib, readGpu, readEngine = async () => null, listLoaded, unload, onUnloaded = () => {}, log = line => console.warn(line),
   env = process.env, intervalMs, overshootPct, strikesNeeded = 2, cooldownMs = 60000, now = Date.now,
   setIntervalFn = setInterval, clearIntervalFn = clearInterval,
 }) {
   const enabled = !off(env.INFERENCE_BUDGET_WATCH);
   const every = Math.max(2000, num(intervalMs ?? env.INFERENCE_BUDGET_WATCH_INTERVAL_MS, 15000));
   const overshoot = Math.min(100, num(overshootPct ?? env.INFERENCE_BUDGET_OVERSHOOT_PCT, 10)) / 100;
-  let strikes = 0, cooldownUntil = 0, timer = null, running = false, last = null;
+  let strikes = 0, cooldownUntil = 0, timer = null, running = false, last = null, baselineGib = null;
 
   async function tick() {
     if (running) return last;
@@ -54,19 +65,23 @@ function createInferenceBudgetWatch({
     try {
       const budget = Number(budgetGib());
       if (!(budget > 0)) return (last = { state: 'no-budget' });
-      const [gpu, engine] = await Promise.all([Promise.resolve().then(readGpu).catch(() => null), Promise.resolve().then(readEngine).catch(() => null)]);
+      const [gpu, engine, loaded] = await Promise.all([Promise.resolve().then(readGpu).catch(() => null), Promise.resolve().then(readEngine).catch(() => null), Promise.resolve().then(listLoaded).catch(() => null)]);
       // Neither source readable: nothing measured, nothing to act on.
       if (!gpu && !engine) { strikes = 0; return (last = { state: 'unavailable' }); }
       const gttGib = gpu?.gttGib ?? engine?.gttGib ?? 0;
       const vramGib = gpu?.vramGib ?? engine?.vramGib ?? 0;
+      // The idle baseline: every reading with no model loaded, and the first reading otherwise
+      // only if nothing is loaded then. Unknown (a model was already loaded) counts as zero.
+      if (Array.isArray(loaded) && loaded.length === 0) baselineGib = gttGib + vramGib;
+      const gpuGib = Math.max(0, gttGib + vramGib - (baselineGib ?? 0));
       const containerGib = engine?.containerGib ?? 0;
-      const usedGib = gttGib + vramGib + containerGib;
+      const usedGib = gpuGib + containerGib;
       const limitGib = budget * (1 + overshoot);
-      const sample = { usedGib: round2(usedGib), gttGib: round2(gttGib), vramGib: round2(vramGib), containerGib: round2(containerGib), budgetGib: budget, limitGib: round2(limitGib) };
-      if (usedGib <= limitGib) { strikes = 0; return (last = { state: 'ok', ...sample }); }
+      const sample = { usedGib: round2(usedGib), gttGib: round2(gttGib), vramGib: round2(vramGib), baselineGib: round2(baselineGib ?? 0), containerGib: round2(containerGib), budgetGib: budget, limitGib: round2(limitGib) };
+      if (usedGib <= limitGib || (Array.isArray(loaded) && loaded.length === 0)) { strikes = 0; return (last = { state: 'ok', ...sample }); }
       strikes += 1;
       if (strikes < strikesNeeded || now() < cooldownUntil) return (last = { state: 'over', strikes, ...sample });
-      const models = await listLoaded().catch(() => []);
+      const models = Array.isArray(loaded) ? loaded : await listLoaded().catch(() => []);
       const unloaded = [];
       for (const model of models) {
         const r = await Promise.resolve().then(() => unload(model)).catch(() => null);
@@ -74,6 +89,9 @@ function createInferenceBudgetWatch({
       }
       strikes = 0;
       cooldownUntil = now() + cooldownMs;
+      // Remembered with its preset revision and the budget, so the same overload is refused on the
+      // next load until one of them changes (llamacpp-manager.cjs quarantine).
+      for (const model of unloaded) { try { onUnloaded(model, budget); } catch { /* best-effort */ } }
       log('[inference-budget] ' + JSON.stringify({ event: models.length ? 'unload' : 'over-budget-nothing-loaded', ...sample, models: unloaded, failed: models.filter(m => !unloaded.includes(m)) }));
       return (last = { state: 'unloaded', models: unloaded, ...sample });
     } finally { running = false; }
@@ -91,15 +109,26 @@ function createInferenceBudgetWatch({
  * Engine container memory (and the manager's own GPU reading, used when sysfs is not visible
  * to web) from the model manager's backend telemetry: GET /api/v1/backends.
  */
+/** Whether a model-manager backend (a container name) is the main inference engine. */
+function isEngineContainer(name, env = process.env) {
+  const n = String(name || '');
+  const configured = String(env.INFERENCE_ENGINE_CONTAINER || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (configured.length) return configured.includes(n);
+  // The compose `llama` service: `llama`, `<project>-llama-1`, `<project>_llama_1`. Not embed/rerank.
+  return /(^|[-_])llama([-_]\d+)?$/.test(n);
+}
+
 function engineReaderFromModelLoader({ env = process.env, fetchJson }) {
   return async () => {
     if (!env.MODEL_LOADER_URL) return null;
     const r = await fetchJson(`${env.MODEL_LOADER_URL.replace(/\/+$/, '')}/api/v1/backends`, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(env.MODEL_LOADER_TOKEN ? { 'X-Model-Loader-Token': env.MODEL_LOADER_TOKEN } : {}) } }, 4000).catch(() => null);
-    const backends = r?.ok && Array.isArray(r.body?.backends) ? r.body.backends.filter(b => b?.stats?.ok) : [];
+    const backends = r?.ok && Array.isArray(r.body?.backends) ? r.body.backends.filter(b => b?.stats?.ok && isEngineContainer(b.name, env)) : [];
     if (!backends.length) return null;
     const sum = pick => backends.reduce((a, b) => a + (Number(pick(b.stats)) || 0), 0);
-    return { containerGib: sum(s => s.container?.mem_used_gb), gttGib: sum(s => s.gpu?.shared_used_gb), vramGib: sum(s => s.gpu?.vram_used_gb) };
+    // Anonymous memory where the model manager reports it; older images only report usage less
+    // the page cache, which is the closest available figure.
+    return { containerGib: sum(s => s.container?.mem_anon_gb ?? s.container?.mem_used_gb), gttGib: sum(s => s.gpu?.shared_used_gb), vramGib: sum(s => s.gpu?.vram_used_gb) };
   };
 }
 
-module.exports = { createInferenceBudgetWatch, gpuMemoryFiles, readGpuMemory, engineReaderFromModelLoader };
+module.exports = { createInferenceBudgetWatch, gpuMemoryFiles, readGpuMemory, engineReaderFromModelLoader, isEngineContainer };

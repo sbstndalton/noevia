@@ -227,6 +227,18 @@ function createModelRoutes({ json, readBody, readJson, fetchJson, env, modelMana
         if (method === 'DELETE' && (isSidecarModel(name, env) || (cachedEntry && isSidecarModel(cachedEntry.modelId, env)))) {
           return json(res, 409, { error: SIDECAR_MODEL_DELETE_REASON });
         }
+        // #697: a section saved through the model manager replaces the whole section; refuse it when
+        // the settings would not fit the inference memory budget, as the preset editor does.
+        if (method === 'PUT' && !rest.endsWith('/rename') && modelManager.presetRefusal) {
+          let payload; try { payload = JSON.parse(body || '{}'); } catch { payload = {}; }
+          const options = { ...(payload.values && typeof payload.values === 'object' ? payload.values : {}) };
+          for (const line of String(payload.extras || '').split('\n')) {
+            const m = /^\s*([^#;=\s][^=]*?)\s*=\s*(.*?)\s*$/.exec(line);
+            if (m) options[m[1]] = m[2];
+          }
+          const refusal = await modelManager.presetRefusal(name, Object.fromEntries(Object.entries(options).filter(([, v]) => typeof v === 'string' && v !== '')));
+          if (refusal) return json(res, 409, refusal);
+        }
       }
       if(method!=='GET')modelScanCache.clear();
       if(method==='GET'&&rest==='models'&&!url.search){

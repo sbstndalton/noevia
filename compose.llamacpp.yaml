@@ -83,6 +83,8 @@ services:
       INFERENCE_BUDGET_WATCH_INTERVAL_MS: ${INFERENCE_BUDGET_WATCH_INTERVAL_MS:-15000}
       INFERENCE_BUDGET_OVERSHOOT_PCT: ${INFERENCE_BUDGET_OVERSHOOT_PCT:-10}
       INFERENCE_GTT_USED_PATH: ${INFERENCE_GTT_USED_PATH:-}
+      # Only this container's anonymous memory counts (embed/rerank share the image). Blank: llama.
+      INFERENCE_ENGINE_CONTAINER: ${INFERENCE_ENGINE_CONTAINER:-}
       MODEL_LOADER_URL: http://model-loader:8090
       MODEL_LOADER_TOKEN: ${MODEL_LOADER_TOKEN}
       # Who writes models.ini: model-loader (default, the single writer, #295/#269) or web.

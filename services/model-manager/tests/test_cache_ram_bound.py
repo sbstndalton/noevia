@@ -93,3 +93,57 @@ def test_autoconfig_backends_are_sized_against_the_budget_less_the_prompt_cache(
     assert api.budget_backends(backends, "junk") is backends
     small = api.budget_backends([{"name": "e", "vram_gb": 8.0}], 16)
     assert small[0]["vram_gb"] == 8.0                        # never raised above the hardware
+
+
+@pytest.mark.parametrize("extras,stored", [
+    ("LLAMA_ARG_CACHE_RAM = 8192", "2048"),
+    ("cram = -1", "2048"),
+    ("LLAMA_ARG_CACHE_RAM = 512", "512"),
+])
+def test_cache_ram_aliases_are_folded_into_the_canonical_key_before_clamping(client, extras, stored):
+    section = _save(client, {"cache-ram": ""}, extras=extras)
+    assert section["cache-ram"] == stored
+    assert not any(k.lower() in ("cram", "llama_arg_cache_ram") for k in section), section
+
+
+def test_an_alias_beside_the_canonical_key_cannot_hide_a_larger_value(client):
+    section = _save(client, {"cache-ram": "512"}, extras="LLAMA_ARG_CACHE_RAM = 16384")
+    assert section["cache-ram"] == "2048" and "LLAMA_ARG_CACHE_RAM" not in section
+
+
+def test_startup_migration_bounds_chat_sections_only_and_keeps_a_backup(monkeypatch):
+    path = ROOT / "models" / "models.ini"
+    original = (
+        "version = 1\n\n"
+        "[chat-a]\nmodel = /models/a.gguf\nctx-size = 8192\n\n"
+        "[chat-b]\nmodel = /models/b.gguf\nLLAMA_ARG_CACHE_RAM = 8192\n\n"
+        "[chat-ok]\nmodel = /models/c.gguf\ncache-ram = 1024\n\n"
+        "[nomic-embed]\nmodel = /models/n.gguf\nembedding = true\n\n"
+        "[reranker]\nmodel = /models/r.gguf\nreranking = true\n\n"
+        "[laya_multilingual_f16]\nmodel = /models/laya_multilingual_f16/laya.gguf\n")
+    path.write_text(original)
+    backed_up = []
+    real = ini._backup_current
+    monkeypatch.setattr(ini, "_backup_current", lambda p: (backed_up.append(p.read_text()), real(p)))
+    assert ini.migrate_cache_ram() == ["chat-a", "chat-b"]
+    assert ini.get_section("chat-a")["cache-ram"] == "1024"
+    assert ini.get_section("chat-b")["cache-ram"] == "2048" and "LLAMA_ARG_CACHE_RAM" not in ini.get_section("chat-b")
+    for untouched in ("nomic-embed", "reranker", "laya_multilingual_f16"):
+        assert "cache-ram" not in ini.get_section(untouched), untouched
+    assert backed_up == [original], "the normal writer backed up the file first"
+    text = path.read_text()
+    assert ini.migrate_cache_ram() == [] and path.read_text() == text, "idempotent: nothing rewritten"
+
+
+def test_container_memory_reports_anonymous_memory_without_page_cache():
+    from app import hw
+
+    class Fake:
+        def __init__(self, stats): self._s = stats
+        def stats(self, stream=False): return self._s
+    gib = 1024 ** 3
+    v2 = hw._read_container_runtime(Fake({"memory_stats": {"usage": 9 * gib, "limit": 14 * gib, "stats": {"inactive_file": 5 * gib, "anon": 3 * gib}}}))
+    assert v2.mem_anon_gb == 3.0 and v2.mem_used_gb == 4.0
+    v1 = hw._read_container_runtime(Fake({"memory_stats": {"usage": 9 * gib, "stats": {"cache": 5 * gib, "rss": 2 * gib}}}))
+    assert v1.mem_anon_gb == 2.0
+    assert hw._read_container_runtime(Fake({"memory_stats": {"usage": gib, "stats": {}}})).mem_anon_gb is None

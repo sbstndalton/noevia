@@ -215,6 +215,11 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
         const row=(listing.body?.data||[]).find(m=>m.id===body?.model);
         if(row && isSystemModel(row.id, modelPathFromArgs(row.status?.args))) return {ok:false,status:400,body:{error:SYSTEM_MODEL_REASON}};
       }
+      // #697: a dry run of the same write, estimated before anything is committed.
+      let section=null;
+      try {const candidate=presets.prepare(body);section=require('./llamacpp-presets.cjs').parse(candidate.text).sections.get(body.model)?.options||null;} catch {}
+      const refusal=section?await presetRefusal(body.model,section):null;
+      if(refusal)return {ok:false,status:409,body:refusal};
       return applyUnlocked(body);
     });
   }
@@ -329,11 +334,32 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
     if (footprints.size > 64) footprints.delete(footprints.keys().next().value);
     return value;
   }
+  // #697: models the runtime watchdog unloaded, with the preset revision and budget they were
+  // running under. They stay refused until one of the three changes (a different model is
+  // simply a different key), so the next chat cannot reload the same overload straight away.
+  const quarantined = new Map();
+  function quarantine(model, budgetGib) {
+    let revision = null;
+    try { revision = presets ? presets.get(model).revision : null; } catch {}
+    quarantined.set(model, { revision, budgetGib: Number(budgetGib), at: Date.now() });
+    if (quarantined.size > 64) quarantined.delete(quarantined.keys().next().value);
+  }
+  function quarantineRefusal(model, budgetGib) {
+    const q = quarantined.get(model);
+    if (!q) return null;
+    let revision = null;
+    try { revision = presets ? presets.get(model).revision : null; } catch {}
+    if (q.revision !== revision || q.budgetGib !== budgetGib) { quarantined.delete(model); return null; }
+    const error = `${model} was unloaded by the memory safety net because measured inference memory ran more than the allowed margin over the ${budgetGib} GiB budget. It stays unloaded until its settings or the budget change: lower its context or prompt cache, or raise the budget, in Settings → Models & routing.`;
+    return { body: { error, code: 'inference_budget_unloaded', budgetGib, unloadedAt: new Date(q.at).toISOString() } };
+  }
   // The refusal for a load whose estimate is above the budget, or null (fits, no budget, or no
   // estimate: the runtime watchdog still covers what cannot be estimated).
   async function overBudget(model) {
     const budgetGib = Number(inferenceBudget?.budgetGib?.());
     if (!(budgetGib > 0)) return null;
+    const held = quarantineRefusal(model, budgetGib);
+    if (held) return held;
     const est = await footprint(model).catch(() => null);
     if (!est) return null;
     if (est.cacheRamUnbounded) {
@@ -343,6 +369,26 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
     if (est.totalGib <= budgetGib) return null;
     const error = `${model} needs about ${est.totalGib} GiB to load (weights ${est.modelGib}, context ${est.kvGib} at ${est.ctx.toLocaleString('en-US')} tokens, prompt cache ${est.cacheRamGib}, runtime ${est.extraGib}), above the ${budgetGib} GiB inference memory budget. Lower its context or prompt cache, use a smaller quantization, or raise the budget in Settings → Models & routing.`;
     return { body: { error, code: 'inference_budget', budgetGib, estimate: est } };
+  }
+  // #697: refuse to SAVE settings whose estimate is above the budget. Clients outside web (Diary,
+  // Nextcloud Assistant) load presets straight from the router, so a preset that cannot fit must
+  // not be written at all. `options` are the section's own options after the save; the global
+  // section and the explicit prompt cache every write adds are applied here as the write would.
+  async function presetRefusal(model, options) {
+    const budgetGib = Number(inferenceBudget?.budgetGib?.());
+    if (!(budgetGib > 0) || !presets || !autoconfig.modelsPath) return null;
+    const read = await readModel(model).catch(() => ({ error: 'unreadable' }));
+    if (read.error) return null;
+    let defaults = {};
+    try { defaults = presets.get(model).defaults || {}; } catch {}
+    const opts = { ...defaults, ...options };
+    if (opts['cache-ram'] === undefined || opts['cache-ram'] === '') opts['cache-ram'] = String((autoconfig.cacheRam || require('./inference-budget.cjs').cacheRamLimits()).capMib);
+    const est = require('./llamacpp-autoconfig.cjs').estimateFootprint({ meta: read.meta, modelBytes: read.modelFile.size, mmprojBytes: read.mmproj?.size || 0, options: opts });
+    if (!est.cacheRamUnbounded && est.totalGib <= budgetGib) return null;
+    const error = est.cacheRamUnbounded
+      ? `Not saved: an unbounded prompt cache (cache-ram = -1) cannot fit the ${budgetGib} GiB inference memory budget.`
+      : `Not saved: with these settings ${model} needs about ${est.totalGib} GiB (weights ${est.modelGib}, context ${est.kvGib} at ${est.ctx.toLocaleString('en-US')} tokens, prompt cache ${est.cacheRamGib}, runtime ${est.extraGib}), above the ${budgetGib} GiB inference memory budget. Lower the context or prompt cache, or raise the budget.`;
+    return { error, code: 'inference_budget', budgetGib, estimate: est };
   }
   // The Models page's per-model estimate against the budget. Read-only; loads nothing.
   async function inferenceEstimates() {
@@ -532,6 +578,8 @@ function createLlamaCppManager({ baseUrl, apiKey, fetchJson, presetPath, downloa
     inferenceEstimates,
     // #697: the load guard and the budget, for the proxied benchmark start and the watchdog.
     loadRefusal: model => overBudget(model).then(r => r ? r.body : null),
+    presetRefusal: (model, options) => presetRefusal(model, require('./llamacpp-presets.cjs').canonicalOptions(options)),
+    quarantine,
     sizingBudgetGib,
     reloadPresets,
     evidence, recordEvidence, importEvidence,

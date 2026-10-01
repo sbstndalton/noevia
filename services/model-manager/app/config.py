@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # hard maximum; autoconfig and safe defaults write at most the cap.
     llamacpp_autoconfig_cache_ram_max_mib: int = 1024
     llamacpp_cache_ram_hard_max_mib: int = 2048
+    # Startup migration that writes an explicit cache-ram into chat sections missing one.
+    migrate_cache_ram_on_start: bool = True
 
     @property
     def cache_ram_limits(self) -> tuple[int, int]:

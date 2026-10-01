@@ -759,3 +759,15 @@ test('the model manager autoconfig is sized against the budget set by the server
   await none.call('GET', '/api/model-manager/sections/chat-syn/autoconfig', undefined, 'admin', '?budget_gib=999');
   assert.equal(none.fetched[0].url, 'http://loader/api/v1/sections/chat-syn/autoconfig', 'a client figure is never forwarded');
 });
+
+test('#697: a model manager section save that would exceed the budget is refused before it is forwarded', async () => {
+  const seen = [];
+  const f = fixture({ env: { MODEL_LOADER_URL: 'http://loader' },
+    manager: { presetRefusal: async (name, options) => { seen.push([name, options]); return options['ctx-size'] === '262144' ? { error: 'Not saved: too big', code: 'inference_budget', budgetGib: 12 } : null; } } });
+  await f.call('PUT', '/api/model-manager/sections/chat-syn', { baseRevision: 'r', values: { 'ctx-size': '262144', 'cache-type-k': '', jinja: 'true' }, extras: 'LLAMA_ARG_CACHE_RAM = 512\n# note' }, 'admin');
+  assert.deepEqual(f.sent.pop(), { status: 409, body: { error: 'Not saved: too big', code: 'inference_budget', budgetGib: 12 } });
+  assert.equal(f.fetched.length, 0);
+  assert.deepEqual(seen[0], ['chat-syn', { 'ctx-size': '262144', jinja: 'true', LLAMA_ARG_CACHE_RAM: '512' }], 'values and extras, empty values dropped');
+  await f.call('PUT', '/api/model-manager/sections/chat-syn', { baseRevision: 'r', values: { 'ctx-size': '8192' } }, 'admin');
+  assert.equal(f.fetched.length, 1, 'a fitting save is forwarded');
+});

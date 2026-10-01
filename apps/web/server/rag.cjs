@@ -75,7 +75,7 @@ function initRerank() {
   const { createDecisions } = require('./decision/index.cjs');
   const { llamaRerankBackend } = require('./decision/backends.cjs');
   const decisions = createDecisions({
-    backends: { 'llama-rerank': llamaRerankBackend({ baseUrl, model: process.env.RERANK_MODEL || null, apiKey: process.env.RERANK_API_KEY || process.env.INFERENCE_API_KEY || null }) },
+    backends: { 'llama-rerank': llamaRerankBackend({ baseUrl, model: process.env.RERANK_MODEL || null, apiKey: process.env.RERANK_API_KEY || null /* #697: the inference key never goes to a reranker sidecar */ }) },
     chains: { 'rag.rerank': ['llama-rerank'] },
     log: (e) => { if (e.failed || e.fellBack) console.warn('[rag] rerank', JSON.stringify(e)); },
   });
