@@ -37,7 +37,7 @@ async function withServer(handler, fn) {
       const out = handler(body, seen.length);
       if (out.status) { res.writeHead(out.status); res.end(); return; }
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: out.content ?? null, tool_calls: out.tool_calls } }], usage: out.usage }));
+      res.end(JSON.stringify({ choices: [{ finish_reason: out.finish_reason, message: { role: 'assistant', content: out.content ?? null, reasoning_content: out.reasoning_content, tool_calls: out.tool_calls } }], usage: out.usage }));
     });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -168,7 +168,7 @@ test('missing or partial usage on the endpoint response yields null prompt/compl
   await withServer(handler, async baseUrl => {
     const cfg = cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']);
     const { records } = await evaluate(cfg, { cases: liveCases().filter(c => c.id === 'exact-calendar') });
-    assert.deepEqual(records[0].usage.bare, { prompt: null, completion: null });
+    assert.deepEqual(records[0].usage.bare, { prompt: null, completion: null, reasoning: null });
     assert.equal(records[0].usage.task.prompt, null);
     assert.equal(records[0].measuredSchemaBodyTokens, null);
     assert.equal(records[0].bareError, null);
@@ -256,4 +256,88 @@ test('live run writes JSONL and a markdown summary and refuses to overwrite', as
       } finally { console.log = orig; }
     });
   } finally { fs.rmSync(out, { recursive: true, force: true }); }
+});
+
+// #716: reasoning off + schema-constrained selection call, capability-gated, with one fallback.
+const isSelect = b => b.messages[0].content.startsWith('Select');
+const oneCase = () => liveCases().filter(c => c.id === 'exact-calendar');
+const selectionBodies = seen => seen.filter(s => isSelect(s.body)).map(s => s.body);
+
+test('selection call turns thinking off, sends the schema and a tight budget to a json-schema provider', async () => {
+  await withServer(defaultHandler, async (baseUrl, seen) => {
+    const { records } = await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']), { cases: oneCase() });
+    const [b] = selectionBodies(seen);
+    assert.deepEqual(b.chat_template_kwargs, { enable_thinking: false });
+    assert.equal(b.response_format.type, 'json_schema');
+    assert.deepEqual(b.response_format.json_schema.schema.required, ['selected', 'scores', 'confidence', 'abstain']);
+    assert.equal(b.max_tokens, 192);
+    assert.equal(b.reasoning_effort, undefined);
+    assert.deepEqual(records[0].selectionConstraint, { schema: true, thinkingOff: true, reasoningEffort: false, rejectedStatus: null });
+    const task = seen.find(s => !isSelect(s.body) && s.body.max_tokens !== 1).body;
+    assert.equal(task.response_format, undefined); assert.equal(task.chat_template_kwargs, undefined);
+  });
+});
+
+test('capabilities none sends no schema or thinking field; reasoning-effort sends reasoning_effort low only', async () => {
+  await withServer(defaultHandler, async (baseUrl, seen) => {
+    await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one', '--capabilities', 'none', '--selection-max-tokens', '64']), { cases: oneCase() });
+    const [b] = selectionBodies(seen);
+    assert.equal(b.response_format, undefined); assert.equal(b.chat_template_kwargs, undefined); assert.equal(b.reasoning_effort, undefined);
+    assert.equal(b.max_tokens, 64);
+    seen.length = 0;
+    await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one', '--capabilities', 'reasoning-effort']), { cases: oneCase() });
+    const [e] = selectionBodies(seen);
+    assert.equal(e.reasoning_effort, 'low'); assert.equal(e.response_format, undefined); assert.equal(e.chat_template_kwargs, undefined);
+  });
+  assert.throws(() => parseArgs(['--capabilities', 'bogus'], {}), /invalid capabilities/);
+});
+
+test('an engine that rejects the constraint is retried once without it', async () => {
+  let n = 0;
+  const handler = body => {
+    if (isSelect(body)) { n++; if (body.response_format) return { status: 400 }; }
+    return defaultHandler(body);
+  };
+  await withServer(handler, async (baseUrl, seen) => {
+    const { records } = await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']), { cases: oneCase() });
+    assert.equal(n, 2);
+    const bodies = selectionBodies(seen);
+    assert.ok(bodies[0].response_format); assert.equal(bodies[1].response_format, undefined); assert.equal(bodies[1].chat_template_kwargs, undefined);
+    assert.equal(records[0].selectionConstraint.rejectedStatus, 400);
+    assert.equal(records[0].selectionConstraint.schema, false);
+    assert.equal(records[0].fallback, null);
+  });
+  // A second rejection (or any non-rejection error) is not retried again.
+  let calls = 0;
+  await withServer(body => { if (isSelect(body)) { calls++; return { status: 400 }; } return defaultHandler(body); }, async baseUrl => {
+    const { records } = await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']), { cases: oneCase() });
+    assert.equal(calls, 2); assert.equal(records[0].fallback, 'backend-error'); assert.equal(records[0].selectionError, 'http-400');
+  });
+  calls = 0;
+  await withServer(body => { if (isSelect(body)) { calls++; return { status: 500 }; } return defaultHandler(body); }, async baseUrl => {
+    await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']), { cases: oneCase() });
+    assert.equal(calls, 1);
+  });
+});
+
+test('starved or empty selection replies fall back with a text-free cause, finish reason and reasoning size', async () => {
+  const secret = 'SECRET-REASONING-TEXT';
+  const cases = {
+    starved: { content: '', reasoning_content: secret, finish_reason: 'length', usage: { prompt_tokens: 9, completion_tokens: 192, completion_tokens_details: { reasoning_tokens: 190 } } },
+    empty: { content: null, finish_reason: 'stop', usage: { prompt_tokens: 9, completion_tokens: 1 } },
+    invalid: { content: 'not json', finish_reason: 'stop', usage: { prompt_tokens: 9, completion_tokens: 2 } },
+  };
+  for (const [name, reply] of Object.entries(cases)) {
+    await withServer(body => isSelect(body) ? reply : defaultHandler(body), async baseUrl => {
+      const { records } = await evaluate(cfgFor(baseUrl, ['--repeats', '1', '--arms', 'system-one']), { cases: oneCase() });
+      const r = records[0];
+      assert.equal(r.fallback, 'malformed', name);
+      assert.equal(r.selectionCause, { starved: 'truncated', empty: 'empty-content', invalid: 'invalid-json' }[name]);
+      assert.equal(r.selectionFinishReason, reply.finish_reason);
+      assert.equal(r.selectionReasoningChars, name === 'starved' ? secret.length : 0);
+      assert.equal(r.usage.selection.reasoning, name === 'starved' ? 190 : null);
+      assert.doesNotMatch(JSON.stringify(r), /SECRET-REASONING/);
+      assert.equal(r.taskCompleted, true, 'fallback restores baseline tools');
+    });
+  }
 });
