@@ -1755,6 +1755,16 @@ it into something that can run, and both are deliberate:
 
 With neither, a task fails with "No coding harness is configured on this server."
 
+Server-measured verification (#703) is configured on the **sandbox**, not on web:
+`CODE_VERIFY=name|command` (one per line, names as in `CODE_REPOS`) and optional
+`CODE_VERIFY_WALL_MS`. noevia never sends a command; it runs in a read-only checkout at the
+reviewed commit with no proxy variables. It needs a code-sandbox image release (the supervisor
+changed): rebuild `services/code-sandbox` with the running harness's build arguments, bump
+`CODE_SANDBOX_VERSION` as in the per-service table above, add the two variables from
+`deploy/examples/code-sandbox.override.yml` to the live override, and recreate only
+`code-sandbox` (`up.sh … --profile code -- -d --no-build --no-deps code-sandbox`). Recreating it ends
+any running Code task. Details: `services/code-sandbox/README.md`.
+
 The worktree path noevia creates must be the same path inside the sandbox — it sends the path and
 the supervisor resolves it — so the volume is mounted at the same point in both containers. Egress
 for a task goes through the built-in proxy (D15) and is refused unless the task was granted the

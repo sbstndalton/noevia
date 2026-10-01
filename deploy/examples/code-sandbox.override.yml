@@ -64,6 +64,11 @@ services:
       CODE_HARNESS_COMMAND: ${CODE_SANDBOX_COMMAND:-opencode}
       CODE_HARNESS_ARGS: ${CODE_SANDBOX_ARGS:-acp}
       PORT: "8030"
+      # Server-measured verification (#703): `name|command`, one per line, name as in web's
+      # CODE_REPOS. Unset = verify mode off. The command is the operator's alone — noevia sends
+      # only a repository name — and runs in a read-only checkout with no proxy and a time limit.
+      CODE_VERIFY: ${CODE_VERIFY:-}
+      CODE_VERIFY_WALL_MS: ${CODE_VERIFY_WALL_MS:-600000}
     # No `ports:`. Publishing this would let anything that reaches the host start a coding
     # agent, and there is no authentication here by design — reachability IS the control.
     expose:

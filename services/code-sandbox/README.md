@@ -29,6 +29,40 @@ environment variable would imply otherwise. `deploy/examples/code-sandbox.overri
 control: read-only root, `cap_drop: ALL`, no-new-privileges, uid 1000, tmpfs `/tmp` and `$HOME`,
 bounded memory and pids, one volume, no `ports:`.
 
+## Verify mode (#703)
+
+The pipeline's "do the tests pass?" is answered here, not by the agent. A connection whose first
+line is `{"noevia":"verify","repo":<name>,"cwd":<checkout>,"headSha":<sha>}` runs the command the
+**operator** set for that repository and answers with one line,
+`{"noevia":"verify-result","ok":true,"exitCode",...,"tail","tailBytes","totalBytes","truncated"}`.
+
+- **The command comes only from this container's environment:** `CODE_VERIFY=name|command`, one
+  entry per line (names as in web's `CODE_REPOS`). noevia never sends a command, and nothing is
+  read from the repository. Unset, verify mode is off and every request is answered `not_configured`.
+- **The checkout is read-only and exact.** noevia prepares it (`verifyCheckout` in
+  `apps/web/server/code-workspace.cjs`): a shared clone detached at the branch head, owned by
+  noevia's user, 0555/0444. The supervisor refuses a checkout whose `.git/HEAD` is not that commit
+  or that it owns or can write — which includes every task's own clone. (Ownership matters: mode
+  bits are not read-only to their owner, so the checkout must belong to noevia, not uid 1000.)
+- **No way out, bounded:** environment is only `PATH`, a fresh `HOME`/`TMPDIR` under `/tmp`, `LANG`,
+  `CI` and `NO_COLOR` — no proxy variables, so the internal network has no exit. Stdin is closed,
+  core dumps off, CPU limited per process, wall time `CODE_VERIFY_WALL_MS` (default 10 min, never
+  above the agent limit), and the process group is killed when it ends or the connection drops.
+- **Output is data:** a rolling tail of `CODE_VERIFY_TAIL_BYTES` (default 16 KiB, max 256 KiB),
+  returned as a JSON string inside the single result line, so nothing a test prints can forge it.
+
+Tests that need to write must use `$TMPDIR`; the repository must run without installing
+dependencies (there is no network). A command such as
+`cp -R . "$TMPDIR/w" && cd "$TMPDIR/w" && node --test` works for a tree that writes into itself.
+
+**Shipping it needs a code-sandbox image release** — the web change alone does nothing. Following
+the per-service procedure in `docs/deployment.md`: build `services/code-sandbox` from the release
+source with the same harness build arguments as the running image (pi 0.87.0 today), tag it
+`cowork-code-sandbox:pi-0.87.0-<sha>`, back up `.env`, bump `CODE_SANDBOX_VERSION`, add the
+`CODE_VERIFY` / `CODE_VERIFY_WALL_MS` lines from the example override to the live override and
+`.env`, then recreate only the sandbox with the guarded `up.sh … --profile code -- -d --no-build
+--no-deps code-sandbox`. Recreating it ends any running Code task. Rollback is the previous tag.
+
 ## Why not the Docker socket
 
 Running `docker run` per task from the web container would mean giving that container the Docker
