@@ -18,12 +18,13 @@ const { performance } = require('node:perf_hooks');
 const { run, prepare } = require('./contract.cjs');
 const { embed } = require('./fixtures.cjs');
 const { liveCases, validateLiveCases } = require('./live-fixtures.cjs');
-const { selectionConstraint, requestSelection, selectionCause, SELECTION_MAX_TOKENS } = require('../../../apps/web/server/selection-constraint.cjs');
+const { selectionConstraint, requestSelection, selectionCause, compactCandidates, idsToProposal, SELECTION_MAX_TOKENS, SELECTION_LEGACY_MAX_TOKENS } = require('../../../apps/web/server/selection-constraint.cjs');
 
 // Arm name -> contract mode. 'embedding' is the rules/embedding comparator (keyword stub vectors,
 // the same injected embedder as the offline runner); 'system-one' is bounded model proposals.
 const ARMS = Object.freeze({ baseline: 'baseline', embedding: 'embedding', 'system-one': 'decision' });
 const SELECT_INSTRUCTION = 'Select at most 1 skill and 3 toolboxes relevant to the task, using only the offered ids. Reply with JSON only: {"selected":[ids],"scores":{"id":0..1},"confidence":0..1,"abstain":boolean}. abstain is true exactly when selected is empty.';
+const SELECT_IDS_INSTRUCTION = 'Select at most 1 skill and 3 toolboxes relevant to the task, using only the offered ids. Reply with a JSON array of the chosen ids only, [] when none apply.';
 const TASK_SYSTEM = 'You are running a synthetic evaluation. Tools are fakes and calling one does nothing. Call a tool only if the task needs it; otherwise answer briefly.';
 
 const CAPABILITY_FLAGS = Object.freeze({ 'json-schema': 'jsonSchemaParam', 'reasoning-effort': 'reasoningEffortParam' });
@@ -63,7 +64,7 @@ function parseArgs(argv, env = process.env) {
     seed: int(out.seed, 265, 'seed', 0),
     timeoutMs: int(out.timeoutMs, 60000, 'timeout-ms'),
     maxTokens: int(out.maxTokens, 256, 'max-tokens'),
-    selectionMaxTokens: int(out.selectionMaxTokens, SELECTION_MAX_TOKENS, 'selection-max-tokens'),
+    selectionMaxTokens: out.selectionMaxTokens === undefined ? null : int(out.selectionMaxTokens, 0, 'selection-max-tokens'),
     // Provider capability data for the endpoint (providers.cjs vocabulary). Default is the local
     // llama.cpp engine definition; 'none' sends no extra field.
     capabilities: capabilityList(out.capabilities),
@@ -123,13 +124,16 @@ function parseJsonContent(text) {
 function modelAnswer(cfg, seed, sink) {
   return async (request, signal) => {
     try {
-      const constraint = selectionConstraint({ provider: { capabilities: cfg.capabilities }, model: cfg.model });
-      const payload = { seed, max_tokens: cfg.selectionMaxTokens, messages: [
-        { role: 'system', content: SELECT_INSTRUCTION },
-        { role: 'user', content: JSON.stringify({ task: request.question, items: request.items }) },
+      const items = compactCandidates(request.items);
+      const constraint = selectionConstraint({ provider: { capabilities: cfg.capabilities }, model: cfg.model, offeredIds: items.map(i => i.id) });
+      const idsMode = constraint.mode === 'ids';
+      const maxTokens = cfg.selectionMaxTokens ?? (idsMode ? SELECTION_MAX_TOKENS : SELECTION_LEGACY_MAX_TOKENS);
+      const payload = { seed, max_tokens: maxTokens, messages: [
+        { role: 'system', content: idsMode ? SELECT_IDS_INSTRUCTION : SELECT_INSTRUCTION },
+        { role: 'user', content: JSON.stringify({ task: request.question, items }) },
       ] };
       const { result: r, fallback, status } = await requestSelection({ payload, constraint, send: p => chat(cfg, p, signal) });
-      const parsed = parseJsonContent(r.message.content);
+      const parsed = idsToProposal(parseJsonContent(r.message.content));
       sink.usage = r.usage; sink.ms = r.ms;
       sink.finishReason = r.finishReason; sink.reasoningChars = r.reasoningChars;
       sink.cause = selectionCause({ content: r.message.content, finishReason: r.finishReason, parsed });
