@@ -86,5 +86,29 @@ cp "$state" "$work/before"
 run 2>/dev/null; rc=$?
 check "docker failure exits non-zero, state untouched" '[ $rc -ne 0 ] && cmp -s "$state" "$work/before"'
 
+# One-shot services: expected restarts are silent, crash loops are not.
+rm -f "$fix/fail"
+printf 'cowork-code-verify-1\n' > "$fix/names"
+set_c cowork-code-verify-1 vvv 2026-09-24T13:00:00Z 3
+run --ack; base=$(count)
+set_c cowork-code-verify-1 vvv 2026-09-24T13:05:00Z 4
+run
+check "one-shot clean restart is silent" '[ "$(count)" -eq "$base" ] && grep -q 13:05:00Z "$state"'
+set_c cowork-code-verify-1 vvv 2026-09-24T13:10:00Z 9 0
+run
+check "one-shot burst within limit is silent" '[ "$(count)" -eq "$base" ]'
+set_c cowork-code-verify-1 vvv 2026-09-24T13:15:00Z 30 0
+run
+check "one-shot burst above limit alerts" '[ "$(count)" -eq $((base+1)) ] && tail -1 "$sent" | grep -q "|-i|alert|"'
+set_c cowork-code-verify-1 vvv 2026-09-24T13:20:00Z 31 1
+run
+check "one-shot non-zero exit alerts" '[ "$(count)" -eq $((base+2)) ]'
+set_c cowork-code-verify-1 www 2026-09-24T13:25:00Z 0 0
+run
+check "one-shot replaced container alerts" '[ "$(count)" -eq $((base+3)) ]'
+set_c cowork-code-verify-1 www 2026-09-24T13:30:00Z 1
+NOEVIA_ONESHOT_SERVICES= run
+check "disabled allowlist alerts again" '[ "$(count)" -ge $((base+4)) ]'
+
 echo "$passes passed, $fails failed"
 [ "$fails" -eq 0 ]

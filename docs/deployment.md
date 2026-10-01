@@ -626,6 +626,12 @@ repo; until then, and after any restart done outside `up.sh` (Compose Manager
 GUI, `docker restart`, Diary overlay), run
 `/mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh --ack` immediately.
 
+One-shot services (`--oneshot NAME`, repeatable; default `code-verify`; env
+`NOEVIA_ONESHOT_SERVICES` comma list, empty disables) restart after every run by
+design. A restart with the same container and image, exit code 0 and at most
+`--oneshot-max N` (default 10) restarts since the last 5-minute run is silent; a
+non-zero exit, a replaced container or image, or a larger burst still alerts.
+
 Test without sending or moving the baseline:
 `/mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh --dry-run`.
 Offline test: `bash deploy/tools/test-sidecar-restart-alert.sh`.
