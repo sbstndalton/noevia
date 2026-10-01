@@ -8,6 +8,22 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Diary overlay 9debec6 — 2026-10-01 (Diary embeds through the `embed` sidecar, #720)
+
+### Services
+
+- **Diary:** [#709](https://github.com/sbstndalton/noevia/pull/709) (`LLM_EMBED_BASE_URL`, #697) — `cowork-diary:9debec6`, image `sha256:8775aed1b6b7d63e2b9b858fded3fe90c3bec654cfdcd52da2e51ac776aae53e`, built by `deploy/examples/diary-overlay.sh 9debec6` (`FROM cowork-diary:f6444b4`, `agent/` replaced). `services/diary/agent` in `9debec6` is identical to main `be794ca`. Since `f6444b4`, `requirements.txt` only lost its test-only packages (#538) and the Dockerfile is unchanged.
+- **Web, Model manager, Docling, Laya, OCR, Code sandbox:** no change.
+- **Deploy/infra:** live `docker-compose.override.yml` gains `diary: environment: LLM_EMBED_BASE_URL: http://embed:8080/v1` (backup `docker-compose.override.yml.bak.before-720`). The rendered Compose config differs from the backup by exactly that one line. `.env`: `DIARY_VERSION` `f6444b4` → `9debec6` (backup `config/.env.bak.before-diary-9debec6`).
+
+**Parity (#720).** The single-string check of release 9debec6 gave cosine 0.99887, below its 0.999 threshold. The owner delegated the decision, and the broader sample was run with the multi-string `tools/embed-parity-check.cjs` ([#721](https://github.com/sbstndalton/noevia/pull/721)). Before running it, the router had no model loaded. The sample was 40 synthetic documents and 10 synthetic queries, no user data. Results for the router's `nomic-embed-text-v1` (Vulkan) against the `embed` sidecar (CPU, same GGUF, `--pooling mean`): min cosine 0.99863, median 0.99909, mean 0.99913, max 0.99962. Mean overlap@5 was 0.96: 8 of the 10 queries had identical top 5, and the other 2 differed by one document. The rule (min ≥ 0.997, overlap@5 ≥ 0.9) passes, so the vectors are the same model up to float noise and the existing Diary index stays valid without re-embedding. `nomic-embed-text-v1` was unloaded through the router afterwards.
+
+**Deploy.** `diary-overlay.sh` took appdata backup `ab_20261001_024731` (02:47 server time, about 20 s, verified). That backup stopped and restarted web, so web is the same container `8a45208a9b65` with a new StartedAt (06:47:45Z) and zero restarts. The script's candidate imports passed. Diary was recreated alone with the guarded `up.sh ... --no-build --no-deps --wait`; it was healthy and `/api/health` through web returned 200. After the override edit Diary was recreated alone a second time: healthy, zero restarts, container `721fb8e0f26c`.
+
+**Verification.** Diary's own `LLMClient` was built from its live config, without opening the journal or the storage backend. Its embedding client points at `http://embed:8080/v1/`, separate from the engine client, and a synthetic string returned 768 dimensions. A second synthetic call moved the sidecar's slot task id from 90 to 93. Afterwards the router reports `nomic-embed-text-v1` unloaded, and the Diary log has no errors. Llama, model-loader, docling, embed, laya, ocr, code-sandbox and kiwix keep the same IDs and start times. No model run, tune or private Diary access.
+
+Rollback: `cp config/.env.bak.before-diary-9debec6 config/.env` (`DIARY_VERSION=f6444b4`; that image is also tagged `cowork-diary:rollback-before-diary-overlay`), `cp docker-compose.override.yml.bak.before-720 docker-compose.override.yml`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 diary`.
+
 ## Release 9debec6 — 2026-10-01 (Docling native-text fallback, one model within a 16 GiB inference budget, web)
 
 ### Services
