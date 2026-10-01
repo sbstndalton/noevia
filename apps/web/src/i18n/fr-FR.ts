@@ -521,6 +521,8 @@ export const FR_FR: Catalogue = {
   'connect.title': "Connecter un appareil",
   'connect.intro': "Donnez un nom à l'appareil à connecter. noevia active le partage de fichiers s'il est désactivé, crée un mot de passe pour cet appareil et affiche tout ce qu'il faut saisir sur l'appareil.",
   'connect.willEnable': "Le partage de fichiers est désactivé. La connexion l'activera ({scope}).",
+  'connect.scope.lan': "ce réseau",
+  'connect.scope.public': "internet",
   'connect.submit': "Connecter l'appareil",
   'connect.working': "Connexion…",
   'connect.address': "Adresse",

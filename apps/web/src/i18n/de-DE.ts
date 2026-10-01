@@ -521,6 +521,8 @@ export const DE_DE: Catalogue = {
   'connect.title': "Gerät verbinden",
   'connect.intro': "Gib dem Gerät, das du verbinden möchtest, einen Namen. noevia schaltet die Dateifreigabe ein, falls sie aus ist, erstellt ein Gerätepasswort und zeigt alles, was du auf dem Gerät eingeben musst.",
   'connect.willEnable': "Die Dateifreigabe ist aus. Beim Verbinden wird sie eingeschaltet ({scope}).",
+  'connect.scope.lan': "dieses Netzwerk",
+  'connect.scope.public': "das Internet",
   'connect.submit': "Gerät verbinden",
   'connect.working': "Verbindung wird eingerichtet…",
   'connect.address': "Adresse",

@@ -521,6 +521,8 @@ export const NL_NL: Catalogue = {
   'connect.title': "Apparaat verbinden",
   'connect.intro': "Geef het apparaat dat je wilt verbinden een naam. noevia zet bestandsdeling aan als die uit staat, maakt een apparaatwachtwoord en toont alles wat je op het apparaat moet invoeren.",
   'connect.willEnable': "Bestandsdeling staat uit. Bij het verbinden wordt die ingeschakeld ({scope}).",
+  'connect.scope.lan': "dit netwerk",
+  'connect.scope.public': "internet",
   'connect.submit': "Apparaat verbinden",
   'connect.working': "Verbinden…",
   'connect.address': "Adres",

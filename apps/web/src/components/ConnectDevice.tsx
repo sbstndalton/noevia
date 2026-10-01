@@ -6,6 +6,15 @@ type Sharing = { available: boolean; scope: 'off' | 'lan' | 'public'; endpointSc
 type Result = { url: string; username: string; password: string };
 type FieldKey = 'url' | 'username' | 'password';
 
+/** Read-only value that wraps and grows to show all of it (a long address or password must never be cut off at
+ *  375 px). A textarea keeps select-all and copy working like the input it replaces. */
+function AutoText({ value, label }: { value: string; label: string }): JSX.Element {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const fit = () => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } };
+  useEffect(() => { fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit); }, [value]);
+  return <textarea ref={ref} aria-label={label} className="modal-input connect-device-value" rows={1} value={value} readOnly autoComplete="off" spellCheck={false} onFocus={e => e.currentTarget.select()} />;
+}
+
 /** #733: one panel for the whole device setup. It reuses the two existing endpoints, so every server-side check
  *  (eligibility, operator scope, cleartext acknowledgement, credential scope) still runs exactly as it does from the
  *  separate pages: PUT /api/profile/sharing turns sharing on at the operator's endpoint scope, then
@@ -70,7 +79,7 @@ export default function ConnectDevice({ onClose, onSharingChange }: { onClose: (
   };
 
   const row = (key: FieldKey, label: string, value: string) => <div className="connect-device-row">
-    <label className="route-note">{label}<input className="modal-input" value={value} readOnly autoComplete="off" spellCheck={false} onFocus={e => e.currentTarget.select()} /></label>
+    <label className="route-note">{label}<AutoText value={value} label={label} /></label>
     <button type="button" className="popup-tab" aria-label={t('connect.copyNamed', { what: label })} onClick={() => void copy(key, value)}>{copied === key ? t('connect.copied') : t('connect.copy')}</button>
   </div>;
 
@@ -80,8 +89,8 @@ export default function ConnectDevice({ onClose, onSharingChange }: { onClose: (
     {!result && <>
       <p className="route-note">{t('connect.intro')}</p>
       {sharing && !ready && <p className="route-note" role="status">{!sharing.available ? t('sharing.reason.notConfigured') : t('sharing.ineligible')} {t('sharing.staysOff')}</p>}
-      {ready && enabling && <p className="route-note">{t('connect.willEnable', { scope: scope === 'lan' ? t('sharing.network') : t('sharing.public') })}</p>}
-      {ready && needsAck && <label className="route-note"><input type="checkbox" checked={ack} disabled={busy} onChange={e => setAck(e.target.checked)} /> {t('sharing.cleartext')}</label>}
+      {ready && enabling && <p className="route-note">{t('connect.willEnable', { scope: scope === 'lan' ? t('connect.scope.lan') : t('connect.scope.public') })}</p>}
+      {ready && needsAck && <div><label className="route-note connect-device-check"><input type="checkbox" checked={ack} disabled={busy} onChange={e => setAck(e.target.checked)} /> {t('sharing.cleartext')}</label></div>}
       <label className="route-note">{t('appPasswords.deviceName')}<input ref={nameRef} className="modal-input" value={name} maxLength={80} disabled={busy || !ready} onChange={e => setName(e.target.value)} placeholder={t('appPasswords.deviceNamePlaceholder')} /></label>
       <div className="connect-device-actions">
         <button type="button" className="modal-btn secondary" disabled={busy || !ready || !name.trim() || (needsAck && !ack)} onClick={() => void connect()}>{busy ? t('connect.working') : t('connect.submit')}</button>

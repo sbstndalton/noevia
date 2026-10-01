@@ -532,6 +532,8 @@ export const EN_GB = {
   'connect.title': "Connect a device",
   'connect.intro': "Name the device you want to connect. noevia turns file sharing on if it is off, creates a device password for it and shows everything you need to enter on the device.",
   'connect.willEnable': "File sharing is off. Connecting will turn it on ({scope}).",
+  'connect.scope.lan': "this network",
+  'connect.scope.public': "the internet",
   'connect.submit': "Connect device",
   'connect.working': "Connecting…",
   'connect.address': "Address",

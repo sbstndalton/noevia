@@ -2361,3 +2361,14 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
 .connect-device-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
 .connect-device-hints { padding-inline-start:20px; }
 @media (prefers-reduced-motion: reduce) { .connect-device { animation:none; } }
+
+/* #733 panel rhythm: every child is its own block separated by one gap token; per-note margins are zeroed so the
+   gap is the only spacing. Values wrap (never cut off) and keep a monospace look. */
+.connect-device { display:flex; flex-direction:column; gap:var(--space-3,12px); }
+.settings-detail .connect-device .route-note, .connect-device .rail-label { margin:0; }
+.connect-device label.route-note { display:flex; flex-direction:column; gap:var(--space-1,4px); }
+.connect-device label.connect-device-check { flex-direction:row; align-items:flex-start; gap:var(--space-2,8px); }
+.connect-device-value { resize:none; overflow:hidden; word-break:break-all; overflow-wrap:anywhere; font-family:var(--font-mono, ui-monospace, monospace); line-height:1.4; display:block; width:100%; box-sizing:border-box; }
+.connect-device-actions { margin-top:0; }
+.connect-device-hints + button { margin-top:var(--space-3,12px); }
+.connect-device-value, .connect-device-row { margin-top:0; }

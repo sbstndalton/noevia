@@ -521,6 +521,8 @@ export const ES_ES: Catalogue = {
   'connect.title': "Conectar un dispositivo",
   'connect.intro': "Ponle un nombre al dispositivo que quieres conectar. noevia activa el uso compartido de archivos si está desactivado, crea una contraseña para ese dispositivo y muestra todo lo que debes introducir en él.",
   'connect.willEnable': "El uso compartido de archivos está desactivado. Al conectar se activará ({scope}).",
+  'connect.scope.lan': "esta red",
+  'connect.scope.public': "internet",
   'connect.submit': "Conectar dispositivo",
   'connect.working': "Conectando…",
   'connect.address': "Dirección",

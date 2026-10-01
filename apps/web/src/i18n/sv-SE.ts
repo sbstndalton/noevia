@@ -521,6 +521,8 @@ export const SV_SE: Catalogue = {
   'connect.title': "Anslut en enhet",
   'connect.intro': "Ge enheten du vill ansluta ett namn. noevia slår på fildelning om den är avstängd, skapar ett enhetslösenord och visar allt du behöver skriva in på enheten.",
   'connect.willEnable': "Fildelning är avstängd. Anslutningen slår på den ({scope}).",
+  'connect.scope.lan': "det här nätverket",
+  'connect.scope.public': "internet",
   'connect.submit': "Anslut enhet",
   'connect.working': "Ansluter…",
   'connect.address': "Adress",

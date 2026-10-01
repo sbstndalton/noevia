@@ -521,6 +521,8 @@ export const IT_IT: Catalogue = {
   'connect.title': "Collega un dispositivo",
   'connect.intro': "Dai un nome al dispositivo che vuoi collegare. noevia attiva la condivisione dei file se è disattivata, crea una password per il dispositivo e mostra tutto ciò che devi inserire sul dispositivo.",
   'connect.willEnable': "La condivisione dei file è disattivata. Collegando il dispositivo verrà attivata ({scope}).",
+  'connect.scope.lan': "questa rete",
+  'connect.scope.public': "internet",
   'connect.submit': "Collega dispositivo",
   'connect.working': "Collegamento in corso…",
   'connect.address': "Indirizzo",

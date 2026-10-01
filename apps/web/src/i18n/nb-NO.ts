@@ -521,6 +521,8 @@ export const NB_NO: Catalogue = {
   'connect.title': "Koble til en enhet",
   'connect.intro': "Gi enheten du vil koble til et navn. noevia slår på fildeling hvis den er av, lager et enhetspassord og viser alt du trenger å skrive inn på enheten.",
   'connect.willEnable': "Fildeling er av. Tilkoblingen slår den på ({scope}).",
+  'connect.scope.lan': "dette nettverket",
+  'connect.scope.public': "internett",
   'connect.submit': "Koble til enhet",
   'connect.working': "Kobler til…",
   'connect.address': "Adresse",
