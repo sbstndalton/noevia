@@ -8,6 +8,41 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 9debec6 — 2026-10-01 (Docling native-text fallback, one model within a 16 GiB inference budget, web)
+
+### Services
+
+- **Docling:** [#714](https://github.com/sbstndalton/noevia/pull/714) (native-text fallback, #700) — `cowork-docling:9debec6`, image `sha256:52493948a3c72ad5acaf6c256f778f0d2244e7724d18e19045718c9db3819af5`. Deployed before web.
+- **Model manager:** [#709](https://github.com/sbstndalton/noevia/pull/709) (cache-ram bound and start-up migration, budget-sized autoconfig, #697) — `cowork-model-loader:9debec6`, image `sha256:7093d0ed85076cfb92b141128e7463cde8df5ed382742bad72b9a5b09e876c04`, built as an overlay (`FROM cowork-model-loader:381760c`, `app/` replaced; `requirements.txt` and Dockerfile unchanged).
+- **Web:** [#709](https://github.com/sbstndalton/noevia/pull/709) (inference budget, one resident model, reranker refused on the engine), [#714](https://github.com/sbstndalton/noevia/pull/714) (partial status for native-fallback pages), #694, #695/#696, #699 (seasonal logo/favicon), and behind default-off flags #708, #711, #712, #713, #715; #710's web side (inert, no code-verify container) — `cowork-web:9debec6`, image `sha256:95783d72f36aadb732c5ccd476bc55e835bf53cbe1b5d5e01245cd8806e6c9cd`.
+- **Diary:** no change — stays `cowork-diary:f6444b4`. #709's `LLM_EMBED_BASE_URL` support is merged, not yet deployed (see the parity result below).
+- **Laya, OCR, Code sandbox:** no change (`cowork-laya:0.3.5-noevia2`, `cowork-ocr:5004b50`, `cowork-code-sandbox:pi-0.87.0-9b532a8`). The code-verify container was not deployed.
+- **Deploy/infra:** live `docker-compose.override.yml`: llama `--models-max 2` → `1`; web `NOEVIA_FEATURE_RAG_RERANK` `"true"` → `"false"` and `RERANK_BASE_URL` removed. No Diary or embed change. `.env`: `DOCLING_VERSION`, `MODEL_MANAGER_VERSION` and `COWORK_VERSION` set to `9debec6`.
+
+Exact source `9debec6fb6d591d0821e5c17705480e07a02664c` (main CI green), `git archive` of a fresh clone (SHA-256 `78ae835513949c809fea6b1cb5dc30e6349ccc36c6a7e3442e1333dfb49d3a51`, matched on the server), to `releases/9debec6`. #717 and #718 were merged after this SHA and are not in this release. The last appdata backup before the release was `ab_20260930_041001`; no new backup was started. Backups: `config/.env.bak.before-9debec6`, `docker-compose.yml.bak.before-9debec6`, `docker-compose.override.yml.bak.before-9debec6`. Each service was recreated alone with the guarded `up.sh ... --no-build --no-deps --wait`, in this order: docling, model-loader, llama, web.
+
+- **Docling:** all dependency and model layers came from cache, and the first 10 layers are identical to `2026-09-21`; only the final `COPY` differs. Synthetic selftest, first in a throwaway candidate with `--network none` and then in `cowork-docling-1`: `synthetic-picture-text.pdf` page 1 `native` with the widget-audit text (not `blank`), `synthetic-blank.pdf` `blank`. Healthy, zero restarts.
+- **Model manager:** start-up migration logged nothing because all five chat sections already had `cache-ram = 1024` (the 2026-10-01 ops change on #697). `models.ini` is unchanged at `5bd15b66c852affae28976a3685a51551c97b53be2cae359106987fa399b6173`. `/api/v1/health`, `/sections` (8 sections) and `/backends` all return 200, and `/backends` now reports `mem_anon_gb`. Healthy, zero restarts.
+- **Embedding parity (`tools/embed-parity-check.cjs`, from the release directory through `cowork-web-1`): FAILED.** Cosine 0.99887 between the router's `nomic-embed-text-v1` (Vulkan) and the `embed` sidecar (CPU, `--pooling mean`), 768 dimensions each, against the 0.999 threshold. So Diary was not switched and its overlay was not shipped. Diary still embeds through the engine, and under `--models-max 1` a Diary embedding request evicts the resident chat model. The `embed` command already had `--pooling mean`, so it was not changed.
+- **Llama:** recreated with no model loaded; `nomic-embed-text-v1`, which the parity check had loaded, was unloaded first through the router. Args show `--models-max 1`. Still on `cowork_code`, `cowork_default`, `cowork_models` and `nextcloud-aio`. Healthy, zero restarts.
+- **Web:** built with `deploy/tools/build-web-release.sh` (in-build tests and build passed on the first attempt, stamp verified). Standalone candidate on a loopback port with no production mounts: `/` 200, `/api/profile` 401, `version.json` `9debec6`, 82 dist files. Live checks:
+  - Healthy, zero restarts. Public `/` 200, `/api/profile` 401, `/version.json` `9debec6`.
+  - Served `index-CysxSA0D.js`, `index-DPcIRKIs.css`, `theme.js`, `manifest.webmanifest`, `icon.svg?v=9debec6` and `apple-touch-icon.png?v=9debec6` are byte-identical to the image `dist`.
+  - `/llamacpp-config` RW=false. `NOEVIA_FEATURE_RAG_RERANK=false`, and `RERANK_BASE_URL` is absent.
+  - Web log has no errors and no `[inference-budget]` line.
+- **Budget and decision deadline**, read-only through the settings modules (DB opened read-only):
+  - Decision deadline is 2000 ms.
+  - Inference budget is 16 GiB (source `deployment`, range 2–25 GiB, host 29 GiB).
+  - Chat-model estimates with no model loaded: Qwen3.5-4B 10.0, Qwen3.5-9B 11.15, gemma-3-12b 9.76, gemma-4-E2B 7.42, gemma-4-E4B 8.5 GiB. All fit within 16 GiB.
+
+Before/after snapshot of all 43 containers (id, StartedAt, restart count, image): the only differences are the four recreated containers. Docling `f1a6ff85ffe0` → `96efde0f9a1a`, model-loader `d538e06f3613` → `d7dda8e7ef3f`, llama `c5af278a1b3d` → `ae3235547379`, web `573fe84af9b3` → `8a45208a9b65`. Diary, embed, laya, ocr, code-sandbox, kiwix and every non-noevia container are identical. No model run, tune or Diary access beyond the parity check's single synthetic embedding.
+
+Rollback, per service. `ENV=/mnt/docker/appdata/cowork/config/.env`; `UP="bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file $ENV -- -d --no-build --no-deps --wait --wait-timeout 180"`. Previous images are retained.
+- Web: `ln -sfn /mnt/docker/appdata/cowork/releases/c70d1a9 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=c70d1a9/' $ENV`, then `$UP web`. Roll back docling as well, or documents re-read meanwhile keep the new cache key.
+- Llama and the web rerank setting: `cp -p docker-compose.override.yml.bak.before-9debec6 docker-compose.override.yml` in the Compose Manager project, then, with no model loaded, `$UP llama`, and `$UP web` for the rerank variables.
+- Model-loader: `sed -i 's/^MODEL_MANAGER_VERSION=.*/MODEL_MANAGER_VERSION=381760c/' $ENV`, then `$UP model-loader`.
+- Docling: `sed -i 's/^DOCLING_VERSION=.*/DOCLING_VERSION=2026-09-21/' $ENV`, then `$UP docling`.
+
 ## Release web c70d1a9 — 2026-09-30 (auto-tune relative quality gate, Tune panel fixes)
 
 ### Services
