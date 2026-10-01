@@ -1755,22 +1755,31 @@ it into something that can run, and both are deliberate:
 
 With neither, a task fails with "No coding harness is configured on this server."
 
-Server-measured verification (#703) runs in its **own** container, `code-verify` (same image as
-the sandbox, uid 1002, `network_mode: none`, workspaces volume read-only, own tmpfs). Its command
-is configured only there: `CODE_VERIFY=name|command` (one per line, names as in `CODE_REPOS`),
-plus optional `CODE_VERIFY_WALL_MS`. Web finds it through `CODE_VERIFY_ENDPOINT=unix:/run/noevia-verify/verify.sock`,
-on a `code-verify-socket` volume that only web and `code-verify` mount. To ship it:
+Server-measured verification (#703) runs in its **own** container, `code-verify`, from the same
+image as the sandbox. It has no network, mounts the workspaces volume read-only and has its own
+tmpfs. It is **one-shot**: it serves one request, exits, and is restarted (`restart: always`) with
+fresh tmpfs.
+
+Inside it, the server starts as root with only `SETUID`/`SETGID` and owns the socket (root, 0770).
+git runs as 1002 with the repositories' group, and the test command runs as 1003.
+
+Its command is configured only there: `CODE_VERIFY=name|command` (one per line, names as in
+`CODE_REPOS`), plus optional `CODE_VERIFY_WALL_MS`. Web finds it through
+`CODE_VERIFY_ENDPOINT=unix:/run/noevia-verify/verify.sock`, on a `code-verify-socket` volume that
+only web and `code-verify` mount. To ship it:
 
 1. Build `services/code-sandbox` from the release source with the running harness's build
    arguments (pi 0.87.0 today) as `cowork-code-sandbox:pi-0.87.0-<sha>`. Back up `.env` and the
    live override, then bump `CODE_SANDBOX_VERSION`.
-2. Add the `code-verify` service, the `code-verify-socket` volume, web's extra volume line and
+2. Give the source repositories a dedicated group the verifier's git uid can read through:
+   `chgrp -R 1005 /workspaces/repos/<repo> && chmod -R g+rX /workspaces/repos/<repo>` (inside the
+   volume; 1005 is `CODE_REPOS_GID`). Do not widen "other" permissions.
+3. Add the `code-verify` service, the `code-verify-socket` volume, web's extra volume line and
    `CODE_VERIFY_ENDPOINT` from `deploy/examples/code-sandbox.override.yml` to the live override.
-   Set `CODE_VERIFY` and `CODE_VERIFY_ENDPOINT` in `.env`. Make sure each source repository under
-   `/workspaces/repos` is readable by uid 1002 (`chmod -R o+rX`).
-3. Recreate `code-sandbox`, start `code-verify`, then recreate web, each with the guarded `up.sh …
+   Set `CODE_VERIFY`, `CODE_VERIFY_ENDPOINT` and, if not 1005, `CODE_REPOS_GID` in `.env`.
+4. Recreate `code-sandbox`, start `code-verify`, then recreate web, each with the guarded `up.sh …
    --profile code -- -d --no-build --no-deps <service>`. Recreating the sandbox ends any running
-   Code task.
+   Code task. `docker logs` for `code-verify` should show `listening … (one request)`.
 
 Rollback: restore the override and `.env` backups and recreate the same three services. Details:
 `services/code-sandbox/README.md`.

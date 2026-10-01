@@ -27,7 +27,7 @@
 //
 // Events: `step.started` / `step.completed` with id `tests`, and an `artifact.created` with
 // `kind: 'test-report'` carrying the report, through the `emit(type, data)` the caller supplies.
-const net = require('node:net');
+const net = require('node:net'), crypto = require('node:crypto');
 const { splitEndpoint } = require('./code-acp.cjs');
 
 const STEP_ID = 'tests';
@@ -40,6 +40,11 @@ const MAX_ANSWER_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 12 * 60 * 1000;
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const REPO_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
+// The verifier serves one request and restarts (services/code-sandbox/verifier.cjs, one-shot), so
+// for a few seconds after a run it is not listening, and while one runs it turns others away.
+const DEFAULT_CONNECT_RETRY_MS = 15_000;
+const RETRY_STEP_MS = 250;
+const RETRYABLE = new Set(['ENOENT', 'ECONNREFUSED', 'EAGAIN', 'ECONNRESET']);
 
 const measured = new WeakSet();
 
@@ -88,7 +93,7 @@ function askVerifier({ endpoint, connectFn, request, timeoutMs, signal }) {
   return new Promise((resolve, reject) => {
     let socket;
     try { socket = connectTo(endpoint, connectFn); } catch (e) { reject(Object.assign(Error(e.message), { code: 'config' })); return; }
-    let settled = false, received = '', bytes = 0;
+    let settled = false, received = '', bytes = 0, connectedAt = null;
     const done = (error, value) => {
       if (settled) return;
       settled = true;
@@ -104,6 +109,7 @@ function askVerifier({ endpoint, connectFn, request, timeoutMs, signal }) {
     if (signal?.aborted) { onAbort(); return; }
     signal?.addEventListener?.('abort', onAbort, { once: true });
     socket.setEncoding?.('utf8');
+    socket.on('connect', () => { connectedAt = Date.now(); });
     socket.write(JSON.stringify(request) + '\n');
     socket.on('data', (chunk) => {
       if (settled) return;
@@ -117,21 +123,27 @@ function askVerifier({ endpoint, connectFn, request, timeoutMs, signal }) {
       catch { return done(Object.assign(Error('The verifier’s answer was not readable.'), { code: 'bad_answer' })); }
       done(null, answer);
     });
-    socket.on('error', (error) => done(Object.assign(Error(`The verifier is unreachable (${error.message}).`), { code: 'unreachable' })));
-    socket.on('close', () => done(Object.assign(Error('The verifier closed the connection without an answer.'), { code: 'unreachable' })));
+    // Not listening (restarting), or accepted and dropped at once by an instance that already
+    // served its request: retryable. Anything later is a real failure, never silently re-run.
+    socket.on('error', (error) => done(Object.assign(Error(`The verifier is unreachable (${error.message}).`),
+      { code: !bytes && RETRYABLE.has(error.code) ? 'not_listening' : 'unreachable' })));
+    socket.on('close', () => done(Object.assign(Error('The verifier closed the connection without an answer.'),
+      { code: !bytes && (connectedAt === null || Date.now() - connectedAt < 1000) ? 'not_listening' : 'unreachable' })));
   });
 }
 
 /**
  * @param {{endpoint?: string|null, connectFn?: Function, timeoutMs?: number, tailBytes?: number,
- *          log?: (entry: object) => void, now?: () => number}} [deps]
+ *          log?: (entry: object) => void, now?: () => number, connectRetryMs?: number,
+ *          nonceFn?: () => string}} [deps]
  *
  * `endpoint` is the verifier container (`CODE_VERIFY_ENDPOINT`, e.g. `unix:/run/noevia-verify/verify.sock`).
  * Without one there is nowhere isolated to run tests, so verification is unavailable — it is never
  * run beside noevia's own state, nor in the agent's sandbox.
  */
 function createCodeVerify({ endpoint = process.env.CODE_VERIFY_ENDPOINT || null, connectFn = net.connect,
-  timeoutMs = DEFAULT_TIMEOUT_MS, tailBytes = DEFAULT_TAIL_BYTES, log = () => {}, now = Date.now } = {}) {
+  timeoutMs = DEFAULT_TIMEOUT_MS, tailBytes = DEFAULT_TAIL_BYTES, log = () => {}, now = Date.now,
+  connectRetryMs = DEFAULT_CONNECT_RETRY_MS, nonceFn = () => crypto.randomBytes(16).toString('hex') } = {}) {
   const cap = Math.min(Math.max(1024, Math.floor(Number(tailBytes) || DEFAULT_TAIL_BYTES)), MAX_TAIL_BYTES);
 
   /**
@@ -159,21 +171,34 @@ function createCodeVerify({ endpoint = process.env.CODE_VERIFY_ENDPOINT || null,
     try { target = workspaces.verifyCheckout(taskId, headSha); }
     catch (e) { return stop('error', e.code || 'checkout', e.message || 'Could not name the commit to verify.'); }
 
+    // A fresh nonce per request, echoed by the verifier: a stale or replayed answer does not match.
+    // (It does not stop someone who can read the request; the verifier's isolation does that.)
+    const nonce = nonceFn();
     let answer;
-    try {
-      answer = await askVerifier({ endpoint, connectFn, timeoutMs, signal,
-        request: { noevia: 'verify', repo, source: target.source, headSha } });
-    } catch (e) {
-      return stop('error', e.code || 'unreachable', e.message);
+    const giveUp = Date.now() + Math.max(0, connectRetryMs);
+    for (;;) {
+      try {
+        answer = await askVerifier({ endpoint, connectFn, timeoutMs, signal,
+          request: { noevia: 'verify', repo, source: target.source, headSha, nonce } });
+      } catch (e) {
+        if (e.code === 'not_listening' && Date.now() < giveUp && !signal?.aborted) { await new Promise((r) => setTimeout(r, RETRY_STEP_MS)); continue; }
+        if (e.code === 'not_listening') return stop('unavailable', 'busy', 'The verifier is busy or restarting; try again shortly.');
+        return stop('error', e.code || 'unreachable', e.message);
+      }
+      if (answer && answer.ok === false && answer.error === 'busy' && Date.now() < giveUp && !signal?.aborted) {
+        await new Promise((r) => setTimeout(r, RETRY_STEP_MS)); continue;
+      }
+      break;
     }
 
     if (!answer || answer.noevia !== 'verify-result') return stop('error', 'bad_answer', 'The verifier’s answer was not a verification result.');
+    if (answer.nonce !== nonce) return stop('error', 'bad_answer', 'The verifier’s answer was not for this request.');
     if (answer.ok !== true) {
       const code = typeof answer.error === 'string' ? answer.error.slice(0, 40) : 'refused';
       const message = typeof answer.message === 'string' ? cleanTail(answer.message, 500) : 'The verifier refused the verification.';
-      return stop(code === 'not_configured' ? 'unavailable' : 'error', code, message);
+      return stop(code === 'not_configured' || code === 'busy' ? 'unavailable' : 'error', code, message);
     }
-    if (answer.headSha !== headSha) return stop('error', 'bad_answer', 'The verifier’s answered for a different commit.');
+    if (answer.headSha !== headSha) return stop('error', 'bad_answer', 'The verifier answered for a different commit.');
     const exitCode = Number.isInteger(answer.exitCode) ? answer.exitCode : null;
     const signalName = typeof answer.signal === 'string' && /^SIG[A-Z0-9]{1,10}$/.test(answer.signal) ? answer.signal : null;
     const timedOut = answer.timedOut === true;

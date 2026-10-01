@@ -27,8 +27,10 @@ WORKDIR /srv
 # verifier.cjs: the server-measured test runner (#703). Runs ONLY in the separate `code-verify`
 # container (uid 1002, no network, workspaces read-only); never started in the agent sandbox.
 COPY supervisor.cjs pi-acp-bridge.cjs verifier.cjs ./
-# The verifier's socket directory, owned by its uid so a fresh named volume inherits that owner.
-RUN mkdir -p /run/noevia-verify && chown 1002:1002 /run/noevia-verify && chmod 0750 /run/noevia-verify
+# The verifier's socket directory: root's, 0770, so a fresh named volume inherits that owner and
+# neither the agent (1000), git (1002) nor the test command (1003) can enter it. Web connects as
+# root. Mount points for the verifier's tmpfs copies exist in the read-only root.
+RUN mkdir -p /run/noevia-verify /verify/copy /verify/run && chown 0:0 /run/noevia-verify && chmod 0770 /run/noevia-verify
 
 # `node` (uid 1000) already exists in this image. Nothing here runs as root.
 USER node
