@@ -3,6 +3,11 @@
 # Compares Id, State.StartedAt, RestartCount and Config.Image of every container
 # whose name starts with the prefix against a line-based TSV state file.
 #   sidecar-restart-alert.sh [--ack] [--dry-run] [--strict] [--prefix P] [--state FILE]
+#                            [--oneshot NAME]... [--oneshot-max N]
+# --oneshot NAME: containers whose name contains NAME restart by design after every run (default
+# "code-verify"; env NOEVIA_ONESHOT_SERVICES is a comma list). A restart of one with the same
+# container and image, exit code 0 and at most N (default 10) restarts since the last run is expected
+# and silent; a non-zero exit, a replaced container/image or a burst above N still alerts (crash loop).
 # --ack rewrites state without alerting (run right after an intentional deploy).
 # Exit status: 0 ok, 2 docker failure, 64 usage error. Notify failures leave the
 # old state line in place so the next run retries the alert.
@@ -13,8 +18,11 @@ state="/mnt/docker/appdata/cowork/state/sidecar-restart-alert.tsv"
 ack=false
 dry_run=false
 strict=false
+oneshot_max=10
+oneshot_names=()
+IFS=',' read -r -a oneshot_names <<< "${NOEVIA_ONESHOT_SERVICES-code-verify}"
 
-usage() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,6 +30,8 @@ while [[ $# -gt 0 ]]; do
     --dry-run) dry_run=true ;;
     --strict) strict=true ;;
     --prefix) [[ $# -ge 2 ]] || { usage >&2; exit 64; }; prefix="$2"; shift ;;
+    --oneshot) [[ $# -ge 2 ]] || { usage >&2; exit 64; }; oneshot_names+=("$2"); shift ;;
+    --oneshot-max) [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]] || { usage >&2; exit 64; }; oneshot_max="$2"; shift ;;
     --prefix=*) prefix="${1#*=}" ;;
     --state) [[ $# -ge 2 ]] || { usage >&2; exit 64; }; state="$2"; shift ;;
     --state=*) state="${1#*=}" ;;
@@ -101,6 +111,14 @@ else
       fi
       keep "$cur"; continue
     fi
+    expected=false
+    if [[ "$pid" == "$id" && "$pimage" == "$image" && "$exitcode" == 0 && "$count" =~ ^[0-9]+$ && "$pcount" =~ ^[0-9]+$ \
+          && "$count" -ge "$pcount" && $((count - pcount)) -le "$oneshot_max" ]]; then
+      for o in ${oneshot_names[@]+"${oneshot_names[@]}"}; do
+        [[ -n "$o" && "$name" == *"$o"* ]] && expected=true
+      done
+    fi
+    if [[ "$expected" == true ]]; then keep "$cur"; continue; fi
     level=warning
     if [[ "$count" =~ ^[0-9]+$ && "$pcount" =~ ^[0-9]+$ && "$count" -gt "$pcount" ]] || [[ "$exitcode" != 0 ]]; then
       level=alert
