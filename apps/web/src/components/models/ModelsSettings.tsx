@@ -3,7 +3,7 @@ import { ShellIcon } from '../ShellIcon';
 import type { JSX } from 'react';
 import type { InstalledModel, Project, RouteRule } from '../../types';
 import { apiFetch, fetchAutoRoles, setAutoRoles as putAutoRoles, fetchRoutingDefault, putRoutingDefault } from '../../api';
-import { numUpTo } from './mm';
+import { gib as formatGib } from './mm';
 import { SegmentedControl } from '../SegmentedControl';
 import { matchesModelUse, modelChoiceLabel } from '../../model-guidance';
 import { isChatGenerationModel } from '../../model-kind';
@@ -332,7 +332,7 @@ function InferenceBudgetSection(): JSX.Element | null {
   useEffect(() => { load(); }, [load]);
   useModelsChanged(load);
   if (hidden) return null;
-  const gib = (n: number) => numUpTo(n, 1);
+  const gib = (n: number) => formatGib(n, { max: 1 });
   const save = async () => {
     if (!info) return;
     const value = Number(draft.replace(',', '.'));
