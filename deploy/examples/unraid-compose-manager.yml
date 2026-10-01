@@ -82,7 +82,7 @@ services:
     image: cowork-web:${COWORK_VERSION:-local}
     restart: unless-stopped
     ports:
-      - "${COWORK_PORT:-8021}:8021"
+      - "${COWORK_PORT:-127.0.0.1:8021}:8021"
     environment:
       COWORK_DECISION_URL: ${COWORK_DECISION_URL:-}
       NOEVIA_FEATURE_STEP_SUPERVISION: ${NOEVIA_FEATURE_STEP_SUPERVISION:-}
@@ -164,7 +164,8 @@ services:
         condition: service_healthy
     labels:
       net.unraid.docker.managed: composeman
-      net.unraid.docker.webui: http://[IP]:[PORT:8021]
+      # Web binds to 127.0.0.1 (tunnel-only); the old http://[IP]:[PORT] link would be dead.
+      net.unraid.docker.webui: https://noevia.daserver.work
       net.unraid.docker.shell: sh
 
   ocr:
