@@ -141,7 +141,8 @@ function createVerifier({ root, copyRoot = os.tmpdir(), scratchRoot = copyRoot, 
   const PATHV = verifyPath || '/usr/local/bin:/usr/bin:/bin';
 
   /** Run a program as `who` (or as ourselves). Resolves {code, signal, stdout, stderr}. */
-  function exec(file, args, { who = null, cwd = undefined, env = { PATH: PATHV }, input = null, timeoutMs = 60_000, signal = null } = {}) {
+  // cwd defaults to `/`: a dropped uid may not be able to enter the server's own working directory.
+  function exec(file, args, { who = null, cwd = '/', env = { PATH: PATHV }, input = null, timeoutMs = 60_000, signal = null } = {}) {
     return new Promise((resolve) => {
       let child;
       try {
@@ -285,6 +286,7 @@ function createVerifier({ root, copyRoot = os.tmpdir(), scratchRoot = copyRoot, 
         const configCopy = path.join(ctl, 'source-config');
         fs.writeFileSync(configCopy, configText, { mode: 0o644 });
         const listing = await exec(git, ['config', '--file', configCopy, '--name-only', '--list'], { who: gitUser, env: gitEnv, timeoutMs: 10_000 });
+        if (listing.code !== 0) log(`could not list the source config: ${String(listing.stderr).split('\n')[0]}`);
         if (listing.code !== 0) return finish({ ok: false, error: 'hostile_source', message: 'the source’s .git/config could not be read' });
         const bad = String(listing.stdout).split('\n').map((k) => k.trim().toLowerCase()).filter((k) => k && HOSTILE_KEYS.some((re) => re.test(k)));
         if (bad.length) return finish({ ok: false, error: 'hostile_source', message: `the source’s .git/config sets ${[...new Set(bad)].slice(0, 5).join(', ')}` });
