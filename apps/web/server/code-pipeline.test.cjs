@@ -412,3 +412,51 @@ test('pipelineView is null for any job the pipeline did not drive', () => {
   assert.equal(pipelineView({ artifacts: [], stages: [] }), null);
   assert.equal(pipelineView({ artifacts: [{ kind: 'test-report', revision: 1, passed: true }], stages: [] }), null);
 });
+
+// ── with #703's real verifier module (code-verify.cjs), over an in-process fake socket ──────────
+
+const { EventEmitter } = require('node:events');
+const { createCodeVerify } = require('./code-verify.cjs');
+/** A verifier container stand-in: answers each request with the next scripted outcome. */
+function socketVerifier(script) {
+  const requests = [];
+  const connectFn = () => {
+    const s = Object.assign(new EventEmitter(), { setEncoding() {}, destroy() {}, write(line) {
+      const req = JSON.parse(line);
+      requests.push(req);
+      const next = script.shift() ?? { exitCode: 0 };
+      const answer = typeof next === 'function' ? next(req)
+        : { noevia: 'verify-result', nonce: req.nonce, ok: true, headSha: req.headSha, exitCode: next.exitCode, tail: next.exitCode ? 'not ok 1\n' : 'ok 1\n', ...next };
+      setImmediate(() => s.emit('data', JSON.stringify(answer) + '\n'));
+    } });
+    return s;
+  };
+  return { requests, verify: createCodeVerify({ endpoint: 'unix:/run/noevia-verify/verify.sock', connectFn, connectRetryMs: 0 }) };
+}
+
+test('#703 wired: the real verifier module measures each revision at its head; a fail loops, a pass merges', async () => {
+  const { verify, requests } = socketVerifier([{ exitCode: 1 }, { exitCode: 0 }]);
+  const r = await runPipeline({ verify, verdicts: ['approve'] });
+  assert.equal(r.job.status, 'completed', r.job.error);
+  assert.deepEqual(r.stagePath, ['planned', 'implementing', 'verifying', 'changes_requested', 'implementing', 'verifying', 'reviewing', 'merged']);
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests.map((q) => q.headSha), r.view.pipeline.evidence.map((e) => e.headSha), 'each request names that revision’s head');
+  assert.ok(requests.every((q) => q.noevia === 'verify' && q.repo === 'fixture' && fs.realpathSync(q.source) === fs.realpathSync(r.source) && !('command' in q)),
+    'noevia sends a repository, a source and a commit — never a command');
+  assert.deepEqual(r.view.pipeline.evidence.map((e) => e.tests.passed), [false, true]);
+  assert.equal(r.main, r.job.revision.headSha);
+});
+
+test('#703 wired: a busy, mismatched or refused verifier blocks the task, never passes it', async () => {
+  const busy = await runPipeline({ verify: socketVerifier([(req) => ({ noevia: 'verify-result', nonce: req.nonce, ok: false, error: 'busy', message: 'busy' })]).verify });
+  assert.deepEqual(busy.stagePath, ['planned', 'implementing', 'verifying', 'blocked']);
+  assert.match(busy.job.error, /Verification is unavailable/);
+  const other = await runPipeline({ verify: socketVerifier([(req) => ({ noevia: 'verify-result', nonce: req.nonce, ok: true, headSha: 'f'.repeat(40), exitCode: 0, tail: '' })]).verify });
+  assert.deepEqual(other.stagePath, ['planned', 'implementing', 'verifying', 'blocked']);
+  assert.match(other.job.error, /Verification could not run/);
+  const replay = await runPipeline({ verify: socketVerifier([(req) => ({ noevia: 'verify-result', nonce: 'ab'.repeat(16), ok: true, headSha: req.headSha, exitCode: 0, tail: '' })]).verify });
+  assert.match(replay.job.error, /Verification could not run/);
+  const unset = await runPipeline({ verify: createCodeVerify({ endpoint: null }) });
+  assert.match(unset.job.error, /Verification is not available/);
+  for (const r of [busy, other, replay, unset]) assert.equal(r.main, r.job.checkpoint.baseSha, 'nothing merged');
+});

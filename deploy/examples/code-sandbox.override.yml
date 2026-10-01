@@ -69,6 +69,55 @@ services:
     expose:
       - "8030"
 
+  # Server-measured verification (#703): runs the OPERATOR's test command for a task's commit and
+  # reports the exit status. Same image as the sandbox, deliberately NOT the same container: the
+  # agent runs as uid 1000 with a writable /tmp and HOME, and anything it leaves behind must not
+  # reach the run that decides whether its work passes. No network at all (web talks to it over a
+  # unix socket on its own volume), the workspaces READ-ONLY, the command list only here.
+  #
+  # Three identities inside (services/code-sandbox/verifier.cjs): the server starts as root with
+  # every capability dropped except SETUID/SETGID, owns the socket (root, 0770) and only ever drops
+  # to git (1002, with the repositories' shared group) for the copy and to the test uid (1003) for
+  # the command. The test uid cannot signal the server, touch the socket or chmod the copy.
+  # ONE-SHOT: it serves one request and exits; `restart: always` brings it back with fresh tmpfs,
+  # so nothing a test started survives. Web retries for a few seconds while it restarts.
+  #
+  # Web needs CODE_VERIFY_ENDPOINT=unix:/run/noevia-verify/verify.sock. The source repositories
+  # must be readable by CODE_REPOS_GID (a dedicated group): chgrp -R it, g+rX.
+  code-verify:
+    profiles: ["code"]
+    image: cowork-code-sandbox:${CODE_SANDBOX_VERSION:-local}
+    command: ["node", "verifier.cjs"]
+    restart: always
+    read_only: true
+    user: "0:0"
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID"]
+    security_opt: ["no-new-privileges:true"]
+    group_add: ["${CODE_REPOS_GID:-1005}"]
+    network_mode: none
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2.0
+    tmpfs:
+      # The server's own files (root's). Fresh on every restart, like the two below.
+      - /tmp:size=64m,mode=0755
+      # The copy: written by the git uid, read-only to the test uid.
+      - /verify/copy:size=2g,mode=0755,uid=1002,gid=1002
+      # The test uid's HOME and TMPDIR.
+      - /verify/run:size=1g,mode=0700,uid=1003,gid=1003
+    volumes:
+      - code-workspaces:/workspaces:ro
+      - code-verify-socket:/run/noevia-verify
+    environment:
+      VERIFY_SOURCE_ROOT: /workspaces
+      VERIFY_SOCKET: /run/noevia-verify/verify.sock
+      VERIFY_GIT_USER: "1002:${CODE_REPOS_GID:-1005}"
+      VERIFY_TEST_USER: "1003:1003"
+      # `name|command`, one per line, names as in web's CODE_REPOS. Unset = verification off.
+      CODE_VERIFY: ${CODE_VERIFY:-}
+      CODE_VERIFY_WALL_MS: ${CODE_VERIFY_WALL_MS:-600000}
+
   web:
     networks:
       default: {}
@@ -79,9 +128,12 @@ services:
     environment:
       CODE_EGRESS_PORT: ${CODE_EGRESS_PORT:-}
       CODE_EGRESS_HOST: egress
+      CODE_VERIFY_ENDPOINT: ${CODE_VERIFY_ENDPOINT:-}
     volumes:
       # The same volume at the same mount point — see the note above about paths matching.
       - code-workspaces:/workspaces
+      # The verifier's socket. Mounted by web and code-verify only — never by the agent sandbox.
+      - code-verify-socket:/run/noevia-verify
 
 networks:
   code:
@@ -89,3 +141,4 @@ networks:
 
 volumes:
   code-workspaces:
+  code-verify-socket:

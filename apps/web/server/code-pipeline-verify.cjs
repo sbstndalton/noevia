@@ -1,7 +1,8 @@
 'use strict';
 // The pipeline's view of server-measured verification (#705 ← #703). One small adapter, so the
-// pipeline never depends on the verifier module's internals and wiring the real one is a one-line
-// change in index.cjs (`createVerifyAdapter(require('./code-verify.cjs').createCodeVerify())`).
+// pipeline never depends on the verifier module's internals; index.cjs wires the real one
+// (`createVerifyAdapter(require('./code-verify.cjs').createCodeVerify())`). A verifier that stays
+// busy past its own retries answers `unavailable` (code `busy`), which blocks like any other.
 //
 // The contract the pipeline relies on (code-verify.cjs, #703):
 //   createCodeVerify({ endpoint }) → { available(), run({ workspaces, taskId, repo, headSha, revision,

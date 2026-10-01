@@ -667,8 +667,29 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
     return { ok: true, baseBranch: base, from: record.baseSha, to: reviewed };
   }
 
-  // `owner` is public so anything else noevia writes into a workspace (the harness's own
-  // config file) can be handed over the same way the worktree is.
+  /**
+   * What the verifier (#703, services/code-sandbox/verifier.cjs) should copy for this task: the
+   * SOURCE repository and the commit, which must be the task branch's current tip there — never
+   * the harness's own tree. Nothing is created here; the verifier makes its own hash-checked copy
+   * in its own container from the read-only volume.
+   *
+   * Refused while the workspace is `held` (an agent turn may still be writing the branch) and for
+   * any status but a clean release. Returns `{ source, headSha, branch }`; throws with a `code`:
+   * no_workspace, bad_sha, held, not_verifiable, stale_sha.
+   */
+  function verifyCheckout(taskId, sha) {
+    const record = read(taskId);
+    if (!record) throw Object.assign(Error('The task holds no workspace record.'), { code: 'no_workspace' });
+    const commit = String(sha || '');
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit)) throw Object.assign(Error('Verification needs a full commit id.'), { code: 'bad_sha' });
+    if (record.status === 'held') throw Object.assign(Error('An agent still holds this workspace; release it before verifying.'), { code: 'held' });
+    if (record.status !== 'released') {
+      throw Object.assign(Error(`The workspace is ${record.status}, so its branch is not verified.`), { code: 'not_verifiable' });
+    }
+    if (branchHead(record) !== commit) throw Object.assign(Error('That commit is not the current head of the task branch.'), { code: 'stale_sha' });
+    return { source: record.repo, headSha: commit, branch: record.branch };
+  }
+
   /** The task branch's tip in the SOURCE repository now (#705 stale-revision check), or null. */
   function branchTip(taskId) {
     let record;
@@ -676,7 +697,9 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
     return record ? branchHead(record) : null;
   }
 
-  return { claim, reclaim, release, recover, contains, headSha, change, projectSnapshot, mergeVerified, branchTip, get: read, list, root, owner, BRANCH_PREFIX };
+  // `owner` is public so anything else noevia writes into a workspace (the harness's own
+  // config file) can be handed over the same way the worktree is.
+  return { claim, reclaim, release, recover, contains, headSha, change, projectSnapshot, mergeVerified, branchTip, verifyCheckout, get: read, list, root, owner, BRANCH_PREFIX };
 }
 
 /** Recursive chown, so the harness owns the tree and git's own files inside it. */

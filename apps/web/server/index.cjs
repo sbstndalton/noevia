@@ -431,10 +431,10 @@ const codeReview = require('./code-review.cjs').createPlannerReview({
 });
 // The Code pipeline (#705, code-pipeline.cjs, which holds the task-lifecycle authority): offered as
 // the "Planner" preparation only with features.codePipeline on and Code mode in the sandbox.
-// Verification is #703's verifier container; until that module is wired here the adapter answers
-// "unavailable" and a pipeline task stops as blocked at verification, never as passed.
+// Verification is #703's one-shot verifier container (code-verify.cjs, CODE_VERIFY_ENDPOINT); unset,
+// busy or unreachable, a pipeline task stops as blocked at verification, never as passed.
 const { createCodePipeline } = require('./code-pipeline.cjs');
-const codeVerify = require('./code-pipeline-verify.cjs').createVerifyAdapter(null /* #703: require('./code-verify.cjs').createCodeVerify() */);
+const codeVerify = require('./code-pipeline-verify.cjs').createVerifyAdapter(require('./code-verify.cjs').createCodeVerify({ log: codeRoleLog }));
 const codePlanner = require('./planner-plan.cjs').createPlannerPlan({ enabled: () => features.enabled('constrainedPlanDecoding'), engine: codeRoleEndpoint, log: codeRoleLog,
   admit: (model, signal) => admitEngineModel(model, signal) });
 const codeService = require('./code-service.cjs').createCodeService({
