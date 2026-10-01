@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 448531e — 2026-10-01 (web: Connect a device)
+
+### Services
+
+- **Web:** [#734](https://github.com/sbstndalton/noevia/pull/734) (Connect a device: one flow for DAV file access, #733). Now `cowork-web:448531e` (previous `cowork-web:3c7e527`), recreated alone; `readlink current` is `releases/448531e`, `COWORK_VERSION=448531e`.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. Laya, llama, embed, kiwix and the dav-tailscale relay were not touched.
+
+Exact source `448531e` (CI green). Built with `deploy/tools/build-web-release.sh` (stamp check passed). Backups: `config/.env.bak.before-448531e`, `docker-compose.override.yml.bak.before-448531e` and `docker-compose.yml.bak.before-448531e` in the Compose Manager project directory. Started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+- **Verify:** web healthy, `RestartCount` 0, `dist/version.json` is `448531e`. The 11 other cowork containers kept ID, StartedAt and restart count (before/after lists in `state/nonweb.{before,after}-448531e.txt`). `https://noevia.daserver.work/` returned 200 and `/api/profile` 401. The served `index-DTWsQOrw.js` and `index-Dd9SpLmJ.css` exist in the container's `dist/assets`, and the JS contains "Connect a device". Web still listens on 127.0.0.1:8021 and 127.0.0.1:8031; the DAV relay answered on 100.70.173.74:8031 (HTTP 400, not 000). No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/3c7e527 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-448531e /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:3c7e527` image is retained.
+
 ## Release c526350 — 2026-10-01 (code-sandbox image for code-verify, restart-alert tool)
 
 ### Services
