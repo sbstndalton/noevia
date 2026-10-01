@@ -85,16 +85,30 @@ Source registry per job:
   footnote list. No model call is used for verification.
 - **Sentence-level citations (#707, replaces the per-source check above for the pipeline):** every
   excerpt is split into sentences with job-wide IDs (`S1`, `S2`, …, kept in the registry and in
-  `.sources.json`). Per source the model picks relevant sentences by ID; the write step gets only
-  those as an `<EVIDENCE>` pack (`[S4] sentence`, sources separated by `---`, no source numbers,
-  brackets inside source text neutralised) and must end each sentence with the ID of the sentence
-  that states it. The verifier checks each claim against its cited sentences only: the §5 key-phrase
-  check, or ≥ 60 % of the claim's content words, and every number in the claim must appear in the
-  cited sentences. A claim with no supporting cited sentence (whole-source `[n]`, wrong or unknown
-  ID) is dropped (default, `unsupportedClaims: 'drop'`) or footnoted (`'flag'`); an uncited sentence
-  stating a number is footnoted. Supported claims show reader-facing `[n]` source markers. The result,
-  job view and `.sources.json` report `claims: { total, supported, flagged, dropped, uncited }`, and
-  `citationValidity` still counts markers, so it measures the model before repair.
+  `.sources.json`). Sentences that read as instructions to the model (ignore/override instructions,
+  "assistant, you must…", "add … to your report", "cite source n", reveal the prompt) are withheld
+  and counted (`withheldSentences`), so they can never be selected or cited. Per source the model
+  picks relevant sentences by ID; the write step gets only those as an `<EVIDENCE>` pack
+  (`[S4] sentence`, sources separated by `---`, no source numbers; brackets and any `S<n>` in source
+  text are neutralised to `(`…`)` and `S#n`) and must end each sentence with the ID of the sentence
+  that states it.
+- **Claim check:** each claim is compared with its cited sentences only. All of these are required:
+  every number matches (thousands separators `2,300`/`2.300`/`2 300`, a decimal comma or point by
+  position, number words one to twenty; a unit after the number must be the same unit, so `40%` is
+  not `40 mg`); negations agree (not, no, never, without, `n't` … are content words, none added or
+  lost); and at least 60 % of the claim's content words (lightly stemmed) appear. A quote or key
+  phrase alone no longer suffices. A claim with fewer than two content words passes only if all of
+  them appear. List markers belong to the item: an item whose claims are all dropped disappears.
+  A claim with no supporting cited sentence (whole-source `[n]`, wrong or unknown ID) is dropped
+  (default, `unsupportedClaims: 'drop'`) or footnoted (`'flag'`, numbering continues across
+  sections). Every uncited claim is counted; one that states a number is also footnoted. Supported
+  claims show reader-facing `[n]` source markers. The result, job view and `.sources.json` report
+  `claims: { total, supported, flagged, dropped, uncited }`; the harness reports `uncitedClaims`
+  next to `citationValidity`, so leaving citations out cannot raise the score unseen.
+- **Validity is not comparable with the earlier B/C numbers** (0.65/0.675 on 2026-09-17,
+  0.479/0.175 on 09-28, 0.403/0.276 on 10-01). Those counted `[n]` source markers against whole
+  excerpts; it now counts `[S<n>]` sentence markers against single sentences with the stricter
+  claim check, before repair. Read it together with `uncitedClaims` and the dropped count.
 - Report footer lists sources in id order with title, URL or project file, and retrieval date.
 
 ## 6. Context limits (local models)

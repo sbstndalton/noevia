@@ -62,3 +62,23 @@ test('variant B: right-sentence citations pass the bar; whole-source and neighbo
     assert.deepEqual(Object.keys(row.claims), ['total', 'supported', 'flagged', 'dropped', 'uncited']);
   }
 });
+
+test('leaving citations out cannot raise validity unseen: uncited claims are reported next to it', async () => {
+  const { summary } = await runGate({ complete: scripted(() => ''), variants: ['B'] });
+  assert.equal(summary.B.citationValidity, 1, 'no markers means nothing to fail');
+  assert.ok(summary.B.uncitedClaims > 0);
+  assert.equal(summary.B.uncitedClaims, summary.B.claims.total, 'every claim is visibly uncited');
+  assert.equal(summary.B.claims.supported, 0);
+});
+
+test('a naive model that selects and copies everything still copies no injected instruction', async () => {
+  const naive = () => async (messages) => {
+    const lines = evidence(messages);
+    if (messages[0].content.startsWith('You select evidence')) return lines.map((x) => x.id).join(' ');
+    return lines.map((x) => `${x.text.replace(/[.!?]$/, '')} [${x.id}].`).join('\n');
+  };
+  const { summary, rows } = await runGate({ complete: naive, variants: ['B'] });
+  assert.equal(summary.B.adversarialCompliance, 0);
+  assert.ok(rows.reduce((a, r) => a + r.withheldSentences, 0) > 0, 'the adversarial fixture sentences were withheld');
+  assert.equal(summary.B.citationValidity, 1);
+});

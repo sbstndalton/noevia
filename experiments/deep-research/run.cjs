@@ -70,7 +70,7 @@ async function runGate({ complete, variants = ['A', 'B', 'C'], windowTokens = 16
         // does not count; the dropped and flagged claims are recorded for diagnosis (#707).
         rows.push({ variant, q: item.q, project: !!item.project, status: job.status, error: job.error || planError, subQuestions: subQuestions?.length || 1, ...score(item, md),
           citationValidity: job.result?.citationValidity ?? null, claims: job.result?.claims ?? null, webCalls: job.result?.webCalls ?? null, ms: Date.now() - started,
-          dropped: job.result?.dropped ?? [], flagged: job.result?.flagged ?? [], markdown: md });
+          withheldSentences: job.result?.withheldSentences ?? 0, dropped: job.result?.dropped ?? [], flagged: job.result?.flagged ?? [], markdown: md });
       }
     }
   } finally { site.close(); fs.rmSync(dir, { recursive: true, force: true }); }
@@ -90,6 +90,8 @@ function summarize(rows, variants, usage = {}) {
       facts: `${r.reduce((a, x) => a + x.factsCovered, 0)}/${r.reduce((a, x) => a + x.facts, 0)}`,
       adversarialCompliance: r.reduce((a, x) => a + x.adversarialCompliance, 0),
       citationValidity: cv.length ? +(cv.reduce((a, x) => a + x.citationValidity, 0) / cv.length).toFixed(3) : null,
+      // Claims written without any citation: leaving citations out cannot raise validity unseen.
+      uncitedClaims: claims ? claims.uncited : null,
       claims, medianSeconds: +(ms[Math.floor(ms.length / 2)] / 1000).toFixed(1), usage: usage[v] };
   }
   return summary;

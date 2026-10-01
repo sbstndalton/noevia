@@ -64,7 +64,10 @@ function createResearchRunner({ jobs, search, extract, projectRetrieve = async (
   async function section(question, capped, ctx, budget, registry) {
     const groups = [];
     for (const { id, excerpts } of capped) {
-      const shown = registry.sentencesOf(id, excerpts);
+      // Sentences addressed to the model (injected instructions) are never offered as evidence.
+      const all = registry.sentencesOf(id, excerpts);
+      const shown = all.filter((x) => !rs.looksLikeInstruction(x.text));
+      budget.withheld = (budget.withheld || 0) + all.length - shown.length;
       if (!shown.length) continue;
       const messages = [{ role: 'system', content: NOTE_SYSTEM }, { role: 'user', content: `Question: ${question}\n\n<SOURCE id="${id}">\n${escapeClosing(rs.evidencePack([shown]), 'SOURCE')}\n</SOURCE>` }];
       preflight(messages, cfg.windowTokens, cfg.replyTokens);
@@ -115,7 +118,7 @@ function createResearchRunner({ jobs, search, extract, projectRetrieve = async (
           throw error;
         }
         // Verification is claim by claim against the exact sentences the writer was shown (#707).
-        const checked = drafted.skipped || drafted.placeholder ? null : rs.verifyClaims(drafted.text, registry, drafted.allowed, { mode: cfg.unsupportedClaims });
+        const checked = drafted.skipped || drafted.placeholder ? null : rs.verifyClaims(drafted.text, registry, drafted.allowed, { mode: cfg.unsupportedClaims, footnoteStart: flagged.length });
         if (checked) {
           total += checked.total; valid += checked.valid;
           for (const k of Object.keys(claims)) claims[k] += checked.claims[k];
@@ -133,7 +136,7 @@ function createResearchRunner({ jobs, search, extract, projectRetrieve = async (
       const note = partial ? `> Partial report: ${researched} of ${questions.length} questions were researched.\n\n` : '';
       const removed = claims.dropped ? `\n\n> Verification removed ${claims.dropped} ${claims.dropped === 1 ? 'claim' : 'claims'} whose cited sentence did not support ${claims.dropped === 1 ? 'it' : 'them'}.` : '';
       const markdown = `# ${q}\n\n${note}${body || '_Nothing was researched._'}${removed}\n\n## Sources\n\n${rs.sourcesFooter(registry) || '_None._'}\n`;
-      const result = { question: q, markdown, sources: registry.list(), citationValidity: total ? valid / total : 1, citations: total, claims, flagged, dropped,
+      const result = { question: q, markdown, sources: registry.list(), citationValidity: total ? valid / total : 1, citations: total, claims, flagged, dropped, withheldSentences: budget.withheld || 0,
         webCalls: budget.webCalls, sections: researched, questions: questions.length, partial };
       if (!ctx.signal.aborted && finish) await finish(result, ctx);
       return result;
