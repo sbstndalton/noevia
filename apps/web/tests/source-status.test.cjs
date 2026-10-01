@@ -10,7 +10,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../s
 }).outputText, { exports: exportsObject });
 const { sourceStatus, sourceRefreshIssues, sourceRefreshEntries, skippedSignature, resolveSkippedToast, isUnreadableSource } = exportsObject;
 test('source rows distinguish partial, new failure and stale text', () => {
-  assert.match(sourceStatus({ document: { state: 'partial', pages: 2, pageStatus: [{number: 2, status:'ocr-needed'}] } }), /Partially readable.*check pages 2/);
+  assert.match(sourceStatus({ document: { state: 'partial', pages: 2, pageStatus: [{number: 2, status:'ocr-needed'}] } }), /Partially extracted.*check pages 2/);
   assert.match(sourceStatus({ document: { state: 'failed', stale: false } }), /Not readable/);
   assert.match(sourceStatus({ document: { state: 'failed', stale: true } }), /using previous text/);
 });
@@ -122,4 +122,18 @@ test('a not-readable reason is worded by the catalogue from its id, and old file
   assert.match(sourceStatus({ document: { state: 'failed', errorId: 'noNativeText', error: 'x' } }, t), /^\[projects\.view\.notReadable\] · \[projects\.view\.reason\.noNativeText\]/);
   // Without a translator nothing changes for English callers.
   assert.equal(attachmentReason({ reason: 'English text', reasonId: 'binaryText' }), 'English text');
+});
+
+test('a native-text fallback page shows the document as partially extracted, with the reason (#700)', () => {
+  const t = (key, params) => `[${key}${params ? JSON.stringify(params) : ''}]`;
+  const doc = { state: 'partial', pages: 3, pageStatus: [{ number: 1, status: 'native' }, { number: 2, status: 'degraded', reason: 'native-fallback' }, { number: 3, status: 'blank' }] };
+  const english = sourceStatus({ document: doc });
+  assert.match(english, /^Partially extracted · 3 pages · check pages 2 · pages 2: layout analysis found no text, so the PDF's own text layer was used/);
+  assert.doesNotMatch(english, /ready/i, 'never plain ready');
+  assert.equal(sourceStatus({ document: doc }, t), '[projects.view.partiallyExtracted] · 3 pages · check pages 2 · [projects.view.reason.nativeFallback{"pages":"2"}]');
+  // A server that cached state 'ready' alongside a degraded page still reads as partial.
+  assert.match(sourceStatus({ document: { ...doc, state: 'ready' } }, t), /^\[projects\.view\.partiallyExtracted\]/);
+  // Blank pages alone are complete: the document stays ready and gets no fallback note.
+  const blankOnly = sourceStatus({ document: { state: 'ready', pages: 2, pageStatus: [{ number: 1, status: 'native' }, { number: 2, status: 'blank' }] } }, t);
+  assert.equal(blankOnly, 'Native text ready · 2 pages');
 });
