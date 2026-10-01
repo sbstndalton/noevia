@@ -10,6 +10,7 @@ import type { MessageKey, Translate } from '../../i18n';
 import { formatBinaryBytes, formatNumber, formatPercent } from '../../number-format';
 import { appLocale } from '../../user-preferences';
 import { around } from '../../text-around';
+import { AcceptNote, AcceptSummary, PipelineDetails, PipelineStrip, acceptLabel } from './pipeline';
 import './code.css';
 
 /** How much of the assistant's output the server keeps (server/code-harness.cjs); the note names it in the locale's units. */
@@ -31,7 +32,7 @@ export const ACTION_LABEL: Record<CodeAction, string> = {
   read_repository: 'Read the repository', edit_file: 'Edit files', execute_command: 'Run commands',
   install_dependency: 'Install dependencies', network: 'Reach the network', delete: 'Delete files',
   git_push: 'Push to git', open_browser: 'Open a browser', external_account: 'Use an external account', none: 'Nothing',
-  review_change: 'Accept the finished change',
+  review_change: 'Accept the finished change', approve_plan: 'Approve the plan',
 };
 
 /** Code mode for one project (spec-agent-execution §3). Rendered only for admins with the feature on. */
@@ -282,8 +283,10 @@ function TaskCard({ task, busy, onDecide, onCancel }: {
     </header>
     <p className="code-meta">{[task.branch, task.capabilities.map(a => actionLabel(t, a)).join(' · ')].filter(Boolean).join(' · ') || t('code.task.readOnly')}</p>
     <p className="code-stage"><span role={task.status === 'waiting_approval' ? 'status' : undefined}>{outcome}</span> · {t('code.task.elapsed', { time: elapsed(task) })} · {t('code.task.updated')} <time dateTime={new Date(task.updatedAt).toISOString()}>{updated}</time></p>
+    <PipelineStrip task={task}/>
     {task.error && <p className="code-note is-error">{task.error}</p>}
     {task.approval && <ApprovalCard approval={task.approval} busy={busy.startsWith('decide:')} onDecide={onDecide}/>}
+    <PipelineDetails task={task}/>
     {active && <div className="code-actions"><button type="button" className="btn btn-secondary" onClick={onCancel} disabled={!!busy}>{t('code.task.cancel')}</button></div>}
     {task.plan && <section className="code-plan" role="region" aria-label={t('code.task.plan.region')} tabIndex={0}>
       <h4>{t('code.task.plan.heading')}</h4>
@@ -376,7 +379,7 @@ export function ApprovalCard({ approval, busy, onDecide }: {
 }): JSX.Element {
   const t = useT();
   if (approval.action === 'review_change') return <ReviewCard approval={approval} busy={busy} onDecide={onDecide}/>;
-  const standing = approval.action !== 'delete' && approval.action !== 'git_push';
+  const standing = approval.action !== 'delete' && approval.action !== 'git_push' && approval.action !== 'approve_plan';
   // Bound here, at the render that drew this card, so every click on it carries the id
   // of the approval actually on screen rather than whatever `approval` resolves to later.
   const approvalId = approval.id;
@@ -392,7 +395,7 @@ export function ApprovalCard({ approval, busy, onDecide }: {
       <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => onDecide('deny', approvalId)}>{t('code.approval.decline')}</button>
       {standing && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => onDecide('approve_all', approvalId)}>{t('code.approval.allowTask')}</button>}
     </div>
-    {!standing && <p className="code-note">{t('code.approval.askedAlways')}</p>}
+    {!standing && approval.action !== 'approve_plan' && <p className="code-note">{t('code.approval.askedAlways')}</p>}
   </div>;
 }
 
@@ -428,13 +431,15 @@ function ReviewCard({ approval, busy, onDecide }: {
   return <div className="code-approval code-review" role="group" aria-label={t('code.review.group')}>
     <p className="code-approval-title"><ShellIcon name="security" size={16}/>{actionLabel(t, 'review_change')}</p>
     {approval.review && <ReviewVerdict review={approval.review}/>}
+    <AcceptSummary approval={approval}/>
     {approval.reason && <p className="code-note">{approval.reason}</p>}
     {approval.arguments !== null && approval.arguments !== undefined &&
       <pre className="code-approval-args" aria-label={t('code.review.changeToAccept')}>{JSON.stringify(approval.arguments, null, 2)}</pre>}
     <div className="code-approval-actions">
-      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onDecide('approve', approvalId)}>{t('code.review.accept')}</button>
+      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onDecide('approve', approvalId)}>{acceptLabel(t, approval)}</button>
       <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => onDecide('deny', approvalId)}>{t('code.approval.decline')}</button>
     </div>
+    <AcceptNote approval={approval}/>
     <p className="code-note">{t('code.review.advice')}</p>
   </div>;
 }
