@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 6d7ae96 — 2026-10-01 (web: Security hint hidden when the account can't connect)
+
+### Services
+
+- **Web:** [#736](https://github.com/sbstndalton/noevia/pull/736) (closes [#735](https://github.com/sbstndalton/noevia/issues/735): the Security "Connect a device" hint is hidden when the account can't connect, and the ineligible text is reworded). Now `cowork-web:6d7ae96` (previous `cowork-web:448531e`), recreated alone; `readlink current` is `releases/6d7ae96`, `COWORK_VERSION=6d7ae96`.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. Laya, llama, embed, kiwix and the dav-tailscale relay were not touched.
+
+Exact source `6d7ae96` (CI green on PR #736). Built with `deploy/tools/build-web-release.sh` (stamp check passed). Backups: `config/.env.bak.before-6d7ae96`, `docker-compose.override.yml.bak.before-6d7ae96` and `docker-compose.yml.bak.before-6d7ae96` in the Compose Manager project directory. Started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web`.
+
+- **Verify:** web healthy, `RestartCount` 0, `dist/version.json` is `6d7ae96`. The 11 other cowork containers kept ID, StartedAt and restart count (before/after lists in `state/nonweb.{before,after}-6d7ae96.txt`, identical). `https://noevia.daserver.work/` returned 200 and `/api/profile` 401. The served `index-l3TWrmjh.js` and `index-Dd9SpLmJ.css` exist in the container's `dist/assets`, and the JS contains "only works when your Diary is turned on". Web still listens on 127.0.0.1:8021 and 127.0.0.1:8031. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/448531e /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-6d7ae96 /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:448531e` image is retained.
+
 ## Release 448531e — 2026-10-01 (web: Connect a device)
 
 ### Services
