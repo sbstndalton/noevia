@@ -2353,3 +2353,11 @@ select.glass-reactive[data-glass-active], input.glass-reactive[data-glass-active
    inside it. A real phone (data-device is not "desktop") has the column as its window: fixed is right. */
 :root[data-layout="mobile"][data-device="desktop"] .sidebar:not(.coding-sidebar).is-expanded { position: absolute; width: min(100%, 420px); height: auto; }
 :root[data-layout="mobile"][data-device="desktop"] .nav-drawer-backdrop { position: absolute; }
+
+/* #733 Connect a device: one panel for sharing + app password + address. Enter motion matches the other popovers. */
+.connect-device { margin-block:12px; padding:var(--space-4,16px); background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-card); --enter-from:translateY(-3px); animation:motion-enter var(--motion-quick) var(--ease-quick) both; outline:none; }
+.connect-device-row { display:flex; align-items:flex-end; gap:8px; }
+.connect-device-row > label { flex:1; min-width:0; }
+.connect-device-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.connect-device-hints { padding-inline-start:20px; }
+@media (prefers-reduced-motion: reduce) { .connect-device { animation:none; } }

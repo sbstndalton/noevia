@@ -52,6 +52,13 @@ remain rejected. Never route to the sidecar or mount its corpus into the web ima
 
 ## User setup
 
+Easiest: in Settings → Diary & storage choose **Connect a device**, name the device
+and confirm. noevia turns sharing on at the operator's configured scope if it is off
+(a LAN user still acknowledges the plain-HTTP warning), creates an app password of
+that same scope, and shows the address, your username and the password once, with
+copy buttons and short Finder / Windows / Files-app hints. Lost devices are revoked
+in Security and login, which links back to this flow. The manual steps follow.
+
 In Settings → Diary & storage, choose the configured sharing scope and save.
 Off is always available. Copy the displayed URL. In Profile & security, generate
 a device app password of the **same scope** and save it once. Use your noevia
