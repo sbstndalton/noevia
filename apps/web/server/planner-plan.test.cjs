@@ -169,7 +169,11 @@ test('a throwing flag reader is off', async () => {
 });
 
 test('the deadline and the caller signal end the plan', async () => {
-  const hang = (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(Error('aborted'), { name: 'AbortError' }))));
+  // Like a real request, the pending fetch holds the event loop open (the deadline timer is unref'd).
+  const hang = (url, init) => new Promise((_, reject) => {
+    const socket = setTimeout(() => {}, 10_000);
+    init.signal.addEventListener('abort', () => { clearTimeout(socket); reject(Object.assign(Error('aborted'), { name: 'AbortError' })); });
+  });
   const p = createPlannerPlan({ engine: () => ({ baseUrl: 'http://engine.invalid/v1', provider: capable }), fetch: hang, deadlineMs: 20 });
   assert.equal((await p.generate({ state })).code, 'timeout');
   const controller = new AbortController();
