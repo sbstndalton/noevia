@@ -19,7 +19,7 @@ notes follow as before. Entries before release 7b6942c keep their original free-
 
 Exact source `c526350` (PR CI green). Backups: `config/.env.bak.before-c526350`, `tools/sidecar-restart-alert.sh.bak.before-c526350`. Started alone with the guarded `up.sh --profile code -- -d --no-build --no-deps --wait code-verify`.
 
-- **Verify:** `code-verify` came up healthy and its startup log has no `EACCES` line. A probe from web (`reachability-probe`, valid nonce) got `not_configured` with the nonce echoed, and the container restarted. Two earlier malformed probes (wrong request shape) were refused and also restarted it, so `RestartCount` went 0 → 4 over three probes plus one more after `--ack`.
+- **Verify:** `code-verify` came up healthy and its startup log has no `EACCES` line. A probe from web (`reachability-probe`, valid nonce) got `not_configured` with the nonce echoed, and the container restarted. Two earlier malformed probes (wrong request shape) were refused and also restarted it, so `RestartCount` went 0 → 4 over four probes (two malformed, two valid, the last one after `--ack`).
 - **Restart alert:** after `--ack` and the last probe, a `--dry-run` and a real run were both silent.
 - **Snapshot:** 46 containers before and after; the only difference is code-verify (`671bdab4c6c7` → `c54a91c132bd`, new image). All others keep ID, StartedAt and restart count, including the `sg716-*` evaluation containers and `cowork-llama-1`. No model run, tune or Diary access.
 
