@@ -382,26 +382,29 @@ const codeService = require('./code-service.cjs').createCodeService({
   sharedContext: (workspace, project) => require('./shared-context.cjs').forCode(project, loadChats(project.id)),
   // Planner review (#519, code-review.cjs): off unless features.plannerReview. Advice on a final card
   // the person still answers; it runs on the default provider as the web container reaches it, and
-  // refuses an external one.
-  review: require('./code-review.cjs').createPlannerReview({
-    enabled: () => features.enabled('plannerReview'),
-    log: (entry) => console.log('[code]', JSON.stringify(entry)),
-    provider: require('./code-review.cjs').createEngineReviewer({
-      fetch: (...args) => globalThis.fetch(...args),
-      log: (entry) => console.log('[code]', JSON.stringify(entry)),
-      engine: () => {
-        const provider = getProvider(DEFAULT_PROVIDER_ID);
-        const base = String(provider?.baseUrl || '').replace(/\/+$/, '');
-        return {
-          baseUrl: base ? (/\/v1$/.test(base) ? base : `${base}/v1`) : null,
-          apiKey: provider?.apiKey || null,
-          model: autoRoles()?.code || autoRoles()?.smart || lastLoadedModel() || null,
-          external: require('./provider-egress.cjs').isExternalProvider(provider),
-          provider,
-        };
-      },
-    }),
-  }),
+  // refuses an external one. With the flag on it runs through the role engine (#702, role-engine.cjs):
+  // the task's model is pinned, the call streams under the Laya guard, and a different resident
+  // model refuses the review rather than swapping (models-max 1).
+  review: (() => {
+    const reviewEngine = () => {
+      const provider = getProvider(DEFAULT_PROVIDER_ID);
+      const base = String(provider?.baseUrl || '').replace(/\/+$/, '');
+      return {
+        baseUrl: base ? (/\/v1$/.test(base) ? base : `${base}/v1`) : null,
+        apiKey: provider?.apiKey || null,
+        model: autoRoles()?.code || autoRoles()?.smart || lastLoadedModel() || null,
+        external: require('./provider-egress.cjs').isExternalProvider(provider),
+        provider,
+      };
+    };
+    const log = (entry) => console.log('[code]', JSON.stringify(entry));
+    return require('./code-review.cjs').createPlannerReview({
+      enabled: () => features.enabled('plannerReview'),
+      log,
+      provider: require('./code-review.cjs').createEngineReviewer({ fetch: (...args) => globalThis.fetch(...args), log, engine: reviewEngine }),
+      roleEngine: require('./role-engine.cjs').createRoleEngine({ fetch: (...args) => globalThis.fetch(...args), log, engine: reviewEngine }),
+    });
+  })(),
 });
 const codeRoutes = require('./routes/code.cjs').createCodeRoutes({
   features, getProject, projects: () => PROJECTS.filter((project) => !diaryExtras.internalProject(project)), workspace: () => currentWorkspace(), json, readJson, service: codeService,
