@@ -507,7 +507,7 @@ export const PT_BR: Catalogue = {
   'sharing.public': "HTTPS público",
   'sharing.staysOff': "O compartilhamento continua desativado.",
   'sharing.reason.notConfigured': "O operador não configurou um ponto de acesso para o compartilhamento de arquivos.",
-  'sharing.ineligible': "Esses arquivos do diário já estão no seu próprio armazenamento de arquivos, então abra-os nos seus dispositivos com o aplicativo ou a conexão desse armazenamento. O compartilhamento de arquivos do noevia só se aplica quando o Diário fica armazenado no servidor do noevia.",
+  'sharing.ineligible': "O compartilhamento de arquivos só funciona quando o Diário está ativado e armazenado no servidor do noevia. Se o seu Diário fica no seu próprio armazenamento de arquivos, abra os arquivos nos seus dispositivos com o aplicativo desse armazenamento.",
   'sharing.access': "Acesso",
   'sharing.accessLabel': "Acesso ao compartilhamento do Diário",
   'sharing.network': "Esta rede (controlada pelo operador)",

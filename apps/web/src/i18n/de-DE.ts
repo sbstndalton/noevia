@@ -507,7 +507,7 @@ export const DE_DE: Catalogue = {
   'sharing.public': "Öffentliches HTTPS",
   'sharing.staysOff': "Die Freigabe bleibt aus.",
   'sharing.reason.notConfigured': "Der Betreiber hat keinen Endpunkt für die Dateifreigabe eingerichtet.",
-  'sharing.ineligible': "Diese Tagebuchdateien liegen bereits in deinem eigenen Dateispeicher. Öffne sie auf deinen Geräten mit der App oder Verbindung dieses Speichers. Die Dateifreigabe von noevia gilt nur, wenn das Tagebuch auf dem noevia-Server gespeichert ist.",
+  'sharing.ineligible': "Die Dateifreigabe funktioniert nur, wenn dein Tagebuch aktiviert und auf dem noevia-Server gespeichert ist. Liegt dein Tagebuch in deinem eigenen Dateispeicher, öffne die Dateien stattdessen auf deinen Geräten mit der App dieses Speichers.",
   'sharing.access': "Zugriff",
   'sharing.accessLabel': "Zugriff auf die Tagebuchfreigabe",
   'sharing.network': "Dieses Netzwerk (vom Betreiber gesteuert)",

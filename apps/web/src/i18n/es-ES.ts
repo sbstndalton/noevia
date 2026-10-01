@@ -507,7 +507,7 @@ export const ES_ES: Catalogue = {
   'sharing.public': "HTTPS público",
   'sharing.staysOff': "El uso compartido sigue desactivado.",
   'sharing.reason.notConfigured': "El operador no ha configurado un punto de acceso para compartir archivos.",
-  'sharing.ineligible': "Estos archivos del diario ya están en tu propio almacenamiento de archivos, así que ábrelos en tus dispositivos con la aplicación o la conexión de ese almacenamiento. El uso compartido de archivos de noevia solo se aplica cuando el Diario se guarda en el servidor de noevia.",
+  'sharing.ineligible': "El uso compartido de archivos solo funciona cuando tu Diario está activado y guardado en el servidor de noevia. Si tu Diario está en tu propio almacenamiento de archivos, abre los archivos en tus dispositivos con la aplicación de ese almacenamiento.",
   'sharing.access': "Acceso",
   'sharing.accessLabel': "Acceso al uso compartido del Diario",
   'sharing.network': "Esta red (controlada por el operador)",
