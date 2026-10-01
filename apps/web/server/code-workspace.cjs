@@ -528,81 +528,31 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
   }
 
   /**
-   * A read-only checkout of the task's branch at exactly `sha`, for server-measured verification
-   * (#703, code-verify.cjs). The commit is read from the SOURCE repository — never the harness's
-   * tree — and must be the branch's current tip there, so a stale or foreign commit is refused.
+   * What the verifier (#703, services/code-sandbox/verifier.cjs) should copy for this task: the
+   * SOURCE repository and the commit, which must be the task branch's current tip there — never
+   * the harness's own tree. Nothing is created here; the verifier makes its own hash-checked copy
+   * in its own container from the read-only volume.
    *
-   * The checkout is a `git clone --shared --no-checkout` detached at `sha`, beside the task trees
-   * (so the sandbox sees it at the same path), owned by noevia's own user and made read-only:
-   * directories 0555, files 0444 (0555 when executable). It is deliberately NEVER handed to the
-   * harness user — the sandbox supervisor refuses any checkout it can write. The commit's content
-   * is the agent's, so every git call here switches hooks, fsmonitor and attribute files off, and
-   * the read-only walk never follows a symlink (a chmod through one would land outside).
-   *
-   * Returns `{ path, headSha, dispose() }`; `dispose` restores write permission and removes it.
-   * Throws with a `code`: no_workspace, bad_sha, not_verifiable, stale_sha, checkout.
+   * Refused while the workspace is `held` (an agent turn may still be writing the branch) and for
+   * any status but a clean release. Returns `{ source, headSha, branch }`; throws with a `code`:
+   * no_workspace, bad_sha, held, not_verifiable, stale_sha.
    */
   function verifyCheckout(taskId, sha) {
     const record = read(taskId);
     if (!record) throw Object.assign(Error('The task holds no workspace record.'), { code: 'no_workspace' });
     const commit = String(sha || '');
     if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit)) throw Object.assign(Error('Verification needs a full commit id.'), { code: 'bad_sha' });
-    if (record.status !== 'held' && record.status !== 'released') {
+    if (record.status === 'held') throw Object.assign(Error('An agent still holds this workspace; release it before verifying.'), { code: 'held' });
+    if (record.status !== 'released') {
       throw Object.assign(Error(`The workspace is ${record.status}, so its branch is not verified.`), { code: 'not_verifiable' });
     }
-    const tip = branchHead(record);
-    if (tip !== commit) throw Object.assign(Error('That commit is not the current head of the task branch.'), { code: 'stale_sha' });
-    const base = path.join(trees, '.verify');
-    fs.mkdirSync(base, { recursive: true, mode: 0o755 });
-    try { fs.chmodSync(base, 0o755); } catch { /* not ours to fix */ }
-    const dir = path.join(base, `${checkId(taskId)}-${commit.slice(0, 12)}-${now()}`);
-    const dispose = () => { try { makeWritable(dir); } catch { /* removal below reports nothing either */ } try { rm(dir); } catch { /* best effort */ } };
-    try {
-      if (fs.existsSync(dir)) dispose();
-      run([...HOSTILE_OFF, 'clone', '--quiet', '--shared', '--no-checkout', record.repo, dir], undefined, gitEnv());
-      run([...HOSTILE_OFF, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--detach', commit], dir, gitEnv());
-      const at = run([...HOSTILE_OFF, 'rev-parse', 'HEAD'], dir, gitEnv());
-      if (at !== commit) throw Error('the checkout did not land on the requested commit');
-      makeReadOnly(dir);
-    } catch (e) {
-      dispose();
-      throw Object.assign(Error(`Could not prepare the verification checkout: ${String(e.message).split('\n')[0].slice(0, 200)}`), { code: 'checkout' });
-    }
-    return { path: fs.realpathSync(dir), headSha: commit, dispose };
+    if (branchHead(record) !== commit) throw Object.assign(Error('That commit is not the current head of the task branch.'), { code: 'stale_sha' });
+    return { source: record.repo, headSha: commit, branch: record.branch };
   }
 
   // `owner` is public so anything else noevia writes into a workspace (the harness's own
   // config file) can be handed over the same way the worktree is.
   return { claim, release, recover, contains, headSha, change, verifyCheckout, get: read, list, root, owner, BRANCH_PREFIX };
-}
-
-/** Walk a tree without following symlinks, directories after their contents. */
-function walkNoFollow(target, visit) {
-  let st; try { st = fs.lstatSync(target); } catch { return; }
-  if (st.isSymbolicLink()) return;
-  if (st.isDirectory()) {
-    for (const name of fs.readdirSync(target)) walkNoFollow(path.join(target, name), visit);
-  }
-  visit(target, st);
-}
-
-/** Absolute modes, so a restrictive umask cannot leave the sandbox user unable to read. */
-function makeReadOnly(target) {
-  walkNoFollow(target, (entry, st) => {
-    if (st.isDirectory()) fs.chmodSync(entry, 0o555);
-    else if (st.isFile()) fs.chmodSync(entry, (st.mode & 0o111) ? 0o555 : 0o444);
-  });
-}
-
-function makeWritable(target) {
-  // Top-down: a 0555 directory must be opened up before its children can be changed or removed.
-  const open = (entry) => {
-    let st; try { st = fs.lstatSync(entry); } catch { return; }
-    if (st.isSymbolicLink() || !st.isDirectory()) return;
-    fs.chmodSync(entry, 0o755);
-    for (const name of fs.readdirSync(entry)) open(path.join(entry, name));
-  };
-  open(target);
 }
 
 /** Recursive chown, so the harness owns the tree and git's own files inside it. */
@@ -616,4 +566,4 @@ function defaultChown(target, uid, gid) {
   walk(target);
 }
 
-module.exports = { createCodeWorkspaces, defaultChown, makeReadOnly, BRANCH_PREFIX };
+module.exports = { createCodeWorkspaces, defaultChown, BRANCH_PREFIX };

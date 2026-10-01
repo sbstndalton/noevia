@@ -29,39 +29,41 @@ environment variable would imply otherwise. `deploy/examples/code-sandbox.overri
 control: read-only root, `cap_drop: ALL`, no-new-privileges, uid 1000, tmpfs `/tmp` and `$HOME`,
 bounded memory and pids, one volume, no `ports:`.
 
-## Verify mode (#703)
+## The verifier (#703)
 
-The pipeline's "do the tests pass?" is answered here, not by the agent. A connection whose first
-line is `{"noevia":"verify","repo":<name>,"cwd":<checkout>,"headSha":<sha>}` runs the command the
-**operator** set for that repository and answers with one line,
-`{"noevia":"verify-result","ok":true,"exitCode",...,"tail","tailBytes","totalBytes","truncated"}`.
+The pipeline's "do the tests pass?" is answered by `verifier.cjs`, not by the agent and **not in
+this container**. It ships in the same image but runs as its own service, `code-verify` in
+`deploy/examples/code-sandbox.override.yml`. The agent runs here as uid 1000 with a writable
+`/tmp` and `HOME`, so anything it leaves behind could otherwise reach the run that judges it: a
+process that outlived its turn, an `.npmrc` `script-shell`, a `.gitconfig`, a `.pth`, or a swapped
+loose object in a repository it can write.
 
-- **The command comes only from this container's environment:** `CODE_VERIFY=name|command`, one
-  entry per line (names as in web's `CODE_REPOS`). noevia never sends a command, and nothing is
-  read from the repository. Unset, verify mode is off and every request is answered `not_configured`.
-- **The checkout is read-only and exact.** noevia prepares it (`verifyCheckout` in
-  `apps/web/server/code-workspace.cjs`): a shared clone detached at the branch head, owned by
-  noevia's user, 0555/0444. The supervisor refuses a checkout whose `.git/HEAD` is not that commit
-  or that it owns or can write — which includes every task's own clone. (Ownership matters: mode
-  bits are not read-only to their owner, so the checkout must belong to noevia, not uid 1000.)
-- **No way out, bounded:** environment is only `PATH`, a fresh `HOME`/`TMPDIR` under `/tmp`, `LANG`,
-  `CI` and `NO_COLOR` — no proxy variables, so the internal network has no exit. Stdin is closed,
-  core dumps off, CPU limited per process, wall time `CODE_VERIFY_WALL_MS` (default 10 min, never
-  above the agent limit), and the process group is killed when it ends or the connection drops.
-- **Output is data:** a rolling tail of `CODE_VERIFY_TAIL_BYTES` (default 16 KiB, max 256 KiB),
-  returned as a JSON string inside the single result line, so nothing a test prints can forge it.
+- **Its own container:** uid 1002, `network_mode: none` (web reaches it over a unix socket on a
+  volume only web and the verifier mount), its own tmpfs `/tmp` and `HOME`, the workspaces volume
+  mounted **read-only**, read-only root, `cap_drop: ALL`, no-new-privileges, pids/memory/CPU
+  limits. The agent sandbox has no verify mode at all.
+- **The command is the operator's:** `CODE_VERIFY=name|command` (one per line, names as in web's
+  `CODE_REPOS`), set only on `code-verify`. noevia sends a repository name, the source path and a
+  commit, never a command, and nothing in the repository decides what runs. Unset means
+  verification is off.
+- **A verified copy:** `git clone --no-local` from the read-only source into the run's tmpfs. The
+  pack protocol makes index-pack recompute every object id, and `git fsck` runs on the copy. HEAD
+  and its tree must equal the requested commit. A source whose `.git/config` names anything git
+  would run (hooks path, fsmonitor, filters, includes, upload-pack settings …) is refused. noevia
+  itself only asks for the current tip of a **released** branch, never one an agent still holds.
+- **The run:** fixed environment (`PATH`, `LANG`, `CI`, `NO_COLOR`, and a fresh `HOME`/`TMPDIR` in
+  the run's own scratch directory; no proxy variables). Stdin closed, no core dumps, CPU limit per
+  process, `CODE_VERIFY_WALL_MS` (default 10 min, covering the copy and the run), one run at a
+  time, and the process group is killed at the end or when noevia hangs up.
+- **Output is data:** a rolling tail of `CODE_VERIFY_TAIL_BYTES` (default 16 KiB) inside one JSON
+  result line. Run directories are removed after each run and leftovers are swept at start;
+  removal failures are logged.
 
-Tests that need to write must use `$TMPDIR`; the repository must run without installing
-dependencies (there is no network). A command such as
-`cp -R . "$TMPDIR/w" && cd "$TMPDIR/w" && node --test` works for a tree that writes into itself.
+Tests that write must use `$TMPDIR` (the copy is read-only), and with no network the repository
+must run without installing dependencies.
 
-**Shipping it needs a code-sandbox image release** — the web change alone does nothing. Following
-the per-service procedure in `docs/deployment.md`: build `services/code-sandbox` from the release
-source with the same harness build arguments as the running image (pi 0.87.0 today), tag it
-`cowork-code-sandbox:pi-0.87.0-<sha>`, back up `.env`, bump `CODE_SANDBOX_VERSION`, add the
-`CODE_VERIFY` / `CODE_VERIFY_WALL_MS` lines from the example override to the live override and
-`.env`, then recreate only the sandbox with the guarded `up.sh … --profile code -- -d --no-build
---no-deps code-sandbox`. Recreating it ends any running Code task. Rollback is the previous tag.
+**Shipping it** needs a code-sandbox image release (new `verifier.cjs`, socket directory) **and**
+the new `code-verify` container. See `docs/deployment.md` under Code mode.
 
 ## Why not the Docker socket
 

@@ -3,22 +3,26 @@
 //
 // The pipeline (#705) asks one question after the Executor's work is on the branch: do the
 // operator's tests pass at exactly this commit? This module answers it without believing anything
-// the agent said. The checkout is prepared by noevia (code-workspace.cjs `verifyCheckout`: a
-// read-only clone detached at the branch's current tip in the SOURCE repository), and the command
-// is run by the sandbox supervisor in its `verify` mode with the command the OPERATOR configured
-// there (`CODE_VERIFY=name|command` in the code-sandbox container). noevia sends a repository
-// name, a path and a commit id — never a command — and gets back an exit status and a bounded
-// tail of output.
+// the agent said. code-workspace.cjs `verifyCheckout` names the SOURCE repository and checks the
+// commit is the released branch's tip; the verifier (services/code-sandbox/verifier.cjs) runs in
+// its OWN container — another uid, no network, the workspaces volume read-only — makes a
+// hash-checked copy of that commit and runs the command the OPERATOR configured there
+// (`CODE_VERIFY=name|command`). noevia sends a repository name, a source path and a commit id —
+// never a command — over `CODE_VERIFY_ENDPOINT` (`unix:/path` in production) and gets back an
+// exit status and a bounded tail of output. It never uses the agent sandbox's endpoint.
 //
 // Trust rules:
 //   * The only test report the pipeline may accept is the object `run()` returns. Those objects are
-//     frozen and remembered in a module-private WeakSet; `isMeasured(report)` is the check. A report
-//     read back from a job journal, an artifact, a file in the repository or anything the agent
-//     emitted is a different object and is never measured — even if every field matches.
+//     frozen and remembered in a module-private WeakSet; `isMeasured(report, { taskId, headSha,
+//     revision })` is the check, and it also binds the report to that task, commit and revision.
+//     A report read back from a job journal, an artifact, a file in the repository or anything the
+//     agent emitted is a different object and is never measured — even if every field matches.
+//     The pipeline must still re-check, at merge time, that the branch head is the measured
+//     `headSha` (the merge itself is #705's job).
 //   * `passed` is computed here from the measured exit status: exit 0, no signal, no timeout.
 //   * The output tail is untrusted data: re-capped here in bytes, stripped of control characters
 //     other than newline and tab, and never parsed for a verdict.
-//   * The supervisor's answer is read as ONE line of at most MAX_ANSWER_BYTES. Its commit id must
+//   * The verifier’s answer is read as ONE line of at most MAX_ANSWER_BYTES. Its commit id must
 //     equal the one asked for.
 //
 // Events: `step.started` / `step.completed` with id `tests`, and an `artifact.created` with
@@ -32,7 +36,7 @@ const DEFAULT_TAIL_BYTES = 16 * 1024;
 const MAX_TAIL_BYTES = 256 * 1024;
 // JSON escaping can expand a byte to six characters; the line is bounded well above that.
 const MAX_ANSWER_BYTES = 2 * 1024 * 1024;
-// Longer than the supervisor's own default wall limit (10 min) so its answer normally arrives first.
+// Longer than the verifier's own default wall limit (10 min) so its answer normally arrives first.
 const DEFAULT_TIMEOUT_MS = 12 * 60 * 1000;
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const REPO_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -54,32 +58,48 @@ function cleanTail(text, cap) {
   return tailUtf8(String(text || '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, ''), cap);
 }
 
-/** True only for a report this module produced in this process. */
-function isMeasured(report) {
-  return !!report && typeof report === 'object' && measured.has(report);
+/**
+ * True only for a report this module produced in this process, for exactly this task, commit and
+ * revision. All three are required: a measurement of another task or an older revision is not one.
+ */
+function isMeasured(report, expected) {
+  if (!report || typeof report !== 'object' || !measured.has(report)) return false;
+  if (!expected || typeof expected !== 'object') return false;
+  return report.taskId === expected.taskId && report.headSha === expected.headSha && report.revision === expected.revision;
+}
+
+/** `unix:/path` or `host:port`. */
+function connectTo(endpoint, connectFn) {
+  const text = String(endpoint);
+  if (text.startsWith('unix:')) {
+    const socketPath = text.slice(5);
+    if (!socketPath.startsWith('/')) throw Error(`CODE_VERIFY_ENDPOINT should be unix:/absolute/path or host:port, not "${text}"`);
+    return connectFn({ path: socketPath });
+  }
+  const [host, port] = splitEndpoint(text);
+  return connectFn(port, host);
 }
 
 /**
- * Ask the supervisor to verify. Resolves with the parsed answer object or rejects with a reason.
+ * Ask the verifier to verify. Resolves with the parsed answer object or rejects with a reason.
  * `connectFn(port, host)` is `net.connect` in production.
  */
-function askSupervisor({ endpoint, connectFn, request, timeoutMs, signal }) {
+function askVerifier({ endpoint, connectFn, request, timeoutMs, signal }) {
   return new Promise((resolve, reject) => {
-    let host, port;
-    try { [host, port] = splitEndpoint(endpoint); } catch (e) { reject(Object.assign(Error(e.message), { code: 'config' })); return; }
+    let socket;
+    try { socket = connectTo(endpoint, connectFn); } catch (e) { reject(Object.assign(Error(e.message), { code: 'config' })); return; }
     let settled = false, received = '', bytes = 0;
-    const socket = connectFn(port, host);
     const done = (error, value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       signal?.removeEventListener?.('abort', onAbort);
-      // Hanging up is what stops the run in the sandbox, so this is also the cancel path.
+      // Hanging up is what stops the run in the verifier, so this is also the cancel path.
       try { socket.destroy(); } catch { /* already gone */ }
       if (error) reject(error); else resolve(value);
     };
     const onAbort = () => done(Object.assign(Error('Verification was cancelled.'), { code: 'cancelled' }));
-    const timer = setTimeout(() => done(Object.assign(Error('The sandbox did not answer in time.'), { code: 'timeout' })), timeoutMs);
+    const timer = setTimeout(() => done(Object.assign(Error('The verifier did not answer in time.'), { code: 'timeout' })), timeoutMs);
     timer.unref?.();
     if (signal?.aborted) { onAbort(); return; }
     signal?.addEventListener?.('abort', onAbort, { once: true });
@@ -88,17 +108,17 @@ function askSupervisor({ endpoint, connectFn, request, timeoutMs, signal }) {
     socket.on('data', (chunk) => {
       if (settled) return;
       bytes += Buffer.byteLength(chunk);
-      if (bytes > MAX_ANSWER_BYTES) return done(Object.assign(Error('The sandbox answer was too large.'), { code: 'bad_answer' }));
+      if (bytes > MAX_ANSWER_BYTES) return done(Object.assign(Error('The verifier’s answer was too large.'), { code: 'bad_answer' }));
       received += chunk;
       const end = received.indexOf('\n');
       if (end === -1) return;
       let answer;
       try { answer = JSON.parse(received.slice(0, end)); }
-      catch { return done(Object.assign(Error('The sandbox answer was not readable.'), { code: 'bad_answer' })); }
+      catch { return done(Object.assign(Error('The verifier’s answer was not readable.'), { code: 'bad_answer' })); }
       done(null, answer);
     });
-    socket.on('error', (error) => done(Object.assign(Error(`The coding sandbox is unreachable (${error.message}).`), { code: 'unreachable' })));
-    socket.on('close', () => done(Object.assign(Error('The coding sandbox closed the connection without an answer.'), { code: 'unreachable' })));
+    socket.on('error', (error) => done(Object.assign(Error(`The verifier is unreachable (${error.message}).`), { code: 'unreachable' })));
+    socket.on('close', () => done(Object.assign(Error('The verifier closed the connection without an answer.'), { code: 'unreachable' })));
   });
 }
 
@@ -106,10 +126,11 @@ function askSupervisor({ endpoint, connectFn, request, timeoutMs, signal }) {
  * @param {{endpoint?: string|null, connectFn?: Function, timeoutMs?: number, tailBytes?: number,
  *          log?: (entry: object) => void, now?: () => number}} [deps]
  *
- * `endpoint` is the sandbox (`CODE_HARNESS_ENDPOINT`). Without one there is nowhere isolated to run
- * tests, so verification is unavailable — it is never run beside noevia's own state.
+ * `endpoint` is the verifier container (`CODE_VERIFY_ENDPOINT`, e.g. `unix:/run/noevia-verify/verify.sock`).
+ * Without one there is nowhere isolated to run tests, so verification is unavailable — it is never
+ * run beside noevia's own state, nor in the agent's sandbox.
  */
-function createCodeVerify({ endpoint = process.env.CODE_HARNESS_ENDPOINT || null, connectFn = net.connect,
+function createCodeVerify({ endpoint = process.env.CODE_VERIFY_ENDPOINT || null, connectFn = net.connect,
   timeoutMs = DEFAULT_TIMEOUT_MS, tailBytes = DEFAULT_TAIL_BYTES, log = () => {}, now = Date.now } = {}) {
   const cap = Math.min(Math.max(1024, Math.floor(Number(tailBytes) || DEFAULT_TAIL_BYTES)), MAX_TAIL_BYTES);
 
@@ -129,32 +150,30 @@ function createCodeVerify({ endpoint = process.env.CODE_HARNESS_ENDPOINT || null
       emit('step.completed', { id: STEP_ID, failed: true, reason: message });
       return { status, report: null, error: { code, message } };
     };
-    if (!endpoint) return stop('unavailable', 'no_sandbox', 'Verification needs the coding sandbox (CODE_HARNESS_ENDPOINT).');
+    if (!endpoint) return stop('unavailable', 'no_verifier', 'Verification needs the verifier container (CODE_VERIFY_ENDPOINT).');
     if (!REPO_NAME.test(String(repo || ''))) return stop('error', 'bad_request', 'Verification needs the repository name.');
     if (!COMMIT.test(String(headSha || ''))) return stop('error', 'bad_sha', 'Verification needs a full commit id.');
     if (!Number.isInteger(revision) || revision < 0) return stop('error', 'bad_request', 'Verification needs the revision number.');
 
-    let checkout;
-    try { checkout = workspaces.verifyCheckout(taskId, headSha); }
-    catch (e) { return stop('error', e.code || 'checkout', e.message || 'Could not prepare the verification checkout.'); }
+    let target;
+    try { target = workspaces.verifyCheckout(taskId, headSha); }
+    catch (e) { return stop('error', e.code || 'checkout', e.message || 'Could not name the commit to verify.'); }
 
     let answer;
     try {
-      answer = await askSupervisor({ endpoint, connectFn, timeoutMs, signal,
-        request: { noevia: 'verify', repo, cwd: checkout.path, headSha } });
+      answer = await askVerifier({ endpoint, connectFn, timeoutMs, signal,
+        request: { noevia: 'verify', repo, source: target.source, headSha } });
     } catch (e) {
       return stop('error', e.code || 'unreachable', e.message);
-    } finally {
-      try { checkout.dispose(); } catch { /* best effort */ }
     }
 
-    if (!answer || answer.noevia !== 'verify-result') return stop('error', 'bad_answer', 'The sandbox answer was not a verification result.');
+    if (!answer || answer.noevia !== 'verify-result') return stop('error', 'bad_answer', 'The verifier’s answer was not a verification result.');
     if (answer.ok !== true) {
       const code = typeof answer.error === 'string' ? answer.error.slice(0, 40) : 'refused';
-      const message = typeof answer.message === 'string' ? cleanTail(answer.message, 500) : 'The sandbox refused the verification.';
+      const message = typeof answer.message === 'string' ? cleanTail(answer.message, 500) : 'The verifier refused the verification.';
       return stop(code === 'not_configured' ? 'unavailable' : 'error', code, message);
     }
-    if (answer.headSha !== headSha) return stop('error', 'bad_answer', 'The sandbox answered for a different commit.');
+    if (answer.headSha !== headSha) return stop('error', 'bad_answer', 'The verifier’s answered for a different commit.');
     const exitCode = Number.isInteger(answer.exitCode) ? answer.exitCode : null;
     const signalName = typeof answer.signal === 'string' && /^SIG[A-Z0-9]{1,10}$/.test(answer.signal) ? answer.signal : null;
     const timedOut = answer.timedOut === true;
@@ -170,11 +189,12 @@ function createCodeVerify({ endpoint = process.env.CODE_HARNESS_ENDPOINT || null
       tailBytes: Buffer.byteLength(tail),
       totalBytes,
       truncated: answer.truncated === true || (totalBytes !== null && totalBytes > Buffer.byteLength(tail)),
+      taskId,
       headSha,
       revision,
       repo,
       durationMs: Math.max(0, now() - started),
-      measuredBy: 'sandbox',
+      measuredBy: 'verifier',
     });
     measured.add(report);
     log({ event: 'code.verify', taskId, revision, status: report.passed ? 'passed' : 'failed', exitCode, timedOut });
@@ -186,4 +206,4 @@ function createCodeVerify({ endpoint = process.env.CODE_HARNESS_ENDPOINT || null
   return { available: () => !!endpoint, run, isMeasured };
 }
 
-module.exports = { createCodeVerify, isMeasured, cleanTail, tailUtf8, STEP_ID, DEFAULT_TAIL_BYTES, MAX_ANSWER_BYTES };
+module.exports = { createCodeVerify, isMeasured, cleanTail, tailUtf8, connectTo, STEP_ID, DEFAULT_TAIL_BYTES, MAX_ANSWER_BYTES };

@@ -24,7 +24,11 @@ WORKDIR /srv
 # pi-acp-bridge.cjs: noevia's own ACP bridge for pi (routes pi's approvals to noevia). Used only
 # when the image installs pi (HARNESS_PACKAGE=@earendil-works/pi-coding-agent) and runs with
 # CODE_HARNESS_COMMAND=node CODE_HARNESS_ARGS=/srv/pi-acp-bridge.cjs and CODE_HARNESS_NAME=pi on web.
-COPY supervisor.cjs pi-acp-bridge.cjs ./
+# verifier.cjs: the server-measured test runner (#703). Runs ONLY in the separate `code-verify`
+# container (uid 1002, no network, workspaces read-only); never started in the agent sandbox.
+COPY supervisor.cjs pi-acp-bridge.cjs verifier.cjs ./
+# The verifier's socket directory, owned by its uid so a fresh named volume inherits that owner.
+RUN mkdir -p /run/noevia-verify && chown 1002:1002 /run/noevia-verify && chmod 0750 /run/noevia-verify
 
 # `node` (uid 1000) already exists in this image. Nothing here runs as root.
 USER node
