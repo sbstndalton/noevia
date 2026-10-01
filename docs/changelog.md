@@ -8,6 +8,23 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release c526350 — 2026-10-01 (code-sandbox image for code-verify, restart-alert tool)
+
+### Services
+
+- **Code verify:** [#726](https://github.com/sbstndalton/noevia/pull/726) (the startup sweep lists `/verify/run` through the test uid, so the `EACCES` line is gone). Only `cowork-code-verify-1` was recreated, on image `cowork-code-sandbox:pi-0.87.0-c526350` (`sha256:7d62a3b8efbac76c43f52b5aa0135d7ec64b112d5086f4c080b45931e5808820`), built from `services/code-sandbox` with the pi 0.87.0 build args and `--network host`. The image's `verifier.cjs` matches the c526350 source, and the global npm tree and git 2.39.5 are unchanged.
+- **Code sandbox:** not recreated and still running `pi-0.87.0-3c7e527` (`bd58b3d5e66f`). `.env` `CODE_SANDBOX_VERSION` is now `pi-0.87.0-c526350`, so the next sandbox recreate picks up the new image; the only code change since 3c7e527 is `verifier.cjs`.
+- **Tooling:** `/mnt/docker/appdata/cowork/tools/sidecar-restart-alert.sh` replaced by the c526350 version (SHA-256 prefix `e1b23472c9ad1e45`). One-shot services (default `code-verify`) no longer alert for same-container, same-image, exit-0 restarts. The cron entry is unchanged.
+- **Web, model-loader, Diary, Docling, Laya, OCR, llama, embed:** no change.
+
+Exact source `c526350` (PR CI green). Backups: `config/.env.bak.before-c526350`, `tools/sidecar-restart-alert.sh.bak.before-c526350`. Started alone with the guarded `up.sh --profile code -- -d --no-build --no-deps --wait code-verify`.
+
+- **Verify:** `code-verify` came up healthy and its startup log has no `EACCES` line. A probe from web (`reachability-probe`, valid nonce) got `not_configured` with the nonce echoed, and the container restarted. Two earlier malformed probes (wrong request shape) were refused and also restarted it, so `RestartCount` went 0 → 4 over three probes plus one more after `--ack`.
+- **Restart alert:** after `--ack` and the last probe, a `--dry-run` and a real run were both silent.
+- **Snapshot:** 46 containers before and after; the only difference is code-verify (`671bdab4c6c7` → `c54a91c132bd`, new image). All others keep ID, StartedAt and restart count, including the `sg716-*` evaluation containers and `cowork-llama-1`. No model run, tune or Diary access.
+
+Rollback: `cp -p config/.env.bak.before-c526350 config/.env`, then `bash tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env --profile code -- -d --no-build --no-deps --wait code-verify`; restore the alert script from `tools/sidecar-restart-alert.sh.bak.before-c526350` and run it with `--ack`. The previous image `pi-0.87.0-3c7e527` is retained.
+
 ## Release 3c7e527 — 2026-10-01 (web, model-loader, code-sandbox, new code-verify)
 
 ### Services
