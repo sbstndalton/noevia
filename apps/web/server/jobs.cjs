@@ -65,9 +65,10 @@ function derive(events) {
       case 'job.started': job.status = 'running'; break;
       case 'progress': job.stage = d.stage ?? job.stage; break;
       case 'step.started': job.steps.push({ id: d.id, title: d.title, status: 'running' }); break;
-      // A step id can recur (the pipeline's `tests` step runs once per revision, #705): the
-      // completion closes the latest one still running, and otherwise the first, as it always did.
-      case 'step.completed': { const s = job.steps.findLast((x) => x.id === d.id && x.status === 'running') || job.steps.find((x) => x.id === d.id); if (s) s.status = d.failed ? 'failed' : 'completed'; break; }
+      // In a pipeline journal (#705, authoritative) a step id recurs once per revision (`tests`), so a
+      // completion closes the latest one still running. Every other journal keeps the original rule:
+      // the first step with that id.
+      case 'step.completed': { const s = (authoritative && job.steps.findLast((x) => x.id === d.id && x.status === 'running')) || job.steps.find((x) => x.id === d.id); if (s) s.status = d.failed ? 'failed' : 'completed'; break; }
       case 'approval.requested': job.pendingApproval = d; job.status = 'waiting_approval'; break;
       case 'approval.decided': job.pendingApproval = null; if (!TERMINAL.has(job.status)) job.status = 'running'; break;
       case 'tool.uncertain': job.uncertain.push(d); break;

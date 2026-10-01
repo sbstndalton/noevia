@@ -458,3 +458,15 @@ test('reviewing is judged on the current revision: earlier failures do not block
     assert.deepEqual(jobs.get(id).steps.filter((s) => s.id === 'tests').map((s) => s.status), ['failed', 'completed']);
   }
 });
+
+test('flag off: a non-pipeline journal with a repeated step id derives exactly as before (#705 review)', () => {
+  const { jobs } = store();
+  const id = codeJob(jobs);
+  jobs.append(id, 'step.started', { id: 'harness.config', title: 'Pin' });
+  jobs.append(id, 'step.started', { id: 'harness.config', title: 'Pin again' });
+  jobs.append(id, 'step.completed', { id: 'harness.config' });
+  jobs.append(id, 'step.completed', { id: 'harness.config', failed: true });
+  // The original rule: every completion closes the FIRST step with that id.
+  assert.deepEqual(jobs.get(id).steps.map((s) => s.status), ['failed', 'running']);
+  assert.equal('stages' in jobs.get(id), false);
+});

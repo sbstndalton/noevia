@@ -607,19 +607,24 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
 
   /**
    * Fast-forward the branch the task forked from to the reviewed head (#705, features.codeMerge).
-   * Refuses — never forces, never merges with a commit — unless ALL of these hold at this moment:
+   * Refuses — never forces, never merges with a commit, never touches a working tree — unless ALL
+   * of these hold at this moment:
    *   * the claim is cleanly released (no agent holds the tree);
    *   * the task branch's tip in the source is exactly `headSha`, the head that was verified and
    *     reviewed (a branch that moved since is a different change);
    *   * the base branch's tip is still exactly the task's `baseSha` (a base that moved needs a new
    *     review against what is there now);
-   *   * `baseSha` is an ancestor of `headSha` (a fast-forward exists).
-   * A base branch checked out in the source's own working tree is moved with `merge --ff-only`
-   * only when that tree is clean; one checked out in any other worktree is refused. Otherwise the
-   * ref is moved with a compare-and-swap (`update-ref <new> <old>`), so a concurrent push loses.
-   * Returns `{ ok: true, baseBranch, from, to }` or `{ ok: false, code, reason }`; never throws.
+   *   * `baseSha` is an ancestor of `headSha` (a fast-forward exists);
+   *   * the base branch is checked out in NO worktree, the registered repository's own included.
+   *     Moving a checked-out branch would rewrite files someone is working in — including ignored
+   *     ones a task's commit happens to track — so that case is the owner's to merge by hand.
+   * The ref is moved only with a compare-and-swap (`update-ref <base> <reviewed> <baseSha>`), so a
+   * concurrent push loses. `mergePreflight` runs every check without moving anything.
+   * Returns `{ ok: true, baseBranch, from, to, recordFailed? }` or `{ ok: false, code, reason }`;
+   * never throws. `recordFailed` means the branch DID move but noevia's own record of it did not
+   * save.
    */
-  function mergeVerified(taskId, { headSha: reviewed } = {}) {
+  function mergeChecks(taskId, reviewed) {
     const no = (code, reason) => ({ ok: false, code, reason });
     let record;
     try { record = read(taskId); } catch { return no('invalid', 'Invalid task id.'); }
@@ -630,41 +635,45 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
     const base = record.baseBranch;
     if (typeof base !== 'string' || !BRANCH_NAME_OK(base)) return no('no_base_branch', 'The task did not fork from a named branch, so there is nothing to fast-forward.');
     if (base === record.branch) return no('no_base_branch', 'The task branch is its own base.');
-    const git = (args, cwd = record.repo) => run([...HOSTILE_OFF, ...args], cwd, gitEnv());
+    const git = (args) => run([...HOSTILE_OFF, ...args], record.repo, gitEnv());
     const tip = (ref) => { try { return git(['rev-parse', '--verify', '--quiet', `refs/heads/${ref}^{commit}`]) || null; } catch { return null; } };
-    const head = tip(record.branch);
-    if (head !== reviewed) return no('head_moved', 'The task branch is no longer at the reviewed commit, so it was not merged.');
-    const baseTip = tip(base);
-    if (baseTip !== record.baseSha) return no('base_moved', `${base} has moved since the task forked from it, so the change was not merged. Review it again against the new base.`);
+    if (tip(record.branch) !== reviewed) return no('head_moved', 'The task branch is no longer at the reviewed commit, so it was not merged.');
+    if (tip(base) !== record.baseSha) return no('base_moved', `${base} has moved since the task forked from it, so the change was not merged. Review it again against the new base.`);
     try { git(['merge-base', '--is-ancestor', record.baseSha, reviewed]); }
     catch { return no('not_fast_forward', 'The reviewed head does not build on the base, so it cannot be fast-forwarded.'); }
-    // Where, if anywhere, the base branch is checked out.
-    let checkedOut = [];
+    const checkedOut = [];
     try {
-      const listing = git(['worktree', 'list', '--porcelain']);
       let at = null;
-      for (const line of listing.split('\n')) {
+      for (const line of git(['worktree', 'list', '--porcelain']).split('\n')) {
         if (line.startsWith('worktree ')) at = line.slice(9);
         else if (line === `branch refs/heads/${base}` && at) checkedOut.push(at);
       }
     } catch { return no('unreadable', 'The repository could not say where its branches are checked out.'); }
-    let ownTree = null;
-    try { ownTree = fs.realpathSync(record.repo); } catch { /* compared below */ }
-    const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
-    if (checkedOut.some((p) => real(p) !== ownTree)) return no('checked_out', `${base} is checked out in another worktree, so it was not moved.`);
-    try {
-      if (checkedOut.length) {
-        if (git(['status', '--porcelain', '--untracked-files=no'])) return no('dirty', `${base} is checked out with uncommitted changes, so it was not moved.`);
-        // Re-read immediately before moving: the base must still be where it was judged.
-        if (tip(base) !== record.baseSha) return no('base_moved', `${base} has moved since the task forked from it, so the change was not merged.`);
-        git(['merge', '--ff-only', '--quiet', '--no-edit', reviewed]);
-      } else {
-        git(['update-ref', '-m', `noevia: fast-forward to reviewed task ${record.taskId}`, `refs/heads/${base}`, reviewed, record.baseSha]);
-      }
-    } catch { return no('refused', `git refused to fast-forward ${base}; nothing was merged.`); }
-    if (tip(base) !== reviewed) return no('refused', `${base} did not end at the reviewed commit.`);
-    write({ ...record, merged: { baseBranch: base, from: record.baseSha, to: reviewed, at: now() } });
-    return { ok: true, baseBranch: base, from: record.baseSha, to: reviewed };
+    if (checkedOut.length) {
+      return no('checked_out', `${base} is checked out in ${checkedOut[0]}, so noevia did not move it: that would rewrite files in a working tree. `
+        + `To merge it yourself, run there: git merge --ff-only ${reviewed} (the reviewed commit on ${record.branch}).`);
+    }
+    return { ok: true, record, base, git, tip };
+  }
+
+  function mergePreflight(taskId, { headSha: reviewed } = {}) {
+    const checked = mergeChecks(taskId, reviewed);
+    return checked.ok ? { ok: true, baseBranch: checked.base } : checked;
+  }
+
+  function mergeVerified(taskId, { headSha: reviewed } = {}) {
+    const checked = mergeChecks(taskId, reviewed);
+    if (!checked.ok) return checked;
+    const { record, base, git, tip } = checked;
+    try { git(['update-ref', '-m', `noevia: fast-forward to reviewed task ${record.taskId}`, `refs/heads/${base}`, reviewed, record.baseSha]); }
+    catch { return { ok: false, code: tip(base) === record.baseSha ? 'refused' : 'base_moved', reason: `git refused to fast-forward ${base}; nothing was merged.` }; }
+    if (tip(base) !== reviewed) return { ok: false, code: 'refused', reason: `${base} did not end at the reviewed commit.` };
+    const merged = { ok: true, baseBranch: base, from: record.baseSha, to: reviewed };
+    // The branch has moved: that is the fact. Failing to note it in our own record is reported, not
+    // turned into "not merged".
+    try { write({ ...record, merged: { baseBranch: base, from: record.baseSha, to: reviewed, at: now() } }); }
+    catch { return { ...merged, recordFailed: true }; }
+    return merged;
   }
 
   /**
@@ -699,7 +708,7 @@ function createCodeWorkspaces({ dir, treeRoot = null, owner = null, run = defaul
 
   // `owner` is public so anything else noevia writes into a workspace (the harness's own
   // config file) can be handed over the same way the worktree is.
-  return { claim, reclaim, release, recover, contains, headSha, change, projectSnapshot, mergeVerified, branchTip, verifyCheckout, get: read, list, root, owner, BRANCH_PREFIX };
+  return { claim, reclaim, release, recover, contains, headSha, change, projectSnapshot, mergePreflight, mergeVerified, branchTip, verifyCheckout, get: read, list, root, owner, BRANCH_PREFIX };
 }
 
 /** Recursive chown, so the harness owns the tree and git's own files inside it. */

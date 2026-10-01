@@ -84,26 +84,56 @@ test('projectSnapshot reads the file list and README from the source at the base
   assert.deepEqual(ws.projectSnapshot(ids(8)), { files: [], truncated: false, readme: null });
 });
 
-test('mergeVerified fast-forwards the checked-out base to exactly the reviewed head', () => {
-  const { source, ws, head } = released();
-  const before = git(source, 'rev-parse', 'main');
+test('mergeVerified never moves a base that is checked out: an ignored secret.env the task commits stays untouched', () => {
+  const source = repo();
+  // The owner's own ignored file in the registered repository's working tree.
+  fs.appendFileSync(path.join(source, '.git', 'info', 'exclude'), 'secret.env\n');
+  fs.writeFileSync(path.join(source, 'secret.env'), 'TOKEN=the-owners-real-value\n');
+  const ws = createCodeWorkspaces({ dir: temp('noevia-mws-'), epoch: 'test' });
+  const claim = ws.claim({ taskId: ids(1), repoPath: source });
+  fs.writeFileSync(path.join(claim.path, 'secret.env'), 'TOKEN=from-the-task\n');
+  git(claim.path, 'add', '-f', 'secret.env'); git(claim.path, 'commit', '-qm', 'task tracks secret.env');
+  const head = git(claim.path, 'rev-parse', 'HEAD');
+  ws.release({ taskId: ids(1) });
+  assert.equal(ws.mergePreflight(ids(1), { headSha: head }).code, 'checked_out');
+  const refused = ws.mergeVerified(ids(1), { headSha: head });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, 'checked_out');
+  assert.match(refused.reason, new RegExp(`main is checked out in .*To merge it yourself, run there: git merge --ff-only ${head}`));
+  assert.equal(fs.readFileSync(path.join(source, 'secret.env'), 'utf8'), 'TOKEN=the-owners-real-value\n', 'the owner’s file is unchanged');
+  assert.equal(git(source, 'rev-parse', 'main'), claim.baseSha, 'main did not move');
+  // A dirty checked-out base is refused the same way.
+  fs.writeFileSync(path.join(source, 'a.txt'), 'uncommitted');
+  assert.equal(ws.mergeVerified(ids(1), { headSha: head }).code, 'checked_out');
+  assert.equal(fs.readFileSync(path.join(source, 'a.txt'), 'utf8'), 'uncommitted');
+});
+
+test('mergeVerified moves a base that is not checked out with a compare-and-swap, exactly to the reviewed head', () => {
+  const { source, ws, head, claim } = released();
+  git(source, 'checkout', '-q', '--detach');
+  assert.deepEqual(ws.mergePreflight(ids(1), { headSha: head }), { ok: true, baseBranch: 'main' });
   const merged = ws.mergeVerified(ids(1), { headSha: head });
-  assert.deepEqual(merged, { ok: true, baseBranch: 'main', from: before, to: head });
+  assert.deepEqual(merged, { ok: true, baseBranch: 'main', from: claim.baseSha, to: head });
   assert.equal(git(source, 'rev-parse', 'main'), head);
-  assert.equal(fs.readFileSync(path.join(source, 'a.txt'), 'utf8'), 'changed', 'the checked-out tree followed');
-  assert.equal(git(source, 'status', '--porcelain'), '');
+  assert.equal(git(source, 'rev-parse', 'HEAD'), claim.baseSha, 'no working tree was touched');
   assert.equal(ws.get(ids(1)).merged.to, head);
   // Never twice: the base is no longer at the task's base.
   assert.equal(ws.mergeVerified(ids(1), { headSha: head }).code, 'base_moved');
 });
 
-test('mergeVerified moves a base that is not checked out with a compare-and-swap', () => {
-  const { source, ws, head, claim } = released();
-  git(source, 'checkout', '-q', '-b', 'elsewhere');
-  const merged = ws.mergeVerified(ids(1), { headSha: head });
-  assert.equal(merged.ok, true, merged.reason);
+test('mergeVerified: a merge that happened but could not be recorded says so, and is still a merge', () => {
+  const { source, ws, head } = released();
+  git(source, 'checkout', '-q', '--detach');
+  const original = fs.writeFileSync;
+  fs.writeFileSync = (target, ...rest) => {
+    if (String(target).endsWith(`${ids(1)}.json`)) throw Object.assign(Error('EROFS: read-only file system'), { code: 'EROFS' });
+    return original(target, ...rest);
+  };
+  let merged;
+  try { merged = ws.mergeVerified(ids(1), { headSha: head }); } finally { fs.writeFileSync = original; }
+  assert.equal(merged.ok, true);
+  assert.equal(merged.recordFailed, true);
   assert.equal(git(source, 'rev-parse', 'main'), head);
-  assert.equal(git(source, 'rev-parse', 'HEAD'), claim.baseSha, 'the tree that is checked out was not touched');
 });
 
 test('mergeVerified refuses, and changes nothing, unless base, head and ancestry all still hold', () => {
@@ -132,14 +162,6 @@ test('mergeVerified refuses, and changes nothing, unless base, head and ancestry
     assert.equal(ws.mergeVerified(ids(7), { headSha: head }).code, 'no_workspace');
     ws.reclaim({ taskId: ids(1) });
     assert.equal(ws.mergeVerified(ids(1), { headSha: head }).code, 'not_released');
-  }
-  // A dirty checked-out base.
-  {
-    const { source, ws, head, claim } = released();
-    fs.writeFileSync(path.join(source, 'a.txt'), 'uncommitted');
-    assert.equal(ws.mergeVerified(ids(1), { headSha: head }).code, 'dirty');
-    assert.equal(git(source, 'rev-parse', 'main'), claim.baseSha);
-    assert.equal(fs.readFileSync(path.join(source, 'a.txt'), 'utf8'), 'uncommitted');
   }
   // The base checked out in another worktree.
   {

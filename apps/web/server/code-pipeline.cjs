@@ -68,6 +68,17 @@ class Blocked extends Error {
 }
 class Cancelled extends Error { constructor() { super('cancelled'); this.name = 'PipelineCancelled'; } }
 
+/** `promise`, or a rejection as soon as `signal` aborts — for waits that may not honour a signal. */
+function abandonOn(signal, promise) {
+  if (signal.aborted) return Promise.reject(Error('aborted'));
+  return new Promise((resolve, reject) => {
+    const stop = () => reject(Error('aborted'));
+    signal.addEventListener('abort', stop, { once: true });
+    Promise.resolve(promise).then((v) => { signal.removeEventListener('abort', stop); resolve(v); },
+      (e) => { signal.removeEventListener('abort', stop); reject(e); });
+  });
+}
+
 const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 const planHashOf = (plan) => sha256(serializeProjection(plan));
 const minutes = (ms) => { const m = Math.max(1, Math.round(ms / MINUTE)); return `${m} minute${m === 1 ? '' : 's'}`; };
@@ -184,8 +195,9 @@ function createCodePipeline({ jobs, workspaces, harness, roleEngine = null, plan
 
       // ── plan ──────────────────────────────────────────────────────────────────────────────
       if (!roleEngine || !planner || !review) throw new Blocked('The Planner is not set up on this server.');
-      const pin = await roleEngine.pinModel({ taskId, model, thinking: false, roles: [...DOSSIER_ROLES] });
-      live();
+      // The pin waits for model admission; the task's cancel and the plan deadline both end that wait,
+      // even if the admission queue ignores its signal.
+      const pin = await within('plan', limits.plan, (signal) => abandonOn(signal, roleEngine.pinModel({ taskId, model, thinking: false, roles: [...DOSSIER_ROLES], signal })));
       if (!pin.ok) throw new Blocked(`No model was pinned for this task: ${pin.reason}`);
       const session = pin.session;
       const snapshot = workspaces.projectSnapshot(taskId);
@@ -323,12 +335,24 @@ function createCodePipeline({ jobs, workspaces, harness, roleEngine = null, plan
 
         // ── accept (and merge) ──────────────────────────────────────────────────────────────
         const files = change.files.map((f) => f.path);
-        const into = settings.merge ? workspaces.get(taskId)?.baseBranch || null : null;
+        // Merge is offered only for a complete audit and a base noevia may move (not checked out
+        // anywhere). Otherwise the card is accept-only and says why.
+        let into = null, withheld = null;
+        if (settings.merge) {
+          if (report.overall !== 'complete') {
+            const open = report.checks.filter((c) => c.status !== 'pass').map((c) => `${c.name}: ${c.detail}`);
+            withheld = { code: 'audit_incomplete', reason: `Merging is not offered because the audit is incomplete (${open.join(' ')})` };
+          } else {
+            const pre = workspaces.mergePreflight(taskId, { headSha });
+            if (pre.ok) into = pre.baseBranch;
+            else withheld = { code: pre.code, reason: `Merging is not offered: ${pre.reason}` };
+          }
+        }
         const request = {
           taskId, action: REVIEW_ACTION, title: 'Accept this change', kind: 'review', command: '', paths: files.slice(0, 50),
           reason: into
             ? `The Planner approved revision ${n} and the operator’s tests passed at it. Accepting fast-forwards ${into} to this exact commit, only if ${into} has not moved.`
-            : `The Planner approved revision ${n} and the operator’s tests passed at it. Accepting records this reviewed head as accepted; nothing is merged.`,
+            : `The Planner approved revision ${n} and the operator’s tests passed at it. Accepting records this reviewed head as accepted; nothing is merged.${withheld ? ` ${withheld.reason}` : ''}`,
           arguments: { branch, baseSha, headSha, files, revision: n, mergeInto: into },
           diff: null,
           review: jobs.get(taskId)?.review || null,
@@ -336,6 +360,7 @@ function createCodePipeline({ jobs, workspaces, harness, roleEngine = null, plan
           audit: { overall: report.overall, checks: report.checks.map((c) => ({ name: c.name, status: c.status })), writeUp: writeUp ? { completeness: writeUp.completeness, summary: writeUp.summary } : null },
           evidence: { revision: n, headSha, planHash, tests: report.evidence.tests, completeness: report.evidence.completeness },
           merge: into ? { into, from: baseSha, to: headSha } : null,
+          mergeWithheld: withheld,
         };
         ctx.event('approval.requested', request);
         const answer = await askApproval(request, { signal: ctx.signal });
@@ -345,13 +370,20 @@ function createCodePipeline({ jobs, workspaces, harness, roleEngine = null, plan
         const accepted = answer === 'approve' || answer === 'approve_all';
         const result = { pipeline: true, revision: n, branch, baseSha, headSha, verdict: judged.verdict.verdict,
           audit: report.overall, accepted, decision: answer, merged: false, mergedInto: null, loops: t.loops };
+        if (withheld) result.mergeWithheld = withheld.code;
         if (!accepted || !into) return result;
+        // The flag is read again now: merging switched off while the card waited means record only.
+        if (!flag(merge)) return { ...result, note: 'merge-turned-off', noteText: 'Merging was turned off before this was accepted, so the change is recorded as accepted and not merged.' };
         // Re-checked now, not when the card was raised: the base and the head must still be exactly
         // what was verified and reviewed.
         const merged = workspaces.mergeVerified(taskId, { headSha });
         if (!merged.ok) throw Object.assign(new Blocked(`Accepted, but not merged: ${merged.reason}`), { result: { ...result, mergeRefused: merged.code } });
-        stage('merged', `Fast-forwarded ${merged.baseBranch} to the reviewed head`);
-        return { ...result, merged: true, mergedInto: merged.baseBranch };
+        // The base HAS moved from here on: a failure to record that is a note, never "not merged".
+        let recorded = merged.recordFailed !== true;
+        try { stage('merged', `Fast-forwarded ${merged.baseBranch} to the reviewed head`); }
+        catch (error) { recorded = false; log({ at: now(), taskId, event: 'code.pipeline_record_failed', error: String(error?.message || error).slice(0, 200) }); }
+        return { ...result, merged: true, mergedInto: merged.baseBranch, ...(recorded ? {} : { note: 'record-failed',
+          noteText: `${merged.baseBranch} was fast-forwarded to the reviewed commit, but noevia could not record it.` }) };
       }
     } catch (error) {
       if (ctx.signal.aborted || error instanceof Cancelled) {

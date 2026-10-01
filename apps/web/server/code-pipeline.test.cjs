@@ -68,7 +68,7 @@ function fakeVerifier(outcomes) {
 async function runPipeline({ verdicts = ['approve'], tests = ['pass'], merge = true, answers = {}, approvePlan = false,
   plan = PLAN, verify = null, agent = null, onReview = null, onAccept = null, deadlines = {}, maxLoops = 2,
   auditText = JSON.stringify({ completeness: 'complete', summary: 'All plan steps have evidence.', evidence: [{ source: 'tests', note: 'Measured at head.' }], gaps: [] }),
-  cancelDuring = null } = {}) {
+  cancelDuring = null, detach = true, wrapJobs = (j) => j, pin = null } = {}) {
   const dir = temp('noevia-pjobs-');
   const source = repo();
   const jobs = createJobs({ dir });
@@ -91,8 +91,11 @@ async function runPipeline({ verdicts = ['approve'], tests = ['pass'], merge = t
   const control = { cancel: () => jobs.cancel(started.taskId) };
   const verifier = verify || fakeVerifier(Array.isArray(tests) ? [...tests] : (args) => tests({ ...args, control }));
   const pipeline = createCodePipeline({
-    jobs, workspaces, harness, askApproval, deadlines, maxLoops,
-    roleEngine: { pinModel: async ({ taskId }) => { session.taskId = taskId; return { ok: true, session }; } },
+    jobs: wrapJobs(jobs), workspaces, harness, askApproval, deadlines, maxLoops,
+    roleEngine: { pinModel: async (args) => {
+      if (pin) return pin({ ...args, control });
+      session.taskId = args.taskId; return { ok: true, session };
+    } },
     planner: { generate: async ({ state }) => { plannerStates.push(state); return { ok: true, plan }; } },
     review: { review: async ({ state, signal }) => {
       reviewStates.push(state);
@@ -104,7 +107,7 @@ async function runPipeline({ verdicts = ['approve'], tests = ['pass'], merge = t
         : { verdict: 'request_changes', summary: 'Needs a test.', findings: [{ severity: 'major', file: 'widget.js', message: `Add a test (round ${state.revision}).` }] } };
     } },
     verify: createVerifyAdapter(verifier),
-    merge: () => merge,
+    merge: typeof merge === 'function' ? merge : () => merge,
   });
   const connect = async ({ cwd, signal }) => ({ agent: {}, prompt: async (text) => {
     sent.push(text); round += 1;
@@ -116,6 +119,8 @@ async function runPipeline({ verdicts = ['approve'], tests = ['pass'], merge = t
   } });
   const started = pipeline.start({ projectId: 'p-synthetic', repo: { id: 'fixture', path: source }, prompt: 'Make the widget return two.',
     capabilities: ['read', 'edit', 'execute'], connect, tenantId: 'tenant-synthetic', approvePlan });
+  // noevia never moves a base that is checked out (#715 review): the owner's tree is on no branch.
+  if (detach) git(source, 'checkout', '-q', '--detach');
   for (let i = 0; i < 600 && !['completed', 'failed', 'cancelled'].includes(jobs.get(started.taskId)?.status); i++) await new Promise((r) => setTimeout(r, 5));
   const job = jobs.get(started.taskId);
   return { ...started, dir, source, jobs, workspaces, job, view: view(job), asked, sent, reviewStates, plannerStates, auditCalls, verifier,
@@ -292,8 +297,12 @@ test('every stage event carries the revision current when it was written, and no
 test('a moved base refuses the merge: accepted, not merged, blocked, and the base keeps its new commit', async () => {
   let moved = null;
   const r = await runPipeline({ onAccept: async ({ source }) => {
-    fs.writeFileSync(path.join(source, 'other.txt'), 'someone else');
-    git(source, 'add', '.'); git(source, 'commit', '-qm', 'someone else');
+    const tmp = temp('noevia-other-');
+    fs.rmSync(tmp, { recursive: true, force: true });
+    git(source, 'worktree', 'add', '-q', tmp, 'main');
+    fs.writeFileSync(path.join(tmp, 'other.txt'), 'someone else');
+    git(tmp, 'add', '.'); git(tmp, 'commit', '-qm', 'someone else');
+    git(source, 'worktree', 'remove', '--force', tmp);
     moved = git(source, 'rev-parse', 'main');
   } });
   assert.equal(r.job.status, 'failed');
@@ -459,4 +468,68 @@ test('#703 wired: a busy, mismatched or refused verifier blocks the task, never 
   const unset = await runPipeline({ verify: createCodeVerify({ endpoint: null }) });
   assert.match(unset.job.error, /Verification is not available/);
   for (const r of [busy, other, replay, unset]) assert.equal(r.main, r.job.checkpoint.baseSha, 'nothing merged');
+});
+
+// ── #715 review: what the accept card offers, and what accepting does ───────────────────────────
+
+test('a base checked out in the owner’s tree is never merged: the card is accept-only and says how to merge by hand', async () => {
+  const r = await runPipeline({ detach: false });
+  const card = r.asked.find((a) => a.action === REVIEW_ACTION);
+  assert.equal(card.merge, null);
+  assert.equal(card.mergeWithheld.code, 'checked_out');
+  assert.match(card.reason, /nothing is merged\. Merging is not offered: main is checked out in .*git merge --ff-only [0-9a-f]{40}/);
+  assert.equal(r.job.status, 'completed');
+  assert.deepEqual({ accepted: r.job.result.accepted, merged: r.job.result.merged, withheld: r.job.result.mergeWithheld }, { accepted: true, merged: false, withheld: 'checked_out' });
+  assert.equal(r.main, r.job.checkpoint.baseSha);
+  assert.equal(r.job.lifecycle, 'reviewing');
+});
+
+test('merge is offered only for a complete audit; otherwise the card is accept-only with the audit’s reasons', async () => {
+  // An unresolved tool result makes the audit incomplete (everything else passes).
+  const wrapJobs = (jobs) => ({ ...jobs, get: (id) => { const j = jobs.get(id); return j && j.revision ? { ...j, uncertain: [{ id: 'synthetic' }] } : j; } });
+  const r = await runPipeline({ wrapJobs });
+  const card = r.asked.find((a) => a.action === REVIEW_ACTION);
+  assert.equal(card.audit.overall, 'incomplete');
+  assert.equal(card.merge, null);
+  assert.equal(card.mergeWithheld.code, 'audit_incomplete');
+  assert.match(card.reason, /audit is incomplete \(nothing-unresolved: /);
+  assert.equal(r.job.result.merged, false);
+  assert.equal(r.main, r.job.checkpoint.baseSha);
+});
+
+test('codeMerge is read again at accept time: switched off while the card waited, nothing is merged and the result says so', async () => {
+  let on = true;
+  const r = await runPipeline({ merge: () => on, onAccept: async () => { on = false; } });
+  const card = r.asked.find((a) => a.action === REVIEW_ACTION);
+  assert.ok(card.merge, 'the card offered the merge');
+  assert.equal(r.job.status, 'completed');
+  assert.deepEqual({ accepted: r.job.result.accepted, merged: r.job.result.merged, note: r.job.result.note }, { accepted: true, merged: false, note: 'merge-turned-off' });
+  assert.match(r.job.result.noteText, /Merging was turned off/);
+  assert.equal(r.main, r.job.checkpoint.baseSha);
+  assert.equal(r.job.lifecycle, 'reviewing');
+});
+
+test('a merge that happened but whose stage could not be recorded reports merged with a record-failed note', async () => {
+  const wrapJobs = (jobs) => ({ ...jobs, append: (id, type, data, auth) => {
+    if (type === 'task.stage' && data?.to === 'merged') throw Object.assign(Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    return jobs.append(id, type, data, auth);
+  } });
+  const r = await runPipeline({ wrapJobs });
+  assert.equal(r.job.status, 'completed', r.job.error);
+  assert.deepEqual({ merged: r.job.result.merged, note: r.job.result.note }, { merged: true, note: 'record-failed' });
+  assert.equal(r.main, r.job.revision.headSha, 'main did move');
+  assert.equal(r.job.lifecycle, 'reviewing', 'the stage that failed to write is not invented');
+});
+
+test('pinModel gets the task’s signal: a pin stuck in admission is ended by the plan deadline or by a cancel', async () => {
+  let seen = null;
+  const stuck = await runPipeline({ deadlines: { plan: 40 }, pin: ({ signal }) => { seen = signal; return new Promise(() => {}); } });
+  assert.equal(stuck.job.status, 'failed');
+  assert.match(stuck.job.error, /The plan stage did not finish within 1 minute\.$/);
+  assert.equal(seen.aborted, true, 'the signal handed to pinModel was aborted');
+  assert.deepEqual(stuck.stagePath, ['planned', 'blocked']);
+  assert.equal(stuck.workspaces.get(stuck.taskId).status, 'released');
+  const cancelled = await runPipeline({ pin: ({ control }) => { setTimeout(() => control.cancel(), 10); return new Promise(() => {}); } });
+  assert.equal(cancelled.job.status, 'cancelled');
+  assert.equal(cancelled.job.lifecycle, 'blocked');
 });
