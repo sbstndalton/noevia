@@ -30,6 +30,8 @@ export interface CodeApproval {
   evidence?: { revision: number; headSha: string | null; planHash: string | null; tests: PipelineTests | null; completeness: { reportHash: string } | null } | null;
   /** Null: accept only, nothing is merged. */
   merge?: { into: string; from: string; to: string } | null;
+  /** Why an enabled merge is not offered on this card (`audit_incomplete`, `checked_out`, `base_moved`, …). */
+  mergeWithheld?: { code: string; reason: string } | null;
   /** On an `approve_plan` card. */
   plan?: unknown;
 }

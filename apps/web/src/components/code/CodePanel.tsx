@@ -7,10 +7,10 @@ import { EmptyState } from '../EmptyState';
 import { ShellIcon } from '../ShellIcon';
 import { useT } from '../../i18n';
 import type { MessageKey, Translate } from '../../i18n';
-import { formatBinaryBytes, formatNumber, formatPercent } from '../../number-format';
+import { formatBinaryBytes, formatDuration, formatNumber, formatPercent } from '../../number-format';
 import { appLocale } from '../../user-preferences';
 import { around } from '../../text-around';
-import { AcceptNote, AcceptSummary, PipelineDetails, PipelineStrip, acceptLabel } from './pipeline';
+import { AcceptSummary, AcceptWhat, isPipelineCard, PipelineDetails, PipelineStrip, acceptLabel } from './pipeline';
 import './code.css';
 
 /** How much of the assistant's output the server keeps (server/code-harness.cjs); the note names it in the locale's units. */
@@ -24,8 +24,7 @@ const byId = (t: Translate, key: string, fallback: string): string => { const te
 const actionLabel = (t: Translate, action: CodeAction): string => byId(t, `code.action.${action}`, ACTION_LABEL[action]);
 const elapsed = (task: CodeTask): string => {
   const end = ACTIVE.has(task.status) ? Date.now() : task.updatedAt;
-  const seconds = Math.max(0, Math.floor((end - task.createdAt) / 1000));
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return formatDuration(Math.max(0, Math.floor((end - task.createdAt) / 1000)), appLocale());
 };
 /** Plain language for each action class, in the same words the approval card uses. */
 export const ACTION_LABEL: Record<CodeAction, string> = {
@@ -431,15 +430,17 @@ function ReviewCard({ approval, busy, onDecide }: {
   return <div className="code-approval code-review" role="group" aria-label={t('code.review.group')}>
     <p className="code-approval-title"><ShellIcon name="security" size={16}/>{actionLabel(t, 'review_change')}</p>
     {approval.review && <ReviewVerdict review={approval.review}/>}
+    <AcceptWhat approval={approval}/>
     <AcceptSummary approval={approval}/>
     {approval.reason && <p className="code-note">{approval.reason}</p>}
-    {approval.arguments !== null && approval.arguments !== undefined &&
-      <pre className="code-approval-args" aria-label={t('code.review.changeToAccept')}>{JSON.stringify(approval.arguments, null, 2)}</pre>}
+    {approval.arguments !== null && approval.arguments !== undefined && (isPipelineCard(approval)
+      ? <details className="code-output-details code-pipe-details"><summary>{t('code.pipeline.accept.details')}</summary>
+          <pre className="code-approval-args" tabIndex={0} aria-label={t('code.review.changeToAccept')}>{JSON.stringify(approval.arguments, null, 2)}</pre></details>
+      : <pre className="code-approval-args" aria-label={t('code.review.changeToAccept')}>{JSON.stringify(approval.arguments, null, 2)}</pre>)}
     <div className="code-approval-actions">
       <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onDecide('approve', approvalId)}>{acceptLabel(t, approval)}</button>
       <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => onDecide('deny', approvalId)}>{t('code.approval.decline')}</button>
     </div>
-    <AcceptNote approval={approval}/>
     <p className="code-note">{t('code.review.advice')}</p>
   </div>;
 }

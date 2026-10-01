@@ -1,6 +1,8 @@
 import type { JSX } from 'react';
 import type { CodeApproval, CodeTask, PipelineCheckStatus, PipelineEvidence, PipelineLifecycle, PipelineTests } from './api';
 import { useT } from '../../i18n';
+import { formatDuration } from '../../number-format';
+import { appLocale } from '../../user-preferences';
 import type { MessageKey, Translate } from '../../i18n';
 
 /* Pipeline tasks (#706): the stage strip, the evidence for a revision, and the sections behind it.
@@ -14,13 +16,10 @@ const shortHash = (hash: string | null | undefined): string => (hash ? hash.slic
 
 export const isPipelineTask = (task: CodeTask): boolean => !!task.pipeline;
 
-export function formatDuration(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  if (seconds < 1) return '<1s';
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+/** Stage and elapsed durations use the app's own helper: at most two units, rolling up to hours and days. */
+export function formatSpan(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  return seconds < 1 ? '<1s' : formatDuration(seconds, appLocale());
 }
 
 /** Time spent in each stage, from the authoritative moves: a stage lasts until the next move; the last one until `updatedAt`. */
@@ -52,7 +51,7 @@ export function PipelineStrip({ task }: { task: CodeTask }): JSX.Element | null 
         return <li key={stage} className={`code-pipe-stage is-${state}${stage === 'blocked' ? ' is-blocked' : ''}`} aria-current={state === 'current' ? 'step' : undefined}>
           <span className="code-pipe-name">{t(`code.pipeline.stage.${stage}` as MessageKey)}</span>
           <span className="code-sr">, {t(`code.pipeline.state.${state}` as MessageKey)}</span>
-          {state !== 'pending' && stage !== 'blocked' && ms !== undefined && <span className="code-pipe-dur">{formatDuration(ms)}</span>}
+          {state !== 'pending' && stage !== 'blocked' && ms !== undefined && <span className="code-pipe-dur">{formatSpan(ms)}</span>}
         </li>;
       })}
     </ol>
@@ -65,7 +64,7 @@ function TestsLine({ tests }: { tests: PipelineTests | null }): JSX.Element {
   const t = useT();
   if (!tests) return <>{t('code.pipeline.tests.none')}</>;
   const verdict = tests.passed ? t('code.pipeline.tests.passed') : tests.timedOut ? t('code.pipeline.tests.timedOut') : t('code.pipeline.tests.failed');
-  const bits = [tests.exitCode !== null && tests.exitCode !== undefined ? t('code.pipeline.tests.exit', { code: tests.exitCode }) : '', typeof tests.durationMs === 'number' ? formatDuration(tests.durationMs) : ''].filter(Boolean);
+  const bits = [tests.exitCode !== null && tests.exitCode !== undefined ? t('code.pipeline.tests.exit', { code: tests.exitCode }) : '', typeof tests.durationMs === 'number' ? formatSpan(tests.durationMs) : ''].filter(Boolean);
   return <><strong className={tests.passed ? 'code-pipe-pass' : 'code-pipe-fail'}>{verdict}</strong>{bits.length > 0 && ` · ${bits.join(' · ')}`}</>;
 }
 
@@ -178,10 +177,32 @@ export function acceptLabel(t: Translate, approval: CodeApproval): string {
   if (!approval.audit && !approval.evidence && !approval.verdict) return t('code.review.accept');
   return approval.merge ? t('code.pipeline.accept.merge', { into: approval.merge.into }) : t('code.pipeline.accept.only');
 }
-export function AcceptNote({ approval }: { approval: CodeApproval }): JSX.Element | null {
+/** What accepting will do, in words, for a pipeline accept card: replaces the raw payload (kept collapsed below). */
+export function AcceptWhat({ approval }: { approval: CodeApproval }): JSX.Element | null {
   const t = useT();
-  if (!approval.audit && !approval.evidence && !approval.verdict) return null;
-  return <p className="code-note">{approval.merge
-    ? t('code.pipeline.accept.mergeNote', { into: approval.merge.into, sha: shortSha(approval.merge.to) })
-    : t('code.pipeline.accept.onlyNote')}</p>;
+  if (!isPipelineCard(approval)) return null;
+  const args = (approval.arguments && typeof approval.arguments === 'object' ? approval.arguments : {}) as { branch?: string; baseSha?: string; headSha?: string; files?: unknown[] };
+  const branch = args.branch || '—';
+  const into = approval.merge?.into;
+  const files = Array.isArray(args.files) ? args.files.length : 0;
+  const failing = (approval.audit?.checks || []).filter(c => c.status !== 'pass');
+  const withheld = approval.mergeWithheld;
+  return <>
+    <p className="code-pipe-what">{into
+      ? t('code.pipeline.accept.mergeNote', { branch, into, sha: shortSha(args.headSha) })
+      : t('code.pipeline.accept.onlyNote', { branch, sha: shortSha(args.headSha) })}</p>
+    <dl className="code-pipe-facts">
+      <div><dt>{t('code.pipeline.accept.branch')}</dt><dd><code>{branch}</code>{into ? <> → <code>{into}</code></> : null}</dd></div>
+      <div><dt>{t('code.pipeline.accept.reviewed')}</dt><dd><code title={args.headSha}>{shortSha(args.headSha)}</code></dd></div>
+      <div><dt>{t('code.pipeline.base')}</dt><dd><code title={args.baseSha}>{shortSha(args.baseSha)}</code></dd></div>
+      {files > 0 && <div><dt>{t('code.pipeline.accept.files')}</dt><dd>{files}</dd></div>}
+    </dl>
+    {withheld && <div className="code-pipe-withheld" role="group" aria-label={t('code.pipeline.accept.withheld')}>
+      <p className="code-pipe-withheld-title">{t('code.pipeline.accept.withheld')}</p>
+      {withheld.code === 'audit_incomplete' && failing.length > 0
+        ? <ul>{failing.map(c => <li key={c.name}>{byId(t, `code.pipeline.check.${c.name}`, c.name)} — {byId(t, `code.pipeline.check.${c.status}`, c.status)}</li>)}</ul>
+        : <p className="code-pipe-reason">{withheld.reason}</p>}
+    </div>}
+  </>;
 }
+export const isPipelineCard = (approval: CodeApproval): boolean => !!(approval.audit || approval.evidence || approval.verdict);
