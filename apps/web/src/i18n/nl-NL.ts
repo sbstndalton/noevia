@@ -507,7 +507,7 @@ export const NL_NL: Catalogue = {
   'sharing.public': "Openbare HTTPS",
   'sharing.staysOff': "Delen blijft uit.",
   'sharing.reason.notConfigured': "De beheerder heeft geen eindpunt voor bestandsdeling ingesteld.",
-  'sharing.ineligible': "Vereist een ingeschakeld Dagboek met lokale serveropslag. Externe en browserlokale mappen worden niet gedeeld.",
+  'sharing.ineligible': "Deze dagboekbestanden staan al in je eigen bestandsopslag. Open ze op je apparaten met de eigen app of verbinding van die opslag. De bestandsdeling van noevia werkt alleen als het Dagboek op de noevia-server is opgeslagen.",
   'sharing.access': "Toegang",
   'sharing.accessLabel': "Toegang tot Dagboek delen",
   'sharing.network': "Dit netwerk (door de beheerder geregeld)",

@@ -507,7 +507,7 @@ export const NB_NO: Catalogue = {
   'sharing.public': "Offentlig HTTPS",
   'sharing.staysOff': "Delingen forblir av.",
   'sharing.reason.notConfigured': "Operatøren har ikke satt opp et endepunkt for fildeling.",
-  'sharing.ineligible': "Krever aktivert Dagbok med lokal serverlagring. Eksterne og nettleserlokale mapper deles ikke.",
+  'sharing.ineligible': "Disse dagbokfilene ligger allerede i din egen fillagring, så åpne dem på enhetene dine med den lagringens egen app eller tilkobling. noevias fildeling gjelder bare når Dagboken er lagret på noevia-serveren.",
   'sharing.access': "Tilgang",
   'sharing.accessLabel': "Tilgang til dagbokdeling",
   'sharing.network': "Dette nettverket (styrt av driftsansvarlig)",
