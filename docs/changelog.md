@@ -8,6 +8,50 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 3c7e527 — 2026-10-01 (web, model-loader, code-sandbox, new code-verify)
+
+### Services
+
+- **Web:** [#717](https://github.com/sbstndalton/noevia/pull/717) (Code task pipeline UI, #706), [#718](https://github.com/sbstndalton/noevia/pull/718) (selector: reasoning off, JSON-constrained call, #716), [#721](https://github.com/sbstndalton/noevia/pull/721) (embed parity tool, #720), [#724](https://github.com/sbstndalton/noevia/pull/724) (no prompt cache in embed/rerank estimates, #723). The web side of #710 is now wired to a verifier: `CODE_VERIFY_ENDPOINT` is set. Image `cowork-web:3c7e527` (`sha256:5d4f81fed9eb2d174de9221b0e091dfc7daeec643f6aada1fbf0bb62cf637cbe`).
+- **Model manager:** [#724](https://github.com/sbstndalton/noevia/pull/724) (the migration writes `cache-ram = 0` for embedding and reranking sections). Image `cowork-model-loader:3c7e527` (`sha256:f7a38470ceef2278e1b60ebd0a92b94fa4b500b653209898eae4d5aad8c4360a`). It is an overlay `FROM cowork-model-loader:9debec6` with `app/` replaced; `requirements.txt` and the Dockerfile are unchanged.
+- **Code sandbox:** [#710](https://github.com/sbstndalton/noevia/pull/710) (`verifier.cjs` and Dockerfile socket/tmpfs directories) and [#711](https://github.com/sbstndalton/noevia/pull/711) (`pi-acp-bridge.cjs` passes noevia's refusal reason to pi). Image `cowork-code-sandbox:pi-0.87.0-3c7e527` (`sha256:a3b660854b0f1c319b67b8e0dd7d0f4f46d51f9a4735c4b8e4ffbf030d20b129`), built from `services/code-sandbox` with the pi 0.87.0 build args. The apt/npm layer was rebuilt, but the global npm tree (341 package.json files with identical versions) and git 2.39.5 match `pi-0.87.0-9b532a8`. Deployed bridge SHA-256 `bb4b90ee99ed4b5193e66682a3697856457bccd55f758dc31d768632f0721f9b`.
+- **Code verify (new):** `cowork-code-verify-1` runs the same sandbox image with `node verifier.cjs`.
+- **Diary, Docling, Laya, OCR:** no change (`cowork-diary:9debec6`, `cowork-docling:9debec6`, `cowork-laya:0.3.5-noevia2`, `cowork-ocr:5004b50`).
+- **Deploy/infra:**
+  - Live `docker-compose.override.yml` gains, from `deploy/examples/code-sandbox.override.yml`, the `code-verify` service (profile `code`), the `code-verify-socket` volume, web's `code-verify-socket:/run/noevia-verify` mount and web's `CODE_VERIFY_ENDPOINT`. That is 40 added lines and none removed.
+  - `.env`: `MODEL_MANAGER_VERSION`, `CODE_SANDBOX_VERSION` and `COWORK_VERSION` are bumped. `CODE_VERIFY` (empty) and `CODE_VERIFY_ENDPOINT` are added. `CODE_REPOS_GID` is not set, so it defaults to 1005.
+  - The source repository `scratch` is now group 1005 (`chgrp -R 1005`, `chmod -R g+rX`). No "other" bits changed.
+
+Exact source `3c7e5277468d50329c20efa7baa70ba51ba4779d` (main CI green, including the `sudo` `code-verify-root.test.cjs` run from #710). The `git archive` of the fresh clone has SHA-256 `119ded8af61ab4ddfed69208c171481fe397908edded4e90098a436e9d4e3efd`, matched on the server, and was extracted to `releases/3c7e527`. The release started after appdata backup `ab_20261001_041001` (plugin log `DONE` at 04:10:18) with all containers back up; no new backup was taken. Backups: `config/.env.bak.before-3c7e527`, `docker-compose.yml.bak.before-3c7e527`, `docker-compose.override.yml.bak.before-3c7e527`. Each service was started alone with the guarded `up.sh ... --no-build --no-deps --wait` (with `--profile code` for the Code services), in this order: model-loader, code-sandbox, code-verify, web.
+
+- **Model manager:** no model was loaded. The start-up migration logged `set an explicit bounded cache-ram in 2 section(s): nomic-embed-text-v1, qwen3-reranker-0.6b-q8_0`. `models.ini` went from `5bd15b66…6173` to `4397b3b32ce00566a8b1fb7154a5d151248a0676640d04a152804cafb18cced5`; the pre-write copy is `models.ini.bak-20261001-084609`. Parsed section by section, the only change is `cache-ram = 0` added to those two sections; the writer also reordered lines and dropped blank lines. The app's `read_ini` reads it (8 sections). Healthy, `/api/v1/health` 200, zero restarts.
+- **Code sandbox:** before the recreate, the sandbox ran only `node supervisor.cjs`, with no harness child and no established connection, so no Code task was running. After the recreate: read-only root, `cap_drop ALL`, uid 1000, only on `cowork_code`, listening on 8030, zero restarts.
+- **Code verify:**
+  - Container settings: `network_mode none` (only `lo`), read-only root, user `0:0` with CapEff `0xc0` (SETUID/SETGID only), NoNewPrivs 1, `group_add` 1005, pids 256, 2 GiB, 2 CPUs, `restart: always`. It mounts workspaces read-only and the socket volume. git runs as `1002:1005` and the test command as `1003:1003`. The socket directory is `root:root 0770` and the socket is `0660`.
+  - Log: `listening on /run/noevia-verify/verify.sock (one request) ... 0 repositories configured`.
+  - **`CODE_VERIFY` is empty.** `scratch`, the only entry in `CODE_REPOS`, has no `package.json` test script, pytest setup or Makefile; its test is a bare `node test.js`. So no repository has a command, and the pipeline would stop at verify (its flags are off).
+- **Synthetic verify:** a throwaway repository `repos/verify-synthetic-3c7e527` (one `test.sh`, group 1005) was checked by a throwaway candidate verifier with the same image and hardening, its own socket volume and `CODE_VERIFY=synthverify|sh test.sh`. The result: `ok:true`, exit 0, nonce echoed, 49 ms. The test ran as uid/gid 1003, the copy was owned by 1002 and read-only to the test, `$TMPDIR` was writable, and the verifier then served its one request and exited. The candidate, its volume and the repository were removed.
+- **Web:**
+  - Built with `deploy/tools/build-web-release.sh`; the in-build tests and build step passed and the stamp was verified. Standalone loopback candidate: `/` 200, `/api/profile` 401, `version.json` `3c7e527`, 82 dist files.
+  - Live: healthy, zero restarts. Public `/` 200, `/api/profile` 401, `/version.json` `3c7e527`. Served `index-Cya8YG3M.js`, `index-Cds-u3b1.css`, `theme.js`, `manifest.webmanifest`, `icon.svg`, `apple-touch-icon.png` and `index.html` are byte-identical to the image `dist`.
+  - Mounts: `/llamacpp-config` RW=false, and `/run/noevia-verify` is mounted (the sandbox does not mount it). Web has no `CODE_VERIFY`. The web log shows no errors and no `[inference-budget]` line.
+- **Read-only checks through web's modules** (DB opened read-only):
+  - Decision deadline is 2000 ms; the budget is 16 GiB.
+  - Estimates: `nomic-embed-text-v1` 1.27 GiB (model 0.14 + KV 0.07 + 1 GiB runtime, cache-ram 0) and `qwen3-reranker-0.6b-q8_0` 2.59 GiB (model 0.6 + KV 0.88 + 1 GiB, cache-ram 0). Before #723 each also counted 8 GiB of prompt cache. Chat estimates are unchanged (10.0, 11.15, 9.76, 7.42, 8.5 GiB).
+  - `createCodeVerify().available()` is true. One raw probe from web to the live socket (`repo: reachability-probe`) got `not_configured` with the nonce echoed, and the verifier restarted as designed (code-verify RestartCount 1). `sidecar-restart-alert.sh --ack` was run afterwards.
+
+Before/after snapshot of all containers (43 → 44): the only differences are model-loader `d7dda8e7ef3f` → `6a5ac490465a`, code-sandbox `563d1201582b` → `bd58b3d5e66f`, web `8a45208a9b65` → `b7826605665c`, and the new code-verify `671bdab4c6c7`. Llama, embed, diary, docling, laya, ocr, kiwix and every non-noevia container keep the same ID, StartedAt and restart count. There was no model run or tune and no Diary access.
+
+Known follow-ups:
+- Every verification restarts `code-verify` by design, so the sidecar restart alert will report each one.
+- At each start the verifier logs `could not read /verify/run to sweep it: EACCES`. The server lacks DAC_OVERRIDE and `/verify/run` is 1003's 0700 tmpfs; it is fresh on every restart, so this is harmless.
+
+Rollback, per service. Set `ENV=/mnt/docker/appdata/cowork/config/.env` and `UP="bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file $ENV --profile code -- -d --no-build --no-deps --wait --wait-timeout 180"`, and run the `cp` commands in the Compose Manager project directory. Previous images are retained.
+- **Web:** `ln -sfn /mnt/docker/appdata/cowork/releases/9debec6 /mnt/docker/appdata/cowork/current`, then `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=9debec6/' $ENV` and `$UP web`.
+- **Code verify:** `docker compose --env-file $ENV --profile code rm -sf code-verify`, then `cp -p docker-compose.override.yml.bak.before-3c7e527 docker-compose.override.yml`, delete the `CODE_VERIFY` and `CODE_VERIFY_ENDPOINT` lines from `$ENV`, and run `$UP web` to drop the socket mount. Optionally remove the `cowork_code-verify-socket` volume.
+- **Code sandbox:** `sed -i 's/^CODE_SANDBOX_VERSION=.*/CODE_SANDBOX_VERSION=pi-0.87.0-9b532a8/' $ENV`, then `$UP code-sandbox`. This ends any running Code task. The repository group change can stay; to undo it, use `releases/3c7e527/.deploy-evidence/scratch-perms-before.txt` (the group was 1000).
+- **Model manager:** `sed -i 's/^MODEL_MANAGER_VERSION=.*/MODEL_MANAGER_VERSION=9debec6/' $ENV`, then `$UP model-loader`. The old code accepts `cache-ram = 0`; the pre-write `models.ini` is `models.ini.bak-20261001-084609`.
+
 ## Diary overlay 9debec6 — 2026-10-01 (Diary embeds through the `embed` sidecar, #720)
 
 ### Services
