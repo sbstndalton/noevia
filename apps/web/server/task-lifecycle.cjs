@@ -196,7 +196,16 @@ function stageStep(state, data) {
   if (data.to === 'reviewing' && data.to !== state && !REPORT_HASH.test(String(data.reportHash || ''))) {
     throw new TaskLifecycleError('Entering reviewing needs the hash of the completeness report that allowed it', { from: state, to: data.to });
   }
-  return transition(state, data.to);
+  return assertStageMove(state, data.to);
+}
+
+// The pipeline's own moves are stricter than the general table: a task reaches `merged` only
+// from `reviewing`, never straight from implementing/verifying/changes_requested.
+function assertStageMove(from, to) {
+  if (to === 'merged' && from !== 'merged' && from !== 'reviewing') {
+    throw new TaskLifecycleError(`A task is merged only from reviewing, not ${from}`, { from, to });
+  }
+  return transition(from, to);
 }
 
 function advance(from, to) {
@@ -252,6 +261,7 @@ module.exports = {
   INITIAL_STATE,
   AUTHORITY_TYPES,
   isAuthoritative,
+  assertStageMove,
   TRANSITIONS,
   TaskLifecycleError,
   canTransition,

@@ -6,7 +6,7 @@ const fs = require('node:fs'), path = require('node:path'), crypto = require('no
 const { boundCodePlan } = require('./code-plan.cjs');
 const { boundReviewEvent } = require('./code-review-verdict.cjs');
 const taskLifecycle = require('./task-lifecycle.cjs');
-const { canEnterReviewing, reportHash } = require('./completeness-report.cjs');
+const { buildCompletenessReport, canEnterReviewing, reportHash } = require('./completeness-report.cjs');
 const MAX_ASSISTANT_OUTPUT_BYTES = 32 * 1024;
 const MAX_ASSISTANT_OUTPUT_EVENT_BYTES = 1024, MAX_ASSISTANT_OUTPUT_EVENTS = 64;
 
@@ -24,7 +24,7 @@ const TYPES = new Set(['job.created', 'job.started', 'step.started', 'step.compl
 const REVIEW_TYPES = new Set(['review.requested', 'review.completed', 'review.failed']);
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const AUTHORITY_TYPES = taskLifecycle.AUTHORITY_TYPES;
-const MAX_STAGE_EVENTS = 64, MAX_REVISIONS = 32, MAX_STAGE_REASON = 300;
+const MAX_STAGE_EVENTS = 64, MAX_REVISIONS = 32, MAX_STAGE_REASON = 300, MAX_EXPECTED_ARTIFACTS = 32;
 const GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, CONTENT_HASH = /^[0-9a-f]{64}$/;
 
 // The lifecycle capability token (#701). Module-private: it is never exported, never written to
@@ -92,9 +92,9 @@ function derive(events) {
       // and so every API response built from it, is exactly what it was before #519.
       case 'review.requested': case 'review.completed': case 'review.failed':
         job.review = boundReviewEvent(e.type, d); break;
-      case 'task.stage': stages.push({ from: d.from ?? null, to: d.to ?? null, revision: d.revision ?? 0, reason: d.reason ?? null,
+      case 'task.stage': if (d.revision !== (revision?.n ?? 0)) lifecycleOk = false; stages.push({ from: d.from ?? null, to: d.to ?? null, revision: d.revision ?? 0, reason: d.reason ?? null,
         ...(d.reportHash ? { reportHash: d.reportHash } : {}), at: e.at }); break;
-      case 'task.revision': revision = { n: d.n, headSha: d.headSha ?? null, planHash: d.planHash ?? null, at: e.at }; break;
+      case 'task.revision': if (d.n !== (revision?.n ?? 0) + 1) lifecycleOk = false; revision = { n: d.n, headSha: d.headSha ?? null, planHash: d.planHash ?? null, at: e.at }; break;
       case 'job.completed': job.status = 'completed'; job.result = d.result ?? null; job.pendingApproval = null; break;
       case 'job.failed': job.status = 'failed'; job.error = d.error ?? 'failed'; job.result = d.result ?? null; job.pendingApproval = null; break;
       case 'job.cancelled': job.status = 'cancelled'; job.result = d.result ?? null; job.pendingApproval = null; break;
@@ -114,8 +114,14 @@ const lifecycleConflict = (message) => Object.assign(Error(message), { status: 4
 
 // Validates a lifecycle authority event against the journal it would join and rebuilds its data
 // from known fields only. Holding the token proves who is writing, not that the move is sound:
-// a stale `from` or revision, an illegal transition, or a report that does not allow review is
-// refused here, before anything is written.
+// a stale `from` or revision, an illegal transition, or a journal whose completeness report does
+// not allow review is refused here, before anything is written. That report is built here, from
+// the journal itself: a caller-supplied `report` is ignored, and the caller may only name the
+// artifacts it expects (`expectedArtifacts`, a short list of names).
+//
+// Once the job has ended nothing more is accepted (append()'s terminal rule): a task blocked by a
+// restart, failure or cancel is not resumed — the pipeline starts a new job for it. Only a live
+// job can go `blocked → implementing`.
 function boundAuthorityEvent(id, type, data, current, known) {
   const raw = data && typeof data === 'object' ? data : {};
   let state;
@@ -136,13 +142,20 @@ function boundAuthorityEvent(id, type, data, current, known) {
   if (!taskLifecycle.STATES.includes(raw.to)) throw Object.assign(Error(`Unknown task stage: ${JSON.stringify(raw.to)}`), { status: 400 });
   if (raw.from !== state) throw lifecycleConflict(`Stale task stage: the task is ${state}`);
   if (raw.revision !== revision) throw lifecycleConflict(`Stale task revision: the task is at revision ${revision}`);
-  taskLifecycle.transition(state, raw.to); // throws TaskLifecycleError (409) on an illegal move
+  taskLifecycle.assertStageMove(state, raw.to); // throws TaskLifecycleError (409) on an illegal move
   const out = { from: state, to: raw.to, revision,
     reason: typeof raw.reason === 'string' ? raw.reason.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, MAX_STAGE_REASON) || null : null };
   if (raw.to === 'reviewing' && state !== 'reviewing') {
-    const report = raw.report;
-    if (!canEnterReviewing(report)) throw lifecycleConflict('The completeness report does not allow review');
-    if (report.jobId != null && report.jobId !== id) throw lifecycleConflict('The completeness report belongs to another task');
+    const expected = raw.expectedArtifacts;
+    if (expected != null && (!Array.isArray(expected) || expected.length > MAX_EXPECTED_ARTIFACTS
+      || !expected.every((n) => typeof n === 'string' && n.length > 0 && n.length <= 200))) {
+      throw Object.assign(Error('expectedArtifacts is a short list of artifact names'), { status: 400 });
+    }
+    const report = buildCompletenessReport({ job: { ...known, id }, expectedArtifacts: expected ?? null });
+    if (!canEnterReviewing(report)) {
+      const open = report.checks.filter((c) => c.status !== 'pass').map((c) => `${c.name}: ${c.status}`);
+      throw lifecycleConflict(`The completeness report does not allow review (${open.join('; ')})`);
+    }
     out.reportHash = reportHash(report);
   }
   return out;

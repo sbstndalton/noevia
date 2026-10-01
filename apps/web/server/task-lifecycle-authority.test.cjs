@@ -9,7 +9,7 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const { execFileSync } = require('node:child_process');
 const { createJobs, derive, claimLifecycleAuthority } = require('./jobs.cjs');
 const { view } = require('./code-service.cjs');
-const { reportHash, CHECK_NAMES } = require('./completeness-report.cjs');
+const { reportHash, buildCompletenessReport, CHECK_NAMES } = require('./completeness-report.cjs');
 const lifecycle = require('./task-lifecycle.cjs');
 const fixture = require('./fixtures/code-task-journal.cjs');
 
@@ -163,18 +163,31 @@ test('forgery: lifecycle-shaped approval.* data and job results are inert', asyn
 
 // --- With the token: the pipeline's moves ---------------------------------------------------
 
+// What a server-measured verification (#703, code-verify.cjs) leaves in the journal: the
+// harness checkpoint at the head, the closed `tests` step and a passing test-report artifact.
+function evidence(jobs, id, { checkpoint = true, tests = true, sha = SHA1 } = {}) {
+  if (checkpoint) jobs.append(id, 'checkpoint.created', { branch: 'noevia/task-synthetic', task: 'synthetic', headSha: sha });
+  if (tests) {
+    jobs.append(id, 'step.started', { id: 'tests', title: 'Run the operator test command' });
+    jobs.append(id, 'step.completed', { id: 'tests' });
+    jobs.append(id, 'artifact.created', { name: 'test-report', kind: 'test-report', passed: true, exitCode: 0, headSha: sha });
+  }
+}
+const EXPECTED = ['test-report'];
+
 function pipelineToReviewing(jobs, id) {
   jobs.append(id, 'task.stage', { from: 'planned', to: 'planned', revision: 0, reason: 'Planning' }, AUTHORITY);
   jobs.append(id, 'task.stage', { from: 'planned', to: 'implementing', revision: 0, reason: 'Plan accepted' }, AUTHORITY);
   jobs.append(id, 'task.revision', { n: 1, headSha: SHA1, planHash: PLAN }, AUTHORITY);
   jobs.append(id, 'task.stage', { from: 'implementing', to: 'verifying', revision: 1 }, AUTHORITY);
-  return jobs.append(id, 'task.stage', { from: 'verifying', to: 'reviewing', revision: 1, reason: 'Tests passed', report: passing(id) }, AUTHORITY);
+  evidence(jobs, id);
+  return jobs.append(id, 'task.stage', { from: 'verifying', to: 'reviewing', revision: 1, reason: 'Tests passed', expectedArtifacts: EXPECTED }, AUTHORITY);
 }
 
 test('the pipeline drives planned → implementing → verifying → reviewing, recording the report hash', async () => {
   const { jobs } = store();
   const id = codeJob(jobs);
-  let reviewing;
+  let reviewing, expectedHash;
   await jobs.run(id, async () => {
     // Authoritative from the first stage: job.started no longer implies implementing.
     jobs.append(id, 'task.stage', { from: 'planned', to: 'planned', revision: 0 }, AUTHORITY);
@@ -182,10 +195,12 @@ test('the pipeline drives planned → implementing → verifying → reviewing, 
     jobs.append(id, 'task.stage', { from: 'planned', to: 'implementing', revision: 0, reason: 'Plan accepted' }, AUTHORITY);
     jobs.append(id, 'task.revision', { n: 1, headSha: SHA1, planHash: PLAN }, AUTHORITY);
     jobs.append(id, 'task.stage', { from: 'implementing', to: 'verifying', revision: 1 }, AUTHORITY);
-    reviewing = jobs.append(id, 'task.stage', { from: 'verifying', to: 'reviewing', revision: 1, report: passing(id) }, AUTHORITY);
+    evidence(jobs, id);
+    expectedHash = reportHash(buildCompletenessReport({ job: jobs.get(id), expectedArtifacts: EXPECTED }));
+    reviewing = jobs.append(id, 'task.stage', { from: 'verifying', to: 'reviewing', revision: 1, expectedArtifacts: EXPECTED }, AUTHORITY);
     return { ok: true };
   });
-  assert.equal(reviewing.data.reportHash, reportHash(passing(id)));
+  assert.equal(reviewing.data.reportHash, expectedHash, 'the hash of the report built from the journal');
   assert.equal(Object.prototype.hasOwnProperty.call(reviewing.data, 'report'), false, 'the hash is recorded, not the report');
   const job = jobs.get(id);
   assert.equal(job.status, 'completed');
@@ -227,18 +242,63 @@ test('the token proves who writes, not that the move is sound: every unsound mov
   refuse('task.stage', { from: 'implementing', to: 'verifying' }, 409, 'missing revision');
   refuse('task.stage', { from: 'implementing', to: 'planned', revision: 0 }, 409, 'illegal transition');
   refuse('task.stage', { from: 'implementing', to: 'shipped', revision: 0 }, 400, 'unknown stage');
-  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0 }, 409, 'reviewing without a report');
-  const unknown = passing(id); unknown.checks[0] = { ...unknown.checks[0], status: 'unknown' };
-  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, report: unknown }, 409, 'report with an unknown check');
-  const failed = passing(id); failed.checks[2] = { ...failed.checks[2], status: 'fail' };
-  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, report: failed }, 409, 'report with a failing check');
-  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, report: { ...passing(id), checks: [] } }, 409, 'empty report');
-  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, report: passing('00000000-0000-4000-8000-000000000000') }, 409, "another task's report");
+  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, expectedArtifacts: EXPECTED }, 409, 'reviewing with no evidence in the journal');
+  // A caller-supplied report is ignored: even a "passing" one, or a forged one-check one.
+  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, report: passing(id) }, 409, 'a passing report the caller made up');
+  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, report: { checks: [{ name: 'tests-run', status: 'pass' }] } }, 409, 'forged one-check report, no jobId');
+  refuse('task.stage', { from: 'implementing', to: 'merged', revision: 0 }, 409, 'implementing → merged skips review');
+  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, expectedArtifacts: 'test-report' }, 400, 'expectedArtifacts not a list');
+  refuse('task.stage', { from: 'implementing', to: 'reviewing', revision: 0, expectedArtifacts: Array(33).fill('a') }, 400, 'too many expected artifacts');
   refuse('task.revision', { n: 2, headSha: SHA1 }, 409, 'skipped revision');
   refuse('task.revision', { n: 1, headSha: 'abc1234' }, 400, 'short sha');
   refuse('task.revision', { n: 1 }, 400, 'no sha');
   refuse('task.revision', { n: 1, headSha: SHA1, planHash: 'not-a-hash' }, 400, 'bad plan hash');
   assert.equal(fs.readFileSync(path.join(dir, 'jobs', id + '.jsonl'), 'utf8'), before);
+});
+
+test('reviewing needs the journal itself to be complete: missing tests, checkpoint or artifact each refuse it', () => {
+  const cases = [
+    [{ tests: false }, EXPECTED, 'tests-run'],
+    [{ checkpoint: false }, EXPECTED, 'checkpoint-head-recorded'],
+    [{}, null, 'artifacts-present'],
+    [{}, ['test-report', 'coverage'], 'artifacts-present'],
+  ];
+  for (const [opts, expectedArtifacts, failing] of cases) {
+    const { jobs } = store();
+    const id = codeJob(jobs);
+    jobs.append(id, 'task.stage', { from: 'planned', to: 'implementing', revision: 0 }, AUTHORITY);
+    jobs.append(id, 'task.revision', { n: 1, headSha: SHA1 }, AUTHORITY);
+    jobs.append(id, 'task.stage', { from: 'implementing', to: 'verifying', revision: 1 }, AUTHORITY);
+    evidence(jobs, id, opts);
+    assert.throws(() => jobs.append(id, 'task.stage', { from: 'verifying', to: 'reviewing', revision: 1, expectedArtifacts, report: passing(id) }, AUTHORITY),
+      (e) => e.status === 409 && e.message.includes(failing), failing);
+    assert.equal(jobs.get(id).lifecycle, 'verifying');
+  }
+  // An unresolved uncertainty or a waiting approval blocks it too.
+  const { jobs } = store();
+  const id = codeJob(jobs);
+  jobs.append(id, 'task.stage', { from: 'planned', to: 'implementing', revision: 0 }, AUTHORITY);
+  evidence(jobs, id);
+  jobs.append(id, 'approval.requested', { action: 'edit' });
+  assert.throws(() => jobs.append(id, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 0, expectedArtifacts: EXPECTED }, AUTHORITY), /no-unresolved-uncertainty/);
+});
+
+test('merged is reachable only from reviewing', () => {
+  for (const path of [['implementing'], ['implementing', 'verifying'], ['implementing', 'blocked', 'implementing']]) {
+    const { jobs } = store();
+    const id = codeJob(jobs);
+    let from = 'planned';
+    for (const to of path) { jobs.append(id, 'task.stage', { from, to, revision: 0 }, AUTHORITY); from = to; }
+    assert.throws(() => jobs.append(id, 'task.stage', { from, to: 'merged', revision: 0 }, AUTHORITY), (e) => e.status === 409, `${from} → merged`);
+  }
+  const { jobs } = store();
+  const id = codeJob(jobs);
+  pipelineToReviewing(jobs, id);
+  jobs.append(id, 'task.stage', { from: 'reviewing', to: 'changes_requested', revision: 1 }, AUTHORITY);
+  assert.throws(() => jobs.append(id, 'task.stage', { from: 'changes_requested', to: 'merged', revision: 1 }, AUTHORITY), (e) => e.status === 409);
+  jobs.append(id, 'task.stage', { from: 'changes_requested', to: 'reviewing', revision: 1, expectedArtifacts: EXPECTED }, AUTHORITY);
+  jobs.append(id, 'task.stage', { from: 'reviewing', to: 'merged', revision: 1 }, AUTHORITY);
+  assert.equal(jobs.get(id).lifecycle, 'merged');
 });
 
 test('lifecycle events are rebuilt from known fields, bounded, and belong to Code jobs only', () => {
@@ -310,7 +370,14 @@ test('replay of a tampered journal never throws: an illegal or unproven jump yie
     { from: 'implementing', to: 'planned', revision: 0 }, // illegal
     { from: 'implementing', to: 'reviewing', revision: 0 }, // reviewing with no report hash
     { from: 'implementing', to: 'nowhere', revision: 0 }, // unknown state
+    { from: 'implementing', to: 'merged', revision: 0 }, // merged without reviewing
+    { from: 'implementing', to: 'verifying', revision: 5 }, // a stage at a revision that never existed
   ];
+  const revisionLine = (seq, n) => JSON.stringify({ job: id, seq, type: 'task.revision', at: 1, data: { n, headSha: SHA1, planHash: null } }) + '\n';
+  for (const tampered of [revisionLine(3, 2), revisionLine(3, 1) + revisionLine(4, 1), revisionLine(3, 0)]) {
+    fs.writeFileSync(file, intact + tampered);
+    assert.equal(jobs.get(id).lifecycle, null, 'a revision gap or repeat is tampering');
+  }
   for (const data of cases) {
     fs.writeFileSync(file, intact + line(3, data));
     const job = jobs.get(id);
@@ -343,4 +410,13 @@ test('reportHash is stable across key order and changes with any check', () => {
   assert.match(reportHash(a), /^[0-9a-f]{64}$/);
   const c = passing('x'); c.checks[1].detail = 'other';
   assert.notEqual(reportHash(a), reportHash(c));
+  // Hostile input is a 409, never a crash or a hang.
+  const circular = passing('x'); circular.checks[0].evidence.self = circular;
+  assert.throws(() => reportHash(circular), (e) => e.status === 409 && /circular/.test(e.message));
+  let deep = {}; for (let i = 0; i < 200; i++) deep = { deep };
+  assert.throws(() => reportHash(deep), (e) => e.status === 409 && /deeply/.test(e.message));
+  assert.throws(() => reportHash({ big: 'x'.repeat(5 * 1024 * 1024) }), (e) => e.status === 409 && /large/.test(e.message));
+  assert.throws(() => reportHash({ many: Array(300000).fill('abcdefghijklmnop') }), (e) => e.status === 409);
+  // A shared (non-circular) sub-object is fine.
+  const shared = { k: 1 }; assert.match(reportHash({ a: shared, b: shared }), /^[0-9a-f]{64}$/);
 });
