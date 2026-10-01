@@ -72,8 +72,11 @@ test('the test uid cannot touch the server, the socket or the copy, and leaves n
     for (const marker of ['CHMOD-COPY-OK', 'CHMOD-RUN-OK', 'WRITE-COPY-OK', 'SOCKET-GONE', 'SOCKDIR-WRITE-OK', 'CAN-SIGNAL-SERVER']) {
       assert.doesNotMatch(r.tail, new RegExp(marker), marker);
     }
-    assert.ok(fs.statSync(sock).isSocket(), 'the socket is still there');
-    assert.equal(fs.statSync(sock).uid, 0, 'and still the verifier’s');
+    // The one-shot server closes its listener (and node unlinks the socket) as it accepts its one
+    // connection; what matters is that the test uid could not get into the directory to replace it.
+    assert.deepEqual(fs.readdirSync(sockDir).filter((n) => n !== 'verify.sock'), [], 'nothing was planted beside the socket');
+    assert.equal(fs.statSync(sockDir).uid, 0);
+    assert.equal(fs.statSync(sockDir).mode & 0o777, 0o770, 'the socket directory is still root’s, 0770');
     const escapee = Number(fs.existsSync(pidFile) ? fs.readFileSync(pidFile, 'utf8') : 0);
     assert.ok(escapee > 0, 'the escapee started');
     const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
