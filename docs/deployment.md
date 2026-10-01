@@ -71,7 +71,7 @@ What the code does:
   - Diary now takes `LLM_EMBED_BASE_URL` (compose.embed.yaml points it at `embed`). The live
     `embed` runs the same file and pooling as the engine's `[nomic-embed-text-v1]` section
     (`/models/nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf`, `--pooling mean`), so the Diary
-    index stays valid; `tools/embed-parity-check.cjs` proves it (cosine ≥ 0.999) before the switch.
+    index stays valid; `tools/embed-parity-check.cjs` proves it (min cosine ≥ 0.997 over 50 synthetic strings and mean top-5 retrieval overlap ≥ 0.9, #720) before the switch.
   - Web refuses a reranker on the engine's origin (`rerank-target.cjs`; `RERANK_SHARED_ENGINE=allow`
     overrides) and keeps cosine top-6, its existing fallback. `compose.rerank.yaml` is an optional
     CPU reranker sidecar (`--device none --reranking`, 1.5 GiB limit, threads and CPU quota from one
@@ -87,7 +87,7 @@ Live deploy steps (owner-authorised run only; take the appdata backup first):
 1. **Embedding parity, before anything else** (the engine still has two slots, so this does not
    evict the chat model; run it while chat is idle):
    `docker exec -i cowork-web-1 node - http://llama:8080 nomic-embed-text-v1 http://embed:8080 nomic-embed-text-v1 < tools/embed-parity-check.cjs`
-   from the release directory. Exit 0 (cosine ≥ 0.999) is required before step 5's Diary change.
+   from the release directory. Exit 0 (min cosine ≥ 0.997 over 50 synthetic strings and mean top-5 retrieval overlap ≥ 0.9, #720) is required before step 5's Diary change.
 2. Ship web from `main` with `deploy/examples/overlay-release.sh` (bumps `COWORK_VERSION`).
 3. Build the model loader from the same release (`services/model-manager` changed) and bump
    `MODEL_MANAGER_VERSION`; per-service versioning applies.
