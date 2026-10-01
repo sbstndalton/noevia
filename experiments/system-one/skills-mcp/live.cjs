@@ -10,6 +10,7 @@
 //   node live.cjs --dry-run --base-url <url> --model <name>
 //   node live.cjs --base-url <url> --model <name> --out <dir> [--repeats 3] [--seed 265]
 //     [--arms baseline,embedding,system-one] [--timeout-ms 60000] [--max-tokens 256]
+//     [--selection-max-tokens 192] [--capabilities json-schema|reasoning-effort|none]
 // Env equivalents (flags win): SKILL_EVAL_BASE_URL, SKILL_EVAL_MODEL, SKILL_EVAL_API_KEY (optional).
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,6 +18,7 @@ const { performance } = require('node:perf_hooks');
 const { run, prepare } = require('./contract.cjs');
 const { embed } = require('./fixtures.cjs');
 const { liveCases, validateLiveCases } = require('./live-fixtures.cjs');
+const { selectionConstraint, requestSelection, selectionCause, SELECTION_MAX_TOKENS } = require('../../../apps/web/server/selection-constraint.cjs');
 
 // Arm name -> contract mode. 'embedding' is the rules/embedding comparator (keyword stub vectors,
 // the same injected embedder as the offline runner); 'system-one' is bounded model proposals.
@@ -24,10 +26,22 @@ const ARMS = Object.freeze({ baseline: 'baseline', embedding: 'embedding', 'syst
 const SELECT_INSTRUCTION = 'Select at most 1 skill and 3 toolboxes relevant to the task, using only the offered ids. Reply with JSON only: {"selected":[ids],"scores":{"id":0..1},"confidence":0..1,"abstain":boolean}. abstain is true exactly when selected is empty.';
 const TASK_SYSTEM = 'You are running a synthetic evaluation. Tools are fakes and calling one does nothing. Call a tool only if the task needs it; otherwise answer briefly.';
 
+const CAPABILITY_FLAGS = Object.freeze({ 'json-schema': 'jsonSchemaParam', 'reasoning-effort': 'reasoningEffortParam' });
+function capabilityList(v) {
+  if (v === undefined) return { jsonSchemaParam: true };
+  const caps = {};
+  for (const name of String(v).split(',').map(s => s.trim()).filter(Boolean)) {
+    if (name === 'none') continue;
+    if (!Object.hasOwn(CAPABILITY_FLAGS, name)) throw Error('invalid capabilities');
+    caps[CAPABILITY_FLAGS[name]] = true;
+  }
+  return caps;
+}
+
 function parseArgs(argv, env = process.env) {
   const out = { dryRun: false };
   const takes = { '--base-url': 'baseUrl', '--model': 'model', '--out': 'out', '--repeats': 'repeats', '--seed': 'seed',
-    '--arms': 'arms', '--timeout-ms': 'timeoutMs', '--max-tokens': 'maxTokens', '--selection-deadline-ms': 'selectionDeadlineMs' };
+    '--arms': 'arms', '--timeout-ms': 'timeoutMs', '--max-tokens': 'maxTokens', '--selection-max-tokens': 'selectionMaxTokens', '--capabilities': 'capabilities', '--selection-deadline-ms': 'selectionDeadlineMs' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--dry-run') out.dryRun = true;
@@ -49,6 +63,10 @@ function parseArgs(argv, env = process.env) {
     seed: int(out.seed, 265, 'seed', 0),
     timeoutMs: int(out.timeoutMs, 60000, 'timeout-ms'),
     maxTokens: int(out.maxTokens, 256, 'max-tokens'),
+    selectionMaxTokens: int(out.selectionMaxTokens, SELECTION_MAX_TOKENS, 'selection-max-tokens'),
+    // Provider capability data for the endpoint (providers.cjs vocabulary). Default is the local
+    // llama.cpp engine definition; 'none' sends no extra field.
+    capabilities: capabilityList(out.capabilities),
     selectionDeadlineMs: int(out.selectionDeadlineMs, 30000, 'selection-deadline-ms'),
     arms: (out.arms || Object.keys(ARMS).join(',')).split(',').map(s => s.trim()).filter(Boolean),
   };
@@ -78,13 +96,19 @@ async function chat(cfg, body, signal) {
     headers: { 'content-type': 'application/json', ...(cfg.apiKey ? { authorization: `Bearer ${cfg.apiKey}` } : {}) },
     body: JSON.stringify({ model: cfg.model, temperature: 0, max_tokens: cfg.maxTokens, ...body }),
   });
-  if (!res.ok) { await res.body?.cancel(); throw Object.assign(Error('endpoint error'), { code: `http-${res.status}` }); }
+  if (!res.ok) { await res.body?.cancel(); throw Object.assign(Error('endpoint error'), { code: `http-${res.status}`, status: res.status }); }
   const json = await res.json();
   const usage = json.usage && typeof json.usage === 'object' ? {
     prompt: Number.isFinite(json.usage.prompt_tokens) ? json.usage.prompt_tokens : null,
     completion: Number.isFinite(json.usage.completion_tokens) ? json.usage.completion_tokens : null,
   } : { prompt: null, completion: null };
-  return { message: json.choices?.[0]?.message || {}, usage, ms: performance.now() - started };
+  const choice = json.choices?.[0];
+  const details = json.usage?.completion_tokens_details;
+  usage.reasoning = Number.isFinite(details?.reasoning_tokens) ? details.reasoning_tokens : null;
+  const finishReason = typeof choice?.finish_reason === 'string' ? choice.finish_reason.slice(0, 32) : null;
+  // Whether a reasoning channel carried text (its length), never the text itself.
+  const reasoningChars = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content.length : 0;
+  return { message: choice?.message || {}, usage, finishReason, reasoningChars, ms: performance.now() - started };
 }
 const errorCode = e => (typeof e?.code === 'string' && /^http-\d{3}$/.test(e.code)) ? e.code
   : e?.name === 'TimeoutError' ? 'timeout' : e?.name === 'AbortError' ? 'aborted' : 'request-failed';
@@ -99,12 +123,19 @@ function parseJsonContent(text) {
 function modelAnswer(cfg, seed, sink) {
   return async (request, signal) => {
     try {
-      const r = await chat(cfg, { seed, messages: [
+      const constraint = selectionConstraint({ provider: { capabilities: cfg.capabilities }, model: cfg.model });
+      const payload = { seed, max_tokens: cfg.selectionMaxTokens, messages: [
         { role: 'system', content: SELECT_INSTRUCTION },
         { role: 'user', content: JSON.stringify({ task: request.question, items: request.items }) },
-      ] }, signal);
+      ] };
+      const { result: r, fallback, status } = await requestSelection({ payload, constraint, send: p => chat(cfg, p, signal) });
+      const parsed = parseJsonContent(r.message.content);
       sink.usage = r.usage; sink.ms = r.ms;
-      return parseJsonContent(r.message.content);
+      sink.finishReason = r.finishReason; sink.reasoningChars = r.reasoningChars;
+      sink.cause = selectionCause({ content: r.message.content, finishReason: r.finishReason, parsed });
+      sink.constraint = { schema: constraint.schema && !fallback, thinkingOff: constraint.thinkingOff && !fallback,
+        reasoningEffort: constraint.reasoningEffort && !fallback, rejectedStatus: fallback ? status : null };
+      return parsed;
     } catch (e) { sink.error = errorCode(e); throw e; }
   };
 }
@@ -138,7 +169,7 @@ async function evaluate(cfg, { cases = liveCases(), log = () => {} } = {}) {
       } catch (e) { bareError = errorCode(e); }
       for (const arm of cfg.arms) {
         const started = performance.now();
-        const sink = { usage: null, ms: null, error: null };
+        const sink = { usage: null, ms: null, error: null, finishReason: null, reasoningChars: null, cause: null, constraint: null };
         const { record, index, bodies, tools } = await run(c.input, { mode: ARMS[arm], enabled: true, embed,
           answer: arm === 'system-one' ? modelAnswer(cfg, seed, sink) : undefined,
           config: { deadlineMs: cfg.selectionDeadlineMs } });
@@ -155,7 +186,8 @@ async function evaluate(cfg, { cases = liveCases(), log = () => {} } = {}) {
           fixtureHash: record.fixtureHash, catalogueHash: record.catalogueHash, configHash: record.configHash,
           selectionCorrect: sameSet(record.accepted, c.expected.selection), accepted: record.accepted,
           fallback: record.fallback, routingFallback: record.routingFallback, rejected: record.rejected,
-          selectionError: sink.error, taskError, bareError, ...s, taskCompleted: taskError ? false : s.taskCompleted,
+          selectionError: sink.error, selectionCause: sink.cause, selectionFinishReason: sink.finishReason,
+          selectionReasoningChars: sink.reasoningChars, selectionConstraint: sink.constraint, taskError, bareError, ...s, taskCompleted: taskError ? false : s.taskCompleted,
           schemaCount: record.schemaCount, schemaBytes: record.schemaBytes, estimatedSchemaTokens: record.estimatedSchemaTokens, bodyBytes: record.bodyBytes,
           usage: { selection: sink.usage, task: task?.usage ?? null, bare }, measuredSchemaBodyTokens: measured,
           latencyMs: { selection: record.latencyMs, selectionModel: sink.ms, task: task?.ms ?? null, total: performance.now() - started },

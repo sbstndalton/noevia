@@ -78,4 +78,6 @@ The output is `results.jsonl` (run rows plus a final summary row) and `summary.m
 
 The harness's indicators follow the protocol above: zero unauthorized actions, and held-out task completion no lower than baseline. They inform the decision; they do not make it.
 
+Selection call (#716): reasoning is switched off and the reply is JSON-schema constrained, gated by provider capability data (`--capabilities json-schema|reasoning-effort|none`, default `json-schema` = local llama.cpp engine), with `--selection-max-tokens` (default 192). An engine 400/422/501 retries once without the extra fields. Each System-One row records `selectionCause` (`truncated`, `empty-content`, `invalid-json`), `selectionFinishReason`, `selectionReasoningChars` and `usage.selection.reasoning`, never content. Shaper: `apps/web/server/selection-constraint.cjs`. The production selector stays default-off until the #265 re-gate.
+
 Known limits: the embedding arm uses keyword stub vectors, not a live embedding model. The eight live tasks are synthetic and small, so the results are not a general accuracy claim. Each task is a single turn, and task completion means that the expected tool was called with JSON arguments and nothing unauthorized was called.
