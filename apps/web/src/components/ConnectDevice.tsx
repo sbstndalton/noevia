@@ -36,7 +36,8 @@ export default function ConnectDevice({ onClose, onSharingChange }: { onClose: (
 
   const scope = sharing?.endpointScope;
   const ready = !!sharing && sharing.available && sharing.eligible && !!scope;
-  const needsAck = !!sharing && sharing.scope === 'off' && sharing.cleartext;
+  const enabling = !!sharing && !!scope && sharing.scope !== scope;
+  const needsAck = enabling && !!sharing?.cleartext;
 
   const connect = async () => {
     if (!sharing || !scope) return;
@@ -54,7 +55,10 @@ export default function ConnectDevice({ onClose, onSharingChange }: { onClose: (
       if (!r.ok || !made.password) throw Error(made.error || t('appPasswords.createError'));
       const p = await apiFetch('/api/profile');
       const profile = p.ok ? await p.json().catch(() => null) as { user?: { username?: string } } | null : null;
-      setResult({ url: current.url, username: profile?.user?.username ?? '', password: made.password });
+      // Never leave the username blank: the address path ends in the encoded username.
+      let username = profile?.user?.username ?? '';
+      if (!username) { try { username = decodeURIComponent(current.url.replace(/\/+$/, '').split('/').pop() ?? ''); } catch { username = ''; } }
+      setResult({ url: current.url, username, password: made.password });
       setName(''); setAck(false);
     } catch (e) { setError(e instanceof Error ? e.message : t('appPasswords.createError')); }
     finally { setBusy(false); }
@@ -70,12 +74,13 @@ export default function ConnectDevice({ onClose, onSharingChange }: { onClose: (
     <button type="button" className="popup-tab" aria-label={t('connect.copyNamed', { what: label })} onClick={() => void copy(key, value)}>{copied === key ? t('connect.copied') : t('connect.copy')}</button>
   </div>;
 
-  return <section ref={panelRef} tabIndex={-1} className="connect-device" role="region" aria-label={t('connect.title')}>
+  return <section ref={panelRef} tabIndex={-1} className="connect-device" role="region" aria-label={t('connect.title')}
+    onKeyDown={e => { if (e.key !== 'Escape') return; e.preventDefault(); if (!result && !busy) onClose(); }}>
     <div className="rail-label">{t('connect.title')}</div>
     {!result && <>
       <p className="route-note">{t('connect.intro')}</p>
       {sharing && !ready && <p className="route-note" role="status">{!sharing.available ? t('sharing.reason.notConfigured') : t('sharing.ineligible')} {t('sharing.staysOff')}</p>}
-      {ready && sharing.scope === 'off' && <p className="route-note">{t('connect.willEnable', { scope: scope === 'lan' ? t('sharing.network') : t('sharing.public') })}</p>}
+      {ready && enabling && <p className="route-note">{t('connect.willEnable', { scope: scope === 'lan' ? t('sharing.network') : t('sharing.public') })}</p>}
       {ready && needsAck && <label className="route-note"><input type="checkbox" checked={ack} disabled={busy} onChange={e => setAck(e.target.checked)} /> {t('sharing.cleartext')}</label>}
       <label className="route-note">{t('appPasswords.deviceName')}<input ref={nameRef} className="modal-input" value={name} maxLength={80} disabled={busy || !ready} onChange={e => setName(e.target.value)} placeholder={t('appPasswords.deviceNamePlaceholder')} /></label>
       <div className="connect-device-actions">
@@ -83,8 +88,8 @@ export default function ConnectDevice({ onClose, onSharingChange }: { onClose: (
         <button type="button" className="popup-tab" disabled={busy} onClick={onClose}>{t('common.cancel')}</button>
       </div>
     </>}
-    {result && <div role="status">
-      <p className="route-note">{t('connect.onceNote')}</p>
+    {result && <div>
+      <p className="route-note" role="status">{t('connect.onceNote')}</p>
       {row('url', t('connect.address'), result.url)}
       {row('username', t('connect.username'), result.username)}
       {row('password', t('connect.password'), result.password)}

@@ -53,6 +53,11 @@ async function api(page,url,body,method=body===undefined?'GET':'POST'){
   await panel.getByRole('button',{name:'Copy Address',exact:true}).click();
   assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),url);
   if(process.env.QA_SCREENSHOTS)for(const width of [375,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:`${process.env.QA_SCREENSHOTS}/connect-${width}.png`,fullPage:true,animations:'disabled'});}
+  // Escape inside the panel must not close Settings or discard the shown password.
+  await panel.getByLabel('App password',{exact:true}).focus();await page.keyboard.press('Escape');
+  assert.equal(await pw.isVisible(),true,'Escape keeps the password');assert.equal(await page.getByRole('region',{name:'Connect a device'}).count(),1);
+  assert.equal(await page.getByRole('button',{name:'Security and login',exact:true}).isVisible(),true,'Settings still open');
+  assert.equal(await panel.locator('[role=status]').filter({hasText:'nv_dav_'}).count(),0,'password is not in a live region');
   // Closing drops the secret for good.
   await panel.getByRole('button',{name:'Done',exact:true}).click();
   await panel.waitFor({state:'detached'});
@@ -61,6 +66,7 @@ async function api(page,url,body,method=body===undefined?'GET':'POST'){
   assert.equal(await page.getByLabel('App password',{exact:true}).count(),0);
   assert.equal(await page.getByRole('region',{name:'Connect a device'}).getByRole('checkbox').count(),0,'already on: no second acknowledgement');
   await page.getByRole('region',{name:'Connect a device'}).getByRole('button',{name:'Cancel',exact:true}).click();
+  assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'Connect a device','focus returns to the opener');
   // Security keeps the revoke list and links to the flow.
   await page.getByRole('button',{name:'Security and login',exact:true}).click();
   await page.getByRole('region',{name:'App passwords'}).getByRole('button',{name:'Revoke Synthetic laptop',exact:true}).waitFor();

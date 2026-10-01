@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { apiFetch } from '../api';
 import { useT, type MessageKey } from '../i18n';
 import ConnectDevice from './ConnectDevice';
@@ -10,9 +10,11 @@ export function sharingReason(value: { reason?: string; reasonId?: string }, t: 
   const key = value.reasonId ? REASON_KEYS[value.reasonId] : undefined;
   return key ? t(key) : value.reason ?? '';
 }
-export default function DiarySharing(): JSX.Element {
+export default function DiarySharing({ allowConnect = false }: { allowConnect?: boolean }): JSX.Element {
   const t=useT();
   const [value,setValue]=useState<Sharing|null>(null),[scope,setScope]=useState('off'),[ack,setAck]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[connecting,setConnecting]=useState(false);
+  const openRef=useRef<HTMLButtonElement>(null),wasOpen=useRef(false);
+  useEffect(()=>{if(connecting)wasOpen.current=true;else if(wasOpen.current){wasOpen.current=false;openRef.current?.focus();}},[connecting]);
   const load=()=>apiFetch('/api/profile/sharing').then(async r=>{if(!r.ok)throw Error(t('sharing.loadError'));const v=await r.json();setValue(v);setScope(v.scope);}).catch(e=>setError(e.message));
   useEffect(()=>{void load();},[]);
   const save=async()=>{
@@ -23,8 +25,8 @@ export default function DiarySharing(): JSX.Element {
   return <section aria-label={t('sharing.title')} style={{marginTop:24}}><div className="rail-label">{t('sharing.title')}</div>
     <p className="route-note">{t('sharing.intro')}</p>
     {value && <>
-      {value.available&&value.eligible&&!connecting&&<button type="button" className="modal-btn" onClick={()=>setConnecting(true)}>{t('connect.open')}</button>}
-      {connecting&&<ConnectDevice onClose={()=>setConnecting(false)} onSharingChange={()=>void load()}/>}
+      {allowConnect&&value.available&&value.eligible&&!connecting&&<button ref={openRef} type="button" className="modal-btn" onClick={()=>setConnecting(true)}>{t('connect.open')}</button>}
+      {allowConnect&&connecting&&<ConnectDevice onClose={()=>setConnecting(false)} onSharingChange={()=>void load()}/>}
       <p className="route-note">{t('sharing.current',{access:value.scope === 'off' ? t('sharing.off') : value.scope === 'lan' ? t('sharing.lan') : t('sharing.public')})}</p>
       {!value.available && <p className="route-note">{sharingReason(value,t)} {t('sharing.staysOff')}</p>}
       {!value.eligible && <p className="route-note">{t('sharing.ineligible')}</p>}

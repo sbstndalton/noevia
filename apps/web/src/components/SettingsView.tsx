@@ -92,7 +92,7 @@ function StorageCard(): JSX.Element {
   return <div>
     <div className="rail-label" style={{ marginBottom: 12 }}>{t('diarySettings.storage')}</div>
     <StoragePicker />
-    <DiarySharing />
+    <DiarySharing allowConnect />
     <DiaryConnectors />
   </div>;
 }
