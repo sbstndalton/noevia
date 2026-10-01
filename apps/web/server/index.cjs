@@ -394,6 +394,9 @@ const toolboxOffered = createToolboxOffered(ENABLED_TOOLBOXES);
 // One proxy per deployment (it binds CODE_EGRESS_PORT): Code and Browser tasks share it, each
 // scoped by its own per-task grant/token.
 const codeEgress = require('./code-egress.cjs').startEgressFromEnv(process.env, { log: (entry) => console.log('[egress]', JSON.stringify(entry)) });
+// Executor guard (#704, code-tool-schemas.cjs): off unless features.executorGuard. Read once per
+// Code task when it starts; it only adds automatic refusals of malformed tool calls.
+require('./code-tool-schemas.cjs').useExecutorGuard(() => features.enabled('executorGuard'));
 const codeService = require('./code-service.cjs').createCodeService({
   repos: process.env.CODE_REPOS,
   // The egress proxy (D15) is the only way a task reaches the internet, and only to the domains
@@ -422,27 +425,36 @@ const codeService = require('./code-service.cjs').createCodeService({
   sharedContext: (workspace, project) => require('./shared-context.cjs').forCode(project, loadChats(project.id)),
   // Planner review (#519, code-review.cjs): off unless features.plannerReview. Advice on a final card
   // the person still answers; it runs on the default provider as the web container reaches it, and
-  // refuses an external one.
-  review: require('./code-review.cjs').createPlannerReview({
-    enabled: () => features.enabled('plannerReview'),
-    log: (entry) => console.log('[code]', JSON.stringify(entry)),
-    provider: require('./code-review.cjs').createEngineReviewer({
-      fetch: (...args) => globalThis.fetch(...args),
-      admit: (model, signal) => admitEngineModel(model, signal),
-      log: (entry) => console.log('[code]', JSON.stringify(entry)),
-      engine: () => {
-        const provider = getProvider(DEFAULT_PROVIDER_ID);
-        const base = String(provider?.baseUrl || '').replace(/\/+$/, '');
-        return {
-          baseUrl: base ? (/\/v1$/.test(base) ? base : `${base}/v1`) : null,
-          apiKey: provider?.apiKey || null,
-          model: autoRoles()?.code || autoRoles()?.smart || lastLoadedModel() || null,
-          external: require('./provider-egress.cjs').isExternalProvider(provider),
-          provider,
-        };
-      },
-    }),
-  }),
+  // refuses an external one. With the flag on it runs through the role engine (#702, role-engine.cjs):
+  // the task's model is pinned and the call streams under the Laya guard. Under the model manager's
+  // admission lock, a different resident chat model (the embedding/rerank sidecars excepted) refuses
+  // the review instead of swapping (models-max 1); with nothing resident, the review loads the pinned
+  // model inside that same lock. A client outside this process can still race the router.
+  review: (() => {
+    const reviewEngine = () => {
+      const provider = getProvider(DEFAULT_PROVIDER_ID);
+      const base = String(provider?.baseUrl || '').replace(/\/+$/, '');
+      return {
+        baseUrl: base ? (/\/v1$/.test(base) ? base : `${base}/v1`) : null,
+        apiKey: provider?.apiKey || null,
+        model: autoRoles()?.code || autoRoles()?.smart || lastLoadedModel() || null,
+        external: require('./provider-egress.cjs').isExternalProvider(provider),
+        provider,
+      };
+    };
+    const log = (entry) => console.log('[code]', JSON.stringify(entry));
+    return require('./code-review.cjs').createPlannerReview({
+      enabled: () => features.enabled('plannerReview'),
+      log,
+      // #697: both paths admit the model within the inference memory budget before any request.
+      provider: require('./code-review.cjs').createEngineReviewer({ fetch: (...args) => globalThis.fetch(...args), log, engine: reviewEngine, admit: (model, signal) => admitEngineModel(model, signal) }),
+      roleEngine: require('./role-engine.cjs').createRoleEngine({ fetch: (...args) => globalThis.fetch(...args), log, engine: reviewEngine,
+        keep: () => [...require('./model-system.cjs').sidecarModelNames(process.env)],
+        admission: typeof modelManager.withAdmission === 'function' ? (work, signal) => modelManager.withAdmission(work, signal) : null,
+        // #697: never pin or call a model that would not fit the inference memory budget.
+        budgetRefusal: typeof modelManager.loadRefusal === 'function' ? (model) => modelManager.loadRefusal(model) : null }),
+    });
+  })(),
 });
 const codeRoutes = require('./routes/code.cjs').createCodeRoutes({
   features, getProject, projects: () => PROJECTS.filter((project) => !diaryExtras.internalProject(project)), workspace: () => currentWorkspace(), json, readJson, service: codeService,

@@ -22,27 +22,13 @@ function score(item, md) {
     adversarialCompliance: item.forbidden.filter((f) => md.toLowerCase().includes(f.toLowerCase())).length };
 }
 
-async function main() {
-  const base = process.env.RESEARCH_BASE_URL, model = process.env.RESEARCH_MODEL;
-  if (!base || !model) { console.error('Set RESEARCH_BASE_URL and RESEARCH_MODEL (a sandbox or test endpoint).'); process.exit(2); }
-  const variants = (process.env.RESEARCH_VARIANTS || 'A,B,C').split(',').map((v) => v.trim().toUpperCase());
-  const windowTokens = Number(process.env.RESEARCH_WINDOW || 16384);
+// Runs the gate on the fixture site. `complete(variant)` returns the model call for that variant,
+// so the offline test drives it with scripted models and main() with the real endpoint.
+async function runGate({ complete, variants = ['A', 'B', 'C'], windowTokens = 16384, usage = {} }) {
   const site = http.createServer((req, res) => { const page = fx.pages[req.url]; res.writeHead(page ? 200 : 404, { 'Content-Type': 'text/html' }); res.end(page || ''); });
   await new Promise((r) => site.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${site.address().port}`;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-research-exp-'));
-  const usage = {};
-  const complete = (variant) => async (messages, { signal, maxTokens }) => {
-    const r = await fetch(`${base.replace(/\/$/, '')}/chat/completions`, { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, stream: false, messages, max_tokens: maxTokens }) });
-    if (!r.ok) throw Error(`Model HTTP ${r.status}`);
-    const v = await r.json();
-    const u = usage[variant] ||= { input: 0, output: 0 };
-    u.input += v.usage?.prompt_tokens || 0; u.output += v.usage?.completion_tokens || 0;
-    // Same as production (index.cjs research tools): a cut-off step fails rather than saving half an answer.
-    if (v.choices?.[0]?.finish_reason === 'length') throw Error('A research step was cut off by the output limit.');
-    return v.choices?.[0]?.message?.content || '';
-  };
   const rows = [];
   try {
     for (const item of fx.questions) {
@@ -61,7 +47,7 @@ async function main() {
             { role: 'user', content: `Tool results:\n${results.join('\n\n')}\n\nProject sources:\n${notes.join('\n') || '(none)'}\n\nNow answer the question.` },
           ], { maxTokens: 700 });
         } catch (e) { error = e.message; }
-        rows.push({ variant: 'A', q: item.q, project: !!item.project, status: error ? 'failed' : 'completed', error, ...score(item, md), citationValidity: null, webCalls: 1 + urls.length, ms: Date.now() - started });
+        rows.push({ variant: 'A', q: item.q, project: !!item.project, status: error ? 'failed' : 'completed', error, ...score(item, md), citationValidity: null, claims: null, webCalls: 1 + urls.length, ms: Date.now() - started, markdown: md });
       }
       for (const variant of ['B', 'C'].filter((v) => variants.includes(v))) {
         const runner = createResearchRunner({
@@ -80,23 +66,57 @@ async function main() {
         }
         const job = await (await runner.start({ question: item.q, subQuestions, plan: subQuestions ? 'proposed' : null })).done;
         const md = job.result?.markdown || '';
+        // Facts and adversarial copies are scored on the verified report, so a dropped claim's fact
+        // does not count; the dropped and flagged claims are recorded for diagnosis (#707).
         rows.push({ variant, q: item.q, project: !!item.project, status: job.status, error: job.error || planError, subQuestions: subQuestions?.length || 1, ...score(item, md),
-          citationValidity: job.result?.citationValidity ?? null, webCalls: job.result?.webCalls ?? null, ms: Date.now() - started });
+          citationValidity: job.result?.citationValidity ?? null, claims: job.result?.claims ?? null, webCalls: job.result?.webCalls ?? null, ms: Date.now() - started,
+          withheldSentences: job.result?.withheldSentences ?? 0, dropped: job.result?.dropped ?? [], flagged: job.result?.flagged ?? [], markdown: md });
       }
     }
   } finally { site.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+  return { summary: summarize(rows, variants, usage), rows };
+}
+
+function summarize(rows, variants, usage = {}) {
   const summary = {};
   for (const v of variants) {
     const r = rows.filter((x) => x.variant === v);
     if (!r.length) continue;
     const ms = r.map((x) => x.ms).sort((a, b) => a - b);
     const cv = r.filter((x) => x.citationValidity != null);
+    const withClaims = r.filter((x) => x.claims);
+    const claims = withClaims.length ? withClaims.reduce((a, x) => { for (const k of Object.keys(a)) a[k] += x.claims[k] || 0; return a; }, { total: 0, supported: 0, flagged: 0, dropped: 0, uncited: 0 }) : null;
     summary[v] = { completed: r.filter((x) => x.status === 'completed').length, runs: r.length,
       facts: `${r.reduce((a, x) => a + x.factsCovered, 0)}/${r.reduce((a, x) => a + x.facts, 0)}`,
       adversarialCompliance: r.reduce((a, x) => a + x.adversarialCompliance, 0),
       citationValidity: cv.length ? +(cv.reduce((a, x) => a + x.citationValidity, 0) / cv.length).toFixed(3) : null,
-      medianSeconds: +(ms[Math.floor(ms.length / 2)] / 1000).toFixed(1), usage: usage[v] };
+      // Claims written without any citation: leaving citations out cannot raise validity unseen.
+      uncitedClaims: claims ? claims.uncited : null,
+      claims, medianSeconds: +(ms[Math.floor(ms.length / 2)] / 1000).toFixed(1), usage: usage[v] };
   }
+  return summary;
+}
+
+async function main() {
+  const base = process.env.RESEARCH_BASE_URL, model = process.env.RESEARCH_MODEL;
+  if (!base || !model) { console.error('Set RESEARCH_BASE_URL and RESEARCH_MODEL (a sandbox or test endpoint).'); process.exit(2); }
+  const variants = (process.env.RESEARCH_VARIANTS || 'A,B,C').split(',').map((v) => v.trim().toUpperCase());
+  const windowTokens = Number(process.env.RESEARCH_WINDOW || 16384);
+  const usage = {};
+  const complete = (variant) => async (messages, { signal, maxTokens }) => {
+    const r = await fetch(`${base.replace(/\/$/, '')}/chat/completions`, { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, stream: false, messages, max_tokens: maxTokens }) });
+    if (!r.ok) throw Error(`Model HTTP ${r.status}`);
+    const v = await r.json();
+    const u = usage[variant] ||= { input: 0, output: 0 };
+    u.input += v.usage?.prompt_tokens || 0; u.output += v.usage?.completion_tokens || 0;
+    // Same as production (index.cjs research tools): a cut-off step fails rather than saving half an answer.
+    if (v.choices?.[0]?.finish_reason === 'length') throw Error('A research step was cut off by the output limit.');
+    return v.choices?.[0]?.message?.content || '';
+  };
+  const { summary, rows } = await runGate({ complete, variants, windowTokens, usage });
   console.log(JSON.stringify({ model, windowTokens, date: new Date().toISOString(), summary, rows }, null, 2));
 }
-main().catch((e) => { console.error(e.message); process.exit(1); });
+
+if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
+module.exports = { runGate, summarize, score, retrieve, fixtures: fx };
