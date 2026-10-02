@@ -6,7 +6,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const lib = require('./lib.cjs');
 const run = require('./run.cjs');
-const { createHttpBackend } = require('./http.cjs');
+const { createHttpBackend, listModels } = require('./http.cjs');
 
 const book = run.loadCases();
 const byPrompt = new Map(book.cases.map((c) => [c.prompt, c]));
@@ -272,6 +272,135 @@ test('the http backend speaks OpenAI chat completions, passes tools and the sche
   assert.equal(seen.body.tools.length, book.tools.length);
   assert.equal(seen.body.response_format.type, 'json_schema');
   assert.deepEqual(out, { text: 'hi', toolCalls: [{ name: 'synthetic_create_event', arguments: '{"a":1}' }] });
-  await assert.rejects(createHttpBackend({ engineUrl: 'http://e.invalid', fetch: async () => ({ ok: false, status: 503 }) }).complete({ model: 'm', messages: [] }), /engine 503/);
+  await assert.rejects(createHttpBackend({ engineUrl: 'http://e.invalid', sleep: async () => {}, fetch: async () => ({ ok: false, status: 503 }) }).complete({ model: 'm', messages: [] }), /engine 503/);
   assert.throws(() => createHttpBackend({ engineUrl: 'file:///x' }), /http/);
+});
+
+const KEY = 'sk-test-SECRET-key-value-123';
+const okJson = (message, usage) => ({ ok: true, json: async () => ({ choices: [{ message }], ...(usage ? { usage } : {}) }) });
+
+test('remote models: plan shows no local memory, 0 load seconds, and the advisory memory line reads n/a (remote)', async () => {
+  const h = harness();
+  assert.equal(await run.main(argv('--dry-run', '--remote-models', 'answer-m,cand-good', '--engine-url', 'https://remote.invalid/v1'), h.io), 0);
+  const text = h.lines.join('\n');
+  assert.match(text, /answer-m: remote \(no local memory\)/);
+  assert.match(text, /cand-good: remote \(no local memory\)/);
+  assert.match(text, /cand-ref: no estimate/);
+  assert.match(text, /model loads:\s+1 /);
+  assert.match(text, /call cap:\s+60/);
+  const cfgAll = cfg({ remoteModels: ['answer-m', 'cand-good', 'cand-ref'] });
+  const plan = run.buildPlan(cfgAll, book, null);
+  assert.equal(plan.loads, 0);
+  assert.equal(plan.memory.peakGib, null);
+  assert.deepEqual(plan.memory.unknown, []);
+  assert.equal(plan.estimatedSeconds, plan.calls.total * 10);
+  const report = await run.runEval({ cfg: cfgAll, casebook: book, estimates: null, answerBackend: answerStub(), candidateBackend: { complete: (r) => reasonerStub('good').complete(r) }, approvedRun: 'run-0003' });
+  assert.equal(report.candidates[0].summary.memory.remote, true);
+  const mem = report.candidates[0].kill.lines.find((l) => l.id === 'memory');
+  assert.equal(mem.pass, null);
+  assert.equal(mem.detail, 'n/a (remote)');
+  assert.match(run.renderMarkdown(report), /memory: n\/a \(remote\)/);
+  const bad = harness();
+  assert.equal(await run.main(argv('--dry-run', '--remote-models', 'nope'), bad.io), 2);
+  assert.match(bad.errs.join('\n'), /--remote-models entry nope/);
+});
+
+test('--list-models: one GET /v1/models, sorted ids, key required, no approval, no other call', async () => {
+  const calls = [];
+  const fetch = async (url, init) => { calls.push({ url, init }); return { ok: true, json: async () => ({ data: [{ id: 'zeta' }, { id: 'alpha' }] }) }; };
+  const h = harness({ fetch, env: { FRAMING_EVAL_API_KEY: KEY } });
+  assert.equal(await run.main(['--list-models', '--engine-url', 'https://remote.invalid/v1'], h.io), 0);
+  assert.deepEqual(h.lines, ['alpha', 'zeta']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://remote.invalid/v1/models');
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.headers.Authorization, `Bearer ${KEY}`);
+  assert.equal(h.built(), 0);
+  assert.ok(!h.lines.concat(h.errs).join('\n').includes(KEY));
+  const nokey = harness({ fetch, env: {} });
+  assert.equal(await run.main(['--list-models', '--engine-url', 'https://remote.invalid'], nokey.io), 2);
+  assert.match(nokey.errs.join('\n'), /FRAMING_EVAL_API_KEY/);
+  assert.equal(calls.length, 1, 'no call without the key');
+  const failing = harness({ fetch: async () => { throw Error(`connect failed for ${KEY}`); }, env: { FRAMING_EVAL_API_KEY: KEY } });
+  assert.equal(await run.main(['--list-models', '--engine-url', 'https://remote.invalid'], failing.io), 1);
+  assert.ok(!failing.errs.join('\n').includes(KEY));
+  await assert.rejects(listModels({ engineUrl: 'https://r.invalid', apiKey: KEY, fetch: async () => ({ ok: false, status: 401 }) }), /engine 401/);
+});
+
+test('remote calls retry 429 and 5xx with backoff, at most 3 times, and not other statuses', async () => {
+  const sleeps = [];
+  const seq = (statuses) => { let i = 0; return async () => { const st = statuses[i++]; return st === 200 ? okJson({ content: 'ok' }) : { ok: false, status: st }; }; };
+  const mk = (statuses) => createHttpBackend({ engineUrl: 'https://r.invalid', apiKey: KEY, fetch: seq(statuses), sleep: async (ms) => { sleeps.push(ms); } });
+  const b = mk([429, 503, 200]);
+  assert.equal((await b.complete({ model: 'm', messages: [] })).text, 'ok');
+  assert.deepEqual(sleeps, [1000, 2000]);
+  assert.equal(b.stats().calls, 3);
+  assert.equal(b.stats().retries, 2);
+  const c = mk([500, 502, 503, 504, 200]);
+  await assert.rejects(c.complete({ model: 'm', messages: [] }), /engine 504/);
+  assert.equal(c.stats().calls, 4, '1 try + 3 retries');
+  const d = mk([400, 200]);
+  await assert.rejects(d.complete({ model: 'm', messages: [] }), /engine 400/);
+  assert.equal(d.stats().calls, 1);
+});
+
+test('--max-calls: the backend aborts the whole run when the cap is exceeded, and a plan over the cap is refused', async () => {
+  const fetch = async () => okJson({ content: 'x' });
+  const b = createHttpBackend({ engineUrl: 'https://r.invalid', fetch, maxCalls: 3 });
+  for (let i = 0; i < 3; i++) await b.complete({ model: 'm', messages: [] });
+  await assert.rejects(b.complete({ model: 'm', messages: [] }), /--max-calls cap of 3/);
+  // a failing call is a scored failure, but the cap error is fatal and is not swallowed by the scorer
+  const small = createHttpBackend({ engineUrl: 'https://r.invalid', fetch, maxCalls: 2 });
+  await assert.rejects(lib.runFramedVsUnframed({ backend: small, model: 'm', cases: book.cases, tools: book.tools }), /--max-calls cap/);
+  assert.equal(small.stats().calls, 2);
+  // retries count against the cap
+  const flaky = createHttpBackend({ engineUrl: 'https://r.invalid', fetch: async () => ({ ok: false, status: 503 }), maxCalls: 2, sleep: async () => {} });
+  await assert.rejects(flaky.complete({ model: 'm', messages: [] }), /--max-calls cap/);
+  // main: the full set plans 52 calls; a cap of 10 is refused before any backend, and a mid-run abort exits 1
+  const h = harness();
+  assert.equal(await run.main(argv('--approved-run', 'run-0004', '--max-calls', '10'), h.io), 2);
+  assert.match(h.errs.join('\n'), /over --max-calls 10/);
+  assert.equal(h.built(), 0);
+  const aborting = harness({ createBackend: () => createHttpBackend({ engineUrl: 'https://r.invalid', fetch, maxCalls: 1 }) });
+  assert.equal(await run.main(argv('--smoke', '--approved-run', 'run-0005', '--out', os.tmpdir()), aborting.io), 1);
+  assert.match(aborting.errs.join('\n'), /aborted: --max-calls cap of 1/);
+});
+
+test('the report carries call count and token usage from the responses', async () => {
+  const fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    const msgs = body.messages;
+    const u = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+    if (body.response_format) return okJson({ content: await reasonerStub('good').complete({ messages: msgs }).then((r) => r.text) }, u);
+    const out = await answerStub().complete({ messages: msgs });
+    return okJson({ content: out.text, tool_calls: out.toolCalls.map((t) => ({ function: t })) }, u);
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'framing-eval-'));
+  try {
+    const h = harness({ createBackend: (c) => createHttpBackend({ engineUrl: c.engineUrl, fetch, apiKey: KEY, maxCalls: c.maxCalls }) });
+    assert.equal(await run.main(argv('--smoke', '--approved-run', 'run-0006', '--out', dir, '--remote-models', 'answer-m,cand-good,cand-ref', '--engine-url', 'https://remote.invalid'), h.io), 0);
+    const json = JSON.parse(fs.readFileSync(path.join(dir, 'run-0006-smoke.json'), 'utf8'));
+    assert.equal(json.usage.calls, 12, '2 cases * 2 + 2 candidates * 2 reasoner cases * 2');
+    assert.equal(json.usage.totalTokens, 12 * 15);
+    assert.equal(json.usage.promptTokens, 120);
+    assert.match(fs.readFileSync(path.join(dir, 'run-0006-smoke.md'), 'utf8'), /Calls 12 \(retries 0\), tokens: prompt 120, completion 60, total 180/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the API key never appears in plan output, the markdown report or the JSON report', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'framing-eval-'));
+  // every response fails with an error that echoes the key, to prove error strings are scrubbed too
+  const fetch = async () => { throw Error(`socket hang up (Authorization: Bearer ${KEY})`); };
+  try {
+    const h = harness({ env: { FRAMING_EVAL_API_KEY: KEY }, fetch, createBackend: (c) => createHttpBackend({ engineUrl: c.engineUrl, fetch, apiKey: KEY, maxCalls: c.maxCalls }) });
+    const dry = harness({ env: { FRAMING_EVAL_API_KEY: KEY } });
+    assert.equal(await run.main(argv('--dry-run', '--engine-url', 'https://remote.invalid', '--remote-models', 'answer-m'), dry.io), 0);
+    assert.equal(await run.main(argv('--smoke', '--approved-run', 'run-0007', '--out', dir, '--engine-url', 'https://remote.invalid', '--remote-models', 'answer-m,cand-good,cand-ref'), h.io), 0);
+    const files = fs.readdirSync(dir);
+    assert.equal(files.length, 2);
+    const all = [...files.map((f) => fs.readFileSync(path.join(dir, f), 'utf8')), h.lines.join('\n'), h.errs.join('\n'), dry.lines.join('\n'), dry.errs.join('\n')];
+    for (const text of all) assert.ok(!text.includes(KEY));
+    assert.match(all[0] + all[1], /engine request failed/, 'the error text is kept, with the key scrubbed');
+    assert.match(all[0] + all[1], /\[redacted\]/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
