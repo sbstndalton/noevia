@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 58b4bffb — 2026-10-02 (web: per-user chat mirror into the Diary vault, inert)
+
+### Services
+
+- **Web:** [#748](https://github.com/sbstndalton/noevia/pull/748) (completes [#741](https://github.com/sbstndalton/noevia/issues/741) with #747: opt-in per-user mirror of chats into the Diary vault, `chat-vault-mirror.cjs`, `/api/chat-vault-mirror/preferences`; includes the reviewed trash-safety fix). Now `cowork-web:58b4bffb` (previous `cowork-web:23841302`), recreated alone; `readlink current` is `releases/58b4bffb`, `COWORK_VERSION=58b4bffb`. The mirror stays inert: it needs the `chatFraming` flag plus a per-user opt-in, and both are OFF; no flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Exact source `58b4bffb` (squash of PR #748, tested head 3ee31b5 = d46cfb3 updated onto main after #747, all CI re-run green; squash-merged with `--match-head-commit`). `dist/` and `server/` were built from a `git archive` of that SHA (`npm ci` + `npm run build`, dependencies unchanged) and layered onto `cowork-web:23841302` by hand, web only. Backup: `config/.env.bak.before-58b4bffb`; no appdata backup run. Started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`); all three preflight checks passed.
+
+- **Verify:** web healthy, `RestartCount` 0, `dist/version.json` `0.2.0+muqnwkyw`, `index.html` sha256 `77a03167...` identical to the local build, `chat-vault-mirror.cjs` present in the image. All 44 other containers kept ID, StartedAt, restart count, status and image; only web changed. Live: `/` 200, `/api/ready` 200 and unauthenticated `GET /api/chat-vault-mirror/preferences` 401 (local and public), served bundle `index-BKHnIpBQ.js` (in the local build); web log clean for 2 minutes with no `workspace-ops` calls. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/23841302 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-58b4bffb /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:23841302` image is retained.
+
 ## Release 23841302 — 2026-10-02 (web: chat framing phase 5 organise, flag off)
 
 ### Services
