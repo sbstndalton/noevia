@@ -22,5 +22,5 @@ test('capped, with the rest counted, and every node inside the drawing',()=>{
 });
 
 test('a lonely file is just itself',()=>{
- assert.deepEqual(JSON.parse(JSON.stringify(localGraph({path:'Diary/a.md',text:'no links',root:'Diary',backlinks:[]}))),{nodes:[{id:'Diary/a.md',label:'a',relation:'self',x:0,y:0}],hidden:0});
+ assert.deepEqual(JSON.parse(JSON.stringify(localGraph({path:'Diary/a.md',text:'no links',root:'Diary',backlinks:[]}))),{nodes:[{id:'Diary/a.md',label:'a',relation:'self',x:0,y:0}],edges:[],hidden:0});
 });
