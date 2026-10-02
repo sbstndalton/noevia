@@ -1,0 +1,36 @@
+name: Framing eval harness
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/framing-eval/**'
+      - 'apps/web/server/task-packet.cjs'
+      - 'apps/web/server/framing-reasoner.cjs'
+      - 'apps/web/server/chat-frame-steering.cjs'
+      - 'apps/web/server/prompt-framing.cjs'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/framing-eval-harness.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/framing-eval/**'
+      - 'apps/web/server/task-packet.cjs'
+      - 'apps/web/server/framing-reasoner.cjs'
+      - 'apps/web/server/chat-frame-steering.cjs'
+      - 'apps/web/server/prompt-framing.cjs'
+      - 'apps/web/tests/hermetic-network.cjs'
+      - '.github/workflows/framing-eval-harness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Stub backends only; no model, no package installation.
+      - run: node --require ./apps/web/tests/hermetic-network.cjs --test experiments/framing-eval/*.test.cjs
