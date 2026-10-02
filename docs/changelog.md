@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release b31d0075 — 2026-10-02 (web: each chat as a small brain note, flags off)
+
+### Services
+
+- **Web:** [#751](https://github.com/sbstndalton/noevia/pull/751) (chat framing phase 6, closes [#742](https://github.com/sbstndalton/noevia/issues/742): each chat as a small brain note, `chat-brain.cjs`). Now `cowork-web:b31d0075` (previous `cowork-web:58b4bffb`), recreated alone; `readlink current` is `releases/b31d0075`, `COWORK_VERSION=b31d0075`. No flag was changed; the feature stays off.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Exact source `b31d0075` (squash of PR #751, tested head 455be68b, up to date with main, all CI green; squash-merged with `--match-head-commit`, branch deleted, no phantom deletions). `dist/` and `server/` were built from a `git archive` of that SHA (`npm ci` + `npm run build`, dependencies unchanged) and layered onto `cowork-web:58b4bffb` by hand, web only. Candidate checked with no network: `chat-brain`, `chat-framing` and `chat-vault-mirror` tests 51/51. Backup: `config/.env.bak.before-b31d0075`; no appdata backup run. Started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`); all three preflight checks passed.
+
+- **Verify:** web healthy, `RestartCount` 0, `index.html` sha256 `202f5a5b...` identical to the local build, `chat-brain.cjs` present in the image, served bundle `index-CZgxErvH.js` (in the local build). All 44 other containers kept ID, StartedAt, restart count and image; only web changed. `/` and `/api/ready` 200 locally and publicly; web log clean for 2 minutes. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/58b4bffb /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-b31d0075 /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:58b4bffb` image is retained.
+
 ## Release 58b4bffb — 2026-10-02 (web: per-user chat mirror into the Diary vault, inert)
 
 ### Services
