@@ -45,11 +45,12 @@ function stubVault() {
 }
 
 function setup({ enabled = true, freeChats = [], projects = [], histories = {}, vault = stubVault() } = {}) {
-  const state = { freeChats, projects, histories, enabled, index: {} };
+  const state = { freeChats, projects, histories, enabled, index: {}, deleted: new Set() };
   const timers = [];
   const mirror = createChatVaultMirror({
     enabled: () => state.enabled,
     lists: (userId) => { assert.equal(userId, 'u1', 'lists are read for the scheduled user only'); return { freeChats: state.freeChats, projects: state.projects }; },
+    deleted: (userId) => { assert.equal(userId, 'u1', 'tombstones are read for the scheduled user only'); return state.deleted; },
     readHistory: (_userId, id) => state.histories[id] || [],
     files: vault.client,
     index: { read: () => state.index, write: (_u, value) => { state.index = JSON.parse(JSON.stringify(value)); } },
@@ -165,6 +166,7 @@ test('delete: the note goes to the Diary Trash, never a hard delete', async () =
   const { mirror, vault, state } = setup({ freeChats: [chat('a', 'Keep'), chat('b', 'Bin me')] });
   await mirror.sync('u1', new Set());
   state.freeChats = [chat('a', 'Keep')];
+  state.deleted = new Set(['b', 'z']);
   await mirror.sync('u1', new Set());
   assert.deepEqual([...vault.files.keys()], ['Chats/Inbox/Keep.md']);
   assert.deepEqual(vault.trash.map((t) => [t.path, t.reason]), [['Chats/Inbox/Bin me.md', 'delete']]);
@@ -175,6 +177,34 @@ test('delete: the note goes to the Diary Trash, never a hard delete', async () =
   state.index.notes.z = { path: 'Chats/Inbox/Gone.md', version: 'v' };
   assert.equal(await mirror.sync('u1', new Set()), true);
   assert.equal(state.index.notes.z, undefined);
+});
+
+test('an empty chat list never trashes: the trash pass is skipped (sanity brake)', async () => {
+  const { mirror, vault, state } = setup({ freeChats: [chat('a', 'A'), chat('b', 'B')] });
+  await mirror.sync('u1', new Set());
+  vault.calls.length = 0;
+  state.freeChats = []; state.projects = [];
+  state.deleted = new Set(['a', 'b']); // even tombstones do not override the brake
+  assert.equal(await mirror.sync('u1', new Set()), true);
+  assert.equal(vault.calls.length, 0, 'no ops at all on an empty list');
+  assert.deepEqual(Object.keys(state.index.notes).sort(), ['a', 'b']);
+});
+
+test('absent from the lists but not tombstoned: the note and its index entry stay', async () => {
+  const { mirror, vault, state } = setup({ freeChats: [chat('a', 'Keep'), chat('b', 'Missing')] });
+  await mirror.sync('u1', new Set());
+  vault.calls.length = 0;
+  state.freeChats = [chat('a', 'Keep')];
+  assert.equal(await mirror.sync('u1', new Set()), true);
+  assert.equal(vault.trash.length, 0);
+  assert.equal(vault.calls.filter((c) => c.op === 'delete' || c.op === 'stat').length, 0);
+  assert.ok(vault.files.has('Chats/Inbox/Missing.md'));
+  assert.equal(state.index.notes.b.path, 'Chats/Inbox/Missing.md');
+  // Once it is tombstoned, it goes to Trash.
+  state.deleted = new Set(['b']);
+  await mirror.sync('u1', new Set());
+  assert.deepEqual(vault.trash.map((t) => [t.path, t.reason]), [['Chats/Inbox/Missing.md', 'delete']]);
+  assert.equal(state.index.notes.b, undefined);
 });
 
 test('never overwrites a note noevia did not write; a vault edit is kept in Trash before an update', async () => {

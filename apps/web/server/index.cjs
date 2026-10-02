@@ -707,6 +707,7 @@ const vaultMirrorAvailable = (userId) => features.enabled('chatFraming') && auth
 const chatVaultMirror = vaultMirrorLib.createChatVaultMirror({
   enabled: (userId) => vaultMirrorAvailable(userId) && vaultMirrorLib.readPreferences(workspaceStore.get(userId).dir).enabled,
   lists: (userId) => diaryAsUser(userId, () => ({ freeChats: Array.from(FREE_CHATS), projects: PROJECTS.filter((proj) => !diaryExtras.internalProject(proj)) })),
+  deleted: (userId) => diaryAsUser(userId, () => require('./chat-lists.cjs').readTombstones(currentWorkspace().dir)),
   readHistory: (userId, chatId) => diaryAsUser(userId, () => readHistory(chatId)),
   files: diaryFiles,
   index: { read: (userId) => vaultMirrorLib.readIndex(workspaceStore.get(userId).dir), write: (userId, state) => vaultMirrorLib.writeIndex(workspaceStore.get(userId).dir, state) },

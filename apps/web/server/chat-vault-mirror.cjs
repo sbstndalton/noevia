@@ -7,8 +7,14 @@
 // (chat-export.cjs chatMarkdown, which leaves reasoning out), then the chat's links as [[Title]].
 //
 // Identity is the chat id (noevia_id), kept in a small per-user index, so a rename or a move to
-// another project moves the note instead of leaving a copy. A chat that is gone has its note moved
-// to the Diary's Trash (the companion's delete is a Trash capsule, never a hard delete). A note
+// another project moves the note instead of leaving a copy. A chat that was deleted has its note
+// moved to the Diary's Trash (the companion's delete is a Trash capsule, never a hard delete).
+// Deleted means positively tombstoned (chat-lists.cjs deleted-chats.json), never merely absent from
+// the lists: an empty or partial list (a load hiccup, a swallowed read error, an import mid-write)
+// must not trash a vault. Every delete path tombstones: a single delete, project deletion
+// (purgeProjectChats) and the retention sweep (chat-retention.cjs, through the normal delete
+// path). A chat that leaves the lists without a tombstone (or whose tombstone aged out of the
+// capped file) keeps its note and its index entry; that is the safe side. A note
 // someone edited in the vault keeps its edited copy in Trash before noevia overwrites it.
 //
 // Writes go through the Diary files client the DAV listener already uses (read, write, mkdir, ops:
@@ -106,11 +112,12 @@ function mirrorTrigger(method, path) {
  * @param {object} deps
  * @param {(userId:string) => boolean} deps.enabled      flag on, Diary on and the user opted in
  * @param {(userId:string) => {freeChats:object[], projects:object[]}} deps.lists   the user's own lists
+ * @param {(userId:string) => Set<string>} deps.deleted  the user's own tombstoned chat ids
  * @param {(userId:string, chatId:string) => object[]} deps.readHistory           the user's own transcript
  * @param {{read:Function, write:Function, mkdir:Function, ops:Function}} deps.files the Diary files client (DAV's)
  * @param {{read:(userId:string)=>object, write:(userId:string, state:object)=>void}} deps.index
  */
-function createChatVaultMirror({ enabled, lists, readHistory, files, index, log = () => {},
+function createChatVaultMirror({ enabled, lists, deleted = () => new Set(), readHistory, files, index, log = () => {},
   delayMs = DEFAULT_DELAY_MS, maxWaitMs = DEFAULT_MAX_WAIT_MS, retryMs = DEFAULT_RETRY_MS,
   setTimer = setTimeout, clearTimer = clearTimeout, now = Date.now }) {
   const users = new Map(); // userId -> { timer, firstAt, dirty:Set, running, again }
@@ -232,9 +239,20 @@ function createChatVaultMirror({ enabled, lists, readHistory, files, index, log 
       }
     }
 
-    // Gone from every list: the note goes to the Diary's Trash.
-    for (const [id, entry] of Object.entries(notes)) {
-      if (liveIds.has(id) || id.startsWith('taken:')) continue;
+    // Deleted (tombstoned) chats: the note goes to the Diary's Trash. Absence alone never trashes.
+    const indexed = Object.keys(notes).filter((id) => !id.startsWith('taken:'));
+    let gone = [];
+    if (live.length === 0 && indexed.length > 0) {
+      // Sanity brake: an empty list next to mirrored notes is far likelier a bad read than a user
+      // who deleted everything at once. Skip trashing; a later pass with a real list catches up.
+      log('chat-vault-mirror: empty chat list with mirrored notes, trash pass skipped', indexed.length);
+    } else {
+      const tombstones = deleted(userId);
+      const isDeleted = (id) => tombstones instanceof Set && tombstones.has(id);
+      gone = indexed.filter((id) => !liveIds.has(id) && isDeleted(id));
+    }
+    for (const id of gone) {
+      const entry = notes[id];
       try {
         if (!insideMirror(entry?.path)) { delete notes[id]; continue; }
         let stat = null;
