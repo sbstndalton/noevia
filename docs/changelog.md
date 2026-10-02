@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release fe6fb292 — 2026-10-02 (web: chat framing phase 3, flag off)
+
+### Services
+
+- **Web:** [#745](https://github.com/sbstndalton/noevia/pull/745) (closes [#739](https://github.com/sbstndalton/noevia/issues/739): a confirmed frame steers the answer, `chat-frame-steering.cjs`). Now `cowork-web:fe6fb292` (previous `cowork-web:90390780`), recreated alone; `readlink current` is `releases/fe6fb292`, `COWORK_VERSION=fe6fb292`. The `chatFraming` flag stays OFF; no flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Exact source `fe6fb292` (squash of PR #745, head b9157e0, all CI green). `dist/` and `server/` were built from a `git archive` of that SHA (`npm ci` + `npm run build`) and layered onto `cowork-web:90390780` with the overlay Dockerfile steps by hand, web only. Backup: `config/.env.bak.before-fe6fb292`; no appdata backup run (it would stop containers). Started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (run with the absolute `--env-file` path); all three preflight checks passed.
+
+- **Verify:** web healthy, `RestartCount` 0, `dist/version.json` `0.2.0+muqm4tw7`, `index.html` sha256 `1f4ad879...` identical to the local build, `chat-frame-steering.cjs` present in the image. All 44 other containers kept ID, StartedAt, restart count and status; only web changed. Live: `/` 200, `/api/ready` 200, served bundle `index-DBzDG8eN.js`. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/90390780 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-fe6fb292 /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:90390780` image is retained.
+
 ## Release 90390780 — 2026-10-02 (web: chat framing phase 2 confirm UI, flag off)
 
 ### Services
