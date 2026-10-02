@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 90390780 — 2026-10-02 (web: chat framing phase 2 confirm UI, flag off)
+
+### Services
+
+- **Web:** [#744](https://github.com/sbstndalton/noevia/pull/744) (closes [#738](https://github.com/sbstndalton/noevia/issues/738): frame confirm UI, `POST /api/chats/:id/move`, `/api/chat-framing/preferences`). Now `cowork-web:90390780` (previous `cowork-web:7635054`), recreated alone; `readlink current` is `releases/90390780`, `COWORK_VERSION=90390780`. The `chatFraming` flag stays OFF; no flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Exact source `90390780` (squash of PR #744, head b17944c, all CI green). `dist/` and `server/` were built from a `git archive` of that SHA (`npm ci` + `npm run build`) and layered onto `cowork-web:7635054` (17 layers) with the overlay Dockerfile steps by hand, web only. Backup: `config/.env.bak.before-90390780`; no appdata backup run (it would stop containers). Started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web`; all three preflight checks passed.
+
+- **Verify:** web healthy, `RestartCount` 0, `dist/version.json` `0.2.0+muqlizbx`, `index.html` sha256 `11840e8c...` identical to the local build, `chat-framing.cjs` present in the image. All 35 other running containers (sidecars and unrelated) kept ID, StartedAt and restart count; only web changed. Live: `/` 200, `/api/ready` 200, unauthenticated `POST /api/chats/x/move` 401 and `GET /api/chat-framing/preferences` 401, served bundle `index-g3lXclSp.js`. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/7635054 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-90390780 /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:7635054` image is retained.
+
 ## Release 7635054 — 2026-10-02 (web: chat framing phase 1, flag off)
 
 ### Services
