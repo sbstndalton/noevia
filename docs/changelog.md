@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 25cabfb4 — 2026-10-04 (web: chat lists, suggest rate limit, vault mirror fixes)
+
+### Services
+
+- **Web:** [#763](https://github.com/sbstndalton/noevia/pull/763) (`e2efeef2`, closes [#755](https://github.com/sbstndalton/noevia/issues/755), [#756](https://github.com/sbstndalton/noevia/issues/756), [#759](https://github.com/sbstndalton/noevia/issues/759): no chat-list resurrection by stale saves, brain note removed on delete, invalid move frame refused), [#762](https://github.com/sbstndalton/noevia/pull/762) (`253e3c5d`, closes [#760](https://github.com/sbstndalton/noevia/issues/760): per-user suggest rate limit, in-flight work aborted at the deadline), [#761](https://github.com/sbstndalton/noevia/pull/761) (`25cabfb4`, closes [#757](https://github.com/sbstndalton/noevia/issues/757), [#758](https://github.com/sbstndalton/noevia/issues/758): vault mirror never overwrites a foreign note on rename, failed syncs back off). Now `cowork-web:25cabfb4` (previous `cowork-web:b31d0075`), recreated alone; `readlink current` is `releases/25cabfb4`, `COWORK_VERSION=25cabfb4`. No flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Each PR was updated onto main (#763 already current at 281b3832; #762 to 36ee13b9; #761 to 9ea63d34), CI green on the new head, squash-merged with `--match-head-commit`, branch deleted, and main CI green after each merge. Dependencies unchanged since b31d0075. `dist/` and `server/` were built from a `git archive` of `25cabfb4` (`npm ci`, frontend tests, `npm run build` with `STAMP_VERSION=25cabfb4`) and layered onto `cowork-web:b31d0075`, web only. Candidate checked with no network: `chat-framing`, `chat-lists-routes`, `routes/chat-lists`, `chat-vault-mirror` and `projects` tests 76/76. Backup: `config/.env.bak.before-25cabfb4`; no appdata backup run. Started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`); preflight checks passed.
+
+- **Verify:** web healthy, `RestartCount` 0, `dist/version.json` `25cabfb4`, `index.html` sha256 `fdaac876...` identical to the built image and the served page, served bundle `index-BuQ7JZPD.js`. All 44 other containers kept ID, StartedAt, restart count, status and image; only web changed. Live: `/` 200, `/api/ready` 200 (`version 25cabfb4`) and unauthenticated `POST /api/chat-framing/suggest` 401 (local and public); web log clean for 2 minutes. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/b31d0075 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-25cabfb4 /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:b31d0075` image is retained.
+
 ## Release b31d0075 — 2026-10-02 (web: each chat as a small brain note, flags off)
 
 ### Services
