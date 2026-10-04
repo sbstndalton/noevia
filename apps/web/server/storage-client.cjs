@@ -199,7 +199,8 @@ async function davRead(conn, fullPath) {
 async function checkLogin(conn, { fetchImpl = fetch, timeoutMs = 10000 } = {}) {
   let response;
   try {
-    response = await fetchImpl(davUrl(conn, '', true), {
+    // The root itself: davUrl('') would end in '//'.
+    response = await fetchImpl(`${String(conn.baseUrl || '').replace(/\/+$/, '')}/`, {
       method: 'PROPFIND',
       headers: davHeaders(conn, { Depth: '0', 'Content-Type': 'application/xml' }),
       signal: AbortSignal.timeout(timeoutMs),
