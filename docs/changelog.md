@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 17b477dd — 2026-10-04 (web: vault mirror orphan note, skipped list-save ids)
+
+### Services
+
+- **Web:** [#766](https://github.com/sbstndalton/noevia/pull/766) (`17b477dd`, closes [#764](https://github.com/sbstndalton/noevia/issues/764), [#765](https://github.com/sbstndalton/noevia/issues/765): the vault mirror trashes the orphaned old note, and list saves report skipped ids). Now `cowork-web:17b477dd` (previous `cowork-web:25cabfb4`), recreated alone; `readlink current` is `releases/17b477dd`, `COWORK_VERSION=17b477dd`. No flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Main had not moved since head `5c0be2d1` (0 behind, CI green), so no branch update was needed. The PR was squash-merged with `--match-head-commit`, the branch was deleted on the remote and locally, and main CI was green on `17b477dd`. Dependencies were unchanged since 25cabfb4. `dist/` and `server/` were built from a `git archive` of `17b477dd` (`npm ci`, `npm run build` with `STAMP_VERSION=17b477dd`) and layered onto `cowork-web:25cabfb4` (37 layers), web only. Synthetic candidate checks ran with no network: locally, `chat-lists-routes`, `routes/chat-lists`, `chat-vault-mirror`, `projects` and `list-save-skipped-765` passed 64/64; inside the image, the server tests passed 62/62. Backup: `config/.env.bak.before-17b477dd`; no appdata backup was run. Web was started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`), and the preflight checks passed.
+
+- **Verify:** web is healthy with `RestartCount` 0, and `dist/version.json` reads `17b477dd`. `index.html` sha256 `866d7c5d...` is identical in the local build, the image and the served page (local and public), and the served bundle is `index-Bogab6hw.js`. All 44 other containers kept their ID, StartedAt, restart count, status and image; only web changed. Live: `/` returned 200 and `/api/ready` returned 200 (`version 17b477dd`), both locally and publicly. The web log was clean for 2 minutes. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/25cabfb4 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-17b477dd /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:25cabfb4` image is retained.
+
 ## Release 25cabfb4 — 2026-10-04 (web: chat lists, suggest rate limit, vault mirror fixes)
 
 ### Services
