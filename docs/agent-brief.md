@@ -234,6 +234,16 @@ and the same project can hold Nextcloud tools including delete and public-link
 creation. The approval gate is the real protection. Be deliberate about enabling
 `web-search` alongside `nextcloud-sharing`.
 
+**Provenance policy (#769, `features.provenancePolicy`, off by default).** The hard injection
+boundary sits at the tool layer, not in prompts. `server/provenance-policy.cjs` records, per
+exchange, every `frameUntrusted` block the model is sent (tool/connector results, documents, Diary,
+brains, task packets) as 16-char gram hashes, bounded (past the bound every sensitive value counts
+as tainted). Before a WRITE runs, recipient/URL/host/path/command arguments are checked; a tainted
+or uncheckable one gets its own approval card with a "Contains text from <source>" note even under
+"Allow for this chat". It only adds cards, never removes one, and fails closed. Scope: it covers
+untrusted text in the current reply only; text the model repeats or paraphrases in a later turn is
+not caught.
+
 ### Models and vision
 
 Lemonade at `http://10.69.0.130:13305/v1`. Installed: `Gemma-4-E4B-it-GGUF`,
