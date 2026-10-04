@@ -11,5 +11,5 @@ test('manual source sync routes through resolveSkippedToast, same as the watcher
 });
 
 test('manual source sync tolerates a missing r.skipped instead of throwing', () => {
-  assert.match(src, /resolveSkippedToast\(prev, r\.skipped \|\| \[\], prevError\)/);
+  assert.match(src, /resolveSkippedToast\(prev, r\.skipped \|\| \[\], prevError, tr\)/);
 });
