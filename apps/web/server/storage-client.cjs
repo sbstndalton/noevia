@@ -191,6 +191,37 @@ async function davRead(conn, fullPath) {
   return readCappedText(response, TEXT_BODY_CAP);
 }
 
+/** #770: one Depth-0 PROPFIND against the connection's root, used before a WebDAV/Nextcloud
+ *  connection is saved. Never throws and never puts the secret in what it returns.
+ *  - { ok: true }                      the server accepted the login
+ *  - { ok: false, rejected: true }     401/403: the username or app password is wrong
+ *  - { ok: false, unverified: reason } network error, timeout or another status: save with a warning */
+async function checkLogin(conn, { fetchImpl = fetch, timeoutMs = 10000 } = {}) {
+  let response;
+  try {
+    response = await fetchImpl(davUrl(conn, '', true), {
+      method: 'PROPFIND',
+      headers: davHeaders(conn, { Depth: '0', 'Content-Type': 'application/xml' }),
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: 'error',
+    });
+  } catch (err) {
+    const timeout = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    return { ok: false, unverified: timeout ? 'timeout' : 'network' };
+  }
+  try { await response.body?.cancel?.(); } catch { /* body not needed */ }
+  if (response.status === 401 || response.status === 403) return { ok: false, rejected: true, status: response.status };
+  if (response.ok || response.status === 207) return { ok: true };
+  return { ok: false, unverified: 'status', status: response.status };
+}
+
+/** True when a storage error is a rejected login (WebDAV 401/403), whatever form it reached us in. */
+function isLoginRejected(err) {
+  const upstream = err && (err.upstream || err.status);
+  if (upstream === 401 || upstream === 403) return true;
+  return /^storage returned (401|403)$/.test(String(err && err.message || err || ''));
+}
+
 // ── S3-compatible ────────────────────────────────────────────────────────────
 
 function s3Url(conn, key, query) {
@@ -507,4 +538,4 @@ async function fileVersion(conn, rawPath) {
   return { exists: true, etag: /[\r\n]/.test(etag) ? '' : etag };
 }
 
-module.exports = { removeEmptyFolder, listFiles, readTextFile, readBinaryFile, writeFile, fileVersion, deleteFile, createFolder, isBrowsable, safeRelativePath, TEXT_EXTENSIONS, READ_CAP };
+module.exports = { checkLogin, isLoginRejected, removeEmptyFolder, listFiles, readTextFile, readBinaryFile, writeFile, fileVersion, deleteFile, createFolder, isBrowsable, safeRelativePath, TEXT_EXTENSIONS, READ_CAP };
