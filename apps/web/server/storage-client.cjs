@@ -194,8 +194,10 @@ async function davRead(conn, fullPath) {
 /** #770: one Depth-0 PROPFIND against the connection's root, used before a WebDAV/Nextcloud
  *  connection is saved. Never throws and never puts the secret in what it returns.
  *  - { ok: true }                      the server accepted the login
- *  - { ok: false, rejected: true }     401/403: the username or app password is wrong
- *  - { ok: false, unverified: reason } network error, timeout or another status: save with a warning */
+ *  - { ok: false, rejected: true }     401: the username or app password is wrong
+ *  - { ok: false, unverified: reason } 403 (some layouts refuse an unreadable root to an
+ *                                      authenticated user), network error, timeout or another
+ *                                      status: save with a warning */
 async function checkLogin(conn, { fetchImpl = fetch, timeoutMs = 10000 } = {}) {
   let response;
   try {
@@ -211,17 +213,11 @@ async function checkLogin(conn, { fetchImpl = fetch, timeoutMs = 10000 } = {}) {
     return { ok: false, unverified: timeout ? 'timeout' : 'network' };
   }
   try { await response.body?.cancel?.(); } catch { /* body not needed */ }
-  if (response.status === 401 || response.status === 403) return { ok: false, rejected: true, status: response.status };
+  if (response.status === 401) return { ok: false, rejected: true, status: 401 };
   if (response.ok || response.status === 207) return { ok: true };
   return { ok: false, unverified: 'status', status: response.status };
 }
 
-/** True when a storage error is a rejected login (WebDAV 401/403), whatever form it reached us in. */
-function isLoginRejected(err) {
-  const upstream = err && (err.upstream || err.status);
-  if (upstream === 401 || upstream === 403) return true;
-  return /^storage returned (401|403)$/.test(String(err && err.message || err || ''));
-}
 
 // ── S3-compatible ────────────────────────────────────────────────────────────
 
@@ -539,4 +535,4 @@ async function fileVersion(conn, rawPath) {
   return { exists: true, etag: /[\r\n]/.test(etag) ? '' : etag };
 }
 
-module.exports = { checkLogin, isLoginRejected, removeEmptyFolder, listFiles, readTextFile, readBinaryFile, writeFile, fileVersion, deleteFile, createFolder, isBrowsable, safeRelativePath, TEXT_EXTENSIONS, READ_CAP };
+module.exports = { checkLogin, removeEmptyFolder, listFiles, readTextFile, readBinaryFile, writeFile, fileVersion, deleteFile, createFolder, isBrowsable, safeRelativePath, TEXT_EXTENSIONS, READ_CAP };

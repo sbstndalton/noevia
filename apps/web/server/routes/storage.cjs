@@ -13,7 +13,7 @@ const { checkLogin } = require('../storage-client.cjs');
 
 const STORAGE_PRIVATE_URL_ERROR = 'An http(s) server URL is required. This server is not approved for member connections. Ask an administrator to add its origin to MEMBER_OUTBOUND_ORIGINS.';
 
-const STORAGE_LOGIN_REJECTED = 'Nextcloud rejected this username or app password.';
+const STORAGE_LOGIN_REJECTED = 'The server rejected this username or app password.';
 const STORAGE_UNVERIFIED = 'Saved, but the storage server could not be reached to check the login.';
 // Kinds that authenticate with a WebDAV username and app password (#770).
 const DAV_KINDS = new Set(['nextcloud', 'webdav']);

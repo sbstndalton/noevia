@@ -45,7 +45,7 @@ const STORAGE_LOGIN_REJECTED_RE = /^storage returned (401|403)$/;
 export function isStorageLoginRejected(reason: string | undefined): boolean {
   return STORAGE_LOGIN_REJECTED_RE.test(String(reason || '').trim());
 }
-const STORAGE_LOGIN_REJECTED_EN = 'Storage login rejected. Check the username and app password in Settings → Diary & storage.';
+const STORAGE_LOGIN_REJECTED_EN = 'Storage login rejected. Check your storage credentials in Settings → Diary & storage.';
 function storageLoginText(t?: Translate): string {
   return t ? t('storage.refreshLoginRejected') : STORAGE_LOGIN_REJECTED_EN;
 }

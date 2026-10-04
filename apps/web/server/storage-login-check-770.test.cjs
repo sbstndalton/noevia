@@ -1,6 +1,6 @@
 'use strict';
 // #770: a WebDAV/Nextcloud connection's login is checked before it is saved. A rejected login
-// (401/403) keeps the old row; an unreachable server saves with a warning; the secret never
+// (401) keeps the old row; a 403 or an unreachable server saves with a warning; the secret never
 // appears in a response, an error or a log line. Synthetic fixtures only.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -59,7 +59,7 @@ test('a 401 rejects the save, leaves the old row untouched and names the login',
   const reply = await f.put(NEW);
   assert.equal(reply.status, 400);
   assert.equal(reply.body.code, 'storageLoginRejected');
-  assert.match(reply.body.error, /Nextcloud rejected this username or app password/);
+  assert.match(reply.body.error, /The server rejected this username or app password/);
   assert.deepEqual(f.row(), before);
   assert.equal(f.auth.getStorage('u1', true).secret, OLD.secret);
   // One Depth-0 PROPFIND against the user's root, with the new credentials.
@@ -73,13 +73,15 @@ test('a 401 rejects the save, leaves the old row untouched and names the login',
   noSecret(f, reply);
 });
 
-test('a 403 is rejected the same way', async (t) => {
+test('a 403 saves with a warning: some layouts refuse an unreadable root to a valid login', async (t) => {
   const f = fixture(t, () => new Response('', { status: 403 }));
-  const before = f.row();
   const reply = await f.put({ ...NEW, kind: 'webdav' });
-  assert.equal(reply.status, 400);
-  assert.equal(reply.body.code, 'storageLoginRejected');
-  assert.deepEqual(f.row(), before);
+  assert.equal(reply.status, 200);
+  assert.equal(reply.body.warningCode, 'storageUnverified');
+  assert.equal(reply.body.status, 403);
+  assert.equal(f.row().username, 'bob');
+  assert.equal(f.auth.getStorage('u1', true).secret, SECRET);
+  noSecret(f, reply);
 });
 
 test('an accepted login saves the new connection without a warning', async (t) => {
@@ -117,11 +119,11 @@ test('checkLogin never throws and classifies statuses', async () => {
   const at = (status) => storageClient.checkLogin(conn, { fetchImpl: async () => new Response('', { status }) });
   assert.deepEqual(await at(207), { ok: true });
   assert.deepEqual(await at(401), { ok: false, rejected: true, status: 401 });
+  assert.deepEqual(await at(403), { ok: false, unverified: 'status', status: 403 });
   assert.deepEqual(await at(500), { ok: false, unverified: 'status', status: 500 });
   const failed = await storageClient.checkLogin(conn, { fetchImpl: async () => { throw new Error(SECRET); } });
   assert.deepEqual(failed, { ok: false, unverified: 'network' });
-  assert.ok(storageClient.isLoginRejected(new Error('storage returned 401')));
-  assert.ok(!storageClient.isLoginRejected(new Error('storage returned 404')));
+  assert.equal(storageClient.isLoginRejected, undefined);
 });
 
 // The refresh side: the browser turns "storage returned 401" into a message that says the login
@@ -137,7 +139,7 @@ function sourceStatus() {
 test('a refresh 401/403 says the storage login was rejected and keeps the retained note', () => {
   const s = sourceStatus();
   const entries = s.sourceRefreshEntries([{ folder: 'Finance', reason: 'storage returned 401', retained: true }, { folder: 'Other', reason: 'storage returned 404' }]);
-  assert.equal(entries[0], 'Finance: Storage login rejected. Check the username and app password in Settings → Diary & storage. Previous readable text retained.');
+  assert.equal(entries[0], 'Finance: Storage login rejected. Check your storage credentials in Settings → Diary & storage. Previous readable text retained.');
   assert.equal(entries[1], 'Other: storage returned 404');
   const t = (key) => `[${key}]`;
   assert.equal(s.sourceRefreshIssues([{ folder: 'F', reason: 'storage returned 403' }], t), 'F: [storage.refreshLoginRejected]');
