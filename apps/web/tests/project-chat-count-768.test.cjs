@@ -21,3 +21,12 @@ test('the project card uses the split count and the archived plural key exists i
   assert.match(cat,/'storage\.savedUnchecked': "[^"]*\{status\}/,`${loc} savedUnchecked keeps {status}`);
  }
 });
+test('#775: the project header and the sidebar hover card use the split count; delete-confirm keeps the total',()=>{
+ const view=fs.readFileSync(path.join(__dirname,'../src/components/ProjectView.tsx'),'utf8');
+ assert.match(view,/countProjectChats\(project\.chats\)/);
+ assert.doesNotMatch(view,/projects\.count\.chats', project\.chats\.length/);
+ const side=fs.readFileSync(path.join(__dirname,'../src/components/Sidebar.tsx'),'utf8');
+ assert.match(side,/sidebar\.count\.chats', countProjectChats\(p\.chats\)\.active\)/);
+ // Deleting a project deletes its archived chats too, so the confirm names the full total.
+ assert.match(side,/confirmDeleteProjectBody', \{ chats: t\.plural\('sidebar\.count\.chats', \(p\.chats \|\| \[\]\)\.length\)/);
+});
