@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 1eb8bbad — 2026-10-04 (web: storage warning wording, project card count)
+
+### Services
+
+- **Web:** [#774](https://github.com/sbstndalton/noevia/pull/774) (`1eb8bbad`, closes [#773](https://github.com/sbstndalton/noevia/issues/773): a reached server's non-401 status is named in the storage warning, and [#768](https://github.com/sbstndalton/noevia/issues/768): project card chat count excludes archived chats). Now `cowork-web:1eb8bbad` (previous `cowork-web:b653843c`), recreated alone; `readlink current` is `releases/1eb8bbad`, `COWORK_VERSION=1eb8bbad`. No flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Reviewed head `bf339c68` already contained main (0 behind), so no branch update was needed; CI was green there (10/10). It was squash-merged with `--match-head-commit`, the branch was deleted, and there were no phantom deletions. Dependencies were unchanged since b653843c. `dist/` and `server/` were built from a `git archive` of `1eb8bbad` (`npm ci`, `npm run build` with `STAMP_VERSION=1eb8bbad`, in `node:22-bookworm-slim` on DaServer) and layered onto `cowork-web:b653843c` (49 layers), web only. Synthetic candidate checks with no network: `storage-login-check-770` and `project-chat-count-768` passed 11/11 in a throwaway copy of the image with the candidate `server/`, `src/`, `tests/` and `typescript` added. The root `npm ci` lacks `better-sqlite3`, and the image lacks `src/` and `typescript`, so neither runs these alone. Backup: `config/.env.bak.before-1eb8bbad`. Web was started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`), and the preflight checks passed. No storage settings were saved or changed on the live server.
+
+- **Verify:** web is healthy with `RestartCount` 0, and `dist/version.json` reads `1eb8bbad`. `index.html` sha256 `5d0dac3e...` is identical in the build, the image and the served page (local and public), and the served bundle is `index-BNTz3DkA.js`. All 44 other containers kept their ID, StartedAt, restart count, status and image; only web changed. Live: `/` and `/api/ready` returned 200 (`version 1eb8bbad`), both locally and publicly. An unauthenticated `PUT /api/integrations/storage` returned 401, both locally and publicly. The web log was clean for 2 minutes. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/b653843c /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-1eb8bbad /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:b653843c` image is retained.
+
 ## Release b653843c — 2026-10-04 (web: storage login check)
 
 ### Services
