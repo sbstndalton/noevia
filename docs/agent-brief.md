@@ -240,7 +240,9 @@ exchange, every `frameUntrusted` block the model is sent (tool/connector results
 brains, task packets) as 16-char gram hashes, bounded (past the bound every sensitive value counts
 as tainted). Before a WRITE runs, recipient/URL/host/path/command arguments are checked; a tainted
 or uncheckable one gets its own approval card with a "Contains text from <source>" note even under
-"Allow for this chat". It only adds cards, never removes one, and fails closed.
+"Allow for this chat". It only adds cards, never removes one, and fails closed. Scope: it covers
+untrusted text in the current reply only; text the model repeats or paraphrases in a later turn is
+not caught.
 
 ### Models and vision
 

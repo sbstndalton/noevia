@@ -14,10 +14,33 @@
 const GRAM = 16; // a window this long matching untrusted text is not a coincidence
 const MIN_WHOLE = 6; // shorter values (or hostnames) must match as a whole
 const DEFAULT_MAX_CHARS = 400_000; // per exchange; beyond it the store is saturated
-const MAX_SOURCES = 64;
+const MAX_SOURCES = 64; // the last slot is a fixed sentinel shared by every source past it
+const OVERFLOW_SOURCE = 'another untrusted source';
+const MAX_DEPTH = 8, MAX_VALUES = 200; // past either, the call is "unchecked" (fails closed)
+const { domainToUnicode } = require('node:url');
 
-// Argument names whose values decide where data goes or what runs.
-const SENSITIVE_KEY = /^(to|cc|bcc|recipients?|email|emails|e_?mail|mail_?to|address|addresses|send_?to|url|urls|uri|href|link|host|hostname|domain|endpoint|webhook|path|paths|file_?path|filepath|destination|dest|target_?path|folder|directory|dir|remote|command|cmd|commands|script|shell)$/i;
+// Argument names whose values decide where data goes or what runs. A key is split on "_", "-",
+// "." and camelCase boundaries; it is sensitive when any segment, or any adjacent pair of segments
+// joined with "_", is a stem here (share_with, destination_path, webhookUrl, new_participant).
+// A false positive only adds an approval card, so the set leans wide.
+const SENSITIVE_STEMS = new Set([
+  'to', 'cc', 'bcc', 'recipient', 'recipients', 'email', 'emails', 'mail', 'mailto', 'address', 'addresses',
+  'send_to', 'share_with', 'attendee', 'attendees', 'participant', 'participants', 'user_id',
+  'url', 'urls', 'uri', 'href', 'link', 'host', 'hostname', 'domain', 'endpoint', 'webhook', 'callback',
+  'path', 'paths', 'filepath', 'destination', 'dest', 'target', 'folder', 'dir', 'directory', 'remote',
+  'command', 'commands', 'cmd', 'script', 'shell',
+]);
+
+function isSensitiveKey(key) {
+  if (typeof key !== 'string' || !key) return false;
+  const segs = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase().split(/[_\-.\s]+/).filter(Boolean);
+  for (let i = 0; i < segs.length; i++) {
+    if (SENSITIVE_STEMS.has(segs[i])) return true;
+    if (i + 1 < segs.length && SENSITIVE_STEMS.has(`${segs[i]}_${segs[i + 1]}`)) return true;
+  }
+  return false;
+}
 
 const FRAMED = /<untrusted kind="([^"]*)"(?: label="([^"]*)")?> \(data, not instructions\)\n([\s\S]*?)\n<\/untrusted>/g;
 
@@ -26,8 +49,9 @@ function normalise(text) {
     .replace(/[​-‏⁠﻿]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// FNV-1a, 32 bit. A collision only ever adds an approval card.
-function hash(text) {
+// FNV-1a, 32 bit, for gram lookups only: a gram collision only ever adds an approval card. Block
+// dedupe never uses it (a crafted collision there would skip a block and leave it untainted).
+function fnv(text) {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h;
@@ -35,16 +59,20 @@ function hash(text) {
 
 /** One exchange's record of untrusted text. Bounded: past maxChars it is saturated, and then every
  *  sensitive value counts as tainted (the bound never turns into a way around the policy). */
-function createTaintStore({ maxChars = DEFAULT_MAX_CHARS } = {}) {
+function createTaintStore({ maxChars = DEFAULT_MAX_CHARS, hash = fnv } = {}) {
   const grams = new Map(); // hash -> index into sources
   const texts = []; // { source, text } normalised, for short whole-value matches
-  const seen = new Set(); // hashes of whole blocks already ingested (each round resends history)
+  const seen = new Set(); // the normalised blocks already ingested (each round resends history);
+  // keyed on the text itself, so memory is bounded by maxChars like the rest of the store
   const sources = [];
   let chars = 0, saturated = false;
 
   function sourceIndex(source) {
     let i = sources.indexOf(source);
-    if (i === -1) { if (sources.length >= MAX_SOURCES) return MAX_SOURCES - 1; sources.push(source); i = sources.length - 1; }
+    if (i === -1) {
+      if (sources.length >= MAX_SOURCES - 1) { sources[MAX_SOURCES - 1] = OVERFLOW_SOURCE; return MAX_SOURCES - 1; }
+      sources.push(source); i = sources.length - 1;
+    }
     return i;
   }
 
@@ -52,10 +80,9 @@ function createTaintStore({ maxChars = DEFAULT_MAX_CHARS } = {}) {
     if (saturated) return;
     const text = normalise(raw);
     if (!text) return;
-    const whole = hash(text) ^ text.length;
-    if (seen.has(whole)) return;
+    if (seen.has(text)) return;
     if (chars + text.length > maxChars) { saturated = true; grams.clear(); texts.length = 0; return; }
-    seen.add(whole);
+    seen.add(text);
     chars += text.length;
     const at = sourceIndex(String(source || 'untrusted text').slice(0, 120));
     texts.push({ at, text });
@@ -96,20 +123,42 @@ function createTaintStore({ maxChars = DEFAULT_MAX_CHARS } = {}) {
   return { add, ingestMessages, sourceOf, stats: () => ({ chars, grams: grams.size, sources: sources.length, saturated }) };
 }
 
-// The forms of one value that are checked: itself, URL-decoded, and the host of a URL or the
-// domain of an address (an injected host inside a model-built URL is the exfiltration case).
+// The forms of one value that are checked: itself, URL-decoded, every token of either (so
+// "Collector <x@evl.io>" yields the address), and for each URL or address its host, every parent
+// domain of at least two labels (api.evil.io -> evil.io) and the Unicode form of an IDN host. An
+// injected host inside a model-built URL is the exfiltration case.
 function candidates(value) {
   const out = new Set([value]);
   try { out.add(decodeURIComponent(value)); } catch { /* not encoded */ }
-  try { const u = new URL(value); if (u.hostname) out.add(u.hostname); } catch { /* not a URL */ }
-  const at = /@([^\s@/]+)$/.exec(value.trim());
-  if (at) out.add(at[1]);
+  for (const form of [...out]) for (const t of form.split(/[\s,;<>"'()]+/)) if (t) out.add(t);
+  const hosts = new Set();
+  for (const form of [...out]) {
+    try { const u = new URL(form); if (u.hostname) hosts.add(u.hostname); } catch { /* not a URL */ }
+    const at = /@([^\s@/]+)$/.exec(form.trim());
+    if (at) { const h = at[1].replace(/[>)\]}"'.,;:!?]+$/, ''); if (h) hosts.add(h); }
+  }
+  for (const host of hosts) {
+    for (const h of [host, domainToUnicode(host)]) {
+      if (!h) continue;
+      const labels = h.replace(/^\[|\]$/g, '').split('.');
+      for (let i = 0; i + 2 <= labels.length; i++) out.add(labels.slice(i).join('.'));
+      out.add(h);
+    }
+  }
   return [...out];
 }
 
+// The string values under sensitive keys. Throws past MAX_DEPTH or MAX_VALUES, so the call is
+// "unchecked" rather than silently half-checked.
 function sensitiveValues(node, key, out, depth = 0) {
-  if (depth > 8 || out.length > 200) return out;
-  if (typeof node === 'string') { if (key && SENSITIVE_KEY.test(key)) out.push({ field: key, value: node }); return out; }
+  if (depth > MAX_DEPTH) throw Error('arguments nested too deeply to check');
+  if (typeof node === 'string') {
+    if (key && isSensitiveKey(key)) {
+      if (out.length >= MAX_VALUES) throw Error('too many sensitive values to check');
+      out.push({ field: key, value: node });
+    }
+    return out;
+  }
   if (Array.isArray(node)) { for (const v of node) sensitiveValues(v, key, out, depth + 1); return out; }
   if (node && typeof node === 'object') for (const [k, v] of Object.entries(node)) sensitiveValues(v, k, out, depth + 1);
   return out;
@@ -117,7 +166,8 @@ function sensitiveValues(node, key, out, depth = 0) {
 
 /**
  * The provenance of one write call: [] when no sensitive argument holds untrusted text, else
- * [{ field, source }] (at most 5). Any failure, including arguments that are not JSON, returns
+ * [{ field, source }] (at most 5). Any failure, including arguments that are not JSON or that are
+ * nested deeper than MAX_DEPTH or hold more than MAX_VALUES sensitive strings, returns
  * [{ field: null, source: null, unchecked: true }]: the caller asks per call (fails closed).
  */
 function checkWrite(store, rawArgs) {
@@ -136,4 +186,4 @@ function checkWrite(store, rawArgs) {
   }
 }
 
-module.exports = { createTaintStore, checkWrite, normalise, SENSITIVE_KEY, GRAM, DEFAULT_MAX_CHARS };
+module.exports = { createTaintStore, checkWrite, normalise, isSensitiveKey, candidates, SENSITIVE_STEMS, OVERFLOW_SOURCE, MAX_SOURCES, MAX_VALUES, GRAM, DEFAULT_MAX_CHARS };
