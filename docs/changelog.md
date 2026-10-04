@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 6f59ba82 — 2026-10-04 (web: tool-layer provenance policy, flag off)
+
+### Services
+
+- **Web:** [#771](https://github.com/sbstndalton/noevia/pull/771) (`6f59ba82`, closes [#769](https://github.com/sbstndalton/noevia/issues/769): tool-layer provenance policy, the hard injection boundary, `provenance-policy.cjs`). Now `cowork-web:6f59ba82` (previous `cowork-web:17b477dd`), recreated alone; `readlink current` is `releases/6f59ba82`, `COWORK_VERSION=6f59ba82`. The `provenancePolicy` flag stays OFF; no flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Main had moved 2 commits past reviewed head `578c91de`, so the branch was updated (merge-only, same files as main's delta) to `44827dad`; CI was green there (10/10). It was squash-merged with `--match-head-commit`, the branch was deleted, there were no phantom deletions, and main CI was green on `6f59ba82`. Dependencies were unchanged since 17b477dd. `dist/` and `server/` were built from a `git archive` of `6f59ba82` (`npm ci`, `npm run build` with `STAMP_VERSION=6f59ba82`) and layered onto `cowork-web:17b477dd`, web only. Synthetic candidate checks: the `provenance-policy` and `approval-card-provenance-769` tests passed 17/17 in the build; inside the image with no network, the server provenance tests passed 15/15. Backup: `config/.env.bak.before-6f59ba82`; no appdata backup was run. Web was started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`), and the preflight checks passed.
+
+- **Verify:** web is healthy with `RestartCount` 0, and `dist/version.json` reads `6f59ba82`. `index.html` sha256 `d56487e0...` is identical in the local build, the image and the served page (local and public), and the served bundle is `index-ByB_ZG1o.js`. `server/provenance-policy.cjs` is in the image. All 44 other containers kept their ID, StartedAt, restart count, status and image; only web changed. Live: `/` returned 200 and `/api/ready` returned 200 (`version 6f59ba82`), both locally and publicly. The web log was clean for 2 minutes. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/17b477dd /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-6f59ba82 /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:17b477dd` image is retained.
+
 ## Release 17b477dd — 2026-10-04 (web: vault mirror orphan note, skipped list-save ids)
 
 ### Services
