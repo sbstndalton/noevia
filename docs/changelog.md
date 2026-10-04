@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release b653843c — 2026-10-04 (web: storage login check)
+
+### Services
+
+- **Web:** [#772](https://github.com/sbstndalton/noevia/pull/772) (`b653843c`, closes [#770](https://github.com/sbstndalton/noevia/issues/770): check the storage login on save and explain refresh 401s). Now `cowork-web:b653843c` (previous `cowork-web:6f59ba82`), recreated alone; `readlink current` is `releases/b653843c`, `COWORK_VERSION=b653843c`. No flag was changed.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Reviewed head `3f1e187e` already contained main, so no branch update was needed; CI was green there (10/10). It was squash-merged with `--match-head-commit`, the branch was deleted, and there were no phantom deletions. Dependencies were unchanged since 6f59ba82. `dist/` and `server/` were built from a `git archive` of `b653843c` (`npm ci`, `npm run build` with `STAMP_VERSION=b653843c`) and layered onto `cowork-web:6f59ba82` (43 layers, so no flattening was needed), web only. Synthetic candidate checks: `storage-login-check-770` and `manual-source-sync-toast` passed 9/9 against the archived build. The image has no `typescript`, so that test cannot run inside it. Backup: `config/.env.bak.before-b653843c`. Web was started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`). No storage settings were saved or changed on the live server.
+
+- **Verify:** web is healthy with `RestartCount` 0, and `dist/version.json` reads `b653843c`. `index.html` sha256 `426801d2...` is identical in the local build, the image and the served page (local and public), and the served bundle is `index-DvadeUnb.js`. All 44 other containers kept their ID, StartedAt, restart count, status and image; only web changed. Live: `/` and `/api/ready` returned 200 (`version b653843c`), both locally and publicly. An unauthenticated `PUT /api/integrations/storage` returned 401, both locally and publicly. The web log was clean for 2 minutes. No model run, tune or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/6f59ba82 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-b653843c /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:6f59ba82` image is retained.
+
 ## Release 6f59ba82 — 2026-10-04 (web: tool-layer provenance policy, flag off)
 
 ### Services
