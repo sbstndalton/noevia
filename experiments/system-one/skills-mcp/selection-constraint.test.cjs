@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SELECTION_SCHEMA, SELECTION_MAX_TOKENS, idsSchema, compactCandidates, idsToProposal, selectionConstraint, requestSelection, selectionCause } = require('./selection-constraint.cjs');
-const { validateProposal } = require('../../../experiments/system-one/skills-mcp/contract.cjs');
+const { validateProposal } = require('./contract.cjs');
 
 test('schema is sent only to providers that declare jsonSchemaParam; thinking is off with it', () => {
   const on = selectionConstraint({ provider: { capabilities: { jsonSchemaParam: true } }, model: 'any-model' });

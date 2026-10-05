@@ -286,8 +286,7 @@ toolbox). If the chosen provider then strips a required box (the Diary is never
 offered to an external provider), the stream ends with an `error` event carrying
 `code: "skill_requirements_unmet"` before any model request. A resolved pin is echoed as `skill`
 (`id`, `file`, `name`, `versionLabel`, `version`, `contentHash`, `origin`) on
-the stream's `meta` event and recorded on the durable turn checkpoint when that
-seam is enabled. Without `skill` the turn is unchanged. A pin selects
+the stream's `meta` event. Without `skill` the turn is unchanged. A pin selects
 instructions only: tool choice, tool policy and every write approval are
 unchanged. Cowork-mode requests refuse a pin with
 `400 skill_pin_unsupported_mode` rather than drop it. Types
@@ -325,22 +324,18 @@ changed, awaiting review, removed, or its project is gone:
   already streamed in that round gets an `ERROR` `tool_result` saying it was not
   run.
 - No further model round starts, and step supervision is not consulted. The reply ends with an `error` event carrying
-  `code: "skill_revoked"`, and the durable turn is interrupted.
+  `code: "skill_revoked"`.
 
 Skills the exchange did not load are not consulted, so disabling one never stops
 an exchange that did not use it. "Allow for this chat" approvals belong to the
 chat rather than to any Skill. They are unchanged, and so are all three approval
 actions.
 
-The durable turn checkpoint records the pin as `skill`, and every loaded Skill
-as `skills: [{ file, name, contentHash }]`. `skills` is updated when a read
-loads another Skill and is absent when none was loaded. The continuation seam
-(`chat-turns.cjs` `resumeGeneration`) refuses the turn unless the caller's
-`skillActive(record)` confirms that each of those exact versions is still
-enabled (`instruction-skills.cjs` `pinActive`). This check exists but is **not
-yet wired to a production caller**: `resumeGeneration` is an internal seam with
-no route today. Any future caller must pass `skillActive`, because without it a
-turn that loaded Skills is refused.
+The production-dormant durable-turn seam (`chat-turns.cjs`, whose checkpoint
+recorded the pin and every loaded Skill and whose `resumeGeneration` refused a
+continuation unless each exact version was still enabled) was removed in #809;
+see git history at `1a3374da`. `instruction-skills.cjs` `pinActive` remains the
+check any future continuation must apply to every Skill a turn loaded.
 
 ### Revoked Skills in earlier turns
 

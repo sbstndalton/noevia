@@ -1,5 +1,15 @@
 # 15. Durable chat: first internal slice
 
+> **Removed (#809, 2026-10-05).** The seam was production-dormant (`index.cjs` never passed
+> `durableChat`) and has been deleted: `chat-turns.cjs`, `chat-turns.test.cjs`,
+> `chat-durability.test.cjs`, the `durableChat` option and every `turn?.` / `execution.turn`
+> branch in `chat.cjs`, and the durable-journal assertions in the chat and Skill tests. Production
+> chat behaviour is unchanged. See git history at `1a3374da` (last change to `chat-turns.cjs`);
+> `c6702509` is the last `main` commit with the seam wired into `chat.cjs`. `qa/laya-chat-smoke.cjs`
+> stays as the Step-supervision smoke, without the durable recorder. The `experiments/system-one/decisions`
+> tests named below were archived in #808 (git history at `967f34bf`). What follows is the
+> original record.
+
 Implemented locally, disabled by default, not deployed. This is source work with synthetic
 providers/tools, not model switching qualification or System-One model selection.
 
