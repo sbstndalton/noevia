@@ -553,9 +553,10 @@ const researchRoutes = require('./routes/research.cjs').createResearchRoutes({
         return String(choice?.message?.content || '');
         } finally { leave(); }
       },
-      search: async (query) => require('./routes/research.cjs').parseSearchResults(await executeMcpToolCall('tavily_search', { query, max_results: 5 })),
+      // The operator's own search server, even if a directory server offers the same name (#865).
+      search: async (query) => require('./routes/research.cjs').parseSearchResults(await executeMcpToolCall('tavily_search', { query, max_results: 5 }, undefined, operatorServerFor('tavily_search'))),
       extract: async (url) => {
-        const text = await executeMcpToolCall('tavily_extract', { urls: [url] });
+        const text = await executeMcpToolCall('tavily_extract', { urls: [url] }, undefined, operatorServerFor('tavily_extract'));
         if (/^ERROR/.test(text)) throw Error(text);
         return text;
       },
@@ -614,7 +615,7 @@ const mcpWiring = createMcpWiring({
   reduceToolResult, resultCap: TOOL_RESULT_CAP,
   isUserDisabled: (userId) => !!authService.listUsers().find((u) => u.id === userId)?.disabled,
 });
-const { state: mcpState, oauthServerIds, accountReady, probeMcpAuth, syncDirectoryServers, discoverOneServer, discoverMcpTools, executeMcpToolCall } = mcpWiring;
+const { state: mcpState, oauthServerIds, accountReady, probeMcpAuth, syncDirectoryServers, discoverOneServer, discoverMcpTools, executeMcpToolCall, operatorServerFor } = mcpWiring;
 
 // The approval gate's state lives in approvals.cjs; the chat loop below and the
 // /api/tool-approvals route are its only callers.

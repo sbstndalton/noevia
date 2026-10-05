@@ -30,16 +30,19 @@ function fakeMcp(catalogues) {
   };
 }
 
-async function setup({ withDirectory = true } = {}) {
+const SELF_URL = 'http://127.0.0.1:9/mcp';
+
+async function setup({ withDirectory = true, withInternal = false } = {}) {
   const catalogues = {
     [NC_URL]: [rawTool('search_files', 'operator search'), rawTool('nc_only')],
-    ...(withDirectory ? { [DIR_URL]: [rawTool('search_files', 'directory search')] } : {}),
+    ...(withDirectory ? { [DIR_URL]: [rawTool('search_files', 'directory search'), rawTool('project_append_file', 'directory append'), rawTool('dir_only')] } : {}),
+    ...(withInternal ? { [SELF_URL]: [rawTool('project_append_file', 'noevia append')] } : {}),
   };
   const mcp = fakeMcp(catalogues);
   const scope = new AsyncLocalStorage();
   const directoryServers = withDirectory ? [{ id: 'dir', title: 'Synthetic directory', url: DIR_URL, auth: 'directory', directory: true }] : [];
   const wiring = createMcpWiring({
-    servers: [{ id: 'nc', url: NC_URL, auth: 'nextcloud' }],
+    servers: [{ id: 'nc', url: NC_URL, auth: 'nextcloud' }, ...(withInternal ? [{ id: 'self', url: SELF_URL, auth: 'internal' }] : [])],
     manifest: [{ id: 'nc-files', label: 'Files', server: 'nc', tools: ['search_files', 'nc_only'], reads: ['search_files', 'nc_only'] }],
     mcp, bindBoxes,
     directoryMcp: {
@@ -63,7 +66,7 @@ async function setup({ withDirectory = true } = {}) {
     documentSources: { notice: () => '', readPages: () => { throw new Error('no pages'); } },
     executeMcp: (name, args, signal, serverId) => wiring.executeMcpToolCall(name, args, signal, serverId),
   });
-  const asUser = (fn) => scope.run({ workspace: { userId: 'synthetic-user' }, authn: { user: { id: 'synthetic-user' } } }, fn);
+  const asUser = (fn, extra = {}) => scope.run({ workspace: { userId: 'synthetic-user' }, authn: { user: { id: 'synthetic-user' } }, ...extra }, fn);
   // What chat.cjs does: resolve the project's boxes, then call with the resolved names and routes.
   const callAs = async (toolboxIds, name) => {
     const resolved = toolboxes.resolveTools({ id: 'p1', toolboxes: toolboxIds }, 'model-70b');
@@ -77,7 +80,7 @@ async function setup({ withDirectory = true } = {}) {
 test('enabling only the directory box routes a shared tool name to the directory server, with its own credential', async () => {
   const s = await setup();
   const { resolved, text } = await s.callAs(['dir'], 'search_files');
-  assert.deepEqual(resolved.tools.map((t) => t.function.description), ['directory search'], 'the model is shown the directory tool');
+  assert.equal(resolved.tools.find((t) => t.function.name === 'search_files').function.description, 'directory search', 'the model is shown the directory tool');
   assert.equal(resolved.routes.get('search_files'), 'dir');
   assert.equal(text, `${DIR_URL}:search_files`);
   assert.equal(s.mcp.calls.length, 1);
@@ -128,33 +131,64 @@ test('operator-only deployments are unchanged: same tools offered byte for byte,
   assert.equal(core.routes.size, 0);
 });
 
+test('a call approved as a project file edit is refused unless it goes to noevia\'s own server (review of #865)', async () => {
+  const s = await setup({ withInternal: true });
+  const digest = 'f'.repeat(64);
+  // Routed to the directory server that also offers project_append_file: refused, nothing sent.
+  const refused = await s.asUser(() => s.toolboxes.executeToolCall({ id: 'p1' }, 'project_append_file', '{}', new Set(['project_append_file']), undefined, {},
+    { routes: new Map([['project_append_file', 'dir']]), editTarget: digest }));
+  assert.equal(refused, 'ERROR: project_append_file was approved as a project file edit, but "project_append_file" was offered by MCP server "dir"; it was not run.');
+  assert.equal(s.mcp.calls.length, 0, 'the directory server received nothing');
+  // Directly at the wiring, too.
+  assert.match(await s.asUser(() => s.wiring.executeMcpToolCall('project_append_file', {}, undefined, 'dir'), { internalEditTarget: digest }), /^ERROR: .*was not run\.$/);
+  assert.equal(s.mcp.calls.length, 0);
+  // Routed to noevia's own server, the approved edit runs.
+  const ran = await s.asUser(() => s.toolboxes.executeToolCall({ id: 'p1' }, 'project_append_file', '{}', new Set(['project_append_file']), undefined, {},
+    { routes: new Map([['project_append_file', 'self']]), editTarget: digest }));
+  assert.equal(ran, `${SELF_URL}:project_append_file`);
+  assert.deepEqual(s.mcp.calls.map((c) => c.url), [SELF_URL]);
+  // A directory call without an edit approval is unaffected.
+  assert.equal(await s.asUser(() => s.wiring.executeMcpToolCall('project_append_file', {}, undefined, 'dir')), `${DIR_URL}:project_append_file`);
+});
+
+test('noevia\'s own fixed callers (deep research) get the single operator server even when a directory server shares the name', async () => {
+  const s = await setup();
+  assert.equal(s.wiring.operatorServerFor('search_files'), 'nc');
+  assert.equal(s.wiring.operatorServerFor('nc_only'), 'nc');
+  assert.equal(s.wiring.operatorServerFor('dir_only'), undefined, 'a directory-only tool has no operator server');
+  assert.equal(s.wiring.operatorServerFor('nope'), undefined);
+  // What index.cjs does for tavily_search / tavily_extract.
+  assert.equal(await s.asUser(() => s.wiring.executeMcpToolCall('search_files', {}, undefined, s.wiring.operatorServerFor('search_files'))), `${NC_URL}:search_files`);
+});
+
 // The chat loop hands the resolved routes to every executeToolCall. Synthetic provider and tool.
-test('the chat loop passes the resolved routes to the tool call', async (t) => {
+function chatHarness(t, { frames, resolveTools, router = async (ids) => ({ ids, routed: false }), write = false }) {
   const { createChatHandler } = require('./chat.cjs');
   const { createToolExchange } = require('./tool-exchange.cjs');
   const { createVisionProbe } = require('./vision.cjs');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-routes-865-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const events = [], audits = [], seen = [];
   const res = new EventEmitter();
-  res.writeHead = () => {}; res.write = () => {}; res.end = () => { res.writableEnded = true; res.emit('finish'); };
-  const stream = (...frames) => ({ ok: true, body: (async function* () { for (const f of frames) yield Buffer.from('data: ' + JSON.stringify(f) + '\n\n'); })() });
+  res.writeHead = () => {}; res.write = (line) => events.push(JSON.parse(line.slice(6))); res.end = () => { res.writableEnded = true; res.emit('finish'); };
+  const stream = (...f) => ({ ok: true, body: (async function* () { for (const x of f) yield Buffer.from('data: ' + JSON.stringify(x) + '\n\n'); })() });
   let requests = 0;
-  const fetch = async () => (++requests === 1
-    ? stream({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', function: { name: 'search_files', arguments: '{}' } }] } }] })
-    : stream({ choices: [{ delta: { content: 'done' } }] }));
-  const seen = [];
+  const fetch = async () => {
+    const calls = frames[requests++];
+    return calls ? stream({ choices: [{ delta: { tool_calls: calls.map((name, index) => ({ index, id: `call-${requests}-${index}`, function: { name, arguments: name === 'more_tools' ? '{}' : JSON.stringify({ q: `round ${requests}` }) } })) } }] })
+      : stream({ choices: [{ delta: { content: 'done' } }] });
+  };
   const { handleChat } = createChatHandler({
     modelManager: { enabled: true, health: async () => ({ ok: true, body: { all_models_loaded: [{ model_name: 'answer-model', loaded: true, recipe_options: { ctx_size: 32768 } }] } }) },
-    reasoningEffort: require('./reasoning-effort.cjs'), authService: { audit() {} }, crypto: require('node:crypto'), path, fs, fetch,
+    reasoningEffort: require('./reasoning-effort.cjs'), authService: { audit: (kind, _a, _b, detail) => audits.push({ kind, ...detail }) }, crypto: require('node:crypto'), path, fs, fetch,
     HISTORY_CAP: 20, DEFAULT_PROVIDER_ID: 'default', createToolExchange,
     currentWorkspace: () => ({ userId: 'synthetic-user', dir, assetDir: () => '/synthetic-only' }),
     getProject: () => ({ id: 'fixture-project', model: 'answer-model', assets: [] }),
     skillsIndexFor: () => [], getProvider: () => ({ id: 'default', baseUrl: 'http://default.invalid' }), providerHeaders: () => ({}), autoRoles: () => null,
     visionDescriptions: new Map(), visionProbe: createVisionProbe({ fetchImpl: fetch }),
     chatSkillRouter: { select: async () => ({ loaded: [] }) }, oauthServerIds: () => new Set(), accountReady: () => true, mcpOAuth: { connected: () => false },
-    chatToolRouter: { select: async (ids) => ({ ids, routed: false }) }, DEFAULT_TOOLBOXES: [], CONNECTOR_BOXES: new Set(['gdrive']), connectedBoxes: () => [],
-    toolPolicy: { mode: () => 'allow' }, requestScope: { getStore: () => ({}) },
-    resolveTools: () => ({ tools: [{ type: 'function', function: { name: 'search_files', parameters: { type: 'object' } } }], dropped: [], routes: new Map([['search_files', 'dir']]) }),
-    isWriteTool: () => false,
+    chatToolRouter: { select: router }, DEFAULT_TOOLBOXES: [], CONNECTOR_BOXES: new Set(['gdrive']), connectedBoxes: () => [],
+    toolPolicy: { mode: (_u, _n, w) => (w ? 'ask' : 'allow') }, requestScope: { getStore: () => ({}) },
+    resolveTools, isWriteTool: () => write,
     rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: (text) => ({ text }), diaryExtras: require('./diary-extras.cjs'),
     DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: () => {}, saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
     lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
@@ -162,6 +196,35 @@ test('the chat loop passes the resolved routes to the tool call', async (t) => {
     executeToolCall: async (_p, name, _a, _allowed, _s, _o, options) => { seen.push({ name, route: options?.routes?.get(name) }); return 'synthetic result'; },
     awaitApproval: async () => 'approve',
   });
-  await handleChat({}, res, { projectId: 'fixture-project', chatId: 'fixture-chat', message: 'synthetic search' });
-  assert.deepEqual(seen, [{ name: 'search_files', route: 'dir' }]);
+  return { events, audits, seen, run: () => handleChat({}, res, { projectId: 'fixture-project', chatId: 'fixture-chat', message: 'synthetic search' }) };
+}
+const offer = (name, server) => ({ tools: [{ type: 'function', function: { name, parameters: { type: 'object' } } }], dropped: [], routes: new Map([[name, server]]) });
+
+test('the chat loop passes the resolved routes to the tool call', async (t) => {
+  const h = chatHarness(t, { frames: [['search_files']], resolveTools: () => offer('search_files', 'dir') });
+  await h.run();
+  assert.deepEqual(h.seen, [{ name: 'search_files', route: 'dir' }]);
+});
+
+test('the approval card and the write audit name the MCP server the call goes to', async (t) => {
+  const h = chatHarness(t, { frames: [['search_files']], resolveTools: () => offer('search_files', 'dir'), write: true });
+  await h.run();
+  const pending = h.events.find((e) => e.type === 'tool_pending');
+  assert.equal(pending.server, 'dir');
+  assert.equal(pending.args, '{"q":"round 1"}', 'the full arguments are still on the card');
+  assert.equal(h.audits.find((a) => a.kind === 'tool.write').server, 'dir');
+  // A built-in (no route) adds no server field.
+  const b = chatHarness(t, { frames: [['get_current_time']], resolveTools: () => ({ ...offer('get_current_time', 'x'), routes: new Map() }), write: true });
+  await b.run();
+  assert.equal('server' in b.events.find((e) => e.type === 'tool_pending'), false);
+});
+
+test('more_tools: the rest of the round keeps the narrowed routes; the widened ones apply from the next round', async (t) => {
+  const h = chatHarness(t, {
+    frames: [['more_tools', 'search_files'], ['search_files']],
+    router: async () => ({ ids: ['narrow'], routed: true, narrowed: true }),
+    resolveTools: (project) => (project.toolboxes.includes('narrow') ? offer('search_files', 'narrow-server') : offer('search_files', 'wide-server')),
+  });
+  await h.run();
+  assert.deepEqual(h.seen, [{ name: 'search_files', route: 'narrow-server' }, { name: 'search_files', route: 'wide-server' }]);
 });

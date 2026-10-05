@@ -396,12 +396,30 @@ function createMcpWiring({
     return known ? { known } : { error: `ERROR: unknown tool "${name}"` };
   }
 
+  /** The one operator (non-directory) server offering a name, for noevia's own fixed callers
+   *  (deep research's tavily_search / tavily_extract). They name a tool the operator configured,
+   *  so a directory server offering the same name must neither take the call nor make it
+   *  ambiguous. `undefined` when no operator server, or more than one, offers it. */
+  function operatorServerFor(name) {
+    const offered = mcpState.offers.get(name);
+    if (!offered) return undefined;
+    const ids = [...offered.keys()].filter((id) => { const sv = MCP_SERVER_BY_ID.get(id); return sv && !sv.directory; });
+    return ids.length === 1 ? ids[0] : undefined;
+  }
+
   async function executeMcpToolCall(name, args, signal, serverId) {
     const route = routeMcpTool(name, serverId);
     if (route.error) return route.error;
     const known = route.known;
     const server = MCP_SERVER_BY_ID.get(known.serverId);
     if (!server) return `ERROR: tool "${name}" belongs to MCP server "${known.serverId}", which is no longer configured`;
+    // An approval for a project file edit names a stored project file, and only noevia's own
+    // server edits project files. A call carrying that approval that is routed anywhere else was
+    // approved for something it would not do: refused, nothing sent (#865 review).
+    if (scope.getStore()?.internalEditTarget && server.auth !== 'internal') {
+      logger.warn(`[mcp] refused "${name}": approved as a project file edit but routed to MCP server "${server.id}"`);
+      return `ERROR: ${name} was approved as a project file edit, but "${name}" was offered by MCP server "${server.id}"; it was not run.`;
+    }
 
     // Credentials are per server. Forwarding the user's Nextcloud password to a
     // server that merely happens to be configured would hand their password to
@@ -477,7 +495,7 @@ function createMcpWiring({
     oauthServerIds, accountReady, probeMcpAuth, syncDirectoryServers,
     discoverOneServer, discoverMcpTools,
     mcpStaticAuth, mcpAuthHeaders, mcpInternalAuth, internalCallProjectId, mcpDiscoveryAuth,
-    executeMcpToolCall,
+    executeMcpToolCall, operatorServerFor,
   };
 }
 

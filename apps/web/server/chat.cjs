@@ -842,6 +842,8 @@ function createChatHandler({
     // The MCP server each offered name came from (#865): every call goes to the server whose tool
     // the model was shown, not to another that offers the same name.
     let toolRoutes = new Map(resolved.routes || []);
+    // Routes for the widened list (more_tools), applied when the next round starts.
+    let nextToolRoutes = null;
     // Scope shown on the reply ("Using: Drive, Tasks"), so a wrong pick is visible and reportable.
     const boxLabel = (id) => allToolboxes().find((b) => b.id === id)?.label || id;
     // `boxes` carries the stable ids next to the joined English text (#624), so the client words
@@ -1108,6 +1110,7 @@ function createChatHandler({
       }
     }
     for (let round = 0; round < 3 && !chatSignal.signal.aborted && !cloudHold; round++) {
+      if (nextToolRoutes) { toolRoutes = new Map([...toolRoutes, ...nextToolRoutes]); nextToolRoutes = null; }
       if (revokedSkills()) break; // a loaded skill was disabled or changed: no further model round
       // #546: a Skill disabled while this request was being prepared (routing, RAG, vision,
       // compaction) is taken out of the earlier turns too, against the project as stored now.
@@ -1324,8 +1327,11 @@ function createChatHandler({
               const full = fullResolved.tools;
               activeTools = full;
               for (const t of full) allowedToolNames.add(t.function.name);
-              // The widened list is what the model sees from now on, so its routes win over the narrowed ones.
-              toolRoutes = new Map([...toolRoutes, ...(fullResolved.routes || [])]);
+              // The rest of THIS round's calls were made against the narrowed list, so they keep its
+              // routes (a widened name only fills a gap). From the next round the model is shown
+              // the widened list, and its routes win (applied at the top of the round loop).
+              toolRoutes = new Map([...(fullResolved.routes || []), ...toolRoutes]);
+              nextToolRoutes = new Map(fullResolved.routes || []);
               reply = `More tools are now available: ${full.map((t) => t.function.name).join(', ')}. Continue with the task.`;
               send({ type: 'tools_scope', text: 'all tools' });
             }
@@ -1417,6 +1423,8 @@ function createChatHandler({
                 args: tc.args,
                 ...(cardTarget !== null ? { target: cardTarget } : {}),
                 ...(targetKind ? { targetKind } : {}),
+                // The MCP server this call goes to (#865), so the card can say where it really runs.
+                ...(toolRoutes.has(tc.name) ? { server: toolRoutes.get(tc.name) } : {}),
                 ...(repeat ? { repeatOf: true } : {}),
                 ...(provenanceHits.length ? { provenance: provenanceHits } : {}),
               });
@@ -1474,6 +1482,7 @@ function createChatHandler({
                 tool: tc.name,
                 args: String(tc.args || '').slice(0, 500),
                 ...(editTarget !== null ? { target: editTarget.slice(0, 500) } : {}),
+                ...(toolRoutes.has(tc.name) ? { server: toolRoutes.get(tc.name) } : {}),
                 failed: outcome.failed || undefined,
               });
             }
