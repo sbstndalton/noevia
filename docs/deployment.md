@@ -552,8 +552,9 @@ Web still reads `models.ini` directly; it writes nothing under `/llamacpp-config
 `model-loader` mode. Model-loader needs an image with the endpoint (d738f8e or later). With an older or stopped
 model-loader, preset saves, calibration and autotune fail with an explicit 503 and leave the
 file unchanged. A token mismatch gets its own 503 ("check MODEL_LOADER_TOKEN"). Each replace
-leaves `models.ini.noevia-backup-<baseRevision>` (0600, never pruned) plus a rotating
-`models.ini.bak-<timestamp>` in the config dir; a failed backup aborts the write. To restore
+leaves `models.ini.noevia-backup-<baseRevision>` (0600; model-loader never prunes them, while the
+web writer, `MODELS_INI_WRITER=web`, keeps the newest 20 in the directory after each write) plus a
+rotating `models.ini.bak-<timestamp>` in the config dir; a failed backup aborts the write. To restore
 content, copy the `models.ini.noevia-backup-<revision>` you want back over `models.ini`.
 
 Rollback to the web writer takes **both** steps, then a recreate of web only: remove `:ro`
