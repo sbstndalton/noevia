@@ -60,9 +60,10 @@ test('#848: a manual choice on a non-local provider with no model never borrows 
  assert.equal(label({provider:'lemonade'},installed),'Hot');
  assert.equal(label({provider:'custom-default'},installed,true,'custom-default'),'Hot');
  assert.equal(label({provider:'default'},installed,true,'custom-default'),'No model selected');
- // A picked model, or Auto, is untouched.
+ // A picked model is untouched. Auto is only promised on the local provider: chat.cjs treats an
+ // `auto` choice on another provider as manual (#876), so it reads as manual here too.
  assert.equal(label({provider:'cloud-a',model:'remote-1'},installed),'remote-1');
- assert.equal(label({provider:'cloud-a',routing:'auto'},installed),'Auto (Fast/Smart)');
+ assert.equal(label({provider:'cloud-a',routing:'auto'},installed),'No model selected');
 });
 test('an unknown catalogue or another provider never declares a model missing',()=>{
  assert.equal(label({model:'Gone'},null),'Gone');
@@ -76,4 +77,19 @@ test('warns when a unified-memory GPU may borrow nearly all host RAM',()=>{
  assert.equal(risk({unified:true,sharedTotalGB:16,hostTotalGB:64}).risky,false);
  assert.equal(risk({unified:false,sharedTotalGB:27,hostTotalGB:29}).risky,false);
  for(const host of [0,null,NaN])assert.equal(risk({unified:true,sharedTotalGB:27,hostTotalGB:host}).risky,false);
+});
+test('#876: with a custom default provider id the label follows the server, not the literal "default"',()=>{
+ const installed=[{name:'Hot',loaded:true}];
+ // The server's local provider is `homelab`: a chat on it with no model sends on the loaded model.
+ assert.equal(label({provider:'homelab'},installed,true,'homelab'),'Hot');
+ assert.equal(label({provider:'homelab',routing:'manual'},null,true,'homelab'),'local model');
+ // ...and the literal 'default' is then just another provider, with nothing to borrow.
+ assert.equal(label({provider:'default'},installed,true,'homelab'),'No model selected');
+ // Without the real id the old assumption made the first case read "No model selected".
+ assert.equal(label({provider:'homelab'},installed),'No model selected');
+ // An `auto` choice on a non-local provider is manual server-side (chat.cjs): no Auto promise.
+ assert.equal(label({routing:'auto',provider:'cloud-a'},installed,true,'homelab'),'No model selected');
+ assert.equal(label({routing:'auto',provider:'cloud-a',model:'gpt-x'},installed,true,'homelab'),'gpt-x');
+ assert.equal(label({routing:'auto',provider:'homelab'},installed,true,'homelab'),'Auto (Fast/Smart)');
+ assert.equal(label({routing:'auto',provider:'lemonade'},installed,true,'homelab'),'Auto (Fast/Smart)');
 });
