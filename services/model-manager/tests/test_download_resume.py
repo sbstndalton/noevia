@@ -86,14 +86,18 @@ def test_206_for_the_wrong_offset_installs_nothing(monkeypatch, tmp_path, conten
     assert job.temp_path.read_bytes() == PAYLOAD[:10], "the good partial is kept for the next attempt"
 
 
-def test_206_for_a_changed_file_discards_the_partial(monkeypatch, tmp_path):
+def test_206_for_a_changed_size_discards_the_partial_and_starts_over(monkeypatch, tmp_path):
+    # HEAD says 31 bytes, the resume answers with a 50-byte file: never splice, fetch afresh.
     def respond(req):
         if req.method == "HEAD":
             return _head(req)
-        return httpx.Response(206, content=b"x" * 40, headers={"content-range": "bytes 10-49/50"})
-    job, _ = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD[:10])
-    assert job.status == "error" and "changed on the server" in job.error
-    assert not job.dest_path.exists() and not job.temp_path.exists()
+        if req.headers.get("range"):
+            return httpx.Response(206, content=b"x" * 40, headers={"content-range": "bytes 10-49/50"})
+        return httpx.Response(200, content=PAYLOAD)
+    job, seen = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD[:10])
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == PAYLOAD
+    assert [r for m, r in seen if m == "GET"] == ["bytes=10-", None]
 
 
 def test_short_body_is_not_installed_and_partial_is_kept(monkeypatch, tmp_path):
@@ -238,7 +242,7 @@ def test_validator_is_stored_while_partial_and_removed_once_installed(monkeypatc
         return httpx.Response(200, content=PAYLOAD[:12], headers={"etag": '"etag-v1"', "content-length": "12"})
     job, _ = _run(monkeypatch, tmp_path, short)
     sidecar = tmp_path / "model.gguf.download.validator"
-    assert job.status == "error" and sidecar.read_text() == '"etag-v1"'
+    assert job.status == "error" and sidecar.read_text() == '"etag-v1"\t31'
 
     def rest(req):
         if req.method == "HEAD":
@@ -278,3 +282,91 @@ def test_partial_larger_than_the_known_size_is_not_resumed(monkeypatch, tmp_path
     job, _ = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD + b"junk")
     assert job.status == "done", job.error
     assert job.dest_path.read_bytes() == PAYLOAD
+
+
+# ---------- second review of #827 ----------
+
+def test_new_validator_is_written_only_after_the_partial_is_truncated(monkeypatch, tmp_path):
+    sizes = []
+    real = downloader._write_validator
+
+    def spy(job, value, total):
+        sizes.append(job.temp_path.stat().st_size)
+        real(job, value, total)
+    monkeypatch.setattr(downloader, "_write_validator", spy)
+
+    def respond(req):
+        if req.method == "HEAD":
+            return _head(req)
+        return httpx.Response(200, content=PAYLOAD, headers={"etag": '"etag-v2"'})
+    job, _ = _run(monkeypatch, tmp_path, respond, partial=b"old-upload-bytes", validator=None)
+    assert job.status == "done", job.error
+    assert sizes == [0], "the new validator appears only beside an emptied file"
+
+
+def test_crash_before_truncating_never_leaves_old_bytes_beside_a_new_validator(monkeypatch, tmp_path):
+    real_open = open
+
+    def crashing_open(path, mode="r", *a, **kw):
+        if mode == "wb" and str(path).endswith(".download"):
+            raise OSError("simulated crash before the truncate")
+        return real_open(path, mode, *a, **kw)
+    monkeypatch.setattr(downloader, "open", crashing_open, raising=False)
+
+    def respond(req):
+        if req.method == "HEAD":
+            return httpx.Response(200, headers={"content-length": "40", "etag": '"etag-v2"'})
+        return httpx.Response(200, content=b"n" * 40, headers={"etag": '"etag-v2"'})
+    # An old partial and its validator; HEAD now reports a different upload, so it restarts.
+    job, _ = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD[:10])
+    assert job.status == "error"
+    assert job.temp_path.read_bytes() == PAYLOAD[:10]
+    sidecar = tmp_path / "model.gguf.download.validator"
+    assert not (sidecar.exists() and "etag-v2" in sidecar.read_text()), "old bytes must never carry the new validator"
+
+
+def test_replaced_upload_of_another_size_is_not_spliced_when_if_range_is_ignored(monkeypatch, tmp_path):
+    # The server honours Range but ignores If-Range, and HEAD fails, so only the size the partial
+    # was recorded with can tell the uploads apart.
+    new = b"a-replacement-upload-with-a-different-size!"
+
+    def respond(req):
+        if req.method == "HEAD":
+            return httpx.Response(405)
+        if req.headers.get("range"):
+            start = int(req.headers["range"].removeprefix("bytes=").rstrip("-"))
+            return httpx.Response(206, content=new[start:], headers={"content-range": f"bytes {start}-{len(new) - 1}/{len(new)}"})
+        return httpx.Response(200, content=new, headers={"etag": '"etag-v2"'})
+    job, seen = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD[:10], validator=f'"etag-v1"\t{len(PAYLOAD)}')
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == new
+    assert [r for m, r in seen if m == "GET"] == ["bytes=10-", None]
+
+
+def test_head_size_disagreeing_with_the_recorded_size_skips_the_resume(monkeypatch, tmp_path):
+    new = b"x" * 44
+
+    def respond(req):
+        if req.method == "HEAD":
+            return httpx.Response(200, headers={"content-length": str(len(new))})
+        assert "range" not in req.headers
+        return httpx.Response(200, content=new)
+    job, _ = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD[:10], validator=f'"etag-v1"\t{len(PAYLOAD)}')
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == new
+
+
+def test_validator_file_format():
+    class J:
+        temp_path = None
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as d:
+        j = J()
+        j.temp_path = Path(d) / "m.gguf.download"
+        downloader._write_validator(j, '"e"', 31)
+        assert downloader._read_validator(j) == ('"e"', 31)
+        downloader._validator_path(j).write_text('"legacy"')
+        assert downloader._read_validator(j) == ('"legacy"', 0)
+        downloader._write_validator(j, "bad\tvalue", 31)
+        assert downloader._read_validator(j) == ("", 0)

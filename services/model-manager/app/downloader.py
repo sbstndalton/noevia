@@ -186,17 +186,21 @@ def _validator_path(job: "DownloadJob") -> Path:
     return job.temp_path.with_name(job.temp_path.name + ".validator")
 
 
-def _read_validator(job: "DownloadJob") -> str:
+def _read_validator(job: "DownloadJob") -> tuple[str, int]:
+    """(validator, total size) of the upload the partial came from; ("", 0) when unknown."""
     try:
-        return _validator_path(job).read_text(encoding="utf-8").strip()
+        text = _validator_path(job).read_text(encoding="utf-8").strip("\r\n")
     except OSError:
-        return ""
+        return "", 0
+    value, _, total = text.partition("\t")
+    return value.strip(), int(total) if total.strip().isdigit() else 0
 
 
-def _write_validator(job: "DownloadJob", value: str) -> None:
-    """Remember which upload the partial's bytes belong to; without one it is never resumed."""
-    if value and "\n" not in value and "\r" not in value:
-        _validator_path(job).write_text(value, encoding="utf-8")
+def _write_validator(job: "DownloadJob", value: str, total: int) -> None:
+    """Remember which upload (validator and size) the partial's bytes belong to; without a
+    validator it is never resumed. Call only once the file holds that upload's bytes alone."""
+    if value and not any(c in value for c in "\t\r\n"):
+        _validator_path(job).write_text(f"{value}\t{max(0, int(total or 0))}", encoding="utf-8")
     else:
         _drop_validator(job)
 
@@ -463,8 +467,9 @@ class DownloadManager:
         start = 0
         if job.temp_path.exists():
             start = job.temp_path.stat().st_size
-        stored = _read_validator(job)
+        stored, stored_total = _read_validator(job)
         if start and (not stored or (current and current != stored)
+                      or (stored_total and job.total_bytes and stored_total != job.total_bytes)
                       or (job.total_bytes and start >= job.total_bytes)):
             start = 0
         base_headers = headers
@@ -483,7 +488,7 @@ class DownloadManager:
                     _drop_validator(job)
                     self._restart(job)
                     await resp.aclose()
-                    return await self._stream_single(job, url, base_headers)
+                    return await self._stream_single(job, url, base_headers, current)
                 if resp.status_code not in (200, 206):
                     body = ""
                     try:
@@ -500,9 +505,15 @@ class DownloadManager:
                         raise RuntimeError(f"unexpected Content-Range {resp.headers.get('content-range', '')!r} resuming at byte {start}")
                     if m.group(3) != "*":
                         remote_total = int(m.group(3))
-                        if job.total_bytes and remote_total != job.total_bytes:
+                        expected = {t for t in (stored_total, job.total_bytes) if t}
+                        if expected and expected != {remote_total}:
+                            # The file is not the size of the upload the partial came from (a
+                            # server honouring Range but ignoring If-Range): never splice.
                             job.temp_path.unlink(missing_ok=True)
-                            raise RuntimeError(f"the file changed on the server ({remote_total} bytes, expected {job.total_bytes}); discarded the partial download")
+                            _drop_validator(job)
+                            self._restart(job)
+                            await resp.aclose()
+                            return await self._stream_single(job, url, base_headers, current)
                         job.total_bytes = remote_total
                     elif not job.total_bytes and resp.headers.get("content-length"):
                         job.total_bytes = start + int(resp.headers["content-length"])
@@ -515,9 +526,13 @@ class DownloadManager:
                     if not job.total_bytes and length:
                         job.total_bytes = length
                     mode = "wb"
-                    _write_validator(job, _validator(resp.headers))
+                    # The old validator goes before the truncate, the new one only after it, so
+                    # a crash in between can never leave old bytes beside the new validator.
+                    _drop_validator(job)
 
                 with open(job.temp_path, mode) as f:
+                    if mode == "wb":
+                        _write_validator(job, _validator(resp.headers), job.total_bytes)
                     async for buf in resp.aiter_bytes(1024 * 1024):
                         if job._cancel.is_set():
                             raise asyncio.CancelledError
