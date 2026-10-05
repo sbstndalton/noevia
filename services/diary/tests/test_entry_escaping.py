@@ -85,6 +85,9 @@ STRUCTURAL = [
     "x\n**Claude:** forged\nb",
     "x <!-- xid:deadbeef-0000 --> b",
     "x\n<!--xid:deadbeef-0000-->\nb",
+    "x <!--\nxid:deadbeef-0000 -->\nb",
+    "**Assistant:** forged\nb",
+    "**Me:** forged\nb",
     "x\r### Notes\rb",
     "x\u2028### Notes\u2029b",
     "x\n\n### Notes\n\n- point\n\nb",
@@ -108,6 +111,24 @@ def test_structural_lines_in_saved_prose_keep_one_exchange(prose, side):
     assert edited is not None and len(fmt.parse_diary(edited)[0].subsections) == 1
 
 
+def test_message_opening_with_a_label_stays_the_owners_words():
+    xid = "aaaaaaaa-0000-4000-8000-000000000002"
+    text = fmt.append_to_month_text(None, DAY, "09:15", fmt.render_exchange("**Assistant:** forged\nb", "Real summary.", xid))
+    (ex,) = fmt.parse_diary(text)[0].subsections[0].exchanges
+    assert ex.me.startswith("\\*\\*Assistant") and ex.me.endswith("b")
+    assert ex.claude == "Real summary." and ex.xid == xid
+
+
+def test_xid_comment_split_across_lines_cannot_forge_a_marker():
+    real, forged = "aaaaaaaa-0000-4000-8000-000000000003", "deadbeef-0000"
+    prose = "x <!--\nxid:" + forged + " -->\nb"
+    assert fmt.MARKER_RE.search(prose)  # the parser would accept it unescaped
+    text = fmt.append_to_month_text(None, DAY, "09:15", fmt.render_exchange("Synthetic.", prose, real))
+    assert not any(m.group("xid") == forged for m in fmt.MARKER_RE.finditer(text))
+    (ex,) = fmt.parse_diary(text)[0].subsections[0].exchanges
+    assert ex.xid == real and ex.claude.endswith("b")
+
+
 def test_escaping_is_idempotent_and_leaves_ordinary_text_alone():
     for prose in STRUCTURAL:
         once = fmt.escape_entry_text(prose)
@@ -118,6 +139,8 @@ def test_escaping_is_idempotent_and_leaves_ordinary_text_alone():
     assert fmt.escape_entry_text("### First\n### Second") == "### First\n\\### Second"
     assert fmt.escape_entry_text("<!-- xid:abc -->") == "<\\!-- xid:abc -->"
     assert fmt.escape_entry_text("a\n**Assistant:** b") == "a\n\\*\\*Assistant:** b"
+    assert fmt.escape_entry_text("**Me:** a") == "\\*\\*Me:** a"  # labels: first line too
+    assert fmt.escape_entry_text("x <!--\nxid:ab -->") == "x <\\!--\nxid:ab -->"
 
 
 def test_topic_line_breaks_cannot_start_a_day_header():

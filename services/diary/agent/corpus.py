@@ -98,25 +98,28 @@ def escape_entry_text(text: str) -> str:
 
       - a line starting with 1-6 '#' then a space/tab/end  -> '\\' prefix
       - a line starting with **Me:** / **Assistant:** / **Claude:**  -> '\\*\\*' prefix
-      - '<!--' opening an xid comment anywhere  -> '<\\!--'
+      - '<!--' opening an xid comment anywhere, even split across lines  -> '<\\!--'
 
-    The first line is never escaped for heading/label patterns: the renderers put
-    it after a '**Me:** ' / '**Assistant:** ' label, so it is not at a line start.
+    The first line is not escaped for headings: the renderers put it after a
+    '**Me:** ' / '**Assistant:** ' label, so it is not at a line start. Labels ARE
+    escaped on the first line too: the parser reads the text right after '**Me:** '
+    as a fresh string, so a message opening with '**Assistant:**' would otherwise
+    hand the owner's words to the assistant.
     Idempotent (an escaped line no longer matches), so re-saving edited text and
     journal replays produce identical bytes. Text without such lines is unchanged,
     and parsing is unchanged, so entries already on disk read exactly as before.
     """
-    lines = text.splitlines(keepends=True)
+    # MARKER_RE's \s* spans line breaks, so match on the whole text, not per line.
+    text = _MARKER_OPEN_RE.sub("<\\!--", text)
     out = []
-    for i, line in enumerate(lines):
+    for i, line in enumerate(text.splitlines(keepends=True)):
         body = line.rstrip(_LINE_BREAK_CHARS)
         end = line[len(body):]
-        if i:
-            if _HEADING_LINE_RE.match(body):
-                body = "\\" + body
-            elif _ROLE_LINE_RE.match(body):
-                body = "\\*\\*" + body[2:]
-        out.append(_MARKER_OPEN_RE.sub("<\\!--", body) + end)
+        if i and _HEADING_LINE_RE.match(body):
+            body = "\\" + body
+        elif _ROLE_LINE_RE.match(body):
+            body = "\\*\\*" + body[2:]
+        out.append(body + end)
     return "".join(out)
 
 
