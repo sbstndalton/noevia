@@ -226,7 +226,7 @@ test('wiring refuses a publicFetch it cannot use rather than silently skipping i
 
 // ── OAuth endpoints of a directory server (mcp-oauth.cjs gets the same fetch) ──
 
-async function oauthFixture(t, { tokenHost = '127.0.0.1' } = {}) {
+async function oauthFixture(t, { tokenHost = '127.0.0.1', pad = 0 } = {}) {
   const crypto = require('node:crypto');
   const codes = new Map();
   const hits = [];
@@ -239,7 +239,7 @@ async function oauthFixture(t, { tokenHost = '127.0.0.1' } = {}) {
       const json = (o, st = 200) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
       if (req.url === '/.well-known/oauth-protected-resource/mcp') return json({ resource: `${base}/mcp`, authorization_servers: [`${base}/as`] });
       if (req.url === '/.well-known/oauth-authorization-server/as') {
-        return json({ issuer: `${base}/as`, authorization_endpoint: `${base}/as/authorize`, token_endpoint: `http://${tokenHost}:${server.address().port}/as/token`, registration_endpoint: `${base}/as/register`, code_challenge_methods_supported: ['S256'] });
+        return json({ ...(pad ? { pad: 'x'.repeat(pad) } : {}), issuer: `${base}/as`, authorization_endpoint: `${base}/as/authorize`, token_endpoint: `http://${tokenHost}:${server.address().port}/as/token`, registration_endpoint: `${base}/as/register`, code_challenge_methods_supported: ['S256'] });
       }
       if (req.url === '/as/register') return json({ client_id: 'client-1' }, 201);
       if (req.url === '/as/token') {
@@ -281,4 +281,54 @@ test('an OAuth endpoint whose name resolves privately is refused at connect', as
   const oauth = oauthWith(createPublicFetch({ allowLoopbackLiteral: true }));
   await assert.rejects(signIn(oauth, fx), { code: 'EPRIVATEADDR' });
   assert.equal(fx.hits.includes('/as/token'), false);
+});
+
+// ── a hostile server cannot crash the process ────────────────────────────
+
+async function rawServer(t, reply) {
+  const net = require('node:net');
+  const server = net.createServer((sock) => { sock.on('error', () => {}); sock.once('data', () => sock.end(reply)); });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise((r) => server.close(r)));
+  return server.address().port;
+}
+
+test('a reason phrase Response rejects (control characters) fails the request, not the process', async (t) => {
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err);
+  // node:test installs its own handler; listen alongside it to see whether anything escaped.
+  process.on('uncaughtException', onUncaught);
+  t.after(() => process.off('uncaughtException', onUncaught));
+  const publicFetch = createPublicFetch({ allowLoopbackLiteral: true });
+  const port = await rawServer(t, 'HTTP/1.1 200 O\x01K\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}');
+  // Either outcome is acceptable — the phrase dropped and the body read, or a rejection — as long
+  // as nothing is thrown out of the response event.
+  const outcome = await publicFetch(`http://127.0.0.1:${port}/`).then(async (r) => ({ status: r.status, statusText: r.statusText, body: await r.text() }), (e) => ({ error: e }));
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(uncaught, []);
+  if (!outcome.error) assert.deepEqual(outcome, { status: 200, statusText: '', body: '{}' });
+});
+
+test('a throw while building the Response rejects the request and is never uncaught', async (t) => {
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err);
+  process.on('uncaughtException', onUncaught);
+  t.after(() => process.off('uncaughtException', onUncaught));
+  const RealResponse = globalThis.Response;
+  globalThis.Response = function () { throw new TypeError('synthetic Response failure'); };
+  t.after(() => { globalThis.Response = RealResponse; });
+  const port = await rawServer(t, 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}');
+  await assert.rejects(createPublicFetch({ allowLoopbackLiteral: true })(`http://127.0.0.1:${port}/`), /synthetic Response failure/);
+  globalThis.Response = RealResponse;
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(uncaught, []);
+});
+
+test('an OAuth metadata body past the size cap is treated as no metadata', async (t) => {
+  // Valid metadata in every respect except its size: under the cap it signs in, over it it does not.
+  const small = await oauthFixture(t, { pad: 100 * 1024 });
+  await signIn(oauthWith(createPublicFetch({ allowLoopbackLiteral: true })), small);
+  const big = await oauthFixture(t, { pad: 300 * 1024 });
+  await assert.rejects(oauthWith(createPublicFetch({ allowLoopbackLiteral: true })).start({ userId: 'u1', serverId: 'dir-x', serverUrl: `http://127.0.0.1:${big.port}/mcp` }), /did not describe itself/);
+  assert.equal(big.hits.includes('/as/register'), false);
 });

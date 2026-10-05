@@ -33,6 +33,8 @@ const { isPrivateIp } = require('./ssrf.cjs');
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+// RFC 9110 reason-phrase: HTAB, SP, VCHAR, obs-text.
+const REASON_PHRASE_RE = /^[\t\x20-\x7e\x80-\xff]*$/;
 
 function refusal(message) {
   return Object.assign(new Error(message), { code: 'EPRIVATEADDR' });
@@ -118,28 +120,32 @@ function createPublicFetch({ isPublicAddress = (ip) => !isPrivateIp(ip), resolve
         path: `${url.pathname}${url.search}`, method, headers: outgoing,
         lookup, agent: false, signal,
       }, (res) => {
-        const status = res.statusCode || 0;
-        if (REDIRECT_STATUSES.has(status) && init.redirect !== 'manual') {
+        // Everything here runs in an http 'response' event: a throw would be an uncaught
+        // exception that takes the whole web process down, and the server on the other end is
+        // a stranger's. So any failure building the Response rejects this one request instead.
+        try {
+          const status = res.statusCode || 0;
+          if (REDIRECT_STATUSES.has(status) && init.redirect !== 'manual') {
+            throw new TypeError(`refused: redirect (${status}) from ${url.origin}`);
+          }
+          if (status < 200 || status > 599) throw new TypeError(`unexpected HTTP status ${status} from ${url.origin}`);
+          const responseHeaders = new Headers();
+          for (let i = 0; i + 1 < res.rawHeaders.length; i += 2) {
+            try { responseHeaders.append(res.rawHeaders[i], res.rawHeaders[i + 1]); } catch { /* an invalid header is dropped, as fetch does */ }
+          }
+          const empty = NULL_BODY_STATUSES.has(status) || method === 'HEAD';
+          // The reason phrase is kept only when Response would accept it: llhttp lets control
+          // characters through (`200 O\x01K`), and Response throws on them. Nothing reads it.
+          const reason = String(res.statusMessage || '');
+          const statusText = REASON_PHRASE_RE.test(reason) ? reason : '';
+          const response = new Response(empty ? null : Readable.toWeb(decoded(res)), { status, statusText, headers: responseHeaders });
+          if (empty) res.resume();
+          resolvePromise(response);
+        } catch (err) {
           res.resume();
           req.destroy();
-          reject(new TypeError(`refused: redirect (${status}) from ${url.origin}`));
-          return;
+          reject(err);
         }
-        if (status < 200 || status > 599) {
-          res.resume();
-          req.destroy();
-          reject(new TypeError(`unexpected HTTP status ${status} from ${url.origin}`));
-          return;
-        }
-        const responseHeaders = new Headers();
-        for (let i = 0; i + 1 < res.rawHeaders.length; i += 2) {
-          try { responseHeaders.append(res.rawHeaders[i], res.rawHeaders[i + 1]); } catch { /* an invalid header is dropped, as fetch does */ }
-        }
-        const empty = NULL_BODY_STATUSES.has(status) || method === 'HEAD';
-        if (empty) res.resume();
-        resolvePromise(new Response(empty ? null : Readable.toWeb(decoded(res)), {
-          status, statusText: res.statusMessage || '', headers: responseHeaders,
-        }));
       });
       req.on('error', reject);
       if (body) req.end(body); else req.end();
