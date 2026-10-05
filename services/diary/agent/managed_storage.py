@@ -320,10 +320,10 @@ class ManagedCorpusBackend:
                 # run after the debounce backs up the new snapshot. Objects
                 # already verified are content-addressed and remain correct.
                 #
-                # Logged (#885) because status() just says 'pending', and a run that is
+                # Logged at warning (#885; Diary has no logging config, so info never reaches docker logs) because status() just says 'pending', and a run that is
                 # abandoned over and over during a long editing session otherwise leaves no
                 # trace while lastBackedUp ages. Counts only: never a path, URL or tenant.
-                log.info('managed backup abandoned at generation %s: a save landed mid-run '
+                log.warning('managed backup abandoned at generation %s: a save landed mid-run '
                          '(%d of %d files verified, %.1fs); retrying after the debounce',
                          generation, len(manifest['files']), len(file_meta), time.monotonic() - started)
             except Exception:

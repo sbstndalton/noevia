@@ -621,6 +621,14 @@ def run_sweep_once(backend: str, model_path: str, extra: list[str],
     try:
         cont = client.containers.run(**kwargs)
     except Exception as e:  # noqa: BLE001
+        # run() = create + start: a failed start leaves the created container behind, with no
+        # handle returned. Ours carry the label, so clear any `created` one (this run is the
+        # only sweep, so it cannot be another run's).
+        try:
+            for left in client.containers.list(all=True, filters={"label": f"{SWEEP_LABEL}=1", "status": "created"}):
+                left.remove(force=True)
+        except Exception:  # noqa: BLE001
+            pass
         return [], f"{type(e).__name__}: {e}"
 
     try:
@@ -715,6 +723,8 @@ def reap_orphans() -> dict:
         log.warning("%d leftover llama-bench container(s) could not be stopped; reporting the benchmark as active", len(stuck))
         with _LOCK:
             _STATE = JobState(status="running", backend="", started_at=time.time(),
+                              # unit "models" is what web's adopt() requires to re-take its hold
+                              unit="models", total=1,
                               current="stopping a llama-bench left over from before a restart",
                               lines=["a llama-bench container from before a restart is still running; stopping it"])
         _THREAD = threading.Thread(target=_watch_orphans, args=(stuck,), name="benchmark-orphans", daemon=True)
@@ -725,9 +735,9 @@ def reap_orphans() -> dict:
 def _stop_and_remove(c) -> bool:
     """True once the container is gone (or never ran). Any docker error counts as not yet."""
     try:
-        c.reload()
-        if c.status in ("running", "created", "restarting", "paused"):
-            c.kill()
+        # No explicit kill: docker answers 409 "is not running" for a container left in `created`
+        # (a failed start), which would make it unremovable here. remove(force=True) stops a
+        # running one itself and removes any state.
         c.remove(force=True)
         return True
     except Exception as e:  # noqa: BLE001

@@ -81,6 +81,9 @@ def init() -> None:
                 ON req_timing(model_path, ts DESC);
             CREATE INDEX IF NOT EXISTS req_timing_alias
                 ON req_timing(alias, ts DESC);
+            -- record_timings' de-dupe guards look rows up by (backend, task, ts)
+            CREATE INDEX IF NOT EXISTS req_timing_dedupe
+                ON req_timing(backend, task, ts);
             -- The arguments one spawned llama-server instance was given. Stored whole, as
             -- JSON, rather than as columns for the flags that seemed interesting: what makes
             -- two runs different is discovered by diffing these, so a fixed column set would

@@ -424,7 +424,7 @@ def test_an_aborted_backup_run_is_logged_without_paths_or_tenant(managed, tmp_pa
         return original(path, data, **kwargs)
 
     remote.put = put
-    with caplog.at_level(logging.INFO, logger='agent.managed_storage'):
+    with caplog.at_level(logging.WARNING, logger='agent.managed_storage'):
         assert managed.backup(remote, storage, now=time.time() + 10)['backup'] == 'pending'
     assert deleted
     [record] = [r for r in caplog.records if 'abandoned' in r.getMessage()]
@@ -434,6 +434,6 @@ def test_an_aborted_backup_run_is_logged_without_paths_or_tenant(managed, tmp_pa
     # a clean run logs no abandonment
     caplog.clear()
     remote.put = original
-    with caplog.at_level(logging.INFO, logger='agent.managed_storage'):
+    with caplog.at_level(logging.WARNING, logger='agent.managed_storage'):
         assert managed.backup(remote, storage, now=time.time() + 20)['backup'] == 'complete'
     assert not [r for r in caplog.records if 'abandoned' in r.getMessage()]
