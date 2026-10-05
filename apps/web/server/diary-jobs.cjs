@@ -23,7 +23,9 @@ function start(workspace,{entryDay,exchangeId,message,kind,preparationId},{saveI
  // Persist before dispatch. An orphaned running record is never replayed.
  atomicJson(file,row);active.add(file);
  let lastSave=now(),timer=null,dirty=false;
- const save=()=>{if(timer){clearTimer(timer);timer=null;}dirty=false;lastSave=now();atomicJson(file,row);};
+ // dirty/lastSave change only once the write succeeded, so a failed write is retried by the next
+ // event or by finish().
+ const save=()=>{if(timer){clearTimer(timer);timer=null;}atomicJson(file,row);dirty=false;lastSave=now();};
  const saveSoon=()=>{
   dirty=true;
   if(now()-lastSave>=saveIntervalMs)return save();

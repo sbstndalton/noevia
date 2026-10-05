@@ -51,6 +51,9 @@ function readGpuMemory(files, readFile = f => fs.readFileSync(f, 'utf8')) {
 
 function createInferenceBudgetWatch({
   budgetGib, readGpu, readEngine = async () => null, listLoaded, unload, onUnloaded = () => {}, log = line => console.warn(line),
+  // False while something outside the engine may hold GPU memory (a calibration, auto-tune or a
+  // llama-bench sweep holds the maintenance gate): no idle baseline is taken then.
+  baselineAllowed = () => true,
   env = process.env, intervalMs, overshootPct, strikesNeeded = 2, cooldownMs = 60000, now = Date.now,
   setIntervalFn = setInterval, clearIntervalFn = clearInterval,
 }) {
@@ -76,7 +79,8 @@ function createInferenceBudgetWatch({
       const vramGib = gpu?.vramGib ?? engine?.vramGib ?? 0;
       // The idle baseline: every reading with no model loaded, and the first reading otherwise
       // only if nothing is loaded then. Unknown (a model was already loaded) counts as zero.
-      if (Array.isArray(loaded) && loaded.length === 0) baselineGib = gttGib + vramGib;
+      let mayBaseline = true; try { mayBaseline = baselineAllowed() !== false; } catch { mayBaseline = false; }
+      if (Array.isArray(loaded) && loaded.length === 0 && mayBaseline) baselineGib = gttGib + vramGib;
       const gpuGib = Math.max(0, gttGib + vramGib - (baselineGib ?? 0));
       const containerGib = engine?.containerGib ?? 0;
       const usedGib = gpuGib + containerGib;

@@ -158,7 +158,8 @@ verbatim (comments and layout kept).
 | Stale or missing `baseRevision` | 409 / 400 | see above | unchanged |
 | Filesystem error | 500 | `models.ini could not be written safely; nothing was changed` | unchanged |
 
-Write procedure: keep an immutable `models.ini.noevia-backup-<baseRevision>` and a rotating
+Write procedure: keep an immutable `models.ini.noevia-backup-<baseRevision>` (never overwritten;
+model-loader does not prune them, the web writer keeps the newest 20 after each of its writes) and a rotating
 `.bak-<ts>` copy (a backup failure aborts before the file is touched), write a fsynced
 temp file with the current mode, `rename` over `models.ini`, fsync the directory. The
 engine therefore always sees a whole file.

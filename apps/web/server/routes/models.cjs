@@ -55,6 +55,8 @@ function createModelRoutes({ json, readBody, readJson, fetchJson, env, modelMana
     log: message => console.log(message),
     ...sweepGuardOptions,
   }) : null;
+  // A sweep that outlived a web restart gets the gate back (#873 follow-up).
+  const sweepAdopted = sweepGuard && env.MODEL_LOADER_URL ? sweepGuard.adopt().catch(() => false) : Promise.resolve(false);
 
   async function handle(req, res, { path: p, authn, url }) {
     if (p.startsWith('/api/models/') && !['GET', 'HEAD'].includes(req.method || 'GET') && authn.user.role !== 'admin') {
@@ -611,9 +613,12 @@ function createModelRoutes({ json, readBody, readJson, fetchJson, env, modelMana
     return PASS;
   }
 
-  return async function modelRoutes(req, res, ctx) {
+  const modelRoutes = async function modelRoutes(req, res, ctx) {
     return (await handle(req, res, ctx)) !== PASS;
   };
+  // Settles once the startup check for a still-running sweep is done (tests await it).
+  modelRoutes.sweepAdopted = sweepAdopted;
+  return modelRoutes;
 }
 
 module.exports = { createModelRoutes };

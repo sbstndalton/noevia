@@ -68,3 +68,16 @@ test('#874 streamed deltas are written at most every interval; decisions, done a
  assert.equal(writes,5,'finish flushes a pending write');assert.equal(onDisk().reasoning,'tail');assert.equal(timers.length,0);
  assert.equal(jobs.list(w,data.entryDay)[0].state,'complete');
 });
+test('#874 a failed throttled write is retried by finish()',t=>{
+ const w=fixture(t);let clock=1000;const timers=[];
+ const j=jobs.start(w,data,{saveIntervalMs:500,now:()=>clock,setTimer:fn=>{const timer={fn,unref(){}};timers.push(timer);return timer;},clearTimer:timer=>{const i=timers.indexOf(timer);if(i>=0)timers.splice(i,1);}});
+ const file=path.join(w.dir,'diary-conversations',data.entryDay,data.exchangeId+'.json');
+ j.event({type:'delta',text:'kept '});j.event({type:'diary',decision:'logged'});j.event({type:'done'});
+ // A late text event after done: only the throttled path can write it.
+ j.event({type:'delta',text:'text'});
+ const original=fs.renameSync;let fail=true;fs.renameSync=(...args)=>{if(fail&&String(args[1])===file)throw Object.assign(Error('disk full'),{code:'ENOSPC'});return original(...args);};t.after(()=>{fs.renameSync=original;});
+ timers.shift().fn();
+ assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).content,'kept ','the timer write failed');
+ fail=false;clock+=10;j.finish();
+ const row=JSON.parse(fs.readFileSync(file,'utf8'));assert.equal(row.content,'kept text');assert.equal(row.state,'complete');
+});

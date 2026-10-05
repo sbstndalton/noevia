@@ -10,7 +10,8 @@
 // The hold is bounded: a sweep runs at most `perModelMs` per model (the sidecar's own
 // 30-minute llama-bench timeout) plus `slackMs` for freeing the engine, and a model
 // manager that stops answering for `unreachableMs` releases chat rather than pausing it
-// indefinitely. A web restart drops the hold (the gate lives in memory).
+// indefinitely. The gate lives in memory, so on start the proxy calls adopt() to take it
+// back for a sweep that outlived a web restart.
 
 const SWEEP_PAUSE_REASON = 'Chat is paused while noevia runs a throughput sweep. It will be available again when the sweep finishes or is cancelled.';
 const SWEEP_BUSY_ERROR = 'Requests are in progress, or a calibration, auto-tune or settings change is running. Wait for it to finish, then start the sweep.';
@@ -58,7 +59,21 @@ function createSweepGuard({ hold, progress, log = () => {}, pollMs = 5000, perMo
     return entry;
   }
 
-  return { acquire, watch, active: () => !!watching };
+  // After a web restart the gate is gone but a sweep may still be running in its container.
+  // Ask once and take the gate back for it; a busy gate or an unreachable manager is left alone.
+  async function adopt() {
+    let job = null;
+    try { const r = await progress(); job = r?.ok && r.body && typeof r.body === 'object' ? r.body.job || null : null; } catch { return false; }
+    // Only a throughput sweep (counted in models) runs outside the engine; the prompt suite does not.
+    if (!job || job.active !== true || job.unit !== 'models' || watching) return false;
+    let release;
+    try { release = acquire(); } catch { return false; }
+    log('[models] throughput sweep still running after a restart: chat paused until it finishes.');
+    watch(release, Math.max(1, Number(job.total) || 1));
+    return true;
+  }
+
+  return { acquire, watch, adopt, active: () => !!watching };
 }
 
 module.exports = { createSweepGuard, SWEEP_PAUSE_REASON, SWEEP_BUSY_ERROR };

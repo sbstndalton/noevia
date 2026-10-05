@@ -556,3 +556,15 @@ test('#874 a failed model listing is unknown, not idle: no baseline from it, and
   const t = createInferenceBudgetWatch({ env: {}, budgetGib: () => 12, readGpu: async () => used.gpu, listLoaded: async () => { throw Error('ECONNREFUSED'); }, unload: async () => ({ ok: true }), log: () => {}, now: () => 0 });
   assert.equal((await t.tick()).state, 'models-unknown');
 });
+
+test('#873 no idle baseline is taken while the maintenance gate is held (a llama-bench sweep owns the GPU)', async () => {
+  let held = true;
+  const used = { gpu: { gttGib: 11, vramGib: 0 }, engine: null };
+  const w = createInferenceBudgetWatch({ env: {}, budgetGib: () => 12, readGpu: async () => used.gpu, readEngine: async () => null,
+    listLoaded: async () => [], unload: async () => ({ ok: true }), log: () => {}, now: () => 0, baselineAllowed: () => !held });
+  assert.equal((await w.tick()).baselineGib, 0, 'the sweep\'s 11 GiB is not the idle baseline');
+  held = false; used.gpu.gttGib = 1;
+  assert.equal((await w.tick()).baselineGib, 1, 'a real idle reading after the sweep is');
+  const throwing = createInferenceBudgetWatch({ env: {}, budgetGib: () => 12, readGpu: async () => used.gpu, listLoaded: async () => [], unload: async () => ({ ok: true }), log: () => {}, now: () => 0, baselineAllowed: () => { throw Error('x'); } });
+  assert.equal((await throwing.tick()).baselineGib, 0);
+});

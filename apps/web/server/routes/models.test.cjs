@@ -70,7 +70,7 @@ function fixture({ env = {}, enabled = true, kind = 'llamacpp', manager = {}, wo
     const res = { setHeader: (k, v) => headers.push([k, v]) };
     return routes(req, res, { path, authn: { user: { id: 'u1', role } }, url: new URL(`http://localhost${path}${search}`) });
   };
-  return { call, sent, headers, fetched, scan, refreshes: () => refreshes, roles, lastLoaded };
+  return { call, sent, headers, fetched, scan, refreshes: () => refreshes, roles, lastLoaded, ready: routes.sweepAdopted };
 }
 
 test('every write under /api/models/ is refused for members before anything else is looked at', async () => {
@@ -782,6 +782,8 @@ test('#873: the throughput sweep checks every model against the budget and holds
     manager: { loadRefusal: async (m) => (m === 'big' ? refusal : null), holdMaintenance: (reason) => gate.hold(reason) },
     fetchReply: (url) => (url.endsWith('/benchmark/progress') ? { ok: true, status: 200, body: { job: progress } } : sweepReply),
     sweepGuardOptions: { setTimer: (fn) => { timers.push(fn); return { unref() {} }; }, clearTimer: () => {} } });
+  assert.equal(await f.ready, false, 'no sweep was running at start');
+  assert.equal(gate.held(), false); f.fetched.length = 0;
   const sweep = (aliases) => f.call('POST', '/api/model-manager/benchmark/sweep', { backend: 'b', aliases, nPrompt: 512, nGen: 128, depths: '0', reps: 1 }, 'admin');
   // An over-budget model is refused like a load, whichever position it has.
   await sweep(['small', 'big']);
@@ -818,4 +820,33 @@ test('#873: the throughput sweep checks every model against the budget and holds
   progress = { active: false };
   await timers.shift()();
   assert.equal(gate.held(), false);
+});
+
+test('#873: a sweep still running after a web restart takes the gate back at start', async () => {
+  const { createMaintenanceGate } = require('../inference-maintenance.cjs');
+  const timers = [];
+  const make = (job, gate = createMaintenanceGate()) => {
+    let current = job;
+    const f = fixture({ env: { MODEL_LOADER_URL: 'http://loader' }, manager: { holdMaintenance: (reason) => gate.hold(reason) },
+      fetchReply: (url) => (url.endsWith('/benchmark/progress') ? { ok: true, status: 200, body: { job: current } } : { ok: true, status: 200, body: {} }),
+      sweepGuardOptions: { setTimer: (fn) => { timers.push(fn); return { unref() {} }; }, clearTimer: () => {} } });
+    return { f, gate, finish: () => { current = { active: false, unit: 'models' }; } };
+  };
+  const running = make({ active: true, status: 'running', unit: 'models', total: 3, done: 1 });
+  assert.equal(await running.f.ready, true);
+  assert.equal(running.gate.held(), true);
+  assert.throws(() => running.gate.enter(), (e) => e.status === 503 && /throughput sweep/.test(e.message));
+  assert.ok(running.f.fetched[0].url.endsWith('/api/v1/benchmark/progress'));
+  running.finish(); await timers.shift()();
+  assert.equal(running.gate.held(), false);
+  // A prompt-suite run (counted in requests) or an idle manager leaves the gate alone.
+  const suite = make({ active: true, status: 'running', unit: 'requests', total: 9 });
+  assert.equal(await suite.f.ready, false); assert.equal(suite.gate.held(), false);
+  const idle = make({ active: false, unit: 'models' });
+  assert.equal(await idle.f.ready, false); assert.equal(idle.gate.held(), false);
+  // A gate already held (requests in flight cannot be at startup, but a calibration can) is not fought over.
+  const busyGate = createMaintenanceGate(); const release = busyGate.hold('calibrating');
+  const busy = make({ active: true, unit: 'models', total: 1 }, busyGate);
+  assert.equal(await busy.f.ready, false); release();
+  assert.equal(timers.length, 0);
 });

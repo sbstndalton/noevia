@@ -567,7 +567,7 @@ scope was accepted for #268; the optional UI container remains deferred.
   and the sections API) holds one process lock around the revision check and the write, fails
   if its backup copy fails, fsyncs the temp file and then the directory after the rename. The
   replace endpoint also keeps an immutable `models.ini.noevia-backup-<baseRevision>` (0600, never
-  pruned) next to the rotating `models.ini.bak-<timestamp>` copies (last 10 kept); that immutable
+  overwritten; model-loader does not prune them, the web writer keeps the newest 20) next to the rotating `models.ini.bak-<timestamp>` copies (last 10 kept); that immutable
   file is "the saved `models.ini`" for rollback.
 
 ### 6.4 M4 — Browser executor sandbox

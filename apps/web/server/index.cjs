@@ -241,6 +241,8 @@ const inferenceBudgetWatch = modelManager.kind === 'llamacpp' ? (() => {
     listLoaded: async () => watch.loadedFromListing(await modelManager.listModels()),
     unload: model => modelManager.emergencyUnload(model),
     onUnloaded: (model, budgetGib) => modelManager.quarantine?.(model, budgetGib),
+    // #873 follow-up: a sweep's llama-bench memory (gate held) must never become the idle baseline.
+    baselineAllowed: () => !modelManager.maintenanceHeld?.(),
   });
 })() : null;
 inferenceBudgetWatch?.start();
