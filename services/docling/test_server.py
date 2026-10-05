@@ -40,6 +40,7 @@ def worker(monkeypatch):
         httpd.shutdown()
         httpd.server_close()
         runner.kill()
+        server.runner.kill()  # a test may have swapped in its own
 
 
 def alive(pid):
@@ -260,3 +261,47 @@ def test_the_child_is_reused_so_models_load_once(worker):
     first = post(worker, b"one")[1]["pid"]
     assert post(worker, b"two", name="b.docx")[1]["pid"] == first
     assert first != os.getpid()
+
+
+# --- the conversion process cannot start: infrastructure, so 503 and never a cached 422 ------------
+
+def test_a_worker_that_cannot_import_its_target_is_503_not_a_permanent_422(worker, monkeypatch):
+    monkeypatch.setattr(server, "runner", isolation.IsolatedExtractor("no_such_module:extract"))
+    status, body = post(worker, b"data")
+    assert status == 503
+    assert "unavailable" in body["error"].lower()
+    assert server.runner.pid is None
+
+
+def test_a_worker_that_cannot_be_spawned_is_503(worker, monkeypatch):
+    monkeypatch.setattr(isolation.sys, "executable", "/nonexistent/python")
+    status, _ = post(worker, b"data")
+    assert status == 503
+
+
+def test_a_worker_that_never_becomes_ready_is_503_and_is_killed(worker, monkeypatch):
+    monkeypatch.setattr(isolation, "READY_SECONDS", 1.0)
+    monkeypatch.setattr(server, "runner", isolation.IsolatedExtractor("fake_slow_import:extract"))
+    started = time.monotonic()
+    status, _ = post(worker, b"data")
+    assert status == 503
+    assert time.monotonic() - started < 8
+    assert server.runner.pid is None
+
+
+def test_a_recovered_worker_serves_the_next_document(worker, monkeypatch):
+    broken = isolation.IsolatedExtractor("no_such_module:extract")
+    monkeypatch.setattr(server, "runner", broken)
+    assert post(worker, b"data")[0] == 503
+    broken.target = "fake_converter:extract"
+    assert post(worker, b"data")[0] == 200
+
+
+def test_a_large_result_arrives_whole(worker, monkeypatch):
+    # Frames are flushed whole: a result bigger than a pipe buffer (64 KiB) must not be truncated.
+    big = {"pages": [{"number": 1, "text": "x" * 190_000, "status": "native", "method": "docling", "truncated": False}],
+           "total": 1, "truncatedPages": False}
+    monkeypatch.setattr(server, "runner", isolation.IsolatedExtractor("fake_converter:big"))
+    status, body = post(worker, b"data")
+    assert status == 200
+    assert body["pages"][0]["text"] == "x" * 190_000

@@ -35,3 +35,9 @@ def extract(path, name):
     return {"pages": [{"number": 1, "text": "ok", "status": "native",
                        "method": "docling", "truncated": False}],
             "total": 1, "truncatedPages": False, "pid": os.getpid()}
+
+
+def big(path, name):
+    return {"pages": [{"number": 1, "text": "x" * 190_000, "status": "native",
+                       "method": "docling", "truncated": False}],
+            "total": 1, "truncatedPages": False}

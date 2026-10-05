@@ -79,6 +79,11 @@ class Handler(BaseHTTPRequestHandler):
         By now the whole request body has been read, so the socket should be
         silent until we reply; if it becomes readable and a peek returns no
         bytes, that is EOF.
+
+        Limitation: EOF cannot tell a closed connection from a client that only
+        half-closed (shutdown(SHUT_WR) after sending the body) and is still waiting
+        for the answer; that client's conversion is cancelled too. The web client
+        (undici fetch) never half-closes, so it is not affected.
         """
         try:
             readable, _, _ = select.select([self.connection], [], [], 0)
@@ -136,6 +141,10 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             except isolation.DocumentTimeout:
                 return 422, {"error": "This document took longer than its processing time limit to read; the original is retained."}
+            except isolation.WorkerUnavailable:
+                # The conversion process could not start: our problem, not the document's. A 503 is
+                # retried by the web client; a 422 would be cached there as permanently unreadable.
+                return 503, {"error": "Document extraction is unavailable; refresh to retry."}
             except Exception:
                 # Generic on purpose: the exception text can quote document
                 # content, and this worker must not emit that anywhere.

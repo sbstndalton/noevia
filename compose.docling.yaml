@@ -21,6 +21,11 @@ services:
     # for a docling tag nobody built (which is exactly what happened on 2026-09-21).
     image: cowork-docling:${DOCLING_VERSION:-dev}
     restart: unless-stopped
+    # A reaping PID 1. When the server kills a conversion that ran past its deadline (#854) it
+    # takes the whole process group, tesseract included; without an init those orphans reparent to
+    # `python server.py`, which never wait()s, and stay as zombies counted against pids_limit. After
+    # ~100 kills every fork fails and documents are cached as permanently unreadable.
+    init: true
     read_only: true
     # MEASURED on DaServer, not guessed. 4g was the original guess and it is
     # not enough: a 334-page PDF was OOM-killed (SIGKILL, exit 137) at 4g after

@@ -2085,6 +2085,16 @@ driven from inside the web container returning the page text through `docling.cj
 To turn it off: remove `DOCLING_BASE_URL` from `.env` and recreate web. The sidecar can stay
 running; unset, nothing calls it.
 
+**Live override needs `init: true` (#854).** The docling service now runs each conversion in a
+child process the server kills on a per-document deadline or when the web client disconnects. The
+kill takes the process group, including any `tesseract` it started, and with no init as PID 1
+those orphans stay as zombies and count against `pids_limit: 128`; after roughly a hundred kills
+every fork fails. `compose.docling.yaml` has `init: true` on the `docling` service, but the live
+override is a hand-merged copy (see above), so add the same line to the `docling` service there
+(next to `restart: unless-stopped`) when rolling out the image that carries #854, and recreate the
+container. Time limits are `DOCLING_DOCUMENT_TIMEOUT_SECONDS` (pdf/tif/tiff, default 3600) and
+`DOCLING_OTHER_TIMEOUT_SECONDS` (everything else, default 600).
+
 ## Release 6eb1698 — 2026-09-21 (Diary connectors in Settings)
 
 Latest application rollout: **`6eb1698`**, replacing `f57dd21`. Backup gzip-verified first;

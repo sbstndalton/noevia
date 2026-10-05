@@ -30,6 +30,9 @@ import sys
 import time
 
 POLL_SECONDS = 0.25
+# How long a fresh child gets to import its target and say it is ready. Models load lazily on
+# the first conversion, not here, so this is only interpreter start-up plus a light import.
+READY_SECONDS = 30.0
 
 
 class DocumentTimeout(Exception):
@@ -38,6 +41,12 @@ class DocumentTimeout(Exception):
 
 class ClientGone(Exception):
     """The requester disconnected; the child was killed to free the slot."""
+
+
+class WorkerUnavailable(Exception):
+    """The conversion process could not be started (spawn or import failure, or it died
+    before it was ready). Infrastructure, not the document: callers answer 503, not a
+    permanent per-document failure."""
 
 
 class ConversionFailed(Exception):
@@ -51,7 +60,7 @@ class IsolatedExtractor:
         self._replies = None  # read end of the reply pipe
 
     # -- lifecycle ---------------------------------------------------------
-    def _start(self):
+    def _start(self, gone=lambda: False):
         read_fd, write_fd = os.pipe()
         try:
             self._proc = subprocess.Popen(
@@ -62,12 +71,25 @@ class IsolatedExtractor:
                 # Own session: one killpg() reaches the child and anything it forked.
                 start_new_session=True,
                 cwd=os.path.dirname(os.path.abspath(__file__)))
-        except BaseException:
+        except BaseException as error:
             os.close(read_fd)
-            raise
+            raise WorkerUnavailable() if isinstance(error, OSError) else error
         finally:
             os.close(write_fd)
         self._replies = read_fd
+        # Wait for the child's "ready" frame so a worker that cannot import its target is told
+        # apart from a document that cannot be converted.
+        try:
+            (length,) = struct.unpack(">I", self._read_exact(4, time.monotonic() + READY_SECONDS, gone))
+            ready = json.loads(self._read_exact(length, time.monotonic() + READY_SECONDS, gone))
+            if ready != {"ready": True}:
+                raise ValueError()
+        except ClientGone:
+            self.kill()
+            raise
+        except BaseException:
+            self.kill()
+            raise WorkerUnavailable()
 
     def kill(self):
         proc, self._proc = self._proc, None
@@ -119,7 +141,7 @@ class IsolatedExtractor:
         return buffer
 
     def run(self, path, name, timeout, gone=lambda: False):
-        """Convert `path`; return the target's result or raise one of the three above.
+        """Convert `path`; return the target's result or raise one of the four above.
 
         Not re-entrant: callers hold the worker's single slot.
         """
@@ -127,16 +149,17 @@ class IsolatedExtractor:
         if self._proc is not None and self._proc.poll() is not None:
             self.kill()  # died while idle (e.g. OOM-killed between jobs)
         if self._proc is None:
-            self._start()
+            self._start(gone)
         try:
             try:
                 self._proc.stdin.write(json.dumps({"path": path, "name": name}).encode() + b"\n")
                 self._proc.stdin.flush()
             except OSError:
-                raise ConversionFailed()
+                # The child went away between jobs (or never listened): not the document's fault.
+                raise WorkerUnavailable()
             (length,) = struct.unpack(">I", self._read_exact(4, deadline, gone))
             reply = json.loads(self._read_exact(length, deadline, gone))
-        except (DocumentTimeout, ClientGone, ConversionFailed):
+        except (DocumentTimeout, ClientGone, ConversionFailed, WorkerUnavailable):
             self.kill()
             raise
         except BaseException:
