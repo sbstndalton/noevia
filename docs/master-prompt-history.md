@@ -347,7 +347,7 @@ captured 2026-09-15),
    - **Dependencies.** MCP has no dependency protocol. Declare `requires` in the manifest
      and resolve it transitively when routing. If the closure would break the cap, load
      nothing extra and say so — never a partial box.
-   - **Measurement gate.** Add a `router` variant to `experiments/tool-routing/` beside
+   - **Measurement gate.** Add a `router` variant to `experiments/tool-routing/` (archived; see git history at `0eee673f`) beside
      baseline/deferred/planner, on the same fixtures (malicious tool output, wrong-name
      hallucination, missing capability, each approval decision). Ship behind an
      off-by-default flag; enable only if completion ≥ baseline and median latency is no
@@ -548,7 +548,7 @@ credential never enters noevia and is scoped to `drive.file`.
 
 **Decisions added 2026-09-17 (later).** D14: coding harnesses run only with a permission config
 the adapter pins (`ask` for edit, bash and fetch) plus an OS sandbox. ACP prompts are the user
-experience, not the boundary (`experiments/acp-spike`). D15: browser automation enforces
+experience, not the boundary (`experiments/acp-spike`, archived; see git history at `cc1bc4a9`). D15: browser automation enforces
 domain allowlists at an egress proxy, not in the browser tool (findings §10). D16:
 notifications never carry chat titles or text. D17: destructive automation (retention and
 similar) is opt-in, previews its count, and the server refuses unconfirmed deletes. D18: stay on

@@ -24,7 +24,7 @@ of work, under the user's standing constraints:
 | RAG needle / multi-hop / "not in the sources" | 25 | same corpora; 5 deliberately unanswerable | exact span; abstention scored |
 | Coding (write / fix) | 15 | `scratch`-style fixture repos with tests | **unit tests pass** |
 | Repository analysis / debugging | 10 | fixture repos with a planted bug | test passes + root cause named |
-| Tool use (read, search, calendar-like, file) | 20 | synthetic MCP tools (`experiments/tool-routing` harness) | correct tool, valid args, final answer exact |
+| Tool use (read, search, calendar-like, file) | 20 | synthetic MCP tools (`experiments/tool-routing` harness, archived; see git history at `0eee673f`) | correct tool, valid args, final answer exact |
 | Research (bounded, offline) | 10 | Kiwix-only questions (no paid search) | gold facts present, sources cited |
 | Multi-step agent tasks | 10 | combinations of the above | end state checked |
 | Context-heavy (long chat, compaction) | 10 | scripted 40–80-turn conversations | a late question needs an early fact |

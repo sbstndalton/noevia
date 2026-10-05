@@ -57,7 +57,7 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   points at it through `EMBEDDING_BASE_URL`.
 - **Tool router (step 4):** best-first ordering reaches the needed box 26/26 (was 8/26), right first
   call 21/26, 10.8 s vs 14.3 s median, on the real Nextcloud boxes. Live.
-  [experiments/tool-routing/README.md](../experiments/tool-routing/README.md)
+  [experiments/tool-routing/README.md](https://github.com/sbstndalton/noevia/blob/0eee673f/experiments/tool-routing/README.md) (archived; see git history at `0eee673f`)
 - **Auto-tune:** MTP gave +66 % on the 4B and +82 % on the 9B; micro-batch 512 beat 1024 and 2048.
   Contexts are now verified by calibration (49 152 / 32 768 / 49 152 / 49 152) instead of the
   unverified 131K–262K the old Easy mode saved.
@@ -73,7 +73,7 @@ Everything below was measured on the branch during 2026-09-17 and went live with
   (list fields returned as strings). Direct stays default; next 3 repeats and a 9B architect.
 - **CodeHarness spike (step 9, D14):** OpenCode over ACP solved a synthetic bug on the 4B (165 s) and
   9B (265 s) in a read-only, capability-less container with only the engine reachable; escape probes
-  all blocked. `experiments/acp-spike`.
+  all blocked. `experiments/acp-spike` (archived; see git history at `cc1bc4a9`).
 - **Context logging (step 5):** `CONTEXT_LOG=1` on in production since 11:20, counts only. Read
   `context-log.cjs report()` from about 2026-09-24 and write reducers for what repeats.
 
@@ -443,7 +443,7 @@ mobile composer and tap targets).
   pretty-printed arguments and the result (kept up to 4,000 chars, stored with history).
   Open while calls run, collapsed after. Approvals stay outside the fold with full arguments.
   Replies saved in the old "name ✓" format still display.
-- **Measured and built 2026-09-17 (gate passed; `features.toolRouter`, off by default)** — router 14/14 vs baseline 14/14, median 9.7 s vs 10.6 s, 23% fewer input tokens on Qwen3.5-4B ([results](../experiments/tool-routing/README.md)); chat narrows the project's own toolboxes per message and fails open. Original item: Task-conditional tool loading: a pre-turn embedding router picks
+- **Measured and built 2026-09-17 (gate passed; `features.toolRouter`, off by default)** — router 14/14 vs baseline 14/14, median 9.7 s vs 10.6 s, 23% fewer input tokens on Qwen3.5-4B ([results](https://github.com/sbstndalton/noevia/blob/0eee673f/experiments/tool-routing/README.md), archived; see git history at `0eee673f`); chat narrows the project's own toolboxes per message and fails open. Original item: Task-conditional tool loading: a pre-turn embedding router picks
   toolboxes for the task from the manifest, loads them for the session, and adds no
   discovery round. A tool-search/unlock variant was already measured slower on these
   models (12.91 s vs 8.64 s median). Adopt only if the `experiments/tool-routing` runner

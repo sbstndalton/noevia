@@ -14,7 +14,9 @@ From `apps/web`, with existing dependencies:
 - `npm run build`: passed.
 - `npm run lint:design`: passed.
 
-From repository root:
+From repository root (`experiments/system-one/decisions` is archived at `967f34bf`; `chat-turns.cjs`
+and its tests were removed with the durable-chat seam, see
+[15-durable-chat-slice.md](research/system-one/15-durable-chat-slice.md)):
 
 ```sh
 node --test apps/web/server/decision/*.test.cjs experiments/system-one/decisions/*.test.cjs

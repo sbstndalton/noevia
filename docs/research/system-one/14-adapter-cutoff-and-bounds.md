@@ -81,7 +81,8 @@ scenario construction, rendering, and baseline selection are stubbed in the spaw
 Every worker path explicitly points to a temporary Node HTTP fixture. No real llama binary or
 model is launched, and no global PATH lookup is used to select a test worker.
 
-Run these focused tests from the repository root:
+Run these focused tests from the repository root (the `experiments/system-one/decisions` files are
+archived; see git history at `967f34bf`):
 
 ```sh
 node --test apps/web/server/decision/readout-bounds.test.cjs \

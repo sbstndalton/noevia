@@ -97,7 +97,7 @@ The live reranker is a class-A component. It is not the generic System One, and 
 | 4 | Can it stay resident beside System Two? | On DaServer, CPU and iGPU share one 29 GB pool, and llama.cpp is capped at 14 GB. A dedicated 4B cannot stay beside gpt-oss-20B. Laya (≈0.5–2 GB, in process) or a 0.6–1.7B CPU logit model can (doc 13 §13.4) | Medium; doc 5 §5.8 |
 | 5 | Does it improve task quality? | Unknown | Configurations C vs A/B (doc 9) |
 | 6 | How much does RAG improve? | Unknown; reranking reliably helps in the literature and the current pipeline has no rerank stage at all | First prototype measures it |
-| 7 | How much does tool reliability improve? | Unknown; the existing embedding router already cut input tokens 23% with no loss (14/14 vs 14/14, `experiments/tool-routing`) | Doc 9 tool family |
+| 7 | How much does tool reliability improve? | Unknown; the existing embedding router already cut input tokens 23% with no loss (14/14 vs 14/14, `experiments/tool-routing`, archived; see git history at `0eee673f`) | Doc 9 tool family |
 | 8 | Can output evaluation safely control retries? | Only with calibrated confidence, a hard retry cap, and "ask the user" or "best answer + notice" as the terminal state; unsafe before calibration | Evaluator false-PASS/false-FAIL rates |
 | 9 | How much code disappears? | About 155 lines, 3 prompts, 12 thresholds, 8 regexes; net lines rise; the win is structural | High (doc 10) |
 | 10 | What % of work stays local? | Unknown; target ≥ 95% of ordinary requests | Doc 9 "fully local / 100" |
@@ -175,7 +175,7 @@ Every one stays as the fallback until two clean releases after its replacement g
    - an `llama-rerank` backend.
 
    About 250 lines plus tests. No call site changes behaviour.
-2. `experiments/system-one/rag/`:
+2. `experiments/system-one/rag/` (archived; see git history at `f9dc5df2`):
    - 45 RAG tasks (doc 9 families: project questions, needle, multi-hop, unanswerable) over
      synthetic corpora;
    - compared: today's pipeline (top-6 cosine) against retrieve-24 → rerank → top-n, on the

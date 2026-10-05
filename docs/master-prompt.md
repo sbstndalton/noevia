@@ -168,7 +168,7 @@ credential never enters noevia and is scoped to `drive.file`.
 
 **Decisions added 2026-09-17 (later).** D14: coding harnesses run only with a permission config
 the adapter pins (`ask` for edit, bash and fetch) plus an OS sandbox. ACP prompts are the user
-experience, not the boundary (`experiments/acp-spike`). D15: browser automation enforces
+experience, not the boundary (`experiments/acp-spike`, archived; see git history at `cc1bc4a9`). D15: browser automation enforces
 domain allowlists at an egress proxy, not in the browser tool (findings §10). D16:
 notifications never carry chat titles or text. D17: destructive automation (retention and
 similar) is opt-in, previews its count, and the server refuses unconfirmed deletes. D18: stay on

@@ -80,7 +80,8 @@ packages, a global auto-approve mode, or real Diary corpus testing.
 
 ## Measured result — 2026-09-13
 
-[Runner, results and limits](../experiments/tool-routing/README.md): 42 synthetic
+[Runner, results and limits](https://github.com/sbstndalton/noevia/blob/0eee673f/experiments/tool-routing/README.md) (archived; see git
+history at `0eee673f`): 42 synthetic
 runs and eight scripted safety tests. Median elapsed baseline/deferred/planner:
 8.64 / 12.91 / 26.97 seconds. Deferred schemas shrank, but total input grew.
 The planning pass added latency and tokens. Keep the current production path;

@@ -32,7 +32,7 @@ just under it, 16 output tokens.
 **Question.** Does ranking tools by embedding before the first model call beat sending the whole
 selection, without losing completions or approvals?
 
-**Method.** `experiments/tool-routing`, seven synthetic fixtures (reads, a missing tool, injected
+**Method.** `experiments/tool-routing` (archived; see git history at `0eee673f`), seven synthetic fixtures (reads, a missing tool, injected
 content, allowed/denied/chat-wide writes), two repeats, rotated order, Qwen3.5-4B, top-3 at 0.35.
 
 | Mode | Correct | Median | Input tokens | Writes / approvals |
@@ -300,7 +300,7 @@ coding agents. Is that still sound, and can noevia's approval gate cover what th
 4. **Location.** Stdio means the harness runs next to its client. Put the ACP client on the
    execution node (DaServer container or the future Mac node) and relay job events to the web app
    over the existing jobs primitive. Don't wait for remote ACP.
-5. **Measured locally (experiments/acp-spike, OpenCode 1.18.31, fake model).** With the agent's
+5. **Measured locally (experiments/acp-spike, archived at `cc1bc4a9`; OpenCode 1.18.31, fake model).** With the agent's
    default config, a write inside the workspace happened **without any permission request**,
    even though the client would have refused. With `permission: { edit: ask, … }` every write became
    `session/request_permission` (kind `edit`). A reject was honoured, and an approved write was done
@@ -323,7 +323,7 @@ Sources: [ACP introduction](https://agentclientprotocol.com/overview/introductio
 **Setup.** KoboldCpp v1.121 (`koboldcpp-linux-x64-nocuda`, sha256 `5939cb13…`, AGPL-3.0) inside the
 pinned llama.cpp Vulkan image (for its RADV drivers), same read-only `/mnt/user/ai-models`, same
 GGUF, context and `q8_0` KV cache; flash attention on in both. Harness:
-`experiments/backend-portability/kobold-vs-llamacpp.cjs`, run from the web container; prompts with a
+`experiments/backend-portability/kobold-vs-llamacpp.cjs` (archived; see git history at `cab205a1`), run from the web container; prompts with a
 fresh nonce so neither engine reuses a prompt cache; engines alternated per repeat. For the 9B the
 engines ran one after the other, never both loaded.
 

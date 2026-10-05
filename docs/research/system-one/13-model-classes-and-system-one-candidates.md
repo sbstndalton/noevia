@@ -210,7 +210,7 @@ frozen before any run.
 |---|---|---|
 | model selection (fast/smart/vision/code) | choice | today's auto-router cases |
 | **mid-task switching** | choice over `KEEP_CURRENT, SWITCH_LOCAL_MODEL, SWITCH_TO_SPECIALIST, RETRIEVE_MORE, RETRY, ESCALATE_REMOTE, FINISH` | synthetic task traces with phase, current model, result quality, latency, memory pressure, swap cost, capability-database rows |
-| tool / toolbox selection | multi, choice | existing `experiments/tool-routing` cases |
+| tool / toolbox selection | multi, choice | `experiments/tool-routing` cases (archived; see git history at `0eee673f`) |
 | retry / continue / stop | choice | loop traces |
 | output evaluation | noul, score | answers with known defects |
 | escalation | choice + abstain | hard cases local models get wrong |
@@ -332,7 +332,8 @@ class-B backend is wired into chat until step 7 picks one and it passes a shadow
 
 ## 13.9 Pilot set-up (2026-09-21)
 
-The pilot lives in `experiments/system-one/decisions/`, with its own README. It has:
+The pilot lived in `experiments/system-one/decisions/`, with its own README (archived; see git
+history at `967f34bf`; the commands below need that checkout). It has:
 - a compact decision state (`noevia.decision-state/1`);
 - 594 synthetic decisions in 9 families × 5 template families, split by template;
 - baselines B0 and B1;
