@@ -471,6 +471,8 @@ export default function App(): JSX.Element {
   // back into forever — the return target underneath it is written instead.
   useEffect(() => {
     if (view.kind === 'preview') return;
+    // Not before the account is known: a `user: null` place reads as another account's (#791).
+    if (!accountId) return;
     // The return target is never 'preview' by construction (this same guard runs before every
     // view change reaches navRef); the cast only tells TypeScript what the runtime already
     // guarantees.

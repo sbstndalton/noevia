@@ -14,6 +14,10 @@ const STATE_ICON: Record<string, string> = { done: 'check', declined: 'ban', 'no
 
 export const TOOL_RESULT_LIMIT = 4000;
 
+/** Approval ids this tab has already answered (#792). Ids are unique per request and the set lives
+ *  only as long as the page, so it stays small; a reload settles every pending card anyway. */
+const decidedApprovals = new Set<string>();
+
 /** A write tool waiting on the user. The arguments are shown in full and
  *  unabbreviated: this is the one moment where seeing exactly what the model
  *  proposes to do is the entire point, so truncating them here would defeat
@@ -23,8 +27,9 @@ function PendingToolCall({ call }: { call: ToolCallView }): JSX.Element {
   const [busy, setBusy] = useState(false);
   // #792: a decision the server accepted is final for this approval id. The card stays pending
   // until the tool's result arrives (the stream then settles it), so it must not offer the three
-  // actions again in between: a second click would post to an already-used id.
-  const [sent, setSent] = useState(false);
+  // actions again in between: a second click would post to an already-used id. Kept outside the
+  // component too, since switching chats and back remounts the card while the tool still runs.
+  const [sent, setSent] = useState(() => !!call.approvalId && decidedApprovals.has(call.approvalId));
   const [err, setErr] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const decide = async (decision: 'approve' | 'deny' | 'approve_all') => {
@@ -33,6 +38,7 @@ function PendingToolCall({ call }: { call: ToolCallView }): JSX.Element {
     setErr(null);
     try {
       await decideToolApproval(call.approvalId, decision);
+      decidedApprovals.add(call.approvalId);
       setSent(true);
     } catch (e) {
       // Most likely the request timed out and the server already denied it.

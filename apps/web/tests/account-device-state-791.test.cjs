@@ -88,9 +88,22 @@ test('drafts saved before owners were recorded are kept only for the account the
   assert.equal(s.drafts.readDraft('chat-of-a'), '', 'unknown owner: dropped');
 
   s = fresh();
-  s.lastView.writeLastPlace(place(null));
+  s.storage.setItem('noevia:last-view', JSON.stringify(place(null)));
   s.device.claimDeviceState('user-b');
   assert.equal(s.lastView.readLastPlace(), null, 'a place with no recorded account is not reopened for anyone');
+});
+
+test('a place is never written before the account is known, so a reload keeps this account\'s own', () => {
+  const { lastView, device } = fresh();
+  device.claimDeviceState('user-a');
+  lastView.writeLastPlace(place('user-a', 'chat-of-a'));
+  // App mounts and renders before /api/profile resolves: its first write has no account yet.
+  lastView.writeLastPlace(place(null, 'fresh-chat'));
+  assert.equal(lastView.readLastPlace().user, 'user-a', 'the null-account write did not replace it');
+  device.claimDeviceState('user-a');
+  assert.equal(lastView.readLastPlace()?.view.chatId, 'chat-of-a', 'the same account reopens its own last chat');
+  const app = fs.readFileSync(src('App.tsx'), 'utf8');
+  assert.match(app, /if \(view\.kind === 'preview'\) return;\s*\n(?:\s*\/\/.*\n)*\s*if \(!accountId\) return;/, 'App\'s last-place effect waits for the account');
 });
 
 test('storage being unavailable never throws out of sign-in or sign-out', () => {

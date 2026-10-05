@@ -95,6 +95,41 @@ async function case789(browser) {
   } finally { releaseA(); await ctx.close(); }
 }
 
+// #789 follow-up: uploads in A and in B at the same time each keep their own chat locked.
+async function case789Overlap(browser) {
+  const release = {};
+  const { ctx, page, errors } = await openPage(browser, async (p) => {
+    await p.route('**/api/projects/*/upload*', async (r) => {
+      const project = decodeURIComponent(new URL(r.request().url()).pathname.split('/')[3]);
+      await new Promise((res) => { release[project] = res; });
+      return r.fulfill({ json: { poll: `/api/qa-poll/${project}` } });
+    });
+    await p.route('**/api/qa-poll/*', (r) => r.fulfill({ json: { done: true, status: 200, body: { name: 'synthetic.txt', path: 'synthetic.txt', bytes: 9 } } }));
+  });
+  const file = { name: 'synthetic.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic') };
+  const disabled = () => page.evaluate(() => document.querySelector('.chat-workspace .composer textarea')?.disabled);
+  try {
+    await waitModel(page, 'synthetic-model-a');
+    await page.locator('.chat-workspace .chat-composer-inner .composer-actions input[type=file]').setInputFiles(file);
+    await page.waitForFunction(() => document.querySelector('.chat-workspace .composer textarea')?.disabled === true);
+    await openChat(page, 'Synthetic chat B');
+    await waitModel(page, 'synthetic-model-b');
+    await page.locator('.chat-workspace .chat-composer-inner .composer-actions input[type=file]').setInputFiles(file);
+    await page.waitForFunction(() => document.querySelector('.chat-workspace .composer textarea')?.disabled === true);
+    await openChat(page, 'Synthetic chat A');
+    await waitModel(page, 'synthetic-model-a');
+    await page.waitForTimeout(200);
+    assert.equal(await disabled(), true, "#789: chat A was unlocked by chat B's upload while its own still runs");
+    release['ctx-free-b']?.();
+    await page.waitForTimeout(500);
+    assert.equal(await disabled(), true, "#789: chat B's upload finishing unlocked chat A");
+    release['ctx-free-a']?.();
+    await page.waitForFunction(() => document.querySelector('.chat-workspace .composer textarea')?.disabled === false);
+    assert.deepEqual(errors, []);
+    console.log('PASS #789: overlapping uploads in two chats each keep their own chat locked until they finish');
+  } finally { for (const r of Object.values(release)) r(); await ctx.close(); }
+}
+
 async function case790(browser, fixture) {
   const { ctx, page, errors } = await openPage(browser, async (p) => {
     await p.route('**/api/toolboxes/permitted*', (r) => r.fulfill({ json: PERMITTED }));
@@ -154,8 +189,18 @@ async function case792(browser) {
     assert.equal(await page.locator('.tool-approval [role=status]').innerText().catch(() => ''), 'Decision sent. Waiting for the result…', '#792: no sent state shown');
     assert.equal(await page.locator('.tool-approval-err').count(), 0, 'the earlier error is cleared');
     assert.deepEqual(posts.map((b) => b.decision), ['approve', 'approve']);
+    // Switching to another chat and back remounts the card while the tool still runs: still decided.
+    await openChat(page, 'Synthetic chat B');
+    await waitModel(page, 'synthetic-model-b');
+    assert.equal(await allow.count(), 0, 'chat B shows no approval card');
+    // A is still replying (waiting on the tool), so its row's name carries a live suffix.
+    await page.getByRole('button', { name: /^Synthetic chat A\b/ }).first().click();
+    await allow.waitFor();
+    for (const b of [allow, decline, allowChat]) assert.equal(await b.isDisabled(), true, '#792: an action re-enabled after switching chats and back');
+    assert.equal(await page.getByTestId('tool-approval-sent').count(), 1, '#792: the sent note is gone after switching back');
+    assert.equal(posts.length, 2, 'no further decision was posted');
     assert.deepEqual(errors, []);
-    console.log('PASS #792: after a successful decision all three actions stay disabled with a sent note; an error re-enables them');
+    console.log('PASS #792: after a successful decision all three actions stay disabled with a sent note (also after switching chats and back); an error re-enables them');
   } finally { await ctx.close(); }
 }
 
@@ -165,7 +210,7 @@ async function case792(browser) {
   const browser = await chromium.launch({ headless: true, ...(process.env.QA_CHROME_PATH ? { executablePath: process.env.QA_CHROME_PATH } : { channel: 'chrome' }) });
   const failures = [];
   try {
-    for (const [name, run] of [['#789', case789], ['#790', case790], ['#792', case792]]) {
+    for (const [name, run] of [['#789', case789], ['#789 overlap', case789Overlap], ['#790', case790], ['#792', case792]]) {
       try { await run(browser, fixture); } catch (e) { failures.push(name); console.error(`FAIL ${name}: ${e.message.split('\n')[0]}`); }
     }
   } finally { await browser.close(); await fixture.close(); }

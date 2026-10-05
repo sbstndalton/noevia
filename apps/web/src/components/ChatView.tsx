@@ -298,10 +298,16 @@ export function ChatView({
     const value = (await response.json()).project;
     if (chatIdRef.current === forChat) setFreeContext(value);
   };
-  const [busyChat, setBusyChat] = useState<string | null>(null);
-  const actionBusy = busyChat === chatId;
+  // Every chat with work in flight, so overlapping uploads in two chats each keep their own lock.
+  const [busyChats, setBusyChats] = useState<ReadonlySet<string>>(() => new Set());
+  const actionBusy = busyChats.has(chatId);
   const [actionStatus, setActionStatus] = useState('');
-  const busyFor = (forChat: string) => (busy: boolean) => setBusyChat(current => busy ? forChat : current === forChat ? null : current);
+  const busyFor = (forChat: string) => (busy: boolean) => setBusyChats(current => {
+    if (busy === current.has(forChat)) return current;
+    const next = new Set(current);
+    if (busy) next.add(forChat); else next.delete(forChat);
+    return next;
+  });
   const statusFor = (forChat: string) => (status: string) => { if (chatIdRef.current === forChat) setActionStatus(status); };
   const setActionBusy = busyFor(chatId);
   const showActionStatus = statusFor(chatId);
