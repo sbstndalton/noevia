@@ -59,7 +59,16 @@ done
 # BEGIN container-id (deploy/tests/test_overlay_scripts.py runs this block with a fake docker)
 container_id() {
   local out
-  if out=$(docker inspect "$1" --format '{{.Id}}' 2>&1); then printf '%s' "$out"; return 0; fi
+  if out=$(docker inspect "$1" --format '{{.Id}}' 2>&1); then
+    # stderr is folded into $out, so a CLI warning may precede the id. Take only a line that is
+    # exactly a 64-hex id; anything else (no id, two ids) stops the release rather than being
+    # compared as if it were an id and reported later as "the engine container changed".
+    local ids
+    ids=$(printf '%s\n' "$out" | grep -E '^[0-9a-f]{64}$' || true)
+    if [ -n "$ids" ] && [ "$(printf '%s\n' "$ids" | wc -l)" -eq 1 ]; then printf '%s' "$ids"; return 0; fi
+    echo "docker inspect $1 returned unexpected output, not deploying: $out" >&2
+    return 1
+  fi
   case $out in
     *"No such object"*|*"No such container"*) return 0 ;;
   esac
