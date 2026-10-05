@@ -1,4 +1,11 @@
-# Code mode — staged, off
+# Code mode — staged, off (historical snapshot, 2026-09-17)
+
+> **Historical.** This records the state of DaServer on 2026-09-17 (release `1fe3f1b`, flag off)
+> and is kept only because the roadmap and master-prompt history link to it. It is not current:
+> the Code sandbox has since moved to newer images (see `docs/deployment.md` and
+> `docs/changelog.md` for the live tag), and the commands and image names below are not
+> instructions. Current setup: `services/code-sandbox/README.md` and
+> `deploy/examples/code-sandbox.override.yml`.
 
 Everything here is prepared on DaServer and **nothing is running**. Code mode is unreachable:
 the web container has no `CODE_*` environment and `features.codeHarness` is off, so its routes

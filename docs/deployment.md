@@ -1,8 +1,11 @@
 # Deploying noevia to daserver
 
-## Pending: one model at a time within an inference memory budget (#697)
+## Deployed 2026-10-01: one model at a time within an inference memory budget (#697)
 
-Not deployed yet. DaServer livelocked (2026-09-30, and the 2026-09-27 OOM) when two large models
+Deployed: web, the model loader and the llama `--models-max 1` change shipped in release
+`9debec6`, and Diary's `LLM_EMBED_BASE_URL` in the Diary overlay `9debec6` (both 2026-10-01; see
+the matching entries in `docs/changelog.md`). The steps below are the original plan and are kept
+as the rollout and rollback record. DaServer livelocked (2026-09-30, and the 2026-09-27 OOM) when two large models
 plus llama.cpp's default 8 GiB-per-model prompt caches exhausted RAM: on the Radeon iGPU the
 weights and KV live in GTT, system RAM the llama container's `mem_limit` does not count. The
 owner's rule: **one model loaded in the engine, at most 16 GiB for inference**; Laya (its own
@@ -82,13 +85,15 @@ Migration note for `models.ini`: the three sections above become unused. Leave t
 files) in place; they are inert once nothing names them. Web refuses to delete the Laya and
 embedding sections through the editor anyway (system and sidecar guards).
 
-Live deploy steps (owner-authorised run only; take the appdata backup first):
+Live deploy steps as planned (an owner-authorised run; take the appdata backup first):
 
 1. **Embedding parity, before anything else** (the engine still has two slots, so this does not
    evict the chat model; run it while chat is idle):
    `docker exec -i cowork-web-1 node - http://llama:8080 nomic-embed-text-v1 http://embed:8080 nomic-embed-text-v1 < tools/embed-parity-check.cjs`
    from the release directory. Exit 0 (min cosine ≥ 0.997 over 50 synthetic strings and mean top-5 retrieval overlap ≥ 0.9, #720) is required before step 5's Diary change.
-2. Ship web from `main` with `deploy/examples/overlay-release.sh` (bumps `COWORK_VERSION`).
+2. Ship web from `main` with `deploy/examples/overlay-release.sh` (bumps `COWORK_VERSION`; note it
+   also recreates `diary` and `ocr`, see "Overlay releases" under "The deploy" for the web-only
+   alternative).
 3. Build the model loader from the same release (`services/model-manager` changed) and bump
    `MODEL_MANAGER_VERSION`; per-service versioning applies.
 4. Ship Diary with `deploy/examples/diary-overlay.sh <sha>` (only `services/diary/agent`
@@ -395,7 +400,8 @@ they disagree.
 
 To reconcile the three unsynced copies (above) onto this overlay's shape
 **without restarting the `llama`, `diary`, `ocr`, `docling` or `laya`
-sidecars** during a web-only release:
+sidecars** during a web-only release (the manual recipe under "Overlay releases", not
+`overlay-release.sh`):
 
 1. Diff the live `embed:` block (`docker-compose.yml` and its
    `docker-compose.override.yml`) against `compose.embed.yaml` field by
@@ -491,10 +497,13 @@ time**; every other tag stays where it is, so no release leaves a tag nobody bui
 
 `DIARY_VERSION`, `OCR_VERSION` and `MODEL_MANAGER_VERSION` are required (`${VAR:?...}`):
 Compose refuses to start rather than silently pulling a missing tag. Fresh installs get
-`dev` for each from `.env.example`. The web-only overlay (`overlay-release.sh`) bumps
-`COWORK_VERSION` alone and refuses to run if any pinned sidecar tag has no local image;
-a Diary agent change ships with `diary-overlay.sh <SRC_SHA>`, which builds
-`cowork-diary:<SRC_SHA>` and bumps `DIARY_VERSION`.
+`dev` for each from `.env.example` (`DOCLING_VERSION` is set to `dev` there too and defaults to
+`dev` in `compose.docling.yaml`; `CODE_SANDBOX_VERSION` is a commented line there and defaults to
+`local` in the override). The overlay release (`overlay-release.sh`) bumps `COWORK_VERSION`
+alone and refuses to run if any pinned sidecar tag has no local image, but it is not web-only:
+it also recreates `diary` and `ocr` and brings up `docling` and `code-sandbox` (see "Overlay
+releases" under "The deploy"). A Diary agent change ships with `diary-overlay.sh <SRC_SHA>`,
+which builds `cowork-diary:<SRC_SHA>` and bumps `DIARY_VERSION`.
 
 To rebuild one sidecar, build only that service with its variable set, then bump the
 matching line (take an `.env` backup first; rollback is restoring it and re-running up):
@@ -569,7 +578,7 @@ the first release that ships it. The new diary image refuses to start if
 `DIARY_AUTH_TOKEN` and `DIARY_TENANT_KEY` are both empty and `DIARY_ALLOW_OPEN` is not `1`;
 check the token is set (by name, never print it) before bumping `DIARY_VERSION`.
 
-Order, because a web-only release never restarts the sidecar:
+Order, because a web-only release (the manual recipe under "Overlay releases") never restarts the sidecar:
 
 1. Ship the diary image with the key unset on diary (it accepts signed and unsigned
    requests and logs once).
@@ -580,6 +589,35 @@ Order, because a web-only release never restarts the sidecar:
 
 Rollback: remove the key from diary and restart diary first, then from web. Never roll
 the diary image back while web still has the key.
+
+### Overlay releases: what each script touches
+
+Both flows reuse the previous web image's installed `node_modules` (the box cannot reach the npm
+registry over IPv6) instead of rebuilding.
+
+- **`deploy/examples/overlay-release.sh OLD NEW` is not web-only.** It builds `cowork-web:NEW`
+  from `cowork-web:OLD` with `dist/` and `server/` replaced, then recreates `web`, `diary` and
+  `ocr` (`up -d --no-build --no-deps --wait web diary ocr`) and brings up `docling` and
+  `code-sandbox` when the deployment defines them. It leaves the engine (`llama`) untouched and
+  rolls back automatically when the health wait or the Diary-isolation check fails. Use it when a
+  Diary/OCR restart is acceptable. It validates `OLD` and `NEW` as hex SHAs and does not require
+  the engine or the model loader to exist.
+- **Web-only release** (sidecars keep running): layer `dist/` and `server/` onto the previous
+  `cowork-web:<sha>` with the same Dockerfile the script generates (remove the old application
+  files, keep `node_modules` and `ui-data`, copy the new ones), back up `config/.env`, point
+  `current` and `COWORK_VERSION` at the new release, then run only the web service through the
+  guarded wrapper (absolute `--env-file` path):
+
+  ```sh
+  bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait web
+  ```
+
+  Snapshot every container's id before and after; only `web` may change. Rolling back is
+  restoring the `.env` backup, repointing `current` and re-running the same command. Never
+  print `.env` values; name keys only.
+- **`deploy/examples/diary-overlay.sh <SRC_SHA>`** replaces only `services/diary/agent` in the
+  running Diary image and recreates only `diary`. It takes an appdata backup first and refuses to
+  continue unless that run produced a new, verified `ab_*` folder.
 
 ## After deploying
 
