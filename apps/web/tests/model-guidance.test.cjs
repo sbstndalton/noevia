@@ -46,6 +46,24 @@ test('a free chat only says Auto when the server would really route it that way 
  assert.equal(label({routing:'auto',model:'Gone'},[{name:'Hot',loaded:true}],false),'Auto (Fast/Smart)');
  assert.equal(label({model:'Kept'},[{name:'Kept'}],false),'Kept');
 });
+test('#848: a manual choice on a non-local provider with no model never borrows the loaded local model',()=>{
+ const installed=[{name:'Hot',loaded:true}];
+ // The server falls back to the loaded model for the local provider only (chat.cjs), so another
+ // provider with no model picked is "No model selected" — whatever is loaded locally.
+ assert.equal(label({routing:'manual',provider:'chatgpt-oauth'},installed),'No model selected');
+ assert.equal(label({provider:'cloud-a',model:''},installed),'No model selected');
+ assert.equal(label({provider:'cloud-a'},null),'No model selected');
+ assert.equal(label({provider:'cloud-a'},installed,false),'No model selected');
+ // Local spellings keep the fallback: unset, the legacy alias, and the default's id.
+ assert.equal(label({routing:'manual'},installed),'Hot');
+ assert.equal(label({provider:'default'},installed),'Hot');
+ assert.equal(label({provider:'lemonade'},installed),'Hot');
+ assert.equal(label({provider:'custom-default'},installed,true,'custom-default'),'Hot');
+ assert.equal(label({provider:'default'},installed,true,'custom-default'),'No model selected');
+ // A picked model, or Auto, is untouched.
+ assert.equal(label({provider:'cloud-a',model:'remote-1'},installed),'remote-1');
+ assert.equal(label({provider:'cloud-a',routing:'auto'},installed),'Auto (Fast/Smart)');
+});
 test('an unknown catalogue or another provider never declares a model missing',()=>{
  assert.equal(label({model:'Gone'},null),'Gone');
  assert.equal(label({model:'remote-model-a',provider:'remote-provider'},[]),'remote-model-a');
