@@ -88,7 +88,7 @@ function createTurnRecord({ now = Date.now } = {}) {
         const applied = Number.isInteger(ev.applied) && ev.applied >= 0 ? ev.applied : 0;
         paused = ev.reason === 'declined'
           ? { reason: 'declined', applied, declined: [...new Set((Array.isArray(ev.declined) ? ev.declined : []).filter((n) => typeof n === 'string' && TOOL_NAME.test(n)))].slice(0, 8) }
-          : { reason: 'supervision', applied };
+          : ev.reason === 'sensitive-tool-result' ? { reason: 'sensitive', applied } : { reason: 'supervision', applied };
         break;
       }
       case 'usage':

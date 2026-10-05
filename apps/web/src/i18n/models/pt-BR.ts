@@ -967,6 +967,7 @@ export const PT_BR_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Modo de roteamento salvo.",
   'mm.rmode.needsCloud': "Escolha um provedor em nuvem e pelo menos um modelo Smart.",
   'mm.rmode.allowedTitle': "Modos que as contas podem escolher",
+  'mm.rmode.allowedScope': "Esses limites valem só para o roteamento automático; um provedor escolhido manualmente para um chat ou projeto não é afetado.",
   'mm.rmode.allowedSave': "Salvar modos permitidos",
   'mm.rmode.allowedSaved': "Modos permitidos salvos.",
   'mm.rmode.notAllowed': "Não permitido por um administrador",

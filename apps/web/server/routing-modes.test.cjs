@@ -29,16 +29,69 @@ test('preRule: secrets, IBANs and card numbers are flagged; ordinary text is not
     'commit 3e7bbed8a1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6', 'DE00 1234 5678 9012 3456 78']) assert.equal(rm.preRule(clean), null, clean);
 });
 
+test('preRule is linear on adversarial input for every pattern', () => {
+  const cases = {
+    keyShape: 'ab-'.repeat(60000), keyShapeDashes: ('ab' + '-'.repeat(30)).repeat(6000) + '!', jwt: 'eyJ-'.repeat(60000), jwtDots: 'eyJ.'.repeat(60000),
+    privateKey: '-----BEGIN ' + 'A '.repeat(100000), password: 'token: '.repeat(50000), passwordSpaces: 'password' + ' '.repeat(200000),
+    bearer: 'Bearer '.repeat(50000), iban: 'DE00 '.repeat(80000), ibanRun: 'DE001234'.repeat(40000), card: '1 '.repeat(150000), cardDash: '4-'.repeat(150000),
+  };
+  for (const [name, text] of Object.entries(cases)) {
+    const t0 = performance.now(); rm.preRule(text); const ms = performance.now() - t0;
+    assert.ok(ms < 100, `${name} took ${ms.toFixed(1)} ms`);
+  }
+  // The rewritten shapes still match what they should.
+  assert.equal(rm.preRule('x eyJhbGciOiJIUzI1.eyJzdWIiOiIx.SflKxwRJSMeKKF2QT4 y'), 'secret');
+  assert.equal(rm.preRule('key ghp-' + 'abcdefghijklmnopqrstuvwxyz'), null, 'no digit: not a key');
+});
+
+test('pre-rules scan the current message first, so a huge context cannot push it past the scan limit', () => {
+  const rest = 'filler '.repeat(70000); // over 400k characters
+  assert.equal(rm.preRule(rest + SYN_IBAN), null, 'past the limit on its own');
+  assert.equal(rm.preRule(SYN_IBAN) || rm.preRule(rest), 'iban');
+});
+
 test('hasDiaryContent: a Diary tool result in the history counts; other tools do not', () => {
   assert.equal(rm.hasDiaryContent([{ role: 'tool', name: 'diary_search', content: 'x' }]), true);
   assert.equal(rm.hasDiaryContent([{ role: 'tool', name: 'tavily_search', content: 'x' }, { role: 'user', content: 'diary_' }]), false);
 });
 
-test('digest: covers message, context, attachments and recent history, and is bounded', () => {
-  const d = rm.digest({ message: 'M'.repeat(10000), system: 'S'.repeat(10000), history: Array.from({ length: 50 }, (_, i) => ({ role: 'user', content: `h${i} `.repeat(200) })), attachments: ['a.png', 'b.pdf'] });
-  assert.ok(d.length <= 6000);
-  for (const label of ['Message:', 'Context:', 'Attachments:', 'Recent history:']) assert.ok(d.includes(label), label);
-  assert.match(d, /a\.png, b\.pdf/);
+test('routerChunks: a max-size turn gives at most 4 chunks within the budget, covering every section', () => {
+  const big = { message: 'M'.repeat(400000), system: 'S'.repeat(400000), history: Array.from({ length: 200 }, (_, i) => ({ role: 'user', content: `h${i} `.repeat(2000) })), attachments: Array.from({ length: 500 }, (_, i) => `file-${i}.pdf`) };
+  const chunks = rm.routerChunks(big);
+  assert.ok(chunks.length >= 1 && chunks.length <= 4, String(chunks.length));
+  for (const c of chunks) assert.ok(c.length <= rm.ROUTER_CHUNK_CHARS, String(c.length));
+  const all = chunks.join('');
+  for (const label of ['Message:', 'Context:', 'Attachments:', 'Recent history (most recent first):']) assert.ok(all.includes(label), label);
+  assert.match(all, /h199 /, 'the most recent history turn is included');
+  assert.match(all, /file-0\.pdf/);
+  // A short turn is one chunk; an empty one is none.
+  assert.equal(rm.routerChunks({ message: 'hi', history: [{ role: 'user', content: 'earlier' }] }).length, 1);
+  assert.deepEqual(rm.routerChunks({}), []);
+  // A backend with a smaller state limit shrinks the chunks; a larger one does not grow them.
+  assert.equal(rm.chunkCharsFor({ limits: { maxStateChars: 4000 } }), rm.ROUTER_CHUNK_CHARS);
+  assert.equal(rm.chunkCharsFor({ limits: { maxStateChars: 600 } }), 600);
+  assert.equal(rm.chunkCharsFor(null), rm.ROUTER_CHUNK_CHARS);
+  for (const c of rm.routerChunks(big, { chunkChars: 600 })) assert.ok(c.length <= 600);
+  assert.ok(rm.routerChunks(big, { maxChunks: 99 }).length <= 8, 'chunk count is capped');
+});
+
+test('sensitivity over chunks: each chunk is asked in parallel; any sensitive or failed chunk flags the turn', async () => {
+  const answer = (sel) => ({ selected: sel, scores: { [sel]: 0.9 }, confidence: 0.9 });
+  const seen = [];
+  const byText = (map) => rm.createSensitivity({ decide: async (r) => { seen.push(r.context.stateText); const v = map(r.context.stateText); if (v instanceof Error) throw v; return answer(v); } });
+  assert.deepEqual(await byText(() => 'not_sensitive')(['a', 'b', 'c', 'd']), { flagged: false, flag: null });
+  assert.deepEqual(seen.sort(), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(await byText((t) => (t === 'c' ? 'sensitive' : 'not_sensitive'))(['a', 'b', 'c', 'd']), { flagged: true, flag: 'router' });
+  assert.deepEqual(await byText((t) => (t === 'b' ? Error('over budget') : 'not_sensitive'))(['a', 'b', 'c']), { flagged: true, flag: 'unavailable' });
+  assert.deepEqual(await byText(() => 'not_sensitive')([]), { flagged: true, flag: 'unavailable' }, 'nothing to ask is not a clear verdict');
+  // Parallel: four slow chunks finish in about one deadline, not four.
+  const started = Date.now();
+  const slow = rm.createSensitivity({ deadlineMs: () => 300, decide: () => new Promise((r) => setTimeout(() => r(answer('not_sensitive')), 150)) });
+  assert.deepEqual(await slow(['a', 'b', 'c', 'd']), { flagged: false, flag: null });
+  assert.ok(Date.now() - started < 450);
+  // A backend that ignores the deadline is cut off by the overall one, and that fails closed.
+  const hung = rm.createSensitivity({ deadlineMs: () => 100, decide: () => new Promise(() => {}) });
+  assert.deepEqual(await hung(['a']), { flagged: true, flag: 'unavailable' });
 });
 
 test('settings: normalize, validate and the admin allow-list', () => {
@@ -114,7 +167,7 @@ const LOCAL = 'http://local.invalid', CLOUD = 'http://cloud.invalid';
 const sse = (...frames) => ({ ok: true, status: 200, body: (async function* () { for (const f of frames) yield Buffer.from(`data: ${JSON.stringify(f)}\n\n`); })() });
 const PROVIDERS = { default: { id: 'default', baseUrl: LOCAL }, 'cloud-x': { id: 'cloud-x', baseUrl: CLOUD, label: 'Synthetic cloud', shared: true } };
 
-async function run(t, { flag, settings = null, chat = {}, project: projectOver = {}, message = 'Tell me about synthetic widgets', history = [], verdict = 'clear', answer = null, approvals = null, userId = 'synthetic-user', withRouting = true }) {
+async function run(t, { flag, settings = null, chat = {}, project: projectOver = {}, message = 'Tell me about synthetic widgets', history = [], verdict = 'clear', answer = null, approvals = null, userId = 'synthetic-user', withRouting = true, toolResult = null }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-routing-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const events = [], calls = [], logs = [], flagsSet = [], errors = [];
   const res = new EventEmitter();
@@ -132,6 +185,10 @@ async function run(t, { flag, settings = null, chat = {}, project: projectOver =
   const fetch = async (url, init) => {
     if (!String(url).endsWith('/chat/completions')) return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
     calls.push({ url: String(url), body: JSON.parse(init.body) });
+    // With a tool result fixture, the first round asks for the synthetic read tool.
+    if (toolResult !== null && calls.filter((c) => c.url).length === 1) {
+      return sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'synthetic_read', arguments: '{}' } }] } }] }, { choices: [{ delta: {}, finish_reason: 'tool_calls' }] });
+    }
     return sse({ choices: [{ delta: { content: 'ok' } }] });
   };
   const project = { id: 'fixture-project', name: 'Fixture', routing: 'auto', assets: [], chats: [{ id: 'fixture-chat', title: 't', updatedAt: 1, ...chat }], ...projectOver };
@@ -149,12 +206,12 @@ async function run(t, { flag, settings = null, chat = {}, project: projectOver =
     chatToolRouter: { select: async (ids) => ({ ids, routed: false }) }, DEFAULT_TOOLBOXES: [], CONNECTOR_BOXES: new Set(), connectedBoxes: () => [],
     toolPolicy: { mode: () => 'allow' },
     requestScope: { getStore: () => ({ authn: { user: { id: userId, role: 'member' } }, workspace: { userId } }) },
-    resolveTools: () => ({ tools: [], dropped: [] }), isWriteTool: () => false,
+    resolveTools: () => ({ tools: toolResult === null ? [] : [{ type: 'function', function: { name: 'synthetic_read', description: 'Synthetic read', parameters: { type: 'object', properties: {} } } }], dropped: [] }), isWriteTool: () => false,
     rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: (r) => ({ text: String(r) }), diaryExtras: require('./diary-extras.cjs'),
     DIARY_BASE: 'http://diary.invalid', TOOL_RESULT_CAP: 8000, json: (r, status, body) => { errors.push({ status, body }); r.end(); }, saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
     lastLoadedModel: () => null, classifyFastOrSmart: async () => 'smart', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
     allToolboxes: () => [], chatWideApproved: () => false, awaitApproval: async () => 'deny', recordUsage() {}, recordToolUse() {},
-    executeToolCall: async () => 'SYNTHETIC', freeChats: () => [],
+    executeToolCall: async () => (toolResult === null ? 'SYNTHETIC' : toolResult), freeChats: () => [],
     ...(withRouting ? { routingModes: {
       enabled: () => flag === true,
       settings: () => rm.normalize(settings),
@@ -212,7 +269,8 @@ test('hybrid: a clear turn goes to cloud; the digest covers the history', async 
   const r = await run(t, { flag: true, settings: HYBRID, verdict: 'clear', history: [{ role: 'user', content: 'earlier synthetic turn' }, { role: 'assistant', content: 'reply' }] });
   assert.ok(r.upstream[0].url.startsWith(CLOUD));
   assert.deepEqual(r.meta.routing, { route: 'cloud', reason: 'mode' });
-  assert.match(r.sensitivityCalls[0], /earlier synthetic turn/);
+  assert.ok(Array.isArray(r.sensitivityCalls[0]));
+  assert.match(r.sensitivityCalls[0].join('\n'), /earlier synthetic turn/);
   assert.equal(r.events.some((e) => e.type === 'route_pending'), false);
 });
 
@@ -229,6 +287,34 @@ test('hybrid: pre-rules and every fail-closed verdict land on the card, never on
   // A pre-rule hit does not even ask the router role.
   const pre = await run(t, { flag: true, settings: HYBRID, message: `pay ${SYN_IBAN}`, answer: { choice: 'local' } });
   assert.equal(pre.sensitivityCalls.length, 0);
+});
+
+test('hybrid: a huge history cannot push the message past the scan limit; history reaches the router', async (t) => {
+  const history = Array.from({ length: 10 }, () => ({ role: 'user', content: 'filler '.repeat(8000) }));
+  const r = await run(t, { flag: true, settings: HYBRID, history, message: `pay ${SYN_IBAN}`, answer: { choice: 'local' } });
+  assert.equal(r.events.find((e) => e.type === 'route_pending')?.flag, 'iban');
+  const clear = await run(t, { flag: true, settings: HYBRID, history, message: 'hello' });
+  assert.ok(clear.sensitivityCalls[0].length <= 4 && clear.sensitivityCalls[0].every((c) => c.length <= rm.ROUTER_CHUNK_CHARS));
+  assert.match(clear.sensitivityCalls[0].join(''), /Recent history/);
+});
+
+test('a sensitive tool result on a cloud route never reaches the cloud model', async (t) => {
+  for (const mode of ['hybrid', 'cloud']) {
+    const r = await run(t, { flag: true, settings: { ...HYBRID, mode }, toolResult: `Account on file: ${SYN_IBAN}` });
+    assert.equal(r.upstream.length, 1, `${mode}: only round 1 was sent`);
+    assert.ok(r.upstream[0].url.startsWith(CLOUD));
+    assert.equal(JSON.stringify(r.upstream).includes(SYN_IBAN), false);
+    const pause = r.events.find((e) => e.type === 'paused');
+    assert.equal(pause?.reason, 'sensitive-tool-result'); assert.equal(pause?.flag, 'iban');
+    assert.match(pause.text, /was not sent to the cloud model/);
+    assert.ok(r.events.some((e) => e.type === 'done'));
+  }
+  // A harmless tool result carries on to round 2 on cloud; on a local route nothing is held.
+  const ok = await run(t, { flag: true, settings: HYBRID, toolResult: 'synthetic weather: sunny' });
+  assert.equal(ok.upstream.length, 2); assert.ok(ok.upstream[1].url.startsWith(CLOUD));
+  const local = await run(t, { flag: true, settings: { ...HYBRID, mode: 'local' }, toolResult: `Account on file: ${SYN_IBAN}` });
+  assert.equal(local.upstream.length, 2); assert.ok(local.upstream[1].url.startsWith(LOCAL));
+  assert.equal(local.events.some((e) => e.type === 'paused'), false);
 });
 
 test('the card: Send to cloud goes to cloud; Keep local stays local', async (t) => {
@@ -354,6 +440,9 @@ test('GET/PUT /api/routing-mode: own account, admin allow-list, flag off refuses
   assert.deepEqual((await call('PUT', '/api/routing-mode/allowed', JSON.stringify({ allowed: ['local'] }), 'admin')).body.allowed, ['local']);
   assert.equal((await call('PUT', '/api/routing-mode', JSON.stringify({ mode: 'hybrid', cloud: { providerId: 'cloud-x', smart: 'm1' } }))).status, 403);
   assert.equal(rm.effectiveMode(rm.read(dir), rm.allowedModes(store)), 'local', 'a stored mode an admin later disallowed acts as local');
+  // #779 F5: GET shows the mode replies actually use, with the stored choice beside it.
+  const shown = (await call('GET', '/api/routing-mode')).body;
+  assert.equal(shown.mode, 'local'); assert.equal(shown.storedMode, 'hybrid');
   on = false;
   assert.deepEqual((await call('GET', '/api/routing-mode')).body, { enabled: false });
   assert.equal((await call('PUT', '/api/routing-mode', JSON.stringify({ mode: 'local' }))).status, 409);

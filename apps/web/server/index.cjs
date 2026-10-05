@@ -793,6 +793,8 @@ const { handleChat } = require('./chat.cjs').createChatHandler({
         return sensitivityDecisions.decide(request);
       },
     }),
+    // #779: each router input is cut to the decision service's real state budget.
+    chunkChars: () => require('./routing-modes.cjs').chunkCharsFor(decisionSettings.backend()),
     awaitChoice: awaitRouteChoice,
     log: (entry) => recordDecision('routing', entry),
     setChatFlags: (projectId, chatId, patch) => {

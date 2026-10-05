@@ -565,8 +565,11 @@ function createChatHandler({
         const decided = await rm.resolveRoute({
           mode: settings.mode, whenSensitive: body.compactOnly ? 'local' : settings.whenSensitive, hasCloud, hasLocal: !!(roles && (roles.fast || roles.smart)),
           hardLocal, forceLocal: flags.forceLocal, allowCloud: flags.allowCloud,
-          preFlag: settings.mode === 'hybrid' ? rm.preRule(sentText) : null,
-          check: () => routingModes.sensitivity(rm.digest({ message, system: sys, history: mappedHistory, attachments: attachmentNames })),
+          // #779 F4: the current message first, so the 400k scan limit can never cut it off.
+          preFlag: settings.mode === 'hybrid' ? (rm.preRule(message) || rm.preRule(attachmentNames.join('\n')) || rm.preRule(sentText)) : null,
+          // #779 F1: the router reads bounded chunks sized to the decision service's real budget.
+          check: () => routingModes.sensitivity(rm.routerChunks({ message, system: sys, history: mappedHistory, attachments: attachmentNames },
+            { chunkChars: typeof routingModes.chunkChars === 'function' ? routingModes.chunkChars() : undefined })),
           ask: async (flag) => {
             if (!routeUserId) return { choice: 'aborted' };
             if (!earlyStream) {
@@ -591,6 +594,21 @@ function createChatHandler({
         routeTarget = { route: decided.route, reason: decided.reason, cloud: settings.cloud, row: decided.route === 'cloud' ? cloudRow : null };
       }
     }
+    // #779 F2: on a cloud route chosen by routing modes (hybrid and cloud alike: the check is
+    // cheap and the person chose a mode, not every later tool output), every new tool result is run
+    // through the same deterministic pre-rules before another model round may carry it out. A hit
+    // ends the exchange with a fixed note; nothing after it is sent to the cloud provider.
+    let cloudHold = null;
+    const holdForCloud = (name, text) => {
+      if (cloudHold || routeTarget?.route !== 'cloud') return false;
+      const rmod = require('./routing-modes.cjs');
+      const hit = /^diary[_-]/i.test(String(name || '')) ? 'diary' : rmod.preRule(String(text || ''));
+      if (!hit) return false;
+      cloudHold = hit;
+      try { routingModes.log({ mode: 'tool-result', route: 'held', reason: 'sensitive-rule', flag: hit }); } catch { /* codes only */ }
+      console.log(`[routing] tool result held from cloud flag=${hit}`);
+      return true;
+    };
     const provider = routeTarget?.row ? { ...routeTarget.row, external: true } : getProvider(wantsAuto ? DEFAULT_PROVIDER_ID : projectProvider || DEFAULT_PROVIDER_ID);
     // External providers (#447, provider-egress.cjs): Diary text never goes to one, and a
     // ChatGPT connection is private to the account that made it and needs the feature flag.
@@ -906,6 +924,7 @@ function createChatHandler({
       // resolved with its error text rather than 'outcome_unknown', which would halt the turn.
       turn?.result(call.id, framed, { failed: false, originalBytes: Buffer.byteLength(result) });
       if (outcome.failed === true || /^ERROR\b/.test(result)) return null;
+      if (holdForCloud(call.name, result)) return null;
       noteSkillRead(call.args, result);
       // #740 (framingReasoner): a confirmed search/action frame may hand the answer model a
       // validated task packet instead of the raw result. Any failure inside condense() returns
@@ -1096,7 +1115,7 @@ function createChatHandler({
         else toolGate.record('prefetch.failed', { tool: gate.decision.tool });
       }
     }
-    for (let round = 0; round < 3 && !chatSignal.signal.aborted; round++) {
+    for (let round = 0; round < 3 && !chatSignal.signal.aborted && !cloudHold; round++) {
       if (revokedSkills()) break; // a loaded skill was disabled or changed: no further model round
       // #546: a Skill disabled while this request was being prepared (routing, RAG, vision,
       // compaction) is taken out of the earlier turns too, against the project as stored now.
@@ -1496,6 +1515,7 @@ function createChatHandler({
             ...(applied ? { applied: true } : {}), ...(applied && cardTarget !== null ? { target: cardTarget } : {}),
             ...(notApprovedResults.has(result) ? { declined: true } : {}), ...(notRunResults.has(result) ? { notRun: true } : {}) });
           roundMessages.push({ role: 'tool', tool_call_id: tc.id, content: framedResult });
+          holdForCloud(tc.name, result);
           if (outcome.failed !== true && !/^ERROR\b/.test(String(result))) noteSkillRead(tc.args, result);
         }
       }
@@ -1515,6 +1535,7 @@ function createChatHandler({
             : `No change was made: you declined ${names}.` });
         break;
       }
+      if (cloudHold) break; // #779 F2: a held tool result never goes on to the cloud model
       if (round === 2 || toolCalls.size === 0) break; // last round or no tools requested
       if (skillRevocation) break; // revoked during this round's tools: no supervisor call, one error
       const supervised = await require('./step-supervision.cjs').superviseNextStep(
@@ -1540,6 +1561,12 @@ function createChatHandler({
     // Any path that saw a loaded skill revoked (round start, mid-stream, before or after an approval)
     // ends the reply with one explicit error; nothing after the revocation was run.
     if (skillRevocation) { reportRevocation(); res.end(); return; }
+    if (cloudHold && !paused) {
+      turn?.interrupt('A tool result looked sensitive on a cloud route');
+      paused = true;
+      send({ type: 'paused', reason: 'sensitive-tool-result', flag: cloudHold, applied: appliedWrites.length,
+        text: 'A tool result looks sensitive and was not sent to the cloud model. Switch this chat to local or resend.' });
+    }
     if (!paused && !roundHasContent && roundReasoning.trim()) {
       send({ type: 'delta', text: '\n\nThe model returned reasoning without a final answer. Try again or choose another model.' });
     }

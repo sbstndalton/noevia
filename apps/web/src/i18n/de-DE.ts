@@ -1095,6 +1095,7 @@ export const DE_DE: Catalogue = {
   'chat.approval.provenance': "Enthält Text aus {source} in „{field}“. Prüfe ihn, bevor du erlaubst: Dieser Aufruf wird auch dann einzeln abgefragt, wenn du den Chat freigegeben hast.",
   'chat.approval.provenanceUnchecked': "Woher die Argumente dieses Aufrufs stammen, konnte nicht geprüft werden. Deshalb wirst du einzeln gefragt.",
   'chat.paused.supervision': "Die Schrittüberwachung hat diese Antwort vor weiteren Schritten angehalten. Es wurde nichts geändert.",
+  'chat.paused.sensitive': "Ein Werkzeugergebnis wirkt vertraulich und wurde nicht an das Cloud-Modell gesendet. Stell diesen Chat auf lokal um oder sende erneut.",
   'chat.paused.supervisionApplied.one': "{count} Änderung wurde gespeichert. Die Schrittüberwachung hat diese Antwort vor weiteren Schritten angehalten.",
   'chat.paused.supervisionApplied.other': "{count} Änderungen wurden gespeichert. Die Schrittüberwachung hat diese Antwort vor weiteren Schritten angehalten.",
   'chat.paused.stoppedApplied.one': "{count} Änderung wurde gespeichert, bevor diese Antwort endete.",

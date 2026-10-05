@@ -967,6 +967,7 @@ export const DE_DE_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Routing-Modus gespeichert.",
   'mm.rmode.needsCloud': "Wähle einen Cloud-Anbieter und mindestens ein Smart-Modell.",
   'mm.rmode.allowedTitle': "Modi, die Konten wählen dürfen",
+  'mm.rmode.allowedScope': "Diese Auswahl gilt nur für das automatische Routing; ein Anbieter, den du für einen Chat oder ein Projekt selbst auswählst, ist davon nicht betroffen.",
   'mm.rmode.allowedSave': "Erlaubte Modi speichern",
   'mm.rmode.allowedSaved': "Erlaubte Modi gespeichert.",
   'mm.rmode.notAllowed': "Von einem Admin nicht erlaubt",

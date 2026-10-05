@@ -1095,6 +1095,7 @@ export const FR_FR: Catalogue = {
   'chat.approval.provenance': "Contient du texte provenant de {source} dans « {field} ». Vérifiez-le avant d’autoriser : cet appel est demandé même si vous avez autorisé cette discussion.",
   'chat.approval.provenanceUnchecked': "La provenance des arguments de cet appel n’a pas pu être vérifiée, il est donc demandé séparément.",
   'chat.paused.supervision': "La supervision des étapes a mis cette réponse en pause avant toute autre étape. Rien n’a été modifié.",
+  'chat.paused.sensitive': "Un résultat d’outil semble sensible et n’a pas été envoyé au modèle cloud. Passez cette discussion en local ou renvoyez le message.",
   'chat.paused.supervisionApplied.one': "{count} modification a été enregistrée. La supervision des étapes a mis cette réponse en pause avant toute autre étape.",
   'chat.paused.supervisionApplied.other': "{count} modifications ont été enregistrées. La supervision des étapes a mis cette réponse en pause avant toute autre étape.",
   'chat.paused.stoppedApplied.one': "{count} modification a été enregistrée avant la fin de cette réponse.",

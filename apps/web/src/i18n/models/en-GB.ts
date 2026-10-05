@@ -992,6 +992,7 @@ export const EN_GB_MODELS = {
   'mm.rmode.saved': "Routing mode saved.",
   'mm.rmode.needsCloud': "Choose a cloud provider and at least a Smart model.",
   'mm.rmode.allowedTitle': "Modes accounts may choose",
+  'mm.rmode.allowedScope': "These limits apply to Auto routing only; a provider someone picks by hand for a chat or project is not affected.",
   'mm.rmode.allowedSave': "Save allowed modes",
   'mm.rmode.allowedSaved': "Allowed modes saved.",
   'mm.rmode.notAllowed': "Not allowed by an administrator",

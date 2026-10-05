@@ -33,7 +33,7 @@ export function RoutingModeSection(): JSX.Element | null {
       if (!live) return;
       setInfo(v);
       if (!v.enabled) return;
-      setMode(v.mode ?? ''); setWhenSensitive(v.whenSensitive ?? 'ask'); setCloud({ ...EMPTY_CLOUD, ...(v.cloud ?? {}) }); setAllowed(v.allowed ?? MODES);
+      setMode((v.storedMode !== undefined ? v.storedMode : v.mode) ?? ''); setWhenSensitive(v.whenSensitive ?? 'ask'); setCloud({ ...EMPTY_CLOUD, ...(v.cloud ?? {}) }); setAllowed(v.allowed ?? MODES);
       fetchProviders().then((p) => { if (live) setProviders(p.providers.filter((row) => !row.isDefault)); }).catch(() => undefined);
     }).catch(() => { if (live) setError(t('mm.rmode.loadError')); });
     return () => { live = false; };
@@ -106,6 +106,7 @@ export function RoutingModeSection(): JSX.Element | null {
       {info.admin && (
         <fieldset className="route-mode" disabled={busy}>
           <legend>{t('mm.rmode.allowedTitle')}</legend>
+          <p className="mm-note">{t('mm.rmode.allowedScope')}</p>
           {MODES.map((m) => (
             <label key={m}><input type="checkbox" checked={allowed.includes(m)} onChange={(e) => setAllowed((list) => (e.target.checked ? [...list, m] : list.filter((x) => x !== m)))} /> {t(MODE_KEY[m])}</label>
           ))}

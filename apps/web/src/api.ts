@@ -329,7 +329,10 @@ export function decideRoute(id: string, decision: 'cloud' | 'local', remember: b
 
 export interface RoutingModeSettings {
   enabled: boolean;
+  /** The mode replies actually use (#779 F5): a mode an administrator disallowed reads as 'local'. */
   mode?: 'local' | 'cloud' | 'hybrid' | null;
+  /** The account's own saved choice, which the settings form edits. */
+  storedMode?: 'local' | 'cloud' | 'hybrid' | null;
   whenSensitive?: 'ask' | 'local';
   cloud?: { providerId: string; fast: string; smart: string; code: string };
   allowed?: ('local' | 'cloud' | 'hybrid')[];

@@ -66,7 +66,7 @@ export interface Message {
  *  'declined' (#666): the person declined a write on its approval card, so the reply ended with
  *  no model text; `declined` names the tools they declined. */
 export interface ReplyPause {
-  reason: 'supervision' | 'stopped' | 'declined';
+  reason: 'supervision' | 'stopped' | 'declined' | 'sensitive';
   applied: number;
   declined?: string[];
 }

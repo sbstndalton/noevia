@@ -1095,6 +1095,7 @@ export const PT_BR: Catalogue = {
   'chat.approval.provenance': "Contém texto de {source} em “{field}”. Confira antes de permitir: esta chamada é perguntada mesmo que você tenha permitido este chat.",
   'chat.approval.provenanceUnchecked': "Não foi possível verificar de onde vêm os argumentos desta chamada, então ela é perguntada separadamente.",
   'chat.paused.supervision': "A supervisão por etapas pausou esta resposta antes de outras etapas. Nada foi alterado.",
+  'chat.paused.sensitive': "Um resultado de ferramenta parece sensível e não foi enviado ao modelo na nuvem. Mude este chat para local ou reenvie.",
   'chat.paused.supervisionApplied.one': "{count} alteração foi salva. A supervisão por etapas pausou esta resposta antes de outras etapas.",
   'chat.paused.supervisionApplied.other': "{count} alterações foram salvas. A supervisão por etapas pausou esta resposta antes de outras etapas.",
   'chat.paused.stoppedApplied.one': "{count} alteração foi salva antes de esta resposta terminar.",

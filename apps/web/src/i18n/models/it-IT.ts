@@ -967,6 +967,7 @@ export const IT_IT_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Modalità di instradamento salvata.",
   'mm.rmode.needsCloud': "Scegli un provider cloud e almeno un modello Smart.",
   'mm.rmode.allowedTitle': "Modalità che gli account possono scegliere",
+  'mm.rmode.allowedScope': "Questi limiti valgono solo per l’instradamento automatico; un fornitore scelto a mano per una chat o un progetto non è interessato.",
   'mm.rmode.allowedSave': "Salva modalità consentite",
   'mm.rmode.allowedSaved': "Modalità consentite salvate.",
   'mm.rmode.notAllowed': "Non consentita da un amministratore",

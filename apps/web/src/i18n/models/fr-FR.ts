@@ -967,6 +967,7 @@ export const FR_FR_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Mode de routage enregistré.",
   'mm.rmode.needsCloud': "Choisissez un fournisseur cloud et au moins un modèle Smart.",
   'mm.rmode.allowedTitle': "Modes que les comptes peuvent choisir",
+  'mm.rmode.allowedScope': "Ces limites ne s’appliquent qu’au routage automatique ; un fournisseur choisi manuellement pour une discussion ou un projet n’est pas concerné.",
   'mm.rmode.allowedSave': "Enregistrer les modes autorisés",
   'mm.rmode.allowedSaved': "Modes autorisés enregistrés.",
   'mm.rmode.notAllowed': "Non autorisé par un administrateur",

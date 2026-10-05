@@ -115,22 +115,40 @@ function luhn(digits) {
   return sum % 10 === 0;
 }
 
+// Every pattern here must stay linear on hostile input (#779 review F3): no unbounded run that a
+// later failing token can make the engine rescan from every start position. Bounded quantifiers
+// where a run precedes a literal; the key shape is matched with matchAll (non-overlapping) and
+// its "has a digit and a letter" condition checked in code instead of with lookaheads.
 const SECRET_PATTERNS = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /\b(?:password|passwort|passwd|pwd|passcode|pin|api[ _-]?key|secret|access[ _-]?token|auth[ _-]?token|token)\s*[:=]\s*\S{4,}/i,
-  /\bBearer\s+[A-Za-z0-9._~+/-]{16,}/,
-  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/,
-  // A long key-shaped token: a prefix, then 24+ characters mixing letters and digits.
-  /\b[a-z]{2,8}[-_](?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b/,
+  /-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----/,
+  /\b(?:password|passwort|passwd|pwd|passcode|pin|api[ _-]?key|secret|access[ _-]?token|auth[ _-]?token|token)\s{0,8}[:=]\s{0,8}\S{4}/i,
+  /\bBearer\s{1,8}[A-Za-z0-9._~+/-]{16}/,
 ];
+// A JWT: matched as a whole dotted run (a match never fails once started, so it is linear), then
+// its first three segments are checked in code.
+const JWT_RE = /\beyJ[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]*)*/g;
+const KEY_SHAPE_RE = /\b[a-z]{2,8}[-_][A-Za-z0-9_-]{24,}\b/g;
+const IBAN_RE = /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g;
+const CARD_RE = /\b\d(?:[ -]?\d){12,18}\b/g;
 const SCAN_LIMIT = 400_000;
 
-/** The first rule a text trips, as a flag code, or null. Pure; bounded. */
+/** A long key-shaped token: a short lowercase prefix, then 24+ characters mixing letters and digits. */
+function keyShaped(s) {
+  for (const m of s.matchAll(KEY_SHAPE_RE)) if (/\d/.test(m[0]) && /[A-Za-z]/.test(m[0].slice(m[0].search(/[-_]/) + 1))) return true;
+  return false;
+}
+
+function jwtShaped(s) {
+  for (const m of s.matchAll(JWT_RE)) { const [a, b, c] = m[0].split('.'); if (a.length >= 11 && b?.length >= 8 && c?.length >= 8) return true; }
+  return false;
+}
+
+/** The first rule a text trips, as a flag code, or null. Pure; bounded; linear in the text. */
 function preRule(text) {
   const s = String(text || '').slice(0, SCAN_LIMIT);
-  if (SECRET_PATTERNS.some((re) => re.test(s))) return 'secret';
-  for (const m of s.matchAll(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g)) if (ibanValid(m[0])) return 'iban';
-  for (const m of s.matchAll(/\b\d(?:[ -]?\d){12,18}\b/g)) {
+  if (SECRET_PATTERNS.some((re) => re.test(s)) || jwtShaped(s) || keyShaped(s)) return 'secret';
+  for (const m of s.matchAll(IBAN_RE)) if (ibanValid(m[0])) return 'iban';
+  for (const m of s.matchAll(CARD_RE)) {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length >= 13 && digits.length <= 19 && luhn(digits)) return 'card';
   }
@@ -142,23 +160,78 @@ function hasDiaryContent(history) {
   return (Array.isArray(history) ? history : []).some((h) => h && (h.role === 'tool' || h.role === 'function') && /^diary[_-]/i.test(String(h.name || '')));
 }
 
-// ── The digest the router role reads ────────────────────────────────────────
+// ── What the router role reads ──────────────────────────────────────────────
 
-const DIGEST_MAX = 6000;
+// The decision service rejects a state over its token budget instead of truncating it. Laya's
+// /model/rl_agent_config.json has max_len 512 and head_max_len 192, and services/laya/server.py
+// refuses a state over max_len - head_max_len - 16 = 304 tokens: roughly 1,000-1,200 characters of
+// prose. The backend's advertised maxStateChars (decision-settings.cjs, 4000) is a character cap,
+// not this token budget, so each router input is cut to this conservative size; a smaller
+// backend limit wins (see chunkCharsFor).
+const ROUTER_CHUNK_CHARS = 1000;
+const ROUTER_MAX_CHUNKS = 4;
+const MAX_CHUNKS_CAP = 8;
+const DIGEST_MAX = ROUTER_CHUNK_CHARS * MAX_CHUNKS_CAP; // hard cap on any one router payload
 const textOf = (content) => (typeof content === 'string' ? content : Array.isArray(content) ? content.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join(' ') : '');
-/** Everything that would be sent, bounded: the message, then context (memory, RAG, project excerpts),
- *  attachment names and the most recent history, each with its own share. */
-function digest({ message, system, history, attachments }) {
-  const part = (label, text, max) => (text ? `${label}:\n${String(text).slice(0, max)}` : '');
-  const recent = (Array.isArray(history) ? history : []).slice(-6).map((h) => `${h.role}: ${textOf(h.content)}`).join('\n');
-  const tail = recent.length > 1500 ? recent.slice(-1500) : recent;
-  return [
-    part('Message', message, 2400),
-    part('Context', system, 1600),
-    part('Attachments', (Array.isArray(attachments) ? attachments : []).join(', '), 300),
-    part('Recent history', tail, 1500),
-  ].filter(Boolean).join('\n\n').slice(0, DIGEST_MAX);
+
+/** The chunk size to use for a backend: ROUTER_CHUNK_CHARS, or the backend's own smaller limit. */
+function chunkCharsFor(backend) {
+  const limit = Number(backend?.limits?.maxStateChars);
+  return Number.isFinite(limit) && limit >= 200 ? Math.min(ROUTER_CHUNK_CHARS, Math.floor(limit)) : ROUTER_CHUNK_CHARS;
 }
+
+/** Max-min fair shares of `budget` for sections needing `needs` characters (in order). */
+function fairShares(needs, budget) {
+  const shares = needs.map(() => 0);
+  let left = Math.max(0, budget);
+  let open = needs.map((n, i) => i).filter((i) => needs[i] > 0);
+  while (open.length && left > 0) {
+    const each = Math.floor(left / open.length);
+    if (each === 0) break;
+    const next = [];
+    for (const i of open) {
+      const give = Math.min(each, needs[i] - shares[i]);
+      shares[i] += give; left -= give;
+      if (shares[i] < needs[i]) next.push(i);
+    }
+    open = next;
+  }
+  return shares;
+}
+
+/**
+ * What the router role is asked about, as up to `maxChunks` strings of at most `chunkChars` each.
+ * Covers, in this order: the message, the recent history (most recent first), the context (system
+ * prompt, RAG, memory) and the attachment names. When everything does not fit, each section gets a
+ * fair share (an empty or short section gives its unused room to the others), so neither history
+ * nor attachments is ever dropped for a long message. What does not fit is still covered by the
+ * deterministic pre-rules, which the caller runs over the whole text first.
+ */
+function routerChunks({ message, system, history, attachments }, { chunkChars = ROUTER_CHUNK_CHARS, maxChunks = ROUTER_MAX_CHUNKS } = {}) {
+  const size = Math.max(200, Math.min(ROUTER_CHUNK_CHARS * 4, Math.floor(Number(chunkChars) || ROUTER_CHUNK_CHARS)));
+  const count = Math.max(1, Math.min(MAX_CHUNKS_CAP, Math.floor(Number(maxChunks) || ROUTER_MAX_CHUNKS)));
+  const hist = (Array.isArray(history) ? history : []).slice(-40).reverse()
+    .map((h) => (h ? `${h.role}: ${textOf(h.content).slice(0, size * count)}` : '')).filter((t) => t.length > 2).join('\n');
+  const names = (Array.isArray(attachments) ? attachments : []).filter((n) => typeof n === 'string' && n).join(', ');
+  const sections = [
+    ['Message', String(message || '')],
+    ['Recent history (most recent first)', hist],
+    ['Context', String(system || '')],
+    ['Attachments', names],
+  ].filter(([, text]) => text.trim());
+  if (!sections.length) return [];
+  const SEP = '\n\n';
+  // Labels, the separators between sections and a little slack are paid for before the shares.
+  const overhead = sections.reduce((n, [label]) => n + label.length + 2, 0) + SEP.length * (sections.length - 1);
+  const shares = fairShares(sections.map(([, text]) => text.length), size * count - overhead);
+  const whole = sections.map(([label, text], i) => `${label}:\n${text.slice(0, shares[i])}`).join(SEP);
+  const chunks = [];
+  for (let at = 0; at < whole.length && chunks.length < count; at += size) chunks.push(whole.slice(at, at + size));
+  return chunks;
+}
+
+/** The router input as one string (all chunks joined); kept for callers that log or test it. */
+function digest(input, opts) { return routerChunks(input, opts).join('\n'); }
 
 // ── The router role ─────────────────────────────────────────────────────────
 
@@ -167,21 +240,40 @@ const OPTIONS = Object.freeze([
   { id: 'not_sensitive', label: 'General, public or harmless content that is fine to send to an external service' },
 ]);
 
-/** async (digestText) => { flagged, flag }. Never throws; every failure is flagged ('unavailable'). */
-function createSensitivity({ decide, deadlineMs = () => 1500, minConfidence = 0.6, log = () => {} }) {
-  return async function check(text) {
+/**
+ * async (chunks) => { flagged, flag }. `chunks` is a string or an array of router inputs (see
+ * routerChunks); each is asked in parallel under the same deadline. The turn is flagged when ANY
+ * chunk is judged sensitive ('router') or any chunk fails ('unavailable'); an empty input is a
+ * failure too. Never throws.
+ */
+function createSensitivity({ decide, deadlineMs = () => 1500, minConfidence = 0.6, maxChunks = MAX_CHUNKS_CAP, log = () => {} }) {
+  async function one(text, deadline) {
     let result;
     try {
       if (typeof decide !== 'function') throw Error('no decision service');
       result = await decide({ kind: 'choice', purpose: 'routing.sensitivity',
         question: 'Does this content contain sensitive personal or confidential information?',
         context: { cloud: 'forbidden', stateText: String(text || '').slice(0, DIGEST_MAX) }, options: OPTIONS.map((o) => ({ ...o })),
-        constraints: { deadlineMs: Math.max(100, Number(deadlineMs()) || 1500), minConfidence }, fallback: { selected: null, scores: {} } });
+        constraints: { deadlineMs: deadline, minConfidence }, fallback: { selected: null, scores: {} } });
     } catch { result = null; }
     const answered = result && result.source !== 'fallback' && OPTIONS.some((o) => o.id === result.selected);
     const confident = answered && (typeof result.confidence !== 'number' || result.confidence >= minConfidence);
-    const out = !confident ? { flagged: true, flag: 'unavailable' } : result.selected === 'sensitive' ? { flagged: true, flag: 'router' } : { flagged: false, flag: null };
-    try { log({ verdict: out.flag || 'clear', fellBack: !confident }); } catch { /* codes only, never breaks routing */ }
+    return !confident ? 'unavailable' : result.selected === 'sensitive' ? 'router' : null;
+  }
+  return async function check(input) {
+    const list = (Array.isArray(input) ? input : [input]).map((t) => String(t || '')).filter(Boolean).slice(0, Math.max(1, maxChunks));
+    const deadline = Math.max(100, Number(deadlineMs()) || 1500);
+    let verdicts;
+    try {
+      // One overall deadline as well, so a backend that ignores its own cannot hold the turn.
+      let timer;
+      const late = new Promise((resolve) => { timer = setTimeout(() => resolve(list.map(() => 'unavailable')), deadline + 250); });
+      verdicts = list.length ? await Promise.race([Promise.all(list.map((t) => one(t, deadline))), late]) : ['unavailable'];
+      clearTimeout(timer);
+    } catch { verdicts = ['unavailable']; }
+    const flag = verdicts.includes('router') ? 'router' : verdicts.includes('unavailable') ? 'unavailable' : null;
+    const out = flag ? { flagged: true, flag } : { flagged: false, flag: null };
+    try { log({ verdict: out.flag || 'clear', fellBack: verdicts.includes('unavailable'), chunks: list.length }); } catch { /* codes only, never breaks routing */ }
     return out;
   };
 }
@@ -224,4 +316,4 @@ function cloudModel(cloud, role) {
 }
 
 module.exports = { MODES, WHEN_SENSITIVE, REASONS, FLAGS, OPTIONS, FILE, ALLOWED_KEY, normalize, read, write, validate, allowedModes, setAllowedModes,
-  effectiveMode, preRule, hasDiaryContent, digest, createSensitivity, resolveRoute, chatFlags, cloudModel, ibanValid, luhn };
+  effectiveMode, preRule, hasDiaryContent, digest, routerChunks, chunkCharsFor, ROUTER_CHUNK_CHARS, ROUTER_MAX_CHUNKS, createSensitivity, resolveRoute, chatFlags, cloudModel, ibanValid, luhn };

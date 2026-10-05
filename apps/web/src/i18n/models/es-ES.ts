@@ -967,6 +967,7 @@ export const ES_ES_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Modo de enrutamiento guardado.",
   'mm.rmode.needsCloud': "Elige un proveedor en la nube y al menos un modelo Inteligente.",
   'mm.rmode.allowedTitle': "Modos que pueden elegir las cuentas",
+  'mm.rmode.allowedScope': "Estos límites solo afectan al enrutamiento automático; un proveedor elegido a mano para un chat o proyecto no se ve afectado.",
   'mm.rmode.allowedSave': "Guardar modos permitidos",
   'mm.rmode.allowedSaved': "Modos permitidos guardados.",
   'mm.rmode.notAllowed': "No permitido por un administrador",

@@ -967,6 +967,7 @@ export const SV_SE_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Routningsläge sparat.",
   'mm.rmode.needsCloud': "Välj en molnleverantör och minst en Smart-modell.",
   'mm.rmode.allowedTitle': "Lägen som konton får välja",
+  'mm.rmode.allowedScope': "De här gränserna gäller bara automatisk routning; en leverantör som väljs manuellt för en chatt eller ett projekt påverkas inte.",
   'mm.rmode.allowedSave': "Spara tillåtna lägen",
   'mm.rmode.allowedSaved': "Tillåtna lägen sparade.",
   'mm.rmode.notAllowed': "Inte tillåtet av en administratör",

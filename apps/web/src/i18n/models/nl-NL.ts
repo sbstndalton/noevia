@@ -967,6 +967,7 @@ export const NL_NL_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Routeringsmodus opgeslagen.",
   'mm.rmode.needsCloud': "Kies een cloudprovider en minstens een Smart-model.",
   'mm.rmode.allowedTitle': "Modi die accounts mogen kiezen",
+  'mm.rmode.allowedScope': "Deze beperking geldt alleen voor automatische routering; een provider die handmatig voor een chat of project is gekozen, valt erbuiten.",
   'mm.rmode.allowedSave': "Toegestane modi opslaan",
   'mm.rmode.allowedSaved': "Toegestane modi opgeslagen.",
   'mm.rmode.notAllowed': "Niet toegestaan door een beheerder",

@@ -967,6 +967,7 @@ export const NB_NO_MODELS: ModelsCatalogue = {
   'mm.rmode.saved': "Rutingsmodus lagret.",
   'mm.rmode.needsCloud': "Velg en skyleverandør og minst en Smart-modell.",
   'mm.rmode.allowedTitle': "Moduser kontoer kan velge",
+  'mm.rmode.allowedScope': "Disse grensene gjelder bare automatisk ruting; en leverandør som velges manuelt for en chat eller et prosjekt, påvirkes ikke.",
   'mm.rmode.allowedSave': "Lagre tillatte moduser",
   'mm.rmode.allowedSaved': "Tillatte moduser lagret.",
   'mm.rmode.notAllowed': "Ikke tillatt av en administrator",

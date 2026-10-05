@@ -1104,7 +1104,8 @@ export default function App(): JSX.Element {
             // failure: the reply ends normally ('done' follows) with a note of what was saved.
             // #666: or the person declined a write, and the reply ended with no model text.
             const applied = typeof ev.applied === 'number' && Number.isInteger(ev.applied) && ev.applied >= 0 ? ev.applied : 0;
-            const pause: ReplyPause = ev.reason === 'declined' ? { reason: 'declined', applied, declined: declinedNames(ev.declined) } : { reason: 'supervision', applied };
+            const pause: ReplyPause = ev.reason === 'declined' ? { reason: 'declined', applied, declined: declinedNames(ev.declined) }
+              : ev.reason === 'sensitive-tool-result' ? { reason: 'sensitive', applied } : { reason: 'supervision', applied };
             setMessagesByChat((prev) => ({
               ...prev,
               [chatId]: (prev[chatId] ?? []).map((m) => (m.id === replyId ? { ...m, paused: pause } : m)),
