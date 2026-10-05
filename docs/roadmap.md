@@ -10,7 +10,59 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-09-24
+## Where things stand — 2026-10-05
+
+- **Live:** web release **`cowork-web:29732472`** (main `31d33266` plus this roadmap update).
+  The web-only rollback chain, newest first: `3e7bbed8`, `1eb8bbad`, `b653843c`, `6f59ba82`,
+  `17b477dd`, `25cabfb4`, `b31d0075`. Every release in [changelog.md](changelog.md) has its
+  rollback recipe.
+- **Flags on:** **`chatFraming`**, switched on by the owner on 2026-10-05.
+- **Flags off** (owner's call, in this order):
+  1. the per-user vault mirror (owner's account first)
+  2. `framingReasoner` (needs a reasoner model on the keep-alongside list)
+  3. `brainContext`
+
+  These two are independent of that order: `provenancePolicy` and `routingModes`.
+- **Deploy note:** `deploy/examples/overlay-release.sh` is NOT web-only, because it recreates Diary
+  and OCR. For web-only releases, layer `dist/` and `server/` onto the previous `cowork-web:<sha>`
+  and run `tools/preflight/up.sh --env-file <abs> -- -d --no-build --no-deps --wait web`.
+
+### 2026-10-02 … 10-05: Chat framing, provenance, routing modes
+
+Built by agent pipelines. Every PR got a Fable review before merge, and every release was
+web-only.
+
+- **Chat framing, phases 1–6** (#737–#742; PRs #743–#748, #751):
+  - Laya/decision-service frame suggestion (project, kind, tags, related chats) with a
+    confirm-chip UI and a `/api/chats/:id/move` route.
+  - A confirmed frame steers the prompt and biases the tool gate.
+  - Gatherer → **task packet** → reasoner pipeline ([spec-task-packet.md](spec-task-packet.md)).
+  - Tags, `[[chat]]` links, backlinks and a one-hop graph.
+  - Opt-in one-way **vault mirror** into the Diary (it trashes only tombstoned chats, and an
+    empty list brakes it).
+  - Per-chat **brain notes** ([spec-chat-brain.md](spec-chat-brain.md)).
+- **Review fixes:**
+  - #755–#760: move dedupe, brain cleanup on delete, mirror foreign-note safety, mirror
+    backoff, move frame validation, suggest rate limit and abort.
+  - #764/#765 (mirror orphan, list `skipped`).
+  - #768/#775 (archived chat counts).
+- **Tool-layer provenance policy** (#769/#771): untrusted text in a write's
+  recipient/URL/path/command forces a per-call approval card. It fails closed and only ever
+  adds friction.
+- **Storage login check** (#770/#772, #773, #776): the login is tested on save, and refresh
+  failures now say whether the login was rejected, unchecked or redirected.
+- **Routing modes** (#778/#779): local / cloud / hybrid. In hybrid, a sensitive turn gets an
+  "ask before cloud" card. Per-chat Force local, a local/cloud badge, and tool results re-checked
+  before every cloud round. The router asks Laya **one** ~1,000-char chunk per turn (Laya:
+  `max_len` 512, single worker); `NOEVIA_ROUTER_CHUNKS` raises it after #780.
+- **Eval harness** `experiments/framing-eval` (#750/#752, #753/#754): framed vs unframed,
+  reasoner-slot scoring, kill criteria, local or remote OpenAI-compatible API. Every real run is
+  approval-gated and none has run yet.
+- **Separate project:** the reader→packet→reasoner model idea, with a feasibility draft in
+  `../reader-reasoner-model/` (outside this repo). Its verdict: option A (two models plus LoRA)
+  is plausible; B and C are low.
+
+### Status snapshot — 2026-09-24 (superseded)
 
 - **Source:** current `main` is **`958022b`**. The web package's `0.1.0` is metadata, not the
   application release number; deploy images use their source commit as `COWORK_VERSION`.
@@ -370,6 +422,12 @@ issue or milestone assignment.
 
 ## Needs the user — in order
 
+0. **Added 2026-10-05:**
+   - **#767:** change the Settings → Storage username from `sebastian` to `Sebastian Dalton`.
+   - **Delete the archived QA chats and projects** "QA 744 …" and "QA 25c …".
+   - **Flip the remaining flags** in the order above.
+   - **Eval runs:** set `FRAMING_EVAL_API_KEY`, or allow a local DaServer run.
+   - **Open issues:** #780 (concurrent Laya), #749 (computer use: not yet, per Fable), #732, #263.
 1. **Look at the live footer once** while a reply streams (phone and desktop): the session had
    no signed-in browser, so only the synthetic QA and bundle identity were verified.
 2. **Which repositories Code mode may open.** Only the throwaway `scratch` fixture is
