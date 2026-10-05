@@ -3,7 +3,7 @@
 // textarea's own height to its content — `max-height: 220px` sat there dead. There is no jsdom
 // in this repo (see tests/chatview-draft-persistence.test.cjs's note), so real layout (scrollHeight
 // growing with lines, capping at max-height, shrinking back) is proven in the browser by
-// apps/web/qa/composer-autogrow.cjs; this file pins the source-level contract the same way
+// apps/web/qa/composer-434.cjs; this file pins the source-level contract the same way
 // tests/chatview-edit-actions.test.cjs pins the #355 focus fix.
 const test = require('node:test');
 const assert = require('node:assert/strict');

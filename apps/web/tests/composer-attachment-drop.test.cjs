@@ -5,7 +5,7 @@
 // ComposerActions) and `useAttachmentDrop` call; this pins that sharing at the source level and
 // checks the drop hook ignores non-file drags. The real drag/drop DOM behaviour (no jsdom in this
 // repo) and the "oversize file shows the picker's own error" case are proven in the browser by
-// apps/web/qa/composer-drop.cjs.
+// apps/web/qa/composer-434.cjs.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

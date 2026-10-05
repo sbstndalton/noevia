@@ -27,10 +27,14 @@ coordinated migration across the live deployment; see `deployment.md`.
 - `apps/web/src/` — React + plain CSS. No Tailwind, no PostCSS. Constrain widths
   with `max-width` + `margin-inline: auto`.
 - `apps/web/src/styles/` — `tokens.css`, `app.css`, `shell.css`, `noevia.css`,
-  `popup.css`, `diary-tab.css`. **`noevia.css` loads LAST and overrides
-  everything.** Rules added elsewhere can be silently dead. This has bitten twice.
-- `apps/web/src/App.tsx` (842 lines) — chat state, SSE consumption, theme manager.
-- `apps/web/server/index.cjs` (~750 lines) — wiring only: config from the environment,
+  `popup.css`, `diary-tab.css` and later layers (`shell-v2.css`, `primitives.css`, `overlays.css`,
+  `phone.css`, `materials.css`, `theme-contemporary.css`, `system.css`, `families.css`).
+  **Import order in `src/main.tsx` decides the cascade**: `noevia.css` is no longer last, and
+  `space-tiers.css` loads after everything else, so it overrides the family files it lightens.
+  Check that order before adding a rule: a rule in an earlier file can be silently dead. This has
+  bitten twice.
+- `apps/web/src/App.tsx` (~1,900 lines) — chat state, SSE consumption, theme manager.
+- `apps/web/server/index.cjs` (~1,200 lines) — wiring only: config from the environment,
   construction of every service and route factory, `handleRequestScoped` (security headers,
   the session and CSRF gate, the mounts in order, the static fallback) and server start.
   **Nothing else goes in it.** An area's logic lives in `server/<area>.cjs` and its HTTP
@@ -72,7 +76,7 @@ coordinated migration across the live deployment; see `deployment.md`.
 ### Build and test, from `apps/web/`
 
 ```sh
-npm test        # 1,092 passing on wip/index-split (1,024 at a4e0178)
+npm test        # the count changes with every merge; CI is authoritative (see CI)
 npm run build
 npm run typecheck
 ```
@@ -275,14 +279,15 @@ unsupported model — see `roadmap.md` for the outstanding Qwen mmproj work.
 
 ### Placeholder surfaces
 
-`Scheduled`, `Plugins` and `Explore` (`Sidebar.tsx`) route to `PreviewPanel`; they and the Code
-switch are hidden unless the `previews` feature is on (`server/features.cjs`, D5). The
-Coding workspace renders `Interface preview · no execution` — separate navigation,
-empty project/task areas, an activity grid, a draft composer, a collapsible
-workspace panel. It does not read repositories, run commands, call a coding model,
-or modify files; its draft resets when leaving coding mode. Scheduled tasks,
-plugins, integrations, privacy, billing and usage tracking are marked previews with
-disabled controls. Activity values are empty, not simulated.
+Customise's `Plugins` page (skills, connectors, plugins) is real. The Code-mode sidebar
+(`CODE_PAGES` in `Sidebar.tsx` and `CodingWorkspace.tsx`, shown only while the `previews` feature
+is on, D5) is still a placeholder workspace: its `Scheduled`, `Plugins` and `Explore` entries are
+previews with disabled controls, and its pages read `Interface preview · no execution` (New task
+says it runs in a project when you have Code access). Real Code tasks do not run there: they run
+from a project's Code tab (the `codeHarness` feature, `server/code-harness-config.cjs`), where the
+harness is **pi**, run in the code-sandbox sidecar. Scheduled tasks, integrations, privacy,
+billing and usage tracking elsewhere are likewise marked previews with disabled controls.
+Activity values are empty, not simulated.
 
 ## What NOT to do
 

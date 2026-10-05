@@ -242,7 +242,7 @@ stamp before switching embedding models.
 
 ## Measured auto-tune results — 2026-09-17 (release c54b5a5 onwards)
 
-`/api/models/autotune` (module `server/llamacpp-autotune.cjs`) on the live engine, llama.cpp b10920,
+`/api/models/autotune` (the speed-only tuner of that release, `server/llamacpp-autotune.cjs`, since removed in favour of the full tuner `server/llamacpp-full-autotune.cjs`) on the live engine, llama.cpp b10920,
 `--models-max 1`, chat paused per run. Generation is the geometric mean of three workloads (list,
 prose, code) at temperature 0 with thinking off; a profile counts only if it drafts and reproduces
 the "off" answer on the list workload. Context is then verified by the existing calibration
@@ -261,8 +261,8 @@ Per workload the best profile differed: deep drafts (`n-max 8`) won on lists, sh
 `autoconfig.MODE_SPEC_PROFILE` should be measured per model rather than assumed. `ngram-simple`
 never drafted anything on these prompts (no literal repeats) and always lost.
 
-The lookup table (`ui-data/native-tuning-table.json`) keys results by architecture, quantisation and
-hardware (`29GiB b10920-eafe15a5e`), orders the next run's candidates and proposes extensions.
+The speed-only tuner's lookup table (`ui-data/native-tuning-table.json`, no longer written or read) keyed results by architecture, quantisation and
+hardware (`29GiB b10920-eafe15a5e`), ordered the next run's candidates and proposed extensions.
 
 ### Model policy and what fits this host (2026-09-17)
 

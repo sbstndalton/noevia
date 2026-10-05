@@ -25,9 +25,10 @@ jobs:
       docling: ${{ steps.filter.outputs.docling == 'true' || steps.filter.outputs.ci == 'true' }}
       macos: ${{ steps.filter.outputs.macos == 'true' || steps.filter.outputs.ci == 'true' }}
       images: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
-      sidecars: ${{ steps.filter.outputs.sidecars }}
-      deploy: ${{ steps.filter.outputs.deploy }}
-      docs: ${{ steps.filter.outputs.docs }}
+      ocr: ${{ steps.filter.outputs.ocr == 'true' || steps.filter.outputs.ci == 'true' }}
+      laya: ${{ steps.filter.outputs.laya == 'true' || steps.filter.outputs.ci == 'true' }}
+      code_sandbox: ${{ steps.filter.outputs.code_sandbox == 'true' || steps.filter.outputs.ci == 'true' }}
+      deploy: ${{ steps.filter.outputs.deploy == 'true' || steps.filter.outputs.ci == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
@@ -53,21 +54,20 @@ jobs:
               - 'services/docling/**'
             macos:
               - 'clients/macos/**'
-            sidecars:
-              - 'services/laya/**'
-              - 'services/model-manager/**'
-              - 'services/code-sandbox/**'
+            ocr:
               - 'services/ocr/**'
-              - 'services/docling/**'
+            laya:
+              - 'services/laya/**'
+            code_sandbox:
+              - 'services/code-sandbox/**'
             deploy:
               - 'compose.yaml'
               - 'compose.*.yaml'
+              - '.env.example'
+              - 'Makefile'
               - 'deploy/**'
               - 'apps/web/Dockerfile'
               - 'docs/deployment.md'
-            docs:
-              - 'docs/**'
-              - '**/*.md'
             # A change to CI itself runs every job.
             ci:
               - '.github/workflows/**'
@@ -306,6 +306,82 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  ocr-tests:
+    name: OCR service tests
+    needs: changes
+    runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.ocr }}
+    defaults:
+      run:
+        working-directory: services/ocr
+    steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No ocr changes; skipping."
+      - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
+      - uses: actions/setup-python@v5
+        if: env.RUN_JOB == 'true'
+        with:
+          python-version: "3.12"
+      # Standard library only. The cases that run real OCR or PDF reduction skip themselves
+      # without the synthetic fixtures and tesseract/ghostscript (those live in the image), so
+      # this job covers the request handling, DOCX text and limits.
+      - run: pip install pytest
+        if: env.RUN_JOB == 'true'
+      - run: python -m pytest -q
+        if: env.RUN_JOB == 'true'
+
+  laya-tests:
+    name: Laya service tests
+    needs: changes
+    runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.laya }}
+    defaults:
+      run:
+        working-directory: services/laya
+    steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        working-directory: .
+        run: echo "No laya changes; skipping."
+      - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
+      - uses: actions/setup-python@v5
+        if: env.RUN_JOB == 'true'
+        with:
+          python-version: "3.12"
+      # The decision worker is faked (no torch, no model); the recovery and timeout logic around
+      # it is what these tests cover.
+      - run: pip install pytest
+        if: env.RUN_JOB == 'true'
+      - run: python -m pytest -q
+        if: env.RUN_JOB == 'true'
+
+  code-sandbox-tests:
+    name: Code sandbox bridge tests
+    needs: changes
+    runs-on: ubuntu-latest
+    env:
+      RUN_JOB: ${{ needs.changes.outputs.code_sandbox }}
+    steps:
+      - name: Skip (no relevant changes)
+        if: env.RUN_JOB != 'true'
+        run: echo "No code-sandbox changes; skipping."
+      - uses: actions/checkout@v4
+        if: env.RUN_JOB == 'true'
+      - uses: actions/setup-node@v4
+        if: env.RUN_JOB == 'true'
+        with:
+          node-version: 22
+      # pi-acp-bridge.cjs has no dependencies; the verifier and supervisor are covered by the
+      # web server's tests (code-verify*.test.cjs).
+      - run: node --test services/code-sandbox/pi-acp-bridge.test.cjs
+        if: env.RUN_JOB == 'true'
+
   deploy-tests:
     name: Deploy tooling shell/wrapper tests
     needs: changes
@@ -318,11 +394,28 @@ jobs:
         run: echo "No deploy changes; skipping."
       - uses: actions/checkout@v4
         if: env.RUN_JOB == 'true'
+      # php-cli: deploy/preflight/test_check.php. rclone (flock is part of util-linux):
+      # deploy/tests/test_rclone_sync.py, which skips itself without both and would otherwise
+      # pass here without running a single case.
+      - name: Install php-cli and rclone
+        if: env.RUN_JOB == 'true'
+        run: sudo apt-get update && sudo apt-get install -y php-cli rclone
       - run: python3 deploy/preflight/test_wrapper.py
+        if: env.RUN_JOB == 'true'
+      - run: php deploy/preflight/test_check.php
+        if: env.RUN_JOB == 'true'
+      - run: python3 deploy/nextcloud/test_repair_push.py
+        if: env.RUN_JOB == 'true'
+      # test_init_managed (the fresh-install initializer), test_overlay_replacement (guards the
+      # `rm -rf` inside overlay-release.sh), test_overlay_scripts, test_rclone_sync.
+      - run: python3 -m unittest discover -v -s deploy/tests -p 'test_*.py'
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-build-web-release.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-sidecar-restart-alert.sh
+        if: env.RUN_JOB == 'true'
+      # Every Compose file the repo ships must still parse (no containers are started).
+      - run: make compose-check
         if: env.RUN_JOB == 'true'
 
   # Single aggregate result. Passes when every job succeeded or was skipped;
@@ -330,7 +423,7 @@ jobs:
   ci-required:
     name: CI required
     if: always()
-    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, macos-client-tests, docker-build, deploy-tests]
+    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, ocr-tests, laya-tests, code-sandbox-tests, macos-client-tests, docker-build, deploy-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results

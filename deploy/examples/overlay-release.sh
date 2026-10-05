@@ -3,12 +3,20 @@
 #
 # For releases where apps/web dependencies are unchanged since OLD: reuse OLD's
 # installed node_modules instead of running npm on the box (its IPv6 route to the
-# registry is broken). Replaces the web image's dist/ and server/ only, bumps
-# COWORK_VERSION (web only), repoints the release, and rolls back automatically if
-# the health wait fails. The native engine must stay untouched. Sidecars (Diary, OCR,
-# model manager, Docling, Code sandbox) keep their own DIARY_VERSION / OCR_VERSION /
-# MODEL_MANAGER_VERSION / DOCLING_VERSION / CODE_SANDBOX_VERSION tags; nothing is
-# retagged forward. A Diary agent change ships separately with diary-overlay.sh.
+# registry is broken). Builds cowork-web:NEW from OLD's image with dist/ and server/ replaced,
+# bumps COWORK_VERSION, repoints the release, and rolls back automatically if the health wait
+# fails. The native engine (llama) must stay untouched.
+#
+# THIS IS NOT A WEB-ONLY RELEASE. Besides web, it recreates diary and ocr
+# (`up -d --no-build --no-deps --wait web diary ocr`) and brings up docling and code-sandbox
+# when the deployment defines them. The sidecars keep their own DIARY_VERSION / OCR_VERSION /
+# MODEL_MANAGER_VERSION / DOCLING_VERSION / CODE_SANDBOX_VERSION tags (nothing is retagged
+# forward), but each recreate is a restart. When the sidecars must stay up, release web by hand
+# instead: layer dist/ and server/ onto the previous cowork-web:<sha>, point `current` and
+# COWORK_VERSION at the new release (back up .env first), then
+#   tools/preflight/up.sh --env-file <abs path to .env> -- -d --no-build --no-deps --wait web
+# (docs/deployment.md, "Web-only release"). A Diary agent change ships separately with
+# diary-overlay.sh.
 #
 # Before running:
 #   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` (keep the folder: dist symlinks to it) then `npm run build` in apps/web
@@ -23,6 +31,10 @@
 # Afterwards: record the release in docs/deployment.md and the DaServer changelog.
 set -euo pipefail
 OLD=${1:?old release sha}; NEW=${2:?new release sha}
+# Both become path components, image tags and a sed replacement below: only a hex SHA is allowed.
+for sha in "$OLD" "$NEW"; do
+  [[ $sha =~ ^[0-9a-f]{7,40}$ ]] || { echo "release sha must be 7 to 40 lowercase hex characters, got: $sha" >&2; exit 1; }
+done
 base=/mnt/docker/appdata/cowork; config=$base/config/.env
 manager=/boot/config/plugins/compose.manager/projects/Cowork
 
@@ -92,7 +104,9 @@ DOCKER
 docker build -q -t "cowork-web:$NEW" "$work" >/dev/null
 
 cp -p "$config" "$config.bak.before-$NEW"
-old_native=$(docker inspect cowork-llama-1 --format '{{.Id}}')
+# The engine and the model loader are optional (a deployment without llama.cpp has neither).
+# A missing engine is "" before and after, so the untouched check below still holds.
+old_native=$(docker inspect cowork-llama-1 --format '{{.Id}}' 2>/dev/null || true)
 cd "$manager"
 ln -sfn "$base/releases/$NEW" "$base/current"
 sed -i "s/^COWORK_VERSION=.*/COWORK_VERSION=$NEW/" "$config"
@@ -107,7 +121,7 @@ if ! { bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build 
   bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-deps --wait --wait-timeout 180 web diary ocr
   echo "ROLLED BACK to $OLD" >&2; exit 1
 fi
-[ "$(docker inspect cowork-llama-1 --format '{{.Id}}')" = "$old_native" ]
+[ "$(docker inspect cowork-llama-1 --format '{{.Id}}' 2>/dev/null || true)" = "$old_native" ]
 # Sidecars that live outside the web release (Docling, the Code sandbox) are tagged by what they
 # contain (DOCLING_VERSION, CODE_SANDBOX_VERSION), not by COWORK_VERSION, so a release does not replace them. Make sure the ones this
 # deployment defines are running -- `--no-deps` and by name, so nothing else (the model loader,
@@ -117,7 +131,11 @@ if [ -n "$sidecars" ]; then
   docker compose --env-file "$config" --profile code up -d --no-deps $sidecars >/dev/null
   for s in $sidecars; do docker inspect "cowork-$s-1" --format "{{.Name}} {{.State.Status}}"; done
 fi
-docker inspect cowork-web-1 cowork-diary-1 cowork-ocr-1 cowork-llama-1 cowork-model-loader-1 \
-  --format '{{.Name}} {{.State.Health.Status}} restarts={{.RestartCount}}'
+present=()
+for c in web diary ocr llama model-loader; do
+  docker inspect "cowork-$c-1" >/dev/null 2>&1 && present+=("cowork-$c-1")
+done
+docker inspect "${present[@]}" \
+  --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}} restarts={{.RestartCount}}'
 rm -f "/tmp/src-$NEW.tar.gz" "/tmp/app-$NEW.tar.gz"
 echo "RELEASE_${NEW}_COMPLETE"
