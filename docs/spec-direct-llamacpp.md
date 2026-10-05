@@ -114,7 +114,7 @@ Reproducible local checks:
 - `node apps/web/qa/llamacpp-http.cjs`: real authenticated HTTP, cold/auto routing,
   changed allocation, failed load, native identities/status privacy, profile
   apply/conflict and capability endpoints against a synthetic router.
-- `PLAYWRIGHT_MODULE=<existing module> node apps/web/qa/llamacpp-ui.cjs`: real browser,
+- `PLAYWRIGHT_MODULE=<existing module> node apps/web/qa/models-settings.cjs`: real browser,
   native profile controls, stale revision/draft recovery, explicit reload action,
   keyboard focus, light/dark 375/768/1440 layouts. Screenshots visually inspected.
 - `DB_PATH=/tmp/noevia-native-diary/index.db services/diary/.venv/bin/python -m pytest
