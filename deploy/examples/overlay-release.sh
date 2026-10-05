@@ -52,6 +52,23 @@ done
 (cd "$manager" && docker compose --env-file "$config" --profile code config -q) \
   || { echo "compose config fails with $config; set the missing *_VERSION keys first" >&2; exit 1; }
 
+# The engine and the model loader are optional (a deployment without llama.cpp has neither).
+# A missing engine is "" before and after, so the untouched check at the end still holds. Only
+# docker's "No such object" means absent: any other inspect failure (daemon hiccup, permissions)
+# must stop the release here, before anything changes, not be read as "no engine".
+# BEGIN container-id (deploy/tests/test_overlay_scripts.py runs this block with a fake docker)
+container_id() {
+  local out
+  if out=$(docker inspect "$1" --format '{{.Id}}' 2>&1); then printf '%s' "$out"; return 0; fi
+  case $out in
+    *"No such object"*|*"No such container"*) return 0 ;;
+  esac
+  echo "docker inspect $1 failed, not deploying: $out" >&2
+  return 1
+}
+# END container-id
+old_native=$(container_id cowork-llama-1) || exit 1
+
 mkdir -p "$base/releases/$NEW"
 tar -xzf "/tmp/src-$NEW.tar.gz" -C "$base/releases/$NEW"
 
@@ -104,9 +121,6 @@ DOCKER
 docker build -q -t "cowork-web:$NEW" "$work" >/dev/null
 
 cp -p "$config" "$config.bak.before-$NEW"
-# The engine and the model loader are optional (a deployment without llama.cpp has neither).
-# A missing engine is "" before and after, so the untouched check below still holds.
-old_native=$(docker inspect cowork-llama-1 --format '{{.Id}}' 2>/dev/null || true)
 cd "$manager"
 ln -sfn "$base/releases/$NEW" "$base/current"
 sed -i "s/^COWORK_VERSION=.*/COWORK_VERSION=$NEW/" "$config"
@@ -121,7 +135,8 @@ if ! { bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build 
   bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-deps --wait --wait-timeout 180 web diary ocr
   echo "ROLLED BACK to $OLD" >&2; exit 1
 fi
-[ "$(docker inspect cowork-llama-1 --format '{{.Id}}' 2>/dev/null || true)" = "$old_native" ]
+new_native=$(container_id cowork-llama-1) || { echo "cannot confirm the engine is untouched; check it by hand" >&2; exit 1; }
+[ "$new_native" = "$old_native" ] || { echo "the engine container changed during this release (was ${old_native:-absent}, now ${new_native:-absent}); check it by hand" >&2; exit 1; }
 # Sidecars that live outside the web release (Docling, the Code sandbox) are tagged by what they
 # contain (DOCLING_VERSION, CODE_SANDBOX_VERSION), not by COWORK_VERSION, so a release does not replace them. Make sure the ones this
 # deployment defines are running -- `--no-deps` and by name, so nothing else (the model loader,
