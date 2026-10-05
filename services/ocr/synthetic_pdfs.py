@@ -69,7 +69,9 @@ _FONT = {
     "X": ["#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"],
     "Y": ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."],
     "Z": ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"],
-    "0": [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
+    # Same shape as "O" on purpose. A zero with a diagonal or dot inside was read as 6, 4, H, B or b
+    # by tesseract (measured in CI, every size and blur); the plain oval reads as 0 among digits.
+    "0": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
     "1": ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."],
     "2": [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
     "3": ["####.", "....#", "....#", ".###.", "....#", "....#", "####."],
@@ -84,7 +86,11 @@ _FONT = {
     " ": ["....."] * 7,
 }
 
-CELL = 6                 # image pixels per font dot
+# Image pixels per font dot, and blur passes. Chosen by running tesseract over a grid of sizes
+# and blurs in CI: 3 px dots with one pass read all four rows exactly at every blur level tried,
+# while 6 px dots only read when blurred and misread a comma for a full stop without it.
+CELL = 3
+BLUR_PASSES = 1
 IMAGE_W, IMAGE_H = 1275, 1650   # the whole US-Letter page at 150 dpi
 GLYPH_W, GLYPH_H = 5, 7
 
@@ -108,7 +114,7 @@ def render_lines(lines, left=96, top=240, line_gap=3):
 
     `lines` is a tuple (hashable, so the same scan is built once per test run). The dots
     are softened with a 3x3 blur: a raw 5x7 dot matrix is read as junk by some engines
-    (checked: "INV" came back as "INU"), the softened strokes read cleanly, and a real
+    (raw dots came back with digits and punctuation wrong), the softened strokes read cleanly, and a real
     scan is never pixel-perfect anyway.
     """
     page = [bytearray(b"\xff" * IMAGE_W) for _ in range(IMAGE_H)]
@@ -127,7 +133,10 @@ def render_lines(lines, left=96, top=240, line_gap=3):
                         page[y0 + gy * CELL + dy][start:start + CELL] = b"\x00" * CELL
     first = top - 2 * CELL
     last = top + len(lines) * (GLYPH_H + line_gap) * CELL + 2 * CELL
-    page[first:last] = _box_blur([bytes(r) for r in page[first:last]])
+    region = [bytes(r) for r in page[first:last]]
+    for _ in range(BLUR_PASSES):
+        region = _box_blur(region)
+    page[first:last] = region
     return IMAGE_W, IMAGE_H, b"".join(bytes(r) for r in page)
 
 

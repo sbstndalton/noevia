@@ -71,7 +71,9 @@ class FixtureTests(unittest.TestCase):
             glyph = fixtures._FONT[char]
             self.assertEqual(len(glyph), fixtures.GLYPH_H, char)
             self.assertTrue(all(len(row) == fixtures.GLYPH_W for row in glyph), char)
-        self.assertEqual(len({tuple(g) for g in fixtures._FONT.values()}), len(fixtures._FONT), 'two characters share a glyph')
+        # Only 0 and O may share a shape (see the comment on the glyph).
+        shapes = [tuple(g) for char, g in fixtures._FONT.items() if char != '0']
+        self.assertEqual(len(set(shapes)), len(shapes), 'two characters share a glyph')
 
     def test_the_encrypted_pdf_declares_standard_security_with_a_user_password(self):
         data = self.files['encrypted.pdf'].read_bytes()
