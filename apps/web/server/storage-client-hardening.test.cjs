@@ -10,26 +10,35 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const { deleteFile, listFiles, fileVersion, removeEmptyFolder, elementTexts } = require('./storage-client.cjs');
 
-function startDav(t, { propfindStatus = null } = {}) {
-  const files = new Set(['Docs/notes.md', 'Docs/other.md']);
-  const dirs = new Set(['Docs', 'Docs/sub']);
+function startDav(t, { propfindStatus = null, afterPropfind = null } = {}) {
+  const files = new Map([['Docs/notes.md', '"e1"'], ['Docs/other.md', '"e2"'], ['Docs/no-etag.md', '']]);
+  const dirs = new Set(['Docs', 'Docs/sub', 'Docs/attr']);
   const seen = [];
+  const collection = (p) => (p === 'Docs/attr' ? '<d:collection xmlns:d="DAV:" />' : '<d:collection/>');
   const server = http.createServer((req, res) => {
     const p = decodeURIComponent(req.url).replace(/^\/dav\//, '').replace(/\/+$/, '');
     req.resume();
     req.on('end', () => {
-      seen.push({ method: req.method, path: p, depth: req.headers.depth });
+      seen.push({ method: req.method, path: p, depth: req.headers.depth, ifMatch: req.headers['if-match'] });
       if (req.method === 'PROPFIND') {
         if (propfindStatus) { res.writeHead(propfindStatus); return res.end(); }
-        if (dirs.has(p)) { res.writeHead(207); return res.end(`<d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/${p}/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype><d:getetag>"dir"</d:getetag></d:prop></d:propstat></d:response></d:multistatus>`); }
+        if (dirs.has(p)) { res.writeHead(207); return res.end(`<d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/${p}/</d:href><d:propstat><d:prop><d:resourcetype>${collection(p)}</d:resourcetype><d:getetag>"dir"</d:getetag></d:prop></d:propstat></d:response></d:multistatus>`); }
         if (!files.has(p)) { res.writeHead(404); return res.end(); }
+        const etag = files.get(p);
         res.writeHead(207);
-        return res.end(`<d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/${p}</d:href><d:propstat><d:prop><d:resourcetype/><d:getetag>&quot;e1&quot;</d:getetag></d:prop></d:propstat></d:response></d:multistatus>`);
+        res.end(`<d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/${p}</d:href><d:propstat><d:prop><d:resourcetype/>${etag ? `<d:getetag>${etag.replace(/"/g, '&quot;')}</d:getetag>` : ''}</d:prop></d:propstat></d:response></d:multistatus>`);
+        if (afterPropfind) afterPropfind({ files, dirs, path: p });
+        return;
       }
       if (req.method === 'DELETE') {
         // A real WebDAV server deletes a collection recursively; record it so a test can fail on it.
-        if (dirs.has(p)) { dirs.delete(p); res.writeHead(204); return res.end(); }
+        const ifMatch = req.headers['if-match'];
+        if (dirs.has(p)) {
+          if (ifMatch && ifMatch !== '"dir"') { res.writeHead(412); return res.end(); }
+          dirs.delete(p); res.writeHead(204); return res.end();
+        }
         if (!files.has(p)) { res.writeHead(404); return res.end(); }
+        if (ifMatch && ifMatch !== files.get(p)) { res.writeHead(412); return res.end(); }
         files.delete(p); res.writeHead(204); return res.end();
       }
       res.writeHead(405); res.end();
@@ -44,8 +53,27 @@ function startDav(t, { propfindStatus = null } = {}) {
 test('#784: deleteFile deletes a file after confirming it is one', async (t) => {
   const { conn, files, seen } = await startDav(t);
   assert.deepEqual(await deleteFile(conn, 'Docs/notes.md'), { path: 'Docs/notes.md', missing: false });
-  assert.deepEqual(seen.map((s) => [s.method, s.path, s.depth]), [['PROPFIND', 'Docs/notes.md', '0'], ['DELETE', 'Docs/notes.md', undefined]]);
+  assert.deepEqual(seen.map((s) => [s.method, s.path, s.depth, s.ifMatch]), [['PROPFIND', 'Docs/notes.md', '0', undefined], ['DELETE', 'Docs/notes.md', undefined, '"e1"']],
+    'the DELETE is conditional on the ETag the check saw');
   assert.equal(files.has('Docs/notes.md'), false);
+  assert.deepEqual(await deleteFile(conn, 'Docs/no-etag.md'), { path: 'Docs/no-etag.md', missing: false });
+  assert.equal(seen.at(-1).ifMatch, undefined, 'a server that reports no ETag gets an unconditional DELETE');
+});
+
+test('#784: a path that changes between the check and the DELETE is refused with 409 and kept', async (t) => {
+  // Between the PROPFIND and the DELETE the file is replaced (here: a new ETag; a file turned
+  // into a folder looks the same to an If-Match).
+  const { conn, files } = await startDav(t, { afterPropfind: ({ files: f, path: p }) => { if (f.has(p)) f.set(p, '"e1-changed"'); } });
+  await assert.rejects(() => deleteFile(conn, 'Docs/notes.md'), (e) => e.status === 409 && e.code === 'changed' && /changed in storage/.test(e.message));
+  assert.equal(files.get('Docs/notes.md'), '"e1-changed"', 'the changed file is still there');
+});
+
+test('#784: a collection element carrying attributes is still recognised as a folder', async (t) => {
+  const { conn, dirs, seen } = await startDav(t);
+  await assert.rejects(() => fileVersion(conn, 'Docs/attr'), (e) => e.code === 'folder');
+  await assert.rejects(() => deleteFile(conn, 'Docs/attr'), (e) => e.status === 400 && e.code === 'folder');
+  assert.ok(dirs.has('Docs/attr'));
+  assert.ok(!seen.some((s) => s.method === 'DELETE'));
 });
 
 test('#784: deleteFile refuses a collection, including one reached through a backslash, and sends no DELETE', async (t) => {
@@ -147,4 +175,13 @@ test('#787: unclosed href tags inside one huge response block also parse in boun
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
     assert.ok(ms < 1000, `${label} took ${ms.toFixed(0)} ms`);
   }
+});
+
+test('#784/#787: unterminated collection tags in a 4 MB file-state body are checked in bounded time', async (t) => {
+  const body = `<d:multistatus><d:response><d:href>/dav/Docs/notes.md</d:href>${unclosed('<d:collection ')}</d:response></d:multistatus>`;
+  const conn = await startRaw(t, body);
+  const started = process.hrtime.bigint();
+  await fileVersion(conn, 'Docs/notes.md').catch(() => null);
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(ms < 1000, `fileVersion took ${ms.toFixed(0)} ms`);
 });

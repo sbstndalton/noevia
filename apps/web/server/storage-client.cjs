@@ -504,12 +504,17 @@ async function deleteFile(conn, rawPath) {
     throw err;
   }
   if (!state.exists) return { path, missing: true };
+  // With the file's ETag, the DELETE is conditional on it, so a path that became something else
+  // (a folder, or a changed file) between the check and the delete is refused (412), not removed.
   const response = await withRetry(() => fetch(davUrl(conn, path), {
     method: 'DELETE',
-    headers: davHeaders(conn, {}),
+    headers: davHeaders(conn, state.etag ? { 'If-Match': quoteEtag(state.etag) } : {}),
     signal: AbortSignal.timeout(30000),
     redirect: 'error',
   }));
+  if (response.status === 412) {
+    throw Object.assign(new Error(`"${path}" changed in storage before it could be deleted; refresh and try again`), { status: 409, code: 'changed' });
+  }
   if (response.status === 404) return { path, missing: true };
   if (!response.ok) {
     throw Object.assign(new Error(`could not delete "${path}" (${response.status})`), { status: 502 });
@@ -589,7 +594,9 @@ async function fileVersion(conn, rawPath) {
   const body = await response.text();
   const block = firstElementText(body, 'response');
   if (!block) throw Object.assign(new Error('storage returned no file state'), { status: 502 });
-  if (/<(?:[a-zA-Z0-9]+:)?collection\s*\/?>/.test(block)) throw Object.assign(new Error(`"${path}" is a folder in storage`), { status: 409, code: 'folder' });
+  // Attributes on the element (`<d:collection xmlns:d="DAV:"/>`) still mean a folder. Bounded,
+  // so a hostile body of unterminated `<collection ` tags stays linear to scan.
+  if (/<(?:[a-zA-Z0-9]+:)?collection(?:\s[^>]{0,64})?\/?>/.test(block)) throw Object.assign(new Error(`"${path}" is a folder in storage`), { status: 409, code: 'folder' });
   const etag = (firstElementText(block, 'getetag') || '').trim()
     .replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   return { exists: true, etag: /[\r\n]/.test(etag) ? '' : etag };

@@ -304,3 +304,33 @@ test('#782: a row whose stored key could not be decrypted is listed for re-entry
   assert.equal(reply.body.keyUnreadable, undefined);
   assert.equal(f.mine().keyUnreadable, undefined);
 });
+
+test('#782: an unreadable key stays with its origin; moving the row elsewhere without a new key forgets it', async (t) => {
+  const s = realStack(t);
+  const { createSecretStore } = require('../secrets.cjs');
+  const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-other-key-'));
+  const unreadable = createSecretStore(otherDir).encrypt('sk-synthetic-lost');
+  fs.rmSync(otherDir, { recursive: true, force: true });
+  const dir = s.ws().dir;
+  s.reload();
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({ providers: [
+    { id: 'mine-lost', label: 'Lost', baseUrl: 'https://lost.example/v1', apiKey: unreadable },
+  ] }));
+  const stored = () => JSON.parse(fs.readFileSync(path.join(dir, 'providers.json'), 'utf8')).providers.find((p) => p.id === 'mine-lost');
+
+  // Same origin, no key typed: the ciphertext is kept for a later key restore.
+  await s.call('PUT', '/api/providers/mine-lost', { label: 'Lost (renamed)', baseUrl: 'https://lost.example/v2' }, 'member');
+  assert.equal(s.sent.pop().status, 200);
+  assert.equal(stored().apiKey, unreadable);
+
+  // Another origin, no key typed: the old ciphertext must not follow the address.
+  await s.call('PUT', '/api/providers/mine-lost', { label: 'Moved', baseUrl: 'https://elsewhere.example/v1' }, 'member');
+  const reply = s.sent.pop();
+  assert.equal(reply.status, 200);
+  assert.equal(reply.body.keyUnreadable, undefined);
+  assert.notEqual(stored().apiKey, unreadable);
+  s.reload();
+  const row = s.ws().providers.find((p) => p.id === 'mine-lost');
+  assert.equal(row.apiKey, '');
+  assert.equal(row.keyUnreadable, undefined, 'the moved row holds an empty, readable key');
+});

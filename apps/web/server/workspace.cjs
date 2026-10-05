@@ -33,7 +33,9 @@ function openProviderKey(row, secrets) {
   }
 }
 
-/** The on-disk form of a provider row: the key encrypted, or an unreadable key kept as it was. */
+/** The on-disk form of a provider row: the key encrypted, or an unreadable key kept as it was.
+ *  The ciphertext is written back only while the row is still flagged keyUnreadable; a caller
+ *  that clears the flag (a new key, or a move to another origin) gets the key encrypted. */
 function sealProviderRow(row, secrets) {
   const { keyUnreadable, ...rest } = row;
   if (keyUnreadable && !row.apiKey && row[UNREADABLE_CIPHERTEXT]) return { ...rest, apiKey: row[UNREADABLE_CIPHERTEXT] };

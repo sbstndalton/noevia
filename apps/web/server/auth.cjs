@@ -24,7 +24,9 @@ const MAX_PENDING_CHALLENGES = 4096;
 // Registration (signed-in only) has its own, separate budget, so anonymous sign-in
 // challenges filling theirs can never starve a signed-in account adding a passkey (#783).
 const MAX_PENDING_REGISTRATIONS = 256;
-// Anonymous sign-in options per client address per challenge lifetime (#783).
+// Anonymous sign-in options per client address per challenge lifetime (#783). Applied only when
+// the client address is real (trustProxy): behind a proxy without it every browser shares the
+// proxy's address, and a per-address limit would lock everyone out of passkey sign-in.
 const PASSKEY_OPTIONS_PER_ADDRESS = 30;
 
 // Client IP resolution. By default the direct socket address is used.
@@ -372,11 +374,22 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
   // accounts, 'authenticate' rows by anyone, so the two never compete for one table budget.
   const pendingChallengeCount = db.prepare("SELECT count(*) AS n FROM challenges WHERE kind=?");
   const insertChallenge = db.prepare('INSERT INTO challenges(id_hash,user_id,kind,challenge,expires_at) VALUES(?,?,?,?,?)');
+  // Sign-in at capacity evicts the oldest sign-in challenge, anonymous (unknown-username) rows
+  // first, so a flood of anonymous options requests delays nobody's real sign-in for long and
+  // never blocks it outright (#783).
+  const evictOldestSignIn = db.prepare(`DELETE FROM challenges WHERE id_hash=(SELECT id_hash FROM challenges
+    WHERE kind='authenticate' ORDER BY (user_id IS NOT NULL), expires_at LIMIT 1)`);
   const persistChallenge = db.transaction((idHash, userId, kind, challenge, now) => {
     deleteExpiredChallenges.run(now);
-    // Reject new work at capacity instead of invalidating a live passkey ceremony.
-    const cap = kind === 'register' ? MAX_PENDING_REGISTRATIONS : MAX_PENDING_CHALLENGES;
-    if (pendingChallengeCount.get(kind).n >= cap) return false;
+    if (kind === 'authenticate') {
+      while (pendingChallengeCount.get(kind).n >= MAX_PENDING_CHALLENGES) {
+        if (!evictOldestSignIn.run().changes) return false;
+      }
+    } else {
+      // Registration rejects new work at capacity instead of invalidating a live ceremony.
+      const cap = kind === 'register' ? MAX_PENDING_REGISTRATIONS : MAX_PENDING_CHALLENGES;
+      if (pendingChallengeCount.get(kind).n >= cap) return false;
+    }
     insertChallenge.run(idHash, userId, kind, challenge, now + CHALLENGE_MS);
     return true;
   });
@@ -511,11 +524,12 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
       audit('passkey.add', userId, userId, { credentialId: cred.id });
       return { verified: true };
     },
-    /** `req` is the incoming request: anonymous options are limited per client address before
-     *  any lookup or challenge is stored (#783). A caller without a request shares one bucket. */
+    /** `req` is the incoming request. With trustProxy on (a real client address), anonymous
+     *  options are limited per address before any lookup or challenge is stored (#783); without
+     *  it the address is the proxy's, shared by every browser, so only the table's eviction
+     *  bounds a flood. */
     async authenticationOptions(username, req = null) {
-      const address = req ? clientAddress(req, trustProxy) : 'internal';
-      if (rateLimited(`passkey-opt:${address}`, PASSKEY_OPTIONS_PER_ADDRESS, CHALLENGE_MS)) {
+      if (trustProxy && req && rateLimited(`passkey-opt:${clientAddress(req, trustProxy)}`, PASSKEY_OPTIONS_PER_ADDRESS, CHALLENGE_MS)) {
         throw Object.assign(new Error('too many passkey sign-in attempts'), { code: 'RATE_LIMITED' });
       }
       const norm = String(username || '').toLowerCase();

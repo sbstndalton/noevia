@@ -130,6 +130,16 @@ function answerUnhandled(res, err, log = console.error) {
   }
 }
 
+// The request URL, or null when it cannot be parsed (a request target such as `//[` or a
+// malformed Host header). A client error, answered 400 without logging a stack per request.
+function parseRequestUrl(req, base = 'http://localhost') {
+  try { return new URL(req.url, base); } catch { return null; }
+}
+
+function badRequestUrl(res) {
+  return json(res, 400, { error: 'invalid URL' });
+}
+
 // What a failed request tells the client. Only errors that carry a 4xx status were raised
 // on purpose for the client; anything else is an internal fault whose message may leak
 // paths or internals, so the client gets a generic text and the caller logs the real one.
@@ -145,4 +155,4 @@ function authResult(res, result) {
   return json(res, result.status || 200, result.body ?? result);
 }
 
-module.exports = { json, unauthorized, fetchJson, readBody, readJson, authResult, isJsonObject, requireJsonObject, answerUnhandled, errorResponse, DEFAULT_MAX_RESPONSE_BYTES };
+module.exports = { json, unauthorized, fetchJson, readBody, readJson, authResult, isJsonObject, requireJsonObject, answerUnhandled, parseRequestUrl, badRequestUrl, errorResponse, DEFAULT_MAX_RESPONSE_BYTES };

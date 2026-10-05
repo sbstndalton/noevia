@@ -44,7 +44,7 @@ const { createWorkspaceStore } = require('./workspace.cjs');
 const { createSecretStore } = require('./secrets.cjs');
 const { isPublicUrl, createEndpointApproved } = require('./ssrf.cjs');
 // One JSON reply shape, the 401, a bounded body read and the JSON fetch (http.cjs).
-const { json, unauthorized, fetchJson, readBody, readJson, authResult, errorResponse, answerUnhandled } = require('./http.cjs');
+const { json, unauthorized, fetchJson, readBody, readJson, authResult, errorResponse, answerUnhandled, parseRequestUrl, badRequestUrl } = require('./http.cjs');
 
 const PORT = Number(process.env.UI_PORT || 8021);
 const HOST = process.env.UI_HOST || '0.0.0.0';
@@ -946,7 +946,9 @@ async function handleRequestInner(req, res) {
 }
 
 async function handleRequestScoped(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  // A Host header that is not a valid host makes this parse fail even when the path did not.
+  const url = parseRequestUrl(req, `http://${req.headers.host || 'localhost'}`) || parseRequestUrl(req);
+  if (!url) return badRequestUrl(res);
   const p = url.pathname;
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -1030,7 +1032,10 @@ async function handleRequestScoped(req, res) {
 }
 
 async function handleRequest(req,res) {
-  const pathname=new URL(req.url,'http://localhost').pathname;
+  // An unparseable request target (e.g. `//[`) is the client's error: 400, no stack logged.
+  const parsed=parseRequestUrl(req);
+  if(!parsed)return badRequestUrl(res);
+  const pathname=parsed.pathname;
   // This is a browser/core contract marker, including unauthenticated and error
   // responses. Set it before the maintenance gate, which may return early.
   if (pathname.startsWith('/api/')) res.setHeader('X-Noevia-API', '1');

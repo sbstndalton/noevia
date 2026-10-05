@@ -249,6 +249,9 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
         capabilities = parsed.value;
       }
       // Validated in full before anything changes, so a refusal leaves the row as it was.
+      // A key that could not be decrypted (#782) is kept for its own origin only: moving the row
+      // elsewhere without a new key forgets it, so the old ciphertext never follows the address.
+      if (!newKey && row.keyUnreadable && originOf(baseUrl) !== originOf(row.baseUrl)) delete row.keyUnreadable;
       row.label = label;
       row.baseUrl = baseUrl;
       if (newKey) { row.apiKey = newKey; delete row.keyUnreadable; }

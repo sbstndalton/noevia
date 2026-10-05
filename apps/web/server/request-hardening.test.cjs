@@ -155,3 +155,19 @@ test('#786: a stored upload whose original file is gone from disk is a 404', asy
   assert.equal(missing.status, 404, missing.text);
   assert.deepEqual(missing.json, { error: 'No such original' });
 });
+
+test('L3: an unparseable request target is a 400 without a logged stack; a malformed Host header still routes', async () => {
+  const realError = console.error;
+  const logged = [];
+  console.error = (...args) => { logged.push(args); };
+  try {
+    for (const target of ['//[', 'http://[', '//a b']) {
+      const res = await request(target);
+      assert.equal(res.status, 400, target);
+      assert.deepEqual(res.json, { error: 'invalid URL' });
+    }
+    const badHost = await request('/api/setup/status', { headers: { host: 'a b[' } });
+    assert.equal(badHost.status, 200, 'the path alone is enough to route');
+  } finally { console.error = realError; }
+  assert.deepEqual(logged, [], 'no stack is logged for a client error');
+});
