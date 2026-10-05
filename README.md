@@ -141,6 +141,11 @@ make build
 make compose-check
 ```
 
+`make test` runs the web, Diary, Docling, model-manager, OCR, Laya, code-sandbox, deploy-tooling
+and repo-tool suites (the Python ones need `pytest`; the model manager also needs
+`pip install -r services/model-manager/requirements.txt pytest-asyncio`).
+`make compose-check` validates every Compose file against `.env.example` and needs only Docker.
+
 The web app can also be run from `apps/web` with `npm run dev`; Diary Companion can be run from `services/diary` with `uvicorn agent.app:app --reload`.
 
 ## Unraid Compose Manager

@@ -86,7 +86,7 @@ web-only.
   (at the #99 merge); model-manager pytest 72; all required CI checks green on every merged PR (five always run; the offline-contract check runs only when its paths change). Browser QA
   records below describe their own dated runs.
 - **Deploy:** full releases use `deploy/examples/overlay-release.sh OLD NEW` after a verified
-  appdata backup; it keeps the sidecars running itself. Web-only releases: `git archive <sha>` →
+  appdata backup; it recreates Diary and OCR (it is not web-only). Web-only releases: `git archive <sha>` →
   scp → build `cowork-web:<sha>` → `tools/preflight/up.sh … web` run from the Compose project
   folder; tags are commit SHAs; rollback is the previous release symlink plus the `.env` backup.
   Runbook: [deployment.md](deployment.md).
