@@ -64,6 +64,9 @@ class ShaValidation(unittest.TestCase):
             self.assertLess(probe, text.index(change), change)
 
 
+ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90' * 2
+
+
 class ContainerId(unittest.TestCase):
     """Run the `container-id` block of overlay-release.sh against a fake `docker` on PATH."""
 
@@ -83,9 +86,24 @@ class ContainerId(unittest.TestCase):
                                   capture_output=True, text=True, timeout=30)
 
     def test_returns_the_id_of_an_existing_container(self):
-        result = self.probe('echo sha256:abc123')
+        result = self.probe(f'echo {ID}')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('ID=[sha256:abc123]', result.stdout)
+        self.assertIn(f'ID=[{ID}]', result.stdout)
+
+    def test_a_cli_warning_next_to_the_id_is_not_part_of_the_id(self):
+        result = self.probe(f'echo "WARNING: a deprecated flag" >&2; echo {ID}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f'ID=[{ID}]', result.stdout)
+
+    def test_unexpected_success_output_stops_the_release_and_is_reported(self):
+        for body in ['echo sha256:abc123', 'echo "WARNING: only a warning"', 'echo ' + ID.upper(), 'echo ' + ID[:-1],
+                     f'echo {ID}; echo {ID[::-1]}', 'true']:
+            with self.subTest(body=body):
+                result = self.probe(body)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('unexpected output', result.stderr)
+                self.assertIn('not deploying', result.stderr)
+                self.assertNotIn('ID=[', result.stdout)
 
     def test_a_missing_container_is_absent_not_an_error(self):
         for message in ['Error: No such object: cowork-llama-1', 'Error response from daemon: No such container: cowork-llama-1']:
