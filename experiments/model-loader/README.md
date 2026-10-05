@@ -50,7 +50,7 @@ to production by this experiment.
 - llama.cpp Vulkan image pinned in `compose.daserver.yaml`; build 10920,
   commit `eafe15a5e`. Production Lemonade 10.8.0 uses llama.cpp build 9632.
 - Server directory: `/mnt/docker/appdata/model-loader-test`.
-- Model Loader UI: `http://10.69.0.130:8092`.
+- Model Loader: `http://10.69.0.130:8092` (JSON API under `/api/v1` only, with the token header; the browser UI this experiment used was removed in #806, so a rebuilt image serves no pages).
 - Test inference: `http://10.69.0.130:8082/v1`, when its container is running.
 - Existing model bytes are mounted read-only. Configuration and database are
   independent. No OpenWebUI database is mounted and no public tunnel is added.
