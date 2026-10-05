@@ -9,8 +9,8 @@
 //     node qa/chat-framing-destination-810.cjs
 //
 // Walks: a suggestion naming an archived project, a Code-only project and a Cowork-only project
-// shows no project chip, and auto-accept keeps the chat where it is (a free chat, frame saved in
-// place). A suggestion naming a Chat-mode project still shows it and auto-accept still moves there.
+// shows no project chip and is not offered in the Edit picker, and auto-accept keeps the chat where
+// it is (a free chat, frame saved in place). A suggestion naming a Chat-mode project still shows it and auto-accept still moves there.
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('node:assert/strict');
 const { createFixture } = require('./diary-fixture.cjs');
@@ -106,6 +106,12 @@ function backend({ suggestProject, autoAccept = false }) {
         await row.waitFor({ timeout: 5000 });
         await row.getByText('#synthetic', { exact: true }).waitFor();
         assert.equal(await row.getByText(name, { exact: true }).count(), 0, `${id}: no project chip`);
+        // The Edit picker offers only projects a chat can live in.
+        await row.getByRole('button', { name: 'Edit frame' }).click();
+        const options = await row.locator('select option').allTextContents();
+        assert.ok(options.includes('Synthetic chat project'), `${id}: picker offers the Chat-mode project`);
+        for (const hidden of ['Synthetic archived project', 'Synthetic code project', 'Synthetic cowork project']) assert.ok(!options.includes(hidden), `${id}: picker hides ${hidden}`);
+        await row.getByRole('button', { name: 'Edit frame' }).click();
         await row.getByRole('button', { name: 'Accept frame' }).click();
         await row.waitFor({ state: 'detached', timeout: 5000 });
         assert.equal(b.state.moves.length, 1);

@@ -227,7 +227,8 @@ test('the move never puts a chat into a Code-only or archived project; moving ou
 
 test('a malformed chat id in the URL is a 400, not a server error (#812)', async () => {
   for (const [method, url] of [['POST', '/api/chats/%E0%A4/move'], ['GET', '/api/chats/%E0%A4/history'], ['POST', '/api/chats/%E0%A4/history'],
-    ['GET', '/api/chats/%E0%A4/context-window'], ['DELETE', '/api/freechats/%E0%A4']]) {
+    ['GET', '/api/chats/%E0%A4/context-window'], ['DELETE', '/api/freechats/%E0%A4'], ['DELETE', '/api/projects/%E0%A4/chats/c1'],
+    ['DELETE', '/api/projects/p1/chats/%E0%A4']]) {
     const r = await request(url, { method, headers: mutationHeaders(), body: method === 'GET' || method === 'DELETE' ? '' : JSON.stringify({ projectId: null, history: [] }) });
     assert.equal(r.status, 400, `${method} ${url}`);
     assert.deepEqual(JSON.parse(r.text), { error: 'invalid chat id' });

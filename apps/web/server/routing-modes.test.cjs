@@ -30,10 +30,11 @@ test('preRule: secrets, IBANs and card numbers are flagged; ordinary text is not
 });
 
 test('preRule secret keywords: real values flag, code and placeholders do not (#817)', () => {
+  // The password family keeps the plain-word rule (review of #828); token/secret/api_key need a real-looking value.
   const positives = ['password: "hunter2xyz"', "password = 'Synthetic99'", 'token=abcd1234efgh', 'api_key: Sy7nthetic-Key-0001', 'auth token: zq81-x0p2-ww93',
-    'passwd=S3cretValue', 'secret: `fake-value-9`', 'pin: 4821', 'passcode=00112233', 'PASSWORD : "Synthetic-Pass"', 'access_token=ya29Synthetic01'];
+    'passwd=S3cretValue', 'secret: `fake-value-9`', 'password=hunter2', 'password: letmein', 'password = correct-horse-battery-staple', 'passwd=S3cret', 'pin: 4821', 'passcode=00112233', 'PASSWORD : "Synthetic-Pass"', 'access_token=ya29Synthetic01'];
   const negatives = ['token = getToken()', 'token = fetchToken2(user)', 'a == b', 'token == expected', 'password: null', 'password = None', 'token: undefined',
-    'password: "xxxxxx"', 'password: "******"', 'api_key: "<your-api-key>"', 'token: "${TOKEN}"', 'password = "your-password"', 'password: changeme',
+    'password: "xxxxxx"', 'password: "******"', 'password = user.password', 'password = getPassword()', 'password: <redacted>', 'api_key: "<your-api-key>"', 'token: "${TOKEN}"', 'password = "your-password"', 'password: changeme',
     'secret: "example-secret"', 'token = response.data.token', 'token = this.session.token2', 'token = value2', 'token: abc', 'pwd: /home/synthetic',
     'Token::fromString(x)', 'password = "abc"', 'token = tokenValue', 'pin: 12', 'cd $(pwd)'];
   for (const text of positives) assert.equal(rm.preRule(text), 'secret', text);

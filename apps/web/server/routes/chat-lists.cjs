@@ -33,7 +33,7 @@ const PASS = Symbol('unhandled');
 function createChatListRoutes({ json, readBody, currentWorkspace, PROJECTS, FREE_CHATS, diaryExtras, crypto, STORED_HISTORY_BYTES, STORED_HISTORY_CAP, chatLists, removeChat, store, revokeChatGrant = () => false }) {
   const { sanitizeChats, saveFreeChats, deleteFreeChat, readHistory, writeHistory, moveChat } = store;
   // #812: a malformed percent-escape in the URL is the caller's mistake (400), not a server error.
-  const decodeChatId = (raw) => { try { return decodeURIComponent(raw); } catch { return null; } };
+  const decodeChatId = require('../http.cjs').decodePathPart;
   const badChatId = (res) => json(res, 400, { error: 'invalid chat id' });
 
   // Delete-old-chats sweep (chat-retention.cjs): runs as the user's workspace loads, at most hourly.

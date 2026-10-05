@@ -126,6 +126,7 @@ const SECRET_PATTERNS = [
 // one "=" or ":" that is not "==" or "::", then an optional quote and a bounded value: every part is
 // bounded, so it stays linear (matchAll, non-overlapping). Bare "pwd" (the shell command) is gone.
 const SECRET_ASSIGN_RE = /\b(password|passwort|passwd|passcode|pin|api[ _-]?key|secret|access[ _-]?token|auth[ _-]?token|token)\s{0,8}(?:=(?!=)|:(?!:))\s{0,8}(["'`]?)([^\s"'`;,)]{4,200})/gi;
+const PASSWORD_WORDS = new Set(['password', 'passwort', 'passwd']);
 const NOT_A_VALUE = /^(?:null|none|nil|true|false|undefined)$/i;
 const PLACEHOLDER = /^(?:x+|\*+|\.{3,}|…|<.*>|\$\{.*\}|your.*|changeme|example.*)$/i;
 const MEMBER_ACCESS = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
@@ -140,6 +141,13 @@ function secretAssignment(s) {
     // A PIN is short and all digits; anything else follows the general rule.
     if ((keyword === 'pin' || keyword === 'passcode') && /^\d{4,12}$/.test(value)) return true;
     if (quoted) { if (value.length >= 6 && !PLACEHOLDER.test(value)) return true; continue; }
+    // A password is often a plain word ("letmein", "hunter2"): for the password family an unquoted
+    // value of 6+ characters counts unless it is a placeholder, a call or a member access.
+    if (PASSWORD_WORDS.has(keyword)) {
+      if (value.length >= 6 && !PLACEHOLDER.test(value) && !CALL.test(value) && !MEMBER_ACCESS.test(value)) return true;
+      continue;
+    }
+    // token, secret, API keys: code assigns these all the time, so an unquoted value must look like one.
     if (value.length >= 8 && /\d/.test(value) && !PLACEHOLDER.test(value) && !CALL.test(value) && !MEMBER_ACCESS.test(value) && !CODE_NAME.test(value)) return true;
   }
   return false;

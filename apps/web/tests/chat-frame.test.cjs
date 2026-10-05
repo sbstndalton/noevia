@@ -4,7 +4,7 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript');
 const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 const load = (file) => { const exports = {}; vm.runInNewContext(ts.transpileModule(read(file), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports, require }); return exports; };
-const { startDraft, frameChips, frameDraftReducer, acceptedFrame, acceptPlan, parseTags, cleanTag, MAX_FRAME_TAGS, chatDestinationIds } = load('src/chat-frame.ts');
+const { startDraft, frameChips, frameDraftReducer, acceptedFrame, acceptPlan, parseTags, cleanTag, MAX_FRAME_TAGS, chatDestinationIds, chatDestinations } = load('src/chat-frame.ts');
 
 const projects = [{ id: 'p-trip', name: 'Synthetic trip' }, { id: 'p-work', name: 'Synthetic work' }];
 const suggestion = { projectId: 'p-trip', kind: 'search', tags: ['flights', '#budget'], links: ['c1', 'c2'], confirmed: false, source: 'suggested' };
@@ -96,8 +96,11 @@ test('a suggestion naming a Code-only, Cowork-only or archived project gets no p
     { id: 'p-code', name: 'Code', modes: ['code'] }, { id: 'p-cowork', name: 'Cowork', modes: ['cowork'] }, { id: 'p-old', name: 'Old', modes: ['chat'], archived: true }];
   const ids = chatDestinationIds(mine);
   assert.deepEqual(plain(ids), ['p-chat', 'p-legacy', 'p-empty'], 'absent or empty modes read as Chat, as on the server');
+  assert.deepEqual(plain(chatDestinations(mine).map((p) => p.name)), ['Chat', 'Legacy', 'Empty'], 'the Edit picker list keeps the project objects');
   for (const id of ['p-code', 'p-cowork', 'p-old']) assert.equal(startDraft({ ...suggestion, projectId: id }, ids).frame.projectId, null, id);
   assert.equal(startDraft({ ...suggestion, projectId: 'p-chat' }, ids).frame.projectId, 'p-chat');
   // App.tsx hands startDraft exactly this filter, not every project id.
   assert.match(read('src/App.tsx'), /startDraft\(suggestion, chatDestinationIds\(projectsRef\.current\)\)/);
+  // ...and the Edit picker offers only the same projects.
+  assert.match(read('src/App.tsx'), /<FrameChips draft=\{frameDrafts\[view\.chatId\]\} projects=\{chatDestinations\(projects\)\.map/);
 });
