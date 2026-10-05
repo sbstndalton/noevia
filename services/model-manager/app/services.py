@@ -500,6 +500,8 @@ def _other_models_below(folder: Path, own: set[Path]) -> bool:
         for dirpath, _dirnames, filenames in os.walk(folder, followlinks=False, onerror=_raise):
             here = Path(dirpath)
             nested = here != folder
+            if nested and os.path.ismount(dirpath):
+                return True   # a filesystem mounted inside: rmtree would empty it
             for name in filenames:
                 if not _is_gguf_name(name):
                     continue
@@ -554,14 +556,18 @@ def _delete_hf_snapshot(match: "GgufEntry", repo_dir: str) -> tuple[bool, str, i
             if q.is_symlink() and q not in victim_set:
                 try:
                     in_use.add(q.resolve())
-                except OSError:
+                except (OSError, RuntimeError):   # RuntimeError: a symlink loop before 3.13
                     pass
     freed, removed = 0, []
     try:
+        repo_real = repo.resolve()
         for q in victims:
-            target = q.resolve()
+            try:
+                target = q.resolve()
+            except RuntimeError:   # a symlink loop before 3.13: nothing behind it to free
+                target = None
             if q.is_symlink():
-                if target.is_file() and target not in in_use and repo.resolve() in target.parents:
+                if target is not None and target.is_file() and target not in in_use and repo_real in target.parents:
                     freed += target.stat().st_size
                     target.unlink()
             elif q.is_file():
@@ -588,7 +594,7 @@ def _delete_hf_snapshot(match: "GgufEntry", repo_dir: str) -> tuple[bool, str, i
                     freed += q.stat().st_size
             shutil.rmtree(repo)
             return True, f"deleted {len(removed)} file(s), removed {repo_dir}/", freed
-    except OSError as e:
+    except (OSError, RuntimeError) as e:
         return False, f"failed while deleting {match.display_name}: {e}", freed
     return True, f"deleted {len(removed)} file(s)", freed
 

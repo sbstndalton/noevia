@@ -8,24 +8,34 @@ import pytest
 from app import downloader, hf
 
 PAYLOAD = b"synthetic-gguf-bytes-0123456789"   # 31 bytes, below PARALLEL_MIN_SIZE
+REAL_CLIENT = httpx.AsyncClient
+if_ranges: list = []   # If-Range sent with each ranged request of the last run
 
 
-def _run(monkeypatch, tmp_path, respond, partial: bytes | None = None, total: int = 0):
+VALIDATOR = '"etag-v1"'
+
+
+def _run(monkeypatch, tmp_path, respond, partial: bytes | None = None, total: int = 0,
+         validator: str | None = VALIDATOR):
     seen = []
+    if_ranges.clear()
 
     def wrapped(req):
         seen.append((req.method, req.headers.get("range")))
+        if req.headers.get("range"):
+            if_ranges.append(req.headers.get("if-range"))
         return respond(req)
 
-    real_client = httpx.AsyncClient
     monkeypatch.setattr(downloader.httpx, "AsyncClient",
-                        lambda **kw: real_client(transport=httpx.MockTransport(wrapped), **kw))
+                        lambda **kw: REAL_CLIENT(transport=httpx.MockTransport(wrapped), **kw))
     monkeypatch.setattr(hf, "get_token", lambda: None)
     monkeypatch.setattr(downloader.db, "record_download", lambda **kw: None)
     dest = tmp_path / "model.gguf"
     temp = tmp_path / "model.gguf.download"
     if partial is not None:
         temp.write_bytes(partial)
+        if validator:
+            (tmp_path / "model.gguf.download.validator").write_text(validator)
     job = downloader.DownloadJob("t", "fixture", "model.gguf", "https://example.test/model.gguf", dest, temp, total)
     asyncio.run(downloader.DownloadManager()._run(job))
     return job, seen
@@ -60,6 +70,7 @@ def test_valid_206_resume_appends_the_rest(monkeypatch, tmp_path):
     assert job.status == "done", job.error
     assert job.dest_path.read_bytes() == PAYLOAD
     assert seen[-1] == ("GET", "bytes=10-")
+    assert if_ranges == [VALIDATOR], "a resume names the upload it continues"
 
 
 @pytest.mark.parametrize("content_range", ["bytes 0-30/31", "bytes 12-30/31", "", "garbage"])
@@ -116,17 +127,136 @@ def test_size_known_only_from_the_request_is_still_enforced(monkeypatch, tmp_pat
     assert job.status == "error" and not job.dest_path.exists()
 
 
-def test_416_for_a_complete_partial_installs_it(monkeypatch, tmp_path):
+def test_partial_at_full_size_is_fetched_again_not_trusted(monkeypatch, tmp_path):
+    # A file already the expected size cannot be told apart from a preallocated parallel file.
     def respond(req):
         if req.method == "HEAD":
             return _head(req)
-        return httpx.Response(416, headers={"content-range": f"bytes */{len(PAYLOAD)}"})
-    job, _ = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD)
+        assert "range" not in req.headers
+        return httpx.Response(200, content=PAYLOAD)
+    job, _ = _run(monkeypatch, tmp_path, respond, partial=b"\0" * len(PAYLOAD))
     assert job.status == "done", job.error
     assert job.dest_path.read_bytes() == PAYLOAD
 
 
-def test_416_for_a_stale_partial_starts_over(monkeypatch, tmp_path):
+def test_416_is_never_taken_as_complete(monkeypatch, tmp_path):
+    # Review of #827: a preallocated, mostly-zero file the size of the model, a HEAD that fails
+    # (so the size is unknown up front) and a 416 for the resume must not install anything.
+    def respond(req):
+        if req.method == "HEAD":
+            return httpx.Response(405)
+        return httpx.Response(416, headers={"content-range": f"bytes */{len(PAYLOAD)}"})
+    job, _ = _run(monkeypatch, tmp_path, respond, partial=b"\0" * len(PAYLOAD))
+    assert job.status == "error"
+    assert not job.dest_path.exists()
+
+
+def test_416_restart_fetches_the_real_bytes(monkeypatch, tmp_path):
+    def respond(req):
+        if req.method == "HEAD":
+            return httpx.Response(405)
+        if req.headers.get("range"):
+            return httpx.Response(416, headers={"content-range": f"bytes */{len(PAYLOAD)}"})
+        return httpx.Response(200, content=PAYLOAD)
+    job, seen = _run(monkeypatch, tmp_path, respond, partial=b"\0" * len(PAYLOAD))
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == PAYLOAD
+    assert [r for m, r in seen if m == "GET"] == [f"bytes={len(PAYLOAD)}-", None]
+
+
+def test_failed_parallel_attempt_leaves_no_preallocated_file(monkeypatch, tmp_path):
+    # The parallel path preallocates the whole file; it must be gone after a failure so a
+    # single-stream retry can never resume (or install) it.
+    attempt = {"n": 0}
+
+    def respond(req):
+        if req.method == "HEAD":
+            if attempt["n"] == 0:
+                return httpx.Response(200, headers={"content-length": str(len(PAYLOAD)), "accept-ranges": "bytes"})
+            return httpx.Response(405)
+        if attempt["n"] == 0:
+            return httpx.Response(503)
+        if req.headers.get("range"):
+            return httpx.Response(416, headers={"content-range": f"bytes */{len(PAYLOAD)}"})
+        return httpx.Response(200, content=PAYLOAD)
+    monkeypatch.setattr(downloader, "PARALLEL_MIN_SIZE", 1)
+    monkeypatch.setattr(downloader, "PARALLEL_CHUNKS", 2)
+    first, _ = _run(monkeypatch, tmp_path, respond)
+    assert first.status == "error" and not first.temp_path.exists() and not first.dest_path.exists()
+    attempt["n"] = 1
+    second, seen = _run(monkeypatch, tmp_path, respond)
+    assert second.status == "done", second.error
+    assert second.dest_path.read_bytes() == PAYLOAD
+    assert [r for m, r in seen if m == "GET"] == [None]
+
+
+def test_partial_of_a_replaced_upload_is_not_extended(monkeypatch, tmp_path):
+    # Review of #827: a stale .download of an older upload with the same name. The stored
+    # validator goes out as If-Range; the server sees the file changed and answers 200.
+    new = b"a-newer-upload-of-the-same-name-and-longer"
+
+    def respond(req):
+        if req.method == "HEAD":
+            return httpx.Response(405)
+        if req.headers.get("if-range") == '"etag-v2"':
+            return httpx.Response(206, content=new[10:], headers={"content-range": f"bytes 10-{len(new) - 1}/{len(new)}"})
+        return httpx.Response(200, content=new, headers={"etag": '"etag-v2"'})
+    job, seen = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD[:10])
+    assert ("GET", "bytes=10-") in seen
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == new
+
+
+def test_head_reporting_a_different_validator_skips_the_resume(monkeypatch, tmp_path):
+    new = b"replacement-bytes-0123456789-xyz"
+
+    def respond(req):
+        if req.method == "HEAD":
+            return httpx.Response(200, headers={"content-length": str(len(new)), "etag": '"etag-v2"'})
+        assert "range" not in req.headers
+        return httpx.Response(200, content=new, headers={"etag": '"etag-v2"'})
+    job, _ = _run(monkeypatch, tmp_path, respond, partial=PAYLOAD[:10])
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == new
+
+
+def test_partial_without_a_stored_validator_is_not_resumed(monkeypatch, tmp_path):
+    def respond(req):
+        if req.method == "HEAD":
+            return _head(req)
+        assert "range" not in req.headers
+        return httpx.Response(200, content=PAYLOAD)
+    job, _ = _run(monkeypatch, tmp_path, respond, partial=b"from-an-unknown-upload", validator=None)
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == PAYLOAD
+
+
+def test_validator_is_stored_while_partial_and_removed_once_installed(monkeypatch, tmp_path):
+    def short(req):
+        if req.method == "HEAD":
+            return _head(req)
+        return httpx.Response(200, content=PAYLOAD[:12], headers={"etag": '"etag-v1"', "content-length": "12"})
+    job, _ = _run(monkeypatch, tmp_path, short)
+    sidecar = tmp_path / "model.gguf.download.validator"
+    assert job.status == "error" and sidecar.read_text() == '"etag-v1"'
+
+    def rest(req):
+        if req.method == "HEAD":
+            return httpx.Response(200, headers={"content-length": str(len(PAYLOAD)), "etag": '"etag-v1"'})
+        assert req.headers["range"] == "bytes=12-" and req.headers["if-range"] == '"etag-v1"'
+        return httpx.Response(206, content=PAYLOAD[12:], headers={"content-range": f"bytes 12-{len(PAYLOAD) - 1}/{len(PAYLOAD)}"})
+    job, _ = _run(monkeypatch, tmp_path, rest, partial=None)
+    assert job.status == "done", job.error
+    assert job.dest_path.read_bytes() == PAYLOAD and not sidecar.exists()
+
+
+def test_weak_etag_falls_back_to_last_modified():
+    assert downloader._validator({"etag": 'W/"x"', "last-modified": "Mon, 05 Oct 2026 10:00:00 GMT"}) == "Mon, 05 Oct 2026 10:00:00 GMT"
+    assert downloader._validator({"etag": '"x"', "last-modified": "y"}) == '"x"'
+    assert downloader._validator({}) == ""
+
+
+def test_416_for_a_longer_partial_starts_over(monkeypatch, tmp_path):
     def respond(req):
         if req.method == "HEAD":
             return httpx.Response(405)                        # size unknown up front

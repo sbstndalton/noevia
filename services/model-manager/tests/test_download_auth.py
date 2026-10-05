@@ -44,6 +44,8 @@ def test_download_redirect_headers_and_ranges(monkeypatch, tmp_path, parallel):
                                  tmp_path/'model', tmp_path/'part', 0)
     if not parallel:
         job.temp_path.write_bytes(payload[:3])
+        # A partial is only resumed when it names the upload it came from (If-Range).
+        (tmp_path / 'part.validator').write_text('"etag-1"')
     asyncio.run(downloader.DownloadManager()._stream(job))
     assert job.temp_path.read_bytes() == payload
     assert any(r.method == 'GET' and 'range' in r.headers for r in captured)

@@ -173,6 +173,41 @@ def safe_dest(filename: str) -> Path:
     return settings.models_dir / filename
 
 
+def _validator(headers) -> str:
+    """An If-Range validator for a response: its strong ETag, else Last-Modified, else ''.
+    A weak ETag (W/...) may not be used with If-Range."""
+    etag = (headers.get("etag") or "").strip()
+    if etag and not etag.startswith("W/"):
+        return etag
+    return (headers.get("last-modified") or "").strip()
+
+
+def _validator_path(job: "DownloadJob") -> Path:
+    return job.temp_path.with_name(job.temp_path.name + ".validator")
+
+
+def _read_validator(job: "DownloadJob") -> str:
+    try:
+        return _validator_path(job).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _write_validator(job: "DownloadJob", value: str) -> None:
+    """Remember which upload the partial's bytes belong to; without one it is never resumed."""
+    if value and "\n" not in value and "\r" not in value:
+        _validator_path(job).write_text(value, encoding="utf-8")
+    else:
+        _drop_validator(job)
+
+
+def _drop_validator(job: "DownloadJob") -> None:
+    try:
+        _validator_path(job).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 class DownloadManager:
     def __init__(self) -> None:
         self.jobs: dict[str, DownloadJob] = {}
@@ -241,6 +276,7 @@ class DownloadManager:
                 await self._stream(job)
                 self._verify_size(job)
                 os.replace(job.temp_path, job.dest_path)
+                _drop_validator(job)
                 job.status = "done"
                 job.completed_at = time.time()
         except asyncio.CancelledError:
@@ -251,6 +287,7 @@ class DownloadManager:
                     job.temp_path.unlink()
             except OSError:
                 pass
+            _drop_validator(job)
         except Exception as e:  # noqa: BLE001
             job.status = "error"
             job.error = f"{type(e).__name__}: {e}"
@@ -296,6 +333,7 @@ class DownloadManager:
         total = 0
         accept_ranges = False
         resolved_url = url
+        current = ""
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), follow_redirects=True, event_hooks={"request": [self._authorize_request]}, headers=headers) as head_client:
                 h = await head_client.head(url)
@@ -303,6 +341,7 @@ class DownloadManager:
                     total = int(h.headers.get("content-length") or 0)
                     accept_ranges = h.headers.get("accept-ranges", "").lower() == "bytes"
                     resolved_url = str(h.url)
+                    current = _validator(h.headers)
         except httpx.HTTPError:
             pass  # fall through and try single-stream
 
@@ -313,11 +352,12 @@ class DownloadManager:
         if accept_ranges and total >= PARALLEL_MIN_SIZE and PARALLEL_CHUNKS > 1:
             await self._stream_parallel(job, resolved_url, headers, total)
         else:
-            await self._stream_single(job, url, headers)
+            await self._stream_single(job, url, headers, current)
 
     async def _stream_parallel(self, job: DownloadJob, url: str, headers: dict[str, str], total: int) -> None:
         # A previous parallel attempt may have preallocated the whole file before failing.
         # Start each attempt afresh; file length cannot identify completed ranges.
+        _drop_validator(job)
         with open(job.temp_path, "wb") as f:
             f.truncate(total)
         job.downloaded_bytes = 0
@@ -375,6 +415,12 @@ class DownloadManager:
                     await t
                 except BaseException:
                     pass
+            # The preallocated file is full-size but mostly zeros, and parallel never resumes:
+            # left behind, a later single-stream retry would take it for a complete partial.
+            try:
+                job.temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
             raise
 
     @staticmethod
@@ -394,6 +440,7 @@ class DownloadManager:
                 job.temp_path.unlink()
             except OSError:
                 pass
+            _drop_validator(job)
             raise RuntimeError(f"downloaded file is {size} bytes, expected {job.total_bytes}; discarded it, nothing was installed")
         raise RuntimeError(f"download incomplete: {size} of {job.total_bytes} bytes; nothing was installed (retry to resume)")
 
@@ -401,19 +448,28 @@ class DownloadManager:
         job.downloaded_bytes = 0
         job._speed_samples = [(time.time(), 0)]
 
-    async def _stream_single(self, job: DownloadJob, url: str, headers: dict[str, str]) -> None:
+    async def _stream_single(self, job: DownloadJob, url: str, headers: dict[str, str], current: str = "") -> None:
         # Resume-aware single-stream path (used when the server doesn't support ranges, or the
         # file is small). A partial from an earlier attempt is resumed with a Range request, but
         # only trusted when the server answers 206 for exactly that offset (#799): a 200 means it
         # ignored the Range and is sending the whole file, so the partial is overwritten.
+        #
+        # A partial is only resumed when it is provably the same upload: the validator (strong
+        # ETag, else Last-Modified) its first bytes came with is stored beside it and sent as
+        # If-Range, so a file replaced upstream answers 200 and starts over. No stored validator,
+        # one that disagrees with HEAD, or a partial already at or past the expected size: start
+        # over. (A parallel attempt's preallocated file is never a partial; it is removed on
+        # failure.)
         start = 0
         if job.temp_path.exists():
             start = job.temp_path.stat().st_size
-        if start and job.total_bytes and start > job.total_bytes:
-            start = 0  # a partial larger than the file cannot be resumed
+        stored = _read_validator(job)
+        if start and (not stored or (current and current != stored)
+                      or (job.total_bytes and start >= job.total_bytes)):
+            start = 0
         base_headers = headers
         if start > 0:
-            headers = {**headers, "Range": f"bytes={start}-"}
+            headers = {**headers, "Range": f"bytes={start}-", "If-Range": stored}
         job.downloaded_bytes = start
         job._speed_samples.append((time.time(), job.downloaded_bytes))
 
@@ -421,15 +477,10 @@ class DownloadManager:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, event_hooks={"request": [self._authorize_request]}, headers=headers) as client:
             async with client.stream("GET", url) as resp:
                 if resp.status_code == 416 and start > 0:
-                    # Range starts at or past the end: complete only if the partial is exactly
-                    # the advertised size. Anything else is a stale partial; start over.
-                    m = re.fullmatch(r"bytes \*/(\d+)", resp.headers.get("content-range", "").strip())
-                    size = int(m.group(1)) if m else job.total_bytes
-                    if size and size == start:
-                        job.total_bytes = size
-                        job.downloaded_bytes = start
-                        return
+                    # Range not satisfiable: completeness cannot be proven from a 416, so the
+                    # partial is discarded and the file fetched again from the start.
                     job.temp_path.unlink(missing_ok=True)
+                    _drop_validator(job)
                     self._restart(job)
                     await resp.aclose()
                     return await self._stream_single(job, url, base_headers)
@@ -464,6 +515,7 @@ class DownloadManager:
                     if not job.total_bytes and length:
                         job.total_bytes = length
                     mode = "wb"
+                    _write_validator(job, _validator(resp.headers))
 
                 with open(job.temp_path, mode) as f:
                     async for buf in resp.aiter_bytes(1024 * 1024):

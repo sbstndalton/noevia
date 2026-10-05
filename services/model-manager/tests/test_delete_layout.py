@@ -10,7 +10,7 @@ from conftest import ROOT, _gguf
 from app import services
 
 MODELS = ROOT / "models"
-MADE = ["dl-a", "dl-mnt", "dl-archive", "dl-single", "dl-pair", "models--acme--nested-GGUF",
+MADE = ["dl-nest", "dl-a", "dl-mnt", "dl-archive", "dl-single", "dl-pair", "models--acme--nested-GGUF",
         "models--acme--shared-GGUF", "flat-dl-Q4.gguf", "dl-outside-target.txt"]
 
 
@@ -212,3 +212,49 @@ def test_empty_folders_inside_a_deleted_hf_quant_folder_do_not_block_the_tidy_up
     ok, msg, freed = _delete("models--acme--nested-GGUF/snapshots/rev1/Q4_K_M/only-Q4_K_M.gguf")
     assert ok, msg
     assert not repo.exists() and freed == size
+
+
+def test_filesystem_mounted_inside_a_model_folder_is_never_emptied(monkeypatch):
+    folder = MODELS / "dl-nest"
+    m = _model(folder / "nest-Q4.gguf")
+    inner = folder / "shared-data"
+    inner.mkdir()
+    (inner / "keep.bin").write_bytes(b"k" * 64)
+    real = os.path.ismount
+    monkeypatch.setattr(os.path, "ismount", lambda p: os.path.abspath(p) == str(inner) or real(p))
+    ok, msg, _ = _delete("dl-nest/nest-Q4.gguf")
+    assert ok, msg
+    assert not m.exists() and (inner / "keep.bin").exists()
+
+
+def test_symlink_loop_in_a_hf_snapshot_does_not_crash_the_delete():
+    repo = MODELS / "models--acme--shared-GGUF"
+    blob = _blob(repo, "sha-loop", 600)
+    _link(repo, "rev1/m-Q4_K_M.gguf", blob)
+    snap = repo / "snapshots" / "rev1"
+    os.symlink("loop-b", snap / "loop-a")
+    os.symlink("loop-a", snap / "loop-b")
+    ok, msg, _ = _delete("models--acme--shared-GGUF/snapshots/rev1/m-Q4_K_M.gguf")
+    assert ok, msg
+    assert not repo.exists()
+
+
+def test_symlink_loop_runtime_error_is_handled(monkeypatch):
+    # Python 3.12 raises RuntimeError from Path.resolve() on a loop (3.13 does not); simulate it.
+    from pathlib import Path
+    repo = MODELS / "models--acme--shared-GGUF"
+    blob = _blob(repo, "sha-loop", 600)
+    _link(repo, "rev1/m-Q4_K_M.gguf", blob)
+    snap = repo / "snapshots" / "rev1"
+    os.symlink("loop-b", snap / "loop-a")
+    os.symlink("loop-a", snap / "loop-b")
+    real = Path.resolve
+
+    def resolve(self, strict=False):
+        if self.name.startswith("loop-"):
+            raise RuntimeError(f"Symlink loop from {self}")
+        return real(self, strict)
+    monkeypatch.setattr(Path, "resolve", resolve)
+    ok, msg, freed = _delete("models--acme--shared-GGUF/snapshots/rev1/m-Q4_K_M.gguf")
+    assert ok, msg
+    assert not repo.exists() and freed >= 600
