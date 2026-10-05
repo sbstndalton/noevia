@@ -239,6 +239,7 @@ class DownloadManager:
                 job.status = "downloading"
                 job.started_at = time.time()
                 await self._stream(job)
+                self._verify_size(job)
                 os.replace(job.temp_path, job.dest_path)
                 job.status = "done"
                 job.completed_at = time.time()
@@ -376,11 +377,41 @@ class DownloadManager:
                     pass
             raise
 
+    @staticmethod
+    def _verify_size(job: DownloadJob) -> None:
+        """Refuse to install a file whose size is not the expected one (#799).
+
+        A short file keeps its partial so the next attempt resumes; an oversized one can only be
+        corrupt (e.g. a full body appended to a partial), so it is discarded.
+        """
+        if job.total_bytes <= 0:
+            return  # the server never said how large the file is; nothing to check against
+        size = job.temp_path.stat().st_size
+        if size == job.total_bytes:
+            return
+        if size > job.total_bytes:
+            try:
+                job.temp_path.unlink()
+            except OSError:
+                pass
+            raise RuntimeError(f"downloaded file is {size} bytes, expected {job.total_bytes}; discarded it, nothing was installed")
+        raise RuntimeError(f"download incomplete: {size} of {job.total_bytes} bytes; nothing was installed (retry to resume)")
+
+    def _restart(self, job: DownloadJob) -> None:
+        job.downloaded_bytes = 0
+        job._speed_samples = [(time.time(), 0)]
+
     async def _stream_single(self, job: DownloadJob, url: str, headers: dict[str, str]) -> None:
-        # Original resume-aware single-stream path (used when server doesn't support ranges, or file is small)
+        # Resume-aware single-stream path (used when the server doesn't support ranges, or the
+        # file is small). A partial from an earlier attempt is resumed with a Range request, but
+        # only trusted when the server answers 206 for exactly that offset (#799): a 200 means it
+        # ignored the Range and is sending the whole file, so the partial is overwritten.
         start = 0
         if job.temp_path.exists():
             start = job.temp_path.stat().st_size
+        if start and job.total_bytes and start > job.total_bytes:
+            start = 0  # a partial larger than the file cannot be resumed
+        base_headers = headers
         if start > 0:
             headers = {**headers, "Range": f"bytes={start}-"}
         job.downloaded_bytes = start
@@ -390,8 +421,18 @@ class DownloadManager:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, event_hooks={"request": [self._authorize_request]}, headers=headers) as client:
             async with client.stream("GET", url) as resp:
                 if resp.status_code == 416 and start > 0:
-                    job.downloaded_bytes = job.total_bytes or start
-                    return
+                    # Range starts at or past the end: complete only if the partial is exactly
+                    # the advertised size. Anything else is a stale partial; start over.
+                    m = re.fullmatch(r"bytes \*/(\d+)", resp.headers.get("content-range", "").strip())
+                    size = int(m.group(1)) if m else job.total_bytes
+                    if size and size == start:
+                        job.total_bytes = size
+                        job.downloaded_bytes = start
+                        return
+                    job.temp_path.unlink(missing_ok=True)
+                    self._restart(job)
+                    await resp.aclose()
+                    return await self._stream_single(job, url, base_headers)
                 if resp.status_code not in (200, 206):
                     body = ""
                     try:
@@ -400,13 +441,30 @@ class DownloadManager:
                         pass
                     raise RuntimeError(f"HTTP {resp.status_code} from {url}: {body}")
 
-                if not job.total_bytes:
-                    if "content-range" in resp.headers:
-                        job.total_bytes = int(resp.headers["content-range"].split("/")[-1])
-                    else:
-                        job.total_bytes = start + int(resp.headers.get("content-length", "0"))
+                if resp.status_code == 206:
+                    if start == 0:
+                        raise RuntimeError(f"HTTP 206 from {url} for a request without a Range")
+                    m = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+|\*)", resp.headers.get("content-range", "").strip())
+                    if m is None or int(m.group(1)) != start:
+                        raise RuntimeError(f"unexpected Content-Range {resp.headers.get('content-range', '')!r} resuming at byte {start}")
+                    if m.group(3) != "*":
+                        remote_total = int(m.group(3))
+                        if job.total_bytes and remote_total != job.total_bytes:
+                            job.temp_path.unlink(missing_ok=True)
+                            raise RuntimeError(f"the file changed on the server ({remote_total} bytes, expected {job.total_bytes}); discarded the partial download")
+                        job.total_bytes = remote_total
+                    elif not job.total_bytes and resp.headers.get("content-length"):
+                        job.total_bytes = start + int(resp.headers["content-length"])
+                    mode = "ab"
+                else:
+                    # 200: the whole body. Never append it to a partial.
+                    if start:
+                        self._restart(job)
+                    length = int(resp.headers.get("content-length") or 0)
+                    if not job.total_bytes and length:
+                        job.total_bytes = length
+                    mode = "wb"
 
-                mode = "ab" if start else "wb"
                 with open(job.temp_path, mode) as f:
                     async for buf in resp.aiter_bytes(1024 * 1024):
                         if job._cancel.is_set():

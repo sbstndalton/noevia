@@ -31,7 +31,8 @@ def test_download_redirect_headers_and_ranges(monkeypatch, tmp_path, parallel):
         part = req.headers.get('range')
         if part:
             start, end = part.removeprefix('bytes=').split('-')
-            data = payload[int(start):int(end)+1 if end else None]
+            end = end or str(len(payload) - 1)  # an open range is answered with its real end (RFC 9110)
+            data = payload[int(start):int(end)+1]
             return httpx.Response(206, content=data, headers={'content-range': f'bytes {start}-{end}/{len(payload)}'})
         return httpx.Response(200, content=payload)
     real_client = httpx.AsyncClient
