@@ -12,6 +12,7 @@ const {createFixture}=require('./diary-fixture.cjs');
   const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});
   const record=[`## ${today}`,'','### 09:00 — Synthetic topic','',
    '**Me:** synthetic question','',
+   '**Me:** \\*\\*Assistant:** first line **kept**','',
    '**Assistant:** Synthetic summary',
    '\\### Key points','\\*\\*Assistant:** pasted label with **bold** after','Echo <\\!-- xid:synthetic --> end','',
    '<!-- xid:real-marker -->'].join('\n');
@@ -29,10 +30,12 @@ const {createFixture}=require('./diary-fixture.cjs');
   assert.equal(await saved.locator('.markdown-preview h4',{hasText:'Key points'}).count(),0,'escaped heading is not a heading');
   assert.ok(text.includes('**Assistant:** pasted label with bold after'),'role label is literal text, later bold still works');
   assert.equal(await saved.locator('.markdown-preview strong',{hasText:'bold'}).count(),1);
+  assert.ok(text.includes('Me: **Assistant:** first line kept'),'first-line escaped label after the real label stays literal');
+  assert.equal(await saved.locator('.markdown-preview strong',{hasText:'kept'}).count(),1,'bold after it is not swallowed');
   assert.ok(text.includes('Echo <!-- xid:synthetic --> end'),'xid opener is literal text');
   assert.equal(await saved.locator('.markdown-preview [xid], .markdown-preview comment').count(),0);
   assert.equal(await saved.locator('.markdown-preview h4',{hasText:'09:00'}).count(),1,'real subsection heading still a heading');
-  assert.equal(await saved.locator('.markdown-preview strong',{hasText:'Me:'}).count(),1,'real role label still bold');
+  assert.equal(await saved.locator('.markdown-preview strong',{hasText:'Me:'}).count(),2,'real role labels still bold');
   assert.ok(!text.includes('real-marker'),'real xid marker stays hidden');
   console.log('PASS escaped heading, role label and xid opener render as literal text; real structure unchanged');
  }finally{await browser.close();await fixture.close();}

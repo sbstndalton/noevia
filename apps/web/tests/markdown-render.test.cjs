@@ -245,3 +245,31 @@ test('#835: unescaped headings, role labels and comments render exactly as befor
     assert.match(html, /<p>\\#hashtag<\/p>/, 'a backslash before # with no space is not a heading escape');
   });
 });
+
+test('#835: the sidecar escapes a first-line role label after the real label; the escaped label stays literal and does not pair with later bold', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '**Me:** \\*\\*Assistant:** use **this** now');
+    assert.match(html, /<p><strong>Me:<\/strong> \*\*Assistant:\*\* use <strong>this<\/strong> now<\/p>/);
+    const wiki = await renderMarkdown(server, '**Assistant:** \\*\\*Me:** x **y**', { wikiLink: () => undefined });
+    assert.match(wiki, /<p><strong>Assistant:<\/strong> \*\*Me:\*\* x <strong>y<\/strong><\/p>/);
+  });
+});
+
+test('#835: an escaped heading with CRLF line endings is still plain text', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '\\### Key points\r\n\\###\r\nafter');
+    assert.doesNotMatch(html, /<h[1-6]/);
+    assert.match(html, /<p>### Key points\r?<\/p>/);
+    assert.match(html, /<p>###\r?<\/p>/);
+    assert.doesNotMatch(html, /\\/);
+  });
+});
+
+test('#835: an escaped xid opener inside bold or italic text loses its backslash, but a code span is shown verbatim', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '**a <\\!-- b** and *c <\\!-- d* and `e <\\!-- f`');
+    assert.match(html, /<strong>a &lt;!-- b<\/strong>/);
+    assert.match(html, /<em>c &lt;!-- d<\/em>/);
+    assert.match(html, /<code>e &lt;\\!-- f<\/code>/);
+  });
+});
