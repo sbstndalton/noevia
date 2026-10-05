@@ -23,9 +23,9 @@ function fixture(t) {
     authService: auth,
     publicAuthRoutes: new Set(['/api/auth/login/passkey/options']),
   });
-  async function options(username) {
+  async function options(username, address = '203.0.113.12') {
     const req = Readable.from([JSON.stringify({ username })]);
-    Object.assign(req, { method: 'POST', headers: { origin: ORIGIN }, socket: { remoteAddress: '203.0.113.12' } });
+    Object.assign(req, { method: 'POST', headers: { origin: ORIGIN }, socket: { remoteAddress: address } });
     const res = {};
     await routes.open(req, res, { path: '/api/auth/login/passkey/options' });
     return res.result;
@@ -77,17 +77,41 @@ test('concurrent public issuance stops at capacity, preserves old ceremonies, an
   const unknownBlocked = await options('ghost-c');
   assert.deepEqual(knownBlocked, unknownBlocked, 'capacity errors must not reveal whether the username exists');
   assert.deepEqual(knownBlocked, { status: 503, body: { error: 'passkey sign-in is temporarily busy' } });
-  assert.deepEqual(await registration('known-id'), { status: 503, body: { error: 'passkey setup is temporarily busy' } });
-  assert.equal(count(), CAPACITY);
+  // #783: registration has its own budget, so a sign-in table filled by anonymous requests
+  // never blocks a signed-in account adding a passkey.
+  assert.equal((await registration('known-id')).status, 200, 'a full sign-in budget never starves registration');
+  assert.equal(count(), CAPACITY + 1);
 
   await assert.rejects(auth.authenticationVerify({}, {}, { challengeToken: live.body.challengeToken, response: { id: 'no-key' } }),
     /authentication failed/);
-  assert.equal(count(), CAPACITY - 1, 'a presented live token remains redeemable at capacity');
-  assert.equal((await registration('known-id')).status, 200, 'one freed slot permits a new ceremony');
-  assert.equal(count(), CAPACITY);
+  assert.equal(count(), CAPACITY, 'a presented live token remains redeemable at capacity');
+  assert.equal((await options('ghost-freed')).status, 200, 'one freed slot permits a new ceremony');
+  assert.equal(count(), CAPACITY + 1);
 
   auth.db.prepare("UPDATE challenges SET expires_at=0 WHERE id_hash LIKE 'seed-%'").run();
   assert.equal((await options('ghost-next')).status, 200);
   assert.equal(auth.db.prepare('SELECT count(*) AS n FROM challenges WHERE expires_at=0').get().n, 0);
-  assert.equal(count(), 4, 'expired rows are pruned while live sign-in and registration challenges remain');
+  assert.equal(count(), 5, 'expired rows are pruned while live sign-in and registration challenges remain');
+});
+
+test('#783: anonymous passkey options are rate limited per address before any challenge is stored', async (t) => {
+  const { options, count } = fixture(t);
+  for (let i = 0; i < 30; i++) assert.equal((await options(`ghost-${i}`)).status, 200, `request ${i + 1} is within the budget`);
+  assert.equal(count(), 30);
+  const limited = await options('ghost-30');
+  assert.deepEqual(limited, { status: 429, body: { error: 'too many sign-in attempts; try again later' } });
+  assert.equal(count(), 30, 'a limited request stores no challenge');
+  assert.equal((await options('ghost-31', '198.51.100.7')).status, 200, 'another address keeps its own budget');
+});
+
+test('#783: the registration budget is separate and bounded on its own', async (t) => {
+  const { auth, options, registration, count } = fixture(t);
+  const now = Date.now();
+  auth.db.prepare(`INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?)`).run('known-id', 'known', 'known', 'Known', 'member', 'synthetic-unused-hash', 'AQIDBA', now, now);
+  const seed = auth.db.prepare('INSERT INTO challenges(id_hash,user_id,kind,challenge,expires_at) VALUES(?,?,?,?,?)');
+  auth.db.transaction(() => { for (let i = 0; i < 256; i++) seed.run(`reg-${i}`, 'known-id', 'register', `synthetic-${i}`, now + 60_000); })();
+  assert.deepEqual(await registration('known-id'), { status: 503, body: { error: 'passkey setup is temporarily busy' } });
+  assert.equal((await options('known')).status, 200, 'a full registration budget leaves sign-in unaffected');
+  assert.equal(count(), 257);
 });

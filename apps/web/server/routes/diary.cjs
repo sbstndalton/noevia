@@ -11,6 +11,8 @@
 // Each returns true when it handled the request. Blocks keep their original order and an
 // unmatched method falls through as it did inline.
 
+const { requireJsonObject } = require('../http.cjs');
+
 const PASS = Symbol('unhandled');
 
 /**
@@ -29,6 +31,8 @@ const PASS = Symbol('unhandled');
  */
 function createDiaryRoutes({ json, readBody, readJson, fetchJson, DIARY_BASE, authService, currentWorkspace, rateLimited, connectorRate, diaryConnectors, diary, clientAddress = (req) => req.socket?.remoteAddress }) {
   const { diaryHeaders, corpusSource, connectorFiles } = diary;
+  // The connector bodies are JSON objects; `null`, an array or a number is a 400 (#786).
+  const readObject = requireJsonObject(readJson);
   // Older fakes pass only diaryHeaders; fall back to a single send without the 428 retry.
   const diaryFetchJson = diary.diaryFetchJson || ((url, { method = 'GET', body } = {}, timeoutMs) => fetchJson(url, { method, headers: diaryHeaders(method, url, { body }), body }, timeoutMs));
 
@@ -41,7 +45,7 @@ function createDiaryRoutes({ json, readBody, readJson, fetchJson, DIARY_BASE, au
       const token=String(req.headers.authorization||'').replace(/^Bearer /,'');
       const identity=diaryConnectors.verify(token);
       if(!identity)return json(res,401,{error:'Diary connector credential required'});
-      const body=await readJson(req,4*1024*1024);
+      const body=await readObject(req,4*1024*1024);
       const result=await require('../diary-connectors.cjs').operate(identity,body,connectorFiles,()=>!!diaryConnectors.verify(token));
       if(body.action==='write')authService.audit('diary-connector.write',identity.userId,identity.userId,{credentialId:identity.id,path:body.path,bytes:Buffer.byteLength(body.content)});
       return json(res,200,result);
@@ -51,7 +55,7 @@ function createDiaryRoutes({ json, readBody, readJson, fetchJson, DIARY_BASE, au
 
   async function connectors(req, res, { path: p, authn }) {
     if(p==='/api/profile/diary-connectors' && req.method==='GET')return json(res,200,{connectors:diaryConnectors.list(authn.user.id)});
-    if(p==='/api/profile/diary-connectors' && req.method==='POST')return json(res,201,diaryConnectors.create(authn.user.id,(await readJson(req)).name));
+    if(p==='/api/profile/diary-connectors' && req.method==='POST')return json(res,201,diaryConnectors.create(authn.user.id,(await readObject(req)).name));
     const revokeConnector=p.match(/^\/api\/profile\/diary-connectors\/([a-f0-9]{32})$/);
     if(revokeConnector && req.method==='DELETE')return json(res,200,{revoked:diaryConnectors.revoke(authn.user.id,revokeConnector[1])});
     return PASS;

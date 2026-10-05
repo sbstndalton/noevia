@@ -113,6 +113,8 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
       defaultModel: pr.defaultModel || undefined,
       ...(contextTokens ? { contextTokens } : {}),
       ...(Object.keys(capabilities).length ? { capabilities } : {}),
+      // The stored key could not be decrypted on this server (#782): it needs entering again.
+      ...(pr.keyUnreadable ? { keyUnreadable: true } : {}),
       ...(egress.isTrialTermsHost(pr) ? { external: true } : {}),
       ...(chatgpt.isChatGptProvider(pr) ? { kind: chatgpt.KIND, external: true, connection: chatgptOAuth.status(authn?.user?.id).state } : {}),
     };
@@ -175,7 +177,7 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
       }
       const id = `prov-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       PROVIDERS.push({ id, label, baseUrl, apiKey, defaultModel, shared, ...(context.value ? { contextTokens: context.value } : {}), ...(capabilities ? { capabilities } : {}) });
-      if (shared) saveSharedProviders(); else saveProviders();
+      if (shared) saveSharedProviders(id); else saveProviders();
       return json(res, 200, { id, label, baseUrl, defaultModel, apiKeyMasked: maskKey(apiKey), ...(context.value ? { contextTokens: context.value } : {}) });
     }
     if (p === '/api/providers/test' && req.method === 'POST') {
@@ -249,11 +251,11 @@ function createProviderRoutes({ json, readBody, readJson, fetchJson, endpointApp
       // Validated in full before anything changes, so a refusal leaves the row as it was.
       row.label = label;
       row.baseUrl = baseUrl;
-      if (newKey) row.apiKey = newKey;
+      if (newKey) { row.apiKey = newKey; delete row.keyUnreadable; }
       row.defaultModel = defaultModel;
       if (context.value) row.contextTokens = context.value; else delete row.contextTokens;
       if (capabilities) row.capabilities = capabilities; else delete row.capabilities;
-      if (row.shared) saveSharedProviders(); else saveProviders();
+      if (row.shared) saveSharedProviders(row.id); else saveProviders();
       return json(res, 200, listRow(row, authn));
     }
     if (provDel && req.method === 'DELETE') {
