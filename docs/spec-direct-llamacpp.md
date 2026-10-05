@@ -121,7 +121,7 @@ Reproducible local checks:
   services/diary/tests/test_native_router.py`: actual HTTP chat/aux/embedding model
   identity and embedding order. Synthetic strings only; no Diary corpus.
 
-`experiments/direct-llamacpp/router-contract.sh` ran on DaServer against existing
+`experiments/direct-llamacpp/router-contract.sh` (archived; see git history at `8714a4be`) ran on DaServer against existing
 image ID `sha256:9f88885b46c8af0696d02b6d0d93f39cc0d81f29b99fb45030dcaf3a0193e282`.
 The disposable container had no GPU devices or actual model files. It verified
 native listing/can_remove, non-autoloading props, preset-delete refusal, asynchronous

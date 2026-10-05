@@ -178,7 +178,7 @@ tenant), MCP discovery warm-up, calibration/autotune recovery and the model fold
 
 | Concern | Files | State | Crosses a process today? |
 | --- | --- | --- | --- |
-| Chat loop | `chat.cjs` (built by `createChatHandler` in `index.cjs`), `chat-turns.cjs`, `tool-exchange.cjs`, `prompt-framing.cjs` | transcripts via `projects.cjs` `writeHistory` | Yes, outbound only: provider `/v1/chat/completions` (180 s / 300 s `AbortSignal.timeout` in `chat.cjs`), Diary `/v1/chat/completions` stream (`diary-stream.cjs`) |
+| Chat loop | `chat.cjs` (built by `createChatHandler` in `index.cjs`), `tool-exchange.cjs`, `prompt-framing.cjs` | transcripts via `projects.cjs` `writeHistory` | Yes, outbound only: provider `/v1/chat/completions` (180 s / 300 s `AbortSignal.timeout` in `chat.cjs`), Diary `/v1/chat/completions` stream (`diary-stream.cjs`) |
 | Routing | `auto-router.cjs`, `system-one-router.cjs`, `decision-endpoint.cjs`, `decision-settings.cjs` | `decision-log.cjs` in `DATA_DIR` | Laya over `COWORK_DECISION_URL` (1.5 s default deadline, `decision-settings.cjs`) |
 | Approvals | `approvals.cjs` (gate), `routes/approvals.cjs` (decision), waited on in `chat.cjs` | **memory only**; 5 min timeout, 1 h chat-wide TTL | No |
 | Tool policy | `tool-policy.cjs` (allow/ask/block in `cowork.db`), `toolboxes.cjs` (`isWriteTool`, `resolveTools`, `toolCapFor`, `toolTokenBudgetFor`), `toolboxes-permitted.cjs` | `cowork.db` | No |

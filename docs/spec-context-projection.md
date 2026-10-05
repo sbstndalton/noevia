@@ -124,7 +124,7 @@ schema, each tool result), tool sequence, and whether compaction ran. Rank tools
 context consumed; build reducers for the top of that list only.
 
 **Acceptance.** Model-facing tokens drop on the measured fixtures; authoritative results are
-byte-complete; task completion no worse (same fixtures as `experiments/tool-routing/`);
+byte-complete; task completion no worse (same fixtures as `experiments/tool-routing/`, archived; see git history at `0eee673f`);
 fewer or no LLM compaction calls where reduction creates room.
 
 ## 6. Atomic tool-call groups

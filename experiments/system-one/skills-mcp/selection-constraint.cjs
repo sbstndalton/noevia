@@ -9,8 +9,9 @@
 //   reasoningEffortParam   -> reasoning_effort 'low' (when reasoningEffortModels lists the model or is absent)
 // A provider that declares neither receives no extra field, and the caller keeps its tight max_tokens.
 // The feature flag for the production selector stays off; this is only the request shaper.
-const { hasHarmonyReasoning } = require('./sampling-recommendation.cjs');
-const { REJECTED, supportsJsonSchema, constrainedPayload } = require('./plan-constrained-decoding.cjs');
+// Lives beside live.cjs, its only caller (moved from apps/web/server in #846).
+const { hasHarmonyReasoning } = require('../../../apps/web/server/sampling-recommendation.cjs');
+const { REJECTED, supportsJsonSchema, constrainedPayload } = require('../../../apps/web/server/plan-constrained-decoding.cjs');
 
 const SELECTION_MAX_ITEMS = 4; // 1 skill + 3 toolboxes, the contract.cjs bounds
 const SELECTION_MAX_TOKENS = 48; // IDs-only reply (#728): a short array of enum ids, no reasons or scores

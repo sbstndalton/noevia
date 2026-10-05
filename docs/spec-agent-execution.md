@@ -190,7 +190,8 @@ every message.
 
 ### Benchmark design — 2026-09-17 (not run)
 
-Lives beside the tool-routing runner as `experiments/prompt-preparation/`, same conventions:
+Lives as `experiments/prompt-preparation/`, with the conventions of the tool-routing runner (archived;
+see git history at `0eee673f`):
 synthetic fixtures only, explicit endpoint/model flags, credentials only from environment,
 results written as JSON with a README table. Chat and Cowork task classes first; Code waits for
 CodeHarness.
@@ -383,7 +384,8 @@ Added the same day:
 
 Driven through noevia's own modules, unmodified, in the sandbox container against the engine
 (Qwen3.5-4B-Q5_K_M, the `scratch` fixture). Driver and evidence:
-`experiments/acp-spike/contract-v1.mjs`, `contract-v1-opencode-2026-09-17.json`.
+`experiments/acp-spike/contract-v1.mjs`, `contract-v1-opencode-2026-09-17.json` (archived; see git
+history at `cc1bc4a9`).
 
 **The mapping holds.** The agent identified itself (`OpenCode` 1.18.31, protocol 1). Its three
 tool calls classified correctly — two `read` (no approval) and one `edit`, which stopped at the

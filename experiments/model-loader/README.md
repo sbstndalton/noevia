@@ -3,6 +3,11 @@
 Isolated DaServer experiment authorized on 2026-09-12. This is an operator tool,
 not a background job and not a production-provider replacement.
 
+> Archived in #846: the calibration and benchmark scripts (`calibrate.py`,
+> `catalog.py`, `benchmark.py`, `test_calibration.py`) were removed from main; see
+> git history at `84eeb471`. This README and `compose.daserver.yaml` stay
+> (`services/model-manager/tests/test_download_auth.py` reads the Compose file).
+
 ## Current follow-up — 2026-09-13
 
 Production noevia remains `8fa1112`. The guarded Qwen trial passed with 253,944
@@ -97,7 +102,7 @@ generic 8k fallback from being mistaken for that model's real allocation.
 
 ## Running a trial
 
-Run from the trusted operator Mac with SSH access. Export a Model Loader
+Needs the archived scripts (git history at `84eeb471`). Run from the trusted operator Mac with SSH access. Export a Model Loader
 recommendation's `values` as JSON first. Server-side model checksum evidence must
 exist at `results/model-sha256.txt`. Review `HOST`, `ROOT`, `TEST`, `PROD`, device
 paths, memory reserve and compose settings before using this on another host.

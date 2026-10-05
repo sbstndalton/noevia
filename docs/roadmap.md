@@ -272,8 +272,8 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 No production application change. The Skills/MCP offline contract experiment is implemented
 in [draft PR #20](https://github.com/sbstndalton/noevia/pull/20); model quality and production
-adoption remain pending. The first durable-chat slice (research/system-one/15) remains
-an internal, default-off seam.
+adoption remain pending. The first durable-chat slice (research/system-one/15) was never
+enabled and its dormant seam was removed in #846 (git history at `1a3374da`).
 
 ## Next — in order
 

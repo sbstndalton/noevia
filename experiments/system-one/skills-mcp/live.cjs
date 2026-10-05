@@ -18,7 +18,7 @@ const { performance } = require('node:perf_hooks');
 const { run, prepare } = require('./contract.cjs');
 const { embed } = require('./fixtures.cjs');
 const { liveCases, validateLiveCases } = require('./live-fixtures.cjs');
-const { selectionConstraint, requestSelection, selectionCause, compactCandidates, idsToProposal, SELECTION_MAX_TOKENS, SELECTION_LEGACY_MAX_TOKENS } = require('../../../apps/web/server/selection-constraint.cjs');
+const { selectionConstraint, requestSelection, selectionCause, compactCandidates, idsToProposal, SELECTION_MAX_TOKENS, SELECTION_LEGACY_MAX_TOKENS } = require('./selection-constraint.cjs');
 
 // Arm name -> contract mode. 'embedding' is the rules/embedding comparator (keyword stub vectors,
 // the same injected embedder as the offline runner); 'system-one' is bounded model proposals.
