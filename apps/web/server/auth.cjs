@@ -580,7 +580,7 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
     // the account has no usable password and no other passkey. Today every account carries a
     // password hash (setup, invitations and recovery all require one), so this is the invariant that
     // keeps a future password-less account from locking itself out. Throws code LAST_CREDENTIAL;
-    // the route answers 409. Applies to whoever deletes (the owner, or an admin acting for a user).
+    // the route answers 409. Today only the owner's own route calls this; any future caller (an admin acting for a user) inherits the rule.
     deletePasskey(userId, id) {
       const row = db.prepare('SELECT id FROM passkeys WHERE id=? AND user_id=?').get(id, userId);
       if (!row) return false;
