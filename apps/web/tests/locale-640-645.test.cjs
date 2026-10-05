@@ -169,3 +169,17 @@ test('#640 the real throwers attach the limit, and an English caller still gets 
   await assert.rejects(workspace.scanLocal(root), (e) => e.limit?.code === 'folder' && e.limit.params.fileBytes === 512 * 1024 && /512 KiB per file/.test(e.message));
   await assert.rejects(workspace.saveLocal({}, 'a.md', 'é'.repeat(300 * 1024), null), (e) => e.limit?.code === 'fileTooLarge' && /512 KiB editor limit/.test(e.message));
 });
+
+// ── #849: a refused storage login in the Diary banner ───────────────────────────────────────────────
+test('#849 a Diary request the server tagged storageLoginRejected reads as that in every language, never as a class name', () => {
+  const refused = Object.assign(new Error('Storage login rejected. Check your storage credentials in Settings → Diary & storage.'), { name: 'DiaryRequestError', status: 424, code: 'storageLoginRejected' });
+  assert.equal(diaryErrorText(tFor('en-GB'), refused, 'en-GB'), 'Storage login rejected. Check your storage credentials in Settings → Diary & storage.');
+  for (const locale of LOCALES) {
+    const text = diaryErrorText(tFor(locale), refused, locale);
+    assert.equal(text, tFor(locale)('storage.refreshLoginRejected'), locale);
+    assert.notEqual(text, tFor('en-GB')('storage.refreshLoginRejected'), `${locale} is translated`);
+  }
+  // Another failure keeps its message without the "DiaryRequestError:" prefix String(error) would add.
+  const other = Object.assign(new Error('Diary storage request failed'), { name: 'DiaryRequestError', status: 500 });
+  assert.equal(diaryErrorText(tFor('en-GB'), other, 'en-GB'), 'Diary storage request failed');
+});
