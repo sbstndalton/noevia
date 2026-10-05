@@ -568,9 +568,15 @@ def _delete_hf_snapshot(match: "GgufEntry", repo_dir: str) -> tuple[bool, str, i
                 freed += q.stat().st_size
             q.unlink()
             removed.append(q.name)
-        # Tidy empty folders from the model's folder up to (not including) snapshots/.
+        # Tidy empty folders inside the model's folder, then from it up to (not including)
+        # snapshots/.
+        if folder.is_dir():
+            for d in sorted((d for d in folder.rglob("*") if d.is_dir() and not d.is_symlink()),
+                            key=lambda d: len(d.parts), reverse=True):
+                if not any(d.iterdir()) and not _protected_dir(d):
+                    d.rmdir()
         here = folder
-        while here != snaps and snaps in here.parents:
+        while here != snaps and snaps in here.parents and not _protected_dir(here):
             if here.is_dir() and not any(here.iterdir()):
                 here.rmdir()
                 here = here.parent

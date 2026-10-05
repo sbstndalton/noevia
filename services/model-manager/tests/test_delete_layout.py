@@ -201,3 +201,14 @@ def test_hf_link_pointing_outside_the_repo_never_deletes_its_target():
     ok, msg, _ = _delete("models--acme--shared-GGUF/snapshots/rev1/sub/m-Q4_K_M.gguf")
     assert ok, msg
     assert outside.exists() and not repo.exists()
+
+
+def test_empty_folders_inside_a_deleted_hf_quant_folder_do_not_block_the_tidy_up():
+    repo = MODELS / "models--acme--nested-GGUF"
+    blob = _blob(repo, "sha-only", 800)
+    _link(repo, "rev1/Q4_K_M/only-Q4_K_M.gguf", blob)
+    (repo / "snapshots" / "rev1" / "Q4_K_M" / "empty" / "deeper").mkdir(parents=True)
+    size = blob.stat().st_size
+    ok, msg, freed = _delete("models--acme--nested-GGUF/snapshots/rev1/Q4_K_M/only-Q4_K_M.gguf")
+    assert ok, msg
+    assert not repo.exists() and freed == size
