@@ -150,6 +150,9 @@ function buildList(items: ListLine[], pos: number, indent: number, inline: (line
   return [node, i];
 }
 
+const ESCAPED_HEADING_LINE = /^\\#{1,6}(?:[ \t]|$)/;
+const ESCAPED_ROLE_LABEL = /^\\\*\\\*((?:Me|Assistant|Claude):\*\*)/;
+
 export function MarkdownPreview({ text, internalLink, wikiLink, properties = false }: {
   text: string;
   internalLink?: (href: string) => (() => void) | undefined;
@@ -168,8 +171,12 @@ export function MarkdownPreview({ text, internalLink, wikiLink, properties = fal
   // ")" and truncated the href mid-URL.
   const inline = (line: string) =>
     line.split(wikiLink
-      ? /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`|\[\[[^\[\]\n]*\]\]|!\[[^\]]*\]\((?:[^()\s]|\([^()\s]*\))+\)|\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+\))/g
-      : /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`|!\[[^\]]*\]\((?:[^()\s]|\([^()\s]*\))+\)|\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+\))/g).map((part, i) => {
+      ? /(\\\*\\\*|<\\!--|\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`|\[\[[^\[\]\n]*\]\]|!\[[^\]]*\]\((?:[^()\s]|\([^()\s]*\))+\)|\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+\))/g
+      : /(\\\*\\\*|<\\!--|\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`|!\[[^\]]*\]\((?:[^()\s]|\([^()\s]*\))+\)|\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+\))/g).map((part, i) => {
+      // Escapes the Diary sidecar writes inside saved prose so it cannot become entry structure
+      // (#803): `\*\*` and `<\!--` show as the literal characters. Plain text only, never HTML (#835).
+      if (part === '\\*\\*') return '**';
+      if (part === '<\\!--') return '<!--';
       if (part.startsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
       // Checked before the plain-link branch below: `![alt](src)` contains `[alt](src)` as a
       // substring, so without its own branch the leading "!" leaked as stray text while the rest
@@ -315,6 +322,11 @@ export function MarkdownPreview({ text, internalLink, wikiLink, properties = fal
       continue;
     }
     if (/^(\s*[-*_]){3,}\s*$/.test(line)) { out.push(<hr key={i} />); continue; }
+    // #835: a line the Diary sidecar escaped. `\###` is a literal heading marker, not a heading,
+    // and `\*\*Me:**` is a literal role label (its closing `**` must not pair with a later one).
+    if (ESCAPED_HEADING_LINE.test(line)) { out.push(<p key={i}>{inline(line.slice(1))}</p>); continue; }
+    const escapedLabel = ESCAPED_ROLE_LABEL.exec(line);
+    if (escapedLabel) { out.push(<p key={i}>{`**${escapedLabel[1]}`}{inline(line.slice(escapedLabel[0].length))}</p>); continue; }
     out.push(line.trim() ? <p key={i}>{inline(line)}</p> : <div className="md-space" key={i} />);
   }
 

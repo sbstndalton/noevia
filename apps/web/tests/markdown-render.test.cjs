@@ -200,3 +200,48 @@ test('#431: the Copy action still copies raw Markdown, not the rendered list HTM
   // established, now re-checked so #431's rewrite of the list branches did not disturb it.
   assert.match(src, /navigator\.clipboard\?\.writeText\(content\)/, 'Copy must still hand the raw message content to the clipboard, never the rendered list HTML');
 });
+
+// #835: the Diary sidecar (#803/#830) escapes structure-looking lines inside saved prose. The
+// preview must show the original characters as plain text and never interpret them as HTML.
+test('#835: an escaped heading line renders as plain text without the backslash, not as a heading', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '\\### Key points\n\\# Top\n\\###### Deep\n\\###');
+    assert.match(html, /<p>### Key points<\/p>/);
+    assert.match(html, /<p># Top<\/p>/);
+    assert.match(html, /<p>###### Deep<\/p>/);
+    assert.match(html, /<p>###<\/p>/);
+    assert.doesNotMatch(html, /<h[1-6]/);
+    assert.doesNotMatch(html, /\\/, 'no backslash may reach the page');
+  });
+});
+
+test('#835: escaped role labels render as literal asterisks (not bold), and a later ** on the line cannot pair with them', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '\\*\\*Me:** hello\n\\*\\*Assistant:** use **this** now\n\\*\\*Claude:** a **b');
+    assert.match(html, /<p>\*\*Me:\*\* hello<\/p>/);
+    assert.match(html, /<p>\*\*Assistant:\*\* use <strong>this<\/strong> now<\/p>/);
+    assert.match(html, /<p>\*\*Claude:\*\* a \*\*b<\/p>/);
+    assert.doesNotMatch(html, /\\/);
+  });
+});
+
+test('#835: an escaped xid opener shows as literal <!-- text, never as HTML or a stripped comment', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, 'Echoed <\\!-- xid:abc123 --> in prose');
+    assert.match(html, /<p>Echoed &lt;!-- xid:abc123 --&gt; in prose<\/p>/);
+    assert.doesNotMatch(html, /<!--/, 'no real HTML comment may be emitted');
+    const wiki = await renderMarkdown(server, '<\\!-- xid:z -->', { wikiLink: () => undefined });
+    assert.match(wiki, /<p>&lt;!-- xid:z --&gt;<\/p>/);
+  });
+});
+
+test('#835: unescaped headings, role labels and comments render exactly as before', async () => {
+  await withSsr(async (server) => {
+    const html = await renderMarkdown(server, '### Real heading\n**Me:** hello\n<!-- xid:1 -->\nvalue \\* kept\n\\#hashtag');
+    assert.match(html, /<h4>Real heading<\/h4>/);
+    assert.match(html, /<p><strong>Me:<\/strong> hello<\/p>/);
+    assert.doesNotMatch(html, /xid/, 'a real xid comment stays hidden');
+    assert.match(html, /<p>value \\\* kept<\/p>/, 'other backslashes are untouched');
+    assert.match(html, /<p>\\#hashtag<\/p>/, 'a backslash before # with no space is not a heading escape');
+  });
+});
