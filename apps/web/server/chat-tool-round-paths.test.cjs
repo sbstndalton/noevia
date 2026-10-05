@@ -1,5 +1,5 @@
 'use strict';
-// The chat loop's tool-round paths as production runs them (no durable-turn recorder; #809 removed
+// The chat loop's tool-round paths as production runs them (no durable-turn recorder; #846 removed
 // that dormant seam). Every assertion here held before the removal, with the seam not wired, and
 // still holds after it. Synthetic provider, tool and approval gate only.
 const test = require('node:test'), assert = require('node:assert/strict');

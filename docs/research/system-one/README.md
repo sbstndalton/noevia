@@ -9,7 +9,7 @@ Current implementation follow-up: [adapter cutoff and conditional bounds](14-ada
 (local source verified; not deployed). Historical research status below predates implementation.
 
 Durability follow-up: [first internal durable-chat slice](15-durable-chat-slice.md)
-(never enabled; the dormant seam was removed in #809, see git history at `1a3374da`).
+(never enabled; the dormant seam was removed in #846, see git history at `1a3374da`).
 
 Current experimental UI follow-up: [opt-in routing switch](16-experimental-routing.md)
 (local source only; baseline, not a selected dedicated System-One model).

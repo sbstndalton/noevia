@@ -333,7 +333,7 @@ actions.
 
 The production-dormant durable-turn seam (`chat-turns.cjs`, whose checkpoint
 recorded the pin and every loaded Skill and whose `resumeGeneration` refused a
-continuation unless each exact version was still enabled) was removed in #809;
+continuation unless each exact version was still enabled) was removed in #846;
 see git history at `1a3374da`. `instruction-skills.cjs` `pinActive` remains the
 check any future continuation must apply to every Skill a turn loaded.
 

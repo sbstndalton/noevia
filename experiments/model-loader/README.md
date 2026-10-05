@@ -3,7 +3,7 @@
 Isolated DaServer experiment authorized on 2026-09-12. This is an operator tool,
 not a background job and not a production-provider replacement.
 
-> Archived in #808: the calibration and benchmark scripts (`calibrate.py`,
+> Archived in #846: the calibration and benchmark scripts (`calibrate.py`,
 > `catalog.py`, `benchmark.py`, `test_calibration.py`) were removed from main; see
 > git history at `84eeb471`. This README and `compose.daserver.yaml` stay
 > (`services/model-manager/tests/test_download_auth.py` reads the Compose file).
