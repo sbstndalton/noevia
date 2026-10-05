@@ -569,7 +569,8 @@ function createChatHandler({
           preFlag: settings.mode === 'hybrid' ? (rm.preRule(message) || rm.preRule(attachmentNames.join('\n')) || rm.preRule(sentText)) : null,
           // #779 F1: the router reads bounded chunks sized to the decision service's real budget.
           check: () => routingModes.sensitivity(rm.routerChunks({ message, system: sys, history: mappedHistory, attachments: attachmentNames },
-            { chunkChars: typeof routingModes.chunkChars === 'function' ? routingModes.chunkChars() : undefined })),
+            { chunkChars: typeof routingModes.chunkChars === 'function' ? routingModes.chunkChars() : undefined,
+              maxChunks: typeof routingModes.maxChunks === 'function' ? routingModes.maxChunks() : undefined })),
           ask: async (flag) => {
             if (!routeUserId) return { choice: 'aborted' };
             if (!earlyStream) {

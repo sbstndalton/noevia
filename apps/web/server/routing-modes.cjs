@@ -169,8 +169,22 @@ function hasDiaryContent(history) {
 // not this token budget, so each router input is cut to this conservative size; a smaller
 // backend limit wins (see chunkCharsFor).
 const ROUTER_CHUNK_CHARS = 1000;
-const ROUTER_MAX_CHUNKS = 4;
+// One router call per turn by default: Laya (services/laya/server.py) is a plain single-threaded
+// HTTPServer with one worker, so "parallel" chunk calls queue behind each other. At 0.5-1.4 s per
+// decision against the 1.5 s deadline, 2-4 chunks time out and fail closed on every turn, and the
+// stale queued calls slow the classify call that follows. The single chunk keeps the priority of
+// routerChunks (message first, then the newest history and the context); the deterministic
+// pre-rules still cover the full text. Raise it (1-4) with NOEVIA_ROUTER_CHUNKS only after
+// measuring against a backend that serves decisions concurrently.
+const ROUTER_MAX_CHUNKS = 1;
+const ROUTER_CHUNKS_MAX_SETTING = 4;
 const MAX_CHUNKS_CAP = 8;
+
+/** The admin-set router chunk count (env NOEVIA_ROUTER_CHUNKS), bounded to 1-4, default 1. */
+function routerMaxChunks(env = process.env) {
+  const n = Math.floor(Number(env && env.NOEVIA_ROUTER_CHUNKS));
+  return Number.isFinite(n) && n >= 1 ? Math.min(ROUTER_CHUNKS_MAX_SETTING, n) : ROUTER_MAX_CHUNKS;
+}
 const DIGEST_MAX = ROUTER_CHUNK_CHARS * MAX_CHUNKS_CAP; // hard cap on any one router payload
 const textOf = (content) => (typeof content === 'string' ? content : Array.isArray(content) ? content.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join(' ') : '');
 
@@ -242,9 +256,11 @@ const OPTIONS = Object.freeze([
 
 /**
  * async (chunks) => { flagged, flag }. `chunks` is a string or an array of router inputs (see
- * routerChunks); each is asked in parallel under the same deadline. The turn is flagged when ANY
- * chunk is judged sensitive ('router') or any chunk fails ('unavailable'); an empty input is a
- * failure too. Never throws.
+ * routerChunks); they are asked one after another (the decision service is single-worker) within
+ * ONE shared deadline budget: each call gets what is left, and once the budget is spent no further
+ * chunk is sent and the turn fails closed. The turn is flagged when ANY chunk is judged sensitive
+ * ('router', which also stops further calls) or any chunk fails ('unavailable'); an empty input is
+ * a failure too. Never throws.
  */
 function createSensitivity({ decide, deadlineMs = () => 1500, minConfidence = 0.6, maxChunks = MAX_CHUNKS_CAP, log = () => {} }) {
   async function one(text, deadline) {
@@ -267,8 +283,21 @@ function createSensitivity({ decide, deadlineMs = () => 1500, minConfidence = 0.
     try {
       // One overall deadline as well, so a backend that ignores its own cannot hold the turn.
       let timer;
-      const late = new Promise((resolve) => { timer = setTimeout(() => resolve(list.map(() => 'unavailable')), deadline + 250); });
-      verdicts = list.length ? await Promise.race([Promise.all(list.map((t) => one(t, deadline))), late]) : ['unavailable'];
+      const late = new Promise((resolve) => { timer = setTimeout(() => resolve(['unavailable']), deadline + 250); });
+      const run = async () => {
+        if (!list.length) return ['unavailable'];
+        const out = [];
+        const start = Date.now();
+        for (const t of list) {
+          const left = deadline - (Date.now() - start);
+          if (left < 50) { out.push('unavailable'); break; } // budget spent: send nothing more
+          const v = await one(t, left);
+          out.push(v);
+          if (v === 'router') break;
+        }
+        return out;
+      };
+      verdicts = await Promise.race([run(), late]);
       clearTimeout(timer);
     } catch { verdicts = ['unavailable']; }
     const flag = verdicts.includes('router') ? 'router' : verdicts.includes('unavailable') ? 'unavailable' : null;
@@ -316,4 +345,4 @@ function cloudModel(cloud, role) {
 }
 
 module.exports = { MODES, WHEN_SENSITIVE, REASONS, FLAGS, OPTIONS, FILE, ALLOWED_KEY, normalize, read, write, validate, allowedModes, setAllowedModes,
-  effectiveMode, preRule, hasDiaryContent, digest, routerChunks, chunkCharsFor, ROUTER_CHUNK_CHARS, ROUTER_MAX_CHUNKS, createSensitivity, resolveRoute, chatFlags, cloudModel, ibanValid, luhn };
+  effectiveMode, preRule, hasDiaryContent, digest, routerChunks, chunkCharsFor, ROUTER_CHUNK_CHARS, ROUTER_MAX_CHUNKS, routerMaxChunks, createSensitivity, resolveRoute, chatFlags, cloudModel, ibanValid, luhn };

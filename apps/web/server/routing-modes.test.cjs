@@ -55,9 +55,21 @@ test('hasDiaryContent: a Diary tool result in the history counts; other tools do
   assert.equal(rm.hasDiaryContent([{ role: 'tool', name: 'tavily_search', content: 'x' }, { role: 'user', content: 'diary_' }]), false);
 });
 
-test('routerChunks: a max-size turn gives at most 4 chunks within the budget, covering every section', () => {
+test('routerChunks: by default a max-size turn is ONE chunk with the message start and the newest history', () => {
   const big = { message: 'M'.repeat(400000), system: 'S'.repeat(400000), history: Array.from({ length: 200 }, (_, i) => ({ role: 'user', content: `h${i} `.repeat(2000) })), attachments: Array.from({ length: 500 }, (_, i) => `file-${i}.pdf`) };
-  const chunks = rm.routerChunks(big);
+  assert.equal(rm.ROUTER_MAX_CHUNKS, 1);
+  const one = rm.routerChunks(big);
+  assert.equal(one.length, 1);
+  assert.ok(one[0].length <= rm.ROUTER_CHUNK_CHARS);
+  assert.ok(one[0].startsWith('Message:\nMMMM'), 'starts with the message');
+  assert.match(one[0], /Recent history \(most recent first\):\nuser: h199 /, 'a slice of the newest history');
+  // The admin setting: NOEVIA_ROUTER_CHUNKS, bounded 1-4, default 1.
+  assert.equal(rm.routerMaxChunks({}), 1);
+  assert.equal(rm.routerMaxChunks({ NOEVIA_ROUTER_CHUNKS: '3' }), 3);
+  assert.equal(rm.routerMaxChunks({ NOEVIA_ROUTER_CHUNKS: '99' }), 4);
+  assert.equal(rm.routerMaxChunks({ NOEVIA_ROUTER_CHUNKS: '0' }), 1);
+  assert.equal(rm.routerMaxChunks({ NOEVIA_ROUTER_CHUNKS: 'x' }), 1);
+  const chunks = rm.routerChunks(big, { maxChunks: 4 });
   assert.ok(chunks.length >= 1 && chunks.length <= 4, String(chunks.length));
   for (const c of chunks) assert.ok(c.length <= rm.ROUTER_CHUNK_CHARS, String(c.length));
   const all = chunks.join('');
@@ -75,7 +87,27 @@ test('routerChunks: a max-size turn gives at most 4 chunks within the budget, co
   assert.ok(rm.routerChunks(big, { maxChunks: 99 }).length <= 8, 'chunk count is capped');
 });
 
-test('sensitivity over chunks: each chunk is asked in parallel; any sensitive or failed chunk flags the turn', async () => {
+test('sensitivity: a default max-size turn makes exactly 1 decide call; setting 3 makes 3', async () => {
+  const big = { message: 'M'.repeat(400000), system: 'S'.repeat(400000), history: Array.from({ length: 200 }, (_, i) => ({ role: 'user', content: `h${i} `.repeat(2000) })) };
+  const calls = [];
+  const check = rm.createSensitivity({ decide: async (r) => { calls.push(r.context.stateText); return { selected: 'not_sensitive', scores: { not_sensitive: 0.9 }, confidence: 0.9 }; } });
+  assert.deepEqual(await check(rm.routerChunks(big, { maxChunks: rm.routerMaxChunks({}) })), { flagged: false, flag: null });
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].startsWith('Message:\nM') && /h199 /.test(calls[0]));
+  calls.length = 0;
+  await check(rm.routerChunks(big, { maxChunks: rm.routerMaxChunks({ NOEVIA_ROUTER_CHUNKS: '3' }) }));
+  assert.equal(calls.length, 3);
+});
+
+test('sensitivity: no further chunk is sent once the deadline budget is spent, and that fails closed', async () => {
+  const calls = [];
+  const check = rm.createSensitivity({ deadlineMs: () => 300, decide: (r) => { calls.push(r.constraints.deadlineMs); return new Promise((res) => setTimeout(() => res({ selected: 'not_sensitive', scores: { not_sensitive: 0.9 }, confidence: 0.9 }), 200)); } });
+  assert.deepEqual(await check(['a', 'b', 'c', 'd']), { flagged: true, flag: 'unavailable' });
+  assert.equal(calls.length, 2, 'the third chunk is never sent');
+  assert.ok(calls[1] < 300, 'the second call only gets what is left');
+});
+
+test('sensitivity over chunks: chunks are asked one at a time; any sensitive or failed chunk flags the turn', async () => {
   const answer = (sel) => ({ selected: sel, scores: { [sel]: 0.9 }, confidence: 0.9 });
   const seen = [];
   const byText = (map) => rm.createSensitivity({ decide: async (r) => { seen.push(r.context.stateText); const v = map(r.context.stateText); if (v instanceof Error) throw v; return answer(v); } });
@@ -84,11 +116,10 @@ test('sensitivity over chunks: each chunk is asked in parallel; any sensitive or
   assert.deepEqual(await byText((t) => (t === 'c' ? 'sensitive' : 'not_sensitive'))(['a', 'b', 'c', 'd']), { flagged: true, flag: 'router' });
   assert.deepEqual(await byText((t) => (t === 'b' ? Error('over budget') : 'not_sensitive'))(['a', 'b', 'c']), { flagged: true, flag: 'unavailable' });
   assert.deepEqual(await byText(() => 'not_sensitive')([]), { flagged: true, flag: 'unavailable' }, 'nothing to ask is not a clear verdict');
-  // Parallel: four slow chunks finish in about one deadline, not four.
-  const started = Date.now();
-  const slow = rm.createSensitivity({ deadlineMs: () => 300, decide: () => new Promise((r) => setTimeout(() => r(answer('not_sensitive')), 150)) });
-  assert.deepEqual(await slow(['a', 'b', 'c', 'd']), { flagged: false, flag: null });
-  assert.ok(Date.now() - started < 450);
+  // Sequential: a sensitive chunk stops the rest.
+  seen.length = 0;
+  assert.deepEqual(await byText((t) => (t === 'a' ? 'sensitive' : 'not_sensitive'))(['a', 'b']), { flagged: true, flag: 'router' });
+  assert.deepEqual(seen, ['a']);
   // A backend that ignores the deadline is cut off by the overall one, and that fails closed.
   const hung = rm.createSensitivity({ deadlineMs: () => 100, decide: () => new Promise(() => {}) });
   assert.deepEqual(await hung(['a']), { flagged: true, flag: 'unavailable' });
@@ -294,7 +325,7 @@ test('hybrid: a huge history cannot push the message past the scan limit; histor
   const r = await run(t, { flag: true, settings: HYBRID, history, message: `pay ${SYN_IBAN}`, answer: { choice: 'local' } });
   assert.equal(r.events.find((e) => e.type === 'route_pending')?.flag, 'iban');
   const clear = await run(t, { flag: true, settings: HYBRID, history, message: 'hello' });
-  assert.ok(clear.sensitivityCalls[0].length <= 4 && clear.sensitivityCalls[0].every((c) => c.length <= rm.ROUTER_CHUNK_CHARS));
+  assert.ok(clear.sensitivityCalls[0].length === 1 && clear.sensitivityCalls[0].every((c) => c.length <= rm.ROUTER_CHUNK_CHARS));
   assert.match(clear.sensitivityCalls[0].join(''), /Recent history/);
 });
 

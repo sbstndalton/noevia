@@ -795,6 +795,8 @@ const { handleChat } = require('./chat.cjs').createChatHandler({
     }),
     // #779: each router input is cut to the decision service's real state budget.
     chunkChars: () => require('./routing-modes.cjs').chunkCharsFor(decisionSettings.backend()),
+    // Router calls per turn: 1 by default (Laya is single-worker), NOEVIA_ROUTER_CHUNKS 1-4.
+    maxChunks: () => require('./routing-modes.cjs').routerMaxChunks(),
     awaitChoice: awaitRouteChoice,
     log: (entry) => recordDecision('routing', entry),
     setChatFlags: (projectId, chatId, patch) => {
