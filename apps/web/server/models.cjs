@@ -175,9 +175,10 @@ function createModelService({ fetchJson, env, modelManager, currentWorkspace, li
   async function folderScanFiles() {
     let files = modelScanCache.get('models')?.body?.models;
     if (!Array.isArray(files) && env.MODEL_LOADER_URL) {
+      const generation = modelScanCache.generation(); // a delete while this scan is in flight must win
       const fresh = await fetchJson(`${env.MODEL_LOADER_URL.replace(/\/+$/, '')}/api/v1/models`, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(env.MODEL_LOADER_TOKEN ? { 'X-Model-Loader-Token': env.MODEL_LOADER_TOKEN } : {}) } }, 8000).catch(() => null);
       if (fresh?.ok && fresh.body && typeof fresh.body === 'object') {
-        modelScanCache.set('models', { at: Date.now(), body: fresh.body });
+        modelScanCache.set('models', { at: Date.now(), body: fresh.body }, generation);
         files = fresh.body.models;
       }
     }

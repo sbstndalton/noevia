@@ -278,3 +278,17 @@ test('#796: a scan that resolves after clear() cannot bring a deleted model back
   f.service.modelScanCache.set('models', { body: 'direct' });
   assert.equal(f.service.modelScanCache.get('models').body, 'direct');
 });
+
+test('#796 F2: a folder scan read before a delete cannot be written back after it', async () => {
+  let release, reached;
+  const inFlight = new Promise((resolve) => { reached = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  const f = fixture({ env: { MODEL_LOADER_URL: 'http://loader:9000' }, models: [{ id: 'm', source: 'preset', size: 1 }],
+    fetchJson: async () => { reached(); await gate; return { ok: true, status: 200, body: { models: [{ key: 'deleted.gguf', modelId: 'm' }] } }; } });
+  const scan = f.service.modelsInstalled(); // reads the folder scan for preset rows
+  await inFlight; // the scan request is out
+  f.service.modelScanCache.clear(); // the delete route clears the cache while the scan is in flight
+  release();
+  await scan;
+  assert.equal(f.service.modelScanCache.get('models'), undefined, 'the pre-delete list is not cached');
+});

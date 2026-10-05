@@ -389,6 +389,10 @@ function pruneFileState(key, outcome) {
   fileGenerations.delete(key);
   if (fileVersions.get(key) === null) return;
   if (outcome?.failed) return;
+  // `rag-unavailable` is also what a transient open error (disk full, EACCES, SQLITE_BUSY) returns:
+  // the index may still hold the previous version's chunks, so the wanted version must keep
+  // filtering them. Only when the deps themselves are missing is there no index to protect.
+  if (outcome?.ok === false && ragAvailable()) return;
   fileVersions.delete(key);
 }
 const bumpGeneration = (key) => { const g = (fileGenerations.get(key) || 0) + 1; fileGenerations.set(key, g); return g; };
@@ -508,9 +512,14 @@ function deleteProjectFile(projectId, fileName, userId) {
   // remaining chunk of this file is filtered out of search.
   fileVersions.set(key, null);
   const index = openIndex(projectId, userId);
-  if (!index) { // no index to read: no chunk can need filtering
-    fileVersions.delete(key);
-    if (!fileQueues.has(key)) fileGenerations.delete(key);
+  if (!index) {
+    // Without the deps there is no index to read, so no chunk can need filtering. With them, the
+    // open failed transiently (disk full, EACCES, SQLITE_BUSY) and the rows were NOT dropped: the
+    // null version must stay so they remain filtered out of search.
+    if (!ragAvailable()) {
+      fileVersions.delete(key);
+      if (!fileQueues.has(key)) fileGenerations.delete(key);
+    }
     return;
   }
   try {

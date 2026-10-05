@@ -312,12 +312,14 @@ test('only a failed deep-research job that still holds its result accepts a late
   try {
     const jobs = createJobs({ dir });
     const fail = (kind, result) => jobs.run(jobs.create({ kind }), async () => { throw Object.assign(Error('save failed'), { result }); });
-    const research = await fail('deep_research', { markdown: '# r' });
+    const research = await fail('deep_research', { markdown: '# r', sources: [] });
     jobs.append(research.id, 'artifact.created', { name: 'r.md' });
     assert.equal(jobs.get(research.id).status, 'failed');
     assert.deepEqual(jobs.get(research.id).artifacts, [{ name: 'r.md' }]);
     const bare = await fail('deep_research', null);
     assert.throws(() => jobs.append(bare.id, 'artifact.created', { name: 'x' }), /already finished/);
+    const junk = await fail('deep_research', { status: 500 });
+    assert.throws(() => jobs.append(junk.id, 'artifact.created', { name: 'x' }), /already finished/, 'a result that is not a finished report is refused');
     const other = await fail('source', { x: 1 });
     assert.throws(() => jobs.append(other.id, 'artifact.created', { name: 'x' }), /already finished/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }

@@ -33,6 +33,10 @@ function reportFiles(result, when, taken = () => false) {
   ];
 }
 
+// A failed job's result is whatever the failing code attached; only a finished report (markdown and
+// its sources) can be written out again.
+const hasReport = (r) => typeof r.markdown === 'string' && Array.isArray(r.sources);
+
 /** Public view of a job: no excerpts, bounded markdown. */
 function view(job) {
   if (!job) return null;
@@ -43,7 +47,7 @@ function view(job) {
       citations: r.citations, claims: r.claims || null, webCalls: r.webCalls, markdown: String(r.markdown || '').slice(0, 200000), sources: (r.sources || []).length } : null,
     // A cancelled job with finished sections, or a failed job that still holds its report (the save
     // threw), until the sources file, which is always written last, has been saved.
-    canSavePartial: !!r && ((job.status === 'cancelled' && r.sections > 0) || job.status === 'failed') && !job.artifacts.some((a) => a.name.endsWith('.sources.json')) };
+    canSavePartial: !!r && ((job.status === 'cancelled' && r.sections > 0) || (job.status === 'failed' && hasReport(r))) && !job.artifacts.some((a) => a.name.endsWith('.sources.json')) };
 }
 
 /**

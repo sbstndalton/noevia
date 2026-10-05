@@ -483,3 +483,42 @@ test('#796: per-file generation and version entries are pruned once a file queue
   assert.deepEqual(rag.trackedFileState(), base);
   assert.deepEqual((await rag.searchProject('p-prune', 'quokka', null)).filter((h) => h.file === 'late.txt'), [], 'the deleted file stays gone');
 });
+
+// A transient open error (disk full, EACCES, SQLITE_BUSY) makes openIndex return null although the
+// deps are fine. Simulated by putting a directory where the project's database file belongs.
+function breakIndex(projectId) {
+  const db = path.join(root, 'rag', `${projectId}.db`);
+  fs.renameSync(db, `${db}.keep`);
+  fs.mkdirSync(db);
+  return () => { fs.rmdirSync(db); fs.renameSync(`${db}.keep`, db); };
+}
+
+test('#796 F1: a delete whose index could not be opened keeps the file filtered out of search', async () => {
+  reset();
+  const settle = () => new Promise((r) => setImmediate(r));
+  await rag.indexProjectFile('p-trans-del', 'gone.txt', big('zebra'), null);
+  await rag.indexProjectFile('p-trans-del', 'kept.txt', big('walrus'), null);
+  await settle();
+  const base = rag.trackedFileState();
+  const restore = breakIndex('p-trans-del');
+  rag.deleteProjectFile('p-trans-del', 'gone.txt', null); // the rows are NOT dropped
+  restore();
+  assert.equal(rag.trackedFileState().versions, base.versions + 1, 'the null version marker is kept');
+  assert.deepEqual((await rag.searchProject('p-trans-del', 'zebra', null)).filter((h) => h.file === 'gone.txt'), [], 'the surviving chunks of the removed file stay filtered');
+  assert.ok((await rag.searchProject('p-trans-del', 'walrus', null)).length > 0, 'other files are unaffected');
+});
+
+test('#796 F1: a re-index that could not open the index keeps the previous version filtered', async () => {
+  reset();
+  const settle = () => new Promise((r) => setImmediate(r));
+  await rag.indexProjectFile('p-trans-idx', 'doc.txt', big('zebra'), null);
+  await settle();
+  const base = rag.trackedFileState();
+  const restore = breakIndex('p-trans-idx');
+  const out = await rag.indexProjectFile('p-trans-idx', 'doc.txt', big('walrus'), null);
+  assert.deepEqual(out, { ok: false, reason: 'rag-unavailable' });
+  await settle();
+  restore();
+  assert.equal(rag.trackedFileState().versions, base.versions + 1, 'the wanted version is kept after the failed run');
+  assert.deepEqual(await rag.searchProject('p-trans-idx', 'zebra', null), [], 'the old version must not become current again');
+});

@@ -214,3 +214,25 @@ test('a report whose first write fails records nothing and the retry saves both 
   assert.equal(saved.length, 2);
   assert.deepEqual(retried.artifacts, saved);
 });
+
+test('#796 F3: a failed job whose result is not a finished report cannot be "saved"', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-research-junk-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const workspace = { dir }, project = { id: 'p1', files: [] };
+  const saved = [];
+  const service = createResearchService({
+    saveFile: async (p, name) => { saved.push(name); },
+    getProject: () => project,
+    tools: () => ({ search: async () => [], extract: async () => '', projectRetrieve: async () => [], complete: async () => '' }),
+  });
+  // A failed deep_research job whose "result" is an unrelated error payload, written straight to the journal.
+  const { createJobs } = require('./jobs.cjs');
+  const jobs = createJobs({ dir, kinds: ['deep_research'] });
+  const id = jobs.create({ kind: 'deep_research', projectId: project.id });
+  await jobs.run(id, async () => { throw Object.assign(Error('boom'), { result: { status: 502 } }); });
+  const failed = service.get(workspace, project, id);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.canSavePartial, false);
+  await assert.rejects(() => service.savePartial(workspace, project, id), /can be saved/);
+  assert.deepEqual(saved, []);
+});
