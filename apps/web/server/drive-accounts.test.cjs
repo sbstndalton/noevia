@@ -91,3 +91,56 @@ test('a pending sign-in without a recorded initiator keeps the old rule', async 
   assert.equal(accounts.forUser(adminB).backup, true);
   await backupDrive.disconnect();
 });
+
+test('the admin Backups routes withhold another administrator\'s pending code and refuse to take it over (#868)', async () => {
+  const { backupDrive } = setup();
+  const { createOffsiteRoutes } = require('./routes/offsite-backup.cjs');
+  const service = {
+    status: () => ({ enabled: true, google: backupDrive.state() }),
+    connectGoogle: (owner) => backupDrive.connect(() => {}, { owner }),
+    disconnectGoogle: () => backupDrive.disconnect(),
+  };
+  const routes = createOffsiteRoutes({ service, json: (res, status, body) => Object.assign(res, { status, body }) });
+  const call = async (user, method, p) => { const res = {}; await routes({ method }, res, { path: p, authn: { user } }); return res; };
+
+  const started = await call(adminA, 'POST', '/api/admin/offsite-backup/google/connect');
+  assert.equal(started.status, 200);
+  const asA = await call(adminA, 'GET', '/api/admin/offsite-backup');
+  assert.equal(asA.body.google.state, 'pending');
+  assert.equal(asA.body.google.userCode, 'WDJB-MJHT', 'the initiator keeps polling a full pending view');
+  assert.match(asA.body.google.verificationUrl, /\/device$/);
+
+  const asB = await call(adminB, 'GET', '/api/admin/offsite-backup');
+  assert.equal(asB.body.google.state, 'pending');
+  assert.equal(asB.body.google.userCode, undefined);
+  assert.equal(asB.body.google.verificationUrl, undefined);
+  assert.equal(asB.body.google.owner, undefined);
+  assert.equal(asB.body.google.message, 'Another administrator is connecting Google Drive.');
+  assert.ok(!JSON.stringify(asB.body).includes('WDJB'));
+
+  const connectB = await call(adminB, 'POST', '/api/admin/offsite-backup/google/connect');
+  assert.equal(connectB.status, 409);
+  assert.ok(!JSON.stringify(connectB.body).includes('WDJB'));
+  const cancelB = await call(adminB, 'POST', '/api/admin/offsite-backup/google/disconnect');
+  assert.equal(cancelB.status, 409);
+  assert.equal(backupDrive.state().state, 'pending', 'B could not cancel A\'s sign-in');
+
+  const cancelA = await call(adminA, 'POST', '/api/admin/offsite-backup/google/disconnect');
+  assert.equal(cancelA.status, 200);
+  assert.equal(backupDrive.state().state, 'disconnected');
+  // With nothing pending, either administrator may start one.
+  assert.equal((await call(adminB, 'POST', '/api/admin/offsite-backup/google/connect')).status, 200);
+  assert.equal((await call(adminB, 'GET', '/api/admin/offsite-backup')).body.google.userCode, 'WDJB-MJHT');
+  assert.equal((await call(adminA, 'GET', '/api/admin/offsite-backup')).body.google.userCode, undefined);
+  await backupDrive.disconnect();
+});
+
+test('two connects racing: the first administrator\'s pending sign-in is kept (#868)', async () => {
+  const { backupDrive } = setup();
+  const [a, b] = await Promise.all([backupDrive.connect(() => {}, { owner: adminA.id }), backupDrive.connect(() => {}, { owner: adminB.id })]);
+  assert.equal(a.state, 'pending');
+  assert.equal(b.state, 'pending');
+  assert.equal(backupDrive.state().owner, adminA.id);
+  assert.equal(b.owner, adminA.id, 'the second caller is handed the first one\'s sign-in');
+  await backupDrive.disconnect();
+});

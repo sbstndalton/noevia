@@ -113,6 +113,8 @@ function createGoogleDrive(o) {
     if (cur.state === 'pending') return cur;
     const r = await form(`${oauth}/device/code`, { client_id: o.clientId, scope: SCOPE });
     if (r.status !== 200 || !r.body.device_code) throw fail('Google did not start the sign-in. Try again in a minute.');
+    // Someone else's connect finished starting while this one waited on Google: keep theirs (#868).
+    if (pending && pending.expiresAt > now()) return state();
     const mine = ++generation;
     pollError = null;
     pending = { userCode: r.body.user_code, verificationUrl: r.body.verification_url || r.body.verification_uri, expiresAt: now() + (r.body.expires_in || 1800) * 1000, owner: owner || null };

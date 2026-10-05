@@ -704,6 +704,8 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
    records a `secrets.rotate` audit event. The CLI exits 2 if any row failed. Members'
    Google Drive connections (`ui-data/google-drive-users/*.sealed`, table
    `google_drive_users`) are re-sealed too; until then they are read with the previous key.
+   Run it with the web container stopped or idle: re-sealing a Drive token file can lose a
+   member's reconnect that lands at the same moment (they would just connect again).
 5. Verify: `totals.failed` is 0 (or each listed failure is a credential already lost,
    which that account must re-enter), then run it again; every row should report `current`.
 6. Remove `secrets.key.previous` / `SECRETS_KEY_PREVIOUS` and restart.
