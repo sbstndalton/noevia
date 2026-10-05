@@ -38,7 +38,7 @@ async function run(t,ambiguous=false,stepSupervision=null,providerId='default') 
     rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: () => ({ text:'reduced' }), diaryExtras: require('../server/diary-extras.cjs'),
     DIARY_BASE: 'http://fixture.invalid', TOOL_RESULT_CAP: 8000, json: () => {}, saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
     lastLoadedModel: () => null, classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
-    allToolboxes: () => [], executeToolCall: async () => { executions++; if (ambiguous) throw Error('connection lost after write'); return 'complete synthetic result'; }, chatWideApproved: () => false, awaitApproval: async ({onDecision}) => {onDecision('approve_all'); return 'approve';}, recordUsage() {}, recordToolUse() {},
+    allToolboxes: () => [], executeToolCall: async () => { executions++; if (ambiguous) throw Error('connection lost after write'); return 'complete synthetic result'; }, chatWideApproved: () => false, awaitApproval: async () => 'approve', recordUsage() {}, recordToolUse() {},
     ...context, stepSupervision,
   });
   await handleChat({},res,{projectId,chatId:'fixture-chat',message:'Synthetic test only: call synthetic_write exactly once with empty arguments. After its result, reply with the words fixture complete. Do not call any other tools.'});
