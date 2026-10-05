@@ -13,11 +13,21 @@ export interface RoutingDecision {
   fallbackReason: string | null;
 }
 
+/** #778: where a reply was sent and why (codes only). */
+export type RouteName = 'local' | 'cloud';
+export type RouteReason = 'mode' | 'user-choice' | 'force-local' | 'sensitive-rule' | 'fail-closed' | 'remembered';
+export type RouteFlag = 'diary' | 'secret' | 'iban' | 'card' | 'router' | 'unavailable';
+export interface RouteTarget { route: RouteName; reason: RouteReason }
+
 export interface Message {
   id: string;
   role: Role;
   senderLabel?: string;
   routingDecision?: RoutingDecision;
+  /** #778: the local/cloud badge. */
+  routeTarget?: RouteTarget;
+  /** #778: a sensitive-looking turn waiting for Send to cloud / Keep local. Never persisted. */
+  routePending?: { id: string; flag: RouteFlag; busy?: boolean };
   content: string;
   reasoningMode?: string;
   reasoningEffort?: string;
@@ -225,6 +235,10 @@ export interface ChatMeta {
   createdAt?: number;
   /** Chat framing (#737): suggested or confirmed. Absent means unframed. */
   frame?: ChatFrame | null;
+  /** #778 routing modes: always local in this chat, no question asked. */
+  forceLocal?: boolean;
+  /** #778: the person chose "Send to cloud" and "remember for this chat". */
+  allowCloud?: boolean;
 }
 
 export type ChatKind = 'search' | 'action' | 'idea' | 'question' | 'code';
@@ -244,6 +258,7 @@ export interface HistoryEntry {
   content: string;
   model?: string;
   routingDecision?: RoutingDecision;
+  routeTarget?: RouteTarget;
   // Persisted so a reloaded chat still shows its thinking, tool activity and
   // cost. The server stores these opaquely and strips everything but
   // role/content before the history is replayed to a model.

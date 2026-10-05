@@ -136,7 +136,11 @@ function createChatHandler({
   // #769 (features.provenancePolicy): { enabled() } — when on, a write whose recipient, URL, host,
   // path or command holds text from an untrusted source this exchange always gets its own card.
   provenancePolicy = null,
+  // #778 (features.routingModes): { enabled(), settings(), sensitivity(digest), awaitChoice(...),
+  // setChatFlags(projectId, chatId, patch), log(entry) }. Not wired or flag off: nothing changes.
+  routingModes = null,
 }) {
+  const jsonOut = json;
   // Revoked Skill content in earlier turns (#546): one ledger per handler, cached in memory.
   const skillLedger = skillHistory || require('./skill-history.cjs').createSkillHistory({ fs, path });
   const writesDone = recentWrites || require('./recent-writes.cjs').createRecentWrites();
@@ -182,6 +186,14 @@ function createChatHandler({
   }
 
   async function handleChatInner(req, res, body, authn, preparation, execution = {}) {
+    // #778: once the routing question has opened the event stream, a later refusal is sent as an
+    // error event on it rather than as a second set of headers. Before that, exactly as it was.
+    let earlyStream = false;
+    const json = (r, status, payload) => {
+      if (!earlyStream) return jsonOut(r, status, payload);
+      send({ type: 'error', text: String(payload?.error || 'Request failed') });
+      if (!r.writableEnded) r.end();
+    };
     // User-perceived first-token time includes routing, model/context preparation and
     // provider prefill, not only the final upstream request's network time.
     const exchangeStartedAt = Date.now();
@@ -530,7 +542,56 @@ function createChatHandler({
     // once it exists with routing 'manual' and/or a model, that explicit choice wins below same
     // as any other project. `project` stays null only while no explicit choice has been made.
     const wantsAuto = !!((project ? project.routing === 'auto' : true) && (!projectProvider || projectProvider === DEFAULT_PROVIDER_ID) && autoRoles());
-    const provider = getProvider(wantsAuto ? DEFAULT_PROVIDER_ID : projectProvider || DEFAULT_PROVIDER_ID);
+    // #778 routing modes: only Auto chats, only with the flag on and a mode chosen. A cloud route
+    // marks the provider external, so every existing hard ban (provider-egress.cjs) applies to it.
+    const heartbeatStart = () => { const beat = setInterval(() => { if (!res.destroyed) res.write(': keep-alive\n\n'); }, 5000); res.once('close', () => clearInterval(beat)); res.once('finish', () => clearInterval(beat)); };
+    let routeTarget = null;
+    if (wantsAuto && routingModes && routingModes.enabled() === true) {
+      const rm = require('./routing-modes.cjs');
+      const settings = routingModes.settings();
+      if (settings && settings.mode) {
+        const listProjectId = body.projectId && project ? project.id : null;
+        const flags = rm.chatFlags({ chatId, list: listProjectId ? getProject(listProjectId)?.chats : freeChats() });
+        const cloudRow = settings.cloud.providerId && settings.cloud.providerId !== DEFAULT_PROVIDER_ID ? getProvider(settings.cloud.providerId) : null;
+        const hasCloud = !!(cloudRow && cloudRow.id === settings.cloud.providerId && rm.cloudModel(settings.cloud, 'smart'));
+        const hardLocal = (typeof spaceId === 'string' && spaceId.startsWith('diary')) || project?.id === diaryExtras.PROJECT_ID || rm.hasDiaryContent(mappedHistory);
+        const roles = autoRoles();
+        if (settings.mode === 'cloud' && !hasCloud && !hardLocal && !flags.forceLocal) {
+          return json(res, 409, { error: 'Cloud routing has no cloud provider and model yet. Choose them in Settings → Models & routing.' });
+        }
+        const sentText = [sys, ...msgs.map((m) => (typeof m.content === 'string' ? m.content : ''))].join('\n');
+        const attachmentNames = [...(project?.assets || []).map((a) => a.name), ...(project?.files || []).map((f) => f.name)].filter((n) => typeof n === 'string');
+        const routeUserId = requestScope.getStore()?.workspace?.userId || null;
+        const decided = await rm.resolveRoute({
+          mode: settings.mode, whenSensitive: body.compactOnly ? 'local' : settings.whenSensitive, hasCloud, hasLocal: !!(roles && (roles.fast || roles.smart)),
+          hardLocal, forceLocal: flags.forceLocal, allowCloud: flags.allowCloud,
+          preFlag: settings.mode === 'hybrid' ? rm.preRule(sentText) : null,
+          check: () => routingModes.sensitivity(rm.digest({ message, system: sys, history: mappedHistory, attachments: attachmentNames })),
+          ask: async (flag) => {
+            if (!routeUserId) return { choice: 'aborted' };
+            if (!earlyStream) {
+              earlyStream = true;
+              res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering':'no', Connection: 'keep-alive' });
+              heartbeatStart();
+            }
+            const id = crypto.randomUUID();
+            send({ type: 'route_pending', id, flag });
+            return routingModes.awaitChoice({ id, userId: routeUserId, chatId, abortSignal: chatSignal.signal });
+          },
+        });
+        try { routingModes.log({ mode: settings.mode, route: decided.route || 'cancel', reason: decided.reason, flag: decided.flag || null }); } catch { /* codes only */ }
+        console.log(`[routing] mode=${settings.mode} route=${decided.route || 'cancel'} reason=${decided.reason}${decided.flag ? ` flag=${decided.flag}` : ''}`);
+        if (chatSignal.signal.aborted) { if (!res.writableEnded) res.end(); return; }
+        if (decided.cancel) return json(res, 409, { error: 'Kept local, but no local model is set for Auto. Nothing was sent.' });
+        if (decided.remember && chatId) {
+          const patch = decided.remember === 'local' ? { forceLocal: true, allowCloud: false } : { allowCloud: true };
+          try { routingModes.setChatFlags(listProjectId, chatId, patch); } catch { /* the client saves it too */ }
+          send({ type: 'route_remembered', ...patch });
+        }
+        routeTarget = { route: decided.route, reason: decided.reason, cloud: settings.cloud, row: decided.route === 'cloud' ? cloudRow : null };
+      }
+    }
+    const provider = routeTarget?.row ? { ...routeTarget.row, external: true } : getProvider(wantsAuto ? DEFAULT_PROVIDER_ID : projectProvider || DEFAULT_PROVIDER_ID);
     // External providers (#447, provider-egress.cjs): Diary text never goes to one, and a
     // ChatGPT connection is private to the account that made it and needs the feature flag.
     const egress = require('./provider-egress.cjs');
@@ -575,7 +636,7 @@ function createChatHandler({
       // A verdict with no model behind it falls back to smart rather than sending an
       // empty model name upstream.
       if (!roles[routedRole]) routedRole = roles.smart ? 'smart' : 'fast';
-      model = roles[routedRole];
+      model = routeTarget?.row ? require('./routing-modes.cjs').cloudModel(routeTarget.cloud, routedRole) : roles[routedRole];
       if (routingDecision) routingDecision = { ...routingDecision, effectiveRole: routedRole };
       recordResend(body.resend, { auto: true, role: routedRole, status: routingDecision?.status || null });
     } else if (!model && provider.id === DEFAULT_PROVIDER_ID && modelManager.enabled) {
@@ -644,11 +705,14 @@ function createChatHandler({
     // so an unchecked attachment would turn "what is in this picture" into a
     // chat that never replies — and would do it to every message in the project,
     // not just the one asking about an image.
+    if (!earlyStream) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering':'no', Connection: 'keep-alive' });
     const heartbeat=setInterval(()=>{if(!res.destroyed)res.write(': keep-alive\n\n');},5000);
     res.once('close',()=>clearInterval(heartbeat));
     res.once('finish',()=>clearInterval(heartbeat));
+    }
     send({ type: 'meta', model, chatId: chatId || undefined, route: routedRole || undefined,
+      routing: routeTarget ? { route: routeTarget.route, reason: routeTarget.reason } : undefined,
       routingDecision: routingDecision || undefined, skill: pinnedSkill?.record,
       sampling: sampling.source === 'none' ? undefined : { preset: sampling.presetId || undefined, source: sampling.source, values: sampling.params } });
     if (replySources.length && !body.compactOnly) send({ type: 'sources', sources: replySources });

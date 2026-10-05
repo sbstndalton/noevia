@@ -244,6 +244,17 @@ or uncheckable one gets its own approval card with a "Contains text from <source
 untrusted text in the current reply only; text the model repeats or paraphrases in a later turn is
 not caught.
 
+**Routing modes (#778, `features.routingModes`, off by default).** Per account (Settings → Models &
+routing): `local`, `cloud` (a provider and model the account names) or `hybrid`; no mode chosen means
+Auto works as before, and only Auto chats are routed. `server/routing-modes.cjs` decides; a cloud route
+marks the provider external, so every provider-egress hard ban (Diary text, Diary tools, project images)
+applies to it. In hybrid, deterministic pre-rules (Diary tool results in the history, secrets, IBANs,
+card numbers) run first, then the router role through `decide()` with `cloud: 'forbidden'`; any failure
+counts as sensitive. A flagged turn is never sent to cloud silently: "always local", or a
+`route_pending` card answered through `/api/tool-approvals/:id` (`cloud`/`local`, owner-bound, never a
+write grant); a timeout keeps it local. Per chat, `forceLocal`/`allowCloud` live on the chat meta and
+merge like `frame`. Each reply's `meta.routing` carries `{ route, reason }`; logs hold codes only.
+
 ### Models and vision
 
 Lemonade at `http://10.69.0.130:13305/v1`. Installed: `Gemma-4-E4B-it-GGUF`,
