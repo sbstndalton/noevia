@@ -52,8 +52,11 @@ services:
       # sides. Repositories live under it so a task can be given one without widening this.
       - code-workspaces:/workspaces
     networks:
-      # No default network: the sandbox can reach the egress proxy and nothing else on the box.
-      # It cannot resolve, let alone reach, web, diary, model-loader or the engine.
+      # No default network: the only other member of `code` is web, which joins it so the
+      # sandbox can reach the egress proxy. Diary, model-loader and the engine are not on it.
+      # Web itself IS reachable here, on every port it binds, so web refuses (403) any UI or
+      # file-sharing request that arrives on its code-network address (COWORK_CODE_NET_ADDR
+      # below, #853). The egress proxy is a separate listener and is not affected.
       - code
     environment:
       WORKSPACE_ROOT: /workspaces
@@ -129,6 +132,10 @@ services:
       CODE_EGRESS_PORT: ${CODE_EGRESS_PORT:-}
       CODE_EGRESS_HOST: egress
       CODE_VERIFY_ENDPOINT: ${CODE_VERIFY_ENDPOINT:-}
+      # Web's own address on the code network (#853): IPs and/or host names, comma separated.
+      # `egress` resolves to it (the alias above). UI and file-sharing requests arriving on it
+      # get 403; the egress proxy is unaffected. Unset in web's own environment = no check.
+      COWORK_CODE_NET_ADDR: ${COWORK_CODE_NET_ADDR:-egress}
     volumes:
       # The same volume at the same mount point — see the note above about paths matching.
       - code-workspaces:/workspaces

@@ -720,6 +720,20 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
   the resolved bind address (`docker logs cowork-web-1 | grep egress`) after the next web release
   that includes it: a successful start logs `egress.listening` with the bind and port, and a
   failed one (e.g. `EADDRNOTAVAIL`) logs `egress.bind_failed` and crashes the process.
+- **`COWORK_CODE_NET_ADDR` (#853).** Web joins the internal `code` network so the sandbox can
+  reach the egress proxy, but its UI (`UI_PORT`) and file-sharing (`COWORK_DAV_PORT`) listeners
+  bind every interface, so a sandbox command could reach them directly. Web now refuses, with a
+  bare 403, any UI or file-sharing request whose connection arrived on its own code-network
+  address, named by `COWORK_CODE_NET_ADDR` (IPs and/or host names, comma separated; resolved at
+  start and awaited by the first requests). `deploy/examples/code-sandbox.override.yml` sets it to
+  `${COWORK_CODE_NET_ADDR:-egress}` in web's environment: `egress` is web's alias on that network,
+  the same name the egress proxy resolves to bind there. Unset in web's environment = no check. A
+  name that does not resolve fails open (logs `codenet.resolve_failed`, retries with back-off);
+  success logs `codenet.guarding` with the address, refusals log `codenet.refused` at most once a
+  minute. The egress proxy is a separate listener and is not affected. **Deploy step:** add the
+  `COWORK_CODE_NET_ADDR` line to web's environment in the live override (a web release, not a
+  sandbox one), recreate web, then check `docker logs cowork-web-1 | grep code-net` shows
+  `codenet.guarding`. No `.env` key is required (the override default is `egress`).
 - **`UI_AUTH_TOKEN` / `DIARY_AUTH_TOKEN` (#294).** These are independent now
   (`auth-tokens.cjs`); `UI_AUTH_TOKEN` no longer falls back to `DIARY_AUTH_TOKEN`. A deployment
   that relied on the fallback (set `DIARY_AUTH_TOKEN` only, expecting `LEGACY_AUTH_COMPAT=true`
