@@ -169,6 +169,11 @@ Additional listeners in the same process, started under `require.main === module
 | noevia's own MCP | `127.0.0.1:MCP_INTERNAL_PORT` (default 0 = off) | 30-second HMAC token from `secretStore.derive('mcp-internal-token')` | `mcp-internal.cjs`, `mcp-internal-tools.cjs` |
 | Code egress proxy | `CODE_EGRESS_BIND:CODE_EGRESS_PORT` (default bind: web's own address on the `code` network, resolved at start via its `CODE_EGRESS_HOST` alias; loopback if that does not resolve; off unless the port is set) | per-task grant token | `code-egress.cjs` (`startEgressFromEnv`, `resolveEgressBind`) |
 
+The main UI/API and DAV listeners bind every interface, which includes web's address on the
+internal `code` network when the code-sandbox override is in use. With `COWORK_CODE_NET_ADDR` set
+(IPs and/or host names; the override sets `egress`), both refuse with a bare 403 any request whose
+connection arrived on that address (`code-net-guard.cjs`, #853). The egress proxy is not wrapped.
+
 Background work in the same process: `offsiteBackup.schedule()` (`offsite-service.cjs`), the Diary
 backup worker (`diary-backup-worker.cjs`, `POST /api/storage-backup` every 30 s per enabled
 tenant), MCP discovery warm-up, calibration/autotune recovery and the model folder sync
