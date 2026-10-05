@@ -25,7 +25,7 @@ echo "current cowork-diary:$OLD $OLD_ID"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 marker=$tmp/backup-start; touch "$marker"; ctx=$tmp/ctx; mkdir "$ctx"
 php /usr/local/emhttp/plugins/appdata.backup/scripts/backup.php >/tmp/ab-diary.log 2>&1
-# BEGIN backup-pick (deploy/tests/test_diary_overlay.py runs this block on synthetic folders)
+# BEGIN backup-pick (deploy/tests/test_overlay_scripts.py runs this block on synthetic folders)
 backup_root=${BACKUP_ROOT:-/mnt/disk3/noevia-backups}
 B=$(ls -td "$backup_root"/ab_* 2>/dev/null | head -1 || true)
 [ -n "$B" ] && [ -d "$B" ] || { echo "no appdata backup (ab_*) under $backup_root; not deploying" >&2; exit 1; }

@@ -38,6 +38,13 @@ json_escape() {
   local v=$1
   v=${v//\\/\\\\}; v=${v//\"/\\\"}
   v=${v//$'\n'/\\n}; v=${v//$'\r'/\\r}; v=${v//$'\t'/\\t}
+  # Every other C0 control (JSON forbids them raw) becomes \u00XX. NUL cannot be held in a bash string.
+  local i oct c esc
+  for i in {1..31}; do
+    case $i in 9|10|13) continue ;; esac
+    printf -v oct '\\%03o' "$i"; printf -v c "$oct"
+    case $v in *"$c"*) printf -v esc '\\u%04x' "$i"; v=${v//"$c"/$esc} ;; esac
+  done
   printf '%s' "$v"
 }
 
