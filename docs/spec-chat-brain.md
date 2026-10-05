@@ -65,7 +65,7 @@ The task packet's rules, unchanged in spirit:
 - Storage: one JSON file per chat in the user's own workspace directory,
   `chat-brains/<sha256(chat id)>.json`, holding `{ chatId, sourceUpdatedAt, builtAt, brain }`
   (at most 32 KiB). A record whose chat id does not match or whose brain fails validation reads as
-  none. A tombstoned chat loses its brain.
+  none. A tombstoned chat loses its brain, also when it is deleted while its brain is being built (#811).
 
 ## In the vault note
 
@@ -123,6 +123,9 @@ summaries:
 - the whole block at most `brainContextChars` characters (admin setting in
   `/api/admin/framing-settings`, default 2000, 0 to 200000; 0 turns it into a no-op). Summaries are
   clipped to fit; a brain that cannot get at least a few words in is left out.
+- only for the local default engine: a brain may summarise a chat that read the Diary, so the block
+  is dropped when the answer goes to any other provider, an external one or a routing-modes cloud
+  route, and the routing-modes sensitivity check never reads it (#815).
 
 With the flag off, no confirmed frame, no links or no stored brains, the model request is byte for
 byte what it was before.
