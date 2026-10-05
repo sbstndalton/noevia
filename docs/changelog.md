@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 29732472 — 2026-10-05 (web: routing modes, flag off)
+
+### Services
+
+- **Web:** [#779](https://github.com/sbstndalton/noevia/pull/779) (`29732472`, closes [#778](https://github.com/sbstndalton/noevia/issues/778): local / cloud / hybrid routing modes with a sensitivity card, router chunks default to 1). Now `cowork-web:29732472` (previous `cowork-web:3e7bbed8`), recreated alone; `readlink current` is `releases/29732472`, `COWORK_VERSION=29732472`. The `routingModes` flag stays off; `NOEVIA_ROUTER_CHUNKS` was not added.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change.
+- **Deploy/infra:** no change. `overlay-release.sh` was not used because it recreates diary and ocr.
+
+Reviewed head `f43ee95e` was already up to date with main (0 behind), and CI was green there (10/10). It was squash-merged with `--match-head-commit`, the branch was deleted, and there were no phantom deletions. Dependencies were unchanged since 3e7bbed8. `dist/` and `server/` were built from a `git archive` of `29732472` (`npm ci`, `npm run build` with `STAMP_VERSION=29732472`, in `node:22-bookworm-slim` on DaServer) and layered onto `cowork-web:3e7bbed8` (54 layers, with the image's `server/node_modules` kept), web only. Synthetic candidate check in a throwaway `--network none` container: unauthenticated `GET` and `PUT /api/routing-mode` returned 401, and `/` and `/api/ready` returned 200. Backup: `config/.env.bak.before-29732472`; only `COWORK_VERSION` differs from it. Web was started alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (absolute `--env-file`), and the preflight checks passed.
+
+- **Verify:** web is healthy with `RestartCount` 0, and `dist/version.json` reads `29732472`. `index.html` sha256 `93a21169...` is identical in the build, the image and the served page (local and public), and the served entry bundle is `index-CrDS_RvT.js`. All 44 other containers kept their ID, StartedAt, restart count, status and image; only web changed. Live: `/` and `/api/ready` returned 200 (`version 29732472`), both locally and publicly. An unauthenticated `GET /api/routing-mode` returned 401, both locally and publicly. The web log was clean for 2 minutes. No flag flip, model run, tune, settings change or Diary access.
+
+Rollback: `ln -sfn /mnt/docker/appdata/cowork/releases/3e7bbed8 /mnt/docker/appdata/cowork/current && cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-29732472 /mnt/docker/appdata/cowork/config/.env && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web`. The `cowork-web:3e7bbed8` image is retained.
+
 ## Release 3e7bbed8 — 2026-10-04 (web: consistent project chat counts, storage redirect label)
 
 ### Services
