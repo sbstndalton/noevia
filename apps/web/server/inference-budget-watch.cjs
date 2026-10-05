@@ -68,6 +68,10 @@ function createInferenceBudgetWatch({
       const [gpu, engine, loaded] = await Promise.all([Promise.resolve().then(readGpu).catch(() => null), Promise.resolve().then(readEngine).catch(() => null), Promise.resolve().then(listLoaded).catch(() => null)]);
       // Neither source readable: nothing measured, nothing to act on.
       if (!gpu && !engine) { strikes = 0; return (last = { state: 'unavailable' }); }
+      // #874: an unknown model list (engine error, unreachable) is not "idle": taking this reading
+      // as the idle baseline would subtract the loaded model's memory and blind the watchdog.
+      // Skip the tick; strikes carry over to the next readable one.
+      if (!Array.isArray(loaded)) return (last = { state: 'models-unknown', strikes });
       const gttGib = gpu?.gttGib ?? engine?.gttGib ?? 0;
       const vramGib = gpu?.vramGib ?? engine?.vramGib ?? 0;
       // The idle baseline: every reading with no model loaded, and the first reading otherwise
@@ -81,7 +85,7 @@ function createInferenceBudgetWatch({
       if (usedGib <= limitGib || (Array.isArray(loaded) && loaded.length === 0)) { strikes = 0; return (last = { state: 'ok', ...sample }); }
       strikes += 1;
       if (strikes < strikesNeeded || now() < cooldownUntil) return (last = { state: 'over', strikes, ...sample });
-      const models = Array.isArray(loaded) ? loaded : await listLoaded().catch(() => []);
+      const models = loaded;
       const unloaded = [];
       for (const model of models) {
         const r = await Promise.resolve().then(() => unload(model)).catch(() => null);
@@ -118,6 +122,12 @@ function isEngineContainer(name, env = process.env) {
   return /(^|[-_])llama([-_]\d+)?$/.test(n);
 }
 
+/** #874: the loaded model ids from a manager listing, or null when the listing failed (unknown). */
+function loadedFromListing(r) {
+  if (!r?.ok || !Array.isArray(r.body?.data)) return null;
+  return r.body.data.filter(m => ['loaded', 'loading'].includes(m?.status?.value)).map(m => m.id);
+}
+
 function engineReaderFromModelLoader({ env = process.env, fetchJson }) {
   return async () => {
     if (!env.MODEL_LOADER_URL) return null;
@@ -131,4 +141,4 @@ function engineReaderFromModelLoader({ env = process.env, fetchJson }) {
   };
 }
 
-module.exports = { createInferenceBudgetWatch, gpuMemoryFiles, readGpuMemory, engineReaderFromModelLoader, isEngineContainer };
+module.exports = { createInferenceBudgetWatch, gpuMemoryFiles, readGpuMemory, engineReaderFromModelLoader, isEngineContainer, loadedFromListing };
