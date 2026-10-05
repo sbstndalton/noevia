@@ -306,3 +306,19 @@ test('job.lifecycle is null, never a throw, when a journal implies an illegal li
     assert.equal(job.lifecycle, null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('only a failed deep-research job that still holds its result accepts a late artifact (#796)', async () => {
+  const dir = tmp();
+  try {
+    const jobs = createJobs({ dir });
+    const fail = (kind, result) => jobs.run(jobs.create({ kind }), async () => { throw Object.assign(Error('save failed'), { result }); });
+    const research = await fail('deep_research', { markdown: '# r' });
+    jobs.append(research.id, 'artifact.created', { name: 'r.md' });
+    assert.equal(jobs.get(research.id).status, 'failed');
+    assert.deepEqual(jobs.get(research.id).artifacts, [{ name: 'r.md' }]);
+    const bare = await fail('deep_research', null);
+    assert.throws(() => jobs.append(bare.id, 'artifact.created', { name: 'x' }), /already finished/);
+    const other = await fail('source', { x: 1 });
+    assert.throws(() => jobs.append(other.id, 'artifact.created', { name: 'x' }), /already finished/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

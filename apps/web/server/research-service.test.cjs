@@ -160,3 +160,57 @@ test('a raced double savePartial does not write the same report twice', async (t
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1, 'only one concurrent savePartial should succeed');
   assert.equal(saved.length, 2, 'the report files must be written exactly once, not duplicated by the race');
 });
+
+test('a failed report write keeps the result on the job, records no phantom artifact, and can be retried (#796)', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-research-retry-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const workspace = { dir }, project = { id: 'p1', files: [] };
+  const saved = [], calls = [];
+  let failNext = 1;
+  const service = createResearchService({
+    now: () => Date.parse('2026-09-17T10:00:00Z') + calls.length,
+    // The first write succeeds, the sources.json write throws once, then the disk recovers.
+    saveFile: async (p, name, text) => {
+      if (name.endsWith('.sources.json') && failNext-- > 0) throw new Error('ENOSPC: /private/path');
+      saved.push({ name, text }); project.files.push({ name: `noevia projects/P/Text/${name}` });
+    },
+    getProject: () => project,
+    tools: () => ({ search: async () => [{ url: 'https://fixture.test/z', title: 'Zephyr' }], extract: async () => PAGE, projectRetrieve: async () => [], complete: model(calls) }),
+  });
+  const started = await service.start(workspace, project, { question: 'Zephyr' });
+  const failed = await settle(service, workspace, project, started.id);
+  assert.equal(failed.status, 'failed');
+  assert.doesNotMatch(failed.error, /ENOSPC|private/, 'the raw write error is not leaked');
+  assert.match(failed.error, /could not be saved/);
+  assert.ok(failed.result && /410 Wh/.test(failed.result.markdown), 'the finished report survives the failed save');
+  assert.deepEqual(failed.artifacts, ['Research 2026-09-17 zephyr.md'], 'only the file that was really written is recorded');
+  assert.equal(failed.canSavePartial, true);
+  const retried = await service.savePartial(workspace, project, started.id);
+  assert.deepEqual(retried.artifacts, ['Research 2026-09-17 zephyr.md', 'Research 2026-09-17 zephyr.sources.json'], 'the retry writes the missing file under the same base name');
+  assert.deepEqual(saved.map((f) => f.name), retried.artifacts);
+  assert.equal(retried.canSavePartial, false);
+  await assert.rejects(() => service.savePartial(workspace, project, started.id), /already saved/);
+});
+
+test('a report whose first write fails records nothing and the retry saves both files (#796)', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-research-retry2-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const workspace = { dir }, project = { id: 'p1', files: [] };
+  const saved = [], calls = [];
+  let down = true;
+  const service = createResearchService({
+    now: () => Date.parse('2026-09-17T10:00:00Z') + calls.length,
+    saveFile: async (p, name, text) => { if (down) throw new Error('storage offline'); saved.push(name); },
+    getProject: () => project,
+    tools: () => ({ search: async () => [{ url: 'https://fixture.test/z', title: 'Zephyr' }], extract: async () => PAGE, projectRetrieve: async () => [], complete: model(calls) }),
+  });
+  const started = await service.start(workspace, project, { question: 'Zephyr' });
+  const failed = await settle(service, workspace, project, started.id);
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(failed.artifacts, []);
+  assert.equal(failed.canSavePartial, true);
+  down = false;
+  const retried = await service.savePartial(workspace, project, started.id);
+  assert.equal(saved.length, 2);
+  assert.deepEqual(retried.artifacts, saved);
+});
