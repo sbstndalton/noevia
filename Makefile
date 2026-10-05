@@ -18,9 +18,11 @@ test-docling:
 test-model-manager:
 	cd services/model-manager && pytest -q
 
-# Standard library only; the real-OCR cases skip themselves without the synthetic fixtures.
+# Standard library only. The real-engine cases generate their own synthetic PDFs (synthetic_pdfs.py)
+# and run when tesseract (eng+deu), ghostscript and poppler-utils are installed; otherwise they skip
+# and -rs prints which engine is missing.
 test-ocr:
-	cd services/ocr && pytest -q
+	cd services/ocr && pytest -q -rs
 
 # Standard library only (the decision worker is faked).
 test-laya:
