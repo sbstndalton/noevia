@@ -62,12 +62,12 @@ test('dismiss hides the row and saves nothing; edits wait while a save is in fli
   const draft = startDraft(suggestion, ['p-trip']);
   assert.equal(frameDraftReducer(draft, { type: 'dismiss' }), null);
   assert.equal(frameDraftReducer(null, { type: 'removeProject' }), null);
-  const saving = frameDraftReducer(draft, { type: 'saving' });
-  assert.equal(saving.status, 'saving');
+  // App's accept path sets these statuses directly on the draft (acceptFrame); the reducer only
+  // has to respect them.
+  const saving = { ...draft, status: 'saving' };
   assert.equal(frameDraftReducer(saving, { type: 'removeTag', tag: 'flights' }), saving, 'no edit lands mid-save');
-  const failed = frameDraftReducer(saving, { type: 'failed' });
-  assert.equal(failed.status, 'error');
-  assert.deepEqual(plain(failed.frame), plain(draft.frame), 'nothing the person chose is lost');
+  const failed = { ...draft, status: 'error' };
+  assert.deepEqual(plain(frameDraftReducer(failed, { type: 'removeProject' }).frame.tags), plain(draft.frame.tags), 'nothing the person chose is lost');
   assert.equal(frameDraftReducer(failed, { type: 'removeLinks' }).status, 'idle', 'editing again clears the error');
 });
 

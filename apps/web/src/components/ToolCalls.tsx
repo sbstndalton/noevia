@@ -21,20 +21,25 @@ export const TOOL_RESULT_LIMIT = 4000;
 function PendingToolCall({ call }: { call: ToolCallView }): JSX.Element {
   const t = useT();
   const [busy, setBusy] = useState(false);
+  // #792: a decision the server accepted is final for this approval id. The card stays pending
+  // until the tool's result arrives (the stream then settles it), so it must not offer the three
+  // actions again in between: a second click would post to an already-used id.
+  const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const decide = async (decision: 'approve' | 'deny' | 'approve_all') => {
-    if (!call.approvalId || busy) return;
+    if (!call.approvalId || busy || sent) return;
     setBusy(true);
     setErr(null);
     try {
       await decideToolApproval(call.approvalId, decision);
+      setSent(true);
     } catch (e) {
       // Most likely the request timed out and the server already denied it.
       setErr(e instanceof Error ? e.message : t('chat.approval.sendFailed'));
     } finally {
-      // Clear the disabled state whether the decision succeeded or failed: a dropped
-      // stream must not leave every button stuck disabled with no way to retry.
+      // Only a failed decision re-enables the actions, so it can be retried; a sent one keeps
+      // them disabled until the result arrives. A dropped stream settles the card either way.
       setBusy(false);
       // The card is about to fold away (success) or stay put with an error (failure).
       // Either way, move focus off the button that just vanished from under the cursor
@@ -42,6 +47,7 @@ function PendingToolCall({ call }: { call: ToolCallView }): JSX.Element {
       containerRef.current?.focus();
     }
   };
+  const locked = busy || sent;
   let pretty = call.args;
   try { pretty = JSON.stringify(JSON.parse(call.args || '{}'), null, 1); } catch { /* show it raw */ }
   // Invisible direction controls would let a name or path display in another order than it acts;
@@ -74,16 +80,17 @@ function PendingToolCall({ call }: { call: ToolCallView }): JSX.Element {
       ))}
       {pretty && pretty !== '{}' && <pre className="tool-approval-args">{pretty}</pre>}
       <div className="tool-approval-actions">
-        <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void decide('approve')}>
+        <button className="btn btn-primary btn-sm" disabled={locked} onClick={() => void decide('approve')}>
           {t('chat.approval.allowOnce')}
         </button>
-        <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void decide('deny')}>
+        <button className="btn btn-secondary btn-sm" disabled={locked} onClick={() => void decide('deny')}>
           {t('chat.approval.decline')}
         </button>
-        <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void decide('approve_all')}>
+        <button className="btn btn-secondary btn-sm" disabled={locked} onClick={() => void decide('approve_all')}>
           {t('chat.approval.allowChat')}
         </button>
       </div>
+      {sent && <span className="tool-approval-sent" role="status" data-testid="tool-approval-sent">{t('chat.approval.sent')}</span>}
       {err && <span className="modal-err tool-approval-err">{err}</span>}
     </div>
   );
