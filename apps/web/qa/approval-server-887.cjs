@@ -1,7 +1,7 @@
 // #887 in a real browser against the built client. Synthetic APIs only.
 //   A write approval card names the MCP server the call goes to ("via <server label>"), taken from the
 //   tool_pending event's `server`, so two servers offering one tool name can be told apart. A directory
-//   server shows its title (from /api/toolboxes), any other the id the server sent; no `server`, no line.
+//   server shows its title and its id ("Title (id)", from /api/toolboxes: a title is untrusted), any other the id the server sent; no `server`, no line.
 //   All three actions and the full, untruncated arguments are unchanged.
 //
 // FAILS on origin/main (f6885a55), PASSES with the fix.
@@ -26,6 +26,7 @@ const ARGS = JSON.stringify({ path: 'Synthetic/' + 'long-path-'.repeat(20), cont
     await page.route('**/api/chats/*/context', (r) => r.fulfill({ json: { project: { id: 'synthetic-approval-context', name: 'Synthetic', model: 'synthetic', files: [], assets: [], toolboxes: ['core'] } } }));
     await page.route('**/api/toolboxes', (r) => r.fulfill({ json: { toolboxes: [], mcp: { configured: true, servers: [
       { id: 'dir-notes', auth: 'oauth', directory: true, title: 'Synthetic Notes', error: null, discovered: 3 },
+      { id: 'dir-spoof', auth: 'directory', directory: true, title: 'Nextcloud', error: null, discovered: 1 },
       { id: 'nextcloud', auth: 'nextcloud', error: null, discovered: 5 },
     ] } } }));
     const decisions = [];
@@ -40,8 +41,10 @@ const ARGS = JSON.stringify({ path: 'Synthetic/' + 'long-path-'.repeat(20), cont
     const card = page.locator('.tool-approval');
     const line = card.locator('[data-testid="tool-approval-server"]');
     const cases = [
-      { id: 'a', server: 'dir-notes', expect: 'via Synthetic Notes', decision: 'approve', button: 'Allow once' },
+      { id: 'a', server: 'dir-notes', expect: 'via Synthetic Notes (dir-notes)', decision: 'approve', button: 'Allow once' },
       { id: 'b', server: 'nextcloud', expect: 'via nextcloud', decision: 'deny', button: 'Decline' },
+      // A registry title imitating the operator's server still shows the id noevia gave it.
+      { id: 'e', server: 'dir-spoof', expect: 'via Nextcloud (dir-spoof)', decision: 'approve', button: 'Allow once' },
       { id: 'c', server: 'not-listed', expect: 'via not-listed', decision: 'approve_all', button: 'Allow for this chat' },
       { id: 'd', server: undefined, expect: null, decision: 'approve', button: 'Allow once' },
     ];
@@ -64,9 +67,9 @@ const ARGS = JSON.stringify({ path: 'Synthetic/' + 'long-path-'.repeat(20), cont
       fixture.liveEvent({ type: 'tool_result', index: 0, name: 'synthetic_write', text: c.decision === 'deny' ? 'Declined by user.' : 'Synthetic write accepted.', declined: c.decision === 'deny' });
       await card.waitFor({ state: 'detached' });
     }
-    assert.deepEqual(decisions, ['approve', 'deny', 'approve_all', 'approve']);
+    assert.deepEqual(decisions, ['approve', 'deny', 'approve', 'approve_all', 'approve']);
     fixture.finishLive();
     assert.deepEqual(errors, []);
-    console.log('PASS approval card names the MCP server it goes to (directory title, raw id, nothing when absent); arguments and all three actions unchanged.');
+    console.log('PASS approval card names the MCP server it goes to (directory title with its id, raw id, nothing when absent); arguments and all three actions unchanged.');
   } finally { await browser.close(); await fixture.close(); }
 })().catch((e) => { console.error(e); process.exitCode = 1; });

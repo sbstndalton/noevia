@@ -687,3 +687,20 @@ test('#845: an s3 error on a later page fails the listing rather than returning 
   withFetch(t, async () => (++calls === 1 ? xmlResponse(s3Xml('<Contents><Key>Cowork/a.md</Key><Size>1</Size></Contents>', 't1')) : new Response('', { status: 503 })));
   await assert.rejects(() => listFiles(s3Conn, ''), /storage returned 503/);
 });
+
+test('#845: hitting the s3 listing cap logs a warning naming the kind and prefix, never the credentials', async (t) => {
+  withFetch(t, async () => xmlResponse(s3Xml('<Contents><Key>Cowork/Docs/f.md</Key><Size>1</Size></Contents>', `t${Math.random()}`)));
+  const logged = [];
+  const realWarn = console.warn;
+  console.warn = (...a) => logged.push(a.join(' '));
+  t.after(() => { console.warn = realWarn; });
+  await listFiles(s3Conn, 'Docs');
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /s3 listing of "Cowork\/Docs\/" stopped at the cap/);
+  assert.doesNotMatch(logged[0], /\bsk\b|\bak\b/, 'no credentials');
+  // A complete listing stays quiet.
+  logged.length = 0;
+  withFetch(t, async () => xmlResponse(s3Xml('<Contents><Key>Cowork/a.md</Key><Size>1</Size></Contents>')));
+  await listFiles(s3Conn, '');
+  assert.deepEqual(logged, []);
+});

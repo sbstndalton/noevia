@@ -302,10 +302,12 @@ async function s3List(conn, connectionPath) {
   const queryPrefix = dirPrefix ? `${dirPrefix}/` : '';
   const entries = [];
   let token;
+  let more = false; // the endpoint offered another page that the caps stopped us from fetching
   for (let page = 0; page < S3_LIST_MAX_PAGES && entries.length < S3_LIST_MAX_ENTRIES; page++) {
     const query = { 'list-type': '2', prefix: queryPrefix, delimiter: '/', 'max-keys': '1000' };
     if (token !== undefined) query['continuation-token'] = token;
     const url = s3Url(conn, '', query);
+    more = false;
     const response = await withRetry(() => fetch(url, {
       headers: signS3Request('GET', url, '', conn.username || '', conn.secret || '', { region: normalizeS3Region(conn.region) }),
       signal: AbortSignal.timeout(15000),
@@ -341,7 +343,9 @@ async function s3List(conn, connectionPath) {
     const nextToken = decodeXmlEntities(next);
     if (!nextToken || nextToken === token) break; // a token that never advances would loop to the cap
     token = nextToken;
+    more = true;
   }
+  if (more || entries.length > S3_LIST_MAX_ENTRIES) console.warn(`[storage] ${conn.kind || 's3'} listing of "${queryPrefix}" stopped at the cap (${S3_LIST_MAX_PAGES} pages / ${S3_LIST_MAX_ENTRIES} entries); the listing is incomplete`);
   return entries.length > S3_LIST_MAX_ENTRIES ? entries.slice(0, S3_LIST_MAX_ENTRIES) : entries;
 }
 
