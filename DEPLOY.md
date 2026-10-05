@@ -41,9 +41,13 @@ internet except to whatever inference endpoint the operator configures.
 
 ## 2. Required inputs
 
-None of these are needed to *start* the stack: every service env var in
-`compose.yaml` is `${VAR:-default}`, so `docker compose up` with no `.env` at
-all reaches a healthy running state. Start it, open the app at whatever address
+Almost none of these are needed to *start* the stack. Every service env var in
+`compose.yaml` is `${VAR:-default}` except `DIARY_VERSION` and `OCR_VERSION`, which are
+required (`${VAR:?...}`): Compose refuses to run without them, so `docker compose up` does
+**not** work with no `.env`. The `.env` that `bash deploy/init-managed.sh` creates (step 3.1)
+carries `dev` for both. Add the Diary credentials from step 3.1 (or `DIARY_ALLOW_OPEN=1`,
+see below) and `docker compose up` reaches a healthy running state with every other value
+at its default. Start it, open the app at whatever address
 you reach it on (a bare LAN IP is fine), and the first-run wizard collects the
 public origin and the inference endpoint itself. `HUMAN-REQUIRED` rows below
 still need the operator *for a non-default choice* — mostly external storage

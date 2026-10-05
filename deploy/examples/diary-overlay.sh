@@ -8,6 +8,8 @@
 # Keeps cowork-diary:rollback-before-diary-overlay and config/.env.bak.before-diary-<SRC_SHA>.
 set -euo pipefail
 V=${1:?source release sha (becomes DIARY_VERSION)}; base=/mnt/docker/appdata/cowork; config=$base/config/.env
+# $V becomes a path component, an image tag and a sed replacement below: only a hex SHA is allowed.
+[[ $V =~ ^[0-9a-f]{7,40}$ ]] || { echo "source release sha must be 7 to 40 lowercase hex characters, got: $V" >&2; exit 1; }
 cd /boot/config/plugins/compose.manager/projects/Cowork
 OLD=$(sed -n 's/^DIARY_VERSION=//p' "$config")
 [ -n "$OLD" ] || { echo "DIARY_VERSION is not set in $config; see docs/deployment.md 'Migrating an existing .env'"; exit 1; }
@@ -18,11 +20,20 @@ OLD_ID=$(docker image inspect cowork-diary:$OLD --format '{{.Id}}')
 RUN_ID=$(docker inspect cowork-diary-1 --format '{{.Image}}')
 [ "$OLD_ID" = "$RUN_ID" ] || { echo "running Diary is not cowork-diary:$OLD"; exit 1; }
 echo "current cowork-diary:$OLD $OLD_ID"
+# $marker is older than the backup this run takes, so a leftover ab_* folder from an earlier
+# (or failed) run can never be mistaken for it.
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+marker=$tmp/backup-start; touch "$marker"; ctx=$tmp/ctx; mkdir "$ctx"
 php /usr/local/emhttp/plugins/appdata.backup/scripts/backup.php >/tmp/ab-diary.log 2>&1
-B=$(ls -td /mnt/disk3/noevia-backups/ab_* | head -1); echo "backup $B"
+# BEGIN backup-pick (deploy/tests/test_diary_overlay.py runs this block on synthetic folders)
+backup_root=${BACKUP_ROOT:-/mnt/disk3/noevia-backups}
+B=$(ls -td "$backup_root"/ab_* 2>/dev/null | head -1 || true)
+[ -n "$B" ] && [ -d "$B" ] || { echo "no appdata backup (ab_*) under $backup_root; not deploying" >&2; exit 1; }
+[ "$B" -nt "$marker" ] || { echo "newest backup $B is older than this run's backup start, so the backup did not produce a new folder; not deploying" >&2; exit 1; }
+# END backup-pick
+echo "backup $B"
 for f in cowork-diary-1.tar.gz cowork-web-1.tar.gz extra_files.tar.gz; do gzip -t "$B/$f"; done; echo "backup verified"
 docker tag "$OLD_ID" cowork-diary:rollback-before-diary-overlay
-ctx=$(mktemp -d); trap 'rm -rf "$ctx"' EXIT
 cp -r "$base/releases/$V/services/diary/agent" "$ctx/agent"
 printf 'FROM cowork-diary:rollback-before-diary-overlay\nCOPY agent/ ./agent/\n' > "$ctx/Dockerfile"
 docker build -q -t cowork-diary:$V-candidate "$ctx" >/dev/null

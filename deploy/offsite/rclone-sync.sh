@@ -32,13 +32,21 @@ DRY=()
 
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG"; }
 
+# JSON string escaping for the values status() writes. $REMOTE comes from the environment, so a
+# backslash, quote or control character in it must not break (or inject into) the status file.
+json_escape() {
+  local v=$1
+  v=${v//\\/\\\\}; v=${v//\"/\\\"}
+  v=${v//$'\n'/\\n}; v=${v//$'\r'/\\r}; v=${v//$'\t'/\\t}
+  printf '%s' "$v"
+}
+
 # What noevia's Off-site backups page shows. Written into the store folder (noevia mounts it) as a
 # dot file, which the mirror excludes and noevia's store ignores. Only a state and a sentence: no
 # paths beyond the remote's name, and never anything from the rclone config.
 status() {
   [ -d "$LOCAL" ] || return 0
-  local msg=${2//\\/\\\\}; msg=${msg//\"/\\\"}
-  printf '{"state":"%s","at":%s,"remote":"%s","message":"%s"}\n' "$1" "$(date +%s)000" "$REMOTE" "$msg" \
+  printf '{"state":"%s","at":%s,"remote":"%s","message":"%s"}\n' "$(json_escape "$1")" "$(date +%s)000" "$(json_escape "$REMOTE")" "$(json_escape "$2")" \
     > "$LOCAL/.mirror-status.json.tmp" && mv "$LOCAL/.mirror-status.json.tmp" "$LOCAL/.mirror-status.json"
 }
 
@@ -71,14 +79,14 @@ common=(--exclude '.tmp-*' --exclude '.*' --transfers 4 --checkers 8 --retries 5
 # --checksum makes "differs" mean content, not modification time: restoring this folder from a
 # backup resets timestamps on identical files, and without it every later sync would refuse.
 log "COPY $LOCAL -> $REMOTE (${snapshots} snapshots locally)"
-if ! rclone copy "$LOCAL" "$REMOTE" --immutable --checksum "${common[@]}" "${DRY[@]}" >>"$LOG" 2>&1; then
+if ! rclone copy "$LOCAL" "$REMOTE" --immutable --checksum "${common[@]}" ${DRY[@]+"${DRY[@]}"} >>"$LOG" 2>&1; then
   log "FAIL copy did not complete; nothing was pruned"; status failed "The copy to Drive did not finish. See offsite-sync.log on the server."; exit 4
 fi
 
 # Rule 2b: capped prune. Only reached after a complete copy, so the remote is never left with
 # fewer snapshots than the local side.
 log "PRUNE remote objects that noevia's retention removed (at most $MAX_DELETE)"
-if ! rclone sync "$LOCAL" "$REMOTE" --max-delete "$MAX_DELETE" --checksum "${common[@]}" "${DRY[@]}" >>"$LOG" 2>&1; then
+if ! rclone sync "$LOCAL" "$REMOTE" --max-delete "$MAX_DELETE" --checksum "${common[@]}" ${DRY[@]+"${DRY[@]}"} >>"$LOG" 2>&1; then
   log "FAIL prune stopped (over the delete cap, or an error); the remote keeps everything it had"; status failed "Copied, but cleaning up old copies on Drive stopped. See offsite-sync.log."; exit 5
 fi
 
