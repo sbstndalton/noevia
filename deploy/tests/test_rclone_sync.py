@@ -91,6 +91,18 @@ class RcloneSyncTests(unittest.TestCase):
         self.assertEqual(self.run_sync(), 0)
         self.assertNotIn('data/ab/chunk2', self.remote_files())
 
+    def test_status_file_is_valid_json_when_the_remote_has_quotes_and_backslashes(self):
+        import json
+        self.healthy_store()
+        odd = self.tmp / 'we"ird\\remote'
+        odd.mkdir()
+        env = dict(os.environ, LOCAL=str(self.local), REMOTE=f'gdrive:{odd}', RCLONE_CONFIG=str(self.conf),
+                   LOG=str(self.tmp / 'sync.log'))
+        self.assertEqual(subprocess.run(['bash', str(SCRIPT)], env=env, capture_output=True, text=True).returncode, 0)
+        status = json.loads((self.local / '.mirror-status.json').read_text())
+        self.assertEqual(status['state'], 'ok')
+        self.assertEqual(status['remote'], f'gdrive:{odd}')
+
     def test_a_wiped_local_store_never_wipes_the_remote(self):
         # The disaster case. `rclone sync` of an empty folder would delete everything on Drive
         # at exactly the moment the backup is needed.

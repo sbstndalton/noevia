@@ -100,7 +100,8 @@ Full runbook in `docs/deployment.md`. In short, from the repo root:
 3. On the box: `php /usr/local/emhttp/plugins/appdata.backup/scripts/backup.php`, `gzip -t` the
    newest `/mnt/disk3/noevia-backups/ab_*`, then from
    `/boot/config/plugins/compose.manager/projects/Cowork`: `bash /tmp/overlay-release.sh OLD NEW`.
-   It rolls back automatically on a failed health wait and keeps the sidecars running.
+   It rolls back automatically on a failed health wait. It is not web-only: it recreates `diary`
+   and `ocr` (see "Overlay releases" in `docs/deployment.md` for the web-only recipe).
 4. Record the release in `docs/changelog.md` and `docs/deployment.md`; push.
 
 Live Compose files are **separate** from the repo's: `docker-compose.override.yml` in that
