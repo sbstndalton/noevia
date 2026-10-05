@@ -7,8 +7,8 @@ Scope: the JSON API served by `services/model-manager/app/api.py` (the `model-lo
 container) and consumed by noevia web. It does **not** cover Lemonade's own `/api/v1/*`
 (`pull`, `load`, `unload`, ...) that `apps/web/server/model-manager.cjs` speaks when
 `MODEL_MANAGER_KIND=lemonade`; that is a different service with a different owner.
-The server-rendered pages of model-loader (`/`, `/models`, `/config`, ...) are not part
-of the contract and are being phased out.
+model-loader serves no pages: its server-rendered UI (`/`, `/models`, `/config`, ...) was
+removed in #806, and `/api/v1/*` is the whole surface.
 
 The route table below is checked by tests, so a route added to or removed from either
 side fails CI until this file is updated:
