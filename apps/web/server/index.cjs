@@ -333,7 +333,7 @@ const {
   getProject: (id) => getProject(id),
   documentSources,
   workspace: () => currentWorkspace(),
-  executeMcp: (name, args, signal) => executeMcpToolCall(name, args, signal),
+  executeMcp: (name, args, signal, serverId) => executeMcpToolCall(name, args, signal, serverId),
 });
 // The per-turn permitted-tools view is cached for 30 s; every write that changes what it shows
 // (a tool permission, a project's toolbox selection) clears it so the picker is never stale (#796).

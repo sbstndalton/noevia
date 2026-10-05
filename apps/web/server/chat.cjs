@@ -839,6 +839,9 @@ function createChatHandler({
     const resolved = resolveTools({ ...project, toolboxes: routing.routed ? routing.ids : selectedBoxes }, model, blocked);
     let activeTools = resolved.tools;
     const allowedToolNames = new Set(activeTools.map((t) => t.function.name));
+    // The MCP server each offered name came from (#865): every call goes to the server whose tool
+    // the model was shown, not to another that offers the same name.
+    let toolRoutes = new Map(resolved.routes || []);
     // Scope shown on the reply ("Using: Drive, Tasks"), so a wrong pick is visible and reportable.
     const boxLabel = (id) => allToolboxes().find((b) => b.id === id)?.label || id;
     // `boxes` carries the stable ids next to the joined English text (#624), so the client words
@@ -914,7 +917,7 @@ function createChatHandler({
       send({ type: 'tool', index, name: call.name, args: call.args });
       const outcome = { failed: false };
       const result = String(await runTool(call, async () => {
-        const out = await executeToolCall(project, call.name, call.args, allowedToolNames, chatSignal.signal, outcome, { chatKey, exchangeKey });
+        const out = await executeToolCall(project, call.name, call.args, allowedToolNames, chatSignal.signal, outcome, { chatKey, exchangeKey, routes: toolRoutes });
         recordToolUse(chatWorkspace, call.name);
         return out;
       }));
@@ -1317,9 +1320,12 @@ function createChatHandler({
             let reply = 'All of this project\'s tools are already available.';
             if (!widened) {
               widened = true;
-              const full = resolveTools({ ...project, toolboxes: selectedBoxes }, model, blocked).tools;
+              const fullResolved = resolveTools({ ...project, toolboxes: selectedBoxes }, model, blocked);
+              const full = fullResolved.tools;
               activeTools = full;
               for (const t of full) allowedToolNames.add(t.function.name);
+              // The widened list is what the model sees from now on, so its routes win over the narrowed ones.
+              toolRoutes = new Map([...toolRoutes, ...(fullResolved.routes || [])]);
               reply = `More tools are now available: ${full.map((t) => t.function.name).join(', ')}. Continue with the task.`;
               send({ type: 'tools_scope', text: 'all tools' });
             }
@@ -1456,7 +1462,7 @@ function createChatHandler({
               }
             }
             markWriteAttempt();
-            const options = { chatKey, exchangeKey, ...(editTarget !== null ? { editTarget: editTargets.targetDigest(editTarget, editAccount) } : {}) };
+            const options = { chatKey, exchangeKey, routes: toolRoutes, ...(editTarget !== null ? { editTarget: editTargets.targetDigest(editTarget, editAccount) } : {}) };
             result = await executeToolCall(project, tc.name, tc.args, allowedToolNames, chatSignal.signal, outcome, options);
             ran = true;
             recordToolUse(chatWorkspace, tc.name);
