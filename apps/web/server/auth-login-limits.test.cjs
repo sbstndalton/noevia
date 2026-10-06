@@ -34,6 +34,28 @@ test('31 unknown-username failures from the shared address do not refuse a corre
   assert.equal(await login(auth, 'realuser', PASSWORD), 200, 'the real user is locked out by strangers probing usernames');
 });
 
+test('failures on real usernames count toward the 429 switch exactly like unknown ones', async (t) => {
+  const auth = await fixture(t);
+  const owner = auth.listUsers()[0].id;
+  for (let u = 0; u < 6; u++) await auth.acceptInvite(request(`10.9.0.${u}`), response(), { token: auth.createInvite(owner).token, username: `member${u}`, password: 'synthetic member password' });
+  // 31 failures on real accounts only (at most 5 each, so no account lock), the same count that
+  // switches unknown-username failures to 429.
+  for (let u = 0; u < 6; u++) for (let i = 0; i < 5; i++) assert.equal(await login(auth, `member${u}`, 'wrong synthetic password'), 401);
+  assert.equal(await login(auth, 'realuser', 'wrong synthetic password'), 401);
+  assert.equal(await login(auth, 'ghost-after', 'wrong synthetic password'), 429, 'only unknown-username failures were counted');
+  assert.equal(await login(auth, 'realuser', 'wrong synthetic password'), 429, 'a known name flips exactly like an unknown one');
+  assert.equal(await login(auth, 'realuser', PASSWORD), 200);
+});
+
+test('before the switch, a known and an unknown name answer the same at every step', async (t) => {
+  const auth = await fixture(t);
+  const run = async (username, ip) => { const out = []; for (let i = 0; i < 7; i++) out.push(await login(auth, username, 'wrong synthetic password', ip)); return out; };
+  const known = await run('realuser', '192.0.2.1');
+  const unknown = await run('ghost-user', '192.0.2.2');
+  assert.deepEqual(known, [401, 401, 401, 401, 401, 429, 429]);
+  assert.deepEqual(unknown, known, 'the account lock reveals whether a username exists');
+});
+
 test('six consecutive correct sign-ins all succeed', async (t) => {
   const auth = await fixture(t);
   const statuses = [];
@@ -76,14 +98,31 @@ test('200 failures from one address refuse every password sign-in from it', asyn
 
 test('rate limiter clear and release give counts back', () => {
   const limiter = createRateLimiter();
-  for (let i = 0; i < 5; i++) limiter.rateLimited('k', 5, 60_000);
-  limiter.release('k');
+  let last;
+  for (let i = 0; i < 5; i++) last = limiter.charge('k', 5, 60_000);
+  limiter.release('k', last.window);
   assert.equal(limiter.rateLimited('k', 5, 60_000), false);
   assert.equal(limiter.rateLimited('k', 5, 60_000), true);
   limiter.clear('k');
   assert.equal(limiter.blocked('k', 0), false);
-  limiter.release('missing');
+  limiter.release('missing', last.window);
   assert.equal(limiter.size(), 0);
+});
+
+test('a call counted in one window is not refunded from the next', () => {
+  let now = 1_000;
+  const limiter = createRateLimiter({ now: () => now });
+  const early = limiter.charge('k', 2, 100); // window [1000, 1100)
+  now = 1_150; // the window rolls over while the request is in flight
+  for (let i = 0; i < 3; i++) limiter.charge('k', 2, 100);
+  assert.equal(limiter.blocked('k', 2), true);
+  limiter.release('k', early.window);
+  assert.equal(limiter.blocked('k', 2), true, 'a stale refund lifted the new window below its limit');
+  const current = limiter.charge('k', 2, 100);
+  limiter.release('k', current.window);
+  assert.equal(limiter.blocked('k', 2), true);
+  now = 1_300;
+  assert.equal(limiter.blocked('k', 2), false, 'windows still expire on the injected clock');
 });
 
 test('startup warns when a public https address runs with TRUST_PROXY off', (t) => {
