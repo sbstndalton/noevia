@@ -480,6 +480,28 @@ should already be current (the stale-shell guard covers that); tell them to
 remove and re-add the home-screen shortcut to pick up the new icon — there is
 no way to push that from the server.
 
+### Assembled release (dry run, #922)
+
+Preparation for the repo split ([ADR 0001](adr-0001-rust-and-repo-split.md)). **The live path
+above is unchanged** (git archive + `build-web-release.sh`, or the overlay scripts) until the
+owner switches to the assembled tarball; nothing on the server uses it yet.
+
+- `release/versions.lock` pins `NOEVIA_WEB_REF` and `NOEVIA_CORE_REF`. Both are `self` today:
+  web/ and core/ come from `apps/web` at the released noevia SHA. A 40-character SHA instead
+  fetches `sbstndalton/noevia-web` / `noevia-core` as an anonymous codeload tarball (checksum
+  verified when `NOEVIA_WEB_SHA256` / `NOEVIA_CORE_SHA256` are set).
+- On the Mac: `deploy/tools/assemble-release.sh <sha> [out-dir]` writes
+  `noevia-release-<sha>.tar.gz` (`noevia/`, `web/`, `core/`, `release-refs`). It refuses an
+  unknown or non-hex SHA and a dirty checkout, and reads the lock as committed at `<sha>`.
+- Build from the extracted tree:
+  `docker build -f noevia/build/web.Dockerfile --build-arg COWORK_VERSION=<sha> --build-arg REQUIRE_RELEASE_VERSION=1 -t cowork-web:<sha> <tree>`.
+  `COWORK_VERSION` and `version.json`'s `version` stay the noevia SHA; `version.json` also lists
+  the resolved `web` and `core` SHAs.
+- CI job "Assembled release dry run" builds this image and `apps/web/Dockerfile`'s (no push) and
+  fails unless the `/app/dist`, `/app/server`, `/app/contracts` file lists, the server
+  `node_modules` package list and the image config match. A change to `apps/web/Dockerfile` must
+  be mirrored in `build/web.Dockerfile`.
+
 ## Per-service image tags
 
 Each image is tagged by what it contains and pinned by its own variable in
