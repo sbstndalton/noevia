@@ -835,6 +835,8 @@ const { handleChat } = require('./chat.cjs').createChatHandler({
     read: (chatId) => chatBrainLib.readBrain(currentWorkspace().dir, chatId) },
   DEFAULT_TOOLBOXES, CONNECTOR_BOXES, connectedBoxes, allToolboxes, resolveTools, isWriteTool, executeToolCall,
   oauthServerIds, accountReady, chatWideApproved, awaitApproval, recordUsage, recordToolUse,
+  // #917: which of the signed-in workspace's lists holds a chat id ('free', a project id, or null).
+  chatListHolder: (chatId) => Array.from(FREE_CHATS).some((c) => c && c.id === chatId) ? 'free' : (PROJECTS.find((proj) => Array.isArray(proj.chats) && proj.chats.some((c) => c && c.id === chatId))?.id ?? null),
   chatgptOAuth, chatgptEnabled: () => features.enabled('chatgptOAuth'),
   projectEditTool: (name) => require('./project-edit-target.cjs').EDIT_TOOLS.has(name) && !!MCP_INTERNAL_SERVER && mcpState.tools.get(name)?.serverId === MCP_INTERNAL_SERVER.id,
   // #687: a plain-named project file is edited by moving it into the project folder when storage is connected.
