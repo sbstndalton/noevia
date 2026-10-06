@@ -543,6 +543,12 @@ jobs:
               cd /app && ls -A
               find dist server contracts -path server/node_modules -prune -o -type f -print | sort
             ' > "$d/$img.files"
+            # sha256 of every file (a build change that alters only unhashed output such as
+            # index.html, manifest or icons keeps the same names); version.json is compared below.
+            docker run --rm --entrypoint sh "noevia-web:$img" -c '
+              cd /app && find dist server contracts -path server/node_modules -prune -o -type f ! -path dist/version.json -print0 \
+                | LC_ALL=C sort -z | xargs -0 sha256sum
+            ' > "$d/$img.hashes"
             docker run --rm --entrypoint node "noevia-web:$img" -e '
               const l = require("/app/server/node_modules/.package-lock.json");
               for (const [k, v] of Object.entries(l.packages).sort()) console.log(k + "@" + v.version);
@@ -554,7 +560,14 @@ jobs:
           diff -u "$d/reference.files" "$d/assembled.files"
           diff -u "$d/reference.packages" "$d/assembled.packages"
           diff -u "$d/reference.config" "$d/assembled.config"
-          [ -s "$d/reference.files" ] && [ -s "$d/reference.packages" ]
+          [ -s "$d/reference.files" ] && [ -s "$d/reference.packages" ] && [ -s "$d/reference.hashes" ]
+          wc -l "$d"/*.hashes
+          if ! diff -q "$d/reference.hashes" "$d/assembled.hashes" >/dev/null; then
+            echo "::error::file contents differ between the assembled and reference images:"
+            # paths whose hash differs or that exist on one side only
+            { cat "$d/reference.hashes" "$d/assembled.hashes"; } | sort | uniq -u | sed 's/^[0-9a-f]*  //' | sort -u | sed 's/^/differs: /'
+            exit 1
+          fi
           # version.json: identical `version`; the assembled one only adds web and core.
           node -e '
             const fs = require("fs"), [ref, asm] = ["reference", "assembled"].map(n => JSON.parse(fs.readFileSync(process.argv[1] + "/" + n + ".version.json", "utf8")));
