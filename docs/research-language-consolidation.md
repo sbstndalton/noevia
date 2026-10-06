@@ -108,6 +108,8 @@ is not worth touching: a chat turn calls it a few dozen times at most.
 
 ## 4. Recommendation
 
+> Superseded 2026-10-06 by [ADR 0001](adr-0001-rust-and-repo-split.md): Rust for untrusted-input leaf work; the measurements below still hold.
+
 **Do not port anything.** No Node path on the request path costs enough for a user to notice
 a rewrite, in any language:
 

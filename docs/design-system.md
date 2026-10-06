@@ -61,7 +61,7 @@ or colored glow. Keyboard focus is a visible 2px ring.
 
 ## Contrast and theme startup
 
-`tests/theme-contrast.test.cjs` checks all six mode/palette combinations against canvas, surface,
+`tests/client/theme-contrast.test.cjs` checks all six mode/palette combinations against canvas, surface,
 sidebar, app, and garnet tint: primary text at least 7:1; secondary/accent/success
 text at least 4.5:1; focus rings and control boundaries at least 3:1. Keep checked
 tokens as six-digit hex literals. Decorative borders may use transparency.
@@ -88,7 +88,7 @@ render fails. Local preview fixtures must implement both `/api/usage` and
 
 ## Project identity and navigation
 
-Projects use a curated outline SVG from `server/project-icons.json` and an optional
+Projects use a curated outline SVG from `apps/web/contracts/project-icons.json` and an optional
 hex color. This shared allowlist feeds the picker and server validation. Existing
 projects default to the folder icon and theme text color. New/edit dialogs expose
 an anchored picker with 18 icons, eight swatches and a custom color control; draft
@@ -223,6 +223,6 @@ paint in `public/theme.js`); a saved `noevia:material` migrates (Soft → Editor
 Contemporary, Liquid glass → Glass). Settings → Appearance shows each family as a live sample
 in light and dark with the current accent (`.theme-scope` re-declares the semantic tokens on
 the sample). Family-scoped component rules may change colour, depth and shape but never size,
-spacing or font metrics (`tests/family-geometry.test.cjs`); family grounds are contrast-checked
-for every accent (`tests/theme-family-contrast.test.cjs`). Screenshots:
+spacing or font metrics (`tests/client/family-geometry.test.cjs`); family grounds are contrast-checked
+for every accent (`tests/client/theme-family-contrast.test.cjs`). Screenshots:
 `apps/web/qa/theme-families.cjs`.

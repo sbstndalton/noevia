@@ -15,7 +15,8 @@ class OverlayReplacement(unittest.TestCase):
             app = pathlib.Path(temp) / 'app'
             for rel in ['server/routes/retired.cjs', 'server/nested/deep/retired.cjs',
                         'server/.obsolete', 'server/node_modules/package/index.js',
-                        'server/ui-data/tenant/data.json', 'dist/assets/old.js']:
+                        'server/ui-data/tenant/data.json', 'dist/assets/old.js',
+                        'contracts/retired.json']:
                 p = app / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text('old')
@@ -30,6 +31,7 @@ class OverlayReplacement(unittest.TestCase):
             self.assertFalse((app / 'server/.obsolete').exists())
             self.assertFalse((app / 'server/old-link').exists())
             self.assertFalse((app / 'dist').exists())
+            self.assertFalse((app / 'contracts').exists())
             self.assertEqual((outside / 'keep').read_text(), 'keep')
             for rel in ['server/node_modules/package/index.js', 'server/ui-data/tenant/data.json']:
                 self.assertEqual((app / rel).read_text(), 'old')

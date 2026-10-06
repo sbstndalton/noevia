@@ -93,7 +93,7 @@ losing its exec bit (Nextcloud sync does both; restore with `git checkout --` / 
 Full runbook in `docs/deployment.md`. In short, from the repo root:
 
 1. `cd apps/web && npm run build`, then pack `COPYFILE_DISABLE=1 tar -h --no-xattrs -czf
-   /tmp/app-SHA.tar.gz dist server`; from the repo root `git archive --format=tar.gz -o
+   /tmp/app-SHA.tar.gz dist server contracts`; from the repo root `git archive --format=tar.gz -o
    /tmp/src-SHA.tar.gz SHA`.
 2. `scp` both and `deploy/examples/overlay-release.sh` to `/tmp` on `daserver` (LAN alias;
    over Tailscale `root@100.70.173.74`).

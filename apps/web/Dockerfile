@@ -22,7 +22,7 @@ COPY package.json package-lock.json ./
 # Prefer IPv4 for registry lookups: hosts with a broken IPv6 route otherwise time out.
 RUN NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
 COPY . .
-RUN node --test tests/*.test.cjs && npm run build
+RUN node --test tests/client/*.test.cjs tests/server/*.test.cjs && npm run build
 
 # Runtime must be glibc (Debian), not Alpine/musl: sqlite-vec's prebuilt vec0.so
 # is glibc-linked and cannot load on musl (SQLite retries with a .so suffix -> the
@@ -40,6 +40,8 @@ COPY server/package.json server/package-lock.json* ./server/
 # prebuilt binaries land here; server/.dockerignore keeps the macOS copy out).
 RUN cd server && NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
 COPY server ./server
+# Shared client/server data (project icons, name limits); server/ requires it as ../contracts.
+COPY contracts ./contracts
 ENV UI_PORT=8021
 EXPOSE 8021
 HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+(process.env.UI_PORT||8021)+'/api/setup/status',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

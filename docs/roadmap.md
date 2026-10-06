@@ -302,6 +302,8 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 Each builds on the one before or is ordered by value. Work top-down; record any reordering here.
 
+**Repo split and Rust:** [ADR 0001](adr-0001-rust-and-repo-split.md) (#897); preparation (contracts/, client/server test split, boundary guard) is in this repo.
+
 **Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Multi-hop rerun done (12→6 3/4). Next: watch fallback rates in the web log (`[rag] rerank`).
 
 Pruned 2026-10-05 (repo sweep): items whose issues are closed were removed (they remain in git

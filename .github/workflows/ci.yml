@@ -104,6 +104,9 @@ jobs:
         working-directory: apps/web/server
       - run: npm run typecheck
         if: env.RUN_JOB == 'true'
+      # #897 repo-split guard: src/ and server/ must not import each other.
+      - run: npm run check:boundaries
+        if: env.RUN_JOB == 'true'
       - run: npm test
         if: env.RUN_JOB == 'true'
       # The verifier's privilege separation (#703) needs root to drop to its git and test uids;
@@ -117,7 +120,7 @@ jobs:
       # broke every real release build (issue #317). Re-run just the tests
       # that read STAMP_VERSION with a SHA-shaped value set, matching what a
       # release build actually does.
-      - run: STAMP_VERSION=ci1234567 node --test tests/stamp-icons.test.cjs tests/build-version-stamp.test.cjs
+      - run: STAMP_VERSION=ci1234567 node --test tests/client/stamp-icons.test.cjs tests/server/build-version-stamp.test.cjs
         if: env.RUN_JOB == 'true'
       - run: npm run build
         if: env.RUN_JOB == 'true'

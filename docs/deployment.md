@@ -597,13 +597,13 @@ Both flows reuse the previous web image's installed `node_modules` (the box cann
 registry over IPv6) instead of rebuilding.
 
 - **`deploy/examples/overlay-release.sh OLD NEW` is not web-only.** It builds `cowork-web:NEW`
-  from `cowork-web:OLD` with `dist/` and `server/` replaced, then recreates `web`, `diary` and
+  from `cowork-web:OLD` with `dist/`, `server/` and `contracts/` replaced, then recreates `web`, `diary` and
   `ocr` (`up -d --no-build --no-deps --wait web diary ocr`) and brings up `docling` and
   `code-sandbox` when the deployment defines them. It leaves the engine (`llama`) untouched and
   rolls back automatically when the health wait or the Diary-isolation check fails. Use it when a
   Diary/OCR restart is acceptable. It validates `OLD` and `NEW` as hex SHAs and does not require
   the engine or the model loader to exist.
-- **Web-only release** (sidecars keep running): layer `dist/` and `server/` onto the previous
+- **Web-only release** (sidecars keep running): layer `dist/`, `server/` and `contracts/` onto the previous
   `cowork-web:<sha>` with the same Dockerfile the script generates (remove the old application
   files, keep `node_modules` and `ui-data`, copy the new ones), back up `config/.env`, point
   `current` and `COWORK_VERSION` at the new release, then run only the web service through the
