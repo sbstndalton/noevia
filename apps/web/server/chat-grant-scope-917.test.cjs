@@ -18,7 +18,8 @@ function harness(t, { holder = () => undefined } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-grant-917-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const user = { id: 'synthetic-user' };
-  const projects = new Map(['proj-a', 'proj-b'].map((id) => [id, { id, name: id, model: 'synthetic-model', routing: 'manual', toolboxes: ['core'], files: [], chats: [] }]));
+  // A free chat's context project (diary-extras.cjs chatProjectId) resolves without a projectId.
+  const projects = new Map(['proj-a', 'proj-b', 'cowork-chat-context-chat-x'].map((id) => [id, { id, name: id, model: 'synthetic-model', routing: 'manual', toolboxes: ['core'], files: [], chats: [] }]));
   const store = { workspace: { userId: user.id }, authn: { user } };
   const requestScope = { getStore: () => store, run: (_scope, fn) => fn() };
   const definitions = createDriveTools({ accounts: { forUser: () => ({ drive: { state: () => ({ state: 'connected' }) } }) } });
@@ -152,4 +153,33 @@ test('the gate honours a grant only in the scope it was given in; revoke ignores
   assert.equal(gate.chatWideApproved('u2', 'c1', 'project:a'), false, 'another user still asks');
   assert.equal(gate.revokeChatGrant('u1', 'c1'), true);
   assert.equal(gate.chatWideApproved('u1', 'c1', 'project:a'), false);
+});
+
+test('a free chat granted under its context project is asked when the same chat id names a project explicitly (#917)', async (t) => {
+  const h = harness(t, { holder: (id) => (id === 'chat-x' ? 'free' : null) });
+  // Free chat (no projectId): the chat's own context project resolves, and the grant lives there.
+  const granted = await h.turn({ chatId: 'chat-x', decision: 'approve_all' });
+  assert.equal(granted.carded, true);
+  assert.deepEqual(granted.executions, [WRITE]);
+  assert.equal((await h.turn({ chatId: 'chat-x', decision: 'deny' })).carded, false, 'same free chat: still auto-approved');
+  // The very same project id, but named explicitly: another scope, and the free list holds the chat.
+  const explicit = await h.turn({ projectId: 'cowork-chat-context-chat-x', chatId: 'chat-x', decision: 'deny' });
+  assert.equal(explicit.carded, true, 'explicit projectId with the same chat id asks');
+  assert.deepEqual(explicit.executions, []);
+  assert.equal((await h.turn({ projectId: 'proj-a', chatId: 'chat-x', decision: 'deny' })).carded, true, 'another project asks');
+  // Even with no list lookup at all, the scope alone keeps the context grant out of the explicit request.
+  h.state.holder = () => undefined;
+  assert.equal((await h.turn({ projectId: 'cowork-chat-context-chat-x', chatId: 'chat-x', decision: 'deny' })).carded, true);
+  assert.equal((await h.turn({ chatId: 'chat-x', decision: 'deny' })).carded, false, 'the free chat keeps its grant');
+});
+
+test('listHolding finds the one list that holds a chat id (#917)', () => {
+  const { listHolding } = require('./chat-lists.cjs');
+  const free = [{ id: 'f1' }], projects = [{ id: 'p1', chats: [{ id: 'c1' }] }, { id: 'p2' }, null, { id: 'p3', chats: [null, { id: 'c3' }] }];
+  assert.equal(listHolding('f1', free, projects), 'free');
+  assert.equal(listHolding('c1', free, projects), 'p1');
+  assert.equal(listHolding('c3', free, projects), 'p3');
+  assert.equal(listHolding('new-chat', free, projects), null, 'a chat no list holds yet');
+  for (const bad of [null, undefined, '', 7]) assert.equal(listHolding(bad, free, projects), null);
+  assert.equal(listHolding('c1', undefined, undefined), null);
 });

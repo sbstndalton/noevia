@@ -33,7 +33,9 @@ function chatWideApproved(userId, chatId, scope) {
   const grant = chatWideApprovals.get(chatApprovalKey(userId, chatId));
   if (!grant) return false;
   if (now() > grant.until) { chatWideApprovals.delete(chatApprovalKey(userId, chatId)); return false; }
-  return grant.scope === grantScope(scope);
+  // Fails closed: a check without a scope never matches, and no unscoped grant is ever stored.
+  const s = grantScope(scope);
+  return s !== null && grant.scope === s;
 }
 
 // #814: a chat's "Allow for this chat" grant was given for the project it was in. Moving the chat
@@ -72,9 +74,10 @@ function awaitApproval({ id, userId, chatId, scope, abortSignal, onDecision = ()
       decide(decision) {
         if (['approve', 'deny', 'approve_all'].includes(decision)) onDecision(decision);
         if (decision === 'approve_all') {
-          // Without a chat id this approves this one call only; the grant has nowhere safe to live.
+          // Without a chat id or a scope (#917) this approves this one call only; the grant has
+          // nowhere safe to live, so the next write asks again.
           const key = chatApprovalKey(userId, chatId);
-          if (key) chatWideApprovals.set(key, { until: now() + CHAT_APPROVAL_TTL_MS, scope: grantScope(scope) });
+          if (key && grantScope(scope)) chatWideApprovals.set(key, { until: now() + CHAT_APPROVAL_TTL_MS, scope: grantScope(scope) });
           finish('approve');
           return true;
         }
