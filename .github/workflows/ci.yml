@@ -252,11 +252,11 @@ jobs:
         run: python -m pytest -q -rs tests/test_gguf_meta_differential.py tests/test_gguf_parser_switch.py
       # The image build proves the Dockerfile (pinned fetch, checksum, cargo build) and that the
       # bookworm-built binary runs on the runtime base; it must print the same summary as above.
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3 (v3.12.0)
         if: env.RUN_JOB == 'true'
       - name: Build model-manager image
         if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
         with:
           context: services/model-manager
           push: false
@@ -311,11 +311,11 @@ jobs:
         run: echo "No images changes; skipping."
       - uses: actions/checkout@v4
         if: env.RUN_JOB == 'true'
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3 (v3.12.0)
         if: env.RUN_JOB == 'true'
       - name: Build web image
         if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
         with:
           context: apps/web
           push: false
@@ -359,7 +359,7 @@ jobs:
           docker rm -f noevia-web-ci
       - name: Build diary image
         if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
         with:
           context: services/diary
           push: false
