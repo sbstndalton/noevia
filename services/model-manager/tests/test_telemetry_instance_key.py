@@ -109,3 +109,79 @@ def test_the_bare_guard_is_per_backend_task_and_timestamp():
 def test_instance_key_is_stable_and_degrades_to_the_port_without_a_timestamp():
     assert telemetry.instance_key("60279", 0.0) == "60279"
     assert telemetry.instance_key("60279", 1759658400.9) == telemetry.instance_key("60279", 1759658400.2)
+
+
+def test_a_request_whose_spawn_line_left_the_tail_is_attributed_to_the_stored_instance():
+    """#904: after 20000 lines the spawn line is gone; new tasks must still land under the
+    instance's alias and model path, not under the bare port with empty fields."""
+    db.init()
+    backend = "test-904-tail"
+    first, configs = telemetry.parse_log("\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")
+                                                   + _request("2026-10-05T10:00:05.000000000Z", 60279, 3, 100.0)))
+    db.record_server_configs(backend, configs)
+    assert db.record_timings(backend, first) == 1
+    # the tail now holds only a new task on the same port
+    tail, tail_configs = telemetry.parse_log("\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)), backend)
+    assert [s.instance for s in tail] == [first[0].instance]
+    assert (tail[0].alias, tail[0].model_path) == ("alpha", "/models/a.gguf")
+    assert tail_configs == []                          # the stored record is not touched
+    assert db.record_timings(backend, tail) == 1
+    rows = [r for r in db.recent_timings(alias="alpha", min_gen_tokens=1) if r["backend"] == backend]
+    assert sorted(r["gen_tps"] for r in rows) == [100.0, 120.0]
+    assert all("@" in r["instance"] for r in rows)
+    # re-reading the same tail stays a no-op
+    again, _ = telemetry.parse_log("\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)), backend)
+    assert db.record_timings(backend, again) == 0
+
+
+def test_a_reused_port_resolves_to_the_instance_that_was_newest_at_the_request_time():
+    db.init()
+    backend = "test-904-reuse"
+    parsed, configs = telemetry.parse_log(_log())
+    db.record_server_configs(backend, configs)
+    db.record_timings(backend, parsed)
+    old, new = sorted((c.instance for c in configs), key=lambda k: int(k.split("@")[1]))
+    tail = "\n".join(_request("2026-10-05T11:30:00.000000000Z", 60279, 9, 150.0)    # after the respawn
+                     + _request("2026-10-05T10:30:00.000000000Z", 60279, 8, 110.0)  # before it
+                     + _request("2026-10-05T09:00:00.000000000Z", 60279, 7, 90.0))   # before any spawn we know
+    samples, _ = telemetry.parse_log(tail, backend)
+    by_task = {s.task: s for s in samples}
+    assert by_task[9].instance == new and by_task[8].instance == old
+    assert "@" not in by_task[7].instance and by_task[7].alias == ""
+
+
+def test_other_backends_and_other_ports_are_not_resolved():
+    db.init()
+    backend = "test-904-scope"
+    parsed, configs = telemetry.parse_log("\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")))
+    db.record_server_configs(backend, configs)
+    req = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))
+    assert "@" not in telemetry.parse_log(req, backend + "-other")[0][0].instance
+    req2 = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 6027, 4, 120.0))
+    assert "@" not in telemetry.parse_log(req2, backend)[0][0].instance        # prefix, not substring
+
+
+def test_ingest_keeps_attributing_requests_after_the_spawn_line_scrolls_out(monkeypatch):
+    """End to end through ingest(): the second pass reads a tail with no spawn line."""
+    from app import services
+    db.init()
+    backend = "test-904-ingest"
+    logs = {"text": "\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")
+                              + _request("2026-10-05T10:00:05.000000000Z", 60279, 3, 100.0))}
+
+    class _Container:
+        def logs(self, **_kw):
+            return logs["text"].encode()
+
+    class _Client:
+        class containers:
+            @staticmethod
+            def get(_name):
+                return _Container()
+
+    monkeypatch.setattr(services, "_docker_client", lambda: _Client())
+    assert telemetry.ingest([backend], force=True) == 1
+    logs["text"] = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))
+    assert telemetry.ingest([backend], force=True) == 1
+    rows = [r for r in db.recent_timings(alias="alpha", min_gen_tokens=1) if r["backend"] == backend]
+    assert sorted(r["gen_tps"] for r in rows) == [100.0, 120.0]

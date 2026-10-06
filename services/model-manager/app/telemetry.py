@@ -240,8 +240,20 @@ def instance_key(port: str, spawn_ts: float) -> str:
     return f"{port}@{int(spawn_ts)}" if spawn_ts else port
 
 
-def parse_log(text: str) -> tuple[list[Sample], list[ServerConfig]]:
+def _spec_label(argv: dict[str, str]) -> str:
+    """Spec-type plus its knobs, as shown in the stats panel."""
+    spec = argv.get("--spec-type", "")
+    knobs = [f"{k.split('-')[-1]}={argv[k]}" for k in _SPEC_KNOB_FLAGS if k in argv]
+    return spec + " (" + " ".join(knobs) + ")" if spec and knobs else spec
+
+
+def parse_log(text: str, backend: str = "") -> tuple[list[Sample], list[ServerConfig]]:
     """Turn raw `docker logs -t` output into completed samples.
+
+    With `backend`, a request whose port has no spawn line in `text` (it scrolled out of the
+    log tail) is attributed to the stored instance that was newest on that port when the
+    request ran, instead of being left under the bare port with no alias or model path (#904).
+    Without it the parser is a pure function of `text`.
 
     A request's three timing lines arrive separately, so samples accumulate in a dict keyed by
     (instance, task) and are emitted once the whole text has been walked. A request whose lines
@@ -258,6 +270,18 @@ def parse_log(text: str) -> tuple[list[Sample], list[ServerConfig]]:
     # would then silently drop them) and would overwrite the old child's argv record.
     key_of_port: dict[str, str] = {}
     samples: dict[tuple[str, int], Sample] = {}
+    stored_by_port: dict[str, list[dict]] = {}        # port -> stored instances, newest first
+
+    def _stored_instance(port: str, ts: float) -> dict | None:
+        """Newest stored instance on `port` that had already spawned by `ts`."""
+        if not backend or not ts:
+            return None
+        if port not in stored_by_port:
+            try:
+                stored_by_port[port] = db.server_instances_on_port(backend, port)
+            except Exception:  # noqa: BLE001 - telemetry must never break a page render
+                stored_by_port[port] = []
+        return next((r for r in stored_by_port[port] if r["first_seen"] <= ts), None)
 
     def _flush_spawn() -> None:
         """Close an argv block, recording the spec settings it declared."""
@@ -320,15 +344,24 @@ def parse_log(text: str) -> tuple[list[Sample], list[ServerConfig]]:
             m = rx.search(line)
             if not m:
                 continue
-            pid, task = key_of_port.get(m.group(1), m.group(1)), int(m.group(3))
+            port, task = m.group(1), int(m.group(3))
+            pid = key_of_port.get(port, port)
+            stored = _stored_instance(port, ts) if port not in key_of_port else None
+            if stored:
+                pid = stored["instance"]
             key = (pid, task)
             s = samples.get(key)
             if s is None:
                 rec = by_pid.get(pid)
-                s = Sample(ts=ts, instance=pid, task=task,
-                           model_path=(rec.model_path if rec else ""),
-                           alias=(rec.alias if rec else ""),
-                           spec_type=spec_of.get(pid, ""))
+                if stored:
+                    s = Sample(ts=ts, instance=pid, task=task,
+                               model_path=stored["model_path"], alias=stored["alias"],
+                               spec_type=_spec_label(stored["argv"]))
+                else:
+                    s = Sample(ts=ts, instance=pid, task=task,
+                               model_path=(rec.model_path if rec else ""),
+                               alias=(rec.alias if rec else ""),
+                               spec_type=spec_of.get(pid, ""))
                 samples[key] = s
             if ts:
                 s.ts = ts
@@ -373,7 +406,7 @@ def ingest(container_names: list[str], *, force: bool = False) -> int:
             text = raw.decode("utf-8", errors="replace")
         except Exception:  # noqa: BLE001 - telemetry must never break a page render
             continue
-        parsed, configs = parse_log(text)
+        parsed, configs = parse_log(text, name)
         rows = [s for s in parsed if s.gen_tokens > 0 and s.ts > 0]
         try:
             db.record_server_configs(name, configs)
