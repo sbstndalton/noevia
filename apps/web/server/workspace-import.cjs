@@ -1,3 +1,4 @@
+const { readCappedJson } = require('./http.cjs');
 const MAX_UPLOAD = 32 * 1024 * 1024;
 // `headers` is an object or `(withSecret) => headers`; with `retry` (diary.cjs withStorageCredential)
 // a 428 from the sidecar is retried once with the storage secret. The body is buffered, so resending is safe.
@@ -21,7 +22,7 @@ async function proxyWorkspaceImport(req, res, url, headers, retry = (send) => se
     }
     const payload = Buffer.concat(chunks);
     const response = await retry((secret) => fetch(url, {method:'POST', headers:{...headersFor(secret), 'Content-Type':'application/zip'}, body:payload, signal:controller.signal}));
-    const body = await response.json();
+    const body = await readCappedJson(response, 1024 * 1024);
     send(response.status, response.ok ? body : {error:typeof body.detail === 'string' ? body.detail : 'Workspace import failed'});
   } catch {
     if (!res.headersSent) send(502, {error:'Import response unavailable. Retry with the same file and folder to safely check whether it completed.'});
