@@ -569,6 +569,23 @@ The live Compose Manager file (`/boot/config/plugins/compose.manager/projects/Co
 is a hand-kept copy: apply the same two lines there (the `MODELS_INI_WRITER` default and the
 `:ro` on web's `/llamacpp-config` volume) when shipping this change.
 
+### GGUF parser (`GGUF_PARSER`, #909)
+
+Model-loader images built from #909 on carry `/usr/local/bin/gguf-meta`, the bounded Rust GGUF
+reader from sbstndalton/noevia-rs at `release/versions.lock`'s `NOEVIA_RS_REF` (fetched as a
+checksum-verified tarball at build time, so the box needs no git credentials). It is dark:
+`GGUF_PARSER` defaults to `python`, and the Python parser keeps producing every model summary.
+
+- **Switch on (owner only):** add `GGUF_PARSER=rust` to the model-loader service's environment
+  (the live Compose Manager override is hand-kept, so add it there) and recreate model-loader
+  only. Web, llama and Diary need nothing.
+- **Behaviour with `rust`:** summaries come from `gguf-meta <path>` (no shell, 10 s timeout,
+  4 MB output cap). Any failure (missing binary, nonzero exit, timeout, bad output) falls back to
+  the Python parser for that file and logs one `gguf-meta failed (<reason>)` warning per reason
+  per process. Raw header reads (the model list's MoE/dense badge) stay on Python.
+- **Rollback:** remove `GGUF_PARSER` (or set it to `python`) and recreate model-loader. An
+  unknown value also means `python`, with one warning in the log.
+
 ### Diary tenant key (M2) — first rollout
 
 `DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see

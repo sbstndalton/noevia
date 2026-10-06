@@ -1,0 +1,8 @@
+# Pinned sources for a noevia release (ADR 0001, docs/adr-0001-rust-and-repo-split.md).
+# One KEY=<40-character commit SHA> per line; '#' starts a comment. The server never clones:
+# images fetch each pinned repo as an anonymous https tarball and verify its checksum.
+#
+# NOEVIA_RS_REF: sbstndalton/noevia-rs, built into the model-manager image as gguf-meta
+# (#909). Bumping it also means updating NOEVIA_RS_REF and NOEVIA_RS_SHA256 in
+# services/model-manager/Dockerfile (CI fails if the Dockerfile default differs from this file).
+NOEVIA_RS_REF=751c2d71868e782de33558cf00f805cc74758ecb
