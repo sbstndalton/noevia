@@ -12,10 +12,10 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-10-06 (overnight: Rust start, repo split, bug rounds 3–7)
 
-- **Live:** **`cowork-web:eee0dc93`**, **`cowork-model-loader:227903da`** (now carries the Rust
+- **Live:** **`cowork-web:e2f9d59b`**, **`cowork-model-loader:227903da`** (now carries the Rust
   `gguf-meta` binary; `GGUF_PARSER` unset = Python parser), **`cowork-ocr:227903da`**,
   **`cowork-diary:f6885a55`**, **`cowork-code-sandbox:pi-0.87.0-f6885a55`**, **`cowork-docling:f6885a55`**.
-  Web releases on 2026-10-06, newest first: `eee0dc93`, `e9efa32e` (adds `users.credential_epoch`;
+  Web releases on 2026-10-06, newest first: `e2f9d59b`, `eee0dc93`, `e9efa32e` (adds `users.credential_epoch`;
   db backup `state/web/cowork.db.bak.before-e9efa32e`), `cf662822`, `8cbced50`. Rollback recipes in
   [changelog.md](changelog.md).
 - **Repos:** [sbstndalton/noevia-rs](https://github.com/sbstndalton/noevia-rs) (Rust workspace:
@@ -29,7 +29,7 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
   NaN 500 and stale stats (#901, #904); per-user preferences cache (#905); OCR deadline (#914);
   project-bound chat grants (#917); sign-in limits and full credential revocation on recovery
   (#927, #928, #933); SSRF ranges and egress proxy caps found by the Rust port (#930, #932);
-  ChatGPT reconnect race (#934). Docling dependencies and models pinned to the live freeze (#890).
+  ChatGPT reconnect race (#934); project delete flow (#942) and benchmarks UI (#943); assembly CI compares file hashes (#938). Docling dependencies and models pinned to the live freeze (#890).
 - **Flags:** unchanged (`chatFraming` on; the rest off).
 
 ## Where things stand — 2026-10-05 (after the repo sweep, superseded)
