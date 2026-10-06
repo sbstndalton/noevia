@@ -8,6 +8,33 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 227903da — 2026-10-06 (sidecars only: model-manager and OCR)
+
+### Services
+
+- **Web:** no change (`cowork-web:8cbced50`). Not restarted.
+- **Diary:** no change (`cowork-diary:f6885a55`). Not restarted; the Diary overlay is still pending.
+- **Model manager:** [#907](https://github.com/sbstndalton/noevia/pull/907) (closes [#901](https://github.com/sbstndalton/noevia/issues/901): NaN/Infinity float GGUF metadata becomes `null` instead of a 500), [#908](https://github.com/sbstndalton/noevia/pull/908) (closes [#904](https://github.com/sbstndalton/noevia/issues/904): telemetry attributes requests to the stored instance after the spawn line leaves the log tail, gated on log overlap and model match, with `watermark`/`continuous_since`) and [#912](https://github.com/sbstndalton/noevia/pull/912) (closes [#909](https://github.com/sbstndalton/noevia/issues/909): the image also carries `/usr/local/bin/gguf-meta`, built from sbstndalton/noevia-rs at `751c2d71868e782de33558cf00f805cc74758ecb` and checked by sha256 in the Dockerfile; dark, `GGUF_PARSER` is not set so it stays `python`). Now `cowork-model-loader:227903da` (`sha256:c9709bc9...`, previous `cowork-model-loader:8e96d876`), `MODEL_MANAGER_VERSION=227903da`.
+- **OCR:** [#916](https://github.com/sbstndalton/noevia/pull/916) (closes [#914](https://github.com/sbstndalton/noevia/issues/914): `pdf_reduce` runs under one 160 s deadline, below the web's 180 s abort, so it no longer holds the single OCR slot). Now `cowork-ocr:227903da` (`sha256:d986f55a...`, previous `cowork-ocr:5004b50`), `OCR_VERSION=227903da`.
+- **Code sandbox (and code-verify), Docling:** no change (`cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-docling:f6885a55`). [#919](https://github.com/sbstndalton/noevia/pull/919) only changes how the Docling image is rebuilt; it is merged, not deployed, and the running image is unchanged.
+- **Deploy/infra:** no change. `readlink current` is still `releases/8cbced50`; `releases/227903da` holds the source the two images were built from.
+
+PRs: #907 #908 #912 #916. Issues: #901 #904 #909 #914.
+
+No feature flag was changed, and `GGUF_PARSER` was not set. No model was loaded, unloaded, downloaded, benchmarked or tuned, no Code task ran, and nothing touched the private Diary. The engine's loaded model stayed loaded.
+
+Exact source `227903da965c54666cf5c4aca65604341736a266` (main CI green on that commit). A `git archive` from the Mac checkout went to `releases/227903da`. Both images were built on DaServer with plain `docker build` from that tree (`services/ocr`, `services/model-manager`) under `nice`, tagged `227903da-candidate`, tested, then retagged `227903da`; `current` was not repointed because only sidecars changed. The model-manager build runs a Rust builder stage that fetches the noevia-rs tarball from codeload.github.com, verifies its sha256 and builds `gguf-meta`; it succeeded on DaServer without any network workaround.
+
+**Order and results.**
+
+1. **Candidate checks (before any cutover).** Model-manager: a throwaway `--network none` container with a synthetic token and a synthetic 4-key GGUF file (including a NaN float). `gguf-meta --help` printed its usage line (exit 2, by design), `gguf-meta <file>` exited 0 with a JSON summary, the app imported (`app.main`), `settings.gguf_parser` and `parser_choice()` both returned `python`, and `summarize_path` returned the Python summary. OCR: a throwaway `--network none --read-only` container, `/health` 200 `{"service": "ocr"}`, `pdf_reduce` and `server` import, `REDUCE_DEADLINE_SECONDS` present. Both containers were removed.
+2. **Model-manager.** `config/.env.bak.before-sidecars-227903da` taken (it also covers the OCR line), `MODEL_MANAGER_VERSION` set, started alone with `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 model-loader` (preflight passed, `Healthy`). Cutover 2026-10-06 07:50:39Z to 07:51:10Z; the new `cowork-model-loader-1` `StartedAt` is 07:50:39Z.
+3. **OCR.** `OCR_VERSION` set, started alone with the same `up.sh` line for `ocr`. Cutover 07:51:14Z to 07:51:30Z; the new `cowork-ocr-1` `StartedAt` is 07:51:24Z.
+
+**Verify.** Model-loader: healthy, `RestartCount` 0, `/api/v1/health` 200 `{"ok":true}`, web's `GET /api/v1/backends` calls return 200 in its log, `/usr/local/bin/gguf-meta` present (sha256 `aa262b77...`), `parser_choice()` is `python`. OCR: healthy, `RestartCount` 0, `/health` 200 and web reaches `http://ocr:8030/health` with 200; `/app/pdf_reduce.py` sha256 `2d07bffb...`. The 60-line log tails of both are clean. `sidecar-restart-alert.sh --ack` was run and `--dry-run` afterwards reported nothing. Diffing a full container snapshot (name, image, status, `StartedAt`, restart count, id) before and after: only `cowork-model-loader-1` and `cowork-ocr-1` changed. Web, Diary, Docling, Code sandbox, code-verify, llama, embed, Laya, Kiwix, DAV relay, the tunnel and every non-noevia container kept id and `StartedAt`.
+
+Rollback (each service on its own). On DaServer with `B=/mnt/docker/appdata/cowork`, `E=$B/config/.env`: for model-manager, `sed -i 's/^MODEL_MANAGER_VERSION=.*/MODEL_MANAGER_VERSION=8e96d876/' $E && bash $B/tools/preflight/up.sh --env-file $E -- -d --no-build --no-deps --wait --wait-timeout 180 model-loader`; for OCR, `sed -i 's/^OCR_VERSION=.*/OCR_VERSION=5004b50/' $E && bash $B/tools/preflight/up.sh --env-file $E -- -d --no-build --no-deps --wait --wait-timeout 180 ocr`. Restoring `$E.bak.before-sidecars-227903da` reverts both tags at once. `cowork-model-loader:8e96d876` and `cowork-ocr:5004b50` are retained. Nothing else needs rolling back; `GGUF_PARSER` was never set.
+
 ## Release 8cbced50 — 2026-10-06 (web only: round-3 server fixes and the `contracts/` move)
 
 ### Services
