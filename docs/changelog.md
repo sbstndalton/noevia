@@ -8,6 +8,32 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release e9efa32e — 2026-10-06 (web only: capped response reads, sign-in limits and credential epoch, SSRF and egress hardening)
+
+### Services
+
+- **Web:** [#924](https://github.com/sbstndalton/noevia/pull/924) (closes [#920](https://github.com/sbstndalton/noevia/issues/920): 32 more response reads are capped, plus a guard test and allowlist so a new uncapped read fails CI), [#929](https://github.com/sbstndalton/noevia/pull/929) (closes [#927](https://github.com/sbstndalton/noevia/issues/927), [#928](https://github.com/sbstndalton/noevia/issues/928) and [#933](https://github.com/sbstndalton/noevia/issues/933): sign-in limits count failures only, account recovery revokes every credential, and `users.credential_epoch` ties sessions and app passwords to the credential generation) and [#931](https://github.com/sbstndalton/noevia/pull/931) (closes [#930](https://github.com/sbstndalton/noevia/issues/930) and [#932](https://github.com/sbstndalton/noevia/issues/932): SSRF range fixes, egress proxy header stripping, connection caps 256/64 and a 10-minute tunnel idle timeout). Now `cowork-web:e9efa32e` (`sha256:0648ac13...`, 78 layers, previous `cowork-web:cf662822`), `readlink current` is `releases/e9efa32e`, `COWORK_VERSION=e9efa32e`.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:227903da`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`). None was restarted.
+- **Deploy/infra:** no change. `overlay-release.sh` was not run (web-only manual recipe).
+
+PRs: #924 #929 #931. Issues: #920 #927 #928 #930 #932 #933.
+
+**Database migration.** First start of the new image runs `ALTER TABLE users ADD COLUMN credential_epoch INTEGER NOT NULL DEFAULT 0` on `state/web/cowork.db` (host path `/mnt/docker/appdata/cowork/state/web/`). The old code ignores the column, so the previous image runs on the migrated database. Before cutover a consistent copy was taken with the host `sqlite3 <db> ".backup '<db>.bak.before-e9efa32e'"`: `/mnt/docker/appdata/cowork/state/web/cowork.db.bak.before-e9efa32e` (282624 bytes, `PRAGMA integrity_check` ok, 2 user rows). It is a belt-and-braces copy; rollback does not need it. Verified afterwards with a read-only `PRAGMA table_info(users)`: the column list now ends in `credential_epoch`.
+
+No feature flag was changed. No model run, tune, benchmark or download, no Code task, no private Diary access. The Diary overlay (still pending) was not touched.
+
+Exact source `e9efa32e514aa23e43187fb9a7cfde0455de9cb0` (main CI green on that commit). Built on the Mac from a clean detached worktree: `STAMP_VERSION=e9efa32e npm run build` in `apps/web`, then `COPYFILE_DISABLE=1 tar -h --no-xattrs` of `dist server contracts` (without `server/node_modules` and `server/ui-data`), and a `git archive` of the repo root into `releases/e9efa32e`. Dependencies gate against `cf662822`: no change to `apps/web/package-lock.json`, `apps/web/server/package.json` or `apps/web/server/package-lock.json`, and the `dependencies`, `devDependencies`, `overrides` and `engines` fields of `apps/web/package.json` are identical, so `node_modules` came from the old image.
+
+**Order and results.**
+
+1. **Web.** Layered `dist/`, `server/` and `contracts/` onto `cowork-web:cf662822` with the standard overlay Dockerfile (74 to 78 layers, under the 100-layer flatten limit). Before cutover the image was checked to contain `/app/contracts/project-icons.json` and `/app/contracts/project-limits.json` and `dist/version.json` `e9efa32e`. Synthetic candidate in a throwaway `--network none` container with a tmpfs data dir: server booted on a fresh database (the migration ran there too, `credential_epoch` present), `/api/ready` 200, `/version.json` `e9efa32e`; the container was removed. Database backup taken, `config/.env.bak.before-e9efa32e` taken, `current` and `COWORK_VERSION` repointed; started alone with `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (preflight passed, `Healthy`). Cutover 2026-10-06 09:03:58Z to 09:04:15Z; the new `cowork-web-1` `StartedAt` is 09:04:09Z.
+
+**Verify.** Web: healthy, `RestartCount` 0; `127.0.0.1:8021/version.json` and `https://noevia.daserver.work/version.json` both `e9efa32e`; `/api/ready` 200 locally and publicly; `/app/dist/index.html` sha256 `8ccb5bd7...` (was `a0828ba7...`), 67 files in `dist/assets`; the 60-line log tail shows MCP discovery (noevia 10, nextcloud 181, tavily 5 tools), `egress.listening` and `codenet.guarding` on `172.28.0.3` and no error or failure line. Container snapshot (id, `StartedAt`, `RestartCount` of all 40 containers on the host) before and after: only `cowork-web-1` differs (id and `StartedAt`); every sidecar, the engine, Laya, embed, Kiwix and the Nextcloud and media containers kept id, `StartedAt` and restart count. `sidecar-restart-alert.sh --ack` run; a following `--dry-run` was clean.
+
+**New startup warning (action for the owner, not changed here).** The log now carries `WARNING: the public address uses https but TRUST_PROXY is off. If noevia runs behind a reverse proxy or tunnel, every visitor shares the proxy's address, so sign-in limits and audit-log addresses apply to everyone at once. Set TRUST_PROXY=true when the proxy sets X-Forwarded-For.` The live deployment is behind the tunnel with `TRUST_PROXY` off, so the new per-address sign-in limits are shared by all visitors until the owner decides to set it. No setting was changed in this release.
+
+Rollback (web only). On DaServer with `B=/mnt/docker/appdata/cowork`: `ln -sfn $B/releases/cf662822 $B/current && sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=cf662822/' $B/config/.env && bash $B/tools/preflight/up.sh --env-file $B/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web` (or restore `$B/config/.env.bak.before-e9efa32e` instead of the `sed`). The `cowork-web:cf662822` image is retained and runs on the migrated database (the extra column is ignored); `cowork.db.bak.before-e9efa32e` is only a safety copy. Run `sidecar-restart-alert.sh --ack` afterwards. No other service needs rolling back.
+
 ## Release cf662822 — 2026-10-06 (web only: capped storage/provider reads and the project-bound chat grant)
 
 ### Services
