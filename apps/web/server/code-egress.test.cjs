@@ -412,6 +412,38 @@ test('headers named in Connection are stripped before forwarding; the body stays
   }
 });
 
+test('the origin response loses its hop-by-hop, Connection-named and Proxy-Authenticate headers (#930)', async () => {
+  const origin = http.createServer((req, res) => {
+    res.writeHead(200, { connection: 'keep-alive, X-Upstream-Hop', 'x-upstream-hop': 'secret', 'keep-alive': 'timeout=99',
+      'proxy-authenticate': 'Basic realm="phish"', 'x-end-to-end': 'kept', 'content-type': 'text/plain' });
+    res.end('ok');
+  });
+  await new Promise((r) => origin.listen(0, '127.0.0.1', r));
+  const originPort = origin.address().port;
+  const { p } = proxy({ allowedPorts: [80, 443, originPort] });
+  const { token } = p.grant({ taskId: 't1', domains: ['example.com'] });
+  await p.listen();
+  const proxyPort = p.server.address().port;
+  try {
+    const { headers, body } = await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: proxyPort, method: 'GET',
+        path: `http://example.com:${originPort}/thing`, headers: { 'proxy-authorization': basic(token) } },
+        (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ headers: res.headers, body: d })); });
+      req.on('error', reject); req.end();
+    });
+    assert.equal(body, 'ok');
+    assert.equal(headers['x-upstream-hop'], undefined, 'a header the origin\'s Connection names stays upstream');
+    assert.equal(headers['proxy-authenticate'], undefined, 'the origin cannot ask the task for proxy credentials');
+    assert.notEqual(headers['keep-alive'], 'timeout=99', 'the origin\'s keep-alive is its own hop (node adds the proxy\'s)');
+    assert.doesNotMatch(String(headers.connection || ''), /x-upstream-hop/i);
+    assert.equal(headers['x-end-to-end'], 'kept');
+    assert.equal(headers['content-type'], 'text/plain');
+  } finally {
+    await p.close();
+    origin.closeAllConnections?.(); origin.close();
+  }
+});
+
 test('hop-by-hop headers are stripped before forwarding, task headers survive', async () => {
   const seen = [];
   const origin = http.createServer((req, res) => { seen.push(req.headers); res.end('ok'); });
@@ -508,4 +540,112 @@ test('tokens expire after the idle TTL and activity refreshes them (#160)', asyn
   clock += 500;
   assert.equal(p.sweep(), 1, 'a never-used token expires on the sweep without a request');
   assert.equal((await p.check({ header: basic(t2), target: 'example.com:443', defaultPort: 443 })).status, 407);
+});
+
+// ── #932: connection caps and the tunnel idle timeout ───────────────────────────────────────────
+
+/** A raw CONNECT; resolves with the status line and the live socket (destroyed unless 200). */
+function rawConnect(proxyPort, host, header) {
+  return new Promise((resolve) => {
+    const socket = net.connect(proxyPort, '127.0.0.1', () => {
+      socket.write(`CONNECT ${host}:443 HTTP/1.1\r\nHost: ${host}:443\r\nProxy-Authorization: ${header}\r\n\r\n`);
+    });
+    let buffer = '';
+    const done = (status) => { clearTimeout(timer); resolve({ status, socket }); };
+    socket.on('data', (chunk) => {
+      buffer += chunk;
+      if (buffer.includes('\r\n\r\n')) done(Number(buffer.match(/^HTTP\/1\.[01] (\d+)/)?.[1]));
+    });
+    socket.on('error', () => {});
+    socket.on('close', () => done('closed'));
+    const timer = setTimeout(() => { socket.destroy(); done('timeout'); }, 5000);
+  });
+}
+
+async function tunnelProxy(extra) {
+  const origin = net.createServer((socket) => { socket.on('data', (d) => socket.write(d)); socket.on('error', () => {}); });
+  await new Promise((r) => origin.listen(0, '127.0.0.1', r));
+  const originPort = origin.address().port;
+  const { p, log } = proxy({ connect: () => net.connect(originPort, '127.0.0.1'), ...extra });
+  await p.listen();
+  const stop = async () => { await p.close(); origin.closeAllConnections?.(); origin.close(); };
+  return { p, log, port: p.server.address().port, stop };
+}
+
+const until = async (cond, ms = 2000) => {
+  const end = Date.now() + ms;
+  while (!cond()) { if (Date.now() > end) throw new Error('condition never held'); await new Promise((r) => setTimeout(r, 10)); }
+};
+
+test('proxy-wide cap 1: a second CONNECT is refused while a tunnel is open, and admitted once it closes', async () => {
+  const { p, log, port, stop } = await tunnelProxy({ maxConnections: 1 });
+  const { token } = p.grant({ taskId: 't1', domains: ['example.com'] });
+  try {
+    const first = await rawConnect(port, 'example.com', basic(token));
+    assert.equal(first.status, 200);
+    const second = await rawConnect(port, 'example.com', basic(token));
+    assert.equal(second.status, 'closed', 'over the cap the connection is closed on accept');
+    assert.ok(log.some((e) => e.event === 'egress.connection_limit' && e.limit === 1));
+    first.socket.destroy();
+    await until(() => p.openCounts().connections === 0);
+    const third = await rawConnect(port, 'example.com', basic(token));
+    assert.equal(third.status, 200, 'the slot is freed when the tunnel closes');
+    third.socket.destroy();
+  } finally { await stop(); }
+});
+
+test('per-task cap 1: a second tunnel for the same task gets 429, another task is unaffected', async () => {
+  const { p, log, port, stop } = await tunnelProxy({ maxConnectionsPerTask: 1 });
+  const a = p.grant({ taskId: 'a', domains: ['example.com'] });
+  const b = p.grant({ taskId: 'b', domains: ['example.com'] });
+  try {
+    const first = await rawConnect(port, 'example.com', basic(a.token));
+    assert.equal(first.status, 200);
+    const second = await rawConnect(port, 'example.com', basic(a.token));
+    assert.equal(second.status, 429);
+    second.socket.destroy();
+    assert.ok(log.some((e) => e.event === 'egress.refused' && e.taskId === 'a' && e.status === 429));
+    const other = await rawConnect(port, 'example.com', basic(b.token));
+    assert.equal(other.status, 200, 'tenant b has its own slots');
+    first.socket.destroy(); other.socket.destroy();
+    await until(() => Object.keys(p.openCounts().byTask).length === 0);
+    const again = await rawConnect(port, 'example.com', basic(a.token));
+    assert.equal(again.status, 200, 'the task slot is released when its tunnel closes');
+    again.socket.destroy();
+  } finally { await stop(); }
+});
+
+test('an idle tunnel closes after the tunnel idle timeout, logged with its task; traffic keeps it open', async () => {
+  const { p, log, port, stop } = await tunnelProxy({ tunnelIdleMs: 200 });
+  const { token } = p.grant({ taskId: 't-idle', domains: ['example.com'] });
+  try {
+    const busy = await rawConnect(port, 'example.com', basic(token));
+    assert.equal(busy.status, 200);
+    let busyClosed = false; busy.socket.on('close', () => { busyClosed = true; });
+    // 400 ms of traffic every 50 ms: longer than the timeout, never idle for it.
+    for (let i = 0; i < 8; i++) { busy.socket.write('x'); await new Promise((r) => setTimeout(r, 50)); }
+    assert.equal(busyClosed, false, 'a tunnel with traffic stays open');
+    const started = Date.now();
+    await until(() => busyClosed, 3000);
+    assert.ok(Date.now() - started >= 150, 'it closes only after being idle');
+    const entry = log.find((e) => e.event === 'egress.tunnel_idle');
+    assert.equal(entry?.taskId, 't-idle');
+    assert.equal(entry?.idleMs, 200);
+    await until(() => p.openCounts().connections === 0 && Object.keys(p.openCounts().byTask).length === 0);
+  } finally { await stop(); }
+});
+
+test('the deployment proxy reads the connection limits and tunnel idle timeout from env (#932)', () => {
+  const { startEgressFromEnv, DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS_PER_TASK, DEFAULT_TUNNEL_IDLE_MS } = require('./code-egress.cjs');
+  let seen;
+  const withPort = (env) => { seen = null; startEgressFromEnv({ CODE_EGRESS_PORT: '1', CODE_EGRESS_BIND: '127.0.0.1', ...env },
+    { create: (opts) => { seen = opts; return { server: { on() {}, listen() {} } }; } }); return seen; };
+  assert.deepEqual([withPort({}).maxConnections, withPort({}).maxConnectionsPerTask, withPort({}).tunnelIdleMs],
+    [DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS_PER_TASK, DEFAULT_TUNNEL_IDLE_MS]);
+  assert.equal(DEFAULT_TUNNEL_IDLE_MS, 10 * 60 * 1000);
+  const custom = withPort({ CODE_EGRESS_MAX_CONNECTIONS: '10', CODE_EGRESS_MAX_CONNECTIONS_PER_TASK: '3', CODE_EGRESS_TUNNEL_IDLE_MS: '5000' });
+  assert.deepEqual([custom.maxConnections, custom.maxConnectionsPerTask, custom.tunnelIdleMs], [10, 3, 5000]);
+  const bad = withPort({ CODE_EGRESS_MAX_CONNECTIONS: '-1', CODE_EGRESS_MAX_CONNECTIONS_PER_TASK: 'lots', CODE_EGRESS_TUNNEL_IDLE_MS: '0' });
+  assert.deepEqual([bad.maxConnections, bad.maxConnectionsPerTask, bad.tunnelIdleMs],
+    [DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS_PER_TASK, DEFAULT_TUNNEL_IDLE_MS]);
 });

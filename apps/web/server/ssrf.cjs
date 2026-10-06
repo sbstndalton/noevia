@@ -27,7 +27,7 @@ function isPrivateIPv4(ip) {
     (a === 169 && b === 254) || // link-local (AWS/ECS/GCP metadata is 169.254.169.254)
     (a === 172 && b >= 16 && b <= 31) || // RFC1918
     (a === 192 && b === 168) || // RFC1918
-    (a === 192 && b === 0) || // 192.0.0.0/24 + 192.0.2.0/24 (TEST-NET-1, on-prem stacks)
+    (a === 192 && b === 0 && (c === 0 || c === 2)) || // 192.0.0.0/24 IETF assignments + 192.0.2.0/24 TEST-NET-1 (the rest of 192.0/16 is public, e.g. 192.0.78.x)
     (a === 192 && b === 88 && c === 99) || // 192.88.99.0/24 6to4 relay anycast (deprecated, RFC 7526)
     (a === 198 && (b === 18 || b === 19)) || // benchmarking range used by container networks
     (a === 198 && b === 51 && c === 100) || // 198.51.100.0/24 TEST-NET-2

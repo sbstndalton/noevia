@@ -101,6 +101,23 @@ test('zone-scoped IPv6 and IPv4-compatible ::a.b.c.d are refused, even around a 
   assert.equal(isPrivateIp('2606:4700::1111'), false, 'the same address without a zone is public');
 });
 
+test('192.0.0.0/24 and 192.0.2.0/24 are private; the rest of 192.0.0.0/16 is public', () => {
+  for (const ip of ['192.0.0.0', '192.0.0.255', '192.0.2.0', '192.0.2.255']) {
+    assert.equal(isPrivateIp(ip), true, `${ip} should be private`);
+  }
+  for (const ip of ['192.0.1.0', '192.0.1.255', '192.0.3.0', '192.0.78.9', '192.0.255.255', '191.255.255.255', '192.1.0.0']) {
+    assert.equal(isPrivateIp(ip), false, `${ip} should be public`);
+  }
+});
+
+test('malformed input is private and never throws', () => {
+  for (const ip of ['1:2:3:4:5:6:7:8:9', 'gggg::1', '::ffff:256.1.1.1', '[::1]', '[2606:4700::1111]', undefined, null, 123, {}, '', '1.2.3', '1.2.3.4.5', ' 8.8.8.8']) {
+    let result;
+    assert.doesNotThrow(() => { result = isPrivateIp(ip); }, `${String(ip)} must not throw`);
+    assert.equal(result, true, `${String(ip)} should be private`);
+  }
+});
+
 test('isPublicUrl refuses 6to4, Teredo and documentation literals without DNS (#930)', async () => {
   assert.equal(await isPublicUrl('http://[2002:c0a8:101::1]/v1'), false);
   assert.equal(await isPublicUrl('http://[2001::1]/v1'), false);
