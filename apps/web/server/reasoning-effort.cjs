@@ -1,6 +1,9 @@
 // Only documented model/endpoint pairs receive a provider parameter. Compatible
 // wire shape or a successful generic probe does not prove reasoning support.
 const crypto = require('node:crypto');
+const { readCappedText } = require('./http.cjs');
+// Only the start of a provider's 4xx body is checked for the rejected parameter (#903).
+const ERROR_BODY_CAP = 64 * 1024;
 const EFFORTS = ['default', 'low', 'high'];
 const rejected = new Set();
 const rejectedBudget = new Set();
@@ -57,7 +60,7 @@ async function requestWithEffort(fetcher, url, options, body, provider, model, e
   let request=prepare();
   let response=await fetcher(url,{...options,body:JSON.stringify(request)});
   if (response.status >= 400 && response.status < 500) {
-    const detail=await response.clone().text();
+    const detail=(await readCappedText(response.clone(),ERROR_BODY_CAP)).text;
     if (mode === 'real' && /reasoning_effort|chat_template_kwargs|enable_thinking/i.test(detail)) {
       rejected.add(key);mode='hint';
       report({type:'warning',text:'This provider rejected reasoning effort. Using a best-effort hint instead.'});
