@@ -246,3 +246,60 @@ def test_ingest_stays_bare_across_a_gap_and_advances_the_watermark(monkeypatch):
     assert telemetry.ingest([backend], force=True) == 1
     rows = [r for r in db.recent_timings(alias="alpha", min_gen_tokens=1) if r["backend"] == backend]
     assert [r["gen_tps"] for r in rows] == [100.0]            # the orphan is not credited to alpha
+
+
+def _fake_logs(monkeypatch):
+    from app import services
+    logs = {"text": ""}
+
+    class _Container:
+        def logs(self, **_kw):
+            return logs["text"].encode()
+
+    class _Client:
+        class containers:
+            @staticmethod
+            def get(_name):
+                return _Container()
+
+    monkeypatch.setattr(services, "_docker_client", lambda: _Client())
+    return logs
+
+
+def _alpha_rows(backend):
+    return sorted(r["gen_tps"] for r in db.recent_timings(alias="alpha", min_gen_tokens=1)
+                  if r["backend"] == backend)
+
+
+def test_a_pass_after_a_gap_does_not_vouch_for_instances_older_than_the_gap(monkeypatch):
+    """The pass that follows a gap advances the watermark; the NEXT overlapping pass must not
+    treat the gap as covered (the port may have been respawned unseen inside it)."""
+    db.init()
+    backend = "test-904-since-gap"
+    logs = _fake_logs(monkeypatch)
+    logs["text"] = "\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")
+                             + _request("2026-10-05T10:00:05.000000000Z", 60279, 3, 100.0))
+    telemetry.ingest([backend], force=True)
+    logs["text"] = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))      # gap
+    telemetry.ingest([backend], force=True)
+    assert float(db.get_setting(telemetry._CONTINUOUS_KEY + backend)) == telemetry._parse_ts("2026-10-05T10:30:00.000000000Z ")
+    logs["text"] = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)         # overlaps
+                             + _request("2026-10-05T10:40:00.000000000Z", 60279, 5, 130.0))
+    telemetry.ingest([backend], force=True)
+    assert _alpha_rows(backend) == [100.0]
+    # a gap-free pass leaves the span start alone
+    assert float(db.get_setting(telemetry._CONTINUOUS_KEY + backend)) == telemetry._parse_ts("2026-10-05T10:30:00.000000000Z ")
+
+
+def test_first_ingest_after_deploy_does_not_trust_instances_stored_before_it(monkeypatch):
+    db.init()
+    backend = "test-904-since-deploy"
+    logs = _fake_logs(monkeypatch)
+    _, configs = telemetry.parse_log("\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")))
+    db.record_server_configs(backend, configs)                    # stored by the pre-deploy version
+    logs["text"] = "\n".join(_request("2026-10-05T10:20:00.000000000Z", 60279, 4, 120.0))   # no watermark yet
+    telemetry.ingest([backend], force=True)
+    logs["text"] = "\n".join(_request("2026-10-05T10:20:00.000000000Z", 60279, 4, 120.0)
+                             + _request("2026-10-05T10:25:00.000000000Z", 60279, 5, 130.0))
+    telemetry.ingest([backend], force=True)
+    assert _alpha_rows(backend) == []

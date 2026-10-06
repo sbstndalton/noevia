@@ -49,6 +49,7 @@ _TAIL_LINES = 20000
 _INGEST_INTERVAL_S = 20.0
 _LAST_INGEST_KEY = "telemetry_last_ingest"
 _WATERMARK_KEY = "telemetry_log_watermark:"   # + backend: newest log timestamp already ingested
+_CONTINUOUS_KEY = "telemetry_continuous_since:"  # + backend: start of the unbroken ingested span
 
 # The router announces an instance as "... with name=<alias> on port <N>", and that <N> is
 # exactly the number the instance then prefixes its own lines with, so it is the binding key.
@@ -259,8 +260,8 @@ def log_span(text: str) -> tuple[float, float]:
     return first, last
 
 
-def parse_log(text: str, backend: str = "",
-              covered_until: float = 0.0) -> tuple[list[Sample], list[ServerConfig]]:
+def parse_log(text: str, backend: str = "", covered_until: float = 0.0,
+              continuous_since: float = 0.0) -> tuple[list[Sample], list[ServerConfig]]:
     """Turn raw `docker logs -t` output into completed samples.
 
     With `backend`, a request whose port has no spawn line in `text` (it scrolled out of the
@@ -268,7 +269,9 @@ def parse_log(text: str, backend: str = "",
     request ran, instead of being left under the bare port with no alias or model path (#904).
     That is only sound when nothing could have respawned the port unseen, so it needs
     `covered_until` - the newest log timestamp the previous ingest of this backend reached - and
-    applies only if this tail starts at or before it (no unseen gap). A load line in the tail
+    applies only if this tail starts at or before it (no unseen gap) and only to a stored
+    instance spawned at or after `continuous_since`, the start of the span ingested without any
+    gap (an older instance may have been replaced unseen). A load line in the tail
     naming a different model than the stored instance's also vetoes it. Otherwise the request
     stays under the bare port. Without `backend` the parser is a pure function of `text`.
 
@@ -301,6 +304,8 @@ def parse_log(text: str, backend: str = "",
             except Exception:  # noqa: BLE001 - telemetry must never break a page render
                 stored_by_port[port] = []
         found = next((r for r in stored_by_port[port] if r["first_seen"] <= ts), None)
+        if found and found["first_seen"] < continuous_since:
+            return None
         seen = by_pid.get(port)                        # a load line for this port in the tail
         if found and seen and seen.model_path and seen.model_path != found["model_path"]:
             return None                                # a different model owns the port now
@@ -438,12 +443,20 @@ def ingest(container_names: list[str], *, force: bool = False) -> int:
             covered = float(db.get_setting(_WATERMARK_KEY + name, "0") or 0)
         except ValueError:
             covered = 0.0
-        parsed, configs = parse_log(text, name, covered)
+        try:
+            since = float(db.get_setting(_CONTINUOUS_KEY + name, "0") or 0)
+        except ValueError:
+            since = 0.0
+        first, newest = log_span(text)
+        gap_free = bool(first and covered and since and first <= covered)
+        parsed, configs = parse_log(text, name, covered if gap_free else 0.0, since)
         rows = [s for s in parsed if s.gen_tokens > 0 and s.ts > 0]
         try:
             db.record_server_configs(name, configs)
             total += db.record_timings(name, rows)
-            newest = log_span(text)[1]
+            if not gap_free and first:
+                # this pass cannot vouch for what happened before its tail: restart the span
+                db.set_setting(_CONTINUOUS_KEY + name, str(first))
             if newest > covered:
                 db.set_setting(_WATERMARK_KEY + name, str(newest))
         except Exception:  # noqa: BLE001
