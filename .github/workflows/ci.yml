@@ -23,7 +23,6 @@ jobs:
       diary: ${{ steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
       model_manager: ${{ steps.filter.outputs.model_manager == 'true' || steps.filter.outputs.ci == 'true' }}
       docling: ${{ steps.filter.outputs.docling == 'true' || steps.filter.outputs.ci == 'true' }}
-      macos: ${{ steps.filter.outputs.macos == 'true' || steps.filter.outputs.ci == 'true' }}
       images: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
       ocr: ${{ steps.filter.outputs.ocr == 'true' || steps.filter.outputs.ci == 'true' }}
       laya: ${{ steps.filter.outputs.laya == 'true' || steps.filter.outputs.ci == 'true' }}
@@ -31,6 +30,13 @@ jobs:
       deploy: ${{ steps.filter.outputs.deploy == 'true' || steps.filter.outputs.ci == 'true' }}
     steps:
       - uses: actions/checkout@v4
+      # The macOS client moved to its own repo (#900). Stop it creeping back in here.
+      - name: Guard against a re-added macOS client
+        run: |
+          if [ -e clients/macos ]; then
+            echo "::error::clients/macos/ must not exist in this repo. The macOS client lives in https://github.com/sbstndalton/noevia-macos (#900); make the change there."
+            exit 1
+          fi
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
         with:
@@ -52,8 +58,6 @@ jobs:
               - 'docs/spec-model-loader-api-v1.md'
             docling:
               - 'services/docling/**'
-            macos:
-              - 'clients/macos/**'
             ocr:
               - 'services/ocr/**'
             laya:
@@ -215,30 +219,6 @@ jobs:
       - run: pip install -r requirements.txt pytest pytest-asyncio
         if: env.RUN_JOB == 'true'
       - run: python -m pytest -q
-        if: env.RUN_JOB == 'true'
-
-  macos-client-tests:
-    name: macOS client (NoeviaKit) tests
-    needs: changes
-    runs-on: macos-15
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.macos }}
-    defaults:
-      run:
-        working-directory: clients/macos/NoeviaKit
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No macOS client changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - run: swift --version
-        if: env.RUN_JOB == 'true'
-      # URLProtocol stubs only: no network, no server, no Keychain writes.
-      - run: swift build
-        if: env.RUN_JOB == 'true'
-      - run: swift test
         if: env.RUN_JOB == 'true'
 
   docker-build:
@@ -436,7 +416,7 @@ jobs:
   ci-required:
     name: CI required
     if: always()
-    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, ocr-tests, laya-tests, code-sandbox-tests, macos-client-tests, docker-build, deploy-tests]
+    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, ocr-tests, laya-tests, code-sandbox-tests, docker-build, deploy-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results

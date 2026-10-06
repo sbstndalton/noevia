@@ -46,7 +46,7 @@ preference. Speed is not the argument and must not be used as one in later PRs.
 | `noevia` | Integration and release: docs, deploy/, compose files, qa/, `release/versions.lock` |
 | `noevia-web` | React client (today `apps/web/src/`, `public/`, build scripts) |
 | `noevia-core` | Node server (today `apps/web/server/`) and `services/code-sandbox`; owns `contracts/` |
-| `noevia-macos` | macOS app (today `clients/macos/`) |
+| `noevia-macos` | macOS app ([sbstndalton/noevia-macos](https://github.com/sbstndalton/noevia-macos); split out of `clients/macos/` in #900) |
 | `noevia-rs` | Cargo workspace for Rust leaf crates (created 2026-10-06) |
 | `noevia-services` | Later: the Python sidecars (diary, ocr, docling, model-manager, laya) |
 
