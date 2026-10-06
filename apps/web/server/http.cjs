@@ -90,6 +90,16 @@ async function readCappedText(response, cap) {
   return { text, capped };
 }
 
+/** Releases a reply that will not be read (a retry replaced it), so its socket closes instead
+ *  of staying open behind a locked, unread body. Never throws; a stub body without cancel is
+ *  left alone. */
+function discardBody(response) {
+  try {
+    const body = response?.body;
+    if (body && typeof body.cancel === 'function' && !body.locked) body.cancel().catch(() => {});
+  } catch { /* nothing to release */ }
+}
+
 /** A JSON reply of at most `cap` bytes. A longer one throws (`code: 'too_large'`, status 502)
  *  instead of being parsed from a partial body. A test stub without a stream reader but with
  *  json() keeps using it. */
@@ -210,4 +220,4 @@ function decodePathPart(raw) {
   try { return decodeURIComponent(raw); } catch { return null; }
 }
 
-module.exports = { json, unauthorized, decodePathPart, fetchJson, readBody, readJson, authResult, isJsonObject, requireJsonObject, answerUnhandled, parseRequestUrl, badRequestUrl, errorResponse, DEFAULT_MAX_RESPONSE_BYTES, readCappedText, readCappedJson };
+module.exports = { json, unauthorized, decodePathPart, fetchJson, readBody, readJson, authResult, isJsonObject, requireJsonObject, answerUnhandled, parseRequestUrl, badRequestUrl, errorResponse, DEFAULT_MAX_RESPONSE_BYTES, readCappedText, readCappedJson, discardBody };

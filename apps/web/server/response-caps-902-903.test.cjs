@@ -191,3 +191,46 @@ test('#903: an endless summary reply during compaction stops at ~4 MB with a cle
   assert.match(out, /Compaction reply from the model provider was too large/);
   assert.ok(meter.pulled <= 4 * MB + 2 * CHUNK, `pulled ${meter.pulled} bytes`);
 });
+
+// ── review follow-up: replaced replies are released ─────────────────────────
+test('requestWithEffort cancels the rejected 4xx reply it replaces with a retry', async () => {
+  const { requestWithEffort } = require('./reasoning-effort.cjs');
+  const { stream, meter } = hugeBody(64 * MB, '{"error":"reasoning_effort unsupported","pad":"');
+  const provider = { id: 'fixture-caps', baseUrl: 'https://cloud.fixture.invalid/v1', apiKey: 'synthetic-caps-discard', capabilities: { reasoningEffortParam: true, reasoningEffortModels: ['synthetic-model'], tokenBudgetField: 'max_completion_tokens' } };
+  let calls = 0;
+  const result = await requestWithEffort(async () => (++calls === 1 ? new Response(stream, { status: 400 }) : new Response('{}')),
+    'https://cloud.fixture.invalid/v1/chat/completions', {}, { model: 'synthetic-model', messages: [{ role: 'user', content: 'hi' }] }, provider, 'synthetic-model', 'high', () => {});
+  assert.equal(calls, 2);
+  assert.equal(result.status, 200);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(meter.cancelled, true, 'the original body was cancelled, so its socket can close');
+  assert.ok(meter.pulled <= 64 * 1024 + 4 * CHUNK, `pulled ${meter.pulled} bytes`);
+});
+
+// ── #918: provider failures reach the browser as mapped text ───────────────
+test('#918: a non-streaming fallback 502 with an HTML body sends providerError text, no markup', async (t) => {
+  const { providerError } = require('./chat-context.cjs');
+  const html = '<html><head><title>502 Bad Gateway</title></head><body><h1>502 Bad Gateway</h1></body></html>';
+  const out = await chatWith(t, async (_url, init) => (JSON.parse(init.body).stream
+    ? new Response('', { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    : new Response(html, { status: 502, headers: { 'content-type': 'text/html' } })), { message: 'hello' });
+  const errors = out.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6))).filter((e) => e.type === 'error');
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].text, providerError(html));
+  assert.doesNotMatch(errors[0].text, /</);
+  assert.doesNotMatch(errors[0].text, /Unexpected token|JSON/);
+});
+
+test('#918: a stream that breaks mid-read sends mapped text, not the runtime error', async (t) => {
+  const { providerError } = require('./chat-context.cjs');
+  const internal = 'terminated: other side closed <synthetic socket 10.0.0.1:443>';
+  const broken = () => new ReadableStream({
+    start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n')); },
+    pull(c) { c.error(new TypeError(internal)); },
+  });
+  const out = await chatWith(t, async () => new Response(broken(), { status: 200, headers: { 'content-type': 'text/event-stream' } }), { message: 'hello' });
+  const errors = out.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6))).filter((e) => e.type === 'error');
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].text, providerError(internal));
+  assert.doesNotMatch(errors[0].text, /other side closed|</);
+});
