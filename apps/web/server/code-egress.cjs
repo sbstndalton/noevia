@@ -248,11 +248,15 @@ function createEgressProxy({ now = Date.now, log = () => {}, lookup = defaultLoo
     }
     const verdict = await check({ header: req.headers['proxy-authorization'],
       target: url ? url.host : null, defaultPort: 80 });
+    // The task may have hung up during the lookup. Its response has then already emitted 'close',
+    // so a slot taken now would never be released (#932) and the upstream request would dangle:
+    // stop here, as the CONNECT handler does.
+    if (req.socket?.destroyed || res.destroyed) return;
     if (!verdict.ok) return refuse(res, verdict, record);
     const { grant: owner } = verdict; delete verdict.grant;
     const release = takeTaskSlot(verdict.taskId);
     if (!release) return refuse(res, tooManyForTask(verdict), record);
-    res.on('close', release);
+    res.on('close', release); // synchronously after taking the slot: no await in between
     record({ event: 'egress.allowed', taskId: verdict.taskId, host: verdict.host, port: verdict.port, method: req.method });
 
     // Proxy-Authorization (the task token) never travels onward; hop-by-hop headers stop here.

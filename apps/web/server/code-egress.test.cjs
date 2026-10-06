@@ -649,3 +649,47 @@ test('the deployment proxy reads the connection limits and tunnel idle timeout f
   assert.deepEqual([bad.maxConnections, bad.maxConnectionsPerTask, bad.tunnelIdleMs],
     [DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS_PER_TASK, DEFAULT_TUNNEL_IDLE_MS]);
 });
+
+test('a plain request whose client hangs up mid-lookup leaks no task slot and makes no upstream request (#932)', async () => {
+  let originConnections = 0;
+  const origin = http.createServer((_req, res) => res.end('ok'));
+  origin.on('connection', () => { originConnections++; });
+  await new Promise((r) => origin.listen(0, '127.0.0.1', r));
+  const originPort = origin.address().port;
+  let open; const gate = new Promise((r) => { open = r; });
+  let slowLookups = 3;
+  const { p } = proxy({ allowedPorts: [80, 443, originPort], maxConnectionsPerTask: 3,
+    lookup: async () => { if (slowLookups-- > 0) await gate; return ['127.0.0.1']; } });
+  const { token } = p.grant({ taskId: 't1', domains: ['example.com'] });
+  await p.listen();
+  const port = p.server.address().port;
+  try {
+    // As many hang-ups as the task has slots: a leak of each would lock the task out.
+    for (let i = 0; i < 3; i++) {
+      const socket = net.connect(port, '127.0.0.1', () => {
+        socket.write(`GET http://example.com:${originPort}/x HTTP/1.1\r\nHost: example.com:${originPort}\r\n` +
+          `Proxy-Authorization: ${basic(token)}\r\n\r\n`);
+        setTimeout(() => socket.destroy(), 20);
+      });
+      socket.on('error', () => {});
+    }
+    await until(() => slowLookups <= 0); // all three are waiting on their lookup…
+    await until(() => p.openCounts().connections === 0); // …and every client has hung up
+    open(); // the lookups come back after their clients are gone
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(p.openCounts().byTask, {}, 'no slot is held for a client that is gone');
+    assert.equal(originConnections, 0, 'no upstream request is made for it');
+    for (let i = 0; i < 64; i++) {
+      const status = await new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: `http://example.com:${originPort}/n${i}`,
+          agent: false, headers: { 'proxy-authorization': basic(token) } }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+        req.on('error', reject); req.end();
+      });
+      assert.equal(status, 200, `request ${i} after the hang-ups`);
+    }
+    await until(() => Object.keys(p.openCounts().byTask).length === 0);
+  } finally {
+    await p.close();
+    origin.closeAllConnections?.(); origin.close();
+  }
+});
