@@ -15,7 +15,16 @@ const realWebauthn = require(webauthnPath);
 let verifyRegistration = null;
 require.cache[webauthnPath] = { id: webauthnPath, filename: webauthnPath, loaded: true,
   exports: { ...realWebauthn, verifyRegistrationResponse: (...args) => verifyRegistration(...args) } };
-const { createAuth } = require('./auth.cjs');
+// Same for the password check, so a sign-in can be held while a recovery commits.
+const argonPath = require.resolve('@node-rs/argon2');
+const realArgon = require(argonPath);
+let verifyPassword = null;
+require.cache[argonPath] = { id: argonPath, filename: argonPath, loaded: true,
+  exports: { ...realArgon, verify: (...args) => (verifyPassword || realArgon.verify)(...args) } };
+let verifyAuthentication = null;
+require.cache[webauthnPath].exports.verifyAuthenticationResponse = (...args) => verifyAuthentication(...args);
+const { createAuth, createRateLimiter } = require('./auth.cjs');
+const device = require('./device-auth.cjs');
 const { createAppPasswords } = require('./app-passwords.cjs');
 
 const ORIGIN = 'https://cowork.example.test';
@@ -103,4 +112,81 @@ test('the audit counts only recovery links that still worked', async (t) => {
   assert.equal(await auth.completeRecovery({ token: auth.createRecovery(adminId, memberId).token, password: 'synthetic second password' }), true);
   const details = auth.db.prepare("SELECT detail FROM audit_events WHERE action='recovery.complete' ORDER BY id").all().map((r) => JSON.parse(r.detail).revoked.recoveries);
   assert.deepEqual(details, [0, 1]);
+});
+
+/** A stand-in check that stops until `open()`; `inside` resolves once the check has started. */
+function held(result) {
+  const slow = gate(); let entered; const inside = new Promise((resolve) => { entered = resolve; });
+  return { inside, open: slow.open, check: async (...args) => { entered(); await slow.opened; return typeof result === 'function' ? result(...args) : result; } };
+}
+const sessionsOf = (auth, userId) => auth.db.prepare('SELECT count(*) AS n FROM sessions WHERE user_id=?').get(userId).n;
+
+test('a password sign-in still checking the old password when recovery commits gets no session', async (t) => {
+  const { auth, adminId, memberId } = await fixture(t);
+  t.after(() => { verifyPassword = null; });
+  const hold = held((hash, password) => realArgon.verify(hash, password));
+  verifyPassword = hold.check;
+  const pending = auth.passwordLogin(request(), response(), { username: 'member', password: 'synthetic member password' });
+  await hold.inside;
+  verifyPassword = null; // the recovery's own hashing is real
+  assert.equal(await auth.completeRecovery({ token: auth.createRecovery(adminId, memberId).token, password: 'synthetic recovered password' }), true);
+  hold.open();
+  const out = await pending;
+  assert.deepEqual([out.status, out.body], [401, { error: 'sign-in failed' }], 'answers exactly like a wrong password');
+  assert.equal(sessionsOf(auth, memberId), 0, 'a session was issued with the revoked password');
+  assert.equal((await auth.passwordLogin(request(), response(), { username: 'member', password: 'synthetic recovered password' })).status, 200);
+});
+
+test('a password sign-in still checking when the account is disabled gets no session', async (t) => {
+  const { auth, adminId, memberId } = await fixture(t);
+  t.after(() => { verifyPassword = null; });
+  const hold = held((hash, password) => realArgon.verify(hash, password));
+  verifyPassword = hold.check;
+  const pending = auth.passwordLogin(request(), response(), { username: 'member', password: 'synthetic member password' });
+  await hold.inside;
+  auth.setDisabled(adminId, memberId, true);
+  hold.open();
+  assert.equal((await pending).status, 401);
+  assert.equal(sessionsOf(auth, memberId), 0);
+});
+
+test('a passkey sign-in still verifying when recovery commits gets no session', async (t) => {
+  const { auth, adminId, memberId } = await fixture(t);
+  auth.db.prepare('INSERT INTO passkeys(id,user_id,name,public_key,webauthn_user_id,counter,device_type,backed_up,transports,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
+    .run('member-passkey', memberId, 'Synthetic key', Buffer.from('pk'), 'w', 0, 'singleDevice', 0, JSON.stringify(['internal']), Date.now());
+  // Control: with nothing in between, the stubbed ceremony signs in.
+  verifyAuthentication = async () => ({ verified: true, authenticationInfo: { newCounter: 1 } });
+  const control = await auth.authenticationOptions('member');
+  assert.equal((await auth.authenticationVerify(request(), response(), { challengeToken: control.challengeToken, response: { id: 'member-passkey' } })).user.id, memberId);
+  auth.db.prepare('DELETE FROM sessions WHERE user_id=?').run(memberId);
+
+  const hold = held({ verified: true, authenticationInfo: { newCounter: 2 } });
+  verifyAuthentication = hold.check;
+  const { challengeToken } = await auth.authenticationOptions('member');
+  const pending = auth.authenticationVerify(request(), response(), { challengeToken, response: { id: 'member-passkey' } });
+  await hold.inside;
+  assert.equal(await auth.completeRecovery({ token: auth.createRecovery(adminId, memberId).token, password: 'synthetic recovered password' }), true);
+  hold.open();
+  await assert.rejects(pending, /^Error: authentication failed$/);
+  assert.equal(sessionsOf(auth, memberId), 0, 'a session was issued with a revoked passkey');
+});
+
+test('a native-app approval sent before a recovery cannot become a grant after it (#933)', async (t) => {
+  const { auth, adminId, memberId } = await fixture(t);
+  const deviceAuth = device.createDeviceAuth({ db: auth.db, publicUser: auth.publicUser, rate: createRateLimiter(), clientAddress: (r) => r.socket.remoteAddress,
+    audit: auth.audit, origin: () => ORIGIN, addressesTrusted: true });
+  const memberRes = response();
+  await auth.passwordLogin(request(), memberRes, { username: 'member', password: 'synthetic member password' });
+  const session = auth.authenticate(request(cookieOf(memberRes))).session;
+  // One request approved before the recovery and not redeemed yet; one approval still in flight.
+  const early = deviceAuth.start(request(), { client_name: 'Early Mac' }).body;
+  assert.equal(deviceAuth.decide(memberId, early.user_code, true, session.credential_epoch).status, 200);
+  const late = deviceAuth.start(request(), { client_name: 'Late Mac' }).body;
+  assert.equal(await auth.completeRecovery({ token: auth.createRecovery(adminId, memberId).token, password: 'synthetic recovered password' }), true);
+  assert.equal(deviceAuth.decide(memberId, late.user_code, true, session.credential_epoch).status, 404, 'approval with a pre-recovery session went through');
+  assert.equal(deviceAuth.decide(memberId, late.user_code, true, null).status, 404);
+  for (const code of [early, late]) {
+    assert.notEqual(deviceAuth.token(request(), { grant_type: device.DEVICE_GRANT_TYPE, device_code: code.device_code }).status, 200);
+  }
+  assert.equal(auth.db.prepare('SELECT count(*) AS n FROM device_grants WHERE user_id=?').get(memberId).n, 0);
 });

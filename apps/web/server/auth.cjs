@@ -368,11 +368,19 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
     return csrf;
   }
 
+  /** Issue a session only if the account is still active and no recovery revoked its credentials
+   *  since `epoch` was read (#929 review): a sign-in still checking a password or passkey when a
+   *  recovery commits must not come out signed in. Returns { user, csrfToken } or null. */
+  const issueSessionIfCurrent = db.transaction((req, res, userId, epoch) => {
+    const user = db.prepare('SELECT * FROM users WHERE id=? AND credential_epoch=? AND disabled_at IS NULL').get(userId, epoch);
+    return user ? { user, csrfToken: issueSession(req, res, user) } : null;
+  });
+
   function authenticate(req) {
     const raw = parseCookies(req).cowork_session;
     const now = Date.now();
     if (raw) {
-      const row = db.prepare(`SELECT s.*,u.id AS id,u.username,u.display_name,u.role,u.disabled_at
+      const row = db.prepare(`SELECT s.*,u.id AS id,u.username,u.display_name,u.role,u.disabled_at,u.credential_epoch
         FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id_hash=?`).get(digest(raw));
       if (row && !row.disabled_at && row.expires_at > now && row.last_seen_at + IDLE_MS > now) {
         db.prepare('UPDATE sessions SET last_seen_at=? WHERE id_hash=?').run(now, row.id_hash);
@@ -544,11 +552,13 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
       // Always pay for one Argon2 verification, so response time doesn't reveal whether a username exists.
       const usable = row && !row.disabled_at;
       const ok = await verify(usable ? row.password_hash : await timingHash(), String(body.password || '')).catch(() => false) && usable;
-      if (!ok) return { status: probing ? 429 : 401, body: { error: 'sign-in failed' } };
+      // The hash checked above was read before the await; a recovery since then makes it stale.
+      const signedIn = ok ? issueSessionIfCurrent(req, res, row.id, row.credential_epoch) : null;
+      if (!signedIn) return { status: probing ? 429 : 401, body: { error: 'sign-in failed' } };
       rate.clear(key);
       rate.release(failures, charged.window);
       audit('auth.password', row.id, row.id);
-      return { status: 200, body: { user: publicUser(row), csrfToken: issueSession(req, res, row) } };
+      return { status: 200, body: { user: publicUser(signedIn.user), csrfToken: signedIn.csrfToken } };
     },
     logout(req, res, authn) {
       const raw = parseCookies(req).cowork_session;
@@ -618,15 +628,20 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
       const challenge = takeChallenge(body.challengeToken || '', 'authenticate');
       const key = db.prepare('SELECT * FROM passkeys WHERE id=?').get(body.response?.id || '');
       if (!challenge || !key || challenge.user_id !== key.user_id) throw new Error('authentication failed');
+      const epoch = credentialEpoch(key.user_id);
       const verification = await verifyAuthenticationResponse({ response: body.response, expectedChallenge: challenge.challenge,
         expectedOrigin: passkeyOrigins(), expectedRPID: keyRp(key),
         credential: { id: key.id, publicKey: new Uint8Array(key.public_key), counter: key.counter, transports: JSON.parse(key.transports) }, requireUserVerification: true });
       if (!verification.verified) throw new Error('authentication failed');
-      db.prepare('UPDATE passkeys SET counter=?,last_used_at=? WHERE id=?').run(verification.authenticationInfo.newCounter, Date.now(), key.id);
-      const user = db.prepare('SELECT * FROM users WHERE id=? AND disabled_at IS NULL').get(key.user_id);
-      if (!user) throw new Error('authentication failed');
-      audit('auth.passkey', user.id, user.id, { credentialId: key.id });
-      return { user: publicUser(user), csrfToken: issueSession(req, res, user) };
+      // The passkey must still exist (a recovery deletes it) and the account must be unchanged since
+      // the key was read, or the sign-in fails like any other (#929 review).
+      const signedIn = db.transaction(() => {
+        if (db.prepare('UPDATE passkeys SET counter=?,last_used_at=? WHERE id=? AND user_id=?').run(verification.authenticationInfo.newCounter, Date.now(), key.id, key.user_id).changes !== 1) return null;
+        return issueSessionIfCurrent(req, res, key.user_id, epoch);
+      })();
+      if (!signedIn) throw new Error('authentication failed');
+      audit('auth.passkey', signedIn.user.id, signedIn.user.id, { credentialId: key.id });
+      return { user: publicUser(signedIn.user), csrfToken: signedIn.csrfToken };
     },
     listPasskeys(userId) {
       return db.prepare('SELECT id,name,device_type AS deviceType,backed_up AS backedUp,created_at AS createdAt,last_used_at AS lastUsedAt FROM passkeys WHERE user_id=? ORDER BY created_at').all(userId);
@@ -707,6 +722,8 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
         if (db.prepare('UPDATE recoveries SET used_at=? WHERE token_hash=? AND used_at IS NULL').run(Date.now(), row.token_hash).changes !== 1) return false;
         db.prepare('UPDATE users SET password_hash=?,updated_at=?,credential_epoch=credential_epoch+1 WHERE id=?').run(passwordHash, Date.now(), row.user_id); db.prepare('DELETE FROM sessions WHERE user_id=?').run(row.user_id);
         db.prepare('DELETE FROM device_grants WHERE user_id=?').run(row.user_id);
+        // Approved native-app sign-in requests not yet redeemed would otherwise become grants later.
+        db.prepare('DELETE FROM device_authorizations WHERE user_id=?').run(row.user_id);
         // Recovery revokes every other credential (#928): whoever had the account may have added a
         // passkey, an app password or a Diary connector, or still hold another recovery link.
         // The user signs in with the new password and sets passkeys and app passwords up again.
