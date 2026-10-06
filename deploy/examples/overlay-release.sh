@@ -3,7 +3,7 @@
 #
 # For releases where apps/web dependencies are unchanged since OLD: reuse OLD's
 # installed node_modules instead of running npm on the box (its IPv6 route to the
-# registry is broken). Builds cowork-web:NEW from OLD's image with dist/ and server/ replaced,
+# registry is broken). Builds cowork-web:NEW from OLD's image with dist/, server/ and contracts/ replaced,
 # bumps COWORK_VERSION, repoints the release, and rolls back automatically if the health wait
 # fails. The native engine (llama) must stay untouched.
 #
@@ -12,7 +12,7 @@
 # when the deployment defines them. The sidecars keep their own DIARY_VERSION / OCR_VERSION /
 # MODEL_MANAGER_VERSION / DOCLING_VERSION / CODE_SANDBOX_VERSION tags (nothing is retagged
 # forward), but each recreate is a restart. When the sidecars must stay up, release web by hand
-# instead: layer dist/ and server/ onto the previous cowork-web:<sha>, point `current` and
+# instead: layer dist/, server/ and contracts/ onto the previous cowork-web:<sha>, point `current` and
 # COWORK_VERSION at the new release (back up .env first), then
 #   tools/preflight/up.sh --env-file <abs path to .env> -- -d --no-build --no-deps --wait web
 # (docs/deployment.md, "Web-only release"). A Diary agent change ships separately with
@@ -21,7 +21,7 @@
 # Before running:
 #   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` (keep the folder: dist symlinks to it) then `npm run build` in apps/web
 #      (a stale build dir ships dead bundles), then from apps/web:
-#      COPYFILE_DISABLE=1 tar -h --no-xattrs -czf app-$NEW.tar.gz dist server
+#      COPYFILE_DISABLE=1 tar -h --no-xattrs -czf app-$NEW.tar.gz dist server contracts
 #      (-h: dist is a symlink locally), and FROM THE REPO ROOT `git archive --format=tar.gz -o src-$NEW.tar.gz $NEW`
 #      (run in apps/web it archives only apps/web, and the release folder cannot rebuild).
 #   2. scp both to /tmp on the server.
@@ -86,6 +86,8 @@ tar -xzf "/tmp/app-$NEW.tar.gz" -C "$work"
 rm -rf "$work/server/node_modules" "$work/server/ui-data"
 # A failed local build leaves dist empty or missing; never ship that.
 [ -f "$work/dist/index.html" ] && ls "$work"/dist/assets/*.js >/dev/null 2>&1 || { echo "app-$NEW.tar.gz has no built dist/; rebuild locally" >&2; exit 1; }
+# server/ requires ../contracts (#897); an archive without it would boot-crash the new image.
+ls "$work"/contracts/*.json >/dev/null 2>&1 || { echo "app-$NEW.tar.gz has no contracts/; pack dist server contracts" >&2; exit 1; }
 # Each overlay adds layers on top of the previous image, and Docker refuses to build past 127
 # (release 96371d5 failed with "max depth exceeded" on 2026-09-18). Past 100 layers, build the
 # release on a flattened copy of OLD instead: one layer with the same files, and the same
@@ -123,9 +125,10 @@ cat > "$work/Dockerfile" <<DOCKER
 FROM $web_image
 # Replace every application-owned entry, including old nested routes. Dependencies
 # and the runtime data mount point stay in place; this runs only in the image build.
-RUN find /app/server -mindepth 1 -maxdepth 1 ! -name node_modules ! -name ui-data -exec rm -rf {} + && rm -rf /app/dist
+RUN find /app/server -mindepth 1 -maxdepth 1 ! -name node_modules ! -name ui-data -exec rm -rf {} + && rm -rf /app/dist /app/contracts
 COPY dist /app/dist
 COPY server /app/server
+COPY contracts /app/contracts
 DOCKER
 docker build -q -t "cowork-web:$NEW" "$work" >/dev/null
 

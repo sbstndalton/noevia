@@ -71,7 +71,7 @@ coordinated migration across the live deployment; see `deployment.md`.
   (PDF text), `rag.cjs`, `mcp.cjs`, `workspace.cjs`, `auth.cjs`, `secrets.cjs`,
   `vision.cjs`, `model-manager.cjs`.
 - `services/diary/` — FastAPI sidecar, multi-tenant by `X-Cowork-User-ID` header.
-- `apps/web/tests/theme-contrast.test.cjs` — parses `tokens.css` directly.
+- `apps/web/tests/client/theme-contrast.test.cjs` — parses `tokens.css` directly.
 
 ### Build and test, from `apps/web/`
 
