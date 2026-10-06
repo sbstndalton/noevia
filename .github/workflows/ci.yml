@@ -50,6 +50,7 @@ jobs:
             model_manager:
               - 'services/model-manager/**'
               - 'docs/spec-model-loader-api-v1.md'
+              - 'release/versions.lock'
             docling:
               - 'services/docling/**'
             macos:
@@ -216,6 +217,62 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: python -m pytest -q
         if: env.RUN_JOB == 'true'
+      # #909: gguf-meta (sbstndalton/noevia-rs) at release/versions.lock's NOEVIA_RS_REF, fetched
+      # and checksum-verified exactly as the Dockerfile does, then compared with the Python parser.
+      - name: Fetch noevia-rs at the locked ref
+        if: env.RUN_JOB == 'true'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          ref=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "NOEVIA_RS_REF in release/versions.lock is not a 40-char SHA"; exit 1; }
+          df=services/model-manager/Dockerfile
+          df_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$df")
+          sum=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$df")
+          [ "$df_ref" = "$ref" ] || { echo "Dockerfile NOEVIA_RS_REF ($df_ref) != versions.lock ($ref)"; exit 1; }
+          curl -fsSL -o /tmp/noevia-rs.tar.gz "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$ref"
+          echo "$sum  /tmp/noevia-rs.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/noevia-rs"
+          tar -xzf /tmp/noevia-rs.tar.gz -C "$RUNNER_TEMP/noevia-rs" --strip-components=1
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        if: env.RUN_JOB == 'true'
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: env.RUN_JOB == 'true'
+        with:
+          workspaces: ${{ runner.temp }}/noevia-rs
+      - name: Build gguf-meta
+        if: env.RUN_JOB == 'true'
+        working-directory: ${{ runner.temp }}/noevia-rs
+        run: cargo build --release --locked -p gguf-meta
+      - name: Differential test (gguf-meta vs Python parser)
+        if: env.RUN_JOB == 'true'
+        env:
+          GGUF_META_BIN: ${{ runner.temp }}/noevia-rs/target/release/gguf-meta
+          GGUF_META_FIXTURES: ${{ runner.temp }}/noevia-rs/crates/gguf/tests/fixtures
+        run: python -m pytest -q -rs tests/test_gguf_meta_differential.py tests/test_gguf_parser_switch.py
+      # The image build proves the Dockerfile (pinned fetch, checksum, cargo build) and that the
+      # bookworm-built binary runs on the runtime base; it must print the same summary as above.
+      - uses: docker/setup-buildx-action@v3
+        if: env.RUN_JOB == 'true'
+      - name: Build model-manager image
+        if: env.RUN_JOB == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: services/model-manager
+          push: false
+          load: true
+          tags: noevia-model-manager:ci
+          cache-from: type=gha,scope=model-manager
+          cache-to: type=gha,mode=max,scope=model-manager
+      - name: gguf-meta runs inside the image
+        if: env.RUN_JOB == 'true'
+        run: |
+          set -euo pipefail
+          fx="$RUNNER_TEMP/noevia-rs/crates/gguf/tests/fixtures"
+          docker run --rm -v "$fx:/fx:ro" --entrypoint gguf-meta noevia-model-manager:ci /fx/llama_full.gguf > /tmp/in-image.json
+          "$RUNNER_TEMP/noevia-rs/target/release/gguf-meta" "$fx/llama_full.gguf" > /tmp/on-host.json
+          cmp /tmp/in-image.json /tmp/on-host.json
+          docker run --rm noevia-model-manager:ci python -c "from app import gguf_meta; assert gguf_meta._rust_binary() == '/usr/local/bin/gguf-meta'; assert gguf_meta.parser_choice() == 'python'"
 
   macos-client-tests:
     name: macOS client (NoeviaKit) tests
