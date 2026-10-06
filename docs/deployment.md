@@ -816,6 +816,13 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
   the resolved bind address (`docker logs cowork-web-1 | grep egress`) after the next web release
   that includes it: a successful start logs `egress.listening` with the bind and port, and a
   failed one (e.g. `EADDRNOTAVAIL`) logs `egress.bind_failed` and crashes the process.
+- **Egress proxy limits (#932).** The proxy caps open client connections at
+  `CODE_EGRESS_MAX_CONNECTIONS` (default 256; extra connections are closed on accept and log
+  `egress.connection_limit`) and per task at `CODE_EGRESS_MAX_CONNECTIONS_PER_TASK` (default 64;
+  refused with 429). A CONNECT tunnel holds its slots until it closes, and closes after
+  `CODE_EGRESS_TUNNEL_IDLE_MS` (default 600000, 10 min) with no bytes either way, logging
+  `egress.tunnel_idle` with the task id. Absolute-form `https://` requests are refused with 400
+  (TLS only via CONNECT, #930). No `.env` change is needed for the defaults.
 - **`COWORK_CODE_NET_ADDR` (#853; live since release f6885a55).** Web joins the internal `code` network so the sandbox can
   reach the egress proxy, but its UI (`UI_PORT`) and file-sharing (`COWORK_DAV_PORT`) listeners
   bind every interface, so a sandbox command could reach them directly. Web now refuses, with a
