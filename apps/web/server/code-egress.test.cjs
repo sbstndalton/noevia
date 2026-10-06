@@ -347,6 +347,71 @@ test('a plain-HTTP request for a non-http(s) URL is rejected with 400', async ()
   await p.close();
 });
 
+test('an absolute-form https:// request is refused with 400, never sent as plaintext (#930)', async () => {
+  const seen = [];
+  const origin = http.createServer((req, res) => { seen.push(req.url); res.end('plaintext'); });
+  await new Promise((r) => origin.listen(0, '127.0.0.1', r));
+  const originPort = origin.address().port;
+  const { p, log } = proxy({ allowedPorts: [80, 443, originPort] });
+  const { token } = p.grant({ taskId: 't1', domains: ['example.com'] });
+  await p.listen();
+  const port = p.server.address().port;
+  try {
+    const request = (path) => new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path,
+        headers: { 'proxy-authorization': basic(token) } }, (res) => { res.resume(); resolve(res.statusCode); });
+      req.on('error', reject); req.end();
+    });
+    assert.equal(await request(`https://example.com:${originPort}/secret`), 400);
+    assert.equal(await request('https://example.com/secret'), 400);
+    assert.deepEqual(seen, [], 'nothing reached the origin');
+    assert.ok(log.some((e) => e.event === 'egress.refused' && /CONNECT/.test(e.reason)));
+    // Plain http:// to the same origin still works.
+    assert.equal(await request(`http://example.com:${originPort}/ok`), 200);
+    assert.deepEqual(seen, ['/ok']);
+  } finally {
+    await p.close();
+    origin.closeAllConnections?.(); origin.close();
+  }
+});
+
+test('headers named in Connection are stripped before forwarding; the body stays framed (#930)', async () => {
+  const seen = [];
+  const origin = http.createServer((req, res) => {
+    let body = ''; req.on('data', (c) => (body += c));
+    req.on('end', () => { seen.push({ headers: req.headers, body }); res.end('ok'); });
+  });
+  await new Promise((r) => origin.listen(0, '127.0.0.1', r));
+  const originPort = origin.address().port;
+  const { p } = proxy({ allowedPorts: [80, 443, originPort] });
+  const { token } = p.grant({ taskId: 't1', domains: ['example.com'] });
+  await p.listen();
+  const proxyPort = p.server.address().port;
+  try {
+    await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: proxyPort, method: 'POST',
+        path: `http://example.com:${originPort}/thing`,
+        headers: { 'proxy-authorization': basic(token), host: `example.com:${originPort}`,
+          connection: 'keep-alive, X-Secret-Hop, x-other ,content-length, host', 'x-secret-hop': 'hidden',
+          'x-other': 'also hidden', 'proxy-authenticate': 'Basic', 'x-task': 'yes', 'content-length': '5' } },
+        (res) => { res.resume(); res.on('end', resolve); });
+      req.on('error', reject); req.end('hello');
+    });
+    assert.equal(seen.length, 1);
+    const { headers, body } = seen[0];
+    assert.equal(headers['x-secret-hop'], undefined, 'a header named in Connection must not be forwarded');
+    assert.equal(headers['x-other'], undefined, 'every Connection token counts, whitespace and case aside');
+    assert.equal(headers['proxy-authenticate'], undefined);
+    assert.equal(headers['x-task'], 'yes', 'headers Connection does not name still pass through');
+    assert.equal(headers['content-length'], '5', 'Connection cannot unframe the body');
+    assert.equal(headers.host, `example.com:${originPort}`);
+    assert.equal(body, 'hello');
+  } finally {
+    await p.close();
+    origin.closeAllConnections?.(); origin.close();
+  }
+});
+
 test('hop-by-hop headers are stripped before forwarding, task headers survive', async () => {
   const seen = [];
   const origin = http.createServer((req, res) => { seen.push(req.headers); res.end('ok'); });

@@ -171,6 +171,11 @@ function createEgressProxy({ now = Date.now, log = () => {}, lookup = defaultLoo
     if (url && url.protocol !== 'http:' && url.protocol !== 'https:') {
       return refuse(res, { ok: false, status: 400, reason: `unsupported protocol "${url.protocol}"` }, record);
     }
+    // An absolute-form `https://` request would be forwarded below as plaintext HTTP on port 80:
+    // the task believes it has TLS and gets none. TLS goes through CONNECT only (#930).
+    if (url && url.protocol === 'https:') {
+      return refuse(res, { ok: false, status: 400, reason: 'https:// must be requested with CONNECT' }, record);
+    }
     const verdict = await check({ header: req.headers['proxy-authorization'],
       target: url ? url.host : null, defaultPort: 80 });
     if (!verdict.ok) return refuse(res, verdict, record);
@@ -180,10 +185,16 @@ function createEgressProxy({ now = Date.now, log = () => {}, lookup = defaultLoo
     const headers = { ...req.headers };
     delete headers['proxy-authorization'];       // never travels onward
     delete headers['proxy-connection'];
-    // Hop-by-hop headers stop at the proxy (RFC 7230 §6.1): `connection` names further
-    // hop-by-hop headers to strip, and node itself manages keep-alive/transfer-encoding for the
-    // upstream request it builds, so those must not be forwarded verbatim either.
-    for (const h of ['connection', 'keep-alive', 'transfer-encoding', 'te', 'trailer', 'upgrade']) delete headers[h];
+    // Hop-by-hop headers stop at the proxy (RFC 9110 §7.6.1): every header the client's
+    // `Connection` names is stripped (#930), then the standard set. node itself manages
+    // keep-alive/transfer-encoding for the upstream request it builds, so those must not be
+    // forwarded verbatim either. `Connection` may not strip `content-length` (the body would be
+    // forwarded unframed) or `host` (set below).
+    for (const name of String(req.headers.connection || '').split(',')) {
+      const h = name.trim().toLowerCase();
+      if (h && h !== 'content-length' && h !== 'host') delete headers[h];
+    }
+    for (const h of ['connection', 'keep-alive', 'transfer-encoding', 'te', 'trailer', 'upgrade', 'proxy-authenticate']) delete headers[h];
     headers.host = url.host;
     const upstream = http.request({ host: verdict.address, port: verdict.port, method: req.method,
       path: url.pathname + url.search, headers, setHost: false }, (up) => {
