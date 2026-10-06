@@ -133,10 +133,13 @@ export function clearPreferences(): void {
 }
 
 export async function savePreferences(patch: { notifications?: Partial<Record<NotificationEvent, boolean>>; sendKey?: SendKey; locale?: string }): Promise<AccountPreferences> {
+  const asked = generation;
   const r = await apiFetch('/api/account/preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw Error(body.error || 'Could not save. Try again.');
   const next = normalisePreferences(body);
+  // #905: the account changed while the save was in flight; its answer is not this account's.
+  if (asked !== generation) return next;
   publish(next);
   return next;
 }

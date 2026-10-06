@@ -92,6 +92,27 @@ test('after a switch the new account\'s record is fetched again, and a late answ
   assert.equal(JSON.parse(storage.getItem(KEY)).locale, 'nb-NO');
 });
 
+test('a save still in flight when the account changes does not land for the next account', async () => {
+  const pending = [];
+  const apiFetch = () => new Promise((resolve) => pending.push(resolve));
+  const { prefs, device, storage } = fresh({ apiFetch });
+  device.claimDeviceState('user-a');
+  const saving = prefs.savePreferences({ sendKey: 'mod-enter' });
+  device.claimDeviceState('user-b');
+  pending[0]({ ok: true, json: async () => A_PREFS });
+  await saving;
+  assert.deepEqual(plain(prefs.currentPreferences()), DEFAULTS, 'B keeps the defaults');
+  assert.equal(storage.getItem(KEY), null, 'A\'s saved choices are not written into B\'s cache');
+  assert.equal(storage.getItem(OWNER), 'user-b');
+  // The same after a sign-out instead of a switch.
+  const again = prefs.savePreferences({ sendKey: 'mod-enter' });
+  device.clearDeviceState();
+  pending[1]({ ok: true, json: async () => A_PREFS });
+  await again;
+  assert.equal(storage.getItem(KEY), null);
+  assert.equal(prefs.currentPreferences().sendKey, 'enter');
+});
+
 test('blocked storage never throws out of claim or clear', () => {
   const blocked = { getItem: () => { throw Error('blocked'); }, setItem: () => { throw Error('blocked'); }, removeItem: () => { throw Error('blocked'); } };
   const { device, prefs } = fresh({ storage: blocked });
