@@ -51,7 +51,9 @@ lock="$(git -C "$repo" show "$full_sha:release/versions.lock" 2>/dev/null)" \
 lock_value() { printf '%s\n' "$lock" | sed -n "s/^$1=//p" | tail -n 1; }
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/assemble-release.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+out_partial=""
+# Never leave <out>.partial behind when the final tar (or anything after it) fails.
+trap 'rm -rf "$work"; if [ -n "$out_partial" ]; then rm -f "$out_partial"; fi' EXIT
 tree="$work/tree"
 mkdir -p "$tree/noevia" "$tree/web" "$tree/core"
 
@@ -119,6 +121,7 @@ printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\n' "$sha" "$web_sha
 printf 'noevia\n' > "$tree/.dockerignore"
 
 out="$out_dir/noevia-release-$sha.tar.gz"
-COPYFILE_DISABLE=1 tar -czf "$out.partial" -C "$tree" .dockerignore release-refs noevia web core
-mv -f "$out.partial" "$out"
+out_partial="$out.partial"
+COPYFILE_DISABLE=1 tar -czf "$out_partial" -C "$tree" .dockerignore release-refs noevia web core
+mv -f "$out_partial" "$out"
 echo "ok: $out (noevia $full_sha, web $web_sha, core $core_sha)"

@@ -84,5 +84,20 @@ g commit -qam badsum; bsha="$(g rev-parse --short HEAD)"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$bsha" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "checksum mismatch refused" '[ $rc -ne 0 ] && grep -q "checksum mismatch" "$work/err" && [ ! -f "$out/noevia-release-$bsha.tar.gz" ]'
 
+# A failing final tar must not leave out.partial (or a final tarball) behind. The shim writes a
+# truncated archive first, like a full disk would.
+real_tar="$(command -v tar)"
+cat > "$work/bin/tar" <<SHIM
+#!/usr/bin/env bash
+if [ "\$1" = -czf ]; then echo truncated > "\$2"; exit 1; fi
+exec "$real_tar" "\$@"
+SHIM
+chmod +x "$work/bin/tar"
+printf 'NOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' > "$repo/release/versions.lock"
+g commit -qam selfagain; ssha="$(g rev-parse --short HEAD)"; fout="$work/failout"; mkdir -p "$fout"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ssha" "$fout" >/dev/null 2>"$work/err"; rc=$?
+check "failing final tar exits non-zero" '[ $rc -ne 0 ]'
+check "failing final tar leaves no .partial and no tarball" '[ -z "$(ls -A "$fout")" ]'
+
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]
