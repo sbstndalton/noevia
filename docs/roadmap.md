@@ -354,7 +354,6 @@ issue or milestone assignment.
    - **Re-run the Diary overlay** (`deploy/examples/diary-overlay.sh 8e96d876`) once the appdata backup succeeds; the last attempt failed on the Jellyfin step.
    - **Archived QA chats** `qa-live-sweep` A/B/C (with hidden context projects) can be deleted; your pending Manual + ChatGPT composer choice moved to QA chat A.
    - **`CODE_VERIFY` is empty** in `.env`, so code-verify serves 0 repositories (pre-existing).
-   - **Unmerged branch** `origin/fix/chat-row-title-clip` (2026-09-24) and an old `git stash` ("ui-polish-update", docs): keep or drop.
    - Unexplained: several non-noevia containers (CloudflaredTunnel, Jellyfin, the *arr apps, Gluetun, nextcloud-mcp) were recreated on newer images around 23:50Z during release 8e96d876; no release command touched them.
 0. **Added 2026-10-05 (earlier):**
    - **#767:** change the Settings → Storage username from `sebastian` to `Sebastian Dalton`.
