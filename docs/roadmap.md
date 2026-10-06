@@ -10,7 +10,29 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-10-05 (after the repo sweep)
+## Where things stand — 2026-10-06 (overnight: Rust start, repo split, bug rounds 3–7)
+
+- **Live:** **`cowork-web:eee0dc93`**, **`cowork-model-loader:227903da`** (now carries the Rust
+  `gguf-meta` binary; `GGUF_PARSER` unset = Python parser), **`cowork-ocr:227903da`**,
+  **`cowork-diary:f6885a55`**, **`cowork-code-sandbox:pi-0.87.0-f6885a55`**, **`cowork-docling:f6885a55`**.
+  Web releases on 2026-10-06, newest first: `eee0dc93`, `e9efa32e` (adds `users.credential_epoch`;
+  db backup `state/web/cowork.db.bak.before-e9efa32e`), `cf662822`, `8cbced50`. Rollback recipes in
+  [changelog.md](changelog.md).
+- **Repos:** [sbstndalton/noevia-rs](https://github.com/sbstndalton/noevia-rs) (Rust workspace:
+  `crates/gguf` + `gguf-meta`, `crates/egress` + `egress-proxy`, both differential-tested against the
+  JS/Python they replace, dark) and [sbstndalton/noevia-macos](https://github.com/sbstndalton/noevia-macos)
+  (the macOS client, history kept). `noevia` is the integration repo: `release/versions.lock` pins
+  `NOEVIA_RS_REF`, `NOEVIA_WEB_REF`, `NOEVIA_CORE_REF` (`self` until web/core are extracted);
+  `deploy/tools/assemble-release.sh` + `build/web.Dockerfile` build an identical image from pinned refs (dry run in CI).
+- **Fixed overnight (all with tests, reviewed, deployed):** research/Drive/export/diary-job/sweep
+  bugs (#891–#895); uncapped reads everywhere (#902, #903, #918, #920 with a guard test); model-manager
+  NaN 500 and stale stats (#901, #904); per-user preferences cache (#905); OCR deadline (#914);
+  project-bound chat grants (#917); sign-in limits and full credential revocation on recovery
+  (#927, #928, #933); SSRF ranges and egress proxy caps found by the Rust port (#930, #932);
+  ChatGPT reconnect race (#934). Docling dependencies and models pinned to the live freeze (#890).
+- **Flags:** unchanged (`chatFraming` on; the rest off).
+
+## Where things stand — 2026-10-05 (after the repo sweep, superseded)
 
 - **Live:** **`cowork-web:8e96d876`**, **`cowork-diary:f6885a55`** (the 8e96d876 Diary overlay — only a log line, #885 — did not deploy because the appdata backup it runs first failed on an unrelated container; re-run `deploy/examples/diary-overlay.sh` when convenient), **`cowork-model-loader:8e96d876`**,
   **`cowork-code-sandbox:pi-0.87.0-f6885a55`** (code-sandbox and code-verify) and
@@ -302,7 +324,7 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 Each builds on the one before or is ordered by value. Work top-down; record any reordering here.
 
-**Repo split and Rust:** [ADR 0001](adr-0001-rust-and-repo-split.md) (#897); preparation (contracts/, client/server test split, boundary guard) is in this repo.
+**Repo split and Rust:** [ADR 0001](adr-0001-rust-and-repo-split.md). Done: prep (#897), macOS extracted (#900), Rust slices 1–2 (#896, #909; GGUF parser in the model-manager image, dark), egress proxy port (#926, dark), release assembly dry run (#922). Next: extract noevia-web and noevia-core at one cut SHA (assembly then switches from `self` to real refs); the web↔egress-proxy grant contract before the Rust proxy can replace code-egress.cjs; content-hash comparison in the assembly CI job (#938).
 
 **Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Multi-hop rerun done (12→6 3/4). Next: watch fallback rates in the web log (`[rag] rerank`).
 
@@ -322,9 +344,7 @@ closed; contracts in [spec-service-boundaries.md](spec-service-boundaries.md)).
    owner's go: install the next measured harness in the sandbox image and run the `scratch` fixture.
 3. **Laya concurrency ([#780](https://github.com/sbstndalton/noevia/issues/780))**, then raise `NOEVIA_ROUTER_CHUNKS` and let hybrid routing re-check tool
    results with Laya.
-4. **Docling image reproducibility ([#890](https://github.com/sbstndalton/noevia/issues/890)).** Pin torch and the models so a cache-miss rebuild
-   does not refetch them.
-5. **Later:** the [whole-Diary graph](https://github.com/sbstndalton/noevia/issues/275) (design done, narrow recommendation); the
+4. **Later:** the [whole-Diary graph](https://github.com/sbstndalton/noevia/issues/275) (design done, narrow recommendation); the
    [browser executor](https://github.com/sbstndalton/noevia/issues/274) is wired behind `browserExecutor` (off) — what remains is a node to run it
    on; the native [Mac client](https://github.com/sbstndalton/noevia/issues/273) ([sbstndalton/noevia-macos](https://github.com/sbstndalton/noevia-macos), milestone 05).
 
@@ -350,6 +370,11 @@ live DAV sharing, Deep Research enablement, credentials and device checks are no
 issue or milestone assignment.
 
 ## Needs the user — in order
+
+0. **Added 2026-10-06 (overnight):**
+   - **Set `TRUST_PROXY=true`** on DaServer (cloudflared sets X-Forwarded-For). The web log warns at start while it is off, and until then the sign-in limits treat every visitor as one address.
+   - **Switch on the Rust GGUF parser** when you want: add `GGUF_PARSER=rust` to the model-loader env and recreate it; remove it to roll back (docs/deployment.md). Output is identical to Python on 232 differential files.
+   - **Reconnect Claude in Chrome in Brave:** the post-deploy live UI tests could not run overnight (no connected browser); only server-side checks were done.
 
 0. **Added 2026-10-05 (repo sweep):**
    - **Rotate the Cloudflare tunnel token:** a fragment of it was printed into an agent session log while debugging the backup plugin (release 8e96d876).
