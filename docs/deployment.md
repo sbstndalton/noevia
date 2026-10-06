@@ -725,7 +725,7 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
   the resolved bind address (`docker logs cowork-web-1 | grep egress`) after the next web release
   that includes it: a successful start logs `egress.listening` with the bind and port, and a
   failed one (e.g. `EADDRNOTAVAIL`) logs `egress.bind_failed` and crashes the process.
-- **`COWORK_CODE_NET_ADDR` (#853).** Web joins the internal `code` network so the sandbox can
+- **`COWORK_CODE_NET_ADDR` (#853; live since release f6885a55).** Web joins the internal `code` network so the sandbox can
   reach the egress proxy, but its UI (`UI_PORT`) and file-sharing (`COWORK_DAV_PORT`) listeners
   bind every interface, so a sandbox command could reach them directly. Web now refuses, with a
   bare 403, any UI or file-sharing request whose connection arrived on its own code-network

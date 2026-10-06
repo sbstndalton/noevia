@@ -10,22 +10,52 @@ session logs and superseded plans are in [roadmap-history.md](roadmap-history.md
 Status words: **Done** = deployed and verified · **Next** = to build, in the order listed ·
 **Needs the user** = waiting on a decision, a device, or a maintenance window.
 
-## Where things stand — 2026-10-05
+## Where things stand — 2026-10-05 (after the repo sweep)
 
-- **Live:** web release **`cowork-web:29732472`** (main `31d33266` plus this roadmap update).
-  The web-only rollback chain, newest first: `3e7bbed8`, `1eb8bbad`, `b653843c`, `6f59ba82`,
-  `17b477dd`, `25cabfb4`, `b31d0075`. Every release in [changelog.md](changelog.md) has its
-  rollback recipe.
-- **Flags on:** **`chatFraming`**, switched on by the owner on 2026-10-05.
-- **Flags off** (owner's call, in this order):
-  1. the per-user vault mirror (owner's account first)
-  2. `framingReasoner` (needs a reasoner model on the keep-alongside list)
-  3. `brainContext`
+- **Live:** **`cowork-web:8e96d876`**, **`cowork-diary:f6885a55`** (the 8e96d876 Diary overlay — only a log line, #885 — did not deploy because the appdata backup it runs first failed on an unrelated container; re-run `deploy/examples/diary-overlay.sh` when convenient), **`cowork-model-loader:8e96d876`**,
+  **`cowork-code-sandbox:pi-0.87.0-f6885a55`** (code-sandbox and code-verify) and
+  **`cowork-docling:f6885a55`**. The sweep shipped four releases on 2026-10-05: `c6702509`, `023ddcb5`,
+  `f6885a55` and `8e96d876`. The web rollback chain, newest first: `f6885a55`, `023ddcb5`, `c6702509`,
+  `29732472`, `3e7bbed8`. Every release in [changelog.md](changelog.md) has a per-service rollback recipe.
+- **Live override changes (release `f6885a55`):** web has `COWORK_CODE_NET_ADDR` (the code sandbox
+  gets 403 from web's UI and DAV listeners; #853), and docling has `init: true` (#882). Backups of the
+  previous override are `*.bak.before-f6885a55`.
+- **Flags on:** **`chatFraming`**. **Flags off** (owner's call, in this order): the per-user vault
+  mirror, `framingReasoner`, `brainContext`; independent of that order: `provenancePolicy`,
+  `routingModes`. The sweep changed no flag.
+- **Deploy note:** `deploy/examples/overlay-release.sh` is NOT web-only (it recreates Diary, OCR,
+  docling and code-sandbox). For web-only releases use the "Overlay releases" recipe in
+  [deployment.md](deployment.md). Docling: build `FROM` the previous image with only the app files
+  replaced until #890 pins torch.
 
-  These two are independent of that order: `provenancePolicy` and `routingModes`.
-- **Deploy note:** `deploy/examples/overlay-release.sh` is NOT web-only, because it recreates Diary
-  and OCR. For web-only releases, layer `dist/` and `server/` onto the previous `cowork-web:<sha>`
-  and run `tools/preflight/up.sh --env-file <abs> -- -d --no-build --no-deps --wait web`.
+### 2026-10-05: Full repo sweep
+
+Brief: [handoffs/2026-10-05-repo-sweep.md](handoffs/2026-10-05-repo-sweep.md). Two review rounds over
+every area (web server, client, Diary, model-manager, Laya, OCR, Docling, code-sandbox, deploy, tools,
+experiments), one issue per finding before each fix, a Fable review on every PR, a post-deploy live
+test.
+
+- **83 issues filed (#781–#890), 82 closed** by 28 PRs (#820–#889; +14,290 / −22,318 lines).
+- **Security and data safety:** malformed-cookie lockout, passkey-option flood, file-delete guard,
+  MCP `$ref` bomb, MCP DNS rebinding, MCP same-name tool routing (calls now route by server; the
+  approval card shows "via <server>"), sandbox→web reachability, verifier git-config injection,
+  code-workspace symlinked pin dirs, approval-card sent state, drafts across accounts, last-passkey
+  lockout, backup Drive sign-in ownership, Drive tokens across key rotation.
+- **Diary (owner's journal):** real pre-stream statuses, escaped headings/labels inside entries (and
+  the preview that renders them), lock-free tenant delete, backup integrity (version-checked uploads),
+  reindex without holding the write lock, stale-reindex guard, S3 size cap.
+- **Model manager / tuning:** nested-model and HF-cache deletes, verified download resume,
+  comment-preserving `models.ini` writes, hostile GGUF metadata, implausible `block_count`, calibration
+  restore after restart, folder sync paused during tuning, benchmark sweeps inside the inference
+  budget (gate held, re-adopted after a web restart, orphan bench containers reaped).
+- **Removed (owner-approved #806–#809):** the model manager's HTML UI, the Diary sidecar's own UI and
+  chat endpoints, superseded experiments (tool-routing, acp-spike, backend-portability,
+  direct-llamacpp, persona-kv, system-one decisions/rag, model-loader scripts), the dormant
+  durable-chat seam, the speed-only autotuner, dead exports and the expired `astraReview` env alias.
+- **CI:** deploy, OCR (with real engines), Laya and code-sandbox tests now run; a flaky Diary test
+  was fixed.
+- **Live test** of `c6702509` found #848 and #849 (both fixed). Not yet checked live: the #810 project
+  picker (auto-accept is on) and an approval card on a real write.
 
 ### 2026-10-02 … 10-05: Chat framing, provenance, routing modes
 
@@ -268,136 +298,33 @@ directory · skills auto-loading · tool routing · the Models page (tabs, routi
 benchmarks) · UI overhaul releases 1–4 (materials, primitives, Plugins page) · web address
 rename with passkey continuity · Kiwix offline Wikipedia.
 
-## Local source work — not deployed
-
-No production application change. The Skills/MCP offline contract experiment is implemented
-in [draft PR #20](https://github.com/sbstndalton/noevia/pull/20); model quality and production
-adoption remain pending. The first durable-chat slice (research/system-one/15) was never
-enabled and its dormant seam was removed in #846 (git history at `1a3374da`).
-
 ## Next — in order
 
 Each builds on the one before or is ordered by value. Work top-down; record any reordering here.
 
 **Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Multi-hop rerun done (12→6 3/4). Next: watch fallback rates in the web log (`[rag] rerank`).
 
-1. **System-One next steps ([#261](https://github.com/sbstndalton/noevia/issues/261)).** Remaining routing misses are near-ties; a margin gate is not
-   justified on 4 cases. Every decision is recorded text-free (role, margin, latency, fallback) in
-   `state/web/system-one-decisions.jsonl` (bounded, rotated; docker logs are lost at each deploy).
-   After a week of real use: `docker exec cowork-web-1 node /app/server/decision-log.cjs
-   /app/server/ui-data` prints the summary; tune only from that. Rerun `scripts/system-one-probe.cjs` after
-   any Laya or label change. Counts-only review on 2026-09-28 found 32 routing decisions
-   across under five days, four `no-backend-answered` fallbacks (12.5%), median 663.5 ms
-   and p95 1,407 ms. Keep current routing; the sample has no accuracy labels and does not
-   satisfy the weeklong observation window. [Reviewed evidence](https://github.com/sbstndalton/noevia/issues/261#issuecomment-5861940658).
-2. **Confirm the tax-folder documents re-read under Docling ([#262](https://github.com/sbstndalton/noevia/issues/262))** the next time that project is
-   opened (docling logs, no 400s). Proves the 2026-09-21 fix on real files.
-3. **DAV client interoperability, remaining clients ([#263](https://github.com/sbstndalton/noevia/issues/263))** — rclone passes 18/18 (docs/dav.md, run 2);
-   Obsidian sync's client passes 17/17 after a modification-time fix (2026-09-22).
-   Still to run: Finder (an agent-side `mount_webdav` is refused locally by macOS; see dav.md, 2026-09-22 — needs the user), Windows Explorer/WinSCP, iOS Files, Obsidian WebDAV sync. DAV sharing is
-   off live (`COWORK_DAV_PORT=0`), and the Diary image now carries `preserve` and `modified`
-   (overlay 2026-09-22), so turning it on is your call alone.
-4. **Deep research ([#264](https://github.com/sbstndalton/noevia/issues/264))** — measure on a sandbox model (D12), then consider enabling it for admins; the live run still needs the user's approval.
-5. **Other harnesses** — pi is live (2026-09-22); Claude Code pinned and proven with the real
-   CLI; **Qwen Code pinned and proven with the real CLI**; Codex refused on measurement;
-   **DeepSeek Harness pinned and proven with the real CLI** (2026-09-23, not deployed:
-   its shipped profile ran commands unasked, so noevia inserts its own gate; subagents are
-   read-only under it) (spec-agent-execution, "Other harnesses: pinned configuration"). pi's approvals are bridged to
-   noevia's cards (`services/code-sandbox/pi-acp-bridge.cjs`), proven with real pi 0.87.0 and a scripted fake
-   model (`qa/pi-bridge-e2e.cjs`). Next, with your go: install Claude Code (+ ACP adapter) or the
-   next measured harness in the sandbox image and run the `scratch` fixture. No `Auto` harness
-   until there is evidence.
-6. **Skills portability and bounded skill/toolbox selection — offline prototype in draft review ([#265](https://github.com/sbstndalton/noevia/issues/265) for the evidence gate).**
-   The default-off contract and measurement harness for [issue #19](https://github.com/sbstndalton/noevia/issues/19) is implemented. Next, collect authorized held-out model evidence before deciding whether a production experiment is justified. Keep script execution and each MCP candidate behind separate qualification gates. See [the research plan](research-skills-mcp-loading.md).
-7. **Later:** a [whole-Diary graph](https://github.com/sbstndalton/noevia/issues/275) (the
-   one-hop **local graph** shipped 2026-09-22; [offline index design and synthetic prototype](research/diary-graph-index-275.md)
-   are complete with a **narrow** recommendation; production source watermarks and
-   sidecar/storage validation remain pending) · a
-   [browser executor](https://github.com/sbstndalton/noevia/issues/274) (spec-agent-execution §6; `browser-policy.cjs` built 2026-09-22; the executor,
-   `browser-executor.cjs`, built and proven on real Chromium behind the egress proxy 2026-09-23,
-   not deployed; what remains is a node to run it on and the job/card wiring) · the [Mac app](https://github.com/sbstndalton/noevia/issues/273) with an offline Diary replica (D22).
+Pruned 2026-10-05 (repo sweep): items whose issues are closed were removed (they remain in git
+history and the closed issues) — System-One next steps (#261, closed 09-30 "keep current
+routing", follow-ups in #682), the Docling tax-folder re-read (#262, done 10-01), Deep research
+measurement (#264, closed; only the owner's flag flip remains, see Needs the user), Skills
+portability (#265/#19 closed; PR #20 merged 09-23), and the modular-platform workstreams (#266–#272
+closed; contracts in [spec-service-boundaries.md](spec-service-boundaries.md)).
 
-8. **Later — modular platform and model evidence (proposed; not started).** This is a staged
-   architecture direction, not a commitment to split every concern into a process or container.
-   Keep the current release gates above first. Compose already runs the web app, Diary, OCR,
-   inference, model loader, embedding, Laya and other sidecars as separate services where their
-   runtime or security boundary calls for it; the web app also contains substantial API and
-   orchestration logic. Keep `noevia` as the integration and release repository: it pins component
-   versions, wires networks/configuration in Compose, and records the compatible stack. Move a
-   component to an independently versioned repository only when its API, ownership, release and
-   migration contracts are stable. A future macOS client should consume those contracts rather
-   than duplicate service behavior.
-
-   Workstreams and dependencies:
-
-   1. **Map boundaries and contracts ([#267](https://github.com/sbstndalton/noevia/issues/267)).** After the System-One architecture review, inventory the
-      existing web routes/services and sidecars; define versioned internal APIs, health/readiness,
-      authentication, data ownership, configuration, and failure behavior for the UI, core,
-      inference/model manager, MCP management, and Diary. Keep authorization, tenant checks,
-      write approvals, tool policy and orchestration in core. UI code calls core APIs; service
-      boundaries do not grant authority. Acceptance: a reviewed dependency/data-flow map and
-      API contracts identify which existing pieces can move without changing user-visible
-      behavior, with migration and rollback notes.
-      Proposed map and contracts: [spec-service-boundaries.md](spec-service-boundaries.md).
-   2. **Model evidence during download ([#266](https://github.com/sbstndalton/noevia/issues/266)).** Extend the existing Models → Guidance work and the
-      exact-configuration capability-database design in
-      [System-One §12.6](research/system-one/12-adaptive-model-switching.md#126-model-capability-database).
-      A model download should trigger a bounded metadata lookup/import alongside the artifact
-      transfer, keyed to the exact model revision, quantization, runtime and relevant settings.
-      Store source URL, retrieval date, license/attribution terms, benchmark task and conditions,
-      and provenance; label public model-card/benchmark results as priors, and keep them separate
-      from local benchmark runs and noevia outcome evidence. Record recommended inference settings
-      with their source, runtime/artifact scope and confidence; show unknowns as unknown. Feed
-      recommendations into the existing estimate → auto-tune flow: apply settings automatically
-      only after a local fit/quality check, with a visible result and rollback to the prior config.
-      Do not bundle a source unless its terms permit
-      the intended storage and redistribution; an API or catalogue that requires attribution or
-      restricts redistribution must be handled accordingly. Prerequisites: source/license review,
-      stable exact-artifact identity, and a schema/versioning and refresh policy. Acceptance:
-      interrupted/offline lookup never blocks a model download; imported records are attributable,
-      deduplicated and refreshable; source claims cannot be mistaken for local measurements; no
-      setting is applied solely on a public claim or routing decision changed by unqualified
-      public scores.
-   3. **Extract boundaries incrementally ([UI/core #268](https://github.com/sbstndalton/noevia/issues/268), [inference #269](https://github.com/sbstndalton/noevia/issues/269)).** Begin with the UI and core as separately deployable
-      interfaces while preserving the existing web release path; then separate inference/model
-      lifecycle only where the current model-manager/engine API and privilege boundary support it.
-      Keep a single Compose integration/release point in `noevia`, pin component versions, and
-      migrate state and secrets with explicit compatibility and rollback steps. Acceptance: each
-      extracted component can be upgraded or rolled back through the pinned stack without
-      weakening tenant isolation, approval gates, health reporting or backup/restore.
-   4. **Qualify MCP management and server isolation ([#270](https://github.com/sbstndalton/noevia/issues/270)).** Treat an MCP manager as a control plane for
-      discovery, configuration, lifecycle and health, not as a merged trust boundary. Preserve
-      per-server identity, credentials, network scope and failure isolation; individual servers
-      may be containers or remote API services according to their risk and operational needs.
-      Core remains the authority for account/project policy, tool exposure, write approvals and
-      call validation. Prerequisites: the boundary contracts and a review of Docker-socket needs;
-      do not give a manager broad socket access as a convenience. Acceptance: one failing or
-      compromised server cannot obtain another server's credentials or bypass core policy, and
-      a server can be disabled without taking down unrelated tools.
-   5. **Compare Diary companion before migration ([#271](https://github.com/sbstndalton/noevia/issues/271)).** Review
-      [sbstndalton/diary-companion](https://github.com/sbstndalton/diary-companion) against
-      `services/diary` for features, tenant/authentication boundaries, data format, migrations,
-      backups, deployment and maintenance. Record what is reusable and what is already newer in
-      noevia before choosing whether to reactivate the repository. No corpus or state migration
-      starts until compatibility, import/export, rollback and live-data backup are specified.
-      Acceptance: a documented keep/port/replace decision with a synthetic-fixture migration plan
-      and no loss of current Diary behavior or tenant isolation. The 2026-09-28 source
-      comparison recommends keeping `services/diary` authoritative; the old single-user
-      companion does not justify replacing current tenant boundaries. The synthetic migration
-      matrix and live M2 qualification remain unexecuted.
-      [Reviewed comparison](https://github.com/sbstndalton/noevia/issues/271#issuecomment-5861988953).
-   6. **Make Skills portable across clients ([#272](https://github.com/sbstndalton/noevia/issues/272)).** Keep Skills as versioned manifests, instructions
-      and optional assets rather than creating a container for each Skill. Define discovery,
-      compatibility, origin, updates and per-Skill tool/permission requirements in core; execute
-      any Skill-provided code only in an existing qualified sandbox with the same approval policy.
-      Acceptance: web and future native clients can list and invoke the same Skill version through
-      core, and disabling a Skill revokes its access without affecting unrelated Skills.
-   7. **Native macOS client, later ([#273](https://github.com/sbstndalton/noevia/issues/273)).** Start only after the core and service contracts are stable
-      and the modular stack is usable without the web UI. Reuse authentication, projects, Diary,
-      inference and tool-policy APIs; define local/offline Diary behavior and sync/conflict rules
-      separately before claiming feature parity. Acceptance: the Mac client can change without
-      changing service policy or storage ownership, and reconnect/sync behavior is covered by an
-      explicit migration and conflict design.
+1. **DAV client interoperability, remaining clients ([#263](https://github.com/sbstndalton/noevia/issues/263)).** rclone 18/18 and Obsidian sync 17/17 pass
+   (docs/dav.md). Still to run: Finder (needs the user), Windows Explorer/WinSCP, iOS Files, Obsidian
+   WebDAV sync — needs an admin-created local-storage test account (2026-10-01 comment). DAV sharing
+   is off live (`COWORK_DAV_PORT=0`); turning it on is the owner's call.
+2. **Other harnesses.** pi 0.87.0 is live (`pi-0.87.0-f6885a55`); Claude Code, Qwen Code and DeepSeek
+   Harness are pinned and proven with their real CLIs; Codex refused on measurement. Next, with the
+   owner's go: install the next measured harness in the sandbox image and run the `scratch` fixture.
+3. **Laya concurrency ([#780](https://github.com/sbstndalton/noevia/issues/780))**, then raise `NOEVIA_ROUTER_CHUNKS` and let hybrid routing re-check tool
+   results with Laya.
+4. **Docling image reproducibility ([#890](https://github.com/sbstndalton/noevia/issues/890)).** Pin torch and the models so a cache-miss rebuild
+   does not refetch them.
+5. **Later:** the [whole-Diary graph](https://github.com/sbstndalton/noevia/issues/275) (design done, narrow recommendation); the
+   [browser executor](https://github.com/sbstndalton/noevia/issues/274) is wired behind `browserExecutor` (off) — what remains is a node to run it
+   on; the native [Mac client](https://github.com/sbstndalton/noevia/issues/273) (`clients/macos`, milestone 05).
 
 ### GitHub milestone map
 
@@ -422,7 +349,14 @@ issue or milestone assignment.
 
 ## Needs the user — in order
 
-0. **Added 2026-10-05:**
+0. **Added 2026-10-05 (repo sweep):**
+   - **Rotate the Cloudflare tunnel token:** a fragment of it was printed into an agent session log while debugging the backup plugin (release 8e96d876).
+   - **Re-run the Diary overlay** (`deploy/examples/diary-overlay.sh 8e96d876`) once the appdata backup succeeds; the last attempt failed on the Jellyfin step.
+   - **Archived QA chats** `qa-live-sweep` A/B/C (with hidden context projects) can be deleted; your pending Manual + ChatGPT composer choice moved to QA chat A.
+   - **`CODE_VERIFY` is empty** in `.env`, so code-verify serves 0 repositories (pre-existing).
+   - **Unmerged branch** `origin/fix/chat-row-title-clip` (2026-09-24) and an old `git stash` ("ui-polish-update", docs): keep or drop.
+   - Unexplained: several non-noevia containers (CloudflaredTunnel, Jellyfin, the *arr apps, Gluetun, nextcloud-mcp) were recreated on newer images around 23:50Z during release 8e96d876; no release command touched them.
+0. **Added 2026-10-05 (earlier):**
    - **#767:** change the Settings → Storage username from `sebastian` to `Sebastian Dalton`.
    - **Delete the archived QA chats and projects** "QA 744 …" and "QA 25c …".
    - **Flip the remaining flags** in the order above.
