@@ -8,6 +8,30 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release e2f9d59b — 2026-10-06 (web only: benchmarks rating-clear error, saved-prompt delete confirmation, project delete flow)
+
+### Services
+
+- **Web:** [#944](https://github.com/sbstndalton/noevia/pull/944) (closes [#943](https://github.com/sbstndalton/noevia/issues/943): a failed rating clear on the Benchmarks tab now reports the error, and deleting a saved prompt asks for confirmation) and [#945](https://github.com/sbstndalton/noevia/pull/945) (closes [#942](https://github.com/sbstndalton/noevia/issues/942): project delete shows an error on failure, no longer navigates away, drops pending patches for the deleted project, and the save messages are translated in all locales). Now `cowork-web:e2f9d59b` (`sha256:75c62b4a...`, 86 layers, previous `cowork-web:eee0dc93`), `readlink current` is `releases/e2f9d59b`, `COWORK_VERSION=e2f9d59b`.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:227903da`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`). None was restarted.
+- **Deploy/infra:** no change to the live path. `overlay-release.sh` was not run (web-only manual recipe). The release-assembly tooling merged in [#936](https://github.com/sbstndalton/noevia/pull/936) and [#941](https://github.com/sbstndalton/noevia/pull/941) is not part of the live path.
+
+PRs: #944, #945. Issues: #943, #942.
+
+**Database migration.** None. No schema change in this release, so no database backup was taken and the previous image runs on the same database.
+
+No feature flag was changed. No model run, tune, benchmark or download, no Code task, no private Diary access. The Diary overlay (still pending) was not touched.
+
+Exact source `e2f9d59b05896bc83f4e0c2964e8afa82aaf66cf` (main CI completed success on that commit before cutover). Built on the Mac from a clean detached worktree: `STAMP_VERSION=e2f9d59b npm run build` in `apps/web`, then `COPYFILE_DISABLE=1 tar -h --no-xattrs` of `dist server contracts` (without `server/node_modules` and `server/ui-data`), and a `git archive` of the repo root into `releases/e2f9d59b`. Dependencies gate against `eee0dc93`: no change to `apps/web/package.json`, `apps/web/package-lock.json`, `apps/web/server/package.json` or `apps/web/server/package-lock.json`, so `node_modules` came from the old image.
+
+**Order and results.**
+
+1. **Web.** Layered `dist/`, `server/` and `contracts/` onto `cowork-web:eee0dc93` with the standard overlay Dockerfile (82 to 86 layers, under the 100-layer flatten limit; Env, WorkingDir, ExposedPorts, User, Entrypoint, Cmd and Healthcheck identical to the old image). Before cutover the image was checked to contain `/app/contracts/project-icons.json` and `/app/contracts/project-limits.json`, `dist/version.json` `e2f9d59b` and a `dist/index.html` sha256 equal to the Mac build. Synthetic candidate in a throwaway `--network none` container with a tmpfs data dir: server booted on a fresh database, `/api/ready` 200, `/api/setup/status` 200, `/version.json` `e2f9d59b`; the container was removed. `config/.env.bak.before-e2f9d59b` taken, `current` and `COWORK_VERSION` repointed; started alone with `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (preflight passed, `Healthy`). Cutover 2026-10-06 12:51:07Z to 12:51:25Z; the new `cowork-web-1` `StartedAt` is 12:51:19Z.
+
+**Verify.** Web: healthy, `RestartCount` 0; `127.0.0.1:8021/version.json` and `https://noevia.daserver.work/version.json` both `e2f9d59b`; `/api/ready` 200 locally and publicly; `/app/dist/index.html` sha256 `5d11b6d8...` (Mac build before the worktree was removed: identical; was `6b8342b2...`), 67 files in `dist/assets`; the log tail shows the known `TRUST_PROXY` warning, MCP discovery (noevia 10, nextcloud 181, tavily 5 tools), `egress.listening` and `codenet.guarding` on `172.28.0.3` and no error or failure line. Container snapshot (id, `StartedAt`, `RestartCount`, state, image of all 40 containers on the host) before and after: only `cowork-web-1` differs (id, `StartedAt` and image); every sidecar, the engine, Laya, embed, Kiwix and the Nextcloud and media containers kept id, `StartedAt` and restart count. `sidecar-restart-alert.sh --ack` run; a following `--dry-run` was clean.
+
+Rollback (web only). On DaServer with `B=/mnt/docker/appdata/cowork`: `ln -sfn $B/releases/eee0dc93 $B/current && sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=eee0dc93/' $B/config/.env && bash $B/tools/preflight/up.sh --env-file $B/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web` (or restore `$B/config/.env.bak.before-e2f9d59b` instead of the `sed`). The `cowork-web:eee0dc93` image is retained and there is no schema difference. Run `sidecar-restart-alert.sh --ack` afterwards. No other service needs rolling back.
+
 ## Release eee0dc93 — 2026-10-06 (web only: ChatGPT sign-in failed retry marks only the failed sign-in)
 
 ### Services
