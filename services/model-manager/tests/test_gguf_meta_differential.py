@@ -130,9 +130,9 @@ def test_binary_is_runnable():
 
 
 def test_rust_and_python_summaries_agree(tmp_path):
-    """Where both succeed the summaries are equal; where Rust fails, Python must raise too,
-    except known Rust-side refusals that the fallback answers (listed in the failure text)."""
-    mismatches, agreed, rust_refused = [], 0, []
+    """Full parity: where both succeed the summaries are equal, and Rust fails exactly where
+    the Python parser raises (noevia-rs#2 / #913 closed the last non-finite gap)."""
+    mismatches, agreed = [], 0
     for path in _fixture_files(tmp_path):
         kind, py = _python(path)
         rust = gguf_meta._run_rust(path)
@@ -143,13 +143,9 @@ def test_rust_and_python_summaries_agree(tmp_path):
         elif rust is not None:
             mismatches.append(f"{path.name}: rust ok but python raised {py.__name__}")
         elif kind == "ok":
-            rust_refused.append(path.name)
+            mismatches.append(f"{path.name}: rust failed but python succeeded")
     assert not mismatches, "\n".join(mismatches)
     assert agreed >= 8
-    # Rust may refuse only where the Python parser would also have raised before #901's
-    # non-finite sanitiser; the switch then answers with Python. Keep this list explicit.
-    allowed = {"nan_context_raises.gguf", "nan_param_count_raises.gguf"}
-    assert set(rust_refused) <= allowed, rust_refused
 
 
 def test_switch_end_to_end_matches_python_everywhere(tmp_path):
