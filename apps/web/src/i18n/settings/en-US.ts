@@ -7,8 +7,6 @@ export const EN_US_SETTINGS: SettingsCatalogue = {
   'decision.deadlineHelp': "If the service cannot answer in time, Noevia keeps its existing behavior. Range: 100–2000 ms.",
   'settings.keywords.connectors': 'connectors google drive customize customise plugins skills permissions',
   'appearance.accentDesc': 'Color for selections, links and the send button.',
-  'appearance.family.glass': 'Frosted, translucent panes with a bright edge over a soft color field.',
-  'appearance.preview.message': 'Summarize the notes',
   'usage.favouriteModel': 'Favorite model',
   'connectors.drive.suggestFind': 'Find my Drive file about backups and summarize it',
   'serviceStatus.mcp.catalogueUnavailable': 'Catalog unavailable',

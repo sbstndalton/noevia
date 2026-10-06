@@ -1,4 +1,4 @@
-/* Motion system (#247). Loads after tokens.css and themes.css. The timing contract (four
+/* Motion system (#247, retuned in #951 to the Claude/ChatGPT reference). Loads after tokens.css. The timing contract (four
    purposes: immediate, quick, considered, async) lives in tokens.css; this file holds every
    keyframe the app uses and the reduced-motion guarantees. There were 29 one-off keyframes;
    these five replace them. Each is parameterised by custom properties on the element, so a
@@ -48,6 +48,29 @@
 @keyframes sidebar-title-scroll {
   0%, 15% { transform: translateX(0); }
   85%, 100% { transform: translateX(calc(var(--label-travel) - 14px)); }
+}
+
+/* 6. Chip in — chips and pills appearing (source chips, attachments): from blur(2px) and
+   scale(.8), staggered 50ms + 30ms per sibling by components.css. */
+@keyframes motion-chip-in {
+  from { opacity: 0; filter: blur(2px); transform: scale(.8); }
+}
+
+/* 7. Message enter — the message you just sent grows from the composer side
+   (transform-origin: right) with a small overshoot. */
+@keyframes motion-message-enter {
+  from { opacity: 0; transform: scale(.92) translateY(6px); }
+}
+
+/* 8. Fade in — a swapped page or Settings section, after the skeleton delay. */
+@keyframes motion-fade-in {
+  from { opacity: 0; }
+}
+
+/* 9. Shimmer — a skeleton bar while a slow section loads (only after --delay-skeleton). */
+@keyframes motion-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 
 /* Reduced motion — the OS setting or Settings → Motion — in every state: streaming,

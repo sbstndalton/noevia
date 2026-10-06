@@ -217,7 +217,7 @@ export function SettingsShell(props: SettingsViewProps & {initialSection?:Settin
     onClosing.current?.();
     if (reducedMotion()) { onClose.current(); return; }
     setClosing(true);
-    closeTimer.current = window.setTimeout(() => onClose.current(), 240);
+    closeTimer.current = window.setTimeout(() => onClose.current(), 200);
   }, []);
   // Replaced by a new Settings mid-exit: this one's exit must not close its successor.
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
@@ -284,7 +284,9 @@ export function SettingsShell(props: SettingsViewProps & {initialSection?:Settin
   const report = props.onSection;
   useEffect(() => { report?.(section); }, [report, section]);
 
-  return <section ref={stage} className={`settings-stage${closing ? ' is-closing' : ''}`} data-view={view} role="region" aria-label={t('settings.title')}>
+  // #951: Settings is a window over the dimmed app; the scrim closes it like Escape does.
+  return <><div className={`settings-scrim${closing ? ' is-closing' : ''}`} aria-hidden="true" onClick={close}/>
+  <section ref={stage} className={`settings-stage${closing ? ' is-closing' : ''}`} data-view={view} role="region" aria-label={t('settings.title')}>
     <aside className="settings-navigation">
       <div className="settings-nav-head">
         {/* #305: the old "Back to app" button here duplicated the X (both closed Settings). It
@@ -352,5 +354,5 @@ export function SettingsShell(props: SettingsViewProps & {initialSection?:Settin
         </SettingsPanelBoundary>
       </div>
     </section>
-  </section>;
+  </section></>;
 }

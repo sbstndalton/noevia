@@ -26,13 +26,17 @@ coordinated migration across the live deployment; see `deployment.md`.
 
 - `apps/web/src/` — React + plain CSS. No Tailwind, no PostCSS. Constrain widths
   with `max-width` + `margin-inline: auto`.
-- `apps/web/src/styles/` — `tokens.css`, `app.css`, `shell.css`, `noevia.css`,
-  `popup.css`, `diary-tab.css` and later layers (`shell-v2.css`, `primitives.css`, `overlays.css`,
-  `phone.css`, `materials.css`, `theme-contemporary.css`, `system.css`, `families.css`).
-  **Import order in `src/main.tsx` decides the cascade**: `noevia.css` is no longer last, and
-  `space-tiers.css` loads after everything else, so it overrides the family files it lightens.
-  Check that order before adding a rule: a rule in an earlier file can be silently dead. This has
-  bitten twice.
+- `apps/web/src/styles/system/` — the one design system (#951; README.md there lists the
+  tokens and the class/attribute contract): `fonts.css`, `tokens.css`, `motion.css`,
+  `components.css`. Framework-neutral CSS keyed on classes, data-attributes and ARIA states, so
+  a non-React UI can reuse it. There are no theme families or materials any more; light/dark
+  and the accent palette are the only theme choices.
+- `apps/web/src/styles/` — the older layout sheets: `app.css`, `diary-tab.css`, `popup.css`,
+  `shell.css`, `noevia.css`, `shell-v2.css`, `primitives.css`, `overlays.css`, `phone.css`,
+  `space-tiers.css`. **Import order in `src/main.tsx` decides the cascade**: fonts, tokens and
+  motion first, then the layout sheets, then `system/components.css` (which decides how shared
+  surfaces look), and `space-tiers.css` last (layout only). Check that order before adding a
+  rule: a rule in an earlier file can be silently dead.
 - `apps/web/src/App.tsx` (~1,900 lines) — chat state, SSE consumption, theme manager.
 - `apps/web/server/index.cjs` (~1,200 lines) — wiring only: config from the environment,
   construction of every service and route factory, `handleRequestScoped` (security headers,

@@ -1,5 +1,5 @@
-import { useEffect, useId, useState } from 'react';
-import type { JSX, KeyboardEvent } from 'react';
+import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { SegmentedControl } from './SegmentedControl';
 import { LayoutModeChoice, layoutModeDescription } from './LayoutMode';
 import { fetchHealth, fetchProfile, fetchToolboxes, updateProfile } from '../api';
@@ -9,8 +9,6 @@ import { readPreference, writePreference } from '../preferences';
 import type { PreferenceName } from '../preferences';
 import { applyPalette, currentPalette, palettes } from '../appearance';
 import type { Palette } from '../appearance';
-import { FAMILIES, FAMILY_SPECS } from '../theme-family';
-import type { Family } from '../theme-family';
 import { Logo } from './Icons';
 import { previewLogo } from '../logo-appearance';
 import { nextLogoPalette, type LogoPalette } from '../logo-calendar';
@@ -55,69 +53,6 @@ function AccentChoice({ mode }: { mode: 'light' | 'dark' }): JSX.Element {
       <span className="accent-swatch" data-palette={name} data-theme={mode} aria-hidden="true"><i /><i /><i /></span>
       {t(PALETTE_LABELS[name])}
     </button>)}
-  </div>;
-}
-
-/** Theme families (#249) as live previews. Each sample carries data-family, data-theme and
- *  data-palette and the `theme-scope` class, so tokens.css and themes.css resolve it exactly
- *  as they resolve the app: the preview is the real family, in light and in dark, with the
- *  current accent — never a screenshot. Choosing one writes the per-device preference, which
- *  sets data-family on <html> and restyles the whole interface at once. */
-function FamilyPreview({ family, mode, palette }: { family: Family; mode: 'light' | 'dark'; palette: Palette }): JSX.Element {
-  const t = useT();
-  return <span className="family-preview theme-scope" data-family={family} data-theme={mode} data-palette={palette} aria-hidden="true">
-    <span className="family-preview-mark"><Logo/><span>noevia</span></span>
-    <span className="family-preview-heading">{t('appearance.preview.greeting')}</span>
-    <span className="family-preview-message">{t('appearance.preview.message')}</span>
-    <span className="family-preview-row">
-      <span className="family-preview-composer">{t('composer.placeholder')}<i className="family-preview-send" /></span>
-      <span className="family-preview-menu"><span>Chat</span><span>Cowork</span></span>
-    </span>
-    <span className="family-preview-controls"><span className="family-preview-button is-primary">{t('common.save')}</span><span className="family-preview-button">{t('common.cancel')}</span></span>
-  </span>;
-}
-
-export function FamilyChoice({ onChange }: { onChange?: () => void }): JSX.Element {
-  const t = useT();
-  const uid = useId();
-  const [chosen, setChosen] = useState<Family>(() => readPreference('family'));
-  const [palette, setPalette] = useState<Palette>(() => currentPalette());
-  useEffect(() => {
-    // The previews use every family's typeface; load them now rather than on first switch.
-    window.dispatchEvent(new Event('noevia:preview-fonts'));
-    const sync = () => setPalette(currentPalette());
-    window.addEventListener('cowork:appearance', sync);
-    return () => window.removeEventListener('cowork:appearance', sync);
-  }, []);
-  const choose = (next: Family) => { setChosen(next); writePreference('family', next); onChange?.(); };
-  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const next = FAMILIES[(FAMILIES.indexOf(chosen) + step + FAMILIES.length) % FAMILIES.length];
-    choose(next);
-    event.currentTarget.querySelector<HTMLElement>(`[data-choice="${next}"]`)?.focus();
-  };
-  return <div className="family-choice" role="radiogroup" aria-label={t('appearance.family')} onKeyDown={onKey}>
-    {FAMILIES.map((name) => {
-      const spec = FAMILY_SPECS[name];
-      const nameId = `${uid}-name-${name}`, descId = `${uid}-desc-${name}`;
-      return <button key={name} type="button" role="radio" data-choice={name} aria-checked={chosen === name} tabIndex={chosen === name ? 0 : -1}
-        aria-labelledby={`${nameId} ${descId}`} className="family-tile" onClick={() => choose(name)}>
-        {/* #420: name-from-content otherwise starts with these previews' own mock chat UI (two
-            copies, light+dark) — ~200 characters of identical filler before the one word that
-            actually distinguishes the three tiles. Each preview root is already aria-hidden, but
-            Chrome's real accessible-name computation was still folding that text in; explicit
-            aria-labelledby bypasses name-from-content entirely rather than depending on it, and
-            aria-hidden here too costs nothing and removes any doubt for other readers of this. */}
-        <span className="family-tile-previews" aria-hidden="true">
-          <FamilyPreview family={name} mode="light" palette={palette} />
-          <FamilyPreview family={name} mode="dark" palette={palette} />
-        </span>
-        <span className="family-tile-name" id={nameId}>{spec.label}</span>
-        <span className="family-tile-desc" id={descId}>{t(`appearance.family.${name}` as MessageKey)} {spec.display === spec.ui ? t('appearance.family.setIn', { font: spec.ui }) : t('appearance.family.pair', { display: spec.display, ui: spec.ui })}</span>
-      </button>;
-    })}
   </div>;
 }
 
@@ -213,9 +148,6 @@ export function AppearanceSettings({ isAdmin = false, theme, onTheme, preference
           <div className="set-row-text"><span className="set-row-label">{t('appearance.accent')}</span><span className="set-row-desc">{t('appearance.accentDesc')}</span></div>
           <AccentChoice mode={theme} />
         </div>
-        <Row label={t('appearance.family')} description={t('appearance.familyDesc')}>
-          <FamilyChoice onChange={bump} />
-        </Row>
         {import.meta.env.DEV && isAdmin && <LogoPaletteTester />}
       </div>
       <h2>{t('appearance.reading')}</h2>
