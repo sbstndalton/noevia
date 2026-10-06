@@ -1,8 +1,0 @@
-{
-  "device_code": "synthetic-device-code",
-  "user_code": "BCDF-GHJK",
-  "verification_uri": "https://noevia.example.test/device",
-  "verification_uri_complete": "https://noevia.example.test/device?code=BCDF-GHJK",
-  "expires_in": 600,
-  "interval": 5
-}
