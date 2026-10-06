@@ -326,7 +326,7 @@ closed; contracts in [spec-service-boundaries.md](spec-service-boundaries.md)).
    does not refetch them.
 5. **Later:** the [whole-Diary graph](https://github.com/sbstndalton/noevia/issues/275) (design done, narrow recommendation); the
    [browser executor](https://github.com/sbstndalton/noevia/issues/274) is wired behind `browserExecutor` (off) — what remains is a node to run it
-   on; the native [Mac client](https://github.com/sbstndalton/noevia/issues/273) (`clients/macos`, milestone 05).
+   on; the native [Mac client](https://github.com/sbstndalton/noevia/issues/273) ([sbstndalton/noevia-macos](https://github.com/sbstndalton/noevia-macos), milestone 05).
 
 ### GitHub milestone map
 

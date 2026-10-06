@@ -1,4 +1,0 @@
-{
-  "error": "invalid_grant",
-  "error_description": "This refresh token was already used. The device was signed out."
-}
