@@ -24,6 +24,9 @@ def _request(ts: str, port: int, task: int, gen_tps: float) -> list[str]:
     ]
 
 
+_COVERED = 1e12   # a watermark past every synthetic timestamp: the tail overlaps the last ingest
+
+
 def _log() -> str:
     lines = []
     lines += _spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf", "4096")
@@ -121,7 +124,7 @@ def test_a_request_whose_spawn_line_left_the_tail_is_attributed_to_the_stored_in
     db.record_server_configs(backend, configs)
     assert db.record_timings(backend, first) == 1
     # the tail now holds only a new task on the same port
-    tail, tail_configs = telemetry.parse_log("\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)), backend)
+    tail, tail_configs = telemetry.parse_log("\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)), backend, _COVERED)
     assert [s.instance for s in tail] == [first[0].instance]
     assert (tail[0].alias, tail[0].model_path) == ("alpha", "/models/a.gguf")
     assert tail_configs == []                          # the stored record is not touched
@@ -130,7 +133,7 @@ def test_a_request_whose_spawn_line_left_the_tail_is_attributed_to_the_stored_in
     assert sorted(r["gen_tps"] for r in rows) == [100.0, 120.0]
     assert all("@" in r["instance"] for r in rows)
     # re-reading the same tail stays a no-op
-    again, _ = telemetry.parse_log("\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)), backend)
+    again, _ = telemetry.parse_log("\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)), backend, _COVERED)
     assert db.record_timings(backend, again) == 0
 
 
@@ -144,7 +147,7 @@ def test_a_reused_port_resolves_to_the_instance_that_was_newest_at_the_request_t
     tail = "\n".join(_request("2026-10-05T11:30:00.000000000Z", 60279, 9, 150.0)    # after the respawn
                      + _request("2026-10-05T10:30:00.000000000Z", 60279, 8, 110.0)  # before it
                      + _request("2026-10-05T09:00:00.000000000Z", 60279, 7, 90.0))   # before any spawn we know
-    samples, _ = telemetry.parse_log(tail, backend)
+    samples, _ = telemetry.parse_log(tail, backend, _COVERED)
     by_task = {s.task: s for s in samples}
     assert by_task[9].instance == new and by_task[8].instance == old
     assert "@" not in by_task[7].instance and by_task[7].alias == ""
@@ -156,9 +159,9 @@ def test_other_backends_and_other_ports_are_not_resolved():
     parsed, configs = telemetry.parse_log("\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")))
     db.record_server_configs(backend, configs)
     req = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))
-    assert "@" not in telemetry.parse_log(req, backend + "-other")[0][0].instance
+    assert "@" not in telemetry.parse_log(req, backend + "-other", _COVERED)[0][0].instance
     req2 = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 6027, 4, 120.0))
-    assert "@" not in telemetry.parse_log(req2, backend)[0][0].instance        # prefix, not substring
+    assert "@" not in telemetry.parse_log(req2, backend, _COVERED)[0][0].instance        # prefix, not substring
 
 
 def test_ingest_keeps_attributing_requests_after_the_spawn_line_scrolls_out(monkeypatch):
@@ -181,7 +184,65 @@ def test_ingest_keeps_attributing_requests_after_the_spawn_line_scrolls_out(monk
 
     monkeypatch.setattr(services, "_docker_client", lambda: _Client())
     assert telemetry.ingest([backend], force=True) == 1
-    logs["text"] = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))
+    # the new tail starts at the previous pass's last line (overlap) but has lost the spawn line
+    logs["text"] = "\n".join(_request("2026-10-05T10:00:05.000000000Z", 60279, 3, 100.0)
+                             + _request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))
     assert telemetry.ingest([backend], force=True) == 1
     rows = [r for r in db.recent_timings(alias="alpha", min_gen_tokens=1) if r["backend"] == backend]
     assert sorted(r["gen_tps"] for r in rows) == [100.0, 120.0]
+
+
+def test_a_different_model_load_line_in_the_tail_vetoes_the_stored_instance():
+    """Port reused by model B between ingests: B's requests must not land in A's stats."""
+    db.init()
+    backend = "test-904-veto"
+    _, configs = telemetry.parse_log("\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")))
+    db.record_server_configs(backend, configs)
+    b_tail = ["2026-10-05T10:20:00.000000000Z [60279] 0.00.100 I srv    load_model: loading model '/models/b.gguf'"]
+    b_tail += _request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0)
+    samples, _ = telemetry.parse_log("\n".join(b_tail), backend, _COVERED)
+    assert [s.instance for s in samples] == ["60279"] and samples[0].alias == ""
+    # the same model reloading is still A
+    a_tail = [b_tail[0].replace("/models/b.gguf", "/models/a.gguf")] + b_tail[1:]
+    samples, _ = telemetry.parse_log("\n".join(a_tail), backend, _COVERED)
+    assert samples[0].alias == "alpha" and "@" in samples[0].instance
+
+
+def test_a_tail_that_does_not_overlap_the_last_ingest_stays_bare():
+    db.init()
+    backend = "test-904-gap"
+    _, configs = telemetry.parse_log("\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")))
+    db.record_server_configs(backend, configs)
+    tail = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))
+    last_ingest = telemetry._parse_ts("2026-10-05T10:00:05.000000000Z ")
+    for covered in (0.0, last_ingest):                       # never ingested / gap before the tail
+        s, _ = telemetry.parse_log(tail, backend, covered)
+        assert s[0].instance == "60279" and s[0].alias == ""
+    s, _ = telemetry.parse_log(tail, backend, telemetry._parse_ts("2026-10-05T10:30:00.000000000Z "))
+    assert s[0].alias == "alpha"                             # first line at or before the watermark
+
+
+def test_ingest_stays_bare_across_a_gap_and_advances_the_watermark(monkeypatch):
+    from app import services
+    db.init()
+    backend = "test-904-ingest-gap"
+    logs = {"text": "\n".join(_spawn("2026-10-05T10:00:00.000000000Z", "alpha", 60279, "/models/a.gguf")
+                              + _request("2026-10-05T10:00:05.000000000Z", 60279, 3, 100.0))}
+
+    class _Container:
+        def logs(self, **_kw):
+            return logs["text"].encode()
+
+    class _Client:
+        class containers:
+            @staticmethod
+            def get(_name):
+                return _Container()
+
+    monkeypatch.setattr(services, "_docker_client", lambda: _Client())
+    telemetry.ingest([backend], force=True)
+    assert float(db.get_setting(telemetry._WATERMARK_KEY + backend)) == telemetry._parse_ts("2026-10-05T10:00:05.000000000Z ")
+    logs["text"] = "\n".join(_request("2026-10-05T10:30:00.000000000Z", 60279, 4, 120.0))   # no overlap
+    assert telemetry.ingest([backend], force=True) == 1
+    rows = [r for r in db.recent_timings(alias="alpha", min_gen_tokens=1) if r["backend"] == backend]
+    assert [r["gen_tps"] for r in rows] == [100.0]            # the orphan is not credited to alpha
