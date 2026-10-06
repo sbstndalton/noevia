@@ -619,6 +619,80 @@ registry over IPv6) instead of rebuilding.
 - **`deploy/examples/diary-overlay.sh <SRC_SHA>`** replaces only `services/diary/agent` in the
   running Diary image and recreates only `diary`. It takes an appdata backup first and refuses to
   continue unless that run produced a new, verified `ab_*` folder.
+- **Docling** has no script; its overlay is documented step by step in "Docling release path" below.
+  It builds FROM the running `cowork-docling` image with the six application files replaced and
+  recreates only `docling`.
+
+### Docling release path: app-only overlay (default) and when to rebuild (#890)
+
+The default docling release is an app-only overlay, not a `docker build` of
+`services/docling` (release `f6885a55` shipped this way). The reason is reproducibility: a build that misses the layer cache re-runs
+`apt-get` and re-fetches torch, the Python dependencies and the 669 MB of models. On 2026-10-05 an
+unpinned `docker build` did exactly that and was stopped after 90 seconds (changelog, release
+`f6885a55`). The overlay starts FROM the image that is already running, so nothing is downloaded
+and no dependency can drift; only the application files change.
+
+**Use the overlay** when the only changes under `services/docling` are the six application files
+`server.py extract.py isolation.py isolated_worker.py selftest.py synthetic_pdfs.py` (the files
+the final `COPY` in the Dockerfile places in `/app`). Confirm first that `Dockerfile`,
+`requirements.txt`, `requirements-torch-cpu.txt`, `requirements.in` and `download_models.py`
+did not change between the running release and the new one (`git diff <OLD_SHA> <NEW_SHA> --
+services/docling` on the source checkout). User, workdir, healthcheck and `CMD` are inherited
+from the previous image. Run on DaServer as root, with an unpacked release under `releases/`, in a
+throwaway `bash` session (the guards below `exit`). Replace `<NEW_SHA>` by the release SHA (7 to 40
+lowercase hex characters, it becomes the tag):
+
+```sh
+base=/mnt/docker/appdata/cowork; config=$base/config/.env; NEW=<NEW_SHA>
+OLD=$(sed -n 's/^DOCLING_VERSION=//p' "$config")          # the running tag, e.g. f6885a55
+[[ $NEW =~ ^[0-9a-f]{7,40}$ ]] || { echo "NEW must be a hex sha" >&2; exit 1; }
+[ -n "$OLD" ] && [ "$OLD" != "$NEW" ] && [ -d "$base/releases/$NEW/services/docling" ] || { echo "bad DOCLING_VERSION or release dir" >&2; exit 1; }
+! docker image inspect cowork-docling:$NEW >/dev/null 2>&1 || { echo "cowork-docling:$NEW exists" >&2; exit 1; }
+docker image inspect cowork-docling:$OLD --format '{{.Id}}' || exit 1   # the rollback target must exist
+ctx=$(mktemp -d); cd "$base/releases/$NEW/services/docling"
+cp server.py extract.py isolation.py isolated_worker.py selftest.py synthetic_pdfs.py "$ctx"/
+printf 'FROM cowork-docling:%s\nCOPY server.py extract.py isolation.py isolated_worker.py selftest.py synthetic_pdfs.py /app/\n' "$OLD" > "$ctx/Dockerfile"
+docker build -t cowork-docling:$NEW-candidate "$ctx"
+```
+
+Test the candidate before touching the live service, with the same constraints the service runs
+under and **no document converted** (health only):
+
+```sh
+docker run -d --name docling-candidate --network none --read-only --tmpfs /tmp --init cowork-docling:$NEW-candidate
+for i in $(seq 12); do sleep 5; docker exec docling-candidate python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8031/health',timeout=5).status)" && break; done
+docker rm -f docling-candidate
+```
+
+Then ship it. `DOCLING_VERSION` is its own `.env` key (per-service versioning), so `COWORK_VERSION`
+and every other sidecar stay put. Back up `.env` first and name keys only, never print values:
+
+```sh
+docker tag cowork-docling:$NEW-candidate cowork-docling:$NEW && docker image rm cowork-docling:$NEW-candidate
+cp -p "$config" "$config.bak.before-docling-$NEW"
+sed -i "s/^DOCLING_VERSION=.*/DOCLING_VERSION=$NEW/" "$config"
+bash $base/tools/preflight/up.sh --env-file "$config" -- -d --no-build --no-deps --wait docling
+docker inspect cowork-docling-1 --format '{{.Config.Image}} {{.State.Health.Status}} restarts={{.RestartCount}}'
+```
+
+Only `cowork-docling-1` may change container id (snapshot every container before and after). Roll
+back by restoring the `.env` backup (`DOCLING_VERSION=$OLD`) and re-running the same `up.sh`
+line; `cowork-docling:$OLD` is kept for exactly this.
+
+**A full `docker build` is only for a dependency change:** a docling, torch, torchvision or
+other Python package bump, a model revision change, or a change to the base image or the apt
+packages (Tesseract). Edit `services/docling/requirements.in`, regenerate `requirements.txt`
+(command in its header) and, for torch, `requirements-torch-cpu.txt`; update the commits in
+`download_models.py`. Everything is then pinned by version and sha256 (`pip install --no-deps
+--require-hashes`) and the models by Hugging Face commit, so the build no longer re-resolves
+anything. Build it on DaServer (the Mac has no Docker), tag it `cowork-docling:<NEW_SHA>`, and
+test and ship it with the same candidate and `up.sh` steps above. The lock files were verified against the live
+image's `pip freeze` (`cowork-docling:f6885a55`) on 2026-10-06: every package matches (torch 2.14.0+cpu,
+torchvision 0.29.0+cpu, docling-slim 2.129.0; filelock, fsspec, numpy and setuptools are held to the
+live versions by constraints in `requirements.in`). Re-check with `docker run --rm --network none
+--entrypoint pip cowork-docling:<OLD> freeze` before a rebuild if the live image has changed since. The
+`apt-get` layer (Tesseract) and the `python:3.12-slim-bookworm` base are still unpinned tags,
+which is why a rebuild stays the exception.
 
 ## After deploying
 
