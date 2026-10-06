@@ -66,8 +66,8 @@ function harness() {
         return exchange({ name, args: raw }, async markWriteAttempt => {
           const mode = policy.mode(user, name, toolboxes.isWriteTool(name));
           if (mode === 'block') return 'ERROR: blocked in account settings';
-          if (mode === 'ask' && !approvals.chatWideApproved(user, chat)) {
-            const decision = await approvals.awaitApproval({ id: `synthetic-${++nextApproval}`, userId: user, chatId: chat, abortSignal: controller.signal });
+          if (mode === 'ask' && !approvals.chatWideApproved(user, chat, 'space:synthetic')) { // #917: grants are scoped
+            const decision = await approvals.awaitApproval({ id: `synthetic-${++nextApproval}`, userId: user, chatId: chat, scope: 'space:synthetic', abortSignal: controller.signal });
             if (decision !== 'approve') return `ERROR: ${decision}; tool not run`;
           }
           if (controller.signal.aborted) return 'ERROR: exchange cancelled; tool was not run.';
@@ -99,7 +99,7 @@ test('selected write schema grants no authority; Allow once does not approve ano
   h.decide('deny');
   assert.match(await second, /deny/);
   assert.equal(h.calls.length, 1);
-  assert.equal(h.approvals.chatWideApproved('user-a', 'chat-a'), false);
+  assert.equal(h.approvals.chatWideApproved('user-a', 'chat-a', 'space:synthetic'), false);
 });
 
 test('Decline is a normal result and repeated identical denied calls never execute', async () => {
