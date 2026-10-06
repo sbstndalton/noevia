@@ -85,7 +85,8 @@ async function extractDocument(name, bytes, { url = process.env.DOCLING_BASE_URL
     if (response.status === 422) throw Object.assign(new Error('This document could not be read; the original is stored.'), { permanent: true });
     throw new Error(`Document extraction unavailable (HTTP ${response.status}); refresh to retry.`);
   }
-  // The worker converts at most PAGE_CAP (300) pages of text; 32 MB is far above that (#920).
+  // The worker returns at most TOTAL_TEXT_CAP (2,000,000 characters, services/docling/extract.py) of
+  // text plus per-page metadata; 32 MB is far above that (#920).
   const body = await readCappedJson(response, DOCLING_REPLY_CAP).catch((e) => { throw e?.code === 'too_large' ? new Error('Invalid extraction response; refresh to retry.') : e; });
   if (!body || !Array.isArray(body.pages)) throw new Error('Invalid extraction response; refresh to retry.');
   return body;
