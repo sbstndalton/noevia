@@ -686,10 +686,11 @@ packages (Tesseract). Edit `services/docling/requirements.in`, regenerate `requi
 `download_models.py`. Everything is then pinned by version and sha256 (`pip install --no-deps
 --require-hashes`) and the models by Hugging Face commit, so the build no longer re-resolves
 anything. Build it on DaServer (the Mac has no Docker), tag it `cowork-docling:<NEW_SHA>`, and
-test and ship it with the same candidate and `up.sh` steps above. The lock files reconstruct the
-live image (resolved as of 2026-09-21: torch 2.14.0+cpu, torchvision 0.29.0+cpu, docling-slim
-2.129.0); before the first full rebuild compare them with the running image, read-only and
-offline: `docker run --rm --network none --entrypoint pip cowork-docling:<OLD> freeze`. The
+test and ship it with the same candidate and `up.sh` steps above. The lock files were verified against the live
+image's `pip freeze` (`cowork-docling:f6885a55`) on 2026-10-06: every package matches (torch 2.14.0+cpu,
+torchvision 0.29.0+cpu, docling-slim 2.129.0; filelock, fsspec, numpy and setuptools are held to the
+live versions by constraints in `requirements.in`). Re-check with `docker run --rm --network none
+--entrypoint pip cowork-docling:<OLD> freeze` before a rebuild if the live image has changed since. The
 `apt-get` layer (Tesseract) and the `python:3.12-slim-bookworm` base are still unpinned tags,
 which is why a rebuild stays the exception.
 

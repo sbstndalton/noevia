@@ -7,10 +7,8 @@
 # dependencies (numpy, pillow, sympy, networkx, jinja2, filelock, fsspec, ...) are locked in
 # requirements.txt.
 #
-# Versions: torch 2.14.0 and torchvision 0.29.0 were the newest releases when the live image was
-# first built (2026-09-20/21), so they are the best reconstruction of what cowork-docling runs. To
-# confirm against the live image, from the box: `docker run --rm --network none --entrypoint pip
-# cowork-docling:f6885a55 freeze | grep -i torch`. Hashes are the sha256 of the cp312 manylinux_2_28
+# Versions: torch 2.14.0 and torchvision 0.29.0, verified against the live cowork-docling:f6885a55
+# `pip freeze` on 2026-10-06 (all packages match). Hashes are the sha256 of the cp312 manylinux_2_28
 # x86_64 and aarch64 wheels on the index; pip accepts any listed hash.
 #
 # To bump: choose new versions, then replace the hashes from the index page
