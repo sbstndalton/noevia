@@ -87,8 +87,37 @@ function createRateLimiter({ sweepMs = 60 * 1000, maxEntries = 10000 } = {}) {
       const current = map.get(key);
       return !!current && current.reset > Date.now() && current.count > limit;
     },
+    /** Forget `key`'s window (a successful sign-in clears that account's failure count). */
+    clear(key) { map.delete(key); },
+    /** Give back one counted call to `key` (an attempt reserved before an await that succeeded). */
+    release(key) {
+      const current = map.get(key);
+      if (current && current.reset > Date.now() && current.count > 0) current.count -= 1;
+    },
     size: () => map.size,
   };
+}
+
+// Password sign-in limits (#927), all fixed 15-minute windows.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+// Failed sign-ins per address and username; the next attempt is refused even with the right
+// password, so a lock can't be used as a guessing oracle. Cleared by a successful sign-in.
+const LOGIN_FAILURES_PER_ACCOUNT = 5;
+// Failed sign-ins for usernames that don't exist, per address. Past it, further failures answer
+// 429 instead of 401; a correct username and password still signs in.
+const LOGIN_UNKNOWN_PER_ADDRESS = 30;
+// Last-resort ceiling on failed sign-ins per address: past it every password sign-in from that
+// address is refused before any hashing (passkeys still work). Bounds the Argon2 work one address
+// can cause now that the unknown-username limit no longer stops verification.
+const LOGIN_FAILURES_PER_ADDRESS = 200;
+
+/** The startup warning for a public https address with TRUST_PROXY off, or '' (#927). Only says
+ *  what is wrong and what to set; no configuration values are included. */
+function trustProxyWarning(origin, trustProxy) {
+  if (trustProxy || !/^https:\/\//i.test(String(origin || ''))) return '';
+  return 'WARNING: the public address uses https but TRUST_PROXY is off. If noevia runs behind a reverse proxy or tunnel, '
+    + 'every visitor shares the proxy\'s address, so sign-in limits and audit-log addresses apply to everyone at once. '
+    + 'Set TRUST_PROXY=true when the proxy sets X-Forwarded-For.';
 }
 
 function randomToken(bytes = 32) {
@@ -287,6 +316,9 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
     console.warn(`Setup code file: ${setupFile} (deleted after setup)`);
   }
 
+  const proxyWarning = trustProxyWarning(origin, trustProxy);
+  if (proxyWarning) console.warn(proxyWarning);
+
   const rate = createRateLimiter();
   function rateLimited(key, limit = 5, windowMs = 15 * 60 * 1000) {
     return rate.rateLimited(key, limit, windowMs);
@@ -476,18 +508,29 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
     },
     async passwordLogin(req, res, body) {
       const address = clientAddress(req, trustProxy);
-      const key = `login:${address}:${String(body.username || '').toLowerCase()}`;
-      // Probing many usernames from one address (password spraying, enumeration) blocks that address.
-      // Only attempts on usernames that do not exist count, because a whole household can share one
-      // address behind a tunnel; once blocked, every attempt from it gets the same answer.
+      const username = String(body.username || '').toLowerCase();
+      const key = `login:${address}:${username}`;
       const probes = `login-unknown:${address}`;
-      if (rate.blocked(probes, 30) || rateLimited(key)) return { status: 429, body: { error: 'sign-in failed' } };
-      const row = db.prepare('SELECT * FROM users WHERE username_norm=?').get(String(body.username || '').toLowerCase());
-      if (!row) rateLimited(probes, 30);
+      const failures = `login-failed:${address}`;
+      // Limits that refuse even correct credentials apply before the lookup and the hash, the same
+      // for every username (#927). Each attempt is counted now, before the await, so concurrent
+      // requests cannot all slip past a limit; a successful sign-in gives its count back, so only
+      // failures remain counted.
+      if (rate.blocked(failures, LOGIN_FAILURES_PER_ADDRESS - 1)) return { status: 429, body: { error: 'sign-in failed' } };
+      if (rateLimited(key, LOGIN_FAILURES_PER_ACCOUNT, LOGIN_WINDOW_MS)) return { status: 429, body: { error: 'sign-in failed' } };
+      rateLimited(failures, LOGIN_FAILURES_PER_ADDRESS, LOGIN_WINDOW_MS);
+      // Probing many unknown usernames from one address (spraying, enumeration) turns that address's
+      // failed sign-ins into 429s, for real and unknown usernames alike. It never refuses correct
+      // credentials: behind a tunnel without TRUST_PROXY every visitor shares one address.
+      const probing = rate.blocked(probes, LOGIN_UNKNOWN_PER_ADDRESS);
+      const row = db.prepare('SELECT * FROM users WHERE username_norm=?').get(username);
+      if (!row) rateLimited(probes, LOGIN_UNKNOWN_PER_ADDRESS, LOGIN_WINDOW_MS);
       // Always pay for one Argon2 verification, so response time doesn't reveal whether a username exists.
       const usable = row && !row.disabled_at;
       const ok = await verify(usable ? row.password_hash : await timingHash(), String(body.password || '')).catch(() => false) && usable;
-      if (!ok) return { status: 401, body: { error: 'sign-in failed' } };
+      if (!ok) return { status: probing ? 429 : 401, body: { error: 'sign-in failed' } };
+      rate.clear(key);
+      rate.release(failures);
       audit('auth.password', row.id, row.id);
       return { status: 200, body: { user: publicUser(row), csrfToken: issueSession(req, res, row) } };
     },
@@ -643,10 +686,22 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
         if (db.prepare('UPDATE recoveries SET used_at=? WHERE token_hash=? AND used_at IS NULL').run(Date.now(), row.token_hash).changes !== 1) return false;
         db.prepare('UPDATE users SET password_hash=?,updated_at=? WHERE id=?').run(passwordHash, Date.now(), row.user_id); db.prepare('DELETE FROM sessions WHERE user_id=?').run(row.user_id);
         db.prepare('DELETE FROM device_grants WHERE user_id=?').run(row.user_id);
-        return true;
+        // Recovery revokes every other credential (#928): whoever had the account may have added a
+        // passkey, an app password or a Diary connector, or still hold another recovery link.
+        // The user signs in with the new password and sets passkeys and app passwords up again.
+        const revoked = {
+          recoveries: db.prepare('DELETE FROM recoveries WHERE user_id=? AND token_hash<>?').run(row.user_id, row.token_hash).changes,
+          passkeys: db.prepare('DELETE FROM passkeys WHERE user_id=?').run(row.user_id).changes,
+          appPasswords: db.prepare('DELETE FROM app_passwords WHERE user_id=?').run(row.user_id).changes,
+          // diary_connectors is created by diary-connectors.cjs when the server wires it up.
+          diaryConnectors: db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='diary_connectors'").get()
+            ? db.prepare('DELETE FROM diary_connectors WHERE user_id=?').run(row.user_id).changes : 0,
+        };
+        db.prepare('DELETE FROM challenges WHERE user_id=?').run(row.user_id);
+        return revoked;
       })();
       if (!claimed) return false;
-      audit('recovery.complete', row.user_id, row.user_id); return true;
+      audit('recovery.complete', row.user_id, row.user_id, { revoked: claimed }); return true;
     },
     getAppearance(userId) {
       const row=db.prepare('SELECT value FROM user_appearance WHERE user_id=?').get(userId);
@@ -719,4 +774,4 @@ function createAuth({ dataDir, publicOrigin, rpId, legacyToken = '', legacyCompa
   };
 }
 
-module.exports = { createAuth, USERNAME_RE, digest, createRateLimiter, clientAddress, parseCookies };
+module.exports = { createAuth, USERNAME_RE, digest, createRateLimiter, clientAddress, parseCookies, trustProxyWarning };
