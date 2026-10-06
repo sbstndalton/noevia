@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release cf662822 — 2026-10-06 (web only: capped storage/provider reads and the project-bound chat grant)
+
+### Services
+
+- **Web:** [#915](https://github.com/sbstndalton/noevia/pull/915) (closes [#902](https://github.com/sbstndalton/noevia/issues/902) and [#903](https://github.com/sbstndalton/noevia/issues/903), plus [#918](https://github.com/sbstndalton/noevia/issues/918): storage and provider reply bodies are read under a byte cap, upstream errors map to fixed error text instead of the raw body, and retries `discardBody` the reply they abandon), [#921](https://github.com/sbstndalton/noevia/pull/921) (closes [#917](https://github.com/sbstndalton/noevia/issues/917): the "Allow for this chat" grant is bound to the project it was given in and fails closed in any other scope), and two web changes that were already on main and had not shipped: [#911](https://github.com/sbstndalton/noevia/pull/911) (closes [#905](https://github.com/sbstndalton/noevia/issues/905): cached account preferences are scoped to the signed-in account) and the web-side 2-line `pdf-reduce.cjs` change in [#916](https://github.com/sbstndalton/noevia/pull/916) (its OCR service half shipped in release 227903da). Now `cowork-web:cf662822` (`sha256:97d260af...`, 74 layers, previous `cowork-web:8cbced50`), `readlink current` is `releases/cf662822`, `COWORK_VERSION=cf662822`.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:227903da`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`). None was restarted.
+- **Deploy/infra:** no change. `overlay-release.sh` was not run (web-only manual recipe). [#919](https://github.com/sbstndalton/noevia/pull/919) and [#923](https://github.com/sbstndalton/noevia/pull/923) are docs/Docling-build only and ship nothing to web.
+
+PRs: #911 #915 #916 (web half) #921. Issues: #902 #903 #905 #917 #918.
+
+No feature flag was changed. No model run, tune, benchmark or download, no Code task, no private Diary access. The Diary overlay (still pending) was not touched.
+
+Exact source `cf662822fee73a5ca838a2ca82338af5d89e72d9` (main CI green on that commit). Built on the Mac from a clean detached worktree: `STAMP_VERSION=cf662822 npm run build` in `apps/web`, then `COPYFILE_DISABLE=1 tar -h --no-xattrs` of `dist server contracts` (without `server/node_modules` and `server/ui-data`), and a `git archive` of the repo root into `releases/cf662822`. Dependencies gate: no change to `apps/web/package-lock.json`, `apps/web/server/package.json` or `apps/web/server/package-lock.json` since `8cbced50`, and the `dependencies`, `devDependencies`, `overrides` and `engines` fields of `apps/web/package.json` hash identically, so `node_modules` came from the old image.
+
+**Order and results.**
+
+1. **Web.** Layered `dist/`, `server/` and `contracts/` onto `cowork-web:8cbced50` with the standard overlay Dockerfile (70 to 74 layers, under the 100-layer flatten limit). Before cutover the image was checked to contain `/app/contracts/project-icons.json` and `/app/contracts/project-limits.json` and `dist/version.json` `cf662822`. Synthetic candidate in a throwaway `--network none` container with a tmpfs data dir: server booted, `/api/ready` 200, `/version.json` `cf662822`; the container was removed. `config/.env.bak.before-cf662822` taken; `current` and `COWORK_VERSION` repointed; started alone with `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (preflight passed, `Healthy`). Cutover 2026-10-06 08:01:17Z to 08:01:34Z; the new `cowork-web-1` `StartedAt` is 08:01:28Z.
+
+**Verify.** Web: healthy, `RestartCount` 0; `127.0.0.1:8021/version.json` and `https://noevia.daserver.work/version.json` both `cf662822`; `/api/ready` 200 locally and publicly; `/app/dist/index.html` sha256 `a0828ba7...` and `dist/assets/index-BpE6GXsI.js` sha256 `d2230063...` identical to the Mac build; in the container `contracts/project-icons.json` sha256 `bce8d2a2...` and `project-limits.json` `aa1ed3fc...` (unchanged from 8cbced50); the 60-line log tail shows MCP discovery (noevia 10, nextcloud 181, tavily 5 tools), `codenet.guarding` on `172.28.0.3` and no error, warning or failure line. Container snapshot (id, `StartedAt`, `RestartCount` of all 40 containers on the host, cowork and non-cowork) before and after: only `cowork-web-1` differs (id and `StartedAt`); every sidecar, the engine, Laya, embed, Kiwix and the Nextcloud and media containers kept id, `StartedAt` and restart count. `sidecar-restart-alert.sh --ack` run; a following `--dry-run` was clean.
+
+Rollback (web only). On DaServer with `B=/mnt/docker/appdata/cowork`: `ln -sfn $B/releases/8cbced50 $B/current && sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=8cbced50/' $B/config/.env && bash $B/tools/preflight/up.sh --env-file $B/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web` (or restore `$B/config/.env.bak.before-cf662822` instead of the `sed`). The `cowork-web:8cbced50` image is retained. Run `sidecar-restart-alert.sh --ack` afterwards. No other service needs rolling back.
+
 ## Release 227903da — 2026-10-06 (sidecars only: model-manager and OCR)
 
 ### Services
