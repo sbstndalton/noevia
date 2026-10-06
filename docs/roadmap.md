@@ -12,10 +12,10 @@ Status words: **Done** = deployed and verified · **Next** = to build, in the or
 
 ## Where things stand — 2026-10-06 (overnight: Rust start, repo split, bug rounds 3–7)
 
-- **Live:** **`cowork-web:e2f9d59b`**, **`cowork-model-loader:227903da`** (now carries the Rust
+- **Live:** **`cowork-web:a1dfd69f`**, **`cowork-model-loader:227903da`** (now carries the Rust
   `gguf-meta` binary; `GGUF_PARSER` unset = Python parser), **`cowork-ocr:227903da`**,
   **`cowork-diary:f6885a55`**, **`cowork-code-sandbox:pi-0.87.0-f6885a55`**, **`cowork-docling:f6885a55`**.
-  Web releases on 2026-10-06, newest first: `e2f9d59b`, `eee0dc93`, `e9efa32e` (adds `users.credential_epoch`;
+  Web releases on 2026-10-06, newest first: `a1dfd69f`, `e2f9d59b`, `eee0dc93`, `e9efa32e` (adds `users.credential_epoch`;
   db backup `state/web/cowork.db.bak.before-e9efa32e`), `cf662822`, `8cbced50`. Rollback recipes in
   [changelog.md](changelog.md).
 - **Repos:** [sbstndalton/noevia-rs](https://github.com/sbstndalton/noevia-rs) (Rust workspace:
