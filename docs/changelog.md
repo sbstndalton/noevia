@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release e2209540 — 2026-10-07 (web: models/routing and picker redesign, #1006 #1007 #1008 #1009 #1013)
+
+### Services
+
+- **Web:** [#1022](https://github.com/sbstndalton/noevia/pull/1022) pins noevia-core `894e0528` (core#13, on top of core#14) and noevia-web `66e0e11e` (web#7): tools split from the model picker with an Automatic/Manual switch (#1006), Auto routing options in the picker (#1007), settings tabs consolidated and tuning pages reworked (#1008), cloud model dropdowns from the provider's model list (#1009), and Routing/Your models tab clicks synced with the URL (#1013). Server side: the provider model-list route is scoped per user with a refresh throttle, and projects carry optional `routingMode` / `toolsMode`. Deployed `cowork-web:e2209540` (rollback target `cowork-web:b34055c6`).
+- **Code sandbox, Diary, Model manager, OCR, Docling, Laya, egress:** no change (`cowork-code-sandbox:pi-0.87.0-b29d0e0b`, `cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-ocr:3dd9d650`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` flag was set (`CHAT_TEMPLATE_CAPS_IMPL` still defaults to `wasm`).
+
+Source: noevia main `e2209540b5c96add66d46c553234ebc62d8d7a25` (CI green on #1022, including Assembled release). Assembled with `deploy/tools/assemble-release.sh e2209540` (web `66e0e11e`, core `894e0528`, services `6a535513`); tarball sha256 `a6935bea...0d09` identical on the Mac and the box. The pinned web and core tarball checksums were each fetched twice and matched.
+
+**Candidate checks (before cutover).** Image `cowork-web:e2209540` stamped `e2209540` (`version.json` lists web `66e0e11e`, core `894e0528`). A candidate container (`--network none`, read-only root, tmpfs, synthetic empty state) was healthy with no FATAL, `/api/ready` 200, and logged `CHAT_TEMPLATE_CAPS_IMPL=wasm`. It was removed afterwards.
+
+**Backups.** `config/.env.bak.20261007054617` (values never printed), `backups/cowork-db-before-e2209540.sqlite` (SQLite `.backup`, integrity ok), `backups/web-state-before-e2209540-20261007054617.tgz`, `backups/current-pointer-before-e2209540.txt`, `backups/compose-before-e2209540.yml`, `backups/compose-override-before-e2209540.yml`, and the Compose Manager `docker-compose.yml.bak.before-e2209540` and `docker-compose.override.yml.bak.before-e2209540`. Non-web container snapshots: `snapshot.before-e2209540.txt` and `snapshot.after-e2209540.txt`.
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=e2209540`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:e2209540` healthy, 0 restarts; `/api/ready` 200 locally and through noevia.daserver.work; `/version.json` as above; JS, CSS and manifest assets 200; MCP unchanged at 196 tools across 3 servers; logs show no errors. Only `cowork-web-1` changed identity and start time; every other container's image id, start time and restart count matches the before snapshot. The existing user's `projects.json` (334 projects, none with the new `routingMode`/`toolsMode` fields) parses and the log has no toolsMode/routingMode errors; the fields are optional and only written on a patch. No UI click test was part of this release.
+
+**Rollback.** `ln -sfn /mnt/docker/appdata/cowork/releases/b34055c6 /mnt/docker/appdata/cowork/current`; `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=b34055c6/' /mnt/docker/appdata/cowork/config/.env`; then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The `cowork-web:b34055c6` image is still on the box. The new project fields are optional and additive (not tested against the old build); the state backup above is only needed if user data is damaged.
+
 ## Release b34055c6 — 2026-10-07 (web: chat-template capability check, `CHAT_TEMPLATE_CAPS_IMPL`, #1002; real provider error reasons)
 
 ### Services
