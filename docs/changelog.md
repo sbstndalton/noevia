@@ -8,6 +8,19 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Flags enabled — 2026-10-07 (owner approved; configuration only, no image change)
+
+### Services
+
+- **Web:** `cowork-web:f33a1b68` unchanged (same image id `sha256:c07dbde7...851e`); the container was recreated to pick up `AUTOTUNE_PLAN_IMPL=wasm`, `LAYA_LOAD_ADVISOR=on` and `PRESET_RELOAD_IMPL=wasm`.
+- **Model manager:** `cowork-model-loader:228e2ae4` unchanged (image id `sha256:b1ff8d0e...2beb`); recreated to pick up `MODEL_FILES_IMPL=rust`. Web does not read `MODEL_FILES_IMPL`, so it is set on model-loader only.
+- **Everything else:** no change. A before/after snapshot of every container (name, id, image id, start time, restart count) differs only in `cowork-web-1` and `cowork-model-loader-1`.
+- **Deploy/infra:** the four keys were appended to `config/.env`. None was passed through before, so the hand-kept Compose Manager `docker-compose.override.yml` now lists `AUTOTUNE_PLAN_IMPL`, `LAYA_LOAD_ADVISOR` and `PRESET_RELOAD_IMPL` under `web` and `MODEL_FILES_IMPL` under `model-loader`, each as `${KEY:-}` (an empty value means off). Both services were recreated alone with the guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 <service>`.
+
+**What each flag does.** `AUTOTUNE_PLAN_IMPL=wasm`: the Rust planner orders autotune runs. `LAYA_LOAD_ADVISOR=on`: Laya advises on a guessed load failure only on a tie. `PRESET_RELOAD_IMPL=wasm`: a models.ini reload can go ahead while models are loaded. `MODEL_FILES_IMPL=rust`: Hugging Face tree listings go through `model-files tree` and fail closed (502) on bad input. None of these runs until the matching action (autotune, load failure, reload, repository listing) happens; nothing was triggered.
+
+**How to turn off.** Remove the line (or set the value to `js` / empty / `python`) in `/mnt/docker/appdata/cowork/config/.env`, then recreate only the affected service with the guarded `up.sh` (web for the first three, model-loader for `MODEL_FILES_IMPL`). Restoring the pre-change `.env` backup does the same for all four.
+
 ## Release f33a1b68 — 2026-10-07 (Library tab apply note #1036; web)
 
 ### Services
