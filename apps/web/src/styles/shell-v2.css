@@ -4,7 +4,7 @@
    the workspace. Settings takes the workspace's place instead of floating over it. */
 
 /* ── Frame ──────────────────────────────────────────────────────────────── */
-.app { gap: 0; padding: 0; background: transparent; box-sizing: border-box; }
+.app { gap: var(--tile-gutter); padding: var(--tile-gutter); background: transparent; box-sizing: border-box; }
 .app > .regular-workspace { display: contents; }
 .app .app-stack.pane { position: relative; overflow: hidden; border-radius: var(--radius-xl); isolation: isolate; }
 .app .app-stack.pane > .app-main { border-radius: inherit; background: transparent; }

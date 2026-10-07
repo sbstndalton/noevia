@@ -24,6 +24,7 @@
   --radius-overlay: 16px;
   --radius-dialog: 20px;
   --radius-composer: 28px;
+  --radius-tile: 16px;
   --radius-surface: 16px;
   --radius-button-inset: 999px;
 }
@@ -59,7 +60,10 @@
 }
 /* Contemporary: the composer is a filled container, the dialog the raised grey. */
 [data-family='contemporary'] { --surface-raised: var(--md-surface-container); }
-[data-family='contemporary']:not([data-theme='light']) { --bg-dialog: var(--md-surface-container); --surface-overlay: var(--md-surface-container); }
+/* ChatGPT's ladder: main #212121 over a #181818 sidebar on a deeper backdrop. */
+[data-family='contemporary']:not([data-theme='light']) { --bg-app: var(--md-surface); --bg-chrome: var(--md-surface-container-low); --bg-backdrop: #101010;
+  --bg-dialog: var(--md-surface-container); --surface-overlay: var(--md-surface-container); }
+[data-family='contemporary'][data-theme='light'] { --bg-app: var(--md-surface); --bg-chrome: var(--md-surface-container-low); --bg-backdrop: var(--md-surface-container-high); }
 
 /* ── Glass ────────────────────────────────────────────────────────────────── */
 [data-family='glass'] {
@@ -69,6 +73,7 @@
   --radius-overlay: 14px;
   --radius-dialog: 16px;
   --radius-composer: 18px;
+  --radius-tile: 20px;
   --radius-surface: 16px;
   --glass-blur: 24px;
 }
@@ -100,23 +105,47 @@
   --glass-pane: rgb(255 255 255 / .62);
   --glass-edge: rgb(255 255 255 / .7);
 }
-[data-family='glass'] body {
+/* The wash: soft fields of the accent (and a warm counter-hue) on the page itself, so every
+   frosted pane has colour to blur. html carries it; .app and the reading plane stay clear. */
+[data-family='glass'] { --glass-wash-a: 30%; --glass-wash-b: 22%; --scrim: rgba(0, 0, 0, .32); }
+[data-family='glass']:not([data-theme='light']) { --glass-wash-a: 26%; --glass-wash-b: 16%; }
+html[data-family='glass'], [data-family='glass'] body {
   background:
-    radial-gradient(90% 70% at 0% 0%, color-mix(in srgb, var(--md-primary) 24%, transparent), transparent 60%),
-    radial-gradient(80% 60% at 100% 100%, color-mix(in srgb, var(--md-primary) 16%, transparent), transparent 55%),
+    radial-gradient(60% 55% at 8% 4%, color-mix(in srgb, var(--md-primary) var(--glass-wash-a), transparent), transparent 70%),
+    radial-gradient(55% 50% at 96% 92%, color-mix(in srgb, var(--md-tertiary) var(--glass-wash-b), transparent), transparent 70%),
+    radial-gradient(45% 40% at 70% 20%, color-mix(in srgb, var(--md-primary) calc(var(--glass-wash-b) * .7), transparent), transparent 70%),
     var(--bg-app);
   background-attachment: fixed;
 }
-[data-family='glass'] .app .app-stack.pane { background: transparent; }
-[data-family='glass'] :is(.app .sidebar.pane, .ctx-menu, .account-popover, .popup, .composer-actions-panel, .tool-catalogue-panel, .settings-stage, :root .app .composer-inner) {
-  background: var(--glass-pane);
-  backdrop-filter: blur(var(--glass-blur)) saturate(1.4); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  box-shadow: inset 0 1px 0 var(--glass-edge), var(--ring-inset), var(--shadow-popover);
+[data-family='glass'] :is(.app, .chat-workspace, .app-main) { background: transparent; }
+/* Frosted panes: translucent fill, blur + saturate, a white inner highlight on the top edge
+   and a hairline edge all round, then the pop shadow for depth. */
+[data-family='glass'] :is(.app .sidebar.pane, .app .app-stack.pane, .ctx-menu, .account-popover, .popup, .composer-actions-panel, .tool-catalogue-panel, .settings-stage, :root .app .composer-inner, .mp-panel.aero, .settings-stage :is(.set-rows, .group)) {
+  background: var(--glass-pane) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.8) !important; -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.8) !important;
+  border: 1px solid var(--glass-hairline);
+  box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 0 0 1px var(--glass-inner), var(--glass-depth);
 }
-[data-family='glass'] .app .sidebar.pane { box-shadow: inset -1px 0 0 var(--hairline); }
-[data-family='glass'] .settings-stage .settings-navigation { background: transparent; }
-[data-family='glass'] .settings-stage .settings-detail { background: transparent; }
+[data-family='glass'] :is(.app .sidebar.pane, .app .app-stack.pane) { border: 0; }
+[data-family='glass'] .settings-stage :is(.settings-navigation, .settings-detail) { background: transparent; }
+[data-family='glass'] .settings-stage :is(.set-rows, .group) { --glass-pane: var(--glass-pane-strong); box-shadow: inset 0 1px 0 var(--glass-edge); }
+[data-family='glass'][data-theme='light'] {
+  --glass-pane: rgb(255 255 255 / .52);
+  --glass-pane-strong: rgb(255 255 255 / .6);
+  --glass-edge: rgb(255 255 255 / .9);
+  --glass-inner: rgb(255 255 255 / .35);
+  --glass-hairline: rgb(0 0 0 / .08);
+  --glass-depth: 0 1px 2px rgb(0 0 0 / .04), 0 12px 32px -8px rgb(30 40 80 / .18);
+}
+[data-family='glass']:not([data-theme='light']) {
+  --glass-pane: rgb(36 37 42 / .5);
+  --glass-pane-strong: rgb(44 45 50 / .55);
+  --glass-edge: rgb(255 255 255 / .14);
+  --glass-inner: rgb(255 255 255 / .05);
+  --glass-hairline: rgb(255 255 255 / .1);
+  --glass-depth: 0 1px 2px rgb(0 0 0 / .3), 0 16px 40px -8px rgb(0 0 0 / .55);
+}
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  [data-family='glass'] { --glass-pane: var(--md-surface-container-low); --glass-blur: 0px; }
-  [data-family='glass'] body { background: var(--bg-app); }
+  [data-family='glass'][data-theme], [data-family='glass'] { --glass-pane: var(--md-surface-container-low); --glass-pane-strong: var(--bg-surface); --glass-blur: 0px; }
+  html[data-family='glass'], [data-family='glass'] body { background: var(--bg-app); }
 }

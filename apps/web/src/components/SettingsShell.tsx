@@ -1,4 +1,5 @@
 import { AppearanceSettings, CapabilitiesSettings, ProfileSettings } from './GeneralSettings';
+import { enter as enterMotion, exit as exitMotion } from '../motion';
 import { SettingsPanelBoundary } from './SettingsPanelBoundary';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SettingsView } from './SettingsView';
@@ -101,7 +102,6 @@ const PHONE = '(max-width: 820px)';
 // desktop grid renders inside that column with the detail pane squeezed off screen. Honour the
 // forced layout the same way the stylesheet does.
 const phone = () => typeof window !== 'undefined' && (window.matchMedia(PHONE).matches || document.documentElement.dataset.layout === 'mobile');
-const reducedMotion = () => typeof window !== 'undefined' && (document.documentElement.dataset.motion === 'reduced' || window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 export type SettingsSection = 'general' | 'usage' | 'models' | 'connectors' | 'keyboard' | 'data' | 'notifications' | 'memory' | 'status' | 'diary';
 
@@ -215,9 +215,10 @@ export function SettingsShell(props: SettingsViewProps & {initialSection?:Settin
     // Forget Settings as the place to return to at once, not after the exit animation: a reload
     // in those 240ms reopened it (found by qa/google-drive, 2026-09-19).
     onClosing.current?.();
-    if (reducedMotion()) { onClose.current(); return; }
     setClosing(true);
-    closeTimer.current = window.setTimeout(() => onClose.current(), 200);
+    // #951: the window springs out (motion/), and Settings unmounts only once it has finished.
+    const node = stage.current, scrim = node?.previousElementSibling ?? null;
+    void Promise.all([exitMotion(node, 'dialog'), exitMotion(scrim, 'fade')]).then(() => onClose.current());
   }, []);
   // Replaced by a new Settings mid-exit: this one's exit must not close its successor.
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
@@ -285,6 +286,13 @@ export function SettingsShell(props: SettingsViewProps & {initialSection?:Settin
   useEffect(() => { report?.(section); }, [report, section]);
 
   // #951: Settings is a window over the dimmed app; the scrim closes it like Escape does.
+  // #951: the window and its scrim spring in on mount (motion/); CSS holds their resting look.
+  useEffect(() => {
+    const node = stage.current;
+    if (!node || !window.matchMedia?.('(min-width: 701px)').matches) return;
+    void enterMotion(node.previousElementSibling, 'fade');
+    void enterMotion(node, 'dialog');
+  }, []);
   return <><div className={`settings-scrim${closing ? ' is-closing' : ''}`} aria-hidden="true" onClick={close}/>
   <section ref={stage} className={`settings-stage${closing ? ' is-closing' : ''}`} data-view={view} role="region" aria-label={t('settings.title')}>
     <aside className="settings-navigation">

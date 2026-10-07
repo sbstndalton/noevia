@@ -34,7 +34,7 @@ test('the four-purpose contract reads the reference tokens', () => {
   assert.equal(value(root, '--ease-considered'), 'var(--ease-out-quart)');
 });
 
-test('overshoot only on small physical controls: switch knob, sent message', () => {
+test('CSS overshoot only on small physical controls: switch knob, sent message', () => {
   for (const [file, css] of sheets) {
     const body = css.replace(/\/\*[\s\S]*?\*\//g, '');
     for (const m of body.matchAll(/([^{}]+)\{[^}]*var\(--ease-overshoot\)[^}]*\}/g)) {
@@ -75,10 +75,24 @@ test('reduced motion — OS or app setting — reaches every element, loops incl
   assert.match(tokens, /@media \(prefers-reduced-motion: reduce\) \{\s*html:root \{ --motion-quick: 1ms;/);
 });
 
-test('Settings opens as a window: fade + scale .98, 200ms easeOutQuart, on a 50% scrim', () => {
-  assert.match(components, /\.settings-stage \{[^}]*transition: opacity var\(--dur-base\) var\(--ease-out-quart\), scale var\(--dur-base\) var\(--ease-out-quart\);/);
-  assert.match(components, /@starting-style \{ \.settings-stage \{ opacity: 0; scale: \.98; \} \}/);
+test('Settings springs in and out through the motion layer, on a 50% scrim', () => {
+  const shell = fs.readFileSync(path.join(__dirname, '../../src/components/SettingsShell.tsx'), 'utf8');
+  assert.match(shell, /enterMotion\(node, 'dialog'\)/);
+  // The exit resolves before Settings unmounts.
+  assert.match(shell, /Promise\.all\(\[exitMotion\(node, 'dialog'\), exitMotion\(scrim, 'fade'\)\]\)\.then\(\(\) => onClose\.current\(\)\)/);
+  assert.doesNotMatch(components, /@starting-style \{ \.settings-stage/, 'no competing CSS entrance');
   assert.match(tokens, /--scrim: rgba\(0, 0, 0, \.5\);/);
+});
+
+test('the motion layer uses Motion\'s vanilla API, critically damped by default', () => {
+  const layer = fs.readFileSync(path.join(__dirname, '../../src/motion/index.ts'), 'utf8');
+  assert.match(layer, /import \{ animate \} from 'motion';/);
+  assert.doesNotMatch(layer, /motion\/react|framer-motion/, 'no React-only API');
+  assert.match(layer, /dialog: \{ type: 'spring', bounce: 0, visualDuration: 0\.22 \}/);
+  assert.match(layer, /menu: \{ type: 'spring', bounce: 0, visualDuration: 0\.14 \}/);
+  // Exits name targets only, so they continue from the current value.
+  assert.match(layer, /dialog: \{ opacity: 0, scale: 0\.98 \},/);
+  assert.match(layer, /if \(reducedMotion\(\)\)/);
 });
 
 test('the Chat/Cowork toggle moves a thumb on the considered token and the mode is on the element', () => {

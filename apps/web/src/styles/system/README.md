@@ -3,7 +3,7 @@
 One design system for the web UI, matching the Claude/ChatGPT reference (quiet neutral
 surfaces, tight type, small radii, short decelerating motion). It is framework-neutral on
 purpose: plain CSS custom properties, plus rules keyed on classes, data-attributes and ARIA
-states. All motion is CSS (transitions, `@starting-style`, keyframes). A non-React UI (the
+states. Hover and focus colour changes and loops are CSS; springs (dialogs, menus, toasts, messages, chips, switch knob, press, the sidebar tile) live in `src/motion` on Motion's vanilla API, driven by the same classes and attributes. A non-React UI (the
 planned Rust/WASM frontend) can load these files unchanged and get the same look by
 emitting the same attributes and classes.
 
@@ -70,24 +70,37 @@ Contemporary and Glass before paint.
   `--ease-in-out`, `--ease-overshoot` (small physical controls only), `--spring-press`.
   The older four-purpose contract (`--motion-immediate|quick|considered|async`) maps onto these.
 
+## Tiles
+
+From 520px up, the sidebar and the main area are separate rounded tiles floating on
+`--bg-backdrop`, with one `--tile-gutter` (8px) between them and at the window edges. Each tile:
+- has a radius of `--radius-tile`: 12px in Editorial, 16px in Contemporary, 20px in Glass;
+- clips its content to its corners;
+- draws a crisp 1px `--tile-ring` above its content (via `::after`), plus a tight
+  `--tile-shadow`.
+
+The surfaces follow the ladder: backdrop, then the sidebar tile (`--bg-chrome`), then the main
+tile (`--bg-app`, the top surface). Phones are full-bleed. Collapsing the sidebar springs the
+tile's width (see `src/motion`).
+
 ## Class and attribute contract
 
 | Hook | Look and motion |
 |---|---|
 | `.sidebar .nav-item`, `.proj-row`, `.chat-row` | 32px rows, radius 8, padding 0 8px; hover `--fill-hover` in 60ms easeOutQuart; `[aria-current="page"]` / `.is-active` → `--fill-active` |
-| `.sidebar.is-collapsed` | history and projects fade and slide 16px over 240ms easeOutExpo |
-| `.btn`, `.btn-primary`, `.btn-ghost`, `.modal-btn` | 32px, radius 8, quiet fill / accent fill / ghost; `:active` squish on `--spring-press` |
-| `.glass-switch[aria-checked]` > `.knob` | 36×20 track, knob slides 16px in 120ms overshoot |
+| `.sidebar.is-collapsed` | history and projects fade and slide 16px; the tile's width springs (src/motion) |
+| `.btn`, `.btn-primary`, `.btn-ghost`, `.modal-btn` | 32px, radius 8, quiet fill / accent fill / ghost; pointer press springs to .97 (src/motion) |
+| `.glass-switch[aria-checked]` > `.knob` | 36×20 track; the knob springs 16px with a light bounce (src/motion) |
 | `.glass-seg` > `button[aria-checked]` + `.glass-thumb` | quiet segmented track, raised thumb |
 | `.composer-mode-toggle[data-mode]` | Chat/Cowork thumb slides on the considered token |
 | `.composer-inner` | radius 14, padding 8, focus ring fades in 200ms |
 | `.ctx-menu`, `.account-popover`, `.popup`, `[role="menu"]` | opens instantly; items highlight with `--fill-hover` |
-| `dialog[open]`, `.aero` | fade + scale .98 → 1, 200ms easeOutQuart; `::backdrop` `--scrim` |
-| `.settings-scrim` + `.settings-stage` (`.is-closing`) | Settings window: 1024×800 max, nav 192px on `--bg-app`, content `--bg-dialog`, radius 12, ring + pop shadow; fade + scale .98 → 1 in 200ms; full-screen sheet ≤ 700px |
+| `dialog[open]`, `.aero` | spring in from scale .98 with a fade (src/motion); `::backdrop` `--scrim` |
+| `.settings-scrim` + `.settings-stage` (`.is-closing`) | Settings window: 1024×800 max, nav 192px on `--bg-chrome`, content `--bg-dialog`, radius `--radius-dialog`, ring + pop shadow; springs in and out (src/motion), unmounting only after the exit; full-screen sheet ≤ 700px |
 | `.view-loading` | skeleton/placeholder fades in only after `--delay-skeleton` |
 | `.app-main[aria-busy="true"]` | content dims to .6 over 150ms |
-| `.msg[data-role="user"]:last-child` | `scale(.92) translateY(6px)` → none, 450ms overshoot, origin right |
-| `.reply-source-chip`, `.composer-context-chips > *` | chip-in, staggered 50ms + 30ms per sibling (max 8) |
+| a newly sent `.msg[data-role="user"]` | springs from scale .92 / y 6px, origin bottom right (src/motion) |
+| `.reply-source-chip`, `.composer-context-chips > *` | springs in, staggered 50ms + 30ms per sibling, max 8 (src/motion) |
 | `.thinking`, `.live-thinking`, `.typing` | opacity .6 ↔ 1 over 2s |
 | `.save-error` | inverse-surface toast |
 

@@ -33,6 +33,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Motion (MIT)
+
+`apps/web/src/motion/` uses Motion (npm `motion` 14.0.0 and its `framer-motion` and
+`motion-dom` dependencies), https://motion.dev, Copyright (c) 2018 Framer B.V., MIT License.
+It is bundled into the web app's JavaScript.
+
 ## Inter and Source Serif 4 (SIL Open Font License 1.1)
 
 `apps/web/src/styles/system/fonts/` self-hosts the variable web fonts (latin subsets, as

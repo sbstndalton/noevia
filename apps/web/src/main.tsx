@@ -7,6 +7,7 @@ import { AuthGate } from './components/AuthGate';
 import { startFitToViewport } from './fit-to-viewport';
 import { checkStaleShell } from './stale-shell-guard';
 import { startInterfaceLanguage } from './i18n';
+import { startMotion } from './motion';
 import './styles/system/fonts.css';
 import './styles/system/tokens.css';
 import './styles/system/themes.css';
@@ -28,6 +29,7 @@ import './styles/space-tiers.css';
 startLogoAppearance();
 startFitToViewport();
 startInterfaceLanguage();
+startMotion();
 void checkStaleShell();
 
 // #555: /device is where a signed-in person approves a native app's sign-in. It replaces the app

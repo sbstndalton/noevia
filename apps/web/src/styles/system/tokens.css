@@ -215,6 +215,7 @@
   --space-16: 64px;
   --target-min: 44px;
   --row-height: 32px;
+  --tile-gutter: 8px;
   --group-inset-block: var(--space-4);
   --group-row-min: calc(var(--space-12) + var(--space-4));
   --group-inset-inline: var(--space-4);
@@ -231,6 +232,7 @@
   --radius-overlay: 10px;
   --radius-dialog: 12px;
   --radius-composer: 14px;
+  --radius-tile: 12px;
   --radius-surface: 12px;
   --radius-card: var(--radius-dialog);
   --radius-bubble: var(--radius-dialog);
@@ -331,12 +333,26 @@
   --accent-2-soft: var(--tint-garnet);
   --send-icon: var(--on-accent);
 }
-/* Cards: one step up from the page in dark; white on the light page. */
+/* Tiles (#951): the sidebar and the main area are tiles on a backdrop one step darker
+   (dark) or deeper (light); main is the top surface. Cards: one step up from main in dark,
+   white in light. */
 :root:not([data-theme='light']), .theme-scope:not([data-theme='light']) {
   --bg-surface: var(--md-surface-container);
+  --bg-backdrop: var(--md-surface-container-lowest);
+  --bg-chrome: var(--md-surface);
+  --bg-app: var(--md-surface-container-low);
+  --bg-dialog: var(--md-surface-container-low);
+  --tile-ring: inset 0 0 0 1px rgb(255 255 255 / .07);
+  --tile-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px rgb(0 0 0 / .22);
 }
 [data-theme='light'] {
   --bg-surface: var(--md-surface-container-lowest);
+  --bg-backdrop: var(--md-surface-container);
+  --bg-chrome: var(--md-surface-container-low);
+  --bg-app: var(--md-surface);
+  --bg-dialog: var(--md-surface);
+  --tile-ring: inset 0 0 0 1px rgb(0 0 0 / .06);
+  --tile-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 8px 24px rgb(0 0 0 / .05);
 }
 
 /* Reduced motion (system or Settings → Motion) keeps state changes, drops travel. */
