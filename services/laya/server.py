@@ -202,7 +202,28 @@ class Runtime:
 
 
 DEFAULT_MAX_CONCURRENCY, MAX_MAX_CONCURRENCY = 1, 4
-DEFAULT_QUEUE_TIMEOUT_S = 0.25
+# Web's decision deadline is at most 2000 ms, so a request queued longer would have been
+# abandoned by its caller anyway; this matches the old single-threaded queueing.
+DEFAULT_QUEUE_TIMEOUT_S = 2.0
+MAX_QUEUE_TIMEOUT_MS = 10000
+
+
+def queue_timeout_from_env(env=None, log=None):
+    """Queue wait in seconds from LAYA_QUEUE_TIMEOUT_MS (0-10000). Default 2000."""
+    env = os.environ if env is None else env
+    log = log or (lambda msg: print(msg, flush=True))
+    raw = env.get('LAYA_QUEUE_TIMEOUT_MS')
+    if raw is None or not raw.strip():
+        return DEFAULT_QUEUE_TIMEOUT_S
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        value = -1
+    if not 0 <= value <= MAX_QUEUE_TIMEOUT_MS:
+        log(f'laya: ignoring LAYA_QUEUE_TIMEOUT_MS={raw.strip()[:32]!r}; it must be an integer '
+            f'from 0 to {MAX_QUEUE_TIMEOUT_MS}. Using {int(DEFAULT_QUEUE_TIMEOUT_S * 1000)}.')
+        return DEFAULT_QUEUE_TIMEOUT_S
+    return value / 1000
 
 
 def max_concurrency_from_env(env=None, log=None):
@@ -333,9 +354,10 @@ def serve(runtime, address=('0.0.0.0', 8040), on_server=None):
                 self.reply(422, {'error': 'Invalid or over-budget decision request'})
             except Exception:
                 self.reply(503, {'error': 'Decision unavailable'})
-    ThreadingHTTPServer.request_queue_size = 64  # default 5 drops bursts before a thread accepts
-    server = ThreadingHTTPServer(address, Handler)
-    server.daemon_threads = True
+    class Server(ThreadingHTTPServer):
+        request_queue_size = 64  # default 5 drops bursts before a thread accepts
+        daemon_threads = True
+    server = Server(address, Handler)
     try:
         if on_server is not None:
             on_server(server)
@@ -345,7 +367,7 @@ def serve(runtime, address=('0.0.0.0', 8040), on_server=None):
 
 
 if __name__ == '__main__':
-    runtime = Pool.start(max_concurrency_from_env(), decision_timeout=decision_timeout_from_env())
+    runtime = Pool.start(max_concurrency_from_env(), queue_timeout_from_env(), decision_timeout=decision_timeout_from_env())
     try:
         serve(runtime)
     finally:

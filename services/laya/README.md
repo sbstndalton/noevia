@@ -65,8 +65,9 @@ The HTTP server is threaded (daemon threads); `/health` never waits on inference
 `LAYA_MAX_CONCURRENCY` (integer 1 to 4, default 1, garbage refused with a log line)
 sets the number of inference slots. Each slot is its own worker process with its own
 model copy and pipe, so a request holds one slot exclusively and nothing mutable is
-shared. Requests beyond the bound wait 0.25 s, then get `503` with `Retry-After: 1`
-(web already fails closed). Default 1 behaves as before.
+shared. Requests beyond the bound queue for `LAYA_QUEUE_TIMEOUT_MS` (0 to 10000,
+default 2000, the web deadline maximum, so queueing matches the old single-threaded
+server), then get `503` with `Retry-After: 1` (web already fails closed).
 
 Thread safety: the model is deliberately not shared across threads. Laya 0.3.5
 `Agent.system_one` is `@torch.no_grad()` over an `eval()` model and its router notes

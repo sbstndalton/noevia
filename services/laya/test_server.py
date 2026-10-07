@@ -7,7 +7,7 @@ import queue
 import socket
 import threading
 import time
-from server import Busy, Pool, Runtime, decision_timeout_from_env, max_concurrency_from_env, serve, validate
+from server import Busy, Pool, Runtime, decision_timeout_from_env, max_concurrency_from_env, queue_timeout_from_env, serve, validate
 
 
 def fake_worker(pipe):
@@ -208,6 +208,17 @@ class ConcurrencyEnvTests(unittest.TestCase):
             self.assertEqual(len(logs), 0 if raw == '' else 1, raw)
 
 
+class QueueTimeoutEnvTests(unittest.TestCase):
+    def test_parse(self):
+        logs = []
+        self.assertEqual(queue_timeout_from_env({}, logs.append), 2.0)
+        self.assertEqual(queue_timeout_from_env({'LAYA_QUEUE_TIMEOUT_MS': '500'}, logs.append), 0.5)
+        self.assertEqual(logs, [])
+        for raw in ['-1', 'x', '10001', '1.5']:
+            self.assertEqual(queue_timeout_from_env({'LAYA_QUEUE_TIMEOUT_MS': raw}, logs.append), 2.0)
+        self.assertEqual(len(logs), 4)
+
+
 class PoolHttpTests(unittest.TestCase):
     def start(self, size, queue_timeout=5):
         self.pool = Pool.start(size, queue_timeout, ctx=mp.get_context('spawn'), worker_target=delay_worker,
@@ -244,6 +255,12 @@ class PoolHttpTests(unittest.TestCase):
         for t in threads:
             t.join()
         return results, time.monotonic() - start
+
+    def test_k1_overlapping_requests_queue_instead_of_503(self):
+        self.start(1, queue_timeout=2.0)
+        results, took = self.burst(2, lambda i: 'sleep:0.5')
+        self.assertEqual([r[0] for r in results], [200, 200])
+        self.assertGreaterEqual(took, 1.0)
 
     def test_default_one_serialises(self):
         self.start(1)
