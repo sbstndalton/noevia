@@ -1,0 +1,18 @@
+# Repo-split candidate (#952, docs/repo-split-cutover.md). CI ONLY: nothing releases from this file.
+#
+# NOEVIA_SPLIT_CUT_SHA is the noevia commit that tools/repo-split extracted noevia-web, noevia-core
+# and noevia-services from; the refs below are those repos' main heads after that extraction (each
+# one's last commit says `Split-Source: <cut sha>`). CI ("Repo split: byte identity") proves, at
+# the cut sha:
+#   - git level: every mapped path has the same mode and object id in the split repo as in noevia
+#     (repo-split verify);
+#   - release level: assembling with these refs (assemble-release.sh --lock) gives the same web/,
+#     core/ and services/ trees as `self` mode, and the same web image as apps/web/Dockerfile.
+# release/versions.lock keeps `self` until the cutover copies these refs into it.
+NOEVIA_SPLIT_CUT_SHA=677ddfaaabe7459dfc61aedddc154fb95d7ad196
+NOEVIA_WEB_REF=95f6a7cd07f6e30feffe7e213731618b5a639556
+NOEVIA_WEB_SHA256=a12c39c792f6e09b609b3e1dcf630570a228cb4cfce22eb61ff4a0585b2c11b9
+NOEVIA_CORE_REF=40519a84b72535ff777ca5248a93a077c46d9c10
+NOEVIA_CORE_SHA256=3d39bb617b67141640bf497731dfb9db21f5bba226ac7fe097c7a37c088886f9
+NOEVIA_SERVICES_REF=32ba133a9c36c2094eba174940ba0a9319e8c85a
+NOEVIA_SERVICES_SHA256=1058aa0c7f3ea3be7fff150fdcfee17b11aafd4e290047ed7e06fe969e0761c7
