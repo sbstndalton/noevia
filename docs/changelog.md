@@ -8,6 +8,23 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 94599ba8 — 2026-10-07 (Laya load advisor #1004, dark; #1046 #1047 #1048; web)
+
+### Services
+
+- **Web:** [#1050](https://github.com/sbstndalton/noevia/pull/1050) pins noevia-core `88e70695` (core#18: `LAYA_LOAD_ADVISOR`, default off, rules name a guessed load failure and Laya advises only on a tie; refs #1004, fixes #1046 #1047 #1048). Web stays `0e0bc5a4`. Deployed `cowork-web:94599ba8` (rollback target `cowork-web:f48b9666`). Image id `sha256:20673275...1f74e`.
+- **Behaviour changes with the flag off:** the long-prompt stream-error reason is now a fixed sentence, and a non-crash "timed out" engine reply now retries once, then stops.
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF` and `NOEVIA_CORE_SHA256` only (`27e7b6cd...4907e`, fetched twice, identical). `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` or `LAYA_LOAD_ADVISOR` flag was set (the web container env has none).
+
+Source: noevia main `94599ba84770fcce9863b659cbbfcde5e5e5bc02` (#1050 CI green incl. Assembled release; core#18 checks green). Assembled from a clean clone with `deploy/tools/assemble-release.sh 94599ba8` (web `0e0bc5a4`, core `88e70695`, services `8f7eefa2`); tarball sha256 `26b316f9...ff0b` identical on the Mac and the box.
+
+**Candidate checks (before cutover).** A `--network none`, read-only, caps-dropped candidate with synthetic env and tmpfs state booted healthy, `/api/ready` 200, no FATAL. `dav-parse.wasm` hashes to `29c2be61...77d0`, equal to `DAV_PARSE_WASM_SHA256`, and its exports include `load_verdict` (also `autotune_plan`). The candidate was removed. Asset check: `index.html` `61c71cba...` (old) to `564b8d1b...` (new); `dav-parse.wasm` `1fe3fb07...` to `29c2be61...`.
+
+**After cutover.** `cowork-web-1` healthy with 0 restarts, `/api/ready` 200 locally and at `noevia.daserver.work`, MCP `196 tools across 3 server(s)`, no FATAL/error in the web log, `version.json` lists web `0e0bc5a4` and core `88e70695`. No model was run, no Laya call made, no autotune run.
+
+**Rollback.** Repoint and recreate web only: `ln -sfn /mnt/docker/appdata/cowork/releases/f48b9666 /mnt/docker/appdata/cowork/current; sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=f48b9666/' /mnt/docker/appdata/cowork/config/.env; bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. Backups taken: `config/.env.bak.20261007082129`, `backups/cowork.db.before-94599ba8-20261007082135` (sqlite `.backup`, integrity ok), `backups/web-state-before-94599ba8-20261007082135.tgz`, `pre-release-current.20261007082129.txt`, compose `docker-compose.yml` and `docker-compose.override.yml` copies `*.bak.before-94599ba8`, `snapshot.before-94599ba8.txt` and `snapshot.after-94599ba8.txt`.
+
 ## Release f48b9666 — 2026-10-07 (models.ini reload while models are loaded #1012, sleeping counts as loaded; web)
 
 ### Services
