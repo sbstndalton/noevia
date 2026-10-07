@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release ebe6344d — 2026-10-07 (web only: WebDAV listing hardening, `<bdi>` isolation of storage file names)
+
+### Services
+
+- **Web:** [#974](https://github.com/sbstndalton/noevia/pull/974) pins noevia-core `e5c58db4` ([noevia-core#4](https://github.com/sbstndalton/noevia-core/pull/4): the WebDAV listing skips foreign-origin hrefs, dot/slash names and names with control or bidi characters; fixes [#969](https://github.com/sbstndalton/noevia/issues/969), [#970](https://github.com/sbstndalton/noevia/issues/970), [#971](https://github.com/sbstndalton/noevia/issues/971)) and noevia-web `c80a3668` ([noevia-web#4](https://github.com/sbstndalton/noevia-web/pull/4) and [#5](https://github.com/sbstndalton/noevia-web/pull/5): `<bdi>` isolation of storage, folder-picker and Diary file names). The `dav-parse.wasm` module has a new hash, `21144715…4457` (noevia-rs `122a477a`). Image `cowork-web:ebe6344d` (was `cowork-web:4be51449`).
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling, Laya, egress:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; `DAV_PARSE_IMPL` and every other flag stay unset (the JS parser still produces every listing). Runbook path check: `build-web-release.sh` is at `releases/$SHA/noevia/deploy/tools/` in every copy (`docs/deployment.md`, `.claude/skills/deploy-noevia/references/runbook-traps.md`; `DEPLOY.md` does not mention it), so no further correction was needed.
+
+Source: noevia main `ebe6344d1ceff69cc4a9805cf8a9cc231ee8b2b3` (`e9be748e`, #974, plus the docs-only changelog #975; CI green). Assembled on the Mac from a fresh clone with `deploy/tools/assemble-release.sh ebe6344d` (web `c80a3668`, core `e5c58db4`, services `66b40f96`; `release-refs` matched), built on the server with `noevia/deploy/tools/build-web-release.sh` (in-build tests and build passed, stamp verified).
+
+**Candidate checks (before cutover).** Image `dav-parse.wasm` sha256 `211447151cc372cf794a979a08d595cd5385d1aeff46b638f04a3627910b4457` equals `DAV_PARSE_WASM_SHA256` in core's `server/dav-parse.lock`; `DAV_PARSE_IMPL` is not in the image environment; `server/dav-listing.cjs` exports `isListableName`. A throwaway container (`--network none`, tmpfs state, synthetic env, removed afterwards) went ready: `/api/ready` 200, `/` 200, `version.json` correct.
+
+**Backups.** `config/.env.bak.before-ebe6344d` (values never printed), `state/web/cowork.db.bak.before-ebe6344d` (SQLite `.backup`, integrity ok), `releases/current-pointer-before-ebe6344d.txt`, container snapshots `releases/snapfull-before-ebe6344d.txt` and `releases/snapinspect-before-ebe6344d.txt` (after-snapshots alongside).
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=ebe6344d`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:ebe6344d` healthy, 0 restarts; `/version.json` `{"version":"ebe6344d","web":"c80a3668…","core":"e5c58db4…"}`; `/api/ready` 200 (also through the public URL); JS, CSS, icons and woff2 fonts 200; no Google sources in the CSP or index; egress listener is the node one (`egress.listening` on 172.28.0.3:8040); web log clean. The before/after snapshots differ only in `cowork-web-1` (id, image, start time); every other container keeps its id, start time and 0 restarts. No real storage reads were made.
+
+Rollback (web only). `ln -sfn /mnt/docker/appdata/cowork/releases/4be51449 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=4be51449/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. `cowork-web:4be51449` is still on the box. The `.env` and DB backups above are the fallback for state.
+
 ## Release 4be51449 — 2026-10-07 (web only: WebDAV listing parser moved to `server/dav-listing.cjs`, dark `DAV_PARSE_IMPL` switch, `dav-parse.wasm` built into the web image)
 
 ### Services
