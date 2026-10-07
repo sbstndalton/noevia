@@ -766,6 +766,41 @@ same).
 - **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
   means `js`, with one warning in the log.
 
+### Stored-credential encryption (`SECRET_ENVELOPE_IMPL`, #979)
+
+The same `dav-parse.wasm` also carries a Rust port of the stored-credential envelope: the
+`enc:v1`/`enc:v2` formats (AES-256-GCM; v2 bound to the owning account) used for storage
+secrets, provider API keys, ChatGPT and MCP OAuth tokens and MCP header keys. This is a dark
+switch, independent of the others, default `js`. Key files, rotation and key derivation stay in
+Node. The module's sha256 changed with this pin; `build/web.Dockerfile` needs no change.
+
+- **No migration:** both settings read and write the same formats. Every existing v1/v2 value
+  opens under `wasm`, and a value written under either setting opens under the other (shared
+  differential fixtures plus random round trips in CI).
+- **Switch on (owner only):** add `SECRET_ENVELOPE_IMPL=wasm` to the web service's environment
+  (in the hand-kept live Compose Manager override too) and recreate web only.
+- **Behaviour with `wasm`:** it **fails closed**. A value that cannot be opened gives "credential
+  could not be opened" (or "credential is bound to an account"), a failed save gives "credential
+  could not be sealed". Nothing falls back to JS, nothing is re-encrypted on a failure, and only
+  the failure reason is logged, never a key, plaintext or ciphertext. After every call the
+  module's memory is zeroed and the instance dropped.
+- **Limits under `wasm`:** 8 MiB per credential. Credentials are kilobytes in practice.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
+
+### Startup check for the `*_IMPL=wasm` switches (#996)
+
+If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL` or
+`SECRET_ENVELOPE_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
+web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
+set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
+pinned module (rebuild the image) or set the switch back to `js`. With every switch on `js`,
+nothing is loaded and nothing changes.
+
+Also from this pin (#995): with either setting, a stored credential whose GCM tag is shorter than
+16 bytes is refused. noevia never writes one, so no stored value is affected.
+
 ### Diary tenant key (M2) — first rollout
 
 `DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see
