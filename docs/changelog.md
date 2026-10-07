@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release f505f1bb — 2026-10-07 (web: Back history on /models, single Tools and auto-tune entries, #1024 #1025)
+
+### Services
+
+- **Web:** [#1031](https://github.com/sbstndalton/noevia/pull/1031) pins noevia-web `ef4a0339` (web#8): Back no longer loops through the Models section history entries (#1024), and the composer + menu shows a single Tools entry and a single auto-tune entry (#1025). Core stays `894e0528`. Deployed `cowork-web:f505f1bb` (rollback target `cowork-web:e2209540`).
+- **Code sandbox, Diary, Model manager, OCR, Docling, Laya, egress:** no change (`cowork-code-sandbox:pi-0.87.0-b29d0e0b`, `cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-ocr:3dd9d650`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` flag was set.
+
+Source: noevia main `f505f1bbe58233c9f270e722da4208dc694af81b` (CI green on #1031, including Assembled release; web main CI green at `ef4a0339`). Assembled from a clean clone with `deploy/tools/assemble-release.sh f505f1bb` (web `ef4a0339`, core `894e0528`, services `6a535513`); tarball sha256 `ec963cd5...4b16` identical on the Mac and the box. The pinned web tarball checksum (`e91b0f0d...8ee13`) was fetched twice and matched.
+
+**Build note.** The first on-box `build-web-release.sh` run hung in the in-image test stage (idle CPU, no progress for 20 minutes), the same pattern as `8a8a7e83` attempt 1. It was killed (log kept as `build-f505f1bb.attempt1-hung.log`) and the second run passed with no source change, stamped `f505f1bb`.
+
+**Candidate checks (before cutover).** Image `cowork-web:f505f1bb` (`sha256:f2148635...0970`) stamped `f505f1bb` (`version.json` lists web `ef4a0339`, core `894e0528`). A candidate container (`--network none`, read-only root, caps dropped, tmpfs state, synthetic empty state) was healthy with no FATAL, `/api/ready` 200, and logged `CHAT_TEMPLATE_CAPS_IMPL=wasm`. It was removed afterwards.
+
+**Backups.** `config/.env.bak.20261007061455` (values never printed), `backups/cowork-db-before-f505f1bb.sqlite` (SQLite `.backup`, integrity ok), `backups/web-state-before-f505f1bb-20261007061455.tgz`, `backups/current-pointer-before-f505f1bb.txt`, `backups/web-old-image-before-f505f1bb.txt`, `backups/old-assets-before-f505f1bb.txt`, `backups/compose-before-f505f1bb.yml`, `backups/compose-override-before-f505f1bb.yml`, and the Compose Manager `docker-compose.yml.bak.before-f505f1bb` and `docker-compose.override.yml.bak.before-f505f1bb`. Non-web container snapshots: `snapshot.before-f505f1bb.txt` and `snapshot.after-f505f1bb.txt`.
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=f505f1bb`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:f505f1bb` healthy, 0 restarts; `/api/ready` 200 locally and through noevia.daserver.work; `/version.json` `{"version":"f505f1bb","web":"ef4a0339...","core":"894e0528..."}`; served JS, CSS and manifest assets 200 (`index.html` sha256 `29623c6a...d3d8`, 70 files under `dist/assets`); MCP unchanged at 196 tools across 3 servers; logs show no errors. Only `cowork-web-1` changed identity and start time; every other container's image id, start time and restart count matches the before snapshot. No UI click test was part of this release.
+
+**Rollback.** `ln -sfn /mnt/docker/appdata/cowork/releases/e2209540 /mnt/docker/appdata/cowork/current`; `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=e2209540/' /mnt/docker/appdata/cowork/config/.env`; then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The `cowork-web:e2209540` image is still on the box. The change is client-only, so the state backup above is only needed if user data is damaged.
+
 ## Release e2209540 — 2026-10-07 (web: models/routing and picker redesign, #1006 #1007 #1008 #1009 #1013)
 
 ### Services
