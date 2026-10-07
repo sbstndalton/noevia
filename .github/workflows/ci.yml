@@ -205,7 +205,7 @@ jobs:
           tar -xzf "$a/noevia-release-$sha.tar.gz" -C "$a/tree"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "tree=$a/tree" >> "$GITHUB_OUTPUT"
-      - name: Tree matches the lock; sidecar contexts and the model-manager pin
+      - name: Tree matches the lock; sidecar contexts and the model-manager and ocr pins
         if: env.RUN_JOB == 'true'
         env:
           TREE: ${{ steps.assemble.outputs.tree }}
@@ -229,6 +229,12 @@ jobs:
             || { echo "::error::noevia-services model-manager/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
           [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$mm")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
             || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and model-manager Dockerfiles"; exit 1; }
+          # #981: the OCR image builds docx-text from the same noevia-rs pin.
+          ocr="$TREE/services/ocr/Dockerfile"
+          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$ocr")" = "$ref" ] \
+            || { echo "::error::noevia-services ocr/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
+          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$ocr")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
+            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and ocr Dockerfiles"; exit 1; }
       # #967: core pins its own noevia-rs ref for dav-parse.wasm (core/server/dav-parse.lock). Like
       # every lock pin, it must be on noevia-rs main before a release ships it.
       - name: core's dav-parse noevia-rs pin is on noevia-rs main

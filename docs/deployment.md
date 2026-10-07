@@ -675,6 +675,34 @@ comes from the same `NOEVIA_RS_REF` as `gguf-meta`. It is dark: `MODEL_FILES_IMP
 - **Rollback:** remove `MODEL_FILES_IMPL` (or set it to `python`) and recreate model-loader. An
   unknown value also means `python`, with one warning in the log.
 
+### DOCX text front (`DOCX_TEXT_IMPL`, #981)
+
+OCR images built from #981 on carry `/usr/local/bin/docx-text`, the bounded Rust port of
+`ocr/docx_text.py` `extract_docx`. That function checks the uploaded DOCX container (end
+record, member count and sizes, encryption, compression ratio, DOCTYPE/ENTITY) and extracts
+the body text. The binary is built from the OCR Dockerfile's `NOEVIA_RS_REF`, which equals
+release/versions.lock's. It is dark: `DOCX_TEXT_IMPL` defaults to `python`, and the Python code
+keeps extracting every document.
+
+- **Switch on (owner only):** add `DOCX_TEXT_IMPL=rust` to the ocr service's environment (in
+  the hand-kept live Compose Manager override too) and recreate ocr only.
+- **Behaviour with `rust`:** documents go through `docx-text extract`:
+  - no shell, only `PATH` in its environment, 25 MiB stdin and about 1.2 MB stdout caps, and a
+    20 s timeout;
+  - it **fails closed**: a refusal, missing binary, other exit, timeout or malformed output
+    gives the usual generic 422 ("DOCX is malformed, encrypted or exceeds its processing
+    limits"), never a Python fallback. The log gets one `docx-text failed (<reason>)` warning
+    per reason per process; refusals are not logged.
+  - Text is byte-identical to Python on the shared differential fixtures: 117 cases, 600
+    mutants, and 19 files from python-docx, pandoc, LibreOffice, textutil, Java and zip
+    re-packs.
+  - Its ZIP and XML checks are stricter than Python's, so a few hostile or unusual files are
+    refused that Python would read: an archive comment, zip64, gaps between members,
+    disagreeing local headers, encodings other than UTF-8, or nesting over 256. The noevia-rs
+    crate docs list them all.
+- **Rollback:** remove `DOCX_TEXT_IMPL` (or set it to `python`) and recreate ocr. An unknown
+  value also means `python`, with one warning in the log.
+
 ### Storage listing parser (`DAV_PARSE_IMPL`, #967)
 
 Web images built from #967 on carry `server/wasm/dav-parse.wasm`, the bounded Rust port of the
