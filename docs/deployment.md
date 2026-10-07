@@ -716,6 +716,28 @@ also carries two more Rust ports, each behind its own dark switch, independent o
   means `js`, with one warning in the log.
 - With either setting, a storage path containing NUL is now refused (#978).
 
+### Upload checks (`UPLOAD_SNIFF_IMPL`, #977)
+
+The same `dav-parse.wasm` also carries the Rust port of the upload checks: `validate` (plain
+filename, 25 MB cap, archive names and magic numbers), `classify` (upload group) and
+`decodeText` (BOM, NUL means binary, strict UTF-8, windows-1252 fallback with the "not valid
+UTF-8" reason). Dark switch, independent of the others, default `js`. The module's sha256 changed
+with this pin; `build/web.Dockerfile` needs no change (it reads the lock and the file name is the
+same).
+
+- **Switch on (owner only):** add `UPLOAD_SNIFF_IMPL=wasm` to the web service's environment (in the
+  hand-kept live Compose Manager override too) and recreate web only.
+- **Behaviour with `wasm`:** refusals keep their JS messages and statuses (400 filename, empty or
+  archive; 413 over 25 MB). Anything else **fails closed** with the fixed message "upload could
+  not be checked" (400 for input that cannot be passed in, 500 for a module failure; details only
+  in the server log). Decoded text and encoding are byte-identical to JS (1,819 validate, 1,619
+  classify and 3,208 decode shared differential fixtures plus 2,000 seeded random uploads in CI).
+- **Memory:** validate passes only the name, length and first 262 bytes; decodeText passes the
+  whole upload (at most 25 MB) and can briefly need ~100 MB of module memory for a 25 MB file.
+  After any call over 1 MB the module instance is dropped so that memory is released.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
+
 ### Diary tenant key (M2) — first rollout
 
 `DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see
