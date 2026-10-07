@@ -801,6 +801,26 @@ nothing is loaded and nothing changes.
 Also from this pin (#995): with either setting, a stored credential whose GCM tag is shorter than
 16 bytes is refused. noevia never writes one, so no stored value is affected.
 
+### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
+
+The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
+of the parts that read untrusted input: the pi bridge's JSONL framing and `toolCallFor`, and the
+supervisor's start line and workspace-containment decision. The `realpath` step stays in Node. The
+image's own build stage builds the module from the noevia-rs ref pinned in core's
+`code-sandbox/sandbox-bridge.lock`, checking the tarball and module sha256s. noevia CI checks that
+ref is on noevia-rs main. The switch is dark: the override passes
+`SANDBOX_BRIDGE_IMPL=${SANDBOX_BRIDGE_IMPL:-js}`.
+
+- **Switch on (owner only):** set `SANDBOX_BRIDGE_IMPL=rust` in the `.env`, rebuild the
+  code-sandbox image (the module is built into it) and recreate the `code-sandbox` service. The
+  supervisor logs `SANDBOX_BRIDGE_IMPL=rust: sandbox-bridge.wasm loaded`.
+- **Fails closed:** a rust sandbox whose module is missing or is not the pinned one exits 2 at
+  startup. A module failure later ends that session ("the sandbox bridge (rust) failed; closing
+  the session") or refuses that connection ("the sandbox bridge is unavailable"). It never falls
+  back to js, and it never grants a permission.
+- **Rollback:** unset it (or set `js`) and recreate `code-sandbox`. An unknown value means js,
+  with one warning in the log.
+
 ### Diary tenant key (M2) — first rollout
 
 `DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see
