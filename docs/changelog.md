@@ -8,6 +8,25 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 8a8060d0 — 2026-10-07 (web only: a refused storage path is a 400, not a listing of the storage root, #984)
+
+### Services
+
+- **Web:** [#993](https://github.com/sbstndalton/noevia/pull/993) pins noevia-core `c53cef6c` ([noevia-core#7](https://github.com/sbstndalton/noevia-core/pull/7), fixes #984): `listFiles` throws a 400 (`Use a relative path inside the storage folder.`) for a refused path (`../x`, an absolute path, a NUL) instead of silently listing the connection root; the browse route passes that 400 through. Holds for every `STORAGE_PATH_IMPL`. Deployed `cowork-web:8a8060d0` (live was `8f9ce34a`).
+- **Services pin:** #993 also pins noevia-services `6a535513` ([noevia-services#5](https://github.com/sbstndalton/noevia-services/pull/5), fixes #992): test-only path fixes, no runtime change, so no service was rebuilt or restarted.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling, Laya, egress:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:3dd9d650`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` flag or other variable was set. Compose files were not edited.
+
+Source: noevia main `8a8060d0fea6f35fe93ff4dc89a15da8d4b6a24b` (CI green on #993, including Assembled release). Assembled on the Mac with `deploy/tools/assemble-release.sh 8a8060d0` (web `c80a3668`, core `c53cef6c`, services `6a535513`, noevia-rs `2b49af9`) and shipped as a tarball. The core and services checksums were computed twice from codeload and matched. Web built with `build-web-release.sh`.
+
+**Candidate checks (before cutover).** In `cowork-web:8a8060d0`, `--network none`, read-only root, throwaway state: `listFiles` refused `../x`, `/abs`, `a/../../x` and a NUL path with status 400 and `Use a relative path inside the storage folder.` (no real storage touched); `storage-client-hardening.test.cjs` and `routes/storage.test.cjs` 21 of 21 pass; the candidate booted healthy, `/api/ready` 200, `version.json` showed core `c53cef6c`; no `*_IMPL` variable in the image env.
+
+**Backups.** `config/.env.bak.20261007020453-before-8a8060d0` (values never printed), `backups/cowork-db-before-8a8060d0.sqlite` (SQLite `.backup`, integrity ok), `backups/web-state-before-8a8060d0-20261007020453.tgz`, `backups/current-pointer-before-8a8060d0.txt` and container snapshots `releases/snapinspect-before-8a8060d0.txt` and `snapinspect-after-8a8060d0.txt`.
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=8a8060d0`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:8a8060d0` healthy, 0 restarts; `/version.json` `{"version":"8a8060d0","web":"c80a3668…","core":"c53cef6c…"}`; `/api/ready` 200 (also through the public hostname); `/`, the JS and CSS bundles (`index-DR1AL8it.js`, `index-Dr_Ar-EH.css`, CSS unchanged) and the three woff2 fonts 200; the CSP has no Google sources and neither does the index; the egress listener is the node one (`egress.listening` on 172.28.0.3:8040, no egress-rs container); web log clean; no `*_IMPL` in the container env. The before/after snapshots differ only in `cowork-web-1` (id, image, start time). Server tarball and Mac scratch removed.
+
+Rollback. `ln -sfn /mnt/docker/appdata/cowork/releases/8f9ce34a /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=8f9ce34a/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. `cowork-web:8f9ce34a` is still on the box. The `.env` and DB backups above are the fallback for state.
+
 ## Release 8f9ce34a — 2026-10-07 (web and OCR: upload checks in `dav-parse.wasm` behind dark `UPLOAD_SNIFF_IMPL`, Rust `docx-text` in the OCR image behind dark `DOCX_TEXT_IMPL`)
 
 ### Services
