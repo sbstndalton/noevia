@@ -815,10 +815,34 @@ with this pin; `build/web.Dockerfile` needs no change.
 Also from this pin (#989): under `UPLOAD_SNIFF_IMPL=wasm`, a file name over 64 KiB is classified
 like the JS (by its extension) instead of failing with 400 "upload could not be checked".
 
+### Chat template capabilities (`CHAT_TEMPLATE_CAPS_IMPL`, #1002, #1003)
+
+**This switch is ON by default** (`wasm`); it fixes #1002. Before a chat on the native engine sends
+`tools`, web reads the model's chat template from llama.cpp `/props` (`chat_template`; it never
+loads a model) and checks it with the Rust `chat-template-caps` crate in `dav-parse.wasm`. A
+template that cannot take tools (no tool support and a `raise_exception`, as with the model in
+#1002) gets no tools, with a small notice in the chat. If the engine still refuses the tools with
+a tool-specific error ("Unable to generate parser…", "tools param requires --jinja"), the round is
+retried once without tools, with a notice. Only the template text decides, never the model or file
+name. Cloud providers are untouched. Provider errors now show the upstream's own reason,
+classified and redacted by the Rust `provider-error` crate (URLs, hosts, paths, addresses,
+credentials, tokens, markup and Markdown links removed; at most 200 characters), with or without
+the switch. Autotune also sends one realistic chat request (system prompt, user turn, the app's
+tool shape) before it signs a profile off (#1003).
+
+- **Switch off:** set `CHAT_TEMPLATE_CAPS_IMPL=off` on the web service (in the hand-kept live
+  Compose Manager override too) and recreate web. Requests are then sent as before; only the
+  error text change remains.
+- **Default with an unusable module:** web logs a warning and runs with the switch off (it does
+  not stop). An explicit `CHAT_TEMPLATE_CAPS_IMPL=wasm` with an unusable module stops startup,
+  like the switches below.
+- **No migration:** the per-model answer is kept in memory only (10 minutes; 30 seconds when the
+  template could not be read).
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
-`SECRET_ENVELOPE_IMPL` or `MCP_FRAME_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
