@@ -11,12 +11,22 @@
 # What changes with CODE_EGRESS_IMPL=rust:
 #   * web derives the grant key (secretStore.derive('code-egress-grant')) and writes it, hex, to
 #     CODE_EGRESS_GRANT_KEY_FILE on the `code-egress-key` volume — mounted by web (rw) and this
-#     proxy (ro) only, never by the sandbox.
-#   * tasks are pointed at egress-rs:CODE_EGRESS_PORT with a signed per-task grant
+#     proxy (ro) only, never by the sandbox. Mode 0440, group CODE_EGRESS_KEY_GID: web (root)
+#     owns it, the proxy (uid 65532) reads it through group_add of that same fixed gid. Never
+#     world-readable.
+#   * tasks are pointed at egress-rs-code:CODE_EGRESS_PORT with a signed per-task grant
 #     (docs/egress-grant-contract.md); web posts a signed revoke there when a task ends.
-#   * the proxy listens only on its address on the internal `code` network (CODE_EGRESS_BIND is
-#     its alias, resolved at start) and reaches the internet through `default`. No ports are
-#     published.
+#   * the proxy listens only on its address on the internal `code` network and reaches the
+#     internet through `default`. No ports are published.
+#
+# Bind (security review of #955): CODE_EGRESS_BIND must NOT be the service name — Docker DNS
+# answers a service name on every network the container joins, so it could resolve to the
+# `default` address first, binding the proxy where the sandbox cannot reach it and exposing it on
+# `default`. `egress-rs-code` is an alias declared on `code` only, so it resolves to the code
+# address alone. After bringing it up, verify:
+#   docker exec cowork-web-1 getent ahosts egress-rs-code   # one address, inside the code subnet
+#   docker network inspect <project>_code -f '{{.IPAM.Config}}'
+#   docker logs cowork-egress-rs-1 | grep egress.listening  # bind = that address
 services:
   egress-rs:
     profiles: ["code"]
@@ -33,12 +43,13 @@ services:
     security_opt: ["no-new-privileges:true"]
     pids_limit: 128
     mem_limit: 256m
+    group_add: ["${CODE_EGRESS_KEY_GID:-1006}"]
     networks:
       default: {}
       code:
-        aliases: [egress-rs]
+        aliases: [egress-rs-code]
     environment:
-      CODE_EGRESS_BIND: egress-rs
+      CODE_EGRESS_BIND: egress-rs-code
       CODE_EGRESS_PORT: ${CODE_EGRESS_PORT:-8040}
       CODE_EGRESS_GRANT_KEY_FILE: /run/noevia-egress/grant.key
       CODE_EGRESS_MAX_CONNECTIONS: ${CODE_EGRESS_MAX_CONNECTIONS:-256}
@@ -50,8 +61,11 @@ services:
   web:
     environment:
       CODE_EGRESS_IMPL: ${CODE_EGRESS_IMPL:-node}
-      CODE_EGRESS_RUST_HOST: egress-rs
+      CODE_EGRESS_RUST_HOST: egress-rs-code
       CODE_EGRESS_GRANT_KEY_FILE: /run/noevia-egress/grant.key
+      CODE_EGRESS_KEY_GID: ${CODE_EGRESS_KEY_GID:-1006}
+      # Grant lifetime (absolute, ms): default 2 h, capped at 24 h by the contract.
+      CODE_EGRESS_GRANT_LIFETIME_MS: ${CODE_EGRESS_GRANT_LIFETIME_MS:-7200000}
     volumes:
       - code-egress-key:/run/noevia-egress
 

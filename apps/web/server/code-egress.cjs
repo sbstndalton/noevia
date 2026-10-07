@@ -422,7 +422,7 @@ function startEgressFromEnv(env = process.env, { log = () => {}, create = create
 // is pinned by apps/web/contracts/egress-grant.v1.vectors.json, which both sides test against.
 const GRANT_KEY_LABEL = 'code-egress-grant';
 const GRANT_MAX_LIFETIME_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_GRANT_LIFETIME_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_GRANT_LIFETIME_MS = 2 * 60 * 60 * 1000; // near a real task; a lost revoke expires soon
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
 
 /** A task's domains as the contract carries them: lowercased, outer dots dropped, deduplicated. */
@@ -452,7 +452,7 @@ function mintGrant(key, { act = 'grant', task, hosts = [], iat, exp, idle, nonce
  * revoke to the proxy. No `activity` (the per-task host summary stays a Node-proxy feature for now).
  */
 function createRustEgressClient({ key, endpoint, now = Date.now, ttlMs = DEFAULT_TOKEN_TTL_MS,
-  lifetimeMs = DEFAULT_GRANT_LIFETIME_MS, log = () => {}, post = defaultRevokePost }) {
+  lifetimeMs = DEFAULT_GRANT_LIFETIME_MS, log = () => {}, post = defaultRevokePost, revokeDelaysMs = [2000, 8000] }) {
   if (!Buffer.isBuffer(key) || key.length !== 32) throw Error('the egress grant key must be 32 bytes');
   const life = Math.min(positive(lifetimeMs, DEFAULT_GRANT_LIFETIME_MS), GRANT_MAX_LIFETIME_MS);
   const nonce = () => b64url(crypto.randomBytes(16));
@@ -478,9 +478,16 @@ function createRustEgressClient({ key, endpoint, now = Date.now, ttlMs = DEFAULT
     if (!taskId || !/^[A-Za-z0-9._:-]{1,128}$/.test(String(taskId))) return 0;
     const iat = stamp(taskId);
     const token = mintGrant(key, { act: 'revoke', task: taskId, hosts: [], iat, exp: iat + life, idle: 1, nonce: nonce() });
-    Promise.resolve().then(() => post(endpoint, token)).then((status) => {
-      if (status !== 204) log({ event: 'egress.revoke_failed', taskId, status });
-    }, (err) => log({ event: 'egress.revoke_failed', taskId, error: String((err && err.code) || 'error') }));
+    // Retried with backoff (a revoke is idempotent); only the last failure is logged.
+    const attempt = (n) => Promise.resolve().then(() => post(endpoint, token)).then(
+      (status) => (status === 204 ? null : { status }),
+      (err) => ({ error: String((err && err.code) || 'error') }),
+    ).then((failure) => {
+      if (!failure) return;
+      if (n < revokeDelaysMs.length) { const t = setTimeout(() => attempt(n + 1), revokeDelaysMs[n]); t.unref?.(); return; }
+      log({ event: 'egress.revoke_failed', taskId, attempts: n + 1, ...failure });
+    });
+    attempt(0);
     return 1;
   }
   return { impl: 'rust', grant, revoke, endpoint, sweep: () => 0 };
@@ -504,7 +511,7 @@ function defaultRevokePost(endpoint, token) {
  */
 function startRustEgressClient(env, { log, secrets, port, ttlMs }) {
   if (!secrets || typeof secrets.derive !== 'function') throw Error('CODE_EGRESS_IMPL=rust needs the secret store');
-  const host = String(env.CODE_EGRESS_RUST_HOST || 'egress-rs').trim();
+  const host = String(env.CODE_EGRESS_RUST_HOST || 'egress-rs-code').trim();
   if (!/^[a-z0-9.-]+$/i.test(host)) throw Error(`CODE_EGRESS_RUST_HOST should be a host name, not "${host}"`);
   const file = String(env.CODE_EGRESS_GRANT_KEY_FILE || '').trim();
   if (!file) throw Error('CODE_EGRESS_IMPL=rust needs CODE_EGRESS_GRANT_KEY_FILE');
@@ -512,8 +519,14 @@ function startRustEgressClient(env, { log, secrets, port, ttlMs }) {
   const fs = require('node:fs'), path = require('node:path');
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${key.toString('hex')}\n`, { mode: 0o444 });
-  fs.renameSync(tmp, file);
+  // Owner + one shared group, never world-readable: the proxy reads it through group_add of
+  // CODE_EGRESS_KEY_GID (the override sets the same fixed gid on both containers).
+  const gid = Number(env.CODE_EGRESS_KEY_GID);
+  if (!Number.isInteger(gid) || gid <= 0) throw Error('CODE_EGRESS_IMPL=rust needs CODE_EGRESS_KEY_GID (a positive integer)');
+  try { fs.rmSync(tmp, { force: true }); } catch { /* none */ }
+  fs.writeFileSync(tmp, `${key.toString('hex')}\n`, { mode: 0o440, flag: 'wx' });
+  try { fs.chownSync(tmp, process.getuid?.() ?? -1, gid); fs.chmodSync(tmp, 0o440); fs.renameSync(tmp, file); }
+  catch (e) { try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ } throw e; }
   const lifetimeMs = Number(env.CODE_EGRESS_GRANT_LIFETIME_MS) > 0 ? Number(env.CODE_EGRESS_GRANT_LIFETIME_MS) : DEFAULT_GRANT_LIFETIME_MS;
   log({ event: 'egress.rust_client', endpoint: `${host}:${port}` });
   return createRustEgressClient({ key, endpoint: `${host}:${port}`, ttlMs, lifetimeMs, log });

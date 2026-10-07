@@ -850,12 +850,16 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
   1. Build `cowork-egress-rs` from `deploy/egress-proxy/Dockerfile`. It is pinned to
      `release/versions.lock` `NOEVIA_RS_REF` and checked by sha256.
   2. Layer `deploy/examples/code-egress-rust.override.yml` after `code-sandbox.override.yml`.
-     This adds the `egress-rs` service on `code` (alias `egress-rs`) and `default`, with no
-     published port, plus the `code-egress-key` volume shared by web and the proxy only.
+     This adds the `egress-rs` service on `code` (code-only alias `egress-rs-code`, which it binds) and `default`, with no
+     published port, plus the `code-egress-key` volume shared by web and the proxy only. The key
+     file is 0440, group `CODE_EGRESS_KEY_GID` (default 1006, given to the proxy by `group_add`).
   3. Set `CODE_EGRESS_IMPL=rust` in `.env`.
 
   Web then mints signed grants (`docs/egress-grant-contract.md`) instead of starting its
-  in-process proxy, writes the derived key file, and points tasks at `egress-rs:CODE_EGRESS_PORT`.
+  in-process proxy, writes the derived key file, and points tasks at `egress-rs-code:CODE_EGRESS_PORT`.
+  Grants last 2 h by default (`CODE_EGRESS_GRANT_LIFETIME_MS`, max 24 h). Verify the bind:
+  `docker exec cowork-web-1 getent ahosts egress-rs-code` must return one address inside the
+  `code` subnet, and that address must match the `bind` in `egress.listening`.
   To roll back, set `CODE_EGRESS_IMPL=node`. Check with `docker logs cowork-egress-rs-1`: you
   should see `egress.listening` with `"signedGrants":true`. Web logs `egress.rust_client`. In
   rust mode a task's result has no per-host `network` summary.

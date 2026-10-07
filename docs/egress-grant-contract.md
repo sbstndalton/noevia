@@ -25,7 +25,7 @@ B64    = base64url, RFC 4648 §5, no padding
 
 The prefix `ngr1` names the contract version, and the MAC covers it. The token travels where the
 task token always went: as the password in `Proxy-Authorization: Basic base64("task:" token)`,
-which is the `http://task:<token>@egress-rs:8040` proxy URL the sandbox receives. Every character
+which is the `http://task:<token>@egress-rs-code:8040` proxy URL the sandbox receives. Every character
 of a token is URL-safe.
 
 ## Payload
@@ -43,7 +43,7 @@ Canonical JSON: these eight keys, **in this order**, with no whitespace and ASCI
 | `task` | `[A-Za-z0-9._:-]{1,128}` (job ids are UUIDs) |
 | `hosts` | ≤ 64 unique entries, each `^[a-z0-9-]+(\.[a-z0-9-]+)*$`, ≤ 253 chars. The web lowercases and drops outer dots first, as `hostAllowed` does. A host also grants its subdomains, but not lookalike suffixes. |
 | `iat` | issued at, Unix ms, > 0 |
-| `exp` | absolute expiry, Unix ms. `iat < exp`, `exp - iat` ≤ 86 400 000 (24 h). The web uses 12 h (`CODE_EGRESS_GRANT_LIFETIME_MS`). |
+| `exp` | absolute expiry, Unix ms. `iat < exp`, `exp - iat` ≤ 86 400 000 (24 h). The web uses 2 h by default (`CODE_EGRESS_GRANT_LIFETIME_MS`, capped at 24 h), close to a real task, so a lost revoke expires soon. |
 | `idle` | idle TTL ms, `1 ≤ idle ≤ exp - iat`. The web uses `CODE_EGRESS_TOKEN_TTL_MS` (default 6 h). |
 | `nonce` | 16 random bytes, base64url (22 chars) |
 
@@ -55,8 +55,8 @@ the canonical bytes. Integers are plain decimal.
 `secretStore.derive('code-egress-grant')` produces it: HKDF-SHA256 over `secrets.key` with the
 info `noevia:code-egress-grant`, 32 bytes. This key is separate from every other derived key. In
 rust mode the web writes it as 64 lowercase hex digits plus a newline to
-`CODE_EGRESS_GRANT_KEY_FILE`. The file is replaced atomically with mode 0444 on the
-`code-egress-key` volume. Only web (read-write) and the proxy (read-only) mount that volume; the
+`CODE_EGRESS_GRANT_KEY_FILE`. The file is replaced atomically with mode 0440, group `CODE_EGRESS_KEY_GID` (default 1006), on the
+`code-egress-key` volume. It is never world-readable: web (root) owns it and the proxy (uid 65532) reads it through `group_add` of the same gid. Only web (read-write) and the proxy (read-only) mount that volume; the
 sandbox never does. The proxy re-reads the file every 5 s, so it can appear after the proxy
 starts and is picked up after a `secrets.key` rotation and web restart. Without a key, signed
 tokens are refused with 503. `CODE_EGRESS_GRANT_KEY` (the hex value itself) is an alternative for
@@ -122,6 +122,6 @@ vectors file byte for byte: Rust regenerates it with `GRANT_VECTORS_WRITE=1 carg
 - The per-task host summary (`egress.activity`, "github.com was refused") is a Node-proxy
   feature. In rust mode the task result has no `network` block. The refusals are still logged by
   the proxy as JSON lines with `taskId` and `host`.
-- If web cannot reach the proxy when a task ends, the revoke is lost and logged as
+- Web retries a revoke 3 times over about 10 s. If all fail, it is lost and logged as
   `egress.revoke_failed`. The grant then still dies at its idle TTL or `exp`, and the sandbox
   container that held it is gone.

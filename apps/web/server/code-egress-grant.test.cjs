@@ -67,14 +67,45 @@ test('the Rust client mints a grant per task and posts a signed revoke when it e
   assert.deepEqual(logs, []);
 });
 
-test('a failed revoke is logged without the token', async () => {
-  const logs = [];
-  const client = createRustEgressClient({ key: KEY, endpoint: 'egress-rs:8040', log: (e) => logs.push(e),
-    post: async () => { throw Object.assign(Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }); } });
+const settle = () => new Promise((r) => setTimeout(r, 30));
+
+test('a failed revoke is retried and logged only after the last attempt, without the token', async () => {
+  const logs = [], tokens = [];
+  const client = createRustEgressClient({ key: KEY, endpoint: 'egress-rs-code:8040', log: (e) => logs.push(e), revokeDelaysMs: [5, 10],
+    post: async (_e, token) => { tokens.push(token); throw Object.assign(Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }); } });
   client.revoke('task-9');
-  await new Promise((r) => setImmediate(r));
-  await new Promise((r) => setImmediate(r));
-  assert.deepEqual(logs, [{ event: 'egress.revoke_failed', taskId: 'task-9', error: 'ECONNREFUSED' }]);
+  await settle();
+  assert.equal(tokens.length, 3);
+  assert.equal(new Set(tokens).size, 1, 'the same signed revoke is resent');
+  assert.deepEqual(logs, [{ event: 'egress.revoke_failed', taskId: 'task-9', attempts: 3, error: 'ECONNREFUSED' }]);
+  assert.ok(!JSON.stringify(logs).includes(tokens[0]));
+});
+
+test('a revoke that fails once then succeeds logs nothing', async () => {
+  const logs = [];
+  let calls = 0;
+  const client = createRustEgressClient({ key: KEY, endpoint: 'egress-rs-code:8040', log: (e) => logs.push(e), revokeDelaysMs: [5, 10],
+    post: async () => { calls++; if (calls === 1) throw Object.assign(Error('reset'), { code: 'ECONNRESET' }); return 204; } });
+  client.revoke('task-8');
+  await settle();
+  assert.equal(calls, 2);
+  assert.deepEqual(logs, []);
+  // A non-204 answer counts as a failure too.
+  const statuses = [];
+  const c2 = createRustEgressClient({ key: KEY, endpoint: 'x:1', log: (e) => statuses.push(e), revokeDelaysMs: [1],
+    post: async () => 503 });
+  c2.revoke('task-7');
+  await settle();
+  assert.deepEqual(statuses, [{ event: 'egress.revoke_failed', taskId: 'task-7', attempts: 2, status: 503 }]);
+});
+
+test('default grant lifetime is 2 h, configurable, capped at 24 h', () => {
+  const t = 1_800_000_000_000;
+  const exp = (opts) => JSON.parse(Buffer.from(createRustEgressClient({ key: KEY, endpoint: 'x:1', now: () => t, ...opts })
+    .grant({ taskId: 'a', domains: ['example.org'] }).token.split('.')[1], 'base64url')).exp - t;
+  assert.equal(exp({}), 2 * 3_600_000);
+  assert.equal(exp({ lifetimeMs: 30 * 60_000 }), 30 * 60_000);
+  assert.equal(exp({ lifetimeMs: 48 * 3_600_000 }), 24 * 3_600_000);
 });
 
 test('CODE_EGRESS_IMPL=rust writes the derived key file and returns the client; node stays the default', async () => {
@@ -84,13 +115,23 @@ test('CODE_EGRESS_IMPL=rust writes the derived key file and returns the client; 
   try {
     const file = path.join(dir, 'keys', 'grant.key');
     const logs = [];
-    const client = startEgressFromEnv({ CODE_EGRESS_IMPL: 'rust', CODE_EGRESS_PORT: '8040', CODE_EGRESS_GRANT_KEY_FILE: file },
-      { secrets, log: (e) => logs.push(e) });
+    const gid = String(process.getgid()); // a group this (non-root) test may chown to
+    const env = { CODE_EGRESS_IMPL: 'rust', CODE_EGRESS_PORT: '8040', CODE_EGRESS_GRANT_KEY_FILE: file, CODE_EGRESS_KEY_GID: gid };
+    const client = startEgressFromEnv(env, { secrets, log: (e) => logs.push(e) });
     assert.equal(client.impl, 'rust');
-    assert.equal(client.endpoint, 'egress-rs:8040');
+    assert.equal(client.endpoint, 'egress-rs-code:8040');
     assert.deepEqual(derived, [[GRANT_KEY_LABEL, 32]]);
     assert.equal(GRANT_KEY_LABEL, 'code-egress-grant');
     assert.equal(fs.readFileSync(file, 'utf8'), `${'07'.repeat(32)}\n`);
+    const st = fs.statSync(file);
+    assert.equal(st.mode & 0o777, 0o440, 'owner + group read only, never world-readable');
+    assert.equal(st.gid, Number(gid));
+    // Rewritten on restart (atomic replace over the read-only previous file).
+    startEgressFromEnv(env, { secrets });
+    assert.equal(fs.statSync(file).mode & 0o777, 0o440);
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['grant.key'], 'no temp file left behind');
+    assert.throws(() => startEgressFromEnv({ ...env, CODE_EGRESS_KEY_GID: '' }, { secrets }), /KEY_GID/);
+    derived.length = 1;
     assert.ok(!JSON.stringify(logs).includes('0707'), 'key material must not be logged');
     assert.throws(() => startEgressFromEnv({ CODE_EGRESS_IMPL: 'rust', CODE_EGRESS_PORT: '8040' }, { secrets }), /GRANT_KEY_FILE/);
     assert.throws(() => startEgressFromEnv({ CODE_EGRESS_IMPL: 'rust', CODE_EGRESS_PORT: '8040', CODE_EGRESS_GRANT_KEY_FILE: file }), /secret store/);

@@ -499,6 +499,21 @@ jobs:
           [ "$a" = "$b" ] || { echo "NOEVIA_RS_SHA256 differs between egress-proxy and model-manager Dockerfiles"; exit 1; }
           grep -q "CODE_EGRESS_IMPL: \${CODE_EGRESS_IMPL:-node}" deploy/examples/code-egress-rust.override.yml \
             || { echo "code-egress-rust.override.yml must default CODE_EGRESS_IMPL to node"; exit 1; }
+          # The proxy binds CODE_EGRESS_BIND: it must be an alias that exists on `code` only (a
+          # service name resolves on every network, possibly to the `default` address first), and
+          # web must hand tasks that same name.
+          cfg=$(docker compose --env-file .env.example --profile code -f compose.yaml \
+            -f deploy/examples/code-sandbox.override.yml -f deploy/examples/code-egress-rust.override.yml config --format json)
+          bind=$(jq -r '.services["egress-rs"].environment.CODE_EGRESS_BIND' <<<"$cfg")
+          [ "$bind" != "egress-rs" ] || { echo "CODE_EGRESS_BIND must not be the service name"; exit 1; }
+          jq -e --arg b "$bind" '.services["egress-rs"].networks.code.aliases | index($b) != null' <<<"$cfg" >/dev/null \
+            || { echo "CODE_EGRESS_BIND ($bind) is not an alias on the code network"; exit 1; }
+          jq -e --arg b "$bind" '[.services[] | .networks // {} | to_entries[] | select(.key != "code") | .value.aliases // [] | index($b)] | all(. == null)' <<<"$cfg" >/dev/null \
+            || { echo "alias $bind must exist on the code network only"; exit 1; }
+          [ "$(jq -r '.services.web.environment.CODE_EGRESS_RUST_HOST' <<<"$cfg")" = "$bind" ] \
+            || { echo "web CODE_EGRESS_RUST_HOST must equal the proxy's code-only alias"; exit 1; }
+          [ "$(jq -r '.networks.code.internal' <<<"$cfg")" = "true" ] || { echo "code network must be internal"; exit 1; }
+          jq -e '.services["egress-rs"].ports == null' <<<"$cfg" >/dev/null || { echo "egress-rs must publish no ports"; exit 1; }
       - name: Build egress-rs image
         if: env.RUN_JOB == 'true'
         run: |
