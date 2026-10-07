@@ -8,7 +8,7 @@
 > cutover landed as one squash commit (PR #958); rollback is `git revert` of that commit (see
 > Rollback). Choices made at the cutover: `tools/repo-index` moved to noevia-core (it indexes the
 > server code); the `experiments/` harness workflows lay the pinned noevia-core out at `apps/web`
-> in CI (git-ignored, never committed); release folders on the box are the unpacked assembled
+> in CI (never committed; the CI guard refuses it); release folders on the box are the unpacked assembled
 > tree, which keeps every sidecar's `services/<name>` path. The steps below are the record.
 
 Completes [ADR 0001](adr-0001-rust-and-repo-split.md): `apps/web/` and `services/` move out of

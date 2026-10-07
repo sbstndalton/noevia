@@ -14,10 +14,9 @@ deploy/private/
 __pycache__/
 *.pyc
 
-# Repo split (#952): apps/web/ is gone from this repo (CI refuses it). The experiments' harnesses
-# lay the pinned noevia-core out there locally (docs/repo-split-cutover.md), and `make assemble`
-# writes release trees to out/; neither is ever committed.
-/apps/web/
+# Repo split (#952): `make assemble` writes release trees to out/. (apps/web/ is deliberately NOT
+# ignored: the split repos' CI lays a workspace out there inside a noevia checkout and runs
+# ripgrep, which would honour an ignore rule. CI refuses a committed apps/web instead.)
 /out/
 
 # Atomic fresh-install environment staging.
