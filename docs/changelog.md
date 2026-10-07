@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 4be51449 — 2026-10-07 (web only: WebDAV listing parser moved to `server/dav-listing.cjs`, dark `DAV_PARSE_IMPL` switch, `dav-parse.wasm` built into the web image)
+
+### Services
+
+- **Web:** [#972](https://github.com/sbstndalton/noevia/pull/972) pins noevia-core `7b95687c` ([noevia-core#3](https://github.com/sbstndalton/noevia-core/pull/3), closes [#967](https://github.com/sbstndalton/noevia/issues/967)) and `build/web.Dockerfile` builds and verifies `server/wasm/dav-parse.wasm` from noevia-rs `920bcaba` (tarball and module sha256 checked). Image `cowork-web:4be51449` (was `cowork-web:3a48d1e6`); web client unchanged at `9dab1569`.
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling, Laya, egress:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed. `DAV_PARSE_IMPL` and every other flag are unset, so the JS parser still produces every listing; switching to `wasm` is the owner's call (see "Storage listing parser" in `docs/deployment.md`).
+
+Source: noevia main `4be51449abd7e6b5607ac3ffae00342aee6748ca`. Assembled on the Mac with `deploy/tools/assemble-release.sh 4be51449` (web `9dab1569`, core `7b95687c`, services `66b40f96`), built on the server with `noevia/deploy/tools/build-web-release.sh`.
+
+**Candidate checks (before cutover).** Image `dav-parse.wasm` sha256 `ed104305…d659` equals `DAV_PARSE_WASM_SHA256` in core's `server/dav-parse.lock`; `DAV_PARSE_IMPL` is not in the image environment; `server/dav-listing.cjs` present. A throwaway container (`--network none`, empty state dir, removed afterwards) went healthy; `/api/ready` 200, `version.json` correct.
+
+**Backups.** `config/.env.bak.before-4be51449` (values never printed), `state/web/cowork.db.bak.before-4be51449` (+ `-wal`), `releases/current-pointer-before-4be51449.txt`, container snapshot `releases/snapfull-before-4be51449.txt`.
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=4be51449`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:4be51449` healthy, 0 restarts; `/version.json` `{"version":"4be51449","web":"9dab1569…","core":"7b95687c…"}`; `/api/ready` 200 (also through the public URL); JS, CSS, woff2 fonts and icons 200; CSP has no Google sources; egress is the in-process node proxy (`CODE_EGRESS_IMPL` unset); logs clean. The post-snapshot (`releases/snapfull-after-4be51449.txt`) differs from the before one only in `cowork-web-1`. No storage browse call was made (no synthetic endpoint, real storage not touched).
+
+Rollback (web only). `ln -sfn /mnt/docker/appdata/cowork/releases/3a48d1e6 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=3a48d1e6/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. `cowork-web:3a48d1e6` is still on the host; the DB backup is only needed if the schema changed (it did not).
+
 ## Release Model manager 08c65957 — 2026-10-07 (model manager only: Rust `model-files` CLI behind `MODEL_FILES_IMPL`, default python)
 
 ### Services
