@@ -4,6 +4,10 @@
 # Keep secrets in a separate .env file and configure Compose Manager's
 # "Environment Path" to point to it. COWORK_SOURCE_DIR must identify the
 # current source release; COWORK_STATE_DIR must identify durable state.
+# Since the repo split (#952) a source release is an unpacked assembled tree
+# (deploy/tools/assemble-release.sh: noevia/, web/, core/, services/, release-refs),
+# so sidecars build from services/<name>, code-sandbox from core/code-sandbox and web
+# from the tree root with noevia/build/web.Dockerfile.
 name: cowork
 
 services:
@@ -78,7 +82,8 @@ services:
   web:
     networks: [default, ocr, laya]
     build:
-      context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/apps/web
+      context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}
+      dockerfile: noevia/build/web.Dockerfile
     image: cowork-web:${COWORK_VERSION:-local}
     restart: unless-stopped
     ports:

@@ -324,7 +324,7 @@ rename with passkey continuity · Kiwix offline Wikipedia.
 
 Each builds on the one before or is ordered by value. Work top-down; record any reordering here.
 
-**Repo split and Rust:** [ADR 0001](adr-0001-rust-and-repo-split.md). Done: prep (#897), macOS extracted (#900), Rust slices 1–2 (#896, #909; GGUF parser in the model-manager image, dark), egress proxy port (#926, dark), release assembly dry run (#922). Next: extract noevia-web and noevia-core at one cut SHA (assembly then switches from `self` to real refs); the web↔egress-proxy grant contract before the Rust proxy can replace code-egress.cjs; content-hash comparison in the assembly CI job (#938).
+**Repo split and Rust:** [ADR 0001](adr-0001-rust-and-repo-split.md). Done: prep (#897), macOS extracted (#900), Rust slices 1–2 (#896, #909; GGUF parser in the model-manager image, dark), egress proxy port (#926, dark), release assembly (#922), and the cutover (#952, 2026-10-07): noevia-web, noevia-core and noevia-services extracted at `f42f65f1` and pinned in `release/versions.lock`, `apps/web/` and `services/*` deleted here, releases assembled from the pins ([cutover runbook](repo-split-cutover.md)). Next: the web↔egress-proxy grant contract before the Rust proxy can replace code-egress.cjs; content-hash comparison in the assembly CI job (#938).
 
 **Architecture under review:** the local-first System-One design ([research/system-one/](research/system-one/README.md)). Nothing below that touches routing, RAG, providers or model lifecycle starts before the review; its first prototype, RAG rerank, shipped in 67f336e (pool 12 → keep 6). Multi-hop rerun done (12→6 3/4). Next: watch fallback rates in the web log (`[rag] rerank`).
 

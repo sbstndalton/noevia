@@ -1,10 +1,9 @@
-# Web image from an ASSEMBLED release tree (#922; deploy/tools/assemble-release.sh). DRY RUN:
-# the live release still builds apps/web/Dockerfile. Build context = the extracted tarball root
-# (noevia/, web/, core/, release-refs), e.g.
+# The web image, built from an ASSEMBLED release tree (#922, #952; deploy/tools/assemble-release.sh).
+# Since the repo split cutover this is the only web image recipe: apps/web/Dockerfile is gone, and
+# the last CI run proving both built the same image is linked from the cutover PR. Build context =
+# the extracted tarball root (noevia/, web/, core/, release-refs), e.g.
 #   docker build -f noevia/build/web.Dockerfile --build-arg COWORK_VERSION=<sha> <tree>
-# The image must stay equivalent to apps/web/Dockerfile's: same build command, same runtime base,
-# env, healthcheck and file layout (CI "Assembled release dry run" compares the two). Mirror any
-# change to apps/web/Dockerfile here.
+# Releases use deploy/tools/build-web-release.sh, which wraps exactly this.
 FROM node:22-alpine AS build
 WORKDIR /app
 # COWORK_VERSION stays the noevia (integration repo) sha; it must match the assembled tree's
@@ -20,7 +19,7 @@ RUN set -e; . ./release-refs; \
 COPY web/package.json web/package-lock.json ./
 # Prefer IPv4 for registry lookups: hosts with a broken IPv6 route otherwise time out.
 RUN NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
-# Lay web/ and core/ out as apps/web is today so the same test gate and build command run.
+# Lay web/ and core/ out as the monorepo's apps/web was, so the same test gate and build command run.
 COPY web/ ./
 COPY core/server ./server
 COPY core/tests/server ./tests/server
@@ -29,7 +28,7 @@ RUN set -e; set -a; . ./release-refs; set +a; export STAMP_VERSION="$NOEVIA_SHA"
     node --test tests/client/*.test.cjs tests/server/*.test.cjs && npm run build && \
     node -e 'const fs=require("fs");const f="dist/version.json";const v=JSON.parse(fs.readFileSync(f,"utf8"));if(v.version!==process.env.STAMP_VERSION){console.error("version.json not stamped with "+process.env.STAMP_VERSION);process.exit(1)}fs.writeFileSync(f,JSON.stringify({version:v.version,web:process.env.NOEVIA_WEB_SHA,core:process.env.NOEVIA_CORE_SHA})+"\n")'
 
-# Runtime: identical to apps/web/Dockerfile's (glibc for sqlite-vec / better-sqlite3).
+# Runtime (glibc for sqlite-vec / better-sqlite3).
 FROM node:22-bookworm
 WORKDIR /app
 COPY --from=build /app/dist ./dist

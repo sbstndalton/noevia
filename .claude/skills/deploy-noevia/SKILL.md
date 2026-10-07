@@ -108,7 +108,9 @@ unsynced copies of the compose config, the preflight wrapper, verifying the cand
 
 The short version, with the full sequence in that reference:
 
-1. `git archive` a tarball, `scp` it, extract under `releases/<sha>/`
+1. Assemble the release tarball from the pinned repos (`deploy/tools/assemble-release.sh <sha>`;
+   since the repo split, #952, a `git archive` of noevia has no client, server or sidecars),
+   `scp` it, extract under `releases/<sha>/`
 2. Back up `config/.env`
 3. Build — allow ~10 min over the Tailscale relay, much longer if the image pulls models
 4. **Verify the candidate before flipping `current`**

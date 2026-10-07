@@ -1,35 +1,8 @@
-.PHONY: test test-web test-diary test-docling test-model-manager test-ocr test-laya test-code-sandbox test-deploy test-tools build compose-check
+.PHONY: test test-deploy assemble compose-check
 
-test: test-web test-diary test-docling test-model-manager test-ocr test-laya test-code-sandbox test-deploy test-tools
-
-test-web:
-	cd apps/web && npm test && npm run typecheck
-
-test-diary:
-	cd services/diary && pytest -q
-
-# The extraction contract, with Docling stubbed (extract.py keeps every Docling import inside a
-# function, so these run without the models). Previously absent from this target and from CI, so
-# nothing ran them.
-test-docling:
-	cd services/docling && pytest -q
-
-# Needs `pip install -r services/model-manager/requirements.txt pytest pytest-asyncio`.
-test-model-manager:
-	cd services/model-manager && pytest -q
-
-# Standard library only. The real-engine cases generate their own synthetic PDFs (synthetic_pdfs.py)
-# and run when tesseract (eng+deu), ghostscript and poppler-utils are installed; otherwise they skip
-# and -rs prints which engine is missing.
-test-ocr:
-	cd services/ocr && pytest -q -rs
-
-# Standard library only (the decision worker is faked).
-test-laya:
-	cd services/laya && pytest -q
-
-test-code-sandbox:
-	node --test services/code-sandbox/pi-acp-bridge.test.cjs
+# The client, server and sidecar tests live with their code since the repo split (#952):
+# sbstndalton/noevia-web, noevia-core and noevia-services each run them in their own CI.
+test: test-deploy
 
 # Deploy tooling: the shell and wrapper tests CI runs, plus the unittest suites under deploy/tests
 # (rclone/flock-dependent cases skip themselves when those are absent) and the PHP preflight test
@@ -39,16 +12,18 @@ test-deploy:
 	python3 deploy/preflight/test_wrapper.py
 	python3 deploy/nextcloud/test_repair_push.py
 	bash deploy/tools/test-build-web-release.sh
+	bash deploy/tools/test-assemble-release.sh
 	bash deploy/tools/test-sidecar-restart-alert.sh
 	@if command -v php >/dev/null 2>&1; then php deploy/preflight/test_check.php; else echo "php not installed; skipping deploy/preflight/test_check.php"; fi
 
-# Dev tooling (tools/repo-index). Plain node, no install step.
-test-tools:
-	node --test tools/repo-index/*.test.cjs
-
-build:
-	cd apps/web && npm run build
-	docker build -t cowork-diary:dev services/diary
+# A release tree for HEAD from the pinned repos: out/noevia-release-<sha>.tar.gz, unpacked into a
+# fresh out/tree. Point COWORK_SOURCE_DIR at it ($(CURDIR)/out/tree) and Compose builds from it.
+# Needs a clean checkout.
+assemble:
+	rm -rf out/tree
+	mkdir -p out/tree
+	bash deploy/tools/assemble-release.sh $$(git rev-parse HEAD) out
+	tar -xzf out/noevia-release-$$(git rev-parse HEAD).tar.gz -C out/tree
 
 # Validates every Compose file the repo ships. `--env-file .env.example` supplies the required
 # image tags (DIARY_VERSION, OCR_VERSION), so this passes on a clean checkout with no .env. The

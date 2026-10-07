@@ -21,22 +21,28 @@ directory is a stale checkout, far behind. Only release `a576ecf` was a real
 
 **Deploy by shipping a tarball.** There is no pull-based path.
 
+Since the repo split (#952) the tarball is the **assembled release**, built from the repos
+pinned in `release/versions.lock` (a `git archive` of noevia no longer contains the code). Run
+from a clean noevia checkout at the released commit; docs/deployment.md "The deploy" is the
+reference.
+
 ```sh
 SHA=$(git rev-parse --short HEAD)
-git archive --format=tar.gz -o "/tmp/$SHA.tar.gz" HEAD
-scp "/tmp/$SHA.tar.gz" root@100.70.173.74:/mnt/docker/appdata/cowork/releases/
+mkdir -p /tmp/noevia-release && bash deploy/tools/assemble-release.sh $SHA /tmp/noevia-release
+scp "/tmp/noevia-release/noevia-release-$SHA.tar.gz" root@100.70.173.74:/mnt/docker/appdata/cowork/releases/
 ssh root@100.70.173.74 "set -e
-cd /mnt/docker/appdata/cowork/releases && mkdir -p $SHA && tar -xzf $SHA.tar.gz -C $SHA && rm -f $SHA.tar.gz
+cd /mnt/docker/appdata/cowork/releases && mkdir -p $SHA && tar -xzf noevia-release-$SHA.tar.gz -C $SHA && rm -f noevia-release-$SHA.tar.gz
 cd /mnt/docker/appdata/cowork && cp config/.env config/.env.bak.\$(date +%Y%m%d%H%M%S)
 cd /boot/config/plugins/compose.manager/projects/Cowork
-COWORK_SOURCE_DIR=/mnt/docker/appdata/cowork/releases/$SHA COWORK_VERSION=$SHA docker compose --env-file /mnt/docker/appdata/cowork/config/.env build
+bash /mnt/docker/appdata/cowork/releases/$SHA/noevia/deploy/tools/build-web-release.sh $SHA /mnt/docker/appdata/cowork/releases/$SHA
 # STOP HERE if candidate verification fails — see trap 4.
 ln -sfn /mnt/docker/appdata/cowork/releases/$SHA /mnt/docker/appdata/cowork/current
 sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=$SHA/' /mnt/docker/appdata/cowork/config/.env
 bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --wait --wait-timeout 120"
 ```
 
-Layout: `/mnt/docker/appdata/cowork/releases/<git-sha>/` holds a full source checkout;
+Layout: `/mnt/docker/appdata/cowork/releases/<git-sha>/` holds the unpacked assembled tree
+(`noevia/`, `web/`, `core/`, `services/`, `release-refs`; pre-split releases are monorepo trees);
 `current` is a symlink to the active one. `COWORK_SOURCE_DIR` in `.env` points the
 compose file's `build: context:` at `current`, and `COWORK_VERSION` sets the image tag.
 `config/.env` is chmod 600 — back it up before editing, the `.env.bak.<timestamp>`

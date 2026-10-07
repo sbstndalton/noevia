@@ -8,10 +8,13 @@ on:
 permissions:
   contents: read
 
+# Since the repo split cutover (#952) the client, server and sidecar tests and image builds run in
+# sbstndalton/noevia-web, noevia-core and noevia-services. This repo is the integration repo: it
+# checks the deploy tooling, and assembles a release from the SHAs pinned in
+# release/versions.lock, builds the web image from it and boots it.
 jobs:
-  # Path filter. Every existing job below still runs (so its check name always
-  # reports), but when its filter is false it only runs a no-op step and
-  # succeeds. That keeps any required-check names intact without settings changes.
+  # Path filter. Every job below still runs (so its check name always reports), but when its
+  # filter is false it only runs a no-op step and succeeds.
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
@@ -19,14 +22,6 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      web: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.ci == 'true' }}
-      diary: ${{ steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
-      model_manager: ${{ steps.filter.outputs.model_manager == 'true' || steps.filter.outputs.ci == 'true' }}
-      docling: ${{ steps.filter.outputs.docling == 'true' || steps.filter.outputs.ci == 'true' }}
-      images: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.diary == 'true' || steps.filter.outputs.ci == 'true' }}
-      ocr: ${{ steps.filter.outputs.ocr == 'true' || steps.filter.outputs.ci == 'true' }}
-      laya: ${{ steps.filter.outputs.laya == 'true' || steps.filter.outputs.ci == 'true' }}
-      code_sandbox: ${{ steps.filter.outputs.code_sandbox == 'true' || steps.filter.outputs.ci == 'true' }}
       deploy: ${{ steps.filter.outputs.deploy == 'true' || steps.filter.outputs.ci == 'true' }}
       assembly: ${{ steps.filter.outputs.assembly == 'true' || steps.filter.outputs.ci == 'true' }}
       split: ${{ steps.filter.outputs.split == 'true' || steps.filter.outputs.ci == 'true' }}
@@ -39,411 +34,41 @@ jobs:
             echo "::error::clients/macos/ must not exist in this repo. The macOS client lives in https://github.com/sbstndalton/noevia-macos (#900); make the change there."
             exit 1
           fi
+      # The repo split (#952): the client, server and sidecars live in their own repos. This covers
+      # all of apps/web, so the retired apps/web/Dockerfile cannot return either.
+      - name: Guard against re-added split paths
+        run: |
+          for p in apps/web services/diary services/docling services/laya services/model-manager services/ocr services/code-sandbox; do
+            if [ -e "$p" ]; then
+              echo "::error::$p/ must not exist in this repo. It lives in noevia-web, noevia-core or noevia-services (#952); make the change there."
+              exit 1
+            fi
+          done
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
         with:
           filters: |
-            web:
-              - 'apps/web/**'
-              - 'package*.json'
-              - 'tools/repo-index/**'
-              - '*.config.*'
-              - 'tsconfig*.json'
-              - '.nvmrc'
-              - '.npmrc'
-              - 'compose.*.yaml'
-              - 'docs/spec-model-loader-api-v1.md'
-            diary:
-              - 'services/diary/**'
-            model_manager:
-              - 'services/model-manager/**'
-              - 'docs/spec-model-loader-api-v1.md'
-              - 'release/versions.lock'
-            docling:
-              - 'services/docling/**'
-            ocr:
-              - 'services/ocr/**'
-            laya:
-              - 'services/laya/**'
-            code_sandbox:
-              - 'services/code-sandbox/**'
             deploy:
               - 'compose.yaml'
               - 'compose.*.yaml'
               - '.env.example'
               - 'Makefile'
               - 'deploy/**'
-              - 'apps/web/Dockerfile'
+              - 'build/**'
               - 'docs/deployment.md'
               - 'release/versions.lock'
             assembly:
               - 'deploy/**'
               - 'build/**'
               - 'release/**'
-              - 'apps/web/**'
-              - 'services/**'
+              - 'compose.yaml'
+              - 'compose.*.yaml'
+              - '.env.example'
             split:
               - 'tools/repo-split/**'
-              - 'release/**'
-              - 'deploy/tools/assemble-release.sh'
             # A change to CI itself runs every job.
             ci:
               - '.github/workflows/**'
-  node-tests:
-    name: Node tests, typecheck, frontend build
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.web }}
-    defaults:
-      run:
-        working-directory: apps/web
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No web changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: actions/setup-node@v4
-        if: env.RUN_JOB == 'true'
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            apps/web/package-lock.json
-            apps/web/server/package-lock.json
-      # The tests exercise the real server (auth.cjs needs better-sqlite3 and
-      # friends from the nested server package), so install both trees.
-      - run: npm ci --no-fund --no-audit
-        if: env.RUN_JOB == 'true'
-      - run: npm ci --no-fund --no-audit
-        if: env.RUN_JOB == 'true'
-        working-directory: apps/web/server
-      - run: npm run typecheck
-        if: env.RUN_JOB == 'true'
-      # #897 repo-split guard: src/ and server/ must not import each other.
-      - run: npm run check:boundaries
-        if: env.RUN_JOB == 'true'
-      - run: npm test
-        if: env.RUN_JOB == 'true'
-      # The verifier's privilege separation (#703) needs root to drop to its git and test uids;
-      # `npm test` skips it, so it runs once more here under sudo.
-      - run: sudo "$(command -v node)" --test server/code-verify-root.test.cjs
-        if: env.RUN_JOB == 'true'
-      # `npm test` alone never sets STAMP_VERSION, so it never covered the
-      # Docker release path: apps/web/Dockerfile exports STAMP_VERSION from
-      # the COWORK_VERSION build arg (the release SHA) before running its own
-      # `node --test`, and tests that assumed the STAMP_VERSION-less fallback
-      # broke every real release build (issue #317). Re-run just the tests
-      # that read STAMP_VERSION with a SHA-shaped value set, matching what a
-      # release build actually does.
-      - run: STAMP_VERSION=ci1234567 node --test tests/client/stamp-icons.test.cjs tests/server/build-version-stamp.test.cjs
-        if: env.RUN_JOB == 'true'
-      - run: npm run build
-        if: env.RUN_JOB == 'true'
-      # Dev tooling for agents working on this repo. No install step, but it
-      # imports apps/web/server/tool-result-reduce.cjs, so it must not drift.
-      - name: Install repo-index search dependency
-        if: env.RUN_JOB == 'true'
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - run: node --test tools/repo-index/*.test.cjs
-        if: env.RUN_JOB == 'true'
-        working-directory: .
-
-  python-tests:
-    name: Diary test suite
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.diary }}
-    defaults:
-      run:
-        working-directory: services/diary
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No diary changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: actions/setup-python@v5
-        if: env.RUN_JOB == 'true'
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/diary/requirements*.txt
-      - run: pip install -r requirements-dev.txt
-        if: env.RUN_JOB == 'true'
-      - run: python -m pytest -q
-        if: env.RUN_JOB == 'true'
-
-  docling-tests:
-    name: Docling extraction contract
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.docling }}
-    defaults:
-      run:
-        working-directory: services/docling
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No docling changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: actions/setup-python@v5
-        if: env.RUN_JOB == 'true'
-        with:
-          python-version: "3.12"
-      # No Docling install: extract.py keeps every Docling import inside a
-      # function precisely so this contract is testable without the 669 MB of
-      # models. These tests existed but nothing ran them until now.
-      # pypdfium2 (the image gets it from docling's format-pdf extra) reads the
-      # synthetic PDFs' text layer for the native-text fallback tests (#700).
-      - run: pip install pytest "pypdfium2!=4.30.1,>=4.30.0,<6.0.0"
-        if: env.RUN_JOB == 'true'
-      - run: python -m pytest -q
-        if: env.RUN_JOB == 'true'
-
-  model-manager-tests:
-    name: Model manager test suite
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.model_manager }}
-    defaults:
-      run:
-        working-directory: services/model-manager
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No model_manager changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: actions/setup-python@v5
-        if: env.RUN_JOB == 'true'
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: services/model-manager/requirements.txt
-      - run: pip install -r requirements.txt pytest pytest-asyncio
-        if: env.RUN_JOB == 'true'
-      - run: python -m pytest -q
-        if: env.RUN_JOB == 'true'
-      # #909: gguf-meta (sbstndalton/noevia-rs) at release/versions.lock's NOEVIA_RS_REF, fetched
-      # and checksum-verified exactly as the Dockerfile does, then compared with the Python parser.
-      - name: Fetch noevia-rs at the locked ref
-        if: env.RUN_JOB == 'true'
-        working-directory: .
-        run: |
-          set -euo pipefail
-          ref=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)
-          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "NOEVIA_RS_REF in release/versions.lock is not a 40-char SHA"; exit 1; }
-          df=services/model-manager/Dockerfile
-          df_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$df")
-          sum=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$df")
-          [ "$df_ref" = "$ref" ] || { echo "Dockerfile NOEVIA_RS_REF ($df_ref) != versions.lock ($ref)"; exit 1; }
-          curl -fsSL -o /tmp/noevia-rs.tar.gz "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$ref"
-          echo "$sum  /tmp/noevia-rs.tar.gz" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/noevia-rs"
-          tar -xzf /tmp/noevia-rs.tar.gz -C "$RUNNER_TEMP/noevia-rs" --strip-components=1
-      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
-        if: env.RUN_JOB == 'true'
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        if: env.RUN_JOB == 'true'
-        with:
-          workspaces: ${{ runner.temp }}/noevia-rs
-      - name: Build gguf-meta
-        if: env.RUN_JOB == 'true'
-        working-directory: ${{ runner.temp }}/noevia-rs
-        run: cargo build --release --locked -p gguf-meta
-      - name: Differential test (gguf-meta vs Python parser)
-        if: env.RUN_JOB == 'true'
-        env:
-          GGUF_META_BIN: ${{ runner.temp }}/noevia-rs/target/release/gguf-meta
-          GGUF_META_FIXTURES: ${{ runner.temp }}/noevia-rs/crates/gguf/tests/fixtures
-        run: python -m pytest -q -rs tests/test_gguf_meta_differential.py tests/test_gguf_parser_switch.py
-      # The image build proves the Dockerfile (pinned fetch, checksum, cargo build) and that the
-      # bookworm-built binary runs on the runtime base; it must print the same summary as above.
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3 (v3.12.0)
-        if: env.RUN_JOB == 'true'
-      - name: Build model-manager image
-        if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
-        with:
-          context: services/model-manager
-          push: false
-          load: true
-          tags: noevia-model-manager:ci
-          cache-from: type=gha,scope=model-manager
-          cache-to: type=gha,mode=max,scope=model-manager
-      - name: gguf-meta runs inside the image
-        if: env.RUN_JOB == 'true'
-        run: |
-          set -euo pipefail
-          fx="$RUNNER_TEMP/noevia-rs/crates/gguf/tests/fixtures"
-          docker run --rm -v "$fx:/fx:ro" --entrypoint gguf-meta noevia-model-manager:ci /fx/llama_full.gguf > /tmp/in-image.json
-          "$RUNNER_TEMP/noevia-rs/target/release/gguf-meta" "$fx/llama_full.gguf" > /tmp/on-host.json
-          cmp /tmp/in-image.json /tmp/on-host.json
-          docker run --rm noevia-model-manager:ci python -c "from app import gguf_meta; assert gguf_meta._rust_binary() == '/usr/local/bin/gguf-meta'; assert gguf_meta.parser_choice() == 'python'"
-
-  docker-build:
-    name: Docker images build
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.images }}
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No images changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3 (v3.12.0)
-        if: env.RUN_JOB == 'true'
-      - name: Build web image
-        if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
-        with:
-          context: apps/web
-          push: false
-          load: true
-          tags: noevia-web:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      # #337: the build above only proved the image compiles; it never proved the
-      # container boots. Run it once with synthetic env (no real secrets, no sidecars)
-      # and poll /api/ready so a runtime-only crash (e.g. a file the runtime stage
-      # never copied) fails CI instead of the next production rollout.
-      - name: Boot web image and check /api/ready
-        if: env.RUN_JOB == 'true'
-        run: |
-          set -e
-          docker run -d --name noevia-web-ci \
-            -p 8021:8021 \
-            -e UI_PORT=8021 \
-            -e UI_AUTH_TOKEN=ci-synthetic-token-$RANDOM \
-            -e DIARY_AUTH_TOKEN=ci-synthetic-diary-token-$RANDOM \
-            -e DIARY_TENANT_KEY=$(openssl rand -hex 32) \
-            -e INFERENCE_BASE_URL=http://127.0.0.1:1 \
-            -e DIARY_BASE_URL=http://127.0.0.1:1 \
-            noevia-web:ci
-          ok=""
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8021/api/ready -o /tmp/ready.json; then
-              echo "Response: $(cat /tmp/ready.json)"
-              ok=1
-              break
-            fi
-            sleep 2
-          done
-          if [ -z "$ok" ]; then
-            echo "web image never became ready; container logs follow:"
-            docker logs noevia-web-ci || true
-            docker rm -f noevia-web-ci || true
-            exit 1
-          fi
-          docker logs noevia-web-ci || true
-          docker rm -f noevia-web-ci
-      - name: Build diary image
-        if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
-        with:
-          context: services/diary
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  ocr-tests:
-    name: OCR service tests
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.ocr }}
-    defaults:
-      run:
-        working-directory: services/ocr
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No ocr changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: actions/setup-python@v5
-        if: env.RUN_JOB == 'true'
-        with:
-          python-version: "3.12"
-      # The same engines the image installs (services/ocr/Dockerfile), so the real-engine cases
-      # (tesseract OCR of a generated scan, Ghostscript reduction of an oversized PDF, encrypted and
-      # malformed input) run here instead of skipping. The PDFs are generated by
-      # services/ocr/synthetic_pdfs.py; none is committed (#856). Only on OCR/CI changes: the
-      # job still skips entirely otherwise.
-      - name: Install OCR engines
-        if: env.RUN_JOB == 'true'
-        working-directory: .
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu ghostscript poppler-utils
-      # Python side is the standard library plus pytest.
-      - run: pip install pytest
-        if: env.RUN_JOB == 'true'
-      # -rs prints any skip with its reason, so a missing engine is visible in the log.
-      - run: python -m pytest -q -rs
-        if: env.RUN_JOB == 'true'
-
-  laya-tests:
-    name: Laya service tests
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.laya }}
-    defaults:
-      run:
-        working-directory: services/laya
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        working-directory: .
-        run: echo "No laya changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: actions/setup-python@v5
-        if: env.RUN_JOB == 'true'
-        with:
-          python-version: "3.12"
-      # The decision worker is faked (no torch, no model); the recovery and timeout logic around
-      # it is what these tests cover.
-      - run: pip install pytest
-        if: env.RUN_JOB == 'true'
-      - run: python -m pytest -q
-        if: env.RUN_JOB == 'true'
-
-  code-sandbox-tests:
-    name: Code sandbox bridge tests
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      RUN_JOB: ${{ needs.changes.outputs.code_sandbox }}
-    steps:
-      - name: Skip (no relevant changes)
-        if: env.RUN_JOB != 'true'
-        run: echo "No code-sandbox changes; skipping."
-      - uses: actions/checkout@v4
-        if: env.RUN_JOB == 'true'
-      - uses: actions/setup-node@v4
-        if: env.RUN_JOB == 'true'
-        with:
-          node-version: 22
-      # pi-acp-bridge.cjs has no dependencies; the verifier and supervisor are covered by the
-      # web server's tests (code-verify*.test.cjs).
-      - run: node --test services/code-sandbox/pi-acp-bridge.test.cjs
-        if: env.RUN_JOB == 'true'
 
   deploy-tests:
     name: Deploy tooling shell/wrapper tests
@@ -482,21 +107,17 @@ jobs:
       # Every Compose file the repo ships must still parse (no containers are started).
       - run: make compose-check
         if: env.RUN_JOB == 'true'
-      # #926: the dark Rust egress proxy image builds from release/versions.lock's NOEVIA_RS_REF,
-      # with the same checksum model-manager pins; the Dockerfile default must match the lock.
+      # #926: the dark Rust egress proxy image builds from release/versions.lock's NOEVIA_RS_REF;
+      # the Dockerfile default must match the lock. (The model-manager Dockerfile, which pins the
+      # same ref and checksum, lives in noevia-services; "Assembled release" checks it.)
       - name: egress-rs Dockerfile pin matches the lock
         if: env.RUN_JOB == 'true'
         run: |
           set -euo pipefail
           ref=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)
           [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "NOEVIA_RS_REF in release/versions.lock is not a 40-char SHA"; exit 1; }
-          for df in deploy/egress-proxy/Dockerfile services/model-manager/Dockerfile; do
-            df_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$df")
-            [ "$df_ref" = "$ref" ] || { echo "$df NOEVIA_RS_REF ($df_ref) != versions.lock ($ref)"; exit 1; }
-          done
-          a=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)
-          b=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' services/model-manager/Dockerfile)
-          [ "$a" = "$b" ] || { echo "NOEVIA_RS_SHA256 differs between egress-proxy and model-manager Dockerfiles"; exit 1; }
+          df_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' deploy/egress-proxy/Dockerfile)
+          [ "$df_ref" = "$ref" ] || { echo "deploy/egress-proxy/Dockerfile NOEVIA_RS_REF ($df_ref) != versions.lock ($ref)"; exit 1; }
           grep -q "CODE_EGRESS_IMPL: \${CODE_EGRESS_IMPL:-node}" deploy/examples/code-egress-rust.override.yml \
             || { echo "code-egress-rust.override.yml must default CODE_EGRESS_IMPL to node"; exit 1; }
           # The proxy binds CODE_EGRESS_BIND: it must be an alias that exists on `code` only (a
@@ -524,166 +145,150 @@ jobs:
           cat /tmp/egress.out
           [ "$code" = 2 ] && grep -q "no grants" /tmp/egress.out
 
-  # #922 dry run: assemble the release tarball in `self` mode, build build/web.Dockerfile from it
-  # and apps/web/Dockerfile from the checkout (no push), and require equivalent images. The live
-  # release path does not use the assembled image yet.
+  # The release path (#922, #952), end to end at this commit: assemble the release tarball from the
+  # repos pinned in release/versions.lock (assemble-release.sh, exactly as a release does), check
+  # the tree and the Compose build contexts that point into it, build the web image with
+  # build-web-release.sh (the script the server runs) and boot it.
   #
-  # mode `split` (#952) does the same at release/split-candidate.lock's cut sha with the web, core
-  # and services trees fetched from the extracted repos' pinned SHAs (assemble-release.sh --lock),
-  # and first requires those trees to be byte-identical to a `self` assembly of the cut sha.
+  # Until the cutover this job also compared the assembled image with apps/web/Dockerfile's. That
+  # comparison retired with apps/web/: its last run, at the cut sha, is linked from the cutover PR.
   assembled-release:
-    name: Assembled release dry run (${{ matrix.mode }})
+    name: Assembled release (pinned repos)
     needs: changes
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [self, split]
     env:
-      RUN_JOB: ${{ matrix.mode == 'self' && needs.changes.outputs.assembly || needs.changes.outputs.split }}
-      MODE: ${{ matrix.mode }}
+      RUN_JOB: ${{ needs.changes.outputs.assembly }}
     steps:
       - name: Skip (no relevant changes)
         if: env.RUN_JOB != 'true'
         run: echo "No release-assembly changes; skipping."
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: env.RUN_JOB == 'true'
-        with:
-          fetch-depth: 0
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3 (v3.12.0)
-        if: env.RUN_JOB == 'true'
-      - name: Assemble release tarball (${{ matrix.mode }} mode)
+      - name: Assemble release tarball from release/versions.lock
         if: env.RUN_JOB == 'true'
         id: assemble
         run: |
           set -euo pipefail
-          grep -qx 'NOEVIA_WEB_REF=self' release/versions.lock
-          grep -qx 'NOEVIA_CORE_REF=self' release/versions.lock
-          grep -qx 'NOEVIA_SERVICES_REF=self' release/versions.lock
+          lock=release/versions.lock
+          for k in WEB CORE SERVICES; do
+            ref=$(sed -n "s/^NOEVIA_${k}_REF=//p" "$lock"); sum=$(sed -n "s/^NOEVIA_${k}_SHA256=//p" "$lock")
+            [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::NOEVIA_${k}_REF must be a pinned 40-char sha after the repo split, got '$ref'"; exit 1; }
+            [[ "$sum" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::NOEVIA_${k}_SHA256 is missing"; exit 1; }
+            echo "${k,,}_ref=$ref" >> "$GITHUB_OUTPUT"
+          done
+          sha=$(git rev-parse HEAD)
           a="$RUNNER_TEMP/assembled"; mkdir -p "$a/tree"
-          if [ "$MODE" = self ]; then
-            sha=$(git rev-parse HEAD)
-            bash deploy/tools/assemble-release.sh "$sha" "$a"
-            reference=apps/web
-          else
-            lock=release/split-candidate.lock
-            sha=$(sed -n 's/^NOEVIA_SPLIT_CUT_SHA=//p' "$lock")
-            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::NOEVIA_SPLIT_CUT_SHA in $lock is not a 40-char sha"; exit 1; }
-            # This checkout's assemble-release.sh, run against the cut commit: once with the cut
-            # commit's own lock (self), once with the candidate refs.
-            mkdir -p "$RUNNER_TEMP/self-at-cut" "$RUNNER_TEMP/self-tree"
-            bash deploy/tools/assemble-release.sh "$sha" "$RUNNER_TEMP/self-at-cut"
-            tar -xzf "$RUNNER_TEMP/self-at-cut/noevia-release-$sha.tar.gz" -C "$RUNNER_TEMP/self-tree"
-            bash deploy/tools/assemble-release.sh --lock "$lock" "$sha" "$a"
-            git worktree add --detach "$RUNNER_TEMP/cut" "$sha"
-            reference="$RUNNER_TEMP/cut/apps/web"
-            for k in WEB CORE SERVICES; do
-              echo "${k,,}_ref=$(sed -n "s/^NOEVIA_${k}_REF=//p" "$lock")" >> "$GITHUB_OUTPUT"
-            done
-          fi
+          bash deploy/tools/assemble-release.sh "$sha" "$a"
           tar -xzf "$a/noevia-release-$sha.tar.gz" -C "$a/tree"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "tree=$a/tree" >> "$GITHUB_OUTPUT"
-          echo "reference=$reference" >> "$GITHUB_OUTPUT"
-      # Byte identity of everything the split repos supply (web/, core/ including code-sandbox/,
-      # services/: every sidecar's image build context). The split repos add only their README.md
-      # and .github/ at the top.
-      - name: Split trees are byte-identical to the monorepo at the cut sha
-        if: env.RUN_JOB == 'true' && matrix.mode == 'split'
+      - name: Tree matches the lock; sidecar contexts and the model-manager pin
+        if: env.RUN_JOB == 'true'
         env:
           TREE: ${{ steps.assemble.outputs.tree }}
+          SHA: ${{ steps.assemble.outputs.sha }}
+          WEB_REF: ${{ steps.assemble.outputs.web_ref }}
+          CORE_REF: ${{ steps.assemble.outputs.core_ref }}
+          SERVICES_REF: ${{ steps.assemble.outputs.services_ref }}
         run: |
           set -euo pipefail
-          for part in web core services; do
-            for extra in README.md .github; do
-              [ -e "$TREE/$part/$extra" ] && [ ! -e "$RUNNER_TEMP/self-tree/$part/$extra" ] && rm -rf "${TREE:?}/$part/$extra"
-            done
-            diff -r --no-dereference "$RUNNER_TEMP/self-tree/$part" "$TREE/$part"
-            echo "$part/: identical ($(find "$TREE/$part" -type f | wc -l) files)"
-          done
+          cat "$TREE/release-refs"
+          printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\nNOEVIA_SERVICES_SHA=%s\n' "$SHA" "$WEB_REF" "$CORE_REF" "$SERVICES_REF" \
+            | diff - "$TREE/release-refs"
           for svc in diary docling laya model-manager ocr; do
             [ -f "$TREE/services/$svc/Dockerfile" ] || { echo "::error::services/$svc build context missing"; exit 1; }
           done
-      - name: Build assembled image (build/web.Dockerfile)
+          [ -f "$TREE/core/code-sandbox/Dockerfile" ] || { echo "::error::core/code-sandbox build context missing"; exit 1; }
+          # model-manager builds gguf-meta from noevia-rs with the same pin as the egress proxy.
+          ref=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)
+          mm="$TREE/services/model-manager/Dockerfile"
+          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$mm")" = "$ref" ] \
+            || { echo "::error::noevia-services model-manager/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
+          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$mm")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
+            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and model-manager Dockerfiles"; exit 1; }
+      # The repo's Compose files, run from the tree's noevia/ with COWORK_SOURCE_DIR unset (default
+      # `..`) and set (as on the server), must point every build at a context in the tree.
+      - name: Compose build contexts resolve inside the assembled tree
         if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
-        with:
-          context: ${{ steps.assemble.outputs.tree }}
-          file: ${{ steps.assemble.outputs.tree }}/noevia/build/web.Dockerfile
-          build-args: |
-            COWORK_VERSION=${{ steps.assemble.outputs.sha }}
-            REQUIRE_RELEASE_VERSION=1
-          push: false
-          load: true
-          tags: noevia-web:assembled
-          cache-from: type=gha
-      - name: Build reference image (apps/web/Dockerfile)
+        env:
+          TREE: ${{ steps.assemble.outputs.tree }}
+        working-directory: ${{ steps.assemble.outputs.tree }}/noevia
+        run: |
+          set -euo pipefail
+          stubs=(LLAMACPP_RENDER_DEVICE=/dev/dri/renderD128 LLAMACPP_CARD_DEVICE=/dev/dri/card0 LLAMACPP_MODELS_DIR=/stub/models
+            LLAMACPP_CONFIG_DIR=/stub/config LLAMACPP_CACHE_DIR=/stub/cache LLAMACPP_CHAT_MODEL=stub-chat LLAMACPP_AUX_MODEL=stub-aux
+            LLAMACPP_EMBED_MODEL=stub-embed MODEL_LOADER_TOKEN=stub-not-a-secret MODEL_LOADER_DATA_DIR=/stub/loader)
+          for src in "" "$TREE"; do
+            cfg=$(env "${stubs[@]}" COWORK_SOURCE_DIR="$src" docker compose --env-file .env.example --profile laya --profile code \
+              -f compose.yaml -f compose.llamacpp.yaml -f compose.docling.yaml -f deploy/examples/code-sandbox.override.yml config --format json)
+            n=0
+            while IFS=$'\t' read -r svc ctx df; do
+              [ -f "$ctx/$df" ] || { echo "::error::$svc builds $ctx/$df, which is not in the tree (COWORK_SOURCE_DIR='$src')"; exit 1; }
+              case "$ctx" in "$TREE"|"$TREE"/*) ;; *) echo "::error::$svc context $ctx is outside the tree"; exit 1 ;; esac
+              echo "ok: $svc -> ${ctx#"$TREE"}/$df"; n=$((n+1))
+            done < <(jq -r '.services | to_entries[] | select(.value.build) | select(.key != "egress-rs") | [.key, .value.build.context, (.value.build.dockerfile // "Dockerfile")] | @tsv' <<<"$cfg")
+            [ "$n" -ge 7 ] || { echo "::error::expected web, diary, ocr, laya, docling, model-loader and code-sandbox builds, saw $n"; exit 1; }
+          done
+      # build-web-release.sh is what the server runs: build/web.Dockerfile on the tree, stamped and
+      # checked. The image build runs the client and server tests (node --test) first.
+      - name: Build web image with build-web-release.sh
         if: env.RUN_JOB == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6 (v6.19.2)
-        with:
-          context: ${{ steps.assemble.outputs.reference }}
-          build-args: |
-            COWORK_VERSION=${{ steps.assemble.outputs.sha }}
-            REQUIRE_RELEASE_VERSION=1
-          push: false
-          load: true
-          tags: noevia-web:reference
-          cache-from: type=gha
-      - name: Compare assembled and reference images
+        env:
+          TREE: ${{ steps.assemble.outputs.tree }}
+          SHA: ${{ steps.assemble.outputs.sha }}
+        run: bash deploy/tools/build-web-release.sh "$SHA" "$TREE"
+      - name: version.json records the pinned web and core
         if: env.RUN_JOB == 'true'
         env:
           SHA: ${{ steps.assemble.outputs.sha }}
-          WEB_REF: ${{ steps.assemble.outputs.web_ref || steps.assemble.outputs.sha }}
-          CORE_REF: ${{ steps.assemble.outputs.core_ref || steps.assemble.outputs.sha }}
+          WEB_REF: ${{ steps.assemble.outputs.web_ref }}
+          CORE_REF: ${{ steps.assemble.outputs.core_ref }}
         run: |
           set -euo pipefail
-          d="$RUNNER_TEMP/compare"; mkdir -p "$d"
-          for img in assembled reference; do
-            docker run --rm --entrypoint sh "noevia-web:$img" -c '
-              cd /app && ls -A
-              find dist server contracts -path server/node_modules -prune -o -type f -print | sort
-            ' > "$d/$img.files"
-            # sha256 of every file (a build change that alters only unhashed output such as
-            # index.html, manifest or icons keeps the same names); version.json is compared below.
-            docker run --rm --entrypoint sh "noevia-web:$img" -c '
-              cd /app && find dist server contracts -path server/node_modules -prune -o -type f ! -path dist/version.json -print0 \
-                | LC_ALL=C sort -z | xargs -0 sha256sum
-            ' > "$d/$img.hashes"
-            docker run --rm --entrypoint node "noevia-web:$img" -e '
-              const l = require("/app/server/node_modules/.package-lock.json");
-              for (const [k, v] of Object.entries(l.packages).sort()) console.log(k + "@" + v.version);
-            ' > "$d/$img.packages"
-            docker run --rm --entrypoint cat "noevia-web:$img" /app/dist/version.json > "$d/$img.version.json"
-            docker image inspect "noevia-web:$img" --format '{{json .Config.Env}} {{json .Config.ExposedPorts}} {{json .Config.Healthcheck}} {{json .Config.Cmd}} {{json .Config.Entrypoint}} {{.Config.User}} {{.Config.WorkingDir}}' > "$d/$img.config"
+          v=$(docker run --rm --entrypoint cat "cowork-web:$SHA" /app/dist/version.json)
+          echo "$v"
+          [ "$(jq -r .version <<<"$v")" = "$SHA" ] && [ "$(jq -r .web <<<"$v")" = "$WEB_REF" ] && [ "$(jq -r .core <<<"$v")" = "$CORE_REF" ]
+      # #337: prove the container boots. Synthetic env only (no real secrets, no sidecars); poll
+      # /api/ready so a runtime-only crash (a file the runtime stage never copied) fails here.
+      - name: Boot web image and check /api/ready
+        if: env.RUN_JOB == 'true'
+        env:
+          SHA: ${{ steps.assemble.outputs.sha }}
+        run: |
+          set -e
+          docker run -d --name noevia-web-ci \
+            -p 8021:8021 \
+            -e UI_PORT=8021 \
+            -e UI_AUTH_TOKEN=ci-synthetic-token-$RANDOM \
+            -e DIARY_AUTH_TOKEN=ci-synthetic-diary-token-$RANDOM \
+            -e DIARY_TENANT_KEY=$(openssl rand -hex 32) \
+            -e INFERENCE_BASE_URL=http://127.0.0.1:1 \
+            -e DIARY_BASE_URL=http://127.0.0.1:1 \
+            "cowork-web:$SHA"
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8021/api/ready -o /tmp/ready.json; then
+              echo "Response: $(cat /tmp/ready.json)"
+              ok=1
+              break
+            fi
+            sleep 2
           done
-          wc -l "$d"/*.files "$d"/*.packages
-          diff -u "$d/reference.files" "$d/assembled.files"
-          diff -u "$d/reference.packages" "$d/assembled.packages"
-          diff -u "$d/reference.config" "$d/assembled.config"
-          [ -s "$d/reference.files" ] && [ -s "$d/reference.packages" ] && [ -s "$d/reference.hashes" ]
-          wc -l "$d"/*.hashes
-          if ! diff -q "$d/reference.hashes" "$d/assembled.hashes" >/dev/null; then
-            echo "::error::file contents differ between the assembled and reference images:"
-            # paths whose hash differs or that exist on one side only
-            { cat "$d/reference.hashes" "$d/assembled.hashes"; } | sort | uniq -u | sed 's/^[0-9a-f]*  //' | sort -u | sed 's/^/differs: /'
+          if [ -z "$ok" ]; then
+            echo "web image never became ready; container logs follow:"
+            docker logs noevia-web-ci || true
+            docker rm -f noevia-web-ci || true
             exit 1
           fi
-          # version.json: identical `version`; the assembled one only adds web and core.
-          node -e '
-            const fs = require("fs"), [ref, asm] = ["reference", "assembled"].map(n => JSON.parse(fs.readFileSync(process.argv[1] + "/" + n + ".version.json", "utf8")));
-            const sha = process.env.SHA, ok = (c, m) => { if (!c) { console.error("version.json: " + m); process.exit(1); } };
-            ok(ref.version === sha && asm.version === sha, "version is not " + sha + ": " + JSON.stringify({ ref, asm }));
-            ok(asm.web === process.env.WEB_REF && asm.core === process.env.CORE_REF, "version.json must record web/core = " + process.env.WEB_REF + "/" + process.env.CORE_REF + ": " + JSON.stringify(asm));
-            const { web, core, ...rest } = asm;
-            ok(JSON.stringify(rest) === JSON.stringify(ref), "differs beyond web/core: " + JSON.stringify({ ref, asm }));
-            console.log("version.json ok:", JSON.stringify(asm));
-          ' "$d"
-          echo "assembled image matches apps/web/Dockerfile image"
+          grep -q "$SHA" /tmp/ready.json || { echo "::error::/api/ready does not report $SHA"; exit 1; }
+          docker logs noevia-web-ci || true
+          docker rm -f noevia-web-ci
 
-  # #952: tools/repo-split (the Rust extraction tool) and the git-level byte identity of the
-  # extracted repos at release/split-candidate.lock's pinned SHAs.
+  # #952: tools/repo-split (the Rust extraction tool). It stays for a rollback-and-retry of the
+  # cutover (docs/repo-split-cutover.md); its byte-identity check against the pinned repos retired
+  # with the cut (the last run is linked from the cutover PR).
   repo-split:
-    name: Repo split tool and byte identity
+    name: Repo split tool
     needs: changes
     runs-on: ubuntu-latest
     env:
@@ -719,29 +324,13 @@ jobs:
         if: env.RUN_JOB == 'true'
         env:
           REPO_SPLIT_REQUIRE_FILTER_REPO: "1"
-      - name: Pinned split repos are byte-identical to noevia at the cut sha
-        if: env.RUN_JOB == 'true'
-        working-directory: .
-        run: |
-          set -euo pipefail
-          cargo build --locked --release --manifest-path tools/repo-split/Cargo.toml
-          lock=release/split-candidate.lock
-          cut=$(sed -n 's/^NOEVIA_SPLIT_CUT_SHA=//p' "$lock")
-          for t in web core services; do
-            ref=$(sed -n "s/^NOEVIA_${t^^}_REF=//p" "$lock")
-            dir="$RUNNER_TEMP/noevia-$t"
-            git clone --quiet --filter=blob:none --no-checkout "https://github.com/sbstndalton/noevia-$t.git" "$dir"
-            git -C "$dir" log -1 --format=%B "$ref" | grep -qx "Split-Source: $cut" \
-              || { echo "::error::noevia-$t $ref was not extracted from $cut"; exit 1; }
-            tools/repo-split/target/release/repo-split verify --source . --sha "$cut" --target "$t" --split "$dir" --rev "$ref"
-          done
 
   # Single aggregate result. Passes when every job succeeded or was skipped;
   # fails on any failure or cancellation.
   ci-required:
     name: CI required
     if: always()
-    needs: [changes, node-tests, python-tests, docling-tests, model-manager-tests, ocr-tests, laya-tests, code-sandbox-tests, docker-build, deploy-tests, assembled-release, repo-split]
+    needs: [changes, deploy-tests, assembled-release, repo-split]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results

@@ -33,7 +33,7 @@ services:
     # Built from the Dockerfile's pinned NOEVIA_RS_REF + NOEVIA_RS_SHA256 (= release/versions.lock).
     # Deliberately no build args: overriding the ref without its checksum would only fail the build.
     build:
-      # Relative to the first compose file, as code-sandbox.override.yml's ../../services/code-sandbox.
+      # Relative to the first compose file (unchanged by the repo split: deploy/ stays in noevia).
       context: ../../deploy/egress-proxy
     # Tagged separately from the web release (per-service versioning).
     image: cowork-egress-rs:${EGRESS_RS_VERSION:-local}

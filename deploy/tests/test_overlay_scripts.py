@@ -64,6 +64,41 @@ class ShaValidation(unittest.TestCase):
             self.assertLess(probe, text.index(change), change)
 
 
+class AssembledSource(unittest.TestCase):
+    """#952: the release folder comes from the assembled tarball, checked before it is unpacked."""
+
+    def test_overlay_takes_the_assembled_tarball_not_a_git_archive(self):
+        text = OVERLAY.read_text()
+        self.assertNotIn('src-$NEW', text)
+        self.assertIn('src="/tmp/noevia-release-$NEW.tar.gz"', text)
+
+    def test_release_refs_sha_is_checked_before_the_release_folder_exists(self):
+        text = OVERLAY.read_text()
+        check = text.index('[ "$src_sha" = "$NEW" ]')
+        self.assertLess(text.index('tar -xzOf "$src" release-refs'), check)
+        self.assertLess(check, text.index('mkdir -p "$base/releases/$NEW"'))
+        self.assertLess(check, text.index('docker build'))
+
+    def test_release_refs_check_rejects_a_tree_for_another_sha(self):
+        # Run the overlay's own release-refs lines against synthetic tarballs.
+        lines = OVERLAY.read_text().splitlines()
+        start = next(i for i, l in enumerate(lines) if l.startswith('src="/tmp/noevia-release-$NEW.tar.gz"'))
+        block = '\n'.join(lines[start:start + 4]).replace('/tmp/noevia-release-$NEW.tar.gz', '$TARBALL')
+        with tempfile.TemporaryDirectory(prefix='noevia-overlay-src-') as temp:
+            tree = pathlib.Path(temp) / 'tree'
+            tree.mkdir()
+            for sha, expect_ok in [('def5678', True), ('abc1234', False)]:
+                (tree / 'release-refs').write_text(f'NOEVIA_SHA={sha}\nNOEVIA_WEB_SHA={"a" * 40}\n')
+                tarball = pathlib.Path(temp) / f'{sha}.tar.gz'
+                subprocess.run(['tar', '-czf', str(tarball), '-C', str(tree), 'release-refs'], check=True)
+                result = subprocess.run(['bash', '-c', 'set -euo pipefail\nNEW=def5678\n' + block + '\necho CHECKED'],
+                                        env=dict(os.environ, TARBALL=str(tarball)), capture_output=True, text=True, timeout=30)
+                with self.subTest(sha=sha):
+                    self.assertEqual('CHECKED' in result.stdout, expect_ok, result.stderr)
+                    if not expect_ok:
+                        self.assertIn('not deploying', result.stderr)
+
+
 ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90' * 2
 
 

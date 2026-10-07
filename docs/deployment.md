@@ -1,5 +1,13 @@
 # Deploying noevia to daserver
 
+> **Repo split (#952), 2026-10-07: the release source changed.** noevia no longer contains
+> `apps/web/` or `services/`; a release is assembled from the repos pinned in
+> `release/versions.lock` with `deploy/tools/assemble-release.sh`, and that tarball (not a
+> `git archive`) is what goes to `releases/<sha>/`. Follow [The deploy](#the-deploy) and
+> [Releasing after the repo split](#releasing-after-the-repo-split-952); the first post-split
+> release also updates web's build block in the live Compose Manager file (same section).
+> Release records below that mention `apps/web` or `services/` describe the monorepo layout.
+
 ## Deployed 2026-10-01: one model at a time within an inference memory budget (#697)
 
 Deployed: web, the model loader and the llama `--models-max 1` change shipped in release
@@ -345,10 +353,16 @@ LAN `[IP]:[PORT]` link no longer resolves.
 Unraid Compose Manager plugin, project name **"Cowork"**. Three containers:
 `cowork-web-1`, `cowork-diary-1`, `cowork-ocr-1`.
 
-- **Releases**: `/mnt/docker/appdata/cowork/releases/<git-sha>/` holds a full
-  source checkout. `/mnt/docker/appdata/cowork/current` is a symlink to the active
+- **Releases**: `/mnt/docker/appdata/cowork/releases/<git-sha>/` holds the release
+  source. Since the repo split (#952) that is an **unpacked assembled tree**
+  (`noevia/`, `web/`, `core/`, `services/`, `release-refs`; see
+  [Releasing after the repo split](#releasing-after-the-repo-split-952)); releases up to
+  `7baecb40` are monorepo `git archive` folders (`apps/web/`, `services/`).
+  `/mnt/docker/appdata/cowork/current` is a symlink to the active
   one. `COWORK_SOURCE_DIR` in `.env` points the compose file's `build: context:`
-  at `current`; `COWORK_VERSION` sets the **web** image tag. Every sidecar has its own
+  at `current`, so the sidecar contexts `services/<name>` are the same path in both layouts;
+  web builds from the tree root with `noevia/build/web.Dockerfile`, code-sandbox from
+  `core/code-sandbox`. `COWORK_VERSION` sets the **web** image tag. Every sidecar has its own
   tag variable (see [Per-service image tags](#per-service-image-tags)).
 - **Env**: `/mnt/docker/appdata/cowork/config/.env`, chmod 600. Back it up before
   editing — the `.env.bak.<timestamp>` convention is already established.
@@ -437,32 +451,45 @@ longer matters (#574); it exits with a message naming the directory if none is f
 Use an absolute `--env-file` path. It rejects writable `/boot` paths/device aliases without changing
 state bindings. Direct Compose Manager GUI startup bypasses this helper.
 
+The release source is the assembled tarball, not a `git archive` of noevia (repo split, #952:
+noevia no longer contains the client, server or sidecars). Run this from a **clean** noevia
+checkout on the Mac at the commit being released (`origin/main` after the merge):
+
 ```sh
 SHA=$(git rev-parse --short HEAD)
-git archive --format=tar.gz -o "/tmp/$SHA.tar.gz" HEAD
-scp "/tmp/$SHA.tar.gz" root@100.70.173.74:/mnt/docker/appdata/cowork/releases/
+mkdir -p /tmp/noevia-release
+bash deploy/tools/assemble-release.sh $SHA /tmp/noevia-release   # fetches + checksums the pinned repos
+scp "/tmp/noevia-release/noevia-release-$SHA.tar.gz" root@100.70.173.74:/mnt/docker/appdata/cowork/releases/
 ssh root@100.70.173.74 "set -e
-cd /mnt/docker/appdata/cowork/releases && mkdir -p $SHA && tar -xzf $SHA.tar.gz -C $SHA && rm -f $SHA.tar.gz
+cd /mnt/docker/appdata/cowork/releases && mkdir -p $SHA && tar -xzf noevia-release-$SHA.tar.gz -C $SHA && rm -f noevia-release-$SHA.tar.gz
+grep -qx 'NOEVIA_SHA=$SHA' $SHA/release-refs
 cd /mnt/docker/appdata/cowork && cp config/.env config/.env.bak.\$(date +%Y%m%d%H%M%S)
 cd /boot/config/plugins/compose.manager/projects/Cowork
-bash /mnt/docker/appdata/cowork/releases/$SHA/deploy/tools/build-web-release.sh $SHA /mnt/docker/appdata/cowork/releases/$SHA/apps/web
+bash /mnt/docker/appdata/cowork/releases/$SHA/noevia/deploy/tools/build-web-release.sh $SHA /mnt/docker/appdata/cowork/releases/$SHA
 # Stop here if candidate verification fails (see the image-test mounts below).
 ln -sfn /mnt/docker/appdata/cowork/releases/$SHA /mnt/docker/appdata/cowork/current
 sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=$SHA/' /mnt/docker/appdata/cowork/config/.env
 bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --wait --wait-timeout 120"
 ```
 
+Note the two path changes against the monorepo recipe: the release scripts are under
+`releases/$SHA/noevia/deploy/...`, and `build-web-release.sh` takes the **tree root**
+(`releases/$SHA`), not `apps/web`; it refuses a folder without `noevia/build/web.Dockerfile` and
+`release-refs`, or one assembled at another SHA. The image is the one CI's "Assembled release
+(pinned repos)" job built and booted for the same commit.
+
 A build takes ~10 min over the Tailscale relay. Run it in the background and poll
 for `docker ps | grep cowork-web`. Rolling back is repointing `current` and
-`COWORK_VERSION` at the previous SHA and re-running Compose up with `--no-build --wait`.
+`COWORK_VERSION` at the previous SHA and re-running Compose up with `--no-build --wait`
+(a pre-split release folder still works as a rollback target: its images already exist).
 
 ### Favicon/app-shell cache-busting (issue #311)
 
 `COWORK_VERSION` from the `build web` step above is threaded into the web image
-as `STAMP_VERSION` (`compose.yaml` `web.build.args` → `apps/web/Dockerfile` `ARG
-COWORK_VERSION` / `ENV STAMP_VERSION`), which `apps/web/scripts/stamp-icons.cjs`
-uses to version the favicon/manifest icon URLs and `apps/web/src/stale-shell-guard.ts`
-uses to detect a stale cached shell. Nothing extra to do here — this is
+as `STAMP_VERSION` (`compose.yaml` `web.build.args` → `build/web.Dockerfile` `ARG
+COWORK_VERSION`, checked against the tree's `release-refs`), which noevia-web's
+`scripts/stamp-icons.cjs` uses to version the favicon/manifest icon URLs and
+`src/stale-shell-guard.ts` uses to detect a stale cached shell. Nothing extra to do here — this is
 automatic as long as the build is stamped with `$SHA`. Use
 `deploy/tools/build-web-release.sh <sha>` for release builds: it passes
 `COWORK_VERSION` plus `REQUIRE_RELEASE_VERSION=1` (the Dockerfile then fails if the
@@ -480,27 +507,47 @@ should already be current (the stale-shell guard covers that); tell them to
 remove and re-add the home-screen shortcut to pick up the new icon — there is
 no way to push that from the server.
 
-### Assembled release (dry run, #922)
+### Releasing after the repo split (#952)
 
-Preparation for the repo split ([ADR 0001](adr-0001-rust-and-repo-split.md)). **The live path
-above is unchanged** (git archive + `build-web-release.sh`, or the overlay scripts) until the
-owner switches to the assembled tarball; nothing on the server uses it yet.
+Since the cutover ([runbook](repo-split-cutover.md), [ADR 0001](adr-0001-rust-and-repo-split.md))
+the client is in [noevia-web](https://github.com/sbstndalton/noevia-web), the server, contracts
+and code-sandbox in [noevia-core](https://github.com/sbstndalton/noevia-core), and diary,
+docling, laya, model-manager and ocr in
+[noevia-services](https://github.com/sbstndalton/noevia-services). noevia pins them:
 
-- `release/versions.lock` pins `NOEVIA_WEB_REF` and `NOEVIA_CORE_REF`. Both are `self` today:
-  web/ and core/ come from `apps/web` at the released noevia SHA. A 40-character SHA instead
-  fetches `sbstndalton/noevia-web` / `noevia-core` as an anonymous codeload tarball (checksum
-  verified when `NOEVIA_WEB_SHA256` / `NOEVIA_CORE_SHA256` are set).
-- On the Mac: `deploy/tools/assemble-release.sh <sha> [out-dir]` writes
-  `noevia-release-<sha>.tar.gz` (`noevia/`, `web/`, `core/`, `release-refs`). It refuses an
-  unknown or non-hex SHA and a dirty checkout, and reads the lock as committed at `<sha>`.
-- Build from the extracted tree:
-  `docker build -f noevia/build/web.Dockerfile --build-arg COWORK_VERSION=<sha> --build-arg REQUIRE_RELEASE_VERSION=1 -t cowork-web:<sha> <tree>`.
-  `COWORK_VERSION` and `version.json`'s `version` stay the noevia SHA; `version.json` also lists
-  the resolved `web` and `core` SHAs.
-- CI job "Assembled release dry run" builds this image and `apps/web/Dockerfile`'s (no push) and
-  fails unless the `/app/dist`, `/app/server`, `/app/contracts` file lists, the server
-  `node_modules` package list and the image config match. A change to `apps/web/Dockerfile` must
-  be mirrored in `build/web.Dockerfile`.
+- `release/versions.lock` holds `NOEVIA_{WEB,CORE,SERVICES}_REF` (40-char SHAs) and the required
+  `NOEVIA_{WEB,CORE,SERVICES}_SHA256` (checksum of
+  `https://codeload.github.com/sbstndalton/<repo>/tar.gz/<ref>`). **To release a change made in
+  one of those repos**, merge it there (its CI must be green), then open a noevia PR bumping that
+  repo's `_REF` and `_SHA256` (`curl -fsSL <url> | shasum -a 256`). noevia CI's "Assembled release
+  (pinned repos)" job assembles that commit, checks every Compose build context resolves inside
+  the tree, builds the web image with `build-web-release.sh` (the image build runs the client and
+  server tests), checks `version.json` and boots it (`/api/ready`). Release the merged noevia SHA.
+- `deploy/tools/assemble-release.sh <noevia-sha> [out-dir]` (on the Mac, clean checkout) writes
+  `noevia-release-<sha>.tar.gz`: `noevia/` (git archive of noevia), `web/`, `core/` (with
+  `code-sandbox/`), `services/<name>/`, `release-refs` and a `.dockerignore`. It reads the lock
+  as committed at `<sha>`, refuses a pinned ref without its checksum and a checksum mismatch, and
+  never clones (anonymous https only, so the box needs no credentials either).
+- **Full web build**: "The deploy" above. **Overlay** (`overlay-release.sh OLD NEW`): its
+  header lists the local steps; it now takes `/tmp/noevia-release-$NEW.tar.gz` (checked against
+  `release-refs`) instead of `src-$NEW.tar.gz`, and `app-$NEW.tar.gz` is packed from the tree
+  (`web/dist`, `core/server`, `core/contracts`).
+- **Sidecars**: the tree keeps `services/<name>` at the same place a monorepo release folder had
+  it, so `diary-overlay.sh`, the Docling overlay and `compose build <sidecar>` use the same
+  `releases/<sha>/services/<name>` paths. Code-sandbox builds from `releases/<sha>/core/code-sandbox`.
+- `COWORK_VERSION` and `version.json`'s `version` stay the noevia SHA; `version.json` also lists
+  the `web` and `core` SHAs the image was built from (`docker run --rm --entrypoint cat
+  cowork-web:<sha> /app/dist/version.json`).
+- **Live Compose Manager file, once, at the first post-split release** (the copy on `/boot` is
+  hand-kept): back it up, then change web's `build:` to `context: ${COWORK_SOURCE_DIR}` plus
+  `dockerfile: noevia/build/web.Dockerfile` (keep `args: COWORK_VERSION`), and code-sandbox's
+  context to `${COWORK_SOURCE_DIR}/core/code-sandbox`, as in
+  `deploy/examples/unraid-compose-manager.yml` / `code-sandbox.override.yml`. The release flow
+  above never builds through Compose (`--no-build`), so this only matters for a manual
+  `docker compose build`; validate with `docker compose --env-file <.env> config -q`.
+- Before the cutover, CI compared the assembled image with `apps/web/Dockerfile`'s file by file;
+  that comparison retired with `apps/web/` (its last green run, at the cut SHA `f42f65f1`, is
+  linked from the cutover PR).
 
 ## Per-service image tags
 
@@ -675,8 +722,10 @@ and no dependency can drift; only the application files change.
 `server.py extract.py isolation.py isolated_worker.py selftest.py synthetic_pdfs.py` (the files
 the final `COPY` in the Dockerfile places in `/app`). Confirm first that `Dockerfile`,
 `requirements.txt`, `requirements-torch-cpu.txt`, `requirements.in` and `download_models.py`
-did not change between the running release and the new one (`git diff <OLD_SHA> <NEW_SHA> --
-services/docling` on the source checkout). User, workdir, healthcheck and `CMD` are inherited
+did not change between the running release and the new one (since the repo split: `git diff
+<old NOEVIA_SERVICES_REF> <new NOEVIA_SERVICES_REF> -- docling` in a noevia-services checkout,
+or `diff -r releases/<OLD>/services/docling releases/<NEW>/services/docling` on the box; before
+it, `git diff <OLD_SHA> <NEW_SHA> -- services/docling` in noevia). User, workdir, healthcheck and `CMD` are inherited
 from the previous image. Run on DaServer as root, with an unpacked release under `releases/`, in a
 throwaway `bash` session (the guards below `exit`). Replace `<NEW_SHA>` by the release SHA (7 to 40
 lowercase hex characters, it becomes the tag):
@@ -720,7 +769,7 @@ line; `cowork-docling:$OLD` is kept for exactly this.
 
 **A full `docker build` is only for a dependency change:** a docling, torch, torchvision or
 other Python package bump, a model revision change, or a change to the base image or the apt
-packages (Tesseract). Edit `services/docling/requirements.in`, regenerate `requirements.txt`
+packages (Tesseract). Edit noevia-services `docling/requirements.in`, regenerate `requirements.txt`
 (command in its header) and, for torch, `requirements-torch-cpu.txt`; update the commits in
 `download_models.py`. Everything is then pinned by version and sha256 (`pip install --no-deps
 --require-hashes`) and the models by Hugging Face commit, so the build no longer re-resolves
@@ -2073,7 +2122,7 @@ it into something that can run, and both are deliberate:
   nothing can start; a task cannot name a host path.
 - **`CODE_HARNESS_ENDPOINT=code-sandbox:8030`** — the sandbox container to run the agent in.
   This is the one to use here. `deploy/examples/code-sandbox.override.yml` + the `code` profile
-  bring up `services/code-sandbox`: read-only root, `cap_drop: ALL`, no-new-privileges, uid 1000,
+  bring up noevia-core's `code-sandbox/`: read-only root, `cap_drop: ALL`, no-new-privileges, uid 1000,
   tmpfs `/tmp` and `$HOME`, bounded memory and pids, one volume for the task worktrees, an
   internal network whose only other member is the egress proxy, and no published port.
 - `CODE_HARNESS_COMMAND` (and optional `CODE_HARNESS_ARGS`) — the alternative: run the agent as a
@@ -2097,7 +2146,7 @@ Its command is configured only there: `CODE_VERIFY=name|command` (one per line, 
 `CODE_VERIFY_ENDPOINT=unix:/run/noevia-verify/verify.sock`, on a `code-verify-socket` volume that
 only web and `code-verify` mount. To ship it:
 
-1. Build `services/code-sandbox` from the release source with the running harness's build
+1. Build `core/code-sandbox` (pre-split releases: `services/code-sandbox`) from the release source with the running harness's build
    arguments (pi 0.87.0 today) as `cowork-code-sandbox:pi-0.87.0-<sha>`. Back up `.env` and the
    live override, then bump `CODE_SANDBOX_VERSION`.
 2. Give the source repositories a dedicated group the verifier's git uid can read through:
@@ -2111,7 +2160,7 @@ only web and `code-verify` mount. To ship it:
    Code task. `docker logs` for `code-verify` should show `listening … (one request)`.
 
 Rollback: restore the override and `.env` backups and recreate the same three services. Details:
-`services/code-sandbox/README.md`.
+noevia-core `code-sandbox/README.md`.
 
 The worktree path noevia creates must be the same path inside the sandbox — it sends the path and
 the supervisor resolves it — so the volume is mounted at the same point in both containers. Egress

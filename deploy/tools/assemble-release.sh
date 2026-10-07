@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Assemble one release tarball from pinned sources (#922, docs/adr-0001-rust-and-repo-split.md).
-# Runs on the Mac (or CI). DRY RUN ONLY: the live release path (git archive + build-web-release.sh
-# or overlay-release.sh, docs/deployment.md) does not use this yet.
+# Runs on the Mac (or CI). Since the repo split cutover (#952) this is THE release source: the
+# tarball it writes is what docs/deployment.md ships to releases/<sha>/ on the server, and
+# build-web-release.sh / overlay-release.sh consume it.
 #
 # Usage: assemble-release.sh [--lock <file>] <noevia-sha> [out-dir]
 #   <noevia-sha>  7-40 lowercase hex commit in this repo. It becomes COWORK_VERSION / the version.json
 #                 `version`, exactly as in today's releases.
 #   out-dir       where noevia-release-<sha>.tar.gz is written (default: current directory).
-#   --lock <file> DRY RUN / CI ONLY (#952): read the component refs from <file> instead of
-#                 release/versions.lock at <noevia-sha>. CI uses it with release/split-candidate.lock
-#                 to assemble from the extracted repos without changing the committed lock.
+#   --lock <file> CI ONLY (#952): read the component refs from <file> instead of
+#                 release/versions.lock at <noevia-sha> (used before the cutover to prove the
+#                 split candidate; kept for re-proving a candidate lock).
 #
 # The tarball holds, at its top level:
 #   noevia/        git archive of this repo at <noevia-sha>
@@ -29,7 +30,8 @@
 #
 # web/, core/ and services/ come from release/versions.lock AS COMMITTED AT <noevia-sha>:
 #   NOEVIA_{WEB,CORE,SERVICES}_REF = self      -> exported from apps/web and services/ at <noevia-sha>
-#     (a lock without NOEVIA_SERVICES_REF, i.e. any commit before #952, means self)
+#     (only commits from before the cutover have those paths; a lock without NOEVIA_SERVICES_REF,
+#     i.e. any commit before #952, means self). This keeps old SHAs assemblable for rollback.
 #   NOEVIA_{WEB,CORE,SERVICES}_REF = <40 hex>  -> anonymous https tarball from
 #     codeload.github.com/sbstndalton/noevia-web|noevia-core|noevia-services, verified against
 #     NOEVIA_{WEB,CORE,SERVICES}_SHA256, which a pinned ref requires (checked before download). The repo root becomes web/, core/

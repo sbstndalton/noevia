@@ -25,7 +25,7 @@ services:
   code-sandbox:
     profiles: ["code"]
     build:
-      context: ../../services/code-sandbox
+      context: ${COWORK_SOURCE_DIR:-..}/core/code-sandbox
       args:
         HARNESS_PACKAGE: ${CODE_SANDBOX_PACKAGE:-opencode-ai}
         HARNESS_VERSION: "${CODE_SANDBOX_HARNESS_VERSION:-1.18.31}"
@@ -78,7 +78,7 @@ services:
   # reach the run that decides whether its work passes. No network at all (web talks to it over a
   # unix socket on its own volume), the workspaces READ-ONLY, the command list only here.
   #
-  # Three identities inside (services/code-sandbox/verifier.cjs): the server starts as root with
+  # Three identities inside (noevia-core code-sandbox/verifier.cjs): the server starts as root with
   # every capability dropped except SETUID/SETGID, owns the socket (root, 0770) and only ever drops
   # to git (1002, with the repositories' shared group) for the copy and to the test uid (1003) for
   # the command. The test uid cannot signal the server, touch the socket or chmod the copy.

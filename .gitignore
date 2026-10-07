@@ -14,8 +14,11 @@ deploy/private/
 __pycache__/
 *.pyc
 
-# Local QA may link generated assets outside a sync-managed checkout.
-/apps/web/dist
+# Repo split (#952): apps/web/ is gone from this repo (CI refuses it). The experiments' harnesses
+# lay the pinned noevia-core out there locally (docs/repo-split-cutover.md), and `make assemble`
+# writes release trees to out/; neither is ever committed.
+/apps/web/
+/out/
 
 # Atomic fresh-install environment staging.
 .env.fresh.*
