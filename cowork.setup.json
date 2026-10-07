@@ -44,6 +44,11 @@
       "expect": "exit 0 (run from a repo checkout)"
     },
     {
+      "check": "make assemble && test -f out/tree/release-refs",
+      "expect": "exit 0; then set COWORK_SOURCE_DIR=<absolute path to out/tree> in .env",
+      "note": "Repo split (#952): the code is fetched from the repos pinned in release/versions.lock (checksum-verified tarballs); every image builds from this tree."
+    },
+    {
       "check": "On Unraid: docker compose config --format json | php deploy/preflight/check.php --config-json -",
       "expect": "exit 0 before starting containers; run on Docker host to resolve symlinks",
       "note": "Use bash deploy/preflight/up.sh -- -d --build to gate startup. Ordinary Docker/Compose Manager startup bypasses this helper; existing state paths are preserved."

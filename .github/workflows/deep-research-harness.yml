@@ -4,17 +4,14 @@ on:
   pull_request:
     paths:
       - 'experiments/deep-research/**'
-      - 'apps/web/server/research-*.cjs'
-      - 'apps/web/server/jobs.cjs'
-      - 'apps/web/tests/hermetic-network.cjs'
+      # The server modules under test come from the noevia-core SHA pinned here (#952).
+      - 'release/versions.lock'
       - '.github/workflows/deep-research-harness.yml'
   push:
     branches: [main]
     paths:
       - 'experiments/deep-research/**'
-      - 'apps/web/server/research-*.cjs'
-      - 'apps/web/server/jobs.cjs'
-      - 'apps/web/tests/hermetic-network.cjs'
+      - 'release/versions.lock'
       - '.github/workflows/deep-research-harness.yml'
 
 permissions:
@@ -28,5 +25,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The harness requires ../../apps/web/server/*.cjs: lay the pinned noevia-core out at apps/web
+      # (checksum-verified, never committed; the repo itself refuses apps/web).
+      - name: Lay out the pinned noevia-core at apps/web
+        run: |
+          set -euo pipefail
+          ref=$(sed -n 's/^NOEVIA_CORE_REF=//p' release/versions.lock); sum=$(sed -n 's/^NOEVIA_CORE_SHA256=//p' release/versions.lock)
+          curl -fsSL --proto '=https' -o "$RUNNER_TEMP/core.tgz" "https://codeload.github.com/sbstndalton/noevia-core/tar.gz/$ref"
+          echo "$sum  $RUNNER_TEMP/core.tgz" | sha256sum -c -
+          mkdir -p apps/web && tar -xzf "$RUNNER_TEMP/core.tgz" --strip-components=1 -C apps/web
       # Scripted models and the fixture site on 127.0.0.1 only; no model, no package installation.
       - run: node --require ./apps/web/tests/hermetic-network.cjs --test experiments/deep-research/*.test.cjs

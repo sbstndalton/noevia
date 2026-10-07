@@ -1,10 +1,15 @@
+# Build contexts point into an ASSEMBLED release tree (repo split, #952): the web client, the
+# server and the sidecars live in noevia-web, noevia-core and noevia-services, pinned in
+# release/versions.lock. `make assemble` writes one for HEAD to out/tree; then set
+# COWORK_SOURCE_DIR=$PWD/out/tree (shell or .env). COWORK_SOURCE_DIR is the tree root; unset, it
+# defaults to `..`, which is that root when Compose runs from the tree's own noevia/ folder.
 name: cowork
 
 services:
   laya:
     profiles: [laya]
     build:
-      context: ./services/laya
+      context: ${COWORK_SOURCE_DIR:-..}/services/laya
     image: cowork-laya:0.3.5-noevia1
     restart: "on-failure:3"
     read_only: true
@@ -22,7 +27,7 @@ services:
     networks: [laya]
 
   diary:
-    build: ./services/diary
+    build: ${COWORK_SOURCE_DIR:-..}/services/diary
     image: cowork-diary:${DIARY_VERSION:?Set DIARY_VERSION to the built Diary image tag}
     restart: unless-stopped
     expose:
@@ -76,8 +81,10 @@ services:
   web:
     networks: [default, ocr, laya]
     build:
-      context: ./apps/web
-      # Threaded through to STAMP_VERSION (apps/web/Dockerfile), which stamps
+      # The assembled release tree (web/ + core/ from the repos pinned in release/versions.lock).
+      context: ${COWORK_SOURCE_DIR:-..}
+      dockerfile: noevia/build/web.Dockerfile
+      # Threaded through to STAMP_VERSION (build/web.Dockerfile), which stamps
       # the favicon/manifest cache-busting query and the stale-shell-guard
       # version (issue #311): without this, every release from this compose
       # file built the same untagged bundle and the cache never refreshed.
@@ -159,7 +166,7 @@ services:
 
   ocr:
     build:
-      context: ./services/ocr
+      context: ${COWORK_SOURCE_DIR:-..}/services/ocr
     image: cowork-ocr:${OCR_VERSION:?Set OCR_VERSION to the built OCR image tag}
     restart: unless-stopped
     read_only: true

@@ -1,5 +1,16 @@
 # Repo split cutover runbook (#952)
 
+> **Done 2026-10-07.** Cut at noevia `f42f65f1271ef27bf697bf7e069c232468479791`: noevia-web
+> `9ca6a48375624df2751bfdee1a3657aae8f25bd1`, noevia-core `93d180a199f06769be2c12f47277637f06c354c7`,
+> noevia-services `54449fce271398da58117d280ca8089058fff0cc` (pinned in `release/versions.lock`).
+> Identity at the cut (git level, release trees and web image) was proven by
+> [CI run 37559918085](https://github.com/sbstndalton/noevia/actions/runs/37559918085). The
+> cutover landed as one squash commit (PR #958); rollback is `git revert` of that commit (see
+> Rollback). Choices made at the cutover: `tools/repo-index` moved to noevia-core (it indexes the
+> server code); the `experiments/` harness workflows lay the pinned noevia-core out at `apps/web`
+> in CI (never committed; the CI guard refuses it); release folders on the box are the unpacked assembled
+> tree, which keeps every sidecar's `services/<name>` path. The steps below are the record.
+
 Completes [ADR 0001](adr-0001-rust-and-repo-split.md): `apps/web/` and `services/` move out of
 noevia into three repos, the way `clients/macos/` moved to noevia-macos in #900.
 

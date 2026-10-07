@@ -1,25 +1,30 @@
 # Pinned sources for a noevia release (ADR 0001, docs/adr-0001-rust-and-repo-split.md).
-# One KEY=<40-character commit SHA> per line; '#' starts a comment. The server never clones:
-# images fetch each pinned repo as an anonymous https tarball and verify its checksum.
+# One KEY=<value> per line; '#' starts a comment. The server never clones: releases fetch each
+# pinned repo as an anonymous https tarball and verify its checksum.
 #
-# NOEVIA_WEB_REF / NOEVIA_CORE_REF: sbstndalton/noevia-web and sbstndalton/noevia-core, read by
-# deploy/tools/assemble-release.sh from the lock AT THE RELEASED noevia SHA (#922). Until those
-# repos are extracted they hold the literal `self`: "this noevia checkout's SHA", i.e. web/ and
-# core/ are exported from apps/web at the same commit. A 40-character SHA instead fetches
-# https://codeload.github.com/sbstndalton/noevia-{web,core}/tar.gz/<ref>; the REQUIRED
-# NOEVIA_WEB_SHA256 / NOEVIA_CORE_SHA256 keys pin that tarball's checksum.
-#
-# NOEVIA_SERVICES_REF: sbstndalton/noevia-services (the Python sidecars: diary, docling, laya,
-# model-manager, ocr; #952). Same rules: `self` exports services/ from this checkout, a 40-char SHA
-# fetches the codeload tarball, required NOEVIA_SERVICES_SHA256 pins its checksum. Per-service image
-# tags (DIARY_VERSION, OCR_VERSION, ...) keep their meaning. The candidate SHAs extracted for the
-# cutover live in release/split-candidate.lock (CI only); see docs/repo-split-cutover.md.
+# Since the repo split cutover (#952, docs/repo-split-cutover.md) the web client, the server and
+# the sidecars live in their own repos, and a release is assembled from these pins by
+# deploy/tools/assemble-release.sh, which reads this file AS COMMITTED AT THE RELEASED noevia SHA:
+#   NOEVIA_WEB_REF       sbstndalton/noevia-web       -> web/       (client)
+#   NOEVIA_CORE_REF      sbstndalton/noevia-core      -> core/      (server, contracts, code-sandbox)
+#   NOEVIA_SERVICES_REF  sbstndalton/noevia-services  -> services/  (diary, docling, laya,
+#                                                                    model-manager, ocr)
+# Each is a 40-character commit SHA, fetched from
+# https://codeload.github.com/sbstndalton/<repo>/tar.gz/<ref>; the REQUIRED <KEY>_SHA256 pins that
+# tarball's checksum (`curl -fsSL <url> | shasum -a 256`). `self` (export from this checkout) only
+# works at commits from before the cutover, which still have apps/web and services/.
+# To ship a change made in one of those repos, bump its _REF and _SHA256 here in a PR; CI
+# ("Assembled release") assembles from this file, builds the web image and boots it.
+# Per-service image tags (DIARY_VERSION, OCR_VERSION, ...) keep their meaning.
 #
 # NOEVIA_RS_REF: sbstndalton/noevia-rs, built into the model-manager image as gguf-meta and into
 # the dark egress-rs image (#909, #926). Bumping it also means updating NOEVIA_RS_REF and
-# NOEVIA_RS_SHA256 in deploy/egress-proxy/Dockerfile and
-# services/model-manager/Dockerfile (CI fails if the Dockerfile default differs from this file).
+# NOEVIA_RS_SHA256 in deploy/egress-proxy/Dockerfile and in noevia-services'
+# model-manager/Dockerfile (CI fails if either Dockerfile default differs from this file).
 NOEVIA_RS_REF=14e08ddb2cd8e7434c1dacb7dec2c58aa80934e9
-NOEVIA_WEB_REF=self
-NOEVIA_CORE_REF=self
-NOEVIA_SERVICES_REF=self
+NOEVIA_WEB_REF=9ca6a48375624df2751bfdee1a3657aae8f25bd1
+NOEVIA_WEB_SHA256=c5d5402c0cd4cf03ad9a985e63eadf35b9a98267535fc6dd7ed0bc5a48b338e4
+NOEVIA_CORE_REF=93d180a199f06769be2c12f47277637f06c354c7
+NOEVIA_CORE_SHA256=8b0ac74086dfeafb048d95a5f11d6c7e190476b88880f2bb9842cd18d8540eb0
+NOEVIA_SERVICES_REF=54449fce271398da58117d280ca8089058fff0cc
+NOEVIA_SERVICES_SHA256=be2b1f0508186ecf5b83f61262d7723edfd244f807745a6ecc358664997a87b7

@@ -22,6 +22,24 @@ and container names, session cookies, the package name, the state directory, and
 `localStorage` keys. Do not "fix" those. Renaming any of them requires a
 coordinated migration across the live deployment; see `deployment.md`.
 
+## Repo layout since the split (#952)
+
+The code no longer lives in this repo. noevia is the integration repo (deploy tooling, Compose,
+docs, `release/versions.lock`, experiments); the product code is in three repos, extracted with
+full history at noevia `f42f65f1` ([cutover runbook](repo-split-cutover.md)):
+
+| Path in this brief and older docs | Now |
+| --- | --- |
+| `apps/web/{src,public,scripts,qa,tests/client,index.html,vite.config.ts,package.json,...}` | [noevia-web](https://github.com/sbstndalton/noevia-web), same name at the root |
+| `apps/web/{server,contracts,tests/server,tests/fixtures}`, `services/code-sandbox` | [noevia-core](https://github.com/sbstndalton/noevia-core) (`code-sandbox/`); `tools/repo-index` moved there too |
+| `services/{diary,docling,laya,model-manager,ocr}` | [noevia-services](https://github.com/sbstndalton/noevia-services), `diary/`, `docling/`, ... |
+| `apps/web/Dockerfile` | retired; `build/web.Dockerfile` here builds the web image from an assembled tree |
+
+Change code in those repos (each runs its own tests and image build in CI), then bump the
+matching `_REF` / `_SHA256` pair in `release/versions.lock` here. CI here then assembles that
+release, builds the web image and boots it. Paths below keep the monorepo names. CI refuses
+`apps/web/` and the six service folders in this repo.
+
 ## Orientation
 
 - `apps/web/src/` — React + plain CSS. No Tailwind, no PostCSS. Constrain widths
@@ -78,7 +96,10 @@ coordinated migration across the live deployment; see `deployment.md`.
 - `services/diary/` — FastAPI sidecar, multi-tenant by `X-Cowork-User-ID` header.
 - `apps/web/tests/client/theme-contrast.test.cjs` — parses `tokens.css` directly.
 
-### Build and test, from `apps/web/`
+### Build and test, from a noevia-web checkout (formerly `apps/web/`)
+
+The split repos' CI lays out a noevia-shaped workspace (noevia `main` plus the sibling repos at
+their old paths) because some tests cross repo lines; see each repo's `.github/workflows/ci.yml`.
 
 ```sh
 npm test        # the count changes with every merge; CI is authoritative (see CI)

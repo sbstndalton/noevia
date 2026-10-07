@@ -30,7 +30,7 @@ services:
   # noevia's Settings → Models & routing drives its JSON API for administrators.
   model-loader:
     build:
-      context: ${COWORK_SOURCE_DIR:-.}/services/model-manager
+      context: ${COWORK_SOURCE_DIR:-..}/services/model-manager
     image: cowork-model-loader:${MODEL_MANAGER_VERSION:?Set MODEL_MANAGER_VERSION to the built model manager image tag}
     restart: unless-stopped
     environment:

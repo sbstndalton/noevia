@@ -76,7 +76,7 @@ credentials and model management, which the wizard does not cover.
 | `DEFAULT_PROVIDER_ID`, `DEFAULT_PROVIDER_LABEL` | Identity/label of the pre-seeded default inference provider shown in Settings | Only if the human wants a different label than "Local inference" | no | `HAS-SAFE-DEFAULT` (`default` / `Local inference`) |
 | `DIARY_MONTH_FILE_TEMPLATE`, `DIARY_ENTRY_LAYOUT`, `DIARY_ENTRIES_PREFIX`, `DIARY_INDEX_ENABLED` | Diary file layout knobs (month filename template, daily vs monthly layout, heading prefix, standing sections on/off) | Leave defaults unless the human wants specific file shapes in storage | no | `HAS-SAFE-DEFAULT` (see `.env.example`) |
 | `DIARY_LEGACY_USER_ID` | Optional one-release direct Diary API user mapping for legacy clients | Only if the human runs a legacy Diary client | no | `HAS-SAFE-DEFAULT` (empty) |
-| `CORPUS_BACKEND`, `CORPUS_ROOT`, `WEBDAV_BASE_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD` | Optional external diary storage backend | Only if the human wants storage outside the local state volume; see `services/diary/README.md` | `WEBDAV_PASSWORD` **yes** | `HAS-SAFE-DEFAULT` (`local`) |
+| `CORPUS_BACKEND`, `CORPUS_ROOT`, `WEBDAV_BASE_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD` | Optional external diary storage backend | Only if the human wants storage outside the local state volume; see noevia-services `diary/README.md` | `WEBDAV_PASSWORD` **yes** | `HAS-SAFE-DEFAULT` (`local`) |
 | `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_SESSION_TOKEN`, `S3_REGION`, `S3_PREFIX` | S3-compatible diary storage (MinIO, Backblaze B2, AWS S3, Garage, ...) when `CORPUS_BACKEND=s3`; per-account S3 connections from the app's Settings ignore these | Only if the human wants object storage; obtain endpoint/bucket/keys from them | `S3_SECRET_ACCESS_KEY`, `S3_SESSION_TOKEN` **yes** | `HAS-SAFE-DEFAULT` (`local`) |
 | `DIARY_EXTERNAL_SOURCES` | Optional comma-separated folders of pre-existing `.txt`/`.md` files surfaced (read-only) for import in the diary empty state | Only if the human has old journal files to import; paths must be mounted into the diary container | no | `HAS-SAFE-DEFAULT` (empty) |
 | `MODEL_MANAGER_KIND`, `MODEL_MANAGER_BASE_URL`, `MODEL_MANAGER_API_KEY` | Optional provider-specific local model management | Only if the human runs a supported model manager | API key **yes** | `HAS-SAFE-DEFAULT` (`none`) |
@@ -142,7 +142,14 @@ see [deploy/preflight/README.md](deploy/preflight/README.md). From the repo root
 before `up`; it preserves the current state directory. Other hosts can use the
 same helper with PHP 8+, or the ordinary commands below.
 
+The source code lives in the repos pinned in `release/versions.lock` (repo split, #952), so
+assemble a release tree first (needs `git`, `curl`, `tar`; it downloads the pinned tarballs and
+verifies their checksums), then point `COWORK_SOURCE_DIR` at it. Add the same
+`COWORK_SOURCE_DIR=...` line to `.env` so later `docker compose` runs find it.
+
 ```sh
+make assemble                                   # writes out/tree for this checkout's HEAD
+export COWORK_SOURCE_DIR="$PWD/out/tree"
 docker compose build          # first run pulls base images; several minutes is normal
 docker compose up -d
 ```

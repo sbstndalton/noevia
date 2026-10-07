@@ -1,4 +1,4 @@
-<img src="apps/web/public/icon.svg" alt="" width="44" height="44" align="left">
+<img src="https://raw.githubusercontent.com/sbstndalton/noevia-web/main/public/icon.svg" alt="" width="44" height="44" align="left">
 
 # noevia
 
@@ -29,14 +29,16 @@ box unless you connect something that makes it leave.
 
 ## Layout
 
-| Path | What it is |
+noevia is split across four repos (#952). This one is the integration repo; it pins the others
+in `release/versions.lock`, and `deploy/tools/assemble-release.sh` assembles a release from them.
+
+| Where | What it is |
 | --- | --- |
-| `apps/web` | React interface and the Node API proxy that fronts everything |
-| `services/diary` | FastAPI diary pipeline: retrieval, crash-safe logging, corpus writes |
-| `services/ocr` | OCR sidecar for scanned documents |
-| `services/docling` | Optional layout and table extraction |
-| `services/model-manager` | Model files, downloads and presets |
-| `services/code-sandbox` | The sandbox Code mode runs tasks in |
+| [noevia-web](https://github.com/sbstndalton/noevia-web) | The React interface |
+| [noevia-core](https://github.com/sbstndalton/noevia-core) | The Node API server that fronts everything, the shared `contracts/`, and `code-sandbox/` (the sandbox Code mode runs tasks in) |
+| [noevia-services](https://github.com/sbstndalton/noevia-services) | The Python sidecars: `diary` (retrieval, crash-safe logging, corpus writes), `ocr`, `docling` (optional layout and table extraction), `model-manager` (model files, downloads, presets), `laya` |
+| `release/versions.lock` | The SHAs (and tarball checksums) of the three repos a release is built from |
+| `build/web.Dockerfile` | The web image, built from an assembled release tree |
 | `deploy/` | Compose examples, preflight checks, backup and release helpers |
 | `docs/` | The roadmap, specs, runbook and [sources](docs/sources.md) |
 
@@ -137,16 +139,18 @@ The deprecated `LEMONADE_BASE_URL`, `LEMONADE_API_KEY`, and `CORPUS_REMOTE_ROOT`
 
 ```sh
 make test
-make build
+make assemble
 make compose-check
 ```
 
-`make test` runs the web, Diary, Docling, model-manager, OCR, Laya, code-sandbox, deploy-tooling
-and repo-tool suites (the Python ones need `pytest`; the model manager also needs
-`pip install -r services/model-manager/requirements.txt pytest-asyncio`).
-`make compose-check` validates every Compose file against `.env.example` and needs only Docker.
+`make test` runs the deploy-tooling suites; the web, server and sidecar suites run in their own
+repos. `make assemble` writes a release tree for `HEAD` to `out/tree` (from the pinned repos);
+set `COWORK_SOURCE_DIR=$PWD/out/tree` (in `.env` or the shell) and every Compose build context
+resolves into it. `make compose-check`
+validates every Compose file against `.env.example` and needs only Docker.
 
-The web app can also be run from `apps/web` with `npm run dev`; Diary Companion can be run from `services/diary` with `uvicorn agent.app:app --reload`.
+The web app can be run from a noevia-web checkout with `npm run dev`; Diary Companion from
+noevia-services' `diary/` with `uvicorn agent.app:app --reload`.
 
 ## Unraid Compose Manager
 

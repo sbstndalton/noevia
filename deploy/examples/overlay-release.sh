@@ -1,7 +1,8 @@
 #!/bin/bash
 # Guarded overlay release for the live DaServer install. Run ON the server as root.
 #
-# For releases where apps/web dependencies are unchanged since OLD: reuse OLD's
+# For releases where the web and server dependencies (noevia-web's package-lock.json, noevia-core's
+# server/package-lock.json) are unchanged since OLD: reuse OLD's
 # installed node_modules instead of running npm on the box (its IPv6 route to the
 # registry is broken). Builds cowork-web:NEW from OLD's image with dist/, server/ and contracts/ replaced,
 # bumps COWORK_VERSION, repoints the release, and rolls back automatically if the health wait
@@ -19,12 +20,15 @@
 # diary-overlay.sh.
 #
 # Before running:
-#   1. Locally: `rm -rf /tmp/noevia-qa-dist/*` (keep the folder: dist symlinks to it) then `npm run build` in apps/web
-#      (a stale build dir ships dead bundles), then from apps/web:
-#      COPYFILE_DISABLE=1 tar -h --no-xattrs -czf app-$NEW.tar.gz dist server contracts
-#      (-h: dist is a symlink locally), and FROM THE REPO ROOT `git archive --format=tar.gz -o src-$NEW.tar.gz $NEW`
-#      (run in apps/web it archives only apps/web, and the release folder cannot rebuild).
-#   2. scp both to /tmp on the server.
+#   1. Locally, from a clean noevia checkout (repo split, #952: the client and server come from the
+#      repos pinned in release/versions.lock at $NEW, not from this repo):
+#        deploy/tools/assemble-release.sh $NEW <out>        # writes <out>/noevia-release-$NEW.tar.gz
+#        mkdir <out>/tree && tar -xzf <out>/noevia-release-$NEW.tar.gz -C <out>/tree
+#        cd <out>/tree/web && npm ci && STAMP_VERSION=$NEW npm run build    # a fresh dist/
+#        cd <out>/tree && COPYFILE_DISABLE=1 tar --no-xattrs -czf <out>/app-$NEW.tar.gz \
+#          -C web dist -C ../core server contracts
+#      Use the same $NEW string for both (release-refs records it and is checked below).
+#   2. scp <out>/noevia-release-$NEW.tar.gz and <out>/app-$NEW.tar.gz to /tmp on the server.
 #   3. Take the appdata backup:
 #      php /usr/local/emhttp/plugins/appdata.backup/scripts/backup.php
 # Usage: overlay-release.sh OLD NEW
@@ -78,8 +82,18 @@ container_id() {
 # END container-id
 old_native=$(container_id cowork-llama-1) || exit 1
 
+# The release folder is the assembled tree (noevia/, web/, core/, services/, release-refs; #952),
+# so COWORK_SOURCE_DIR=current keeps every sidecar's build context at services/<name>. It must be
+# the tree for NEW, not a stale or monorepo-era archive.
+src="/tmp/noevia-release-$NEW.tar.gz"
+[ -f "$src" ] || { echo "$src missing; assemble it with deploy/tools/assemble-release.sh $NEW" >&2; exit 1; }
+src_sha=$(tar -xzOf "$src" release-refs | sed -n 's/^NOEVIA_SHA=//p')
+[ "$src_sha" = "$NEW" ] || { echo "$src was assembled at noevia '${src_sha}', not $NEW; not deploying" >&2; exit 1; }
 mkdir -p "$base/releases/$NEW"
-tar -xzf "/tmp/src-$NEW.tar.gz" -C "$base/releases/$NEW"
+tar -xzf "$src" -C "$base/releases/$NEW"
+for need in noevia/compose.yaml web/package.json core/server/index.cjs services/diary/Dockerfile; do
+  [ -e "$base/releases/$NEW/$need" ] || { echo "releases/$NEW lacks $need; not deploying" >&2; exit 1; }
+done
 
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 tar -xzf "/tmp/app-$NEW.tar.gz" -C "$work"
@@ -164,5 +178,5 @@ for c in web diary ocr llama model-loader; do
 done
 docker inspect "${present[@]}" \
   --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}} restarts={{.RestartCount}}'
-rm -f "/tmp/src-$NEW.tar.gz" "/tmp/app-$NEW.tar.gz"
+rm -f "$src" "/tmp/app-$NEW.tar.gz"
 echo "RELEASE_${NEW}_COMPLETE"

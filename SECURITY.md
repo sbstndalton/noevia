@@ -7,15 +7,15 @@ a home server or small VPS is safe by default, and that every deviation from
 the safe default is an explicit, documented setting.
 
 Related reading: the root `README.md` (deployment and accounts) and
-`services/diary/README.md` (diary configuration, including its own trust-model
+noevia-services `diary/README.md` (diary configuration, including its own trust-model
 section).
 
 ## The two services and their boundary
 
-- **Web server** (`apps/web/server/index.cjs`): the only service that talks to
+- **Web server** (noevia-core `server/index.cjs`): the only service that talks to
   browsers. It authenticates users, enforces CSRF and origin checks, and is
   the single published port in the reference `compose.yaml`.
-- **Diary sidecar** (`services/diary/agent/app.py`): the journaling service.
+- **Diary sidecar** (noevia-services `diary/agent/app.py`): the journaling service.
   It is internal-only: `compose.yaml` uses `expose` (container-network only),
   never `ports`. It trusts the web server; see the trust model below.
 
