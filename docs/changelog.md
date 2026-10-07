@@ -8,6 +8,34 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 7baecb40 — 2026-10-07 (web only: UI redo, self-hosted fonts, dark Rust egress grant contract)
+
+### Services
+
+- **Web:** [#953](https://github.com/sbstndalton/noevia/pull/953) (closes [#951](https://github.com/sbstndalton/noevia/issues/951) and [#956](https://github.com/sbstndalton/noevia/issues/956): the UI redo, one design system, real modal Settings, `/settings/appearance` deep link, new client dependency `motion` 14.0.0, self-hosted Inter and Source Serif 4 fonts) and [#955](https://github.com/sbstndalton/noevia/pull/955) (the Rust egress grant contract in `code-egress.cjs`, dark: `CODE_EGRESS_IMPL` is unset and defaults to `node`). Now `cowork-web:7baecb40` (`sha256:a9350962...`, 94 layers, previous `cowork-web:a1dfd69f`), `readlink current` is `releases/7baecb40`, `COWORK_VERSION=7baecb40`.
+- **Diary, Code sandbox (and code-verify), OCR, Docling:** no change (`cowork-diary:f6885a55`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`). None was restarted.
+- **Model manager:** no change on the box (`cowork-model-loader:227903da`). [#955](https://github.com/sbstndalton/noevia/pull/955) also bumps `NOEVIA_RS_REF` in its Dockerfile: merged, not yet deployed.
+- **Laya:** [#957](https://github.com/sbstndalton/noevia/pull/957) was merged after the cutover SHA: merged, not yet deployed.
+- **Deploy/infra:** [#954](https://github.com/sbstndalton/noevia/pull/954) (repo-split prep, CI, tooling and docs; `release/versions.lock` stays `self`): no change to the live path. `overlay-release.sh` was not run (web-only manual recipe).
+
+PRs: #953, #954, #955. Issues: #951, #956.
+
+**Database migration.** None. No schema change; the previous image runs on the same database. A consistent copy was still taken before cutover with the host `sqlite3 <db> ".backup '<db>.bak.before-7baecb40'"`: `/mnt/docker/appdata/cowork/state/web/cowork.db.bak.before-7baecb40` (282624 bytes, `PRAGMA integrity_check` ok, 2 user rows). Rollback does not need it.
+
+No feature flag, env var or compose override was changed (`CODE_EGRESS_IMPL` not set). No model run, tune, benchmark or download, no Code task, no private Diary access.
+
+Exact source `7baecb404120d870fa37ad1189ef59776ac9aa9a` (main CI completed success on that commit before cutover). **Release path: Mac-built overlay, not a full image build.** The client was built on the Mac from a clean detached worktree with `npm ci` against the new lockfile and `STAMP_VERSION=7baecb40 npm run build` in `apps/web`, so `motion` is bundled into `dist/assets/index-*.js` (it is a client-only dependency; the server image installs only `apps/web/server` dependencies, whose `package.json` and lockfile did not change). `dist server contracts` (without `server/node_modules` and `server/ui-data`) were layered onto `cowork-web:a1dfd69f` with the standard overlay Dockerfile; `git archive` of the repo root went into `releases/7baecb40`. The three self-hosted `.woff2` files are emitted into `dist/assets` by Vite (not served from `public/`).
+
+**Order and results.**
+
+1. **Candidate.** Image Env, WorkingDir, ExposedPorts, User, Entrypoint, Cmd and Healthcheck identical to the old image; `dist/version.json` `7baecb40`, `dist/index.html` sha256 `06c13fdd...` equal to the Mac build, 70 files in `dist/assets`. Synthetic throwaway container (`--network none`, tmpfs data dir, removed afterwards): `/api/ready`, `/api/setup/status`, `/version.json`, `/settings/appearance` and `/` all 200; JS, CSS and the three fonts 200 with `font/woff2`.
+2. **Backups.** `config/.env.bak.before-7baecb40` (mode 600, never printed), `state/web/cowork.db.bak.before-7baecb40`, release pointer copy `current.prev-7baecb40` (-> `releases/a1dfd69f`), container snapshots `releases/snapfull-before-7baecb40.txt` and `snapfull-after-7baecb40.txt`.
+3. **Cutover.** `current` and `COWORK_VERSION` repointed; started alone with `up.sh -- -d --no-build --no-deps --wait --wait-timeout 180 web` (preflight passed, `Healthy`). New `cowork-web-1` `StartedAt` 2026-10-07T02:00:14Z.
+
+**Verify.** Web healthy, `RestartCount` 0; `127.0.0.1:8021` and `https://noevia.daserver.work` both serve `version.json` `7baecb40` and `/api/ready` 200; `/settings/appearance` 200 `text/html`; `index-BDC1wQD7.js` 200, `index-DRjXze3E.css` 200, all three fonts 200 `font/woff2`; the CSP is `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; ...` with no googleapis or gstatic source; `/app/dist/index.html` sha256 `06c13fdd...` in the running container. Headless Chrome on `/` and `/settings/appearance` (signed out, so the sign-in page) renders "Sign in to noevia"; its only console message is the Cloudflare edge's injected Insights beacon refused by `script-src 'self'` (edge-injected, not an app error). Server log after start: `[egress] {"event":"egress.listening",...}` (the node implementation, no rust-client line), `[mcp]` discovery lines, and no error or failure line. Container snapshot of all 40 containers before and after: only `cowork-web-1` differs; every other container kept id, `StartedAt` and restart count. `sidecar-restart-alert.sh --ack` run; a following `--dry-run` was clean.
+
+Rollback (web only). On DaServer with `B=/mnt/docker/appdata/cowork`: `ln -sfn $B/releases/a1dfd69f $B/current && sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=a1dfd69f/' $B/config/.env && bash $B/tools/preflight/up.sh --env-file $B/config/.env -- -d --no-build --no-deps --wait --wait-timeout 180 web` (or restore `$B/config/.env.bak.before-7baecb40` instead of the `sed`). The `cowork-web:a1dfd69f` image is retained and there is no schema difference. Run `sidecar-restart-alert.sh --ack` afterwards. No other service needs rolling back.
+
 ## Release a1dfd69f — 2026-10-06 (web only: model-download token and queue errors surfaced, Diary backup date uses the app locale)
 
 ### Services
