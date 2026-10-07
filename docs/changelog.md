@@ -8,6 +8,22 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release Laya f42f65f1 — 2026-10-07 (Laya only: concurrent serving, default still one model copy)
+
+### Services
+
+- **Laya:** [#957](https://github.com/sbstndalton/noevia/pull/957) (closes [#780](https://github.com/sbstndalton/noevia/issues/780): the server serves decisions concurrently, bounded by `LAYA_MAX_CONCURRENCY` (default 1, range 1 to 4) and `LAYA_QUEUE_TIMEOUT_MS` (default 2000, range 0 to 10000)). Now `cowork-laya:0.3.5-noevia3` (`sha256:013b0238...`, previous `cowork-laya:0.3.5-noevia2`, retained), build context `laya/noevia3-f42f65f`.
+- **Web, Diary, Model manager, Code sandbox (and code-verify), OCR, Docling:** no change (`cowork-web:7baecb40`, `cowork-diary:f6885a55`, `cowork-model-loader:227903da`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`). None was restarted. The `NOEVIA_RS_REF` bump from [#955](https://github.com/sbstndalton/noevia/pull/955) does not change gguf-meta code; model-manager stays merged, not yet deployed.
+- **Deploy/infra:** live Compose `laya` service changed only in image tag and build context. No `.env` key, flag or env var was added or changed: `LAYA_MAX_CONCURRENCY` and `LAYA_QUEUE_TIMEOUT_MS` are unset, so the defaults apply (one model copy, requests queue up to 2 s, as before). Raising them needs a measured, owner-approved run.
+
+Exact source `f42f65f1271ef27bf697bf7e069c232468479791` (CI success on that commit). Same pattern as `noevia2`: `FROM cowork-laya:0.3.5-noevia1` plus `services/laya/server.py` from that SHA (sha256 `3a9d8b39...`, identical on the box, in the build context and inside the running container), so dependencies and model files are unchanged. Candidate check: the 23 `test_server.py` unit tests passed inside the new image (`--network none`, read-only, no model load).
+
+**Backups.** `config/.env.bak.before-laya-f42f65f` (mode 600, values never printed), Compose project `docker-compose.yml.bak.before-laya-f42f65f`, container snapshots `releases/snapfull-before-laya-f42f65f.txt` and `snapfull-after-laya-f42f65f.txt`.
+
+**Cutover and verify.** Started alone with the guarded `up.sh --env-file .env --profile laya -- -d --no-build --no-deps --wait laya` (preflight passed, `Healthy`). Laya healthy, `RestartCount` 0, `/health` 200 `{"ready": true}` (one probe, no decision request). The server does not log the concurrency setting; the log shows only the existing checkpoint-temperature `RuntimeWarning` lines and no error or traceback, and no refused-value line for either new variable. Web log shows no Laya error. Snapshot of all 40 containers before and after: only `cowork-laya-1` differs; every other container kept id, `StartedAt` and restart count. No model run, tune, benchmark or Diary access.
+
+Rollback (Laya only). Restore the Compose project file, then recreate Laya: `cp -p /boot/config/plugins/compose.manager/projects/Cowork/docker-compose.yml.bak.before-laya-f42f65f /boot/config/plugins/compose.manager/projects/Cowork/docker-compose.yml && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env --profile laya -- -d --no-build --no-deps --wait laya` (image `cowork-laya:0.3.5-noevia2` retained; `.env` was not changed, so `.env.bak.before-laya-f42f65f` is only a copy).
+
 ## Release 7baecb40 — 2026-10-07 (web only: UI redo, self-hosted fonts, dark Rust egress grant contract)
 
 ### Services
@@ -15,7 +31,7 @@ notes follow as before. Entries before release 7b6942c keep their original free-
 - **Web:** [#953](https://github.com/sbstndalton/noevia/pull/953) (closes [#951](https://github.com/sbstndalton/noevia/issues/951) and [#956](https://github.com/sbstndalton/noevia/issues/956): the UI redo, one design system, real modal Settings, `/settings/appearance` deep link, new client dependency `motion` 14.0.0, self-hosted Inter and Source Serif 4 fonts) and [#955](https://github.com/sbstndalton/noevia/pull/955) (the Rust egress grant contract in `code-egress.cjs`, dark: `CODE_EGRESS_IMPL` is unset and defaults to `node`). Now `cowork-web:7baecb40` (`sha256:a9350962...`, 94 layers, previous `cowork-web:a1dfd69f`), `readlink current` is `releases/7baecb40`, `COWORK_VERSION=7baecb40`.
 - **Diary, Code sandbox (and code-verify), OCR, Docling:** no change (`cowork-diary:f6885a55`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`). None was restarted.
 - **Model manager:** no change on the box (`cowork-model-loader:227903da`). [#955](https://github.com/sbstndalton/noevia/pull/955) also bumps `NOEVIA_RS_REF` in its Dockerfile: merged, not yet deployed.
-- **Laya:** [#957](https://github.com/sbstndalton/noevia/pull/957) was merged after the cutover SHA: merged, not yet deployed.
+- **Laya:** [#957](https://github.com/sbstndalton/noevia/pull/957) was merged after the cutover SHA; deployed afterwards in release Laya f42f65f1.
 - **Deploy/infra:** [#954](https://github.com/sbstndalton/noevia/pull/954) (repo-split prep, CI, tooling and docs; `release/versions.lock` stays `self`): no change to the live path. `overlay-release.sh` was not run (web-only manual recipe).
 
 PRs: #953, #954, #955. Issues: #951, #956.
