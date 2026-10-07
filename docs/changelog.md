@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 8a8a7e83 — 2026-10-07 (web, plus code-verify recreate: MCP response framing in Rust/WASM behind dark `MCP_FRAME_IMPL`, #980; exact upload classify under `UPLOAD_SNIFF_IMPL=wasm`, #989)
+
+### Services
+
+- **Web:** [#1010](https://github.com/sbstndalton/noevia/pull/1010) pins noevia-core `57d7718a` (core#12): MCP response framing (`mcp_rpc_body`, `mcp_schema_refs`) in `dav-parse.wasm` behind `MCP_FRAME_IMPL=js|wasm`, default `js`; and #989, upload classify of long names under `UPLOAD_SNIFF_IMPL=wasm` is now exact. Both flags are off, so there is no live behaviour change. Deployed `cowork-web:8a8a7e83` (rollback target `cowork-web:b29d0e0b`).
+- **Code sandbox:** no change (`cowork-code-sandbox:pi-0.87.0-b29d0e0b`, `CODE_SANDBOX_VERSION` unchanged).
+- **Code-verify:** recreated on the same sandbox image `cowork-code-sandbox:pi-0.87.0-b29d0e0b` (it shares `CODE_SANDBOX_VERSION` in the Compose override, so this was a plain recreate; no rebuild). It was on `pi-0.87.0-f6885a55`.
+- **Diary, Model manager, OCR, Docling, Laya, egress:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-ocr:3dd9d650`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` flag was set.
+
+Source: noevia main `8a8a7e83952f5cf405e9a90ca191803e3e5e52f7` (CI green on #1010 and on main, including Assembled release). Assembled with `deploy/tools/assemble-release.sh 8a8a7e83` (web `c80a3668`, core `57d7718a`, services `6a535513`), tarball sha256 `1ce0a6b6...c0a5` verified on the box.
+
+**Build note.** The first server build hung for about 30 minutes in the image's client test step (`profile-features-request-dedup.test.cjs` idle at 0.3% CPU, Vite SSR); it was killed, nothing was tagged, and the identical rebuild passed in the normal time. The hung attempt's log is kept as `build-8a8a7e83.attempt1-hung.log`; treat it as a flake to watch.
+
+**Candidate checks (before cutover).** Image `cowork-web:8a8a7e83`: stamped `8a8a7e83`; `dav-parse.wasm` sha256 `d9d3ce85...8d94` equals `DAV_PARSE_WASM_SHA256` in `dav-parse.lock`; no imports; exports include `mcp_rpc_body` and `mcp_schema_refs` (and the existing dav, s3, secret, storage and upload exports); no `*_IMPL` in the image environment. Run with `--network none`, read-only root, tmpfs state and a synthetic token: healthy, no FATAL line.
+
+**Backups.** `config/.env.bak.before-8a8a7e83-20261007034306` and `config/.env.bak.before-code-verify-8a8a7e83-041448` (values never printed), `backups/cowork-db-before-8a8a7e83.sqlite` (SQLite `.backup`, integrity ok), `backups/web-state-before-8a8a7e83-20261007034306.tgz`, `backups/current-pointer-before-8a8a7e83.txt`, `backups/compose-before-8a8a7e83.yml`, `backups/compose-override-before-8a8a7e83.yml`, `docker-compose*.yml.bak.before-8a8a7e83` in the Compose Manager project, and container snapshots `releases/snapinspect-before-8a8a7e83.txt` and `snapinspect-after-8a8a7e83.txt`.
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=8a8a7e83`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`), then the same command with `code-verify`. Live: `cowork-web:8a8a7e83` healthy, 0 restarts; `/version.json` `{"version":"8a8a7e83","web":"c80a3668...","core":"57d7718a..."}`; `/api/ready` 200, also through the public hostname; `/`, JS and CSS bundles and the three woff2 fonts 200; CSP and index have no Google source; egress is the node listener (`egress.listening` on 172.28.0.3:8040); running web container has the pinned wasm sha and no `*_IMPL`. MCP unchanged: `[mcp] 196 tools across 3 server(s)` (noevia 10, nextcloud 181, tavily 5) before and after. `cowork-code-verify-1` on `pi-0.87.0-b29d0e0b`, network none, 0 restarts, listening on its socket. Web and code-verify logs clean. Snapshot diff by container id: only `cowork-web-1` and `cowork-code-verify-1` were recreated. Many other containers (Cloudflare origin TLS, Diary, Gluetun, qBittorrent, the arr apps, Jellyfin, Llama) show new start times in the diff because Unraid's daily appdata backup (04:10) stops and restarts containers; it overlapped the cutover and kept the same ids.
+
+Rollback. Web: `ln -sfn /mnt/docker/appdata/cowork/releases/b29d0e0b /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=b29d0e0b/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. Code-verify (optional, harmless to leave): `CODE_SANDBOX_VERSION` is shared with code-sandbox, so rolling code-verify back alone is not possible without also pointing code-sandbox at the old tag; leave it on `pi-0.87.0-b29d0e0b`. The old images are still on the box; the database was not migrated.
+
 ## Release b29d0e0b — 2026-10-07 (web and code sandbox: the sandbox bridge's Rust/WASM path behind dark `SANDBOX_BRIDGE_IMPL`, #999)
 
 ### Services
