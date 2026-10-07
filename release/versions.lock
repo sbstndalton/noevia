@@ -13,18 +13,19 @@
 # https://codeload.github.com/sbstndalton/<repo>/tar.gz/<ref>; the REQUIRED <KEY>_SHA256 pins that
 # tarball's checksum (`curl -fsSL <url> | shasum -a 256`). `self` (export from this checkout) only
 # works at commits from before the cutover, which still have apps/web and services/.
+# Every pinned ref (web, core, services, rs) must be reachable from its repo's main (CI checks).
 # To ship a change made in one of those repos, bump its _REF and _SHA256 here in a PR; CI
 # ("Assembled release") assembles from this file, builds the web image and boots it.
 # Per-service image tags (DIARY_VERSION, OCR_VERSION, ...) keep their meaning.
 #
-# NOEVIA_RS_REF: sbstndalton/noevia-rs, built into the model-manager image as gguf-meta and into
-# the dark egress-rs image (#909, #926). Bumping it also means updating NOEVIA_RS_REF and
+# NOEVIA_RS_REF: sbstndalton/noevia-rs, built into the model-manager image as gguf-meta and
+# model-files and into the dark egress-rs image (#909, #964, #926). Bumping it also means updating NOEVIA_RS_REF and
 # NOEVIA_RS_SHA256 in deploy/egress-proxy/Dockerfile and in noevia-services'
 # model-manager/Dockerfile (CI fails if either Dockerfile default differs from this file).
-NOEVIA_RS_REF=14e08ddb2cd8e7434c1dacb7dec2c58aa80934e9
+NOEVIA_RS_REF=472e83421bcfe039c2081595999abdbe7975d808
 NOEVIA_WEB_REF=9dab15691f3690d4cd62bf8817255f1b39f6df84
 NOEVIA_WEB_SHA256=1dde070d2485f9e3654a1a8daac34c92d09c13a144ef3f086dc4a78e52460e0d
 NOEVIA_CORE_REF=93d180a199f06769be2c12f47277637f06c354c7
 NOEVIA_CORE_SHA256=8b0ac74086dfeafb048d95a5f11d6c7e190476b88880f2bb9842cd18d8540eb0
-NOEVIA_SERVICES_REF=54449fce271398da58117d280ca8089058fff0cc
-NOEVIA_SERVICES_SHA256=be2b1f0508186ecf5b83f61262d7723edfd244f807745a6ecc358664997a87b7
+NOEVIA_SERVICES_REF=66b40f96726120c5b6a01f2c9818185dbef309f2
+NOEVIA_SERVICES_SHA256=cc16c520ead577dd29fa3b820e3ccd028641c9ab0a89f9c450757f84cf84ad1d
