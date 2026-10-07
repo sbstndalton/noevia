@@ -19,7 +19,7 @@
 # the dark egress-rs image (#909, #926). Bumping it also means updating NOEVIA_RS_REF and
 # NOEVIA_RS_SHA256 in deploy/egress-proxy/Dockerfile and
 # services/model-manager/Dockerfile (CI fails if the Dockerfile default differs from this file).
-NOEVIA_RS_REF=3a9deac0279c5d05c6668565e1b46750d795d28b
+NOEVIA_RS_REF=14e08ddb2cd8e7434c1dacb7dec2c58aa80934e9
 NOEVIA_WEB_REF=self
 NOEVIA_CORE_REF=self
 NOEVIA_SERVICES_REF=self
