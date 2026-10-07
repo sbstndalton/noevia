@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 51871f21 — 2026-10-07 (web only: S3 listing parser and storage path rules behind dark switches, NUL refused in storage paths)
+
+### Services
+
+- **Web:** [#985](https://github.com/sbstndalton/noevia/pull/985) pins noevia-core `d8f70188` ([noevia-core#5](https://github.com/sbstndalton/noevia-core/pull/5): the S3 listing parser and the storage path rules, behind `S3_PARSE_IMPL` and `STORAGE_PATH_IMPL`, both default `js`; [#976](https://github.com/sbstndalton/noevia/issues/976), [#978](https://github.com/sbstndalton/noevia/issues/978)). One deliberate behaviour change applies even under `js`: `safeRelativePath` refuses a path containing NUL. The storage module `dav-parse.wasm` now also exports `s3_list` and `storage_path`; its sha256 is `6979df21…649d` (noevia-rs `7de8b715`). Web client unchanged (`c80a3668`). Image `cowork-web:51871f21` (was `cowork-web:ebe6344d`).
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling, Laya, egress:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `DAV_PARSE_IMPL` and every other flag stay unset.
+
+Source: noevia main `51871f21460ce431fe6e19cb2bb7736d6ac0043f` (#985). Assembled on the Mac with `deploy/tools/assemble-release.sh 51871f21` (web `c80a3668`, core `d8f70188`, services `66b40f96`; `release-refs` matched), built on the server with `noevia/deploy/tools/build-web-release.sh` (in-build tests and build passed, stamp verified).
+
+**Candidate checks (before cutover).** Image `dav-parse.wasm` sha256 `6979df21364c7d545ef7597bebe2f3231c975900800178aee8005b7539f2649d` equals `DAV_PARSE_WASM_SHA256`, and the image's `server/dav-parse.lock` is byte-identical to core's; the module exports `memory, dav_input, dav_list, dav_output_len, dav_output_ptr, s3_list, storage_path`; none of the three `*_IMPL` flags is in the image environment; `safeRelativePath` refuses a NUL path and accepts `a/b.txt`. A throwaway container (`--network none`, synthetic env, no real state, removed afterwards) went ready: `/api/ready` 200 with version `51871f21`. A first attempt with `--read-only` crashed on creating `ui-data`; that was the test flag, not the image.
+
+**Backups.** `config/.env.bak.before-51871f21` (values never printed), `state/web/cowork.db.bak.before-51871f21` (SQLite `.backup`, integrity ok), `releases/current-pointer-before-51871f21.txt`, container snapshots `releases/snapfull-before-51871f21.txt` and `releases/snapinspect-before-51871f21.txt` (after-snapshots alongside).
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=51871f21`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:51871f21` healthy, 0 restarts; `/version.json` `{"version":"51871f21","web":"c80a3668…","core":"d8f70188…"}`; `/api/ready` 200 (also through the public URL); `/` and woff2 fonts 200; no Google sources in the CSP or index; egress listener is the node one (`egress.listening` on 172.28.0.3:8040); web log clean; live wasm hash matches and no `*_IMPL` flag set. The before/after snapshots differ only in `cowork-web-1` (id, image, start time). No real storage reads were made.
+
+Rollback (web only). `ln -sfn /mnt/docker/appdata/cowork/releases/ebe6344d /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=ebe6344d/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. `cowork-web:ebe6344d` is still on the box. The `.env` and DB backups above are the fallback for state.
+
 ## Release ebe6344d — 2026-10-07 (web only: WebDAV listing hardening, `<bdi>` isolation of storage file names)
 
 ### Services
