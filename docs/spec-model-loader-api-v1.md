@@ -148,6 +148,11 @@ and the file not being claimed (`409` otherwise), evaluated under the same lock.
 Request `{"baseRevision": "<sha256>", "text": "<whole file>"}`. The text is stored
 verbatim (comments and layout kept).
 
+Optional advisory field `backup` (boolean): only an explicit `false` skips the recovery copies
+(`models.ini.noevia-backup-<baseRevision>` and the rotating `.bak-<ts>`); any other value or
+an absent field keeps the default of writing them. Sidecars older than this field ignore it
+and always back up. Auto-tune sends `backup: false` after its first write of a run (#1003, #1021).
+
 | Outcome | Status | Body | State of the file |
 | --- | --- | --- | --- |
 | Written | 200 | `{"ok": true, "revision": "<sha256 of text>"}` | new text |
