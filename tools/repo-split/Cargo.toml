@@ -1,0 +1,20 @@
+[package]
+name = "repo-split"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+description = "Extract noevia-web, noevia-core and noevia-services from a noevia commit (#952)"
+
+# No dependencies on purpose: the tool drives `git` and `git filter-repo` as subprocesses.
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
