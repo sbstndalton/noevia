@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 2b5c122f — 2026-10-07 (autotune KV policy #1057-#1061; web and core)
+
+### Services
+
+- **Web:** [#1063](https://github.com/sbstndalton/noevia/pull/1063) pins noevia-core `04bff709` (core#20) and noevia-web `ec8ec1c0` (web#12): autotune KV policy, bf16 default, q8_0 floor, 2x rule, per-model "Allow q5 KV cache for more context" switch. Fixes #1057 #1058 #1059 #1060 #1061. Deployed `cowork-web:2b5c122f` (image id `sha256:9c9f1195...eb9`); rollback target `cowork-web:f33a1b68` (`sha256:c07dbde7...851e`). q4_0 KV needs both the per-model q5 switch and `NOEVIA_AUTOTUNE_ALLOW_BELOW_Q5_KV`.
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`46087bac...ba03`) and `NOEVIA_WEB_REF/_SHA256` (`3c9fa330...7cbb`), each tarball fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed; no flag was set and `AUTOTUNE_PLAN_IMPL`, `LAYA_LOAD_ADVISOR` and `PRESET_RELOAD_IMPL` stay as they were.
+
+**Evidence.** No autotune or calibration job was running before the build or immediately before `up.sh`. Candidate (`--network none`, read-only, synthetic): no FATAL, `/api/ready` 200, `dav-parse.wasm` sha equals `DAV_PARSE_WASM_SHA256` (`33a4c692...5333`). Live: healthy, 0 restarts, `/api/ready` 200 locally and on noevia.daserver.work, the web log shows dav-parse.wasm verified for AUTOTUNE_PLAN_IMPL and PRESET_RELOAD_IMPL, MCP 196 tools across 3 servers. In the container `kvCandidates()` returns `bf16,q8_0` (`bf16,q8_0,q5_1,q5_0` with the q5 switch). The authenticated autotune status API was not queried (needs a session). No model run, reload or tune.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/f33a1b68 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=f33a1b68/' /mnt/docker/appdata/cowork/config/.env`, then from `/boot/config/plugins/compose.manager/projects/Cowork` run `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait web`. Pre-release backups (env, compose files, current pointer, web state) are in `/mnt/docker/appdata/cowork/backups-1057/`; the SQLite backup is `state/web/cowork.db.bak.before-2b5c122f`.
+
 ## Flags enabled — 2026-10-07 (owner approved; configuration only, no image change)
 
 ### Services
