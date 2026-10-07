@@ -655,6 +655,26 @@ checksum-verified tarball at build time, so the box needs no git credentials). I
 - **Rollback:** remove `GGUF_PARSER` (or set it to `python`) and recreate model-loader. An
   unknown value also means `python`, with one warning in the log.
 
+### Model-files front (`MODEL_FILES_IMPL`, #964)
+
+Model-loader images built from #964 on also carry `/usr/local/bin/model-files`, the bounded Rust
+port of the step that turns a Hugging Face repository tree listing (untrusted, from the network)
+into the file entries the model manager uses: paths, sizes, quant labels and shard groups. It
+comes from the same `NOEVIA_RS_REF` as `gguf-meta`. It is dark: `MODEL_FILES_IMPL` defaults to
+`python`, and the Python code keeps producing every listing.
+
+- **Switch on (owner only):** add `MODEL_FILES_IMPL=rust` to the model-loader service's
+  environment (in the hand-kept live Compose Manager override too) and recreate model-loader
+  only.
+- **Behaviour with `rust`:** listings go through `model-files tree` (no shell, 10 s timeout).
+  Unlike `GGUF_PARSER`, it **fails closed**: a missing binary, nonzero exit, timeout, input over
+  16 MB or malformed output means that repository's files are not used, and the API answers
+  502. The log gets one `model-files failed (<reason>)` warning per reason per process.
+  Results are otherwise identical to Python (601 shared differential fixtures plus seeded
+  random corpora in CI).
+- **Rollback:** remove `MODEL_FILES_IMPL` (or set it to `python`) and recreate model-loader. An
+  unknown value also means `python`, with one warning in the log.
+
 ### Diary tenant key (M2) — first rollout
 
 `DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see
