@@ -19,13 +19,14 @@
 # Per-service image tags (DIARY_VERSION, OCR_VERSION, ...) keep their meaning.
 #
 # NOEVIA_RS_REF: sbstndalton/noevia-rs, built into the model-manager image as gguf-meta and
-# model-files and into the dark egress-rs image (#909, #964, #926). Bumping it also means updating NOEVIA_RS_REF and
-# NOEVIA_RS_SHA256 in deploy/egress-proxy/Dockerfile and in noevia-services'
-# model-manager/Dockerfile (CI fails if either Dockerfile default differs from this file).
-NOEVIA_RS_REF=472e83421bcfe039c2081595999abdbe7975d808
+# model-files, into the ocr image as docx-text, and into the dark egress-rs image (#909, #964,
+# #981, #926). Bumping it also means updating NOEVIA_RS_REF and NOEVIA_RS_SHA256 in
+# deploy/egress-proxy/Dockerfile and in noevia-services' model-manager/Dockerfile and
+# ocr/Dockerfile (CI fails if any Dockerfile default differs from this file).
+NOEVIA_RS_REF=2b49af9aec5d49a591c1bfa7094ba8ca8ad135fd
 NOEVIA_WEB_REF=c80a36683eb02361446d877abe4d010086763758
 NOEVIA_WEB_SHA256=a4ab1b0bf62d8a7aa266dde6ed298758e82e8969fff1fc4d3d40fe602fdd7a66
 NOEVIA_CORE_REF=2f41e11ce477b78a53814949863e84f4dc91a5ff
 NOEVIA_CORE_SHA256=ecea5aa1ee64ed1af149843e8f1ea6704cf975fc88fd060085f76424fd48f5c8
-NOEVIA_SERVICES_REF=66b40f96726120c5b6a01f2c9818185dbef309f2
-NOEVIA_SERVICES_SHA256=cc16c520ead577dd29fa3b820e3ccd028641c9ab0a89f9c450757f84cf84ad1d
+NOEVIA_SERVICES_REF=3dd9d6505ec7900857de7580cbbc2ae77e563db9
+NOEVIA_SERVICES_SHA256=72bfd092b3487b2a5239a8fac49e029a4bcac1d096874b0b1543690fd486aa34
