@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 9c3d67a3 — 2026-10-07 (web only: SECURITY, stored secrets with a GCM tag under 16 bytes are refused, #995; secret envelope in `dav-parse.wasm` behind dark `SECRET_ENVELOPE_IMPL`, #979)
+
+### Services
+
+- **Web:** [#997](https://github.com/sbstndalton/noevia/pull/997) pins noevia-core `92a7a0c5`: **SECURITY (#995), active under the default `js` too:** a stored secret whose GCM tag is shorter than 16 bytes is now refused (a truncated tag weakens authentication). noevia never writes such values, so no stored secret is affected. #979 moves the `enc:v1`/`enc:v2` envelope into `secret-envelope.cjs`, which runs the JS code or the Rust port in `dav-parse.wasm` (`secret_open`/`secret_seal`) by `SECRET_ENVELOPE_IMPL=js|wasm`, default `js`, dark. #996: if any `*_IMPL=wasm` is set and the module is missing or tampered with, web refuses to start (no flag is set here). #990 is CI-only. Deployed `cowork-web:9c3d67a3` (live was `8a8060d0`).
+- **Diary, Model manager, Code sandbox (and code-verify), OCR, Docling, Laya, egress:** no change (`cowork-diary:f6885a55`, `cowork-model-loader:08c65957`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:3dd9d650`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`).
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` flag or other variable was set.
+
+Source: noevia main `9c3d67a3747222ffa3b9d33abcb361b1b40d9eb2` (CI green on #997 including Assembled release). Assembled with `deploy/tools/assemble-release.sh 9c3d67a3` (web `c80a3668`, core `92a7a0c5`, services `6a535513`), tarball sha256 `86bef729...` verified on the box, built with `build-web-release.sh`.
+
+**Candidate checks (before cutover).** In `cowork-web:9c3d67a3`, `--network none`, real `.env` not loaded, throwaway state: `dav-parse.wasm` sha256 `4c6c8c59...2814` matches `dav-parse.lock`; exports include `secret_open` and `secret_seal`; no `*_IMPL` in the environment; `secret-envelope-wasm.test.cjs` 8/8, `secrets.test.cjs` 3/3, `secrets-rotate.test.cjs` 4/4; the server started healthy with no FATAL line.
+
+**Credential check (booleans/counts only, read-only, never values).** A read-only script run in the live container opened every stored credential with the container's own key, before and after cutover, with identical results: `storage_connections` 2 rows (1 opens, 1 empty, 0 failed), `mcp_oauth_tokens` 0, `mcp_oauth_clients` 0. No decrypt, "needs re-auth" or "could not be opened" warning in the web log before, right after, or after a three-minute soak.
+
+**Backups.** `config/.env.bak.20261007022641` (values never printed), `backups/cowork-db-before-9c3d67a3.sqlite` (SQLite `.backup`, integrity ok), `backups/web-state-before-9c3d67a3-20261007022641.tgz`, `backups/current-pointer-before-9c3d67a3.txt`, `backups/compose-before-9c3d67a3.yml`, snapshots `releases/snapinspect-before-9c3d67a3.txt` and `snapinspect-after-9c3d67a3.txt`.
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=9c3d67a3`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:9c3d67a3` healthy, 0 restarts; `/version.json` `{"version":"9c3d67a3","web":"c80a3668...","core":"92a7a0c5..."}`; `/api/ready` 200 (also public); `/`, JS and CSS bundles and the three woff2 fonts 200; CSP has no Google source; egress is the node listener; the snapshot diff shows only `cowork-web-1` changed.
+
+Rollback. `ln -sfn /mnt/docker/appdata/cowork/releases/8a8060d0 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=8a8060d0/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. `cowork-web:8a8060d0` is still on the box. The database was not migrated by this release.
+
 ## Release 8a8060d0 — 2026-10-07 (web only: a refused storage path is a 400, not a listing of the storage root, #984)
 
 ### Services
