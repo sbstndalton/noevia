@@ -23,7 +23,7 @@
   --radius-row: 10px;
   --radius-overlay: 16px;
   --radius-dialog: 20px;
-  --radius-composer: 28px;
+  --radius-composer: 24px;
   --radius-tile: 16px;
   --radius-surface: 16px;
   --radius-button-inset: 999px;
@@ -72,7 +72,7 @@
   --radius-row: 10px;
   --radius-overlay: 14px;
   --radius-dialog: 16px;
-  --radius-composer: 18px;
+  --radius-composer: 16px;
   --radius-tile: 20px;
   --radius-surface: 16px;
   --glass-blur: 24px;
@@ -119,19 +119,31 @@ html[data-family='glass'], [data-family='glass'] body {
 }
 [data-family='glass'] :is(.app, .chat-workspace, .app-main) { background: transparent; }
 /* Frosted panes: translucent fill, blur + saturate, a white inner highlight on the top edge
-   and a hairline edge all round, then the pop shadow for depth. */
-[data-family='glass'] :is(.app .sidebar.pane, .app .app-stack.pane, .ctx-menu, .account-popover, .popup, .composer-actions-panel, .tool-catalogue-panel, .settings-stage, :root .app .composer-inner, .mp-panel.aero, .settings-stage :is(.set-rows, .group)) {
+   and a hairline edge all round, then the pop shadow for depth. The main tile is frosted on a
+   ::before layer, never on the tile itself: a backdrop-filter on .app-stack would make it the
+   containing block of the fixed Settings scrim and window rendered inside it (and clip them). */
+[data-family='glass'] :is(.app .sidebar.pane, .ctx-menu, .account-popover, .popup, .composer-actions-panel, .tool-catalogue-panel, .settings-stage, :root .app .composer-inner, .mp-panel.aero, .settings-stage :is(.set-rows, .group)) {
   background: var(--glass-pane) !important;
   backdrop-filter: blur(var(--glass-blur)) saturate(1.8) !important; -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.8) !important;
   border: 1px solid var(--glass-hairline);
   box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 0 0 1px var(--glass-inner), var(--glass-depth);
 }
-[data-family='glass'] :is(.app .sidebar.pane, .app .app-stack.pane) { border: 0; }
+[data-family='glass'] .app .sidebar.pane { border: 0; }
+[data-family='glass'] .app .app-stack.pane { background: transparent !important; border: 0; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; box-shadow: var(--glass-depth); }
+[data-family='glass'] .app .app-stack.pane::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: var(--glass-pane);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.8); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 0 0 1px var(--glass-inner);
+}
+/* The Settings window is a reading surface: an opaque frosted fill, not a see-through pane. */
+[data-family='glass'] .settings-stage { --glass-pane: var(--glass-window); }
 [data-family='glass'] .settings-stage :is(.settings-navigation, .settings-detail) { background: transparent; }
 [data-family='glass'] .settings-stage :is(.set-rows, .group) { --glass-pane: var(--glass-pane-strong); box-shadow: inset 0 1px 0 var(--glass-edge); }
 [data-family='glass'][data-theme='light'] {
   --glass-pane: rgb(255 255 255 / .52);
   --glass-pane-strong: rgb(255 255 255 / .6);
+  --glass-window: rgb(248 248 251 / .97);
   --glass-edge: rgb(255 255 255 / .9);
   --glass-inner: rgb(255 255 255 / .35);
   --glass-hairline: rgb(0 0 0 / .08);
@@ -140,12 +152,15 @@ html[data-family='glass'], [data-family='glass'] body {
 [data-family='glass']:not([data-theme='light']) {
   --glass-pane: rgb(36 37 42 / .5);
   --glass-pane-strong: rgb(44 45 50 / .55);
+  --glass-window: rgb(30 31 35 / .97);
   --glass-edge: rgb(255 255 255 / .14);
   --glass-inner: rgb(255 255 255 / .05);
   --glass-hairline: rgb(255 255 255 / .1);
   --glass-depth: 0 1px 2px rgb(0 0 0 / .3), 0 16px 40px -8px rgb(0 0 0 / .55);
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  [data-family='glass'][data-theme], [data-family='glass'] { --glass-pane: var(--md-surface-container-low); --glass-pane-strong: var(--bg-surface); --glass-blur: 0px; }
+  [data-family='glass'][data-theme], [data-family='glass'] { --glass-pane: var(--md-surface-container-low); --glass-pane-strong: var(--bg-surface); --glass-window: var(--md-surface-container-low); --glass-blur: 0px; }
+  /* No filter at all (a zero blur is still a filter and still creates a containing block). */
+  [data-family='glass'] :is(.app .sidebar.pane, .app .app-stack.pane::before, .ctx-menu, .account-popover, .popup, .composer-actions-panel, .tool-catalogue-panel, .settings-stage, :root .app .composer-inner, .mp-panel.aero, .settings-stage :is(.set-rows, .group)) { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   html[data-family='glass'], [data-family='glass'] body { background: var(--bg-app); }
 }

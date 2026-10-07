@@ -54,7 +54,18 @@ const EXIT: Record<MotionKind, Target> = {
   fade: { opacity: 0 },
 };
 
+/** Hands the element back to CSS once a spring has come to rest at its natural state, so no
+ *  inline transform or opacity is left to block later CSS transforms (hover, :active, layout).
+ *  Skipped if another spring has started on the element since. */
+const generation = new WeakMap<Element, number>();
+function settle(el: Element, mine: number): void {
+  if (generation.get(el) !== mine) return;
+  const style = (el as HTMLElement).style;
+  style.removeProperty('transform'); style.removeProperty('opacity');
+}
+
 function run(el: Element, target: Target, options: Options): Promise<void> {
+  generation.set(el, (generation.get(el) ?? 0) + 1);
   const controls = animate(el as HTMLElement, target as never, options as never);
   return Promise.resolve(controls.finished).then(() => undefined, () => undefined);
 }
@@ -70,7 +81,8 @@ export function enter(el: Element | null | undefined, kind: MotionKind, delay = 
   }
   const keyframes: Target = {};
   for (const key of Object.keys(to)) keyframes[key] = from[key] === to[key] ? to[key] : [from[key] as number, to[key] as number];
-  return run(el, keyframes, { ...SPRINGS[kind], delay });
+  const mine = (generation.get(el) ?? 0) + 1;
+  return run(el, keyframes, { ...SPRINGS[kind], delay }).then(() => settle(el, mine));
 }
 
 /** Plays an element out from wherever it is now (interrupting an enter). Resolve, then remove. */
@@ -160,7 +172,8 @@ function onSwitch(el: HTMLElement): void {
   // from; a toggle during a running spring retargets from the current value instead.
   const from = knobsMoving.has(knob) ? null : 16 - x;
   knobsMoving.add(knob);
-  void run(knob, { x: from === null ? x : [from, x] }, SPRINGS.knob).then(() => knobsMoving.delete(knob));
+  const mine = (generation.get(knob) ?? 0) + 1;
+  void run(knob, { x: from === null ? x : [from, x] }, SPRINGS.knob).then(() => { knobsMoving.delete(knob); settle(knob, mine); });
 }
 const knobsMoving = new WeakSet<Element>();
 
@@ -194,7 +207,7 @@ export function startMotion(root: Document = document): void {
     const el = (e.target as Element | null)?.closest?.(PRESS) as HTMLElement | null;
     if (!el || (el as HTMLButtonElement).disabled || reducedMotion()) return;
     void run(el, { scale: 0.97 }, SPRINGS.press);
-    const release = () => { void run(el, { scale: 1 }, SPRINGS.release); el.removeEventListener('pointerup', release); el.removeEventListener('pointerleave', release); el.removeEventListener('pointercancel', release); };
+    const release = () => { const mine = (generation.get(el) ?? 0) + 1; void run(el, { scale: 1 }, SPRINGS.release).then(() => settle(el, mine)); el.removeEventListener('pointerup', release); el.removeEventListener('pointerleave', release); el.removeEventListener('pointercancel', release); };
     el.addEventListener('pointerup', release); el.addEventListener('pointerleave', release); el.addEventListener('pointercancel', release);
   }, { passive: true });
   // Exposed for other frameworks and for the browser QA (qa/ui-redo-951.cjs).

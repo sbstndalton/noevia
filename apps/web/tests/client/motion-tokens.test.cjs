@@ -79,7 +79,12 @@ test('Settings springs in and out through the motion layer, on a 50% scrim', () 
   const shell = fs.readFileSync(path.join(__dirname, '../../src/components/SettingsShell.tsx'), 'utf8');
   assert.match(shell, /enterMotion\(node, 'dialog'\)/);
   // The exit resolves before Settings unmounts.
-  assert.match(shell, /Promise\.all\(\[exitMotion\(node, 'dialog'\), exitMotion\(scrim, 'fade'\)\]\)\.then\(\(\) => onClose\.current\(\)\)/);
+  assert.match(shell, /const exited = Promise\.all\(\[exitMotion\(node, 'dialog'\), exitMotion\(scrim, 'fade'\)\]\);/);
+  // Raced against a timeout (a background tab runs no frames) and ignored once unmounted, so a
+  // Settings reopened mid-exit is never closed by its predecessor; a second close is a no-op.
+  assert.match(shell, /Promise\.race\(\[exited, timeout\]\)\.then\(\(\) => \{ if \(live\.current\) onClose\.current\(\); \}\)/);
+  assert.match(shell, /if \(closingRef\.current\) return;/);
+  assert.match(shell, /role="dialog" aria-modal="true" aria-labelledby=\{titleId\}/);
   assert.doesNotMatch(components, /@starting-style \{ \.settings-stage/, 'no competing CSS entrance');
   assert.match(tokens, /--scrim: rgba\(0, 0, 0, \.5\);/);
 });

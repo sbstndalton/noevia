@@ -124,7 +124,7 @@ const out=process.env.QA_SCREENSHOTS||'/tmp/noevia-shots';
   // quiet row like every other (no FAB), rows take the family's 10px row radius, the composer
   // its 28px shape, and the interface face is Inter in every family.
   assert.equal(m.fab,'rgba(0, 0, 0, 0)',`${theme} Contemporary: New chat is a quiet row`);
-  assert.equal(m.active,'10px',`${theme} Contemporary: rows take the family's row radius`);assert.equal(m.composerRadius,'28px',`${theme} Contemporary: 28px composer`);assert.match(m.font,/Inter/,'Contemporary UI face is Inter');
+  assert.equal(m.active,'10px',`${theme} Contemporary: rows take the family's row radius`);assert.equal(m.composerRadius,'24px',`${theme} Contemporary: 24px composer`);assert.match(m.font,/Inter/,'Contemporary UI face is Inter');
   await page.close();
  }
 

@@ -46,7 +46,7 @@
   --md-info-container: #01485e;
   --md-on-info-container: #d8ebf5;
   /* Accent: blue (the default "iris" palette name is a stored compatibility value). */
-  --md-primary: #5598e7;
+  --md-primary: #6ba7ee;
   --md-on-primary: #0b1a2e;
   --md-primary-container: #172b44;
   --md-on-primary-container: #dce9fb;
@@ -59,7 +59,7 @@
   --ring-inset: inset 0 0 0 1px rgb(255 255 255 / .1);
   --shadow-pop: 0 0 0 .5px #ffffff14, 0 4px 12px #0006, 0 16px 40px #00000080;
   --shadow-popover: 0 0 0 .5px #ffffff14, 0 8px 24px #0000004d, 0 2px 6px #00000033;
-  --focus: #5598e7;
+  --focus: #6ba7ee;
   color-scheme: dark;
 }
 
@@ -104,7 +104,7 @@
   --md-on-primary: #ffffff;
   --md-primary-container: #e3edf9;
   --md-on-primary-container: #10345f;
-  --md-inverse-primary: #5598e7;
+  --md-inverse-primary: #6ba7ee;
   --fill-hover: rgb(0 0 0 / .045);
   --fill-active: rgb(0 0 0 / .08);
   --hairline: rgb(0 0 0 / .08);
@@ -231,7 +231,7 @@
   --radius-row: 8px;
   --radius-overlay: 10px;
   --radius-dialog: 12px;
-  --radius-composer: 14px;
+  --radius-composer: 12px;
   --radius-tile: 12px;
   --radius-surface: 12px;
   --radius-card: var(--radius-dialog);
