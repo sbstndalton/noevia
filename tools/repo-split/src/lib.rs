@@ -127,9 +127,10 @@ const CORE_HISTORY: &[Entry] = &[d("ui/server", "server")];
 /// service or a new apps/web entry fails the extraction instead of being dropped silently.
 pub const COVERED_PARENTS: &[&str] = &["apps/web", "apps/web/tests", "services"];
 
-/// Children of [`COVERED_PARENTS`] that deliberately stay in noevia.
+/// Children of [`COVERED_PARENTS`] that are deliberately not extracted.
 pub const STAYS: &[&str] = &[
-    // The monorepo image build; the assembled release uses build/web.Dockerfile instead.
+    // The monorepo image build: the reference for the image comparison until the cutover, which
+    // deletes it (docs/repo-split-cutover.md); build/web.Dockerfile replaces it.
     "apps/web/Dockerfile",
 ];
 
@@ -522,6 +523,76 @@ pub fn extract(o: &ExtractOptions<'_>) -> Result<Extracted> {
 
 /// Byte identity: each mapped path has the same mode and object id at `split_rev` as at `sha`,
 /// and the split repo's root holds nothing but mapped paths and the scaffold roots.
+/// What [`push`] did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Pushed {
+    /// The remote had no main; it was created.
+    Created,
+    /// The remote main already was `head`.
+    UpToDate,
+    /// The remote main (the given sha) was replaced.
+    Replaced(String),
+}
+
+/// Publish `repo_dir`'s main to `url`, replacing the remote main only when that is safe:
+/// the remote has no main, already equals the new head, or its head is itself a pure extraction
+/// (a `Split-Source:` trailer). Anything else (someone committed to the split repo) is refused
+/// unless `replace_expected` names exactly the remote head. The push uses
+/// `--force-with-lease=main:<remote head>`, so a commit landing in between still fails it.
+pub fn push(repo_dir: &Path, url: &str, replace_expected: Option<&str>) -> Result<Pushed> {
+    let head = git(repo_dir, &["rev-parse", "HEAD"])?;
+    let remote = git(repo_dir, &["ls-remote", url, "refs/heads/main"])?
+        .split_whitespace()
+        .next()
+        .map(str::to_string);
+    let Some(remote) = remote else {
+        git(
+            repo_dir,
+            &[
+                "push",
+                "--quiet",
+                "--force-with-lease=main:",
+                url,
+                "main:main",
+            ],
+        )?;
+        return Ok(Pushed::Created);
+    };
+    if remote == head {
+        return Ok(Pushed::UpToDate);
+    }
+    match replace_expected {
+        Some(expected) if expected == remote => {}
+        Some(expected) => {
+            return err(format!(
+                "{url} main is {remote}, not the {expected} given to --replace-remote; refusing"
+            ))
+        }
+        None => {
+            git(repo_dir, &["fetch", "--quiet", "--no-tags", url, &remote])?;
+            let msg = git(repo_dir, &["log", "-1", "--format=%B", &remote])?;
+            if !msg.lines().any(|l| l.starts_with("Split-Source: ")) {
+                return err(format!(
+                    "{url} main {remote} is not a repo-split extraction (no Split-Source trailer): \
+                     someone committed there. Refusing to overwrite; pass --replace-remote \
+                     {remote} to replace it deliberately."
+                ));
+            }
+        }
+    }
+    git(
+        repo_dir,
+        &[
+            "push",
+            "--quiet",
+            &format!("--force-with-lease=main:{remote}"),
+            url,
+            "main:main",
+        ],
+    )?;
+    Ok(Pushed::Replaced(remote))
+}
+
 pub fn verify(
     source: &Path,
     sha: &str,

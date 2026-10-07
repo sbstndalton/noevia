@@ -1,16 +1,21 @@
 //! CLI for the noevia repository split (#952). See docs/repo-split-cutover.md.
 
-use repo_split::{extract, git, list_files, verify, Error, ExtractOptions, Result, Target};
+use repo_split::{
+    extract, list_files, push, verify, Error, ExtractOptions, Pushed, Result, Target,
+};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "\
 usage:
   repo-split extract --source <noevia checkout> --sha <40-hex> [--target web|core|services|all]
-                     [--out <dir>] [--scaffold <dir>] [--force] [--push]
+                     [--out <dir>] [--scaffold <dir>] [--force] [--push [--replace-remote <sha>]]
       Writes <out>/<repo> (default out: tools/repo-split/out under the source checkout).
       --scaffold defaults to <source>/tools/repo-split/scaffold; each repo gets <scaffold>/<repo>.
-      --push force-pushes main to https://github.com/sbstndalton/<repo>.git (replaces its history).
+      --push replaces main of https://github.com/sbstndalton/<repo>.git, but only if the remote main
+      is missing, already the new head, or itself an extraction (Split-Source trailer); the push
+      uses --force-with-lease. --replace-remote <sha> (single target only) deliberately replaces a
+      remote main that is exactly <sha>, e.g. after someone committed there.
   repo-split verify --source <noevia checkout> --sha <40-hex> --target web|core|services
                     --split <split checkout> [--rev <rev>] [--scaffold <dir>]
       Byte-identity check of an existing split repo against noevia at <sha>.
@@ -28,6 +33,7 @@ struct Args {
     rev: Option<String>,
     force: bool,
     push: bool,
+    replace_remote: Option<String>,
 }
 
 fn parse(argv: &[String]) -> Result<Args> {
@@ -47,6 +53,7 @@ fn parse(argv: &[String]) -> Result<Args> {
         rev: None,
         force: false,
         push: false,
+        replace_remote: None,
     };
     while let Some(flag) = it.next() {
         let mut val = || {
@@ -64,6 +71,7 @@ fn parse(argv: &[String]) -> Result<Args> {
             "--rev" => a.rev = Some(val()?),
             "--force" => a.force = true,
             "--push" => a.push = true,
+            "--replace-remote" => a.replace_remote = Some(val()?),
             "-h" | "--help" => return Err(Error(USAGE.to_string())),
             other => return Err(Error(format!("unknown argument {other}\n{USAGE}"))),
         }
@@ -106,7 +114,13 @@ fn run(a: &Args) -> Result<()> {
                 .scaffold
                 .clone()
                 .unwrap_or_else(|| source.join("tools/repo-split/scaffold"));
-            for t in targets(a.target.as_deref())? {
+            let ts = targets(a.target.as_deref())?;
+            if a.replace_remote.is_some() && (!a.push || ts.len() != 1) {
+                return Err(Error(
+                    "--replace-remote needs --push and a single --target".to_string(),
+                ));
+            }
+            for t in ts {
                 let scaffold = scaffold_root.join(t.repo());
                 let dest = out.join(t.repo());
                 let r = extract(&ExtractOptions {
@@ -125,12 +139,18 @@ fn run(a: &Args) -> Result<()> {
                 );
                 if a.push {
                     let url = format!("https://github.com/sbstndalton/{}.git", t.repo());
-                    git(&r.repo_dir, &["push", "--force", &url, "main:main"])?;
-                    println!("{}: pushed main to {url}", t.repo());
+                    match push(&r.repo_dir, &url, a.replace_remote.as_deref())? {
+                        Pushed::Created => println!("{}: created main at {url}", t.repo()),
+                        Pushed::UpToDate => {
+                            println!("{}: {url} main is already {}", t.repo(), r.head)
+                        }
+                        Pushed::Replaced(old) => {
+                            println!("{}: replaced {url} main {old} with {}", t.repo(), r.head)
+                        }
+                    }
                 } else {
                     println!(
-                        "  publish: git -C {} push --force https://github.com/sbstndalton/{}.git main:main",
-                        r.repo_dir.display(),
+                        "  publish: re-run with --push (guarded, --force-with-lease) for {}",
                         t.repo()
                     );
                 }

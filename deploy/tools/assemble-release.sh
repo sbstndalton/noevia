@@ -32,7 +32,7 @@
 #     (a lock without NOEVIA_SERVICES_REF, i.e. any commit before #952, means self)
 #   NOEVIA_{WEB,CORE,SERVICES}_REF = <40 hex>  -> anonymous https tarball from
 #     codeload.github.com/sbstndalton/noevia-web|noevia-core|noevia-services, verified against
-#     NOEVIA_{WEB,CORE,SERVICES}_SHA256 when the lock sets them. The repo root becomes web/, core/
+#     NOEVIA_{WEB,CORE,SERVICES}_SHA256, which a pinned ref requires (checked before download). The repo root becomes web/, core/
 #     or services/. The path map is the one tools/repo-split extracts with.
 #
 # Build (no push): docker build -f noevia/build/web.Dockerfile --build-arg COWORK_VERSION=<sha> <tree>
@@ -43,6 +43,8 @@ die() { echo "assemble-release: $*" >&2; exit 1; }
 lock_file=""
 if [ "${1:-}" = --lock ]; then
   lock_file="${2:-}"; shift 2 || true
+  # A release must come from the lock committed at the released sha; an override is CI-only.
+  [ "${CI:-}" = true ] || { echo "assemble-release: --lock is for CI dry runs only (CI=true); releases read release/versions.lock" >&2; exit 2; }
   [ -f "$lock_file" ] || { echo "assemble-release: --lock file not found: $lock_file" >&2; exit 2; }
 fi
 sha="${1:-}"
@@ -104,12 +106,7 @@ fetch_remote() {
   curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$tgz" \
     "https://codeload.github.com/sbstndalton/$repo_name/tar.gz/$ref" \
     || die "could not download $repo_name at $ref"
-  if [ -n "$want_sum" ]; then
-    [[ "$want_sum" =~ ^[0-9a-f]{64}$ ]] || die "checksum for $repo_name in versions.lock is not 64 lowercase hex"
-    [ "$(sha256_of "$tgz")" = "$want_sum" ] || die "$repo_name tarball checksum mismatch at $ref"
-  else
-    echo "assemble-release: warning: no checksum pinned for $repo_name; trusting the https download" >&2
-  fi
+  [ "$(sha256_of "$tgz")" = "$want_sum" ] || die "$repo_name tarball checksum mismatch at $ref"
   tar -xzf "$tgz" --strip-components=1 -C "$dest"
 }
 
@@ -127,6 +124,7 @@ resolve_component() {
     export_self "$dest" "$@"
     printf '%s' "$full_sha"
   elif [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+    [[ "$sum" =~ ^[0-9a-f]{64}$ ]] || die "${key}_REF is pinned but ${key}_SHA256 is missing or not 64 lowercase hex"
     fetch_remote "$repo_name" "$ref" "$sum" "$dest"
     printf '%s' "$ref"
   else

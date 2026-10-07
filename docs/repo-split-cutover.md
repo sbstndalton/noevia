@@ -9,8 +9,10 @@ noevia into three repos, the way `clients/macos/` moved to noevia-macos in #900.
 | [noevia-core](https://github.com/sbstndalton/noevia-core) | `apps/web/{server,contracts,tests/server,tests/fixtures,tests/hermetic-network.cjs}` -> same name; `services/code-sandbox` -> `code-sandbox` |
 | [noevia-services](https://github.com/sbstndalton/noevia-services) | `services/{diary,docling,laya,model-manager,ocr}` -> `diary`, `docling`, ... |
 
-`apps/web/Dockerfile` stays in noevia (the monorepo image build is retired at cutover; releases
-build `build/web.Dockerfile` from the assembled tree). `repo-split map` prints the exact table.
+`apps/web/Dockerfile` (the monorepo image build) is not extracted. Until the cutover it stays as
+the reference the assembled image is compared with; **the cutover deletes it** together with the
+rest of `apps/web/`, and `build/web.Dockerfile` (already in noevia) becomes the only web image
+recipe. `repo-split map` prints the exact table.
 
 ## What exists before the cutover
 
@@ -49,11 +51,12 @@ force-replaces their history with a fresh extraction.
 
 ## Cutover steps
 
-Do these in one sitting, after the in-flight UI work (#951) has merged, on a quiet main. Nothing
-here touches DaServer; the next release after the cutover is a normal release.
+Do these in one sitting, on a quiet main. Nothing here touches DaServer; the next release after the
+cutover is a normal release.
 
-1. **Freeze and pick the cut sha.** Make sure no open PR still edits `apps/web/` or `services/`
-   (merge or rebase them first; anything merged after the cut is lost from the split repos).
+1. **Freeze and pick the cut sha.** The UI redo, **PR #953 (issue #951), must be merged first**.
+   Make sure no other open PR still edits `apps/web/` or `services/` (merge or rebase them first;
+   anything merged after the cut is lost from the split repos).
    ```sh
    git fetch origin && CUT=$(git rev-parse origin/main)
    ```
@@ -64,39 +67,53 @@ here touches DaServer; the next release after the cutover is a normal release.
    tools/repo-split/target/release/repo-split extract --source . --sha "$CUT" --force
    ```
    It writes `tools/repo-split/out/noevia-{web,core,services}`, verifies byte identity, and prints
-   each head. Inspect them (`git -C tools/repo-split/out/noevia-web log --stat -3`). Then publish,
-   which **replaces** the repos' history:
+   each head. Inspect them (`git -C tools/repo-split/out/noevia-web log --stat -3`). Then publish:
    ```sh
    tools/repo-split/target/release/repo-split extract --source . --sha "$CUT" --force --push
    ```
-   (or the `git -C ... push --force` line it printed). The extraction is reproducible, so the
-   second run yields the same SHAs.
-3. **Pin the SHAs.** Compute each tarball checksum:
+   The push is guarded: it replaces a repo's `main` only if that is missing, already the new head,
+   or itself an extraction (its commit has a `Split-Source:` trailer), and it pushes with
+   `--force-with-lease`. If someone committed to a split repo, the push stops; find out why, then
+   either fold the change into noevia first or replace it deliberately with
+   `--target <repo> --push --replace-remote <its current main sha>`. The extraction is
+   reproducible, so the second run yields the same SHAs.
+3. **Pin the SHAs.** Compute each tarball checksum (a pinned ref without one is refused):
    ```sh
    curl -fsSL https://codeload.github.com/sbstndalton/noevia-web/tar.gz/<sha> | shasum -a 256
    ```
-   On a noevia branch, first update `release/split-candidate.lock` (cut sha, refs, SHA256s) and
-   let CI prove byte identity at the new cut (both split jobs green). Then copy the three
-   `_REF`/`_SHA256` pairs into `release/versions.lock`, replacing `self`.
-4. **Delete the extracted paths from noevia** in the same PR:
-   `git rm -r apps/web services/diary services/docling services/laya services/model-manager services/ocr services/code-sandbox`.
-   Then fix what pointed at them:
-   - `compose*.yaml` build contexts (`./apps/web`, `./services/*`): releases build from the
-     assembled tree (`web/`, `core/code-sandbox`, `services/<name>`); update the live release flow
-     in `docs/deployment.md` and `deploy/tools/build-web-release.sh` / `overlay-release.sh` to
-     assemble first. The overlay-per-sidecar flow keeps its per-service tags.
-   - `.github/workflows/ci.yml`: drop the jobs that now run in the split repos (node-tests,
-     python-tests, docling/model-manager/ocr/laya/code-sandbox tests, the `apps/web` image build)
-     and their path filters; keep deploy-tests, the assembled-release dry run (switch the `self`
-     mode to the pinned lock) and repo-split. `self` is no longer valid once the paths are gone.
-   - `tools/repo-index` imports `apps/web/server/tool-result-reduce.cjs`: point it at a noevia-core
-     checkout or move it to noevia-core.
-   - `apps/web/server` tests that read `deploy/examples/code-sandbox.override.yml` or
+   On the cutover branch, first update `release/split-candidate.lock` (cut sha, refs, SHA256s),
+   push, and let CI prove byte identity at the new cut (both split jobs green). This run is the
+   last image comparison against `apps/web/Dockerfile`; keep its URL in the PR body.
+4. **Make the cutover commit.** One commit on the same branch, merged as a **single squash
+   commit**, so rollback is one revert (see Rollback):
+   - copy the three `_REF`/`_SHA256` pairs into `release/versions.lock`, replacing `self`;
+   - `git rm -r apps/web services/diary services/docling services/laya services/model-manager services/ocr services/code-sandbox`
+     (this deletes `apps/web/Dockerfile` too);
+   - add the CI guard (step 5);
+   - fix what pointed at the deleted paths:
+     - `compose*.yaml` build contexts (`./apps/web`, `./services/*`): releases build from the
+       assembled tree (`web/` + `core/` with `build/web.Dockerfile`, `core/code-sandbox`,
+       `services/<name>`); update the live release flow in `docs/deployment.md` and
+       `deploy/tools/build-web-release.sh` / `overlay-release.sh` to assemble first. The
+       overlay-per-sidecar flow keeps its per-service tags.
+     - `.github/workflows/ci.yml`: drop the jobs that now run in the split repos (node-tests,
+       python-tests, docling/model-manager/ocr/laya/code-sandbox tests, the `apps/web` image build)
+       and their path filters. Replace the assembled-release matrix with one job that assembles
+       from `release/versions.lock`, builds `build/web.Dockerfile` and boots it (`/api/ready`).
+       **After the cutover there is no monorepo build left to compare with**, so the image
+       byte-identity check retires: its last result is the step-3 run, which proved the pinned
+       repos build the same image as `apps/web/Dockerfile` at the cut sha. From then on each
+       split repo's CI owns its tests and image build. Delete `release/split-candidate.lock`.
+     - `tools/repo-index` imports `apps/web/server/tool-result-reduce.cjs`: point it at a
+       noevia-core checkout or move it to noevia-core.
+     - Docs that link `apps/web/...` or `services/...` (AGENTS.md, agent-brief, roadmap,
+       deployment.md, DEPLOY.md): point at the new repos.
+   - Server tests that read `deploy/examples/code-sandbox.override.yml` or
      `tools/embed-parity-check.cjs` keep working through the split repos' noevia-shaped CI
      workspace; nothing to do unless those files move.
-   - Docs that link `apps/web/...` or `services/...` (AGENTS.md, agent-brief, roadmap,
-     deployment.md, DEPLOY.md): point at the new repos.
-5. **Add CI guards** in the `changes` job of `.github/workflows/ci.yml`, next to the macOS one:
+5. **CI guard** (part of the step-4 commit), in the `changes` job of `.github/workflows/ci.yml`
+   next to the macOS one. It covers all of `apps/web`, so the deleted `apps/web/Dockerfile` cannot
+   return either:
    ```yaml
    - name: Guard against re-added split paths
      run: |
@@ -115,8 +132,36 @@ here touches DaServer; the next release after the cutover is a normal release.
    and build from the tree; `COWORK_VERSION` stays the noevia sha and `version.json` records the
    web/core SHAs. Live-test as usual.
 
+## Rollback
+
+Because step 4 lands as one squash commit, rollback is `git revert <that commit>` on a branch,
+merged like any PR. The revert restores `apps/web/` (including `apps/web/Dockerfile`), the six
+service folders, `self` for all three refs in `release/versions.lock`, the old CI jobs and
+`release/split-candidate.lock`, and removes the guard. Releases go back to the monorepo flow
+unchanged.
+
+The split repos are **left alone**: no deletion, no force-push. Anything committed there after
+the cutover (step 6) has to be brought back into noevia by hand (a patch per commit) before the
+next release, because the reverted noevia no longer reads those repos. To retry the cutover
+later, start again at step 1; the guarded push will refuse to overwrite such commits until they
+are handled.
+
+## If GitHub changes its archive format
+
+The `_SHA256` values pin codeload tarball bytes, not git content. If GitHub changes how it
+compresses or orders those archives (it did briefly in 2023), every pinned checksum stops matching
+and assembly fails with "tarball checksum mismatch" even though nothing changed. To re-pin:
+
+1. Confirm the content is unchanged: `repo-split verify --source . --sha <cut or release sha>
+   --target <web|core|services> --split <fresh clone> --rev <pinned ref>` (the git-level check
+   does not depend on archive bytes), or compare `tar -tzvf` listings of the old and new archive.
+2. Recompute each checksum with the `curl ... | shasum -a 256` line from step 3 and update the
+   `_SHA256` values in `release/versions.lock` (and `release/split-candidate.lock` before the
+   cutover) in one PR whose body says why. The refs do not change.
+3. The same applies to `NOEVIA_RS_SHA256` in the model-manager Dockerfile (`services/model-manager/` here, `model-manager/` in noevia-services after the cutover).
+
 ## Re-running before the cutover
 
-To refresh the candidate (for example to re-prove identity after the UI work lands), repeat steps
+To refresh the candidate (for example to re-prove identity after PR #953 lands), repeat steps
 1-3 but stop after updating `release/split-candidate.lock`; leave `release/versions.lock` at `self`
 and do not delete anything.

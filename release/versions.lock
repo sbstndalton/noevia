@@ -6,12 +6,12 @@
 # deploy/tools/assemble-release.sh from the lock AT THE RELEASED noevia SHA (#922). Until those
 # repos are extracted they hold the literal `self`: "this noevia checkout's SHA", i.e. web/ and
 # core/ are exported from apps/web at the same commit. A 40-character SHA instead fetches
-# https://codeload.github.com/sbstndalton/noevia-{web,core}/tar.gz/<ref>; the optional
+# https://codeload.github.com/sbstndalton/noevia-{web,core}/tar.gz/<ref>; the REQUIRED
 # NOEVIA_WEB_SHA256 / NOEVIA_CORE_SHA256 keys pin that tarball's checksum.
 #
 # NOEVIA_SERVICES_REF: sbstndalton/noevia-services (the Python sidecars: diary, docling, laya,
 # model-manager, ocr; #952). Same rules: `self` exports services/ from this checkout, a 40-char SHA
-# fetches the codeload tarball, optional NOEVIA_SERVICES_SHA256 pins its checksum. Per-service image
+# fetches the codeload tarball, required NOEVIA_SERVICES_SHA256 pins its checksum. Per-service image
 # tags (DIARY_VERSION, OCR_VERSION, ...) keep their meaning. The candidate SHAs extracted for the
 # cutover live in release/split-candidate.lock (CI only); see docs/repo-split-cutover.md.
 #

@@ -6,7 +6,7 @@
     clippy::indexing_slicing
 )]
 
-use repo_split::{extract, git, list_files, verify, ExtractOptions, Target};
+use repo_split::{extract, git, list_files, push, verify, ExtractOptions, Pushed, Target};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -304,6 +304,50 @@ fn verify_catches_a_changed_or_extra_file() {
     let extra = commit(&out, "extra");
     let e = verify(&src, &two, Target::Core, &out, &extra, &[]).unwrap_err();
     assert!(e.0.contains("tests/stray.cjs"), "{e}");
+}
+
+#[test]
+fn push_replaces_only_extractions_unless_told_the_exact_remote_head() {
+    if !have_filter_repo() {
+        return;
+    }
+    let root = scratch("push-guard");
+    let (src, one, two) = synthetic_noevia(&root);
+    let sc = scaffold(&root, "noevia-web");
+    let remote = root.join("remote.git");
+    git(&root, &["init", "-q", "--bare", "remote.git"]).unwrap();
+    let url = remote.to_string_lossy().into_owned();
+    let out = root.join("out/noevia-web");
+
+    run(&src, &one, Target::Web, &out, Some(&sc));
+    assert_eq!(push(&out, &url, None).unwrap(), Pushed::Created);
+    assert_eq!(push(&out, &url, None).unwrap(), Pushed::UpToDate);
+    let first = git(&remote, &["rev-parse", "main"]).unwrap();
+
+    // A newer extraction may replace an extraction.
+    let second = run(&src, &two, Target::Web, &out, Some(&sc));
+    assert_eq!(push(&out, &url, None).unwrap(), Pushed::Replaced(first));
+    assert_eq!(git(&remote, &["rev-parse", "main"]).unwrap(), second);
+
+    // Someone commits to the split repo: a re-extraction must not silently overwrite it.
+    let human = root.join("human");
+    git(&root, &["clone", "-q", "-b", "main", &url, "human"]).unwrap();
+    write(&human, "src/new.tsx", "work done in the split repo\n");
+    let theirs = commit(&human, "feat: real work");
+    git(&human, &["push", "-q", "origin", "HEAD:main"]).unwrap();
+    run(&src, &two, Target::Web, &out, Some(&sc));
+    let e = push(&out, &url, None).unwrap_err();
+    assert!(e.0.contains("not a repo-split extraction"), "{e}");
+    let e = push(&out, &url, Some(&"0".repeat(40))).unwrap_err();
+    assert!(e.0.contains("refusing"), "{e}");
+    assert_eq!(git(&remote, &["rev-parse", "main"]).unwrap(), theirs);
+
+    // Deliberate replacement names the exact remote head.
+    assert_eq!(
+        push(&out, &url, Some(&theirs)).unwrap(),
+        Pushed::Replaced(theirs)
+    );
+    assert_eq!(git(&remote, &["rev-parse", "main"]).unwrap(), second);
 }
 
 #[test]

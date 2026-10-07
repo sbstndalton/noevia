@@ -2,6 +2,8 @@
 
 Status: accepted, 2026-10-06. Issue: [#897](https://github.com/sbstndalton/noevia/issues/897).
 Amended 2026-10-06 with the owner's language rule ([#952](https://github.com/sbstndalton/noevia/issues/952)).
+The title predates the amendment: the ADR began as "Rust for untrusted-input leaf work"; since the
+amendment it covers all new non-browser code (Language rule below) as well as ports.
 Supersedes §4 "Do not port anything" of
 [research-language-consolidation.md](research-language-consolidation.md).
 
@@ -93,8 +95,10 @@ source of truth; `release/versions.lock` keeps `self` for all three.
 
 ### Release assembly
 
-- The Mac assembles a release from **pinned sources**: `release/versions.lock` names one commit
-  per repo, and each is exported with `git archive` into the release tree. The server has no git
+- The Mac assembles a release from **pinned sources** (`deploy/tools/assemble-release.sh`):
+  `release/versions.lock` names one commit per repo. noevia itself (and any component still at
+  `self`) is exported with `git archive`; a component pinned to a SHA is fetched as an anonymous
+  codeload.github.com tarball and verified against its required `_SHA256`. The server has no git
   credentials and never clones.
 - `COWORK_VERSION` stays equal to the **integration repo (`noevia`) SHA**. Per-service tags
   (`DIARY_VERSION`, `OCR_VERSION`, …) keep their current meaning. `NOEVIA_SERVICES_REF` pins
@@ -114,6 +118,8 @@ Done before any repository is created, so main stays releasable at every step:
 ## Consequences
 
 - Every cross-boundary need goes through `contracts/` or an HTTP API, never a relative import.
-- A Rust PR must state the untrusted input it hardens, link its contract tests, and name its flag.
+- A PR that **ports existing Node code** to Rust must state the untrusted input it hardens, link
+  its contract tests against the Node implementation, and name its flag. New Rust code with no
+  Node predecessor (tooling, new services) follows normal review.
 - Multi-repo releases need the lock file and an assembly script before the first split lands;
   until then this monorepo remains the single source.
