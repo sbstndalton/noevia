@@ -66,6 +66,10 @@ services:
       # CODE_SANDBOX_ARGS=/srv/pi-acp-bridge.cjs, and on web CODE_HARNESS_NAME=pi.
       CODE_HARNESS_COMMAND: ${CODE_SANDBOX_COMMAND:-opencode}
       CODE_HARNESS_ARGS: ${CODE_SANDBOX_ARGS:-acp}
+      # #999: js (default) or rust. rust runs the pi bridge's framing and toolCallFor and the
+      # supervisor's start line and workspace check through the image's pinned sandbox-bridge.wasm;
+      # a rust sandbox without a usable module does not start. The owner's flag to flip.
+      SANDBOX_BRIDGE_IMPL: ${SANDBOX_BRIDGE_IMPL:-js}
       PORT: "8030"
     # No `ports:`. Publishing this would let anything that reaches the host start a coding
     # agent, and there is no authentication here by design — reachability IS the control.
