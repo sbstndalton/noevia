@@ -8,6 +8,24 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release Model manager 08c65957 — 2026-10-07 (model manager only: Rust `model-files` CLI behind `MODEL_FILES_IMPL`, default python)
+
+### Services
+
+- **Model manager:** [#965](https://github.com/sbstndalton/noevia/pull/965) pins noevia-services `66b40f96` ([noevia-services#3](https://github.com/sbstndalton/noevia-services/pull/3), closes [#964](https://github.com/sbstndalton/noevia/issues/964)) and noevia-rs `472e8342`. The image gains `/usr/local/bin/model-files` and the `MODEL_FILES_IMPL=python|rust` switch (default python, so behaviour is unchanged); the listing step now runs through `asyncio.to_thread`. The image is rebuilt at the newer `NOEVIA_RS_REF`; gguf-meta's code is unchanged. Now `cowork-model-loader:08c65957` (`sha256:2665b575...`, previous `cowork-model-loader:227903da`, `sha256:c9709bc9...`, retained).
+- **Web, Diary, Code sandbox (and code-verify), OCR, Docling, Laya, egress:** no change (`cowork-web:3a48d1e6`, `cowork-diary:f6885a55`, `cowork-code-sandbox:pi-0.87.0-f6885a55`, `cowork-ocr:227903da`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`). None was rebuilt or restarted.
+- **Deploy/infra:** `MODEL_MANAGER_VERSION` is the only `.env` value changed. No flag or env var was added: `MODEL_FILES_IMPL` and `GGUF_PARSER` are unset in `.env`, both Compose files and the running container, so both stay on python. Switching to rust is the owner's call (see "Model-files front" in `docs/deployment.md`). `current` was left at `releases/3a48d1e6` (the web tree is unchanged).
+
+Source: noevia main `08c659572bdbf556e7e6508db3890a85d6cab3dd` (`48024b03` plus the 3a48d1e6 changelog only; CI success on both). Assembled on the Mac with `deploy/tools/assemble-release.sh 08c65957` from the pinned repos (web `9dab1569`, core `93d180a1`, services `66b40f96`), unpacked to `releases/08c65957/` with `release-refs` checked, and built with `docker build -t cowork-model-loader:08c65957 releases/08c65957/services/model-manager` (not through Compose, and `current` unchanged).
+
+**Candidate checks (before cutover, `--network none`, no Hugging Face call).** `model-files` exits 0 on `[]` (`{"files":[]}`), 1 on non-JSON input and 2 on usage; `gguf-meta` exits 2 on usage; neither flag is in the image's environment. The service's own suite passed in a throwaway image (`FROM` the candidate plus `pytest` and `pytest-asyncio`, since removed): 360 passed, 10 skipped (the differential tests need `GGUF_META_BIN` and `MODEL_FILES_BIN`; they run in CI, as do the two `apps/web` tests, which have no tree here).
+
+**Backups.** `config/.env.bak.20261006233320` (mode 600, values never printed); `docker-compose.yml.bak.before-mm-08c65957-20261006233320` and `docker-compose.override.yml.bak.before-mm-08c65957-20261006233320` (copies only, neither file was edited); `releases/mm-before-08c65957.txt` (previous tag and image id); container snapshots `releases/snapfull-before-mm-08c65957.txt` and `snapfull-after-mm-08c65957.txt`.
+
+**Cutover and verify.** `MODEL_MANAGER_VERSION=08c65957`, `docker compose config -q` passes, then started alone with the guarded `up.sh --env-file .env -- -d --no-build --no-deps --wait --wait-timeout 120 model-loader` (preflight passed, `Healthy`). Live: `cowork-model-loader-1` healthy, `RestartCount` 0, `/api/v1/health` 200 `{"ok":true}` (one probe), `MODEL_FILES_IMPL` and `GGUF_PARSER` unset in the container, `model-files` runs in the container, logs show only startup and the existing web `/backends` polling. Before/after snapshot of all 40 containers differs in one line: `cowork-model-loader-1` (new id, `cowork-model-loader:08c65957`, `StartedAt` 2026-10-07T03:35:29Z); every other container kept its id, start time and restart count. No model run, download, tune, benchmark, Hugging Face call or Diary access.
+
+Rollback (model manager only). `sed -i 's/^MODEL_MANAGER_VERSION=.*/MODEL_MANAGER_VERSION=227903da/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait model-loader`. `cowork-model-loader:227903da` is still on the box; `.env.bak.20261006233320` has the old line, and the Compose files were not changed.
+
 ## Release 3a48d1e6 — 2026-10-07 (web only: first release after the repo split; Glass menus, phone-preview settings, click after closing Settings)
 
 ### Services
