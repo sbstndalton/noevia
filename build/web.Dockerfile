@@ -4,6 +4,26 @@
 # the extracted tarball root (noevia/, web/, core/, release-refs), e.g.
 #   docker build -f noevia/build/web.Dockerfile --build-arg COWORK_VERSION=<sha> <tree>
 # Releases use deploy/tools/build-web-release.sh, which wraps exactly this.
+# dav-parse.wasm (#967): the Rust/WebAssembly port of core's PROPFIND listing parser, used only with
+# DAV_PARSE_IMPL=wasm. core/server/dav-parse.lock pins the noevia-rs ref, its tarball sha256 and the
+# module sha256; the tarball is checked before anything is built and the module after.
+FROM node:22-alpine AS dav-parse-src
+COPY core/server/dav-parse.lock /lock
+RUN set -e; eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256)=[0-9a-f]+$' /lock)"; \
+    node -e 'fetch(process.argv[1]).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.arrayBuffer()}).then(b=>require("fs").writeFileSync("/rs.tgz",Buffer.from(b))).catch(e=>{console.error(e.message);process.exit(1)})' \
+      "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF"; \
+    echo "$NOEVIA_RS_SHA256  /rs.tgz" | sha256sum -c -; \
+    mkdir /rs && tar -xzf /rs.tgz --strip-components=1 -C /rs && rm /rs.tgz
+
+FROM rust:1.99-slim-bookworm AS dav-parse
+ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never
+COPY --from=dav-parse-src /rs /src
+COPY core/server/dav-parse.lock /lock
+WORKDIR /src
+RUN set -e; rustup target add wasm32-unknown-unknown; \
+    tools/build-dav-parse-wasm.sh /out/dav-parse.wasm; \
+    echo "$(sed -n 's/^DAV_PARSE_WASM_SHA256=//p' /lock)  /out/dav-parse.wasm" | sha256sum -c -
+
 FROM node:22-alpine AS build
 WORKDIR /app
 # COWORK_VERSION stays the noevia (integration repo) sha; it must match the assembled tree's
@@ -24,7 +44,9 @@ COPY web/ ./
 COPY core/server ./server
 COPY core/tests/server ./tests/server
 COPY core/tests/fixtures ./tests/fixtures
-RUN set -e; set -a; . ./release-refs; set +a; export STAMP_VERSION="$NOEVIA_SHA"; \
+COPY --from=dav-parse /out/dav-parse.wasm ./server/wasm/dav-parse.wasm
+# DAV_PARSE_WASM_REQUIRED: the dav-parse differential test must run against the module, not skip.
+RUN set -e; set -a; . ./release-refs; set +a; export STAMP_VERSION="$NOEVIA_SHA" DAV_PARSE_WASM_REQUIRED=1; \
     node --test tests/client/*.test.cjs tests/server/*.test.cjs && npm run build && \
     node -e 'const fs=require("fs");const f="dist/version.json";const v=JSON.parse(fs.readFileSync(f,"utf8"));if(v.version!==process.env.STAMP_VERSION){console.error("version.json not stamped with "+process.env.STAMP_VERSION);process.exit(1)}fs.writeFileSync(f,JSON.stringify({version:v.version,web:process.env.NOEVIA_WEB_SHA,core:process.env.NOEVIA_CORE_SHA})+"\n")'
 
@@ -37,6 +59,7 @@ COPY web/package.json ./
 COPY core/server/package.json core/server/package-lock.json* ./server/
 RUN cd server && NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
 COPY core/server ./server
+COPY --from=dav-parse /out/dav-parse.wasm ./server/wasm/dav-parse.wasm
 # core owns contracts/; server/ requires it as ../contracts.
 COPY core/contracts ./contracts
 ENV UI_PORT=8021

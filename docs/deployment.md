@@ -675,6 +675,26 @@ comes from the same `NOEVIA_RS_REF` as `gguf-meta`. It is dark: `MODEL_FILES_IMP
 - **Rollback:** remove `MODEL_FILES_IMPL` (or set it to `python`) and recreate model-loader. An
   unknown value also means `python`, with one warning in the log.
 
+### Storage listing parser (`DAV_PARSE_IMPL`, #967)
+
+Web images built from #967 on carry `server/wasm/dav-parse.wasm`, the bounded Rust port of the
+step that turns a WebDAV/Nextcloud PROPFIND listing (untrusted, from the configured storage
+server) into the folder entries the storage browser, project source folders and the Diary file
+tree use. It runs in Node's built-in WebAssembly engine (no imports, no sidecar). The image build
+fetches noevia-rs at the ref in noevia-core's `server/dav-parse.lock`, checks the tarball and
+module sha256s, and runs the differential test against it. It is dark: `DAV_PARSE_IMPL`
+defaults to `js`, and the JS parser keeps producing every listing.
+
+- **Switch on (owner only):** add `DAV_PARSE_IMPL=wasm` to the web service's environment (in the
+  hand-kept live Compose Manager override too) and recreate web only.
+- **Behaviour with `wasm`:** it **fails closed**. A missing or tampered module, a listing over
+  the Rust caps (16 MiB, 100k entries), a trap or an unexpected reply means that listing errors:
+  browse answers 502 and a project folder refresh keeps the previous sources and reports the
+  folder as skipped. Results are otherwise identical to JS (576 shared differential fixtures plus
+  3,000 seeded random listings in CI).
+- **Rollback:** remove `DAV_PARSE_IMPL` (or set it to `js`) and recreate web. An unknown value
+  also means `js`, with one warning in the log.
+
 ### Diary tenant key (M2) — first rollout
 
 `DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see

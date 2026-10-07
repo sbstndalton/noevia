@@ -229,6 +229,32 @@ jobs:
             || { echo "::error::noevia-services model-manager/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
           [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$mm")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
             || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and model-manager Dockerfiles"; exit 1; }
+      # #967: core pins its own noevia-rs ref for dav-parse.wasm (core/server/dav-parse.lock). Like
+      # every lock pin, it must be on noevia-rs main before a release ships it.
+      - name: core's dav-parse noevia-rs pin is on noevia-rs main
+        if: env.RUN_JOB == 'true'
+        env:
+          TREE: ${{ steps.assemble.outputs.tree }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          lock="$TREE/core/server/dav-parse.lock"
+          [ -f "$lock" ] || { echo "::error::core/server/dav-parse.lock missing from the assembled tree"; exit 1; }
+          ref=$(sed -n 's/^NOEVIA_RS_REF=//p' "$lock")
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::dav-parse.lock NOEVIA_RS_REF is not a 40-char SHA"; exit 1; }
+          for k in NOEVIA_RS_SHA256 DAV_PARSE_WASM_SHA256; do
+            [[ "$(sed -n "s/^$k=//p" "$lock")" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::dav-parse.lock $k is not a sha256"; exit 1; }
+          done
+          status=""
+          for attempt in 1 2 3 4 5; do
+            status=$(gh api "repos/sbstndalton/noevia-rs/compare/$ref...main" --jq .status 2>/dev/null) && break
+            sleep $((attempt * 5))
+          done
+          echo "dav-parse NOEVIA_RS_REF $ref: main is '$status'"
+          case "$status" in
+            identical|ahead) ;;
+            *) echo "::error::dav-parse.lock NOEVIA_RS_REF $ref is not reachable from sbstndalton/noevia-rs main (compare status '$status')"; exit 1 ;;
+          esac
       # The repo's Compose files, run from the tree's noevia/ with COWORK_SOURCE_DIR unset (default
       # `..`) and set (as on the server), must point every build at a context in the tree.
       - name: Compose build contexts resolve inside the assembled tree
