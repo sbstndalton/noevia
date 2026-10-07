@@ -8,6 +8,22 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release f33a1b68 — 2026-10-07 (Library tab apply note #1036; web)
+
+### Services
+
+- **Web:** [#1054](https://github.com/sbstndalton/noevia/pull/1054) pins noevia-web `a3c1cb3e` (web#11: a saved-but-unserved file in the Library tab says it applies after a reload and offers Apply; fixes #1036). Core stays `e58063bf`. Deployed `cowork-web:f33a1b68` (rollback target `cowork-web:247d4c1a`). Image id `sha256:c07dbde7...851e`.
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_WEB_REF` and `NOEVIA_WEB_SHA256` only (`b2c93b34...bf6`, fetched twice, identical). `COWORK_VERSION` is the only `.env` value changed; no flag was set.
+
+Source: noevia main `f33a1b68922a529be585e29bf47405c8d64c24ca` (#1054 CI green incl. Assembled release). Assembled from a clean clone with `deploy/tools/assemble-release.sh f33a1b68` (web `a3c1cb3e`, core `e58063bf`, services `8f7eefa2`); tarball sha256 `1c9f816b...c63` identical on the Mac and the box. The image build passed its tests (1042 pass, 0 fail).
+
+**Candidate checks (before cutover).** A `--network none`, read-only, caps-dropped candidate with synthetic env and tmpfs state booted, `/api/ready` 200, no FATAL. `dav-parse.wasm` is unchanged (`29c2be61...`, equal to `DAV_PARSE_WASM_SHA256`). Asset check: `index.html` `2b696ac7...` to `64a8b0de...`. The candidate was removed.
+
+**After cutover.** `cowork-web-1` healthy with 0 restarts, `/api/ready` 200 locally and at `noevia.daserver.work`, MCP `196 tools across 3 server(s)`, zero error markers in the web log, `version.json` lists web `a3c1cb3e` and core `e58063bf`. No model was run, no Laya call made, no reload.
+
+**Rollback.** Repoint and recreate web only: `ln -sfn /mnt/docker/appdata/cowork/releases/247d4c1a /mnt/docker/appdata/cowork/current; sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=247d4c1a/' /mnt/docker/appdata/cowork/config/.env; bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. Backups taken: `config/.env.bak.20261007085036`, `backups/cowork.db.before-f33a1b68-20261007085036` (sqlite `.backup`, integrity ok), `backups/web-state-before-f33a1b68-20261007085036.tgz`, `pre-release-current.20261007085036.txt`, compose `docker-compose.yml` and `docker-compose.override.yml` copies `*.bak.before-f33a1b68`, `snapshot.before-f33a1b68.txt` and `snapshot.after-f33a1b68.txt`.
+
 ## Release 247d4c1a — 2026-10-07 (autotune engine-failure text replaced by fixed sentences #1049; web)
 
 ### Services
