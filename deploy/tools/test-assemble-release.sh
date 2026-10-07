@@ -15,7 +15,8 @@ w="$repo/apps/web"
 mkdir -p "$w/src" "$w/public" "$w/scripts" "$w/contracts" "$w/tests/client" "$w/tests/server" "$w/tests/fixtures" "$w/qa" "$w/server"
 for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits.json tests/client/a.test.cjs \
          tests/server/b.test.cjs tests/fixtures/f.json qa/q.cjs server/index.cjs server/package.json \
-         index.html vite.config.ts tsconfig.json package.json package-lock.json Dockerfile; do
+         index.html vite.config.ts tsconfig.json package.json package-lock.json Dockerfile \
+         tests/hermetic-network.cjs .gitignore .dockerignore; do
   echo "synthetic $f" > "$w/$f"
 done
 for svc in code-sandbox diary docling laya model-manager ocr; do
@@ -35,6 +36,8 @@ check "web/ has the client parts" '[ -f "$x/web/src/main.tsx" ] && [ -f "$x/web/
 check "web/ has no server" '[ ! -e "$x/web/server" ] && [ ! -e "$x/web/tests/server" ] && [ ! -e "$x/web/Dockerfile" ]'
 check "core/ has server, contracts, server tests" '[ -f "$x/core/server/index.cjs" ] && [ -f "$x/core/contracts/project-limits.json" ] && [ -f "$x/core/tests/server/b.test.cjs" ] && [ -f "$x/core/tests/fixtures/f.json" ]'
 check "core/ has no client" '[ ! -e "$x/core/src" ] && [ ! -e "$x/core/tests/client" ]'
+check "web/ and core/ carry tests/hermetic-network.cjs, web/ its ignore files" \
+  '[ -f "$x/web/tests/hermetic-network.cjs" ] && [ -f "$x/core/tests/hermetic-network.cjs" ] && [ -f "$x/web/.gitignore" ] && [ -f "$x/web/.dockerignore" ]'
 check "core/ has code-sandbox (noevia-core layout)" '[ -f "$x/core/code-sandbox/Dockerfile" ] && [ ! -e "$x/services/code-sandbox" ]'
 check "services/ has the five sidecars at top level" \
   'for s in diary docling laya model-manager ocr; do [ -f "$x/services/$s/Dockerfile" ] || exit 1; done'

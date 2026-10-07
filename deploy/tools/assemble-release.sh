@@ -24,6 +24,9 @@
 #                  (build/web.Dockerfile reads the first three)
 #   .dockerignore  keeps noevia/ and services/ out of the web image build context
 #
+# The self-mode path lists match tools/repo-split's map exactly, so a self assembly and one from
+# the extracted repos differ only by those repos' README.md and .github/ (CI checks this).
+#
 # web/, core/ and services/ come from release/versions.lock AS COMMITTED AT <noevia-sha>:
 #   NOEVIA_{WEB,CORE,SERVICES}_REF = self      -> exported from apps/web and services/ at <noevia-sha>
 #     (a lock without NOEVIA_SERVICES_REF, i.e. any commit before #952, means self)
@@ -132,9 +135,10 @@ resolve_component() {
 }
 
 web_sha="$(resolve_component NOEVIA_WEB noevia-web "$tree/web" apps/web \
-  src public index.html vite.config.ts tsconfig.json package.json package-lock.json scripts contracts tests/client qa)"
+  src public index.html vite.config.ts tsconfig.json package.json package-lock.json scripts contracts tests/client qa \
+  tests/hermetic-network.cjs .gitignore .dockerignore)"
 core_sha="$(resolve_component NOEVIA_CORE noevia-core "$tree/core" apps/web \
-  server contracts tests/server tests/fixtures)"
+  server contracts tests/server tests/fixtures tests/hermetic-network.cjs)"
 if [ "$(lock_value NOEVIA_CORE_REF)" = self ]; then
   # noevia-core also owns services/code-sandbox, at code-sandbox/ (tools/repo-split's map).
   export_self "$tree/core" services code-sandbox
