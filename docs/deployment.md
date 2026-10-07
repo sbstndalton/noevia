@@ -695,6 +695,27 @@ defaults to `js`, and the JS parser keeps producing every listing.
 - **Rollback:** remove `DAV_PARSE_IMPL` (or set it to `js`) and recreate web. An unknown value
   also means `js`, with one warning in the log.
 
+### S3 listing parser and storage path rules (`S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, #976, #978)
+
+The same `dav-parse.wasm` (one module, one sha256 in noevia-core's `server/dav-parse.lock`)
+also carries two more Rust ports, each behind its own dark switch, independent of
+`DAV_PARSE_IMPL` and of each other; both default to `js`:
+
+- `S3_PARSE_IMPL`: the scan of each S3 ListObjectsV2 page (from a user-configured, possibly
+  hostile endpoint). Node keeps fetching, signing and paging.
+- `STORAGE_PATH_IMPL`: `safeRelativePath`, `cleanRoot`, `joinRoot` and the upload filename rule.
+
+- **Switch on (owner only):** add `S3_PARSE_IMPL=wasm` and/or `STORAGE_PATH_IMPL=wasm` to the web
+  service's environment (in the hand-kept live Compose Manager override too) and recreate web only.
+- **Behaviour with `wasm`:** both **fail closed** with fixed messages (details only in the server
+  log). An S3 listing that cannot be parsed answers 502 "storage listing could not be read"; a
+  path that cannot be checked answers 500 "storage path could not be checked" (400 for an
+  oversized or unusable path). Results are otherwise identical to JS (546 S3 and 718 path shared differential
+  fixtures plus 2,000 seeded random pages and paths in CI).
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
+- With either setting, a storage path containing NUL is now refused (#978).
+
 ### Diary tenant key (M2) — first rollout
 
 `DIARY_TENANT_KEY` and `DIARY_ALLOW_OPEN` are new env names (see
