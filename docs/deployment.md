@@ -788,10 +788,37 @@ Node. The module's sha256 changed with this pin; `build/web.Dockerfile` needs no
 - **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
   means `js`, with one warning in the log.
 
+### MCP response framing (`MCP_FRAME_IMPL`, #980)
+
+The same `dav-parse.wasm` also carries a Rust port of how web reads replies from MCP servers,
+which are third-party output: the JSON-RPC body (plain JSON or an event stream), matching the
+reply to the request id, refusing server-initiated requests and notifications as replies, and
+inlining a tool schema's local `$ref`s under the same depth and size budget. This is a dark
+switch, independent of the others, default `js`. Transport, sessions, auth headers and tool
+policy stay in Node, and every error message reads exactly as before. The module's sha256 changed
+with this pin; `build/web.Dockerfile` needs no change.
+
+- **No migration:** nothing is stored. Both settings give the same values and the same errors on
+  the shared differential fixtures (2937 bodies, 873 schemas) plus random cases in CI, also on
+  the shipped runtime image.
+- **Switch on (owner only):** add `MCP_FRAME_IMPL=wasm` to the web service's environment (in the
+  hand-kept live Compose Manager override too) and recreate web only.
+- **Behaviour with `wasm`:** it **fails closed**. If the module is unusable, an MCP call fails
+  with "MCP response could not be checked", and a tool whose schema cannot be checked is dropped
+  from the tool box with that reason. Nothing falls back to JS.
+- **Limits under `wasm`:** a reply body over 8 MiB gets the existing "response body exceeded the
+  8 MB limit" error (now also for test doubles without a stream). A single tool schema over about
+  2 million characters is dropped. Real schemas are kilobytes.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
+
+Also from this pin (#989): under `UPLOAD_SNIFF_IMPL=wasm`, a file name over 64 KiB is classified
+like the JS (by its extension) instead of failing with 400 "upload could not be checked".
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
-If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL` or
-`SECRET_ENVELOPE_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
+`SECRET_ENVELOPE_IMPL` or `MCP_FRAME_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
