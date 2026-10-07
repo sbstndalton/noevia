@@ -8,6 +8,26 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release b34055c6 — 2026-10-07 (web: chat-template capability check, `CHAT_TEMPLATE_CAPS_IMPL`, #1002; real provider error reasons)
+
+### Services
+
+- **Web:** [#1019](https://github.com/sbstndalton/noevia/pull/1019) pins noevia-core `c78e3789` and noevia-web `5b2c1838` (#1002): chat-template capabilities and provider-error classification in `dav-parse.wasm` (`template_caps`, `provider_error`, `serving_verdict`). Chat sends no tools to a model whose template cannot take them, shows the provider's real error reason, and the autotune runs a realistic-chat check; the stats footer reads "Not reported" when the backend sends no figures. `CHAT_TEMPLATE_CAPS_IMPL` is unset, so it takes its default, `wasm` (on; the owner's decision). Deployed `cowork-web:b34055c6`, was `cowork-web:8a8a7e83`.
+- **Code sandbox, Diary, Model manager, OCR, Docling, Laya, egress:** no change.
+- **Deploy/infra:** `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` flag was set.
+
+Source: noevia main `b34055c65b0bde7977f30429664786eb2de5d1bf` (CI green, including Assembled release). Assembled with `deploy/tools/assemble-release.sh b34055c6` (web `5b2c1838`, core `c78e3789`, services `6a535513`); tarball sha256 `2533be7f...c404d6` identical on the Mac and the box.
+
+**Candidate checks (before cutover).** Image `cowork-web:b34055c6` stamped `b34055c6`; `dav-parse.wasm` sha256 `4c2b86d2...9410` equals `DAV_PARSE_WASM_SHA256` in `dav-parse.lock`; no imports; exports include `template_caps`, `provider_error` and `serving_verdict`. A candidate container (`--network none`, read-only root, tmpfs state, caps dropped) started with no FATAL and logged `[chat-template-caps] CHAT_TEMPLATE_CAPS_IMPL=wasm`. The image build passed first time (no test hang).
+
+**Backups.** `config/.env.bak.20261007045232` (values never printed), `backups/cowork.db.before-b34055c6-20261007045232` (SQLite `.backup`, integrity ok), `backups/web-state-before-b34055c6-20261007045232.tgz`, `current.prev-8a8a7e83.txt`, and the Compose Manager `docker-compose.yml.bak.before-b34055c6` and `docker-compose.override.yml.bak.before-b34055c6`.
+
+**Cutover and verify.** `current` repointed, `COWORK_VERSION=b34055c6`, guarded `up.sh -- -d --no-build --no-deps --wait --wait-timeout 120 web` (preflight passed, `Healthy`). Live: `cowork-web:b34055c6` healthy, 0 restarts; `/api/ready` 200 locally and through noevia.daserver.work; `/version.json` `{"version":"b34055c6","web":"5b2c1838...","core":"c78e3789..."}`; assets 200; log shows `CHAT_TEMPLATE_CAPS_IMPL=wasm` and no FATAL; MCP 196 tools across 3 servers, unchanged. Container id, image and start time of every other container are identical before and after (`snapshot.before-b34055c6.txt`, `snapshot.after-b34055c6.txt` on the box); only `cowork-web-1` was recreated.
+
+**Gemma 4 template check (no model loaded, no chat sent).** `/props?model=gemma-4-12b-it-qat-q4_0&autoload=false` answers 400 "model is not loaded" while the model is unloaded (the router has no template to return without loading it), so the template was read from the GGUF header instead: 18,681 bytes present, wasm `templateCaps` gives `known: true`, `tools: true`, `toolCalls: true`, `sendTools: true`. Chat will send tools to it.
+
+**Rollback.** `ln -sfn /mnt/docker/appdata/cowork/releases/8a8a7e83 /mnt/docker/appdata/cowork/current`; `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=8a8a7e83/' /mnt/docker/appdata/cowork/config/.env`; then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The `cowork-web:8a8a7e83` image is on the box. The release changed no stored data; the SQLite and state backups above are for emergencies only.
+
 ## Release 8a8a7e83 — 2026-10-07 (web, plus code-verify recreate: MCP response framing in Rust/WASM behind dark `MCP_FRAME_IMPL`, #980; exact upload classify under `UPLOAD_SNIFF_IMPL=wasm`, #989)
 
 ### Services
