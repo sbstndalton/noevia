@@ -8,6 +8,22 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release f48b9666 — 2026-10-07 (models.ini reload while models are loaded #1012, sleeping counts as loaded; web)
+
+### Services
+
+- **Web:** [#1044](https://github.com/sbstndalton/noevia/pull/1044) pins noevia-core `c5356ecd` (core#16: models.ini reload while models are loaded, behind `PRESET_RELOAD_IMPL`, default off; with it off, sleeping models now count as loaded; fixes #1012 #1037 #1038 #1039 #1040). Web stays `0e0bc5a4`. Deployed `cowork-web:f48b9666` (rollback target `cowork-web:21c6cb3d`). Image id `sha256:3100978a...7858`.
+- **Everything else:** no change (`cowork-model-loader:228e2ae4`, `cowork-ocr:228e2ae4`, `cowork-code-sandbox:pi-0.87.0-21c6cb3d` for code-sandbox and code-verify, `cowork-diary:f6885a55`, `cowork-docling:f6885a55`, `cowork-laya:0.3.5-noevia3`, llama, embed). A before/after snapshot of every container (name, id, image, image id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF` and `NOEVIA_CORE_SHA256` only; `NOEVIA_RS_REF` stayed `89dfbcb8` and CI did not require it to match core's `dav-parse.lock` rs pin `61caab3d`. `COWORK_VERSION` is the only `.env` value changed; no `*_IMPL` flag was set (`PRESET_RELOAD_IMPL` is unset, so the feature is off).
+
+Source: noevia main `f48b9666ffae73a5b5b35230ce19d239c79b10e9` (#1044 CI green incl. Assembled release). Assembled from a clean clone with `deploy/tools/assemble-release.sh f48b9666` (web `0e0bc5a4`, core `c5356ecd`, services `8f7eefa2`); tarball sha256 `b5c60754...5e6` identical on the Mac and the box. The core tarball checksum (`c106ae10...9929`) was fetched twice and matched.
+
+**Candidate checks (before cutover).** A `--network none`, read-only, caps-dropped candidate with synthetic env and tmpfs state booted healthy, `/api/ready` 200, no FATAL in its logs. `dav-parse.wasm` hashes to `1fe3fb07...f9d`, equal to `DAV_PARSE_WASM_SHA256` in the image's `dav-parse.lock`, and its exports include `preset_reload`. The candidate was removed.
+
+**After cutover.** `cowork-web-1` healthy with 0 restarts, `/api/ready` 200 locally and at `noevia.daserver.work`, MCP `196 tools across 3 server(s)`, zero error markers in the web log, `version.json` lists web `0e0bc5a4` and core `c5356ecd`. No `native-preset-reload-*.json` state file exists in the data dir (flag off). No model was run and no reload was triggered.
+
+**Rollback.** Repoint and recreate web only: `ln -sfn /mnt/docker/appdata/cowork/releases/21c6cb3d /mnt/docker/appdata/cowork/current; sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=21c6cb3d/' /mnt/docker/appdata/cowork/config/.env; bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. Backups taken: `.env.bak.<timestamp>`, `state/web/cowork.db.bak.before-f48b9666` (integrity ok), `web-state-before-f48b9666-*.tgz`, `current.prev-f48b9666.txt`, compose file copies `*.bak.before-f48b9666`.
+
 ## Release 21c6cb3d — 2026-10-07 (core sandbox bridge toolCallFor #1000, web test-hang fix #1033, QA scripts #1030; web, code sandbox)
 
 ### Services
