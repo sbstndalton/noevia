@@ -77,37 +77,19 @@ test('theme-color matches the page surface token in both modes', () => {
   assert.match(code, new RegExp(surface("[data-theme='light'] {")));
 });
 
-// #951: one design system. A browser that saved a retired theme family or material gets the
-// new look silently: no data-family attribute, and the stale keys are forgotten.
-for (const stored of [{ 'noevia:theme-family': 'glass' }, { 'noevia:material': 'liquid' }, { 'noevia:theme-family': 'brutalist', 'noevia:material': 'soft' }, {}]) {
-  test(`a retired family or material is forgotten silently: ${JSON.stringify(stored)}`, () => {
-    const attributes = {}, removed = [];
-    vm.runInNewContext(code, {
-      localStorage: { getItem: (key) => (key in stored ? stored[key] : null), removeItem: (key) => removed.push(key) },
-      document: { documentElement: { setAttribute: (key, value) => { attributes[key] = value; } }, querySelector: () => ({ setAttribute: () => {} }) },
-    });
-    assert.equal(attributes['data-family'], undefined);
-    assert.deepEqual(removed.sort(), ['noevia:material', 'noevia:theme-family']);
-    assert.equal(attributes['data-theme'], 'dark');
-  });
-}
-test('blocked storage cannot break the retired-key cleanup', () => {
-  const attributes = {};
-  vm.runInNewContext(code, {
-    localStorage: { getItem: () => null, removeItem: () => { throw new Error('Storage blocked'); } },
-    document: { documentElement: { setAttribute: (key, value) => { attributes[key] = value; } }, querySelector: () => ({ setAttribute: () => {} }) },
-  });
-  assert.equal(attributes['data-motion'], 'system');
-});
-
 // Presentation preferences restore in the same pass as the theme. Applied
 // after React mounts they would flash the previous setting, which is the whole
 // reason this file exists.
 for (const [name, stored, expected] of [
-  ['saved preferences', { 'noevia:chat-font': 'serif', 'noevia:density': 'compact', 'noevia:motion': 'reduced' },
-    { 'data-chat-font': 'serif', 'data-density': 'compact', 'data-motion': 'reduced' }],
+  ['saved preferences', { 'noevia:chat-font': 'serif', 'noevia:density': 'compact', 'noevia:motion': 'reduced', 'noevia:theme-family': 'glass' },
+    { 'data-chat-font': 'serif', 'data-density': 'compact', 'data-motion': 'reduced', 'data-family': 'glass' }],
+  ['a saved Soft material migrating to Editorial', { 'noevia:material': 'soft' }, { 'data-family': 'editorial' }],
+  ['a saved Material 3 migrating to Contemporary', { 'noevia:material': 'material' }, { 'data-family': 'contemporary' }],
+  ['a saved Liquid glass migrating to Glass', { 'noevia:material': 'liquid' }, { 'data-family': 'glass' }],
+  ['a family that wins over a leftover material', { 'noevia:material': 'liquid', 'noevia:theme-family': 'contemporary' }, { 'data-family': 'contemporary' }],
+  ['an unknown material or family', { 'noevia:material': 'glass', 'noevia:theme-family': 'brutalist' }, { 'data-family': 'editorial' }],
   ['a new installation', {},
-    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system' }],
+    { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system', 'data-family': 'editorial' }],
   ['values that are not offered', { 'noevia:chat-font': 'comic', 'noevia:density': '../../etc', 'noevia:motion': '1' },
     { 'data-chat-font': 'sans', 'data-density': 'comfortable', 'data-motion': 'system' }],
 ]) {

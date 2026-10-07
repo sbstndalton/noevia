@@ -9,6 +9,7 @@ import { checkStaleShell } from './stale-shell-guard';
 import { startInterfaceLanguage } from './i18n';
 import './styles/system/fonts.css';
 import './styles/system/tokens.css';
+import './styles/system/themes.css';
 import './styles/system/motion.css';
 import './styles/app.css';
 import './styles/diary-tab.css';

@@ -277,6 +277,44 @@ dialog::backdrop { background: var(--scrim); backdrop-filter: blur(var(--scrim-b
 .settings-stage :is(.set-row-desc, .row-desc) { font-size: var(--text-footnote); line-height: 18px; color: var(--text-secondary); }
 .settings-stage .theme-choice button .theme-swatch { border-radius: var(--radius-control); outline: 1px solid var(--border-strong); }
 
+/* ── Settings → Appearance: theme family previews ─────────────────────────────
+   Each preview carries data-family, data-theme and data-palette with .theme-scope, so the
+   tokens resolve inside it exactly as they do for the app. */
+.family-choice { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); width: 100%; }
+.family-tile {
+  display: grid; gap: var(--space-1); padding: var(--space-3); min-width: 0; text-align: left; cursor: pointer;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-dialog); background: transparent; color: var(--text-primary);
+  transition: border-color var(--dur-instant) var(--ease-out-quart), background-color var(--dur-instant) var(--ease-out-quart);
+}
+@media (hover: hover) { .family-tile:hover { background: var(--fill-hover); } }
+.family-tile[aria-checked='true'] { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.family-tile-previews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-bottom: var(--space-2); }
+.family-tile-name { font-size: var(--text-callout); font-weight: 500; }
+.family-tile-desc { font-size: var(--text-footnote); color: var(--text-secondary); line-height: var(--leading-snug); }
+.family-preview {
+  display: grid; gap: 6px; padding: var(--space-3); min-height: 132px; overflow: hidden; pointer-events: none;
+  background: var(--bg-app); color: var(--text-primary); font-family: var(--font-ui);
+  border-radius: var(--radius-control); border: 1px solid var(--border-subtle);
+}
+.family-preview-mark { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: var(--text-caption); }
+.family-preview-mark > svg { width: 14px; height: 14px; flex: none; }
+.family-preview-heading { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--display-tracking); font-size: var(--text-headline); line-height: var(--leading-tight); }
+.family-preview-message { justify-self: end; max-width: 80%; padding: 4px 8px; border-radius: var(--radius-control); background: var(--fill-hover); font-size: var(--text-caption2); }
+.family-preview-row { display: flex; gap: 6px; align-items: flex-start; }
+.family-preview-composer {
+  flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 30px; padding: 4px 4px 4px 8px;
+  background: var(--surface-raised); box-shadow: var(--ring-inset); border-radius: min(var(--radius-composer), 15px);
+  font-size: var(--text-caption2); color: var(--text-secondary);
+}
+.family-preview-send { width: 20px; height: 20px; border-radius: var(--radius-pill); background: var(--md-primary); flex: none; }
+.family-preview-menu { display: grid; gap: 2px; padding: 4px; min-width: 64px; font-size: var(--text-caption2); background: var(--surface-overlay); border-radius: var(--radius-overlay); box-shadow: var(--ring-inset), var(--shadow-popover); }
+.family-preview-menu > span { padding: 2px 6px; border-radius: var(--radius-sm); }
+.family-preview-menu > span:first-child { background: var(--fill-hover); }
+.family-preview-controls { display: flex; gap: 6px; align-items: center; font-size: var(--text-caption2); }
+.family-preview-button { padding: 2px 8px; border-radius: var(--radius-button); background: var(--fill-hover); }
+.family-preview-button.is-primary { background: var(--md-primary); color: var(--md-on-primary); }
+@media (max-width: 420px) { .family-preview { padding: var(--space-2); min-height: 120px; } .family-preview-menu { display: none; } }
+
 /* ── Diary: the same tokens, no behaviour change ──────────────────────────── */
 .diary-context, .diary-compose { background: transparent; }
 

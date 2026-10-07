@@ -4,7 +4,8 @@
 // QA_SHOTS=<dir> writes light/dark × desktop 1440×900 / phone 390×844 screenshots of the key
 // screens. QA_SHOTS_ONLY=1 skips the assertions (used for the "before" set on the old build).
 // The assertions pin the computed tokens and motion of the redo:
-//   dark page rgb(21,21,21), light page hsl(48 33.3% 97.1%), no mint/green surface tints,
+//   dark page rgb(21,21,21), light page hsl(48 33.3% 97.1%), no mint/green surface tints, a saved
+//   Soft material mapping onto Editorial, all three theme families in light and dark,
 //   sidebar rows 32px / radius 8px, Settings opens as a modal window over the dimmed app
 //   (radius 12px, transition 200ms cubic-bezier(.165,.84,.44,1), scale .98 → 1, 50% black scrim),
 //   switch knob 120ms overshoot, and reduced motion (system or Settings) collapses all of it.
@@ -48,7 +49,7 @@ const MINT = (rgb) => { const m = rgb.match(/\d+(\.\d+)?/g); if (!m) return fals
       const ctx = await browser.newContext({ viewport, hasTouch: phone, isMobile: phone, locale: 'en-GB', reducedMotion: 'no-preference' });
       const page = await ctx.newPage();
       page.on('pageerror', (e) => errors.push(`${theme} ${form} ${page.url()}: ${e.message}`));
-      await page.addInitScript((t) => { if (!sessionStorage.getItem('qa-init')) { localStorage.setItem('cowork-theme', t); localStorage.setItem('noevia:theme-family', 'glass'); localStorage.setItem('noevia:material', 'liquid'); sessionStorage.setItem('qa-init', '1'); } }, theme);
+      await page.addInitScript((t) => { if (!sessionStorage.getItem('qa-init')) { localStorage.setItem('cowork-theme', t); localStorage.setItem('noevia:material', 'soft'); sessionStorage.setItem('qa-init', '1'); } }, theme);
       await routes(page, theme);
       const shot = async (name) => { if (shots) { await page.waitForTimeout(350); await page.screenshot({ path: path.join(shots, `${name}-${theme}-${form}.png`) }); } };
       await page.goto(`http://localhost:${PORT}/`);
@@ -68,7 +69,7 @@ const MINT = (rgb) => { const m = rgb.match(/\d+(\.\d+)?/g); if (!m) return fals
       if (theme === 'dark') { eq(ground.body, 'rgb(21, 21, 21)', 'dark page ground is rgb(21,21,21)'); eq(ground.text, 'rgb(240, 239, 236)', 'dark primary text'); }
       else { eq(ground.body, 'rgb(250, 249, 245)', 'light page ground is hsl(48 33.3% 97.1%)'); }
       eq(ground.bodyImage, 'none', 'no atmosphere gradient behind the app');
-      eq(ground.family, null, 'no theme family attribute (one design system)');
+      eq(ground.family, 'editorial', 'a saved Soft material maps onto Editorial, the reference default');
       for (const s of [ground.body, ...ground.surfaces]) ok(!MINT(s), `no mint/green surface tint: ${s}`);
       eq(ground.composerRadius, '14px', 'composer radius 14px');
       ok(/Inter/.test(ground.font), `UI face is Inter: ${ground.font}`);
@@ -122,7 +123,7 @@ const MINT = (rgb) => { const m = rgb.match(/\d+(\.\d+)?/g); if (!m) return fals
       if (phone) { const back = page.getByRole('button', { name: 'All settings', exact: true }); if (await back.isVisible()) await back.click(); }
       await page.locator('.settings-navigation').getByRole('button', { name: 'Appearance & language', exact: true }).click();
       await page.locator('.settings-detail-scroll').waitFor();
-      ok(await page.getByRole('radiogroup', { name: 'Theme family' }).count() === 0, 'no theme family control in Appearance');
+      eq((await page.getByRole('radiogroup', { name: 'Theme family' }).locator('.family-tile-name').allTextContents()).join(','), 'Editorial,Contemporary,Glass', 'the three theme families stay in Appearance');
       await shot('settings');
       // The switch contract (class + aria-checked), as Switch.tsx renders it.
       const knob = await page.evaluate(() => {
@@ -163,6 +164,35 @@ const MINT = (rgb) => { const m = rgb.match(/\d+(\.\d+)?/g); if (!m) return fals
       ok(/^0\.001s|^0s|1e-03s/.test(reduced), `reduced motion collapses the settings transition: ${reduced}`);
       await ctx.close();
     }
+    // Every theme family, light and dark, on the same token system: screenshots plus each
+    // family's signature (Contemporary: 28px composer and pill buttons; Glass: frosted panes).
+    for (const family of ['editorial', 'contemporary', 'glass']) for (const theme of ['light', 'dark']) {
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'en-GB' });
+      const page = await ctx.newPage();
+      page.on('pageerror', (e) => errors.push(`${family} ${theme}: ${e.message}`));
+      await page.addInitScript(({ t, f }) => { localStorage.setItem('cowork-theme', t); localStorage.setItem('noevia:theme-family', f); }, { t: theme, f: family });
+      await routes(page, theme);
+      await page.goto(`http://localhost:${PORT}/`);
+      await page.getByPlaceholder('Message noevia…').waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      const look = await page.evaluate(() => {
+        const c = document.querySelector('.composer-inner'), side = document.querySelector('.app .sidebar');
+        return { family: document.documentElement.dataset.family, radius: getComputedStyle(c).borderTopLeftRadius, side: getComputedStyle(side).backdropFilter,
+          body: getComputedStyle(document.body).backgroundColor, h1: getComputedStyle(document.querySelector('.chat-workspace .empty-state h1')).fontFamily };
+      });
+      eq(look.family, family, `${family} applied`);
+      ok(!MINT(look.body), `${family} ${theme}: no mint page`);
+      if (family === 'editorial') { eq(look.radius, '14px', 'editorial composer 14px'); ok(/Source Serif/.test(look.h1), 'editorial serif greeting'); }
+      if (family === 'contemporary') { eq(look.radius, '28px', 'contemporary composer 28px'); ok(/Inter/.test(look.h1), 'contemporary sans greeting'); }
+      if (family === 'glass') ok(/blur\(/.test(look.side), `glass sidebar is frosted: ${look.side}`);
+      if (shots) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(shots, `theme-${family}-${theme}-home.png`) }); }
+      await page.goto(`http://localhost:${PORT}/settings/appearance`);
+      await page.locator('.settings-stage:not(.view-loading)').waitFor();
+      await page.locator('.family-tile').first().waitFor();
+      if (shots) { await page.waitForTimeout(400); await page.screenshot({ path: path.join(shots, `theme-${family}-${theme}-settings.png`) }); }
+      await ctx.close();
+    }
+
     // System reduced motion.
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce', locale: 'en-GB' });
     const page = await ctx.newPage();

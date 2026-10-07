@@ -4,17 +4,18 @@ One design system for the web UI, matching the Claude/ChatGPT reference (quiet n
 surfaces, tight type, small radii, short decelerating motion). It is framework-neutral on
 purpose: plain CSS custom properties, plus rules keyed on classes, data-attributes and ARIA
 states. All motion is CSS (transitions, `@starting-style`, keyframes). A non-React UI (the
-planned Rust/WASM frontend) can load these four files unchanged and get the same look by
+planned Rust/WASM frontend) can load these files unchanged and get the same look by
 emitting the same attributes and classes.
 
 | File | Holds |
 |---|---|
 | `fonts.css` | `@font-face` for the self-hosted variable fonts in `fonts/` (OFL) |
+| `themes.css` | the theme families as small token overrides on `[data-family]` |
 | `tokens.css` | every colour, type, space, shape and motion token |
 | `motion.css` | every `@keyframes`, the `@property` travel parameters, the reduced-motion floor |
 | `components.css` | how shared surfaces, controls and Settings look and move |
 
-Load order: `fonts.css`, `tokens.css`, `motion.css`, then the app's layout sheets, then
+Load order: `fonts.css`, `tokens.css`, `themes.css`, `motion.css`, then the app's layout sheets, then
 `components.css`. (In the React app, `src/main.tsx` imports the older layout sheets between
 them and `space-tiers.css` last.)
 
@@ -29,8 +30,19 @@ them and `space-tiers.css` last.)
 | `data-motion` | `system`, `reduced` | `reduced` collapses motion like `prefers-reduced-motion` |
 | `data-chat-font` | `sans`, `serif`, `mono` | reading font for messages |
 
-Retired: `data-family` and the `noevia:theme-family` / `noevia:material` keys (removed silently
-on load).
+| `data-family` | `editorial` (default), `contemporary`, `glass` | theme family: token overrides in `themes.css` |
+
+A saved retired material (`noevia:material`: soft, material, liquid) maps onto Editorial,
+Contemporary and Glass before paint.
+
+## Theme families (`themes.css`)
+
+- **Editorial** (default): the Claude reference itself — warm neutral ladder, serif greeting,
+  8/12/14px corners, layered surfaces instead of borders. No overrides.
+- **Contemporary**: the ChatGPT reference — cool true-grey surfaces (#212121 / white), sans
+  greeting, pill buttons, 28px composer, 20px dialogs.
+- **Glass**: frosted translucent sidebar, composer, menus and Settings window over a soft
+  field of the accent colour; slightly rounder corners; opaque under Reduce transparency.
 
 ## Tokens
 

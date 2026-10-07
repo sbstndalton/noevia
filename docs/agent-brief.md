@@ -29,8 +29,9 @@ coordinated migration across the live deployment; see `deployment.md`.
 - `apps/web/src/styles/system/` — the one design system (#951; README.md there lists the
   tokens and the class/attribute contract): `fonts.css`, `tokens.css`, `motion.css`,
   `components.css`. Framework-neutral CSS keyed on classes, data-attributes and ARIA states, so
-  a non-React UI can reuse it. There are no theme families or materials any more; light/dark
-  and the accent palette are the only theme choices.
+  a non-React UI can reuse it. The three theme families (Editorial, the default
+  reference look; Contemporary; Glass) are small token overrides in `themes.css` keyed on
+  `[data-family]`, not stacked stylesheets; light/dark is `[data-theme]`, the accent `[data-palette]`.
 - `apps/web/src/styles/` — the older layout sheets: `app.css`, `diary-tab.css`, `popup.css`,
   `shell.css`, `noevia.css`, `shell-v2.css`, `primitives.css`, `overlays.css`, `phone.css`,
   `space-tiers.css`. **Import order in `src/main.tsx` decides the cascade**: fonts, tokens and

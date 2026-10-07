@@ -27,7 +27,17 @@
     try { const saved = localStorage.getItem(key); if (allowed.includes(saved)) value = saved; } catch { /* use the default */ }
     document.documentElement.setAttribute(attribute, value);
   }
-  // #951: one design system. The retired theme families and materials are forgotten
-  // silently; a browser that saved one simply gets the new look, never an error.
-  try { localStorage.removeItem('noevia:theme-family'); localStorage.removeItem('noevia:material'); } catch { /* nothing to forget */ }
+  // Theme family (#249, rebuilt on one token system in #951: each family is a small set of token
+  // overrides in src/styles/system/themes.css). A browser that saved one of the retired materials lands on the
+  // family that replaced it; src/theme-family.ts holds the same table.
+  const families = ['editorial', 'contemporary', 'glass'];
+  const migration = { soft: 'editorial', material: 'contemporary', liquid: 'glass' };
+  let family = 'editorial';
+  try {
+    const saved = localStorage.getItem('noevia:theme-family');
+    const legacy = localStorage.getItem('noevia:material');
+    if (families.includes(saved)) family = saved;
+    else if (Object.prototype.hasOwnProperty.call(migration, legacy)) family = migration[legacy];
+  } catch { /* use the default */ }
+  document.documentElement.setAttribute('data-family', family);
 })();
