@@ -67,3 +67,4 @@ compose-check:
 	docker compose $(COMPOSE_ENV) --profile laya -f compose.yaml config --quiet
 	docker compose $(COMPOSE_ENV) -f compose.yaml -f compose.docling.yaml config --quiet
 	env $(COMPOSE_STUBS) docker compose $(COMPOSE_ENV) --profile laya -f compose.yaml -f compose.llamacpp.yaml -f compose.embed.yaml -f compose.rerank.yaml -f compose.docling.yaml config --quiet
+	docker compose $(COMPOSE_ENV) --profile code -f compose.yaml -f deploy/examples/code-sandbox.override.yml -f deploy/examples/code-egress-rust.override.yml config --quiet

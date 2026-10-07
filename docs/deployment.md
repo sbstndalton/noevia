@@ -845,6 +845,24 @@ unreadable; the app then shows storage and MCP sign-ins as "Sign in again".
   `CODE_EGRESS_TUNNEL_IDLE_MS` (default 600000, 10 min) with no bytes either way, logging
   `egress.tunnel_idle` with the task id. Absolute-form `https://` requests are refused with 400
   (TLS only via CONNECT, #930). No `.env` change is needed for the defaults.
+- **Rust egress proxy, dark (#926).** `CODE_EGRESS_IMPL` is `node` by default and is not set
+  live, so nothing changes. Flipping it to `rust` is the owner's call and takes three steps:
+  1. Build `cowork-egress-rs` from `deploy/egress-proxy/Dockerfile`. It is pinned to
+     `release/versions.lock` `NOEVIA_RS_REF` and checked by sha256.
+  2. Layer `deploy/examples/code-egress-rust.override.yml` after `code-sandbox.override.yml`.
+     This adds the `egress-rs` service on `code` (code-only alias `egress-rs-code`, which it binds) and `default`, with no
+     published port, plus the `code-egress-key` volume shared by web and the proxy only. The key
+     file is 0440, group `CODE_EGRESS_KEY_GID` (default 1006, given to the proxy by `group_add`).
+  3. Set `CODE_EGRESS_IMPL=rust` in `.env`.
+
+  Web then mints signed grants (`docs/egress-grant-contract.md`) instead of starting its
+  in-process proxy, writes the derived key file, and points tasks at `egress-rs-code:CODE_EGRESS_PORT`.
+  Grants last 2 h by default (`CODE_EGRESS_GRANT_LIFETIME_MS`, max 24 h). Verify the bind:
+  `docker exec cowork-web-1 getent ahosts egress-rs-code` must return one address inside the
+  `code` subnet, and that address must match the `bind` in `egress.listening`.
+  To roll back, set `CODE_EGRESS_IMPL=node`. Check with `docker logs cowork-egress-rs-1`: you
+  should see `egress.listening` with `"signedGrants":true`. Web logs `egress.rust_client`. In
+  rust mode a task's result has no per-host `network` summary.
 - **`COWORK_CODE_NET_ADDR` (#853; live since release f6885a55).** Web joins the internal `code` network so the sandbox can
   reach the egress proxy, but its UI (`UI_PORT`) and file-sharing (`COWORK_DAV_PORT`) listeners
   bind every interface, so a sandbox command could reach them directly. Web now refuses, with a

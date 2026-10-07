@@ -75,6 +75,7 @@ jobs:
               - 'deploy/**'
               - 'apps/web/Dockerfile'
               - 'docs/deployment.md'
+              - 'release/versions.lock'
             assembly:
               - 'deploy/**'
               - 'build/**'
@@ -481,6 +482,47 @@ jobs:
       # Every Compose file the repo ships must still parse (no containers are started).
       - run: make compose-check
         if: env.RUN_JOB == 'true'
+      # #926: the dark Rust egress proxy image builds from release/versions.lock's NOEVIA_RS_REF,
+      # with the same checksum model-manager pins; the Dockerfile default must match the lock.
+      - name: egress-rs Dockerfile pin matches the lock
+        if: env.RUN_JOB == 'true'
+        run: |
+          set -euo pipefail
+          ref=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "NOEVIA_RS_REF in release/versions.lock is not a 40-char SHA"; exit 1; }
+          for df in deploy/egress-proxy/Dockerfile services/model-manager/Dockerfile; do
+            df_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$df")
+            [ "$df_ref" = "$ref" ] || { echo "$df NOEVIA_RS_REF ($df_ref) != versions.lock ($ref)"; exit 1; }
+          done
+          a=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)
+          b=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' services/model-manager/Dockerfile)
+          [ "$a" = "$b" ] || { echo "NOEVIA_RS_SHA256 differs between egress-proxy and model-manager Dockerfiles"; exit 1; }
+          grep -q "CODE_EGRESS_IMPL: \${CODE_EGRESS_IMPL:-node}" deploy/examples/code-egress-rust.override.yml \
+            || { echo "code-egress-rust.override.yml must default CODE_EGRESS_IMPL to node"; exit 1; }
+          # The proxy binds CODE_EGRESS_BIND: it must be an alias that exists on `code` only (a
+          # service name resolves on every network, possibly to the `default` address first), and
+          # web must hand tasks that same name.
+          cfg=$(docker compose --env-file .env.example --profile code -f compose.yaml \
+            -f deploy/examples/code-sandbox.override.yml -f deploy/examples/code-egress-rust.override.yml config --format json)
+          bind=$(jq -r '.services["egress-rs"].environment.CODE_EGRESS_BIND' <<<"$cfg")
+          [ "$bind" != "egress-rs" ] || { echo "CODE_EGRESS_BIND must not be the service name"; exit 1; }
+          jq -e --arg b "$bind" '.services["egress-rs"].networks.code.aliases | index($b) != null' <<<"$cfg" >/dev/null \
+            || { echo "CODE_EGRESS_BIND ($bind) is not an alias on the code network"; exit 1; }
+          jq -e --arg b "$bind" '[.services[] | .networks // {} | to_entries[] | select(.key != "code") | .value.aliases // [] | index($b)] | all(. == null)' <<<"$cfg" >/dev/null \
+            || { echo "alias $bind must exist on the code network only"; exit 1; }
+          [ "$(jq -r '.services.web.environment.CODE_EGRESS_RUST_HOST' <<<"$cfg")" = "$bind" ] \
+            || { echo "web CODE_EGRESS_RUST_HOST must equal the proxy's code-only alias"; exit 1; }
+          [ "$(jq -r '.networks.code.internal' <<<"$cfg")" = "true" ] || { echo "code network must be internal"; exit 1; }
+          jq -e '.services["egress-rs"].ports == null' <<<"$cfg" >/dev/null || { echo "egress-rs must publish no ports"; exit 1; }
+      - name: Build egress-rs image
+        if: env.RUN_JOB == 'true'
+        run: |
+          set -euo pipefail
+          docker build -t noevia-egress-rs:ci deploy/egress-proxy
+          # Refuses to start without grants or a key (exit 2), proving the binary runs on the base.
+          set +e; docker run --rm noevia-egress-rs:ci > /tmp/egress.out 2>&1; code=$?; set -e
+          cat /tmp/egress.out
+          [ "$code" = 2 ] && grep -q "no grants" /tmp/egress.out
 
   # #922 dry run: assemble the release tarball in `self` mode, build build/web.Dockerfile from it
   # and apps/web/Dockerfile from the checkout (no push), and require equivalent images. The live
