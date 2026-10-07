@@ -33,11 +33,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## nikdelvin/liquid-glass (MIT)
+## Motion (MIT)
 
-`apps/web/public/lens.js` adapts the displacement-map technique from
-https://github.com/nikdelvin/liquid-glass, Copyright (c) 2025 Nikita Stadnik, MIT.
-Full text: `apps/web/public/liquid-glass-LICENSE.txt`.
+`apps/web/src/motion/` uses Motion (npm `motion` 14.0.0 and its `framer-motion` and
+`motion-dom` dependencies), https://motion.dev, Copyright (c) 2018 Framer B.V., MIT License.
+It is bundled into the web app's JavaScript.
+
+## Inter and Source Serif 4 (SIL Open Font License 1.1)
+
+`apps/web/src/styles/system/fonts/` self-hosts the variable web fonts (latin subsets, as
+packaged by Fontsource):
+
+- Inter, Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter).
+- Source Serif 4, Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name
+  'Source' (https://github.com/adobe-fonts/source-serif).
+
+Both are licensed under the SIL Open Font License, Version 1.1:
+https://openfontlicense.org/open-font-license-official-text/. The fonts are bundled with the
+web app unmodified and are not sold on their own.
 
 ## Impeccable (Apache-2.0)
 
