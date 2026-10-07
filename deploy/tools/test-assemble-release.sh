@@ -18,7 +18,10 @@ for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits
          index.html vite.config.ts tsconfig.json package.json package-lock.json Dockerfile; do
   echo "synthetic $f" > "$w/$f"
 done
-printf 'NOEVIA_RS_REF=%040d\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' 0 > "$repo/release/versions.lock"
+for svc in code-sandbox diary docling laya model-manager ocr; do
+  mkdir -p "$repo/services/$svc" && echo "synthetic $svc" > "$repo/services/$svc/Dockerfile"
+done
+printf 'NOEVIA_RS_REF=%040d\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\nNOEVIA_SERVICES_REF=self\n' 0 > "$repo/release/versions.lock"
 git init -q "$repo" && g add -A && g commit -qm one
 sha="$(g rev-parse --short=12 HEAD)"; full="$(g rev-parse HEAD)"
 
@@ -32,6 +35,11 @@ check "web/ has the client parts" '[ -f "$x/web/src/main.tsx" ] && [ -f "$x/web/
 check "web/ has no server" '[ ! -e "$x/web/server" ] && [ ! -e "$x/web/tests/server" ] && [ ! -e "$x/web/Dockerfile" ]'
 check "core/ has server, contracts, server tests" '[ -f "$x/core/server/index.cjs" ] && [ -f "$x/core/contracts/project-limits.json" ] && [ -f "$x/core/tests/server/b.test.cjs" ] && [ -f "$x/core/tests/fixtures/f.json" ]'
 check "core/ has no client" '[ ! -e "$x/core/src" ] && [ ! -e "$x/core/tests/client" ]'
+check "core/ has code-sandbox (noevia-core layout)" '[ -f "$x/core/code-sandbox/Dockerfile" ] && [ ! -e "$x/services/code-sandbox" ]'
+check "services/ has the five sidecars at top level" \
+  'for s in diary docling laya model-manager ocr; do [ -f "$x/services/$s/Dockerfile" ] || exit 1; done'
+check "release-refs records the services sha" 'grep -qx "NOEVIA_SERVICES_SHA=$full" "$x/release-refs"'
+check ".dockerignore keeps services/ out of the web context" 'grep -qx services "$x/.dockerignore"'
 check "release-refs: version is the given sha, web/core the full sha" \
   'grep -qx "NOEVIA_SHA=$sha" "$x/release-refs" && grep -qx "NOEVIA_WEB_SHA=$full" "$x/release-refs" && grep -qx "NOEVIA_CORE_SHA=$full" "$x/release-refs"'
 check ".dockerignore keeps noevia/ out of the context" 'grep -qx noevia "$x/.dockerignore"'
@@ -49,6 +57,24 @@ rm -f "$tgz"
 bash "$repo/deploy/tools/assemble-release.sh" "$sha" "$out" >/dev/null 2>&1; rc=$?
 check "dirty checkout refused" '[ $rc -ne 0 ] && [ ! -f "$tgz" ]'
 g checkout -q -- apps/web/index.html
+
+# A lock from before #952 has no NOEVIA_SERVICES_REF: services are exported from the checkout.
+printf 'NOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' > "$repo/release/versions.lock"
+g commit -qam pre952; psha="$(g rev-parse --short HEAD)"
+bash "$repo/deploy/tools/assemble-release.sh" "$psha" "$out" >/dev/null 2>"$work/err"; rc=$?
+p="$work/p"; mkdir -p "$p"; tar -xzf "$out/noevia-release-$psha.tar.gz" -C "$p" 2>/dev/null
+check "lock without NOEVIA_SERVICES_REF means self" '[ $rc -eq 0 ] && [ -f "$p/services/ocr/Dockerfile" ]'
+printf 'NOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\nNOEVIA_SERVICES_REF=\n' > "$repo/release/versions.lock"
+g commit -qam emptysvc; esha="$(g rev-parse --short HEAD)"
+bash "$repo/deploy/tools/assemble-release.sh" "$esha" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "an empty NOEVIA_SERVICES_REF is refused" '[ $rc -ne 0 ] && grep -q NOEVIA_SERVICES_REF "$work/err"'
+
+# --lock reads the refs from a file instead of the committed lock (dry run, #952).
+printf 'NOEVIA_WEB_REF=main\n' > "$work/override.lock"
+bash "$repo/deploy/tools/assemble-release.sh" --lock "$work/override.lock" "$psha" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "--lock file is used instead of the committed lock" '[ $rc -ne 0 ] && grep -q "NOEVIA_WEB_REF" "$work/err" && grep -q "dry run" "$work/err"'
+bash "$repo/deploy/tools/assemble-release.sh" --lock "$work/nope.lock" "$psha" "$out" >/dev/null 2>&1; rc=$?
+check "missing --lock file refused" '[ $rc -ne 0 ]'
 
 # A lock ref that is neither self nor a 40-hex sha.
 sed -i.bak 's/^NOEVIA_WEB_REF=.*/NOEVIA_WEB_REF=main/' "$repo/release/versions.lock" && rm -f "$repo/release/versions.lock.bak"

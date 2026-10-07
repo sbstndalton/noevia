@@ -9,9 +9,16 @@
 # https://codeload.github.com/sbstndalton/noevia-{web,core}/tar.gz/<ref>; the optional
 # NOEVIA_WEB_SHA256 / NOEVIA_CORE_SHA256 keys pin that tarball's checksum.
 #
+# NOEVIA_SERVICES_REF: sbstndalton/noevia-services (the Python sidecars: diary, docling, laya,
+# model-manager, ocr; #952). Same rules: `self` exports services/ from this checkout, a 40-char SHA
+# fetches the codeload tarball, optional NOEVIA_SERVICES_SHA256 pins its checksum. Per-service image
+# tags (DIARY_VERSION, OCR_VERSION, ...) keep their meaning. The candidate SHAs extracted for the
+# cutover live in release/split-candidate.lock (CI only); see docs/repo-split-cutover.md.
+#
 # NOEVIA_RS_REF: sbstndalton/noevia-rs, built into the model-manager image as gguf-meta
 # (#909). Bumping it also means updating NOEVIA_RS_REF and NOEVIA_RS_SHA256 in
 # services/model-manager/Dockerfile (CI fails if the Dockerfile default differs from this file).
 NOEVIA_RS_REF=751c2d71868e782de33558cf00f805cc74758ecb
 NOEVIA_WEB_REF=self
 NOEVIA_CORE_REF=self
+NOEVIA_SERVICES_REF=self
