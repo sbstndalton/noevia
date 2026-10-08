@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 3e1e36df — 2026-10-08 (prompt-framing Rust slice dark, Laya served-elsewhere hardening, card size fallback; core#25 core#26 web#16; web and core)
+
+### Services
+
+- **Web:** [#1092](https://github.com/sbstndalton/noevia/pull/1092) pins noevia-core `42302c73` (core#25 `PROMPT_FRAMING_IMPL`, default `js`, dark; core#26 Laya stays "served elsewhere" without a folder scan) and noevia-web `f7792495` (web#16 card size fallback). Refs #1087 #1088 (they stay open until a live check). Image `cowork-web:3e1e36df`, id `sha256:e0a3eac1...0da2`, started 06:40:50Z.
+- **Everything else:** no change. A before/after snapshot of all 40 containers (name, image id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`7d894c81...60a0`) and `NOEVIA_WEB_REF/_SHA256` (`bf80f17e...f7ad`), each tarball fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed. The Compose Manager override gained `PROMPT_FRAMING_IMPL: ${PROMPT_FRAMING_IMPL:-}` in web's environment (backup `docker-compose.override.yml.bak.before-3e1e36df`) so the flag can be flipped later; it is **not set** in `.env` and web sees it empty (`js`). No flag was changed (`AUTOTUNE_PLAN_IMPL`, `LAYA_LOAD_ADVISOR`, `PRESET_RELOAD_IMPL`, `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `MCP_FRAME_IMPL`, `UPLOAD_SNIFF_IMPL` stay on). Started with the guarded `up.sh -d --no-build --no-deps --wait web`. `PROMPT_FRAMING_IMPL` is documented in `docs/deployment.md`.
+
+**Evidence.** Autotune job `passed`/Done (file untouched since 01:21), calibration finished, code-sandbox and code-verify idle, llama silent, no task lines in the web log, before the build and again immediately before `up.sh`. Release tarball sha256 `39c7f2bb...a0b1` identical on the Mac and the server. Candidate (`--network none`, read-only, synthetic, run twice: flag empty and, candidate only, `PROMPT_FRAMING_IMPL=wasm`): no FATAL, `/api/ready` 200, `dav-parse.wasm` sha `bffb7c82...87da` equal to `DAV_PARSE_WASM_SHA256` in the pinned core lock, no imports, exports include `frame_untrusted`, `provenance` and `task_packet`; the wasm run passed the startup check including the `ẞ` hostname probe. Live: healthy, 0 restarts; `/api/ready` 200 locally and on noevia.daserver.work; the module line lists `DAV_PARSE_IMPL, S3_PARSE_IMPL, UPLOAD_SNIFF_IMPL, MCP_FRAME_IMPL, AUTOTUNE_PLAN_IMPL, PRESET_RELOAD_IMPL`; 196 MCP tools; logs clean. `index.html` sha `8f81783e...60ff` -> `49329a62...12ca`.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/673768f5 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=673768f5/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web` (the `cowork-web:673768f5` image is still on the box). The extra override line is harmless to leave; to undo it restore `docker-compose.override.yml.bak.before-3e1e36df`. Check the autotune state first.
+
 ## Release 673768f5 — 2026-10-08 (Models page size/shape from the loader, Laya "Runs in its own service"; #1084, part of #1083; web and core)
 
 ### Services
