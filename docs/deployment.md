@@ -815,6 +815,31 @@ with this pin; `build/web.Dockerfile` needs no change.
 Also from this pin (#989): under `UPLOAD_SNIFF_IMPL=wasm`, a file name over 64 KiB is classified
 like the JS (by its extension) instead of failing with 400 "upload could not be checked".
 
+### Prompt framing, provenance and task packets (`PROMPT_FRAMING_IMPL`, #769, #740)
+
+`dav-parse.wasm` also carries the Rust port of how web wraps untrusted text before it reaches a
+model (`frame_untrusted`, closing-tag escaping), the provenance policy and the task-packet
+validator. One switch, `PROMPT_FRAMING_IMPL=js|wasm`, covers `prompt-framing.cjs`,
+`provenance-policy.cjs` and `task-packet.cjs` together. It is dark: the default is `js`, the JS
+stays the reference, and **it is not set on the live box** (the web service passes
+`PROMPT_FRAMING_IMPL: ${PROMPT_FRAMING_IMPL:-}` through from `.env` in the hand-kept live
+Compose Manager override, so it can be flipped later without another compose edit).
+
+- **Switch on (owner only):** add `PROMPT_FRAMING_IMPL=wasm` to the web service's environment
+  (`.env` and, for a new install, the Compose Manager override) and recreate web only.
+- **Startup check:** like the switches above, `wasm` makes web verify `dav-parse.wasm` (pinned
+  sha256, no imports, expected exports, incl. `frame_untrusted` and the provenance and task-packet exports) before
+  listening, and additionally refuses to start (reason `runtime`) unless
+  `new URL('http://ẞ.io').hostname === 'ss.io'`, the Node 22 URL behaviour the port pins. The web
+  image uses floating `node:22` tags, so this catches drift. Unusable module means exit 1.
+- **Behaviour with `wasm`:** it **fails closed**. Failures throw; a taint store that failed once
+  makes every later `checkWrite` unchecked, so each write asks. Refusals that JS does not have:
+  text over 8 Mi units or a kind/label over 1 Mi units, non-ASCII-name `escapeClosing` tags,
+  non-JSON-tree `validatePacket` input (`$: unreadable`), a custom `hash` (a JS test hook).
+- **No migration:** nothing is stored.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
+
 ### Chat template capabilities (`CHAT_TEMPLATE_CAPS_IMPL`, #1002, #1003)
 
 **This switch is ON by default** (`wasm`); it fixes #1002. Before a chat on the native engine sends
@@ -842,7 +867,7 @@ tool shape) before it signs a profile off (#1003).
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
