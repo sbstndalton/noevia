@@ -992,6 +992,22 @@ list for such URLs before switching `MCP_SERVERS_IMPL` on.
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
+### Code-network guard decisions (`CODE_NET_GUARD_IMPL`, core#33)
+
+`dav-parse.wasm` also carries the Rust port of `code-net-guard.cjs`'s decisions (noevia-rs
+`b74eeae7`, core#33; `dav-parse.lock` pins the tarball and module checksums). The switch is dark,
+independent of the others, default `js`. The hand-kept live Compose Manager override passes it
+through as `CODE_NET_GUARD_IMPL: ${CODE_NET_GUARD_IMPL:-js}`; it is not set in `.env`. With `js`
+nothing changes: the same addresses are guarded and `codenet.guarding` is logged as before. With
+`wasm`, `COWORK_CODE_NET_ADDR` is parsed by both implementations at start; if the Rust port refuses
+it or reads it differently, web refuses to start (set `js` to recover). Runtime faults in the port
+log `codenet.wasm_fault`.
+
+- **Switch on (owner only):** add `CODE_NET_GUARD_IMPL=wasm` to `.env` and recreate web only; then
+  check `docker logs cowork-web-1 | grep code-net` still shows `codenet.guarding` with the same addresses.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
