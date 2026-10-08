@@ -890,7 +890,7 @@ tool shape) before it signs a profile off (#1003).
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL`, `SSRF_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
@@ -899,6 +899,34 @@ nothing is loaded and nothing changes.
 
 Also from this pin (#995): with either setting, a stored credential whose GCM tag is shorter than
 16 bytes is refused. noevia never writes one, so no stored value is affected.
+
+### Outbound URL and address policy (`SSRF_IMPL`, #795, #930)
+
+`dav-parse.wasm` also carries the Rust port of the SSRF decisions (noevia-rs `crates/ssrf-policy`,
+core#28): "is this URL acceptable" and "is this resolved address public". `SSRF_IMPL=js|wasm` is a
+dark switch, independent of the others, default `js`; **it is not set on the live box**. The DNS
+lookup and the socket stay in Node. It covers `isPrivateIp` for every caller (public-fetch,
+code-egress, browser-policy, tool-gate), `isPublicUrl`, and `publicFetch`'s URL check, so MCP
+servers and other outbound fetches go through it. The web service passes `SSRF_IMPL:
+${SSRF_IMPL:-}` through from `.env` in the hand-kept live Compose Manager override, so it can be
+flipped later without another compose edit. The module's sha256 changed with this pin
+(`59a7d441…`, noevia-rs `4a06cbbf`).
+
+- **No migration:** nothing is stored.
+- **Switch on (owner only):** add `SSRF_IMPL=wasm` to the web service's environment (`.env` and,
+  for a new install, the Compose Manager override) and recreate web only.
+- **Startup check:** `wasm` makes web verify `dav-parse.wasm` (pinned sha256, no imports,
+  expected exports, incl. `ssrf_policy`) before listening; an unusable module means exit 1.
+- **Behaviour with `wasm`:** it **fails closed**. A trap, a refusal or a reply of the wrong shape
+  makes the address private or the URL refused; nothing falls back to the JS. The JS scheme and
+  credentials checks always run first, so the Rust port can only add refusals. It is stricter than
+  the JS: **it refuses internationalized (`xn--`/IDN) hosts and hosts with a trailing dot**, a URL
+  over 64 KiB or holding a lone surrogate, more than 512 DNS answers, and
+  `metadata.google.internal` by name in `publicFetch`. An MCP server, provider or storage URL on
+  an IDN or trailing-dot host stops working under `wasm`; use the ASCII (punycode-free) name
+  without the trailing dot.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
 
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
