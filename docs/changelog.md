@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release c4ade220 — 2026-10-08 (SSRF decisions in Rust, SSRF_IMPL dark; core#28; web and core)
+
+### Services
+
+- **Web:** [#1101](https://github.com/sbstndalton/noevia/pull/1101) pins noevia-core `ac666ba9` (core#28; noevia-rs `4a06cbbf`, `dav-parse.wasm` `59a7d441...5b7b`, now exporting `ssrf_policy`) and documents `SSRF_IMPL` in `docs/deployment.md` (the wasm path refuses IDN and trailing-dot hosts); refs #795 #930. Image `cowork-web:c4ade220`, id `sha256:f96de745...6128`. Web client stays `f20e7f61`.
+- **Everything else:** no change. A before/after snapshot of all 40 containers (name, id, start time, restart count, status) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`b3f6d83c...828e`), tarball fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed. No flag value changed: the live web `environment` gained `SSRF_IMPL: ${SSRF_IMPL:-}` (set to nothing, so it stays `js`) in the Compose Manager override.
+
+**Evidence.** Autotune job `passed`/Done, code-sandbox idle, checked before the build and again immediately before `up.sh`. Release tarball sha256 `57bac3ab...24a0` identical on the Mac and the server. Two synthetic candidates (`--network none`, read-only): with the live flags, and with `SSRF_IMPL=wasm` added. Both: no FATAL, `/api/ready` 200, `dav-parse.wasm` sha256 `59a7d441...5b7b`, exports include `ssrf_policy`, zero imports. Live after: healthy, 0 restarts, `/api/ready` 200 locally and on noevia.daserver.work, the startup line verifies the six web wasm flags (DAV_PARSE, S3_PARSE, UPLOAD_SNIFF, MCP_FRAME, AUTOTUNE_PLAN, PRESET_RELOAD), MCP 196 tools across 3 servers (Tavily connected through public-fetch), `SSRF_IMPL` empty in the container.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/20930e20 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=20930e20/' /mnt/docker/appdata/cowork/config/.env`, then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The extra `SSRF_IMPL` override line is harmless; the previous override is `docker-compose.override.yml.bak.before-c4ade220` and the `.env` is `config/.env.bak.before-c4ade220`. Image `cowork-web:20930e20` is still on the box. Flipping `SSRF_IMPL=wasm` later is the owner's call.
+
 ## Release 20930e20 — 2026-10-08 (S3 SigV4 signing in Rust, S3_SIGN_IMPL dark; core#27; web and core)
 
 ### Services
