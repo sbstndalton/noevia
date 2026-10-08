@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 20930e20 — 2026-10-08 (S3 SigV4 signing in Rust, S3_SIGN_IMPL dark; core#27; web and core)
+
+### Services
+
+- **Web:** [#1098](https://github.com/sbstndalton/noevia/pull/1098) pins noevia-core `80200a35` (core#27; noevia-rs `ffb4b466`, `dav-parse.wasm` `c0f2287b...83f2`, now exporting `s3_sign` and `s3_region`) and documents `S3_SIGN_IMPL`. Web stays `f20e7f61`. Image `cowork-web:20930e20`, started 07:14:26Z.
+- **Everything else:** no change. A before/after snapshot of all 40 containers (name, id, image, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`d6301d1b...2761d`), tarball fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed. No flag value changed; the live web `environment` gained `S3_SIGN_IMPL: ${S3_SIGN_IMPL:-}` (empty, so `js`) in the Compose Manager override, backed up as `docker-compose.override.yml.bak.before-20930e20`. `build/web.Dockerfile` needed no edit: it already runs `tests/server/*.test.cjs`, which includes the s3-sign and prompt-framing differential tests.
+
+**Evidence.** Autotune job `passed`/Done, code-sandbox idle (no processes beyond its supervisor, no log lines), checked before the build and again immediately before `up.sh`. Release tarball sha256 `3023cf3f...4284` identical on the Mac and the server. Synthetic candidate (`--network none`, read-only) with `S3_SIGN_IMPL=wasm`: no FATAL, verified line listed `S3_SIGN_IMPL`, `/api/ready` 200, `dav-parse.wasm` `c0f2287b...`, zero imports, exports include `s3_sign` and `s3_region`. Live: `cowork-web-1` healthy, 0 restarts, `/api/ready` 200 on 127.0.0.1:8021 and noevia.daserver.work, module verified line lists the six web wasm flags (`S3_SIGN_IMPL` not among them), MCP 196 tools across 3 servers, zero error markers in the log. No model run.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/866f3db6 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=866f3db6/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait web`. The override line is harmless to leave. Image `cowork-web:866f3db6` and release folder are retained.
+
 ## Release 866f3db6 — 2026-10-08 (low/high context profiles, Long tune profile; core#24 web#15; #1079; web and core)
 
 ### Services
