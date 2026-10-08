@@ -815,6 +815,29 @@ with this pin; `build/web.Dockerfile` needs no change.
 Also from this pin (#989): under `UPLOAD_SNIFF_IMPL=wasm`, a file name over 64 KiB is classified
 like the JS (by its extension) instead of failing with 400 "upload could not be checked".
 
+### S3 request signing (`S3_SIGN_IMPL`, core#27)
+
+`dav-parse.wasm` also carries the Rust port of the S3 SigV4 request signer (`signS3RequestJs`) and
+the region normalisation, from noevia-rs `crates/s3-sign`. `S3_SIGN_IMPL=js|wasm` is a dark switch,
+independent of `S3_PARSE_IMPL` and the others, default `js`; **it is not set on the live box**. The
+web service passes `S3_SIGN_IMPL: ${S3_SIGN_IMPL:-}` through from `.env` in the hand-kept live
+Compose Manager override, so it can be flipped later without another compose edit. The module's
+sha256 changed with this pin (`c0f2287b…`, noevia-rs `ffb4b466`); `build/web.Dockerfile` needs no
+change, and its `tests/server/*.test.cjs` glob already runs `s3-sign-differential.test.cjs` (and
+`prompt-framing-differential.test.cjs`) against the module in the image build.
+
+- **No migration:** nothing is stored. Both settings produce the same headers (same keys, same
+  order) on the shared differential fixtures.
+- **Switch on (owner only):** add `S3_SIGN_IMPL=wasm` to the web service's environment (`.env`
+  and, for a new install, the Compose Manager override) and recreate web only.
+- **Startup check:** `wasm` makes web verify `dav-parse.wasm` (pinned sha256, no imports, expected
+  exports, incl. `s3_sign` and `s3_region`) before listening; an unusable module means exit 1.
+- **Behaviour with `wasm`:** it **fails closed**. A module that is missing, fails its pin or
+  answers oddly makes the request fail with "storage request could not be signed"; nothing falls
+  back to JS. Text echoed in the headers (access key, region, token, date) must be well-formed.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
+
 ### Prompt framing, provenance and task packets (`PROMPT_FRAMING_IMPL`, #769, #740)
 
 `dav-parse.wasm` also carries the Rust port of how web wraps untrusted text before it reaches a
@@ -867,7 +890,7 @@ tool shape) before it signs a profile off (#1003).
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
