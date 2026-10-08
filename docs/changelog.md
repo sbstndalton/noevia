@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 673768f5 — 2026-10-08 (Models page size/shape from the loader, Laya "Runs in its own service"; #1084, part of #1083; web and core)
+
+### Services
+
+- **Web:** [#1085](https://github.com/sbstndalton/noevia/pull/1085) pins noevia-core `7d489e77` (core#23) and noevia-web `80509b62` (web#14): the Models page takes size and shape from the model loader for every model, and the Laya preset shows "Runs in its own service". Fixes #1084, refs #1083. Deployed `cowork-web:673768f5` (image id `sha256:14033f59...d5a4`); `version.json` lists web `80509b62` and core `7d489e77`.
+- **Everything else:** no change. A before/after snapshot of all 38 containers (name, image id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`fb594f99...3bbc`) and `NOEVIA_WEB_REF/_SHA256` (`5f41e7e0...770f`), each tarball fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed; no flag was changed (`AUTOTUNE_PLAN_IMPL`, `LAYA_LOAD_ADVISOR`, `PRESET_RELOAD_IMPL`, `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `MCP_FRAME_IMPL`, `UPLOAD_SNIFF_IMPL` stay on). Started with the guarded `up.sh -d --no-build --no-deps --wait web`.
+
+**Evidence.** Autotune job `passed`/Done (file untouched since 01:21), calibration finished, code-sandbox idle, no task lines in the web log, before the build and again immediately before `up.sh`. Release tarball sha256 `b8e8e0eb...0f4a` identical on the Mac and the server. Candidate (`--network none`, read-only, synthetic): no FATAL, `/api/ready` 200, `dav-parse.wasm` verified (sha `ea7694f7...bfbf` in both the old and new image). Live: healthy, 0 restarts; `/api/ready` 200 locally and on noevia.daserver.work; the module line lists `DAV_PARSE_IMPL, S3_PARSE_IMPL, UPLOAD_SNIFF_IMPL, MCP_FRAME_IMPL, AUTOTUNE_PLAN_IMPL, PRESET_RELOAD_IMPL`; 196 MCP tools (noevia 10, nextcloud 181, tavily 5), Tavily connected this time; logs clean. `index.html` sha `8946de12...fcbb5` -> `8f81783e...a60ff`.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/8273a712 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=8273a712/' /mnt/docker/appdata/cowork/config/.env`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web` (the `cowork-web:8273a712` image is still on the box). Check the autotune state first.
+
 ## Rust toggles, batch A — 2026-10-08 (config only, no release; #1071 groundwork)
 
 Owner standing order 2026-10-08: enable the Rust switches proven in `rust-toggle-verification.md`, remove the old code later.
