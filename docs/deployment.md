@@ -965,6 +965,18 @@ override passes them through as `GGUF_META_IMPL: ${GGUF_META_IMPL:-js}` and
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
+### Code-review verdict and tool exchange (`CODE_REVIEW_VERDICT_IMPL`, `TOOL_EXCHANGE_IMPL`, core#31)
+
+`dav-parse.wasm` also carries the Rust review-verdict and tool-exchange ports (noevia-rs `1f775737`,
+core#31; `dav-parse.lock` pins the tarball and module checksums). Both switches are dark,
+independent of the others, default `js`. The hand-kept live Compose Manager override passes them
+through as `CODE_REVIEW_VERDICT_IMPL: ${CODE_REVIEW_VERDICT_IMPL:-js}` and
+`TOOL_EXCHANGE_IMPL: ${TOOL_EXCHANGE_IMPL:-js}`; they are not set in `.env`.
+
+- **Switch on (owner only):** add `<NAME>=wasm` to `.env` and recreate web only.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
