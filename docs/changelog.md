@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 0020d687 — 2026-10-08 (mcp-servers and decision checks in Rust, MCP_SERVERS_IMPL and DECISION_IMPL dark; core#32; web and core)
+
+### Services
+
+- **Web:** [#1116](https://github.com/sbstndalton/noevia/pull/1116) pins noevia-core `bdf7d1ef` (core#32; noevia-rs `f0126c58`, `dav-parse.wasm` `862e144e...3466`, now exporting `mcp_servers` and `decision`) and documents `MCP_SERVERS_IMPL` / `DECISION_IMPL` in `docs/deployment.md`; fixes #1115 (the shared fixture no longer records Node-version-dependent JS answers: noevia-rs#39 `f0126c58`, core#32). Image `cowork-web:0020d687`, id `sha256:f2efbae1...7657`. Web client stays `f20e7f61`.
+- **Everything else:** no change. A before/after snapshot of every container (name, id, start time, restart count) differs only in `cowork-web-1` (new id, started 2026-10-08 17:48:12 UTC, restart count 0, healthy).
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`ac4d30a9...ca6e`), tarball fetched twice, identical; noevia-rs tarball `cc595cb5...ca28` fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed. No flag value changed: the live web `environment` gained `MCP_SERVERS_IMPL: ${MCP_SERVERS_IMPL:-js}` and `DECISION_IMPL: ${DECISION_IMPL:-js}` in the Compose Manager override, so both are `js`. The other flags are unchanged (diff of the `*_IMPL`, `LAYA_*`, `NOEVIA_FEATURE_*` and `ENABLED_TOOLBOXES` values before and after shows only those two added lines), and the `MCP_SERVERS` / `MCP_SERVER_URL` values hash the same, so the same three servers (nextcloud, tavily, noevia) are configured (196 tools, 24 curated boxes).
+
+**Evidence.** Autotune job `passed`/Done, calibration idle, code-sandbox idle and llama idle (no log lines in 15 minutes), checked before the build and again immediately before `up.sh`. Synthetic candidate (`--network none`, read-only): `/api/ready` 200, `dav-parse.wasm` verified for `MCP_SERVERS_IMPL, DECISION_IMPL`, an `xn--` host fails closed (`ambiguous`). Live: `dav-parse.wasm` sha256 `862e144e...3466` equals `dav-parse.lock` and the noevia-rs `f0126c58` CI line "dav-parse.wasm sha256"; `/api/ready` 200 `{"ready":true,"version":"0020d687"}` locally and through https://noevia.daserver.work; web healthy, restart count 0.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/7465fb6e /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=7465fb6e/' /mnt/docker/appdata/cowork/config/.env`, then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The two extra override lines are harmless; the previous override is `docker-compose.override.yml.bak.before-0020d687` and the `.env` is `config/.env.bak.before-0020d687`. Image `cowork-web:7465fb6e` is still on the box. Flipping either switch to `wasm` later is the owner's call.
+
 ## Flags enabled 2026-10-08 — S3_SIGN_IMPL, PROMPT_FRAMING_IMPL, SSRF_IMPL (config only; live web stays 82d0da73)
 
 ### Services
