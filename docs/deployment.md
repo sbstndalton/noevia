@@ -977,6 +977,21 @@ through as `CODE_REVIEW_VERDICT_IMPL: ${CODE_REVIEW_VERDICT_IMPL:-js}` and
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
+### MCP server list and decision checks (`MCP_SERVERS_IMPL`, `DECISION_IMPL`, core#32)
+
+`dav-parse.wasm` also carries the Rust ports of `mcp-servers.cjs` (the `MCP_SERVERS` list parser and
+toolbox filter) and of `decision/index.cjs`'s request, result and cause checks (noevia-rs
+`f0126c58`, core#32; `dav-parse.lock` pins the tarball and module checksums). Both switches are
+dark, independent of the others, default `js`. The hand-kept live Compose Manager override passes
+them through as `MCP_SERVERS_IMPL: ${MCP_SERVERS_IMPL:-js}` and `DECISION_IMPL: ${DECISION_IMPL:-js}`;
+they are not set in `.env`. Where the two URL parsers could disagree (an IDN, punycode, percent-encoded or non-ASCII host)
+the port refuses the whole list as ambiguous and the host configures no MCP server, so check a
+list for such URLs before switching `MCP_SERVERS_IMPL` on.
+
+- **Switch on (owner only):** add `<NAME>=wasm` to `.env` and recreate web only.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
