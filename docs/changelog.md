@@ -12,7 +12,7 @@ notes follow as before. Entries before release 7b6942c keep their original free-
 
 ### Services
 
-- **Web:** [#1118](https://github.com/sbstndalton/noevia/pull/1118) pins noevia-core `0120b2a1` (core#33; noevia-rs `b74eeae7`, `dav-parse.wasm` `92c74917...41b9`, now exporting `code_net_guard`) and documents `CODE_NET_GUARD_IMPL` in `docs/deployment.md`. Image `cowork-web:3ace1bf5`, id `sha256:bee88f1a...a2`. Web client stays `f20e7f61`.
+- **Web:** [#1118](https://github.com/sbstndalton/noevia/pull/1118) pins noevia-core `0120b2a1` (core#33; noevia-rs `b74eeae7`, `dav-parse.wasm` `92c74917...41b9`, now exporting `code_net_guard`) and documents `CODE_NET_GUARD_IMPL` in `docs/deployment.md`. Image `cowork-web:3ace1bf5`, id `sha256:bee88f1a...bca2`. Web client stays `f20e7f61`.
 - **Everything else:** no change. A before/after snapshot of every container (name, image, start time) differs only in `cowork-web-1` (started 2026-10-08 18:23:51 UTC, restart count 0, healthy).
 - **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`8e9f4131...4bfe`), tarball fetched twice, identical; noevia-rs tarball `fc65ec65...4a9b` fetched twice (codeload), identical. `COWORK_VERSION` is the only `.env` value changed. The live web `environment` gained `CODE_NET_GUARD_IMPL: ${CODE_NET_GUARD_IMPL:-js}` in the Compose Manager override, so it is `js`; a before/after diff of the `*_IMPL`, `NOEVIA_FEATURE_*` and `COWORK_CODE_NET_ADDR` presence shows only that one added line.
 
