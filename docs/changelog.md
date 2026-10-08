@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 15538388 — 2026-10-08 (role-context projections in Rust, ROLE_CONTEXT_IMPL dark; core#34; web and core)
+
+### Services
+
+- **Web:** [#1123](https://github.com/sbstndalton/noevia/pull/1123) pins noevia-core `718c7dea` (core#34; noevia-rs `aa5eca78`, `dav-parse.wasm` `02bfcf9d...ddd6`, now exporting `role_context`) and documents `ROLE_CONTEXT_IMPL` in `docs/deployment.md`. Image `cowork-web:15538388`, id `sha256:0e90b42a...86e3a`. Web client stays `f20e7f61`. core#34 also fixes #1121 (a Rust-port disagreement shows the person one generic "review context could not be verified" line, not `impl_*` codes) and #1122 (the differential test counts false refusals and asserts none). #1120 stays open: the new test documents that the port refuses an unpaired literal `\uD800` escape in a reviewed patch as ambiguous.
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1` (started 2026-10-08 19:34:34 UTC, restart count 0, healthy).
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`378ed23c...4146`), tarball fetched twice, identical; noevia-rs `aa5eca78` tarball `00e9bde3...7d02` fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed (key names identical). The live web `environment` gained `ROLE_CONTEXT_IMPL: ${ROLE_CONTEXT_IMPL:-js}` in the Compose Manager override, so it is `js`; the effective `*_IMPL`, `NOEVIA_FEATURE_*` and `COWORK_CODE_NET_ADDR` presence differs from before only by that one added line.
+
+**Evidence.** Autotune job `passed`, calibration job `passed`, code-sandbox idle (supervisor only), llama idle, checked before the build and again immediately before `up.sh`. Live: `/api/ready` 200 `{"ready":true,"version":"15538388"}` locally and through https://noevia.daserver.work; `dav-parse.wasm` sha256 `02bfcf9d...ddd6` equals `dav-parse.lock` and the noevia-rs `aa5eca78` CI line "dav-parse.wasm sha256"; the web log shows the same wasm-verified flag list as before. Container healthy, 0 restarts. `dist/index.html` sha256 prefix `795af0759ba28eeb`, `dist/version.json` prefix `c7f393950690f83d`.
+
+**Flip evidence (not enabled live).** A throwaway container from the same image (`--network none`, read-only, tmpfs data, no live mounts or secrets) with `ROLE_CONTEXT_IMPL=wasm` started, logged `dav-parse.wasm verified for ROLE_CONTEXT_IMPL`, and answered `/api/ready` 200 with its wasm equal to the lock sha. No real Code task, review or Diary access was run. Switching it on is the owner's call.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/3ace1bf5 /mnt/docker/appdata/cowork/current`, `cp /mnt/docker/appdata/cowork/config/.env.bak.before-15538388 /mnt/docker/appdata/cowork/config/.env` (or `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=3ace1bf5/'`), then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The extra override line is harmless; the previous override is `docker-compose.override.yml.bak.before-15538388`. Image `cowork-web:3ace1bf5` is still on the box.
+
 ## Release 3ace1bf5 — 2026-10-08 (code-net-guard decisions in Rust, CODE_NET_GUARD_IMPL dark; core#33; web and core)
 
 ### Services
