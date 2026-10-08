@@ -953,6 +953,18 @@ without another compose edit. The module's sha256 changed with this pin (`ef0884
 - **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
   means `js`, with one warning in the log.
 
+### GGUF metadata reader and policy leaves (`GGUF_META_IMPL`, `POLICY_LEAVES_IMPL`, core#30)
+
+`dav-parse.wasm` also carries the Rust GGUF metadata reader and the policy leaf functions
+(noevia-rs `f1eafcaf`, core#30; `dav-parse.lock` pins the tarball and module checksums). Both
+switches are dark, independent of the others, default `js`. The hand-kept live Compose Manager
+override passes them through as `GGUF_META_IMPL: ${GGUF_META_IMPL:-js}` and
+`POLICY_LEAVES_IMPL: ${POLICY_LEAVES_IMPL:-js}`; they are not set in `.env`.
+
+- **Switch on (owner only):** add `<NAME>=wasm` to `.env` and recreate web only.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
