@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Rust toggles, batch A — 2026-10-08 (config only, no release; #1071 groundwork)
+
+Owner standing order 2026-10-08: enable the Rust switches proven in `rust-toggle-verification.md`, remove the old code later.
+
+### Services
+
+- **Web:** `DAV_PARSE_IMPL=wasm`, `S3_PARSE_IMPL=wasm`, `MCP_FRAME_IMPL=wasm`, `UPLOAD_SNIFF_IMPL=wasm` in the live `.env`, passed through by new `${KEY:-}` lines in the Compose Manager override. One recreate, image unchanged (`cowork-web:8273a712`, id `sha256:8ec1571c...`), new start 05:46:42Z.
+- **Model manager:** `GGUF_PARSER=rust` (same pattern), separate recreate, image unchanged (`cowork-model-loader:228e2ae4`), new start 05:48:40Z.
+- **Everything else:** no change. A before/after snapshot of all 40 containers (name, image id, start time, restarts) differs only in `cowork-web-1` and `cowork-model-loader-1` start times.
+
+**Evidence.** Before: autotune and calibration jobs `passed`, no coding task, sandboxes idle, no model-loader download. Web: healthy, 0 restarts; the startup line `dav-parse.wasm verified for DAV_PARSE_IMPL, S3_PARSE_IMPL, UPLOAD_SNIFF_IMPL, MCP_FRAME_IMPL, ...`; no FATAL; `/api/ready` 200 locally and on noevia.daserver.work; each flag reads `wasm` in the container. MCP discovery on real servers under `MCP_FRAME_IMPL=wasm`: noevia 10 and Nextcloud 181 tools; Tavily logged one `fetch failed` at startup (outbound-only, as on a previous first start) while a direct list from the container gave 5 tools under both `wasm` and `js`, so the full set is 196. Model-loader: healthy, 0 restarts, `GGUF_PARSER=rust`, `/api/v1/health`, `/models` and `/sections` 200, no `gguf-meta failed` or error lines, `gguf-meta` returns a summary for a real model header, `models.ini` sha256 identical before and after. No model was run, loaded or tuned. A real storage listing, upload and a tool call need a signed-in session and were not exercised (differential-only so far; `S3_PARSE_IMPL` has no S3 backend to observe).
+
+**Rollback.** Per service: restore `config/.env` from `.env.bak.before-rust-batch-A-20261008014615` (or delete the five keys), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web` and the same with `model-loader`. The override and compose backups are `docker-compose.override.yml.bak.before-rust-batch-A-20261008014615` and `docker-compose.yml.bak.before-rust-batch-A-20261008014615`; the extra `${KEY:-}` lines are harmless when the keys are absent. Watch for `listing could not be read`, `upload could not be checked`, `MCP response could not be checked` and `gguf-meta failed`; any hit means roll back that service.
+
 ## Release 8273a712 — 2026-10-08 (route fallback cause, Laya keeps its worker and stays warm #1070; core, web, Laya)
 
 ### Services
