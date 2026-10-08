@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 9035443e — 2026-10-08 (autotune waits for outside clients, coding tasks hold the inference gate #1062 #1067 #1068 #1069; core)
+
+### Services
+
+- **Web:** [#1073](https://github.com/sbstndalton/noevia/pull/1073) pins noevia-core `aa15e0c9` (core#21; `dav-parse.lock` moves to noevia-rs `a631bdce`, tune-contention crate). Fixes #1062 #1067 #1068 #1069. noevia-web stays `ec8ec1c0`. Deployed `cowork-web:9035443e` (image id `sha256:2509912e...70b1`); rollback target `cowork-web:2b5c122f` (`sha256:9c9f1195...eb9`).
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`88ed0847...d592`), tarball fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed. No flag was changed; `AUTOTUNE_PLAN_IMPL=wasm`, `LAYA_LOAD_ADVISOR=on` and `PRESET_RELOAD_IMPL=wasm` stay on. No model run, reload or tune.
+
+**Evidence.** The autotune job state was `failed` (finished 2026-10-07 13:10), calibration `passed`, no preset reload pending, and the code-sandbox and engine were idle, both before the build and again immediately before `up.sh`. Release tarball sha256 `60a16515...a934` identical on the Mac and the server. Candidate (`--network none`, read-only, synthetic): no FATAL, `/api/ready` 200, `dav-parse.wasm` sha `ea7694f7...fbf7`, log line `dav-parse.wasm verified for AUTOTUNE_PLAN_IMPL, PRESET_RELOAD_IMPL`. Live after: `cowork-web-1` healthy, 0 restarts, `/api/ready` 200 locally and on `noevia.daserver.work` reporting `9035443e`, `version.json` web `ec8ec1c0` / core `aa15e0c9`, live `dav-parse.wasm` sha `ea7694f7...fbf7` (was `33a4c692...5333`), MCP 196 tools across 3 servers, no error lines in the log.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/2b5c122f /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=2b5c122f/' /mnt/docker/appdata/cowork/config/.env`, then from `/boot/config/plugins/compose.manager/projects/Cowork` run `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait web`. Pre-release backups (env, current pointer, web state, snapshots, asset hashes, build log) are in `/mnt/docker/appdata/cowork/backups/` (`*9035443e*`, `pre-release-current.20261008*`, `old-assets-2b5c122f.txt`).
+
 ## Release 2b5c122f — 2026-10-07 (autotune KV policy #1057-#1061; web and core)
 
 ### Services
