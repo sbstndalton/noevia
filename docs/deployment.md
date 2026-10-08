@@ -890,7 +890,7 @@ tool shape) before it signs a profile off (#1003).
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL`, `SSRF_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL`, `SSRF_IMPL`, `STREAM_GUARD_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
@@ -925,6 +925,31 @@ flipped later without another compose edit. The module's sha256 changed with thi
   `metadata.google.internal` by name in `publicFetch`. An MCP server, provider or storage URL on
   an IDN or trailing-dot host stops working under `wasm`; use the ASCII (punycode-free) name
   without the trailing dot.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
+  means `js`, with one warning in the log.
+
+### Executor guard validator (`STREAM_GUARD_IMPL`, #516, #704)
+
+`dav-parse.wasm` also carries the Rust port of the Executor guard's tool-call validator and its
+correction text (noevia-rs `crates/stream-guard`, core#29): the incremental JSON-schema check that
+`stream-guard.cjs` runs on streamed tool-call arguments, used by `code-tool-schemas.cjs`.
+`STREAM_GUARD_IMPL=js|wasm` is a dark switch, independent of the others, default `js`; **it is not
+set on the live box**. The validator state is a byte string held in the JS object between calls
+(nothing stays in the module). The web service passes `STREAM_GUARD_IMPL: ${STREAM_GUARD_IMPL:-}`
+through from `.env` in the hand-kept live Compose Manager override, so it can be flipped later
+without another compose edit. The module's sha256 changed with this pin (`ef088449...`, noevia-rs
+`664c395d`).
+
+- **No migration:** nothing is stored.
+- **Switch on (owner only):** add `STREAM_GUARD_IMPL=wasm` to the web service's environment
+  (`.env` and, for a new install, the Compose Manager override) and recreate web only.
+- **Startup check:** `wasm` makes web verify `dav-parse.wasm` (pinned sha256, no imports, expected
+  exports, incl. `stream_guard`) before listening; an unusable module means exit 1.
+- **Behaviour with `wasm`:** it **fails closed**. A trap, a refusal or a reply of the wrong shape
+  refuses the call as "Arguments could not be checked." (counted like any violation); nothing
+  falls back to the JS. The port refuses schemas that are not plain JSON data, `maxBytes` over
+  2 MiB, `maxDepth` over 1024 and non-integer options. It only matters while the Code mode
+  Executor guard checks tool calls; other features are unaffected.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web. An unknown value also
   means `js`, with one warning in the log.
 
