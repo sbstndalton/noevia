@@ -1008,6 +1008,25 @@ log `codenet.wasm_fault`.
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
+### Role-context projections (`ROLE_CONTEXT_IMPL`, core#34)
+
+`dav-parse.wasm` also carries the Rust port of `role-context.cjs`'s projections, shared dossier and
+leak verdicts (noevia-rs `aa5eca78`, core#34; `dav-parse.lock` pins the tarball and module
+checksums). The switch is dark, independent of the others, default `js`. The hand-kept live Compose
+Manager override passes it through as `ROLE_CONTEXT_IMPL: ${ROLE_CONTEXT_IMPL:-js}`; it is not set
+in `.env`. With `js` nothing changes. With `wasm`, the JS projection is still computed and is handed
+out only if the port gives the byte-identical one; any disagreement, port fault or "ambiguous" /
+"too large" refusal means the context is refused (`RoleContextLeakError` with an `impl_*` class,
+logged once per reason as `role_context.impl_mismatch` / `role_context.wasm_fault`, without state
+text). The code reviewer then tells the person only that the review context could not be verified
+and was not sent. The port is stricter than the JS on a few inputs (for example an unpaired literal
+`\uD800` escape in a reviewed patch is refused as ambiguous; core#34 test, noevia#1120).
+
+- **Switch on (owner only):** add `ROLE_CONTEXT_IMPL=wasm` to `.env` and recreate web only; then run
+  a Code task with review and confirm the reviewer still receives its context.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
