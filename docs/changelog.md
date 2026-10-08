@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 3ace1bf5 — 2026-10-08 (code-net-guard decisions in Rust, CODE_NET_GUARD_IMPL dark; core#33; web and core)
+
+### Services
+
+- **Web:** [#1118](https://github.com/sbstndalton/noevia/pull/1118) pins noevia-core `0120b2a1` (core#33; noevia-rs `b74eeae7`, `dav-parse.wasm` `92c74917...41b9`, now exporting `code_net_guard`) and documents `CODE_NET_GUARD_IMPL` in `docs/deployment.md`. Image `cowork-web:3ace1bf5`, id `sha256:bee88f1a...bca2`. Web client stays `f20e7f61`.
+- **Everything else:** no change. A before/after snapshot of every container (name, image, start time) differs only in `cowork-web-1` (started 2026-10-08 18:23:51 UTC, restart count 0, healthy).
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`8e9f4131...4bfe`), tarball fetched twice, identical; noevia-rs tarball `fc65ec65...4a9b` fetched twice (codeload), identical. `COWORK_VERSION` is the only `.env` value changed. The live web `environment` gained `CODE_NET_GUARD_IMPL: ${CODE_NET_GUARD_IMPL:-js}` in the Compose Manager override, so it is `js`; a before/after diff of the `*_IMPL`, `NOEVIA_FEATURE_*` and `COWORK_CODE_NET_ADDR` presence shows only that one added line.
+
+**Evidence.** Autotune job `passed`, calibration job `passed`, code-sandbox idle (supervisor only), checked before the build and again immediately before `up.sh`. Live: `/api/ready` 200 `{"ready":true,"version":"3ace1bf5"}` locally and through https://noevia.daserver.work; `dav-parse.wasm` sha256 `92c74917...41b9` equals `dav-parse.lock` and the noevia-rs `b74eeae7` CI line "dav-parse.wasm sha256"; startup log still has `codenet.guarding` for the same address (`172.28.0.3`) as before the release.
+
+**Flip evidence (not enabled live).** A throwaway container from the same image with `CODE_NET_GUARD_IMPL=wasm` and the live `COWORK_CODE_NET_ADDR` value (`egress`, passed through, on a throwaway internal network where it carries that alias) started, logged `dav-parse.wasm verified for ... CODE_NET_GUARD_IMPL`, logged `codenet.guarding` for its own address and answered `/api/ready` 200. A first attempt on the live `cowork_code` network exited 1 with `EADDRNOTAVAIL` because `egress` resolved to the live web's address, which the candidate cannot bind: a test-harness artifact, not the port. Switching it on is the owner's call.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/0020d687 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=0020d687/' /mnt/docker/appdata/cowork/config/.env`, then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The extra override line is harmless; the previous override is `docker-compose.override.yml.bak.before-3ace1bf5` and the `.env` is `config/.env.bak.before-3ace1bf5`. Image `cowork-web:0020d687` is still on the box.
+
 ## Release 0020d687 — 2026-10-08 (mcp-servers and decision checks in Rust, MCP_SERVERS_IMPL and DECISION_IMPL dark; core#32; web and core)
 
 ### Services
