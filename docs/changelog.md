@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 82d0da73 — 2026-10-08 (stream-guard validator in Rust, STREAM_GUARD_IMPL dark; core#29; web and core)
+
+### Services
+
+- **Web:** [#1103](https://github.com/sbstndalton/noevia/pull/1103) pins noevia-core `c6214b0d` (core#29; noevia-rs `664c395d`, `dav-parse.wasm` `ef088449...b819`, now exporting `stream_guard`) and documents `STREAM_GUARD_IMPL` in `docs/deployment.md` (fails closed; Code mode Executor guard only); refs #516 #704. Image `cowork-web:82d0da73`, id `sha256:0c472276...58b3`. Web client stays `f20e7f61`.
+- **Everything else:** no change. A before/after snapshot of all running containers (name, id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`a3e989f3...43db9`), tarball fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed. No flag value changed: the live web `environment` gained `STREAM_GUARD_IMPL: ${STREAM_GUARD_IMPL:-}` (empty, so it stays `js`) in the Compose Manager override. The seven live flags (AUTOTUNE_PLAN, LAYA_LOAD_ADVISOR, PRESET_RELOAD, DAV_PARSE, S3_PARSE, MCP_FRAME, UPLOAD_SNIFF) are unchanged.
+
+**Evidence.** Autotune job `passed`/Done and code-sandbox idle (no processes, no llama requests in 10 minutes), checked before the build and again immediately before `up.sh`. Release tarball sha256 `f4aeda06...b821` identical on the Mac and the server. Synthetic candidates (`--network none`, read-only): `STREAM_GUARD_IMPL=js`, and the live flag set; no FATAL, `/api/ready` 200, `dav-parse.wasm` sha256 `ef088449...b819`, 30 exports including `stream_guard`, zero imports. Live after: healthy, 0 restarts, `/api/ready` 200 locally and on noevia.daserver.work, the startup line verifies the six web wasm flags (DAV_PARSE, S3_PARSE, UPLOAD_SNIFF, MCP_FRAME, AUTOTUNE_PLAN, PRESET_RELOAD), MCP 196 tools across 3 servers, no error lines, `STREAM_GUARD_IMPL` empty in the container.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/c4ade220 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=c4ade220/' /mnt/docker/appdata/cowork/config/.env`, then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The extra `STREAM_GUARD_IMPL` override line is harmless; the previous override is `docker-compose.override.yml.bak.before-82d0da73` and the `.env` is `config/.env.bak.20261008040601-before-82d0da73`. Image `cowork-web:c4ade220` is still on the box. Flipping `STREAM_GUARD_IMPL=wasm` later is the owner's call.
+
 ## Release c4ade220 — 2026-10-08 (SSRF decisions in Rust, SSRF_IMPL dark; core#28; web and core)
 
 ### Services
