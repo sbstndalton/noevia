@@ -8,6 +8,15 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release pin 4bfb57d2 / 3dc4b72b / f97136cc — 2026-10-09 (live-tester UI fixes, Diary files throttle pass-through, Laya autoconfig answer, estimate diagnostics; web and model manager)
+
+### Services
+
+- **Web:** pins noevia-web `4bfb57d2` ([web#18](https://github.com/sbstndalton/noevia-web/pull/18), squash: hover card, no_change review, budget validation, Always allow, storage throttle; fixes #1167 #1168 #1173 #1174 #1175) and noevia-core `3dc4b72b` ([core#40](https://github.com/sbstndalton/noevia-core/pull/40), squash: the Diary files proxy passes `storageThrottled`, wait and `Retry-After` through and forwards an explicit Retry, #1168). Merged, not yet deployed; deploy result follows in its own entry.
+- **Model manager:** pins noevia-services `f97136cc` ([services#13](https://github.com/sbstndalton/noevia-services/pull/13), squash): autoconfig explains the Laya section (#1163, code `laya_section`) and logs why Discover estimates are empty (#1159). Merged, not yet deployed.
+- **Everything else:** no change. Diary is not redeployed (services#13 touched only `model-manager/`). noevia-rs pin unchanged.
+- **Deploy/infra:** `NOEVIA_WEB_REF/_SHA256` (`4bfb57d2...`, tarball `78c8983a...3aab`), `NOEVIA_CORE_REF/_SHA256` (`3dc4b72b...`, tarball `074c404c...3996`), `NOEVIA_SERVICES_REF/_SHA256` (`f97136cc...`, tarball `949ec29e...5925`); each tarball fetched twice, identical. Each ref equals its repo's main.
+
 ## Release e58351d4 — 2026-10-09 (model manager: autoconfig spec, files, present and baseline behind MODEL_AUTOCONFIG, dark; deterministic current_diff order; model-manager only)
 
 ### Services
