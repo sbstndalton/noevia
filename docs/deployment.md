@@ -1088,10 +1088,42 @@ result). Only projections reach the port (no API keys or storage credentials).
 - **Rollback:** remove the key or set it to `js` and recreate web; or pin the previous release
   (`cowork-web` tag `240eea5f` before this change).
 
+### Browser policy (`BROWSER_POLICY_IMPL`, noevia-core#48)
+
+`dav-parse.wasm` (noevia-rs `9941efb7`, rs#54) also carries the Rust port of `browser-policy.cjs`
+(which page actions are allowed, need approval or are blocked, which addresses the browser may
+reach, and secret substitution). The switch is dark: `BROWSER_POLICY_IMPL` defaults to `js`, an
+unknown value is `js` with one warning, and **it is not set on the live box** (the live override
+passes it through as `${BROWSER_POLICY_IMPL:-js}`, added 2026-10-09 after a backup
+`docker-compose.override.yml.bak.before-browser-policy`, so it can be flipped from `.env` without
+another compose edit; flip it only with `deploy/tools/flags.sh`-verified before/after reads).
+Under `wasm` the JS answer is computed first and is never weakened: an action is allowed only if
+both allow it, needs approval if either asks, and is blocked if either blocks; an unknown, a
+fault, a bad reply or any disagreement asks at least. `checkNavigation` and `substituteSecrets`
+have no approval step, so there a disagreement or fault refuses. Only projections reach the port;
+for secrets it sees the text, names, domains and origin, never a value.
+
+- **Availability note (read before flipping):** under `wasm` the port is stricter than the JS.
+  Label, tag, type, role or key text outside its fold table (for example `ﬁ` ligatures, Armenian,
+  Georgian, Bengali and other Indic scripts besides Devanagari) or with a lone surrogate asks for
+  approval, inputs over 4 MiB ask, and a URL the `url` crate and Node parse differently is refused.
+  Browser tasks on such pages ask more often until the switch is set back to `js`.
+- **Startup check:** `BROWSER_POLICY_IMPL=wasm` makes web verify `dav-parse.wasm` (pinned sha256,
+  no imports, expected exports incl. `browser_policy`) before listening; an unusable module means
+  exit 1.
+- **Fixed in the live JS with either value (noevia-core#48):** noevia#1218 a form `<button>`
+  submits unless its type is exactly `button` or `reset` (ASCII case-insensitive), so a click on
+  `<button type="x">` asks (the in-page description now reports the button's DOM `type`); noevia#1219
+  the local-name test also runs on the host with its trailing dots removed, so `http://corp.internal./`
+  is blocked when `corp.internal` is an allowed local domain.
+- **Read the live value only with** `bash deploy/tools/flags.sh cowork-web-1`.
+- **Rollback:** remove the key or set it to `js` and recreate web; or pin the previous release
+  (`cowork-web` tag `22e5c113` before this change).
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 `dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL`, `CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL`, `PROVIDER_EGRESS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL`, `CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL`, `PROVIDER_EGRESS_IMPL`, `BROWSER_POLICY_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
