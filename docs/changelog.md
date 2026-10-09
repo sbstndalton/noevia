@@ -20,6 +20,14 @@ notes follow as before. Entries before release 7b6942c keep their original free-
 
 **Rollback.** On DaServer: `cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-egress-codeactions-wasm-20261009T2120Z /mnt/docker/appdata/cowork/config/.env` (or `sed -i 's/^CODE_ACTIONS_IMPL=.*/CODE_ACTIONS_IMPL=js/; s/^PROVIDER_EGRESS_IMPL=.*/PROVIDER_EGRESS_IMPL=js/'` on that file), then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. Check that no tune or Coding job is running first.
 
+## Release (pending) — 2026-10-09 (BROWSER_POLICY_IMPL, dark; #1218 and #1219 fixed in the live JS; web and core)
+
+### Services
+
+- **Web:** pins noevia-core `f191e93a` ([core#48](https://github.com/sbstndalton/noevia-core/pull/48), wasm from noevia-rs `9941efb7`, [rs#54](https://github.com/sbstndalton/noevia-rs/pull/54)). New dark switch `BROWSER_POLICY_IMPL` (default `js`): the Rust port of `browser-policy.cjs` confirms the JS decisions and can only make them stricter. Fixed in the live JS with either value: [#1218](https://github.com/sbstndalton/noevia/issues/1218) a form `<button>` submits unless its type is exactly `button` or `reset`, so a click on `<button type="x">` asks (the in-page description now sends the button's DOM `type`); [#1219](https://github.com/sbstndalton/noevia/issues/1219) the local-name test also runs on the host with trailing dots removed, so `http://corp.internal./` is blocked when `corp.internal` is allowed. All other switches stay as they were; `BROWSER_POLICY_IMPL` is not set in `.env`.
+- **Everything else:** no change.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`f191e93a...`, tarball `f34cf31f...5c8a`, fetched twice, identical); `dav-parse.lock` in core re-pinned to noevia-rs `9941efb7` (wasm `7b9635ff...f404`). The live override gained `BROWSER_POLICY_IMPL: ${BROWSER_POLICY_IMPL:-js}` (backup `docker-compose.override.yml.bak.before-browser-policy`).
+
 ## Release 22e5c113 — 2026-10-09 (#1212 code-actions linear and limited in the Rust port; #1211 NFD names; web and core; live)
 
 ### Services
