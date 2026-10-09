@@ -8,6 +8,14 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release pin 5ba42d84 — 2026-10-09 (retire five always-Rust security switches; web and core, #1071 batch 2)
+
+### Services
+
+- **Web:** pins noevia-core `5ba42d84` ([core#41](https://github.com/sbstndalton/noevia-core/pull/41)): `MCP_FRAME_IMPL`, `UPLOAD_SNIFF_IMPL`, `S3_SIGN_IMPL`, `PROMPT_FRAMING_IMPL` and `SSRF_IMPL` are retired. Rust is always used, the JS paths move to `tests/server/oracle/` (tests only), and a leftover `js` or `off` only logs a retired-switch warning. The live `.env` has all five on `wasm`, so behaviour is unchanged. The Node URL-parser runtime check (U+1E9E maps to `ss`) now runs at every startup and fails closed: a Node base-image bump that changes that mapping will make web refuse to start, by design (see docs/deployment.md, "Retired switches (#1071 batch 2)"). Also fixes #1183 (oracle-isolation generator mapping skips when `tools/` is absent). Deploy result follows in its own entry.
+- **Everything else:** no change.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`5ba42d84...`, tarball `b15bbc98...3667`, fetched twice, identical). The deep-research and framing-eval harness workflows now build the pinned `dav-parse.wasm` (prompt framing has no JS fallback any more, so their stubs had nothing to frame with). Web, services and noevia-rs pins untouched.
+
 ## Release 5c92fb14 — 2026-10-09 (live-tester UI fixes, Diary files throttle pass-through, Laya autoconfig answer, estimate diagnostics; web and model manager; live)
 
 ### Services

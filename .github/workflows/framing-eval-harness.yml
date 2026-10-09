@@ -35,4 +35,21 @@ jobs:
           echo "$sum  $RUNNER_TEMP/core.tgz" | sha256sum -c -
           mkdir -p apps/web && tar -xzf "$RUNNER_TEMP/core.tgz" --strip-components=1 -C apps/web
       # Stub backends only; no model, no package installation.
+      # Since #1071 batch 2 prompt framing is Rust only (no JS fallback), so the harness needs the
+      # pinned dav-parse.wasm: build it at the noevia-rs ref in core's server/dav-parse.lock,
+      # checksum-verified (tarball and module), like noevia-core CI.
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build dav-parse.wasm at core's pinned noevia-rs ref
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' apps/web/server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::dav-parse.lock NOEVIA_RS_REF is not a 40-char SHA"; exit 1; }
+          curl -fsSL --proto '=https' "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/rs.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/rs.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/rs" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs"
+          mkdir -p apps/web/server/wasm
+          "$RUNNER_TEMP/rs/tools/build-dav-parse-wasm.sh" "$PWD/apps/web/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  apps/web/server/wasm/dav-parse.wasm" | sha256sum -c -
       - run: node --require ./apps/web/tests/hermetic-network.cjs --test experiments/framing-eval/*.test.cjs

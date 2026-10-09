@@ -809,6 +809,9 @@ also carries two more Rust ports, each behind its own dark switch, independent o
 
 ### Upload checks (`UPLOAD_SNIFF_IMPL`, #977)
 
+> **Retired (noevia-core#41, #1071 batch 2):** `UPLOAD_SNIFF_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
+
+
 The same `dav-parse.wasm` also carries the Rust port of the upload checks: `validate` (plain
 filename, 25 MB cap, archive names and magic numbers), `classify` (upload group) and
 `decodeText` (BOM, NUL means binary, strict UTF-8, windows-1252 fallback with the "not valid
@@ -853,6 +856,9 @@ Node. The module's sha256 changed with this pin; `build/web.Dockerfile` needs no
 
 ### MCP response framing (`MCP_FRAME_IMPL`, #980)
 
+> **Retired (noevia-core#41, #1071 batch 2):** `MCP_FRAME_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
+
+
 The same `dav-parse.wasm` also carries a Rust port of how web reads replies from MCP servers,
 which are third-party output: the JSON-RPC body (plain JSON or an event stream), matching the
 reply to the request id, refusing server-initiated requests and notifications as replies, and
@@ -880,6 +886,9 @@ like the JS (by its extension) instead of failing with 400 "upload could not be 
 
 ### S3 request signing (`S3_SIGN_IMPL`, core#27)
 
+> **Retired (noevia-core#41, #1071 batch 2):** `S3_SIGN_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
+
+
 `dav-parse.wasm` also carries the Rust port of the S3 SigV4 request signer (`signS3RequestJs`) and
 the region normalisation, from noevia-rs `crates/s3-sign`. `S3_SIGN_IMPL=js|wasm` is a dark switch,
 independent of `S3_PARSE_IMPL` and the others, default `js`; **it is not set on the live box**. The
@@ -902,6 +911,9 @@ change, and its `tests/server/*.test.cjs` glob already runs `s3-sign-differentia
   means `js`, with one warning in the log.
 
 ### Prompt framing, provenance and task packets (`PROMPT_FRAMING_IMPL`, #769, #740)
+
+> **Retired (noevia-core#41, #1071 batch 2):** `PROMPT_FRAMING_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
+
 
 `dav-parse.wasm` also carries the Rust port of how web wraps untrusted text before it reaches a
 model (`frame_untrusted`, closing-tag escaping), the provenance policy and the task-packet
@@ -964,10 +976,27 @@ override can stay, and the `.env` lines can be deleted at leisure. There is no p
 more: roll back by pinning the previous release (previous `cowork-web` tag, live d28ce1c before this
 change).
 
+### Retired switches (#1071 batch 2)
+
+Five more switches are retired on the same terms: `MCP_FRAME_IMPL`, `UPLOAD_SNIFF_IMPL`,
+`S3_SIGN_IMPL`, `PROMPT_FRAMING_IMPL` and `SSRF_IMPL`. The Rust path is always used, the JS
+runtime paths are gone (the JS references live only under `tests/server/oracle/`, for fixture
+generation and differential tests), and `dav-parse.wasm` stays always required. A leftover `js` or
+`off` logs one `<NAME> is retired; Rust is always used` warning; `wasm`, `on` or empty is silent.
+Roll back by pinning the previous release (previous `cowork-web` tag, live 5c92fb14 before this
+change).
+
+**Node base image and the URL-parser check.** The prompt-framing Rust code assumes Node's URL
+parser maps U+1E9E to `ss` (Node 22). That runtime check used to run only under
+`PROMPT_FRAMING_IMPL=wasm`; it now runs at every startup and fails closed. A Node base-image bump
+that changes the U+1E9E mapping will therefore make web refuse to start (by design): it logs
+`prompt framing is always Rust, but this runtime's URL parser ...` and exits. Fix it by pinning a
+Node image with the expected mapping, or by updating noevia-core's pin and Rust code together.
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
-`dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL`, `SSRF_IMPL`, `STREAM_GUARD_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`,
+`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
@@ -978,6 +1007,9 @@ Also from this pin (#995): with either setting, a stored credential whose GCM ta
 16 bytes is refused. noevia never writes one, so no stored value is affected.
 
 ### Outbound URL and address policy (`SSRF_IMPL`, #795, #930)
+
+> **Retired (noevia-core#41, #1071 batch 2):** `SSRF_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
+
 
 `dav-parse.wasm` also carries the Rust port of the SSRF decisions (noevia-rs `crates/ssrf-policy`,
 core#28): "is this URL acceptable" and "is this resolved address public". `SSRF_IMPL=js|wasm` is a
