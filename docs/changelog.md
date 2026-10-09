@@ -8,6 +8,14 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release pending — 2026-10-09 (Diary storage 429/401/5xx handling; Diary only, merged, not yet deployed)
+
+### Services
+
+- **Diary:** merged, not yet deployed. Pins noevia-services `4fa7780a` ([services#11](https://github.com/sbstndalton/noevia-services/pull/11)): a storage 429 now answers 503 with `Retry-After`, a storage 401 answers 424 and starts a 5-minute cool-down during which Diary makes no upstream storage calls, and a storage 5xx answers 502, instead of an unhandled 500. Fixes [#1166](https://github.com/sbstndalton/noevia/issues/1166). Only `diary/agent` and tests changed for Diary, so it ships with `deploy/examples/diary-overlay.sh`.
+- **Everything else:** no change. The services bump also carries [services#10](https://github.com/sbstndalton/noevia-services/pull/10) (model-manager autoconfig, behind `MODEL_AUTOCONFIG`), which is not deployed by this release.
+- **Deploy/infra:** `NOEVIA_SERVICES_REF/_SHA256` (`4fa7780a...`, tarball `fdbb0cba...0c15`, fetched twice, identical). The noevia-rs pin (`b7788837`) is unchanged; the Diary Dockerfile default already matched it, and the tenant-assertion crate and `Cargo.lock` are byte-identical between the previously overlaid `c2964151` and `b7788837`.
+
 ## Flags enabled 2026-10-09 — nine more `*_IMPL` switches (config only; live web stays d28ce1c)
 
 ### Services
