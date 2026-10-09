@@ -254,6 +254,9 @@ class RsStage(unittest.TestCase):
         self.assertIn(f'tar.gz/{self.REF} ', df)
         self.assertIn(f'echo "{self.SUM}  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\\n', df)
         self.assertIn('cargo build --release --locked -p tenant-assertion-cli', df)
+        # The builder image is pinned by registry digest, not a movable tag (#1145).
+        self.assertRegex(df, r'(?m)^FROM rust:1\.99-slim-bookworm@sha256:[0-9a-f]{64} AS tenant-assertion$')
+        self.assertNotRegex(df, r'(?m)^FROM rust:[^@\n]* AS')
         self.assertIn('COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion', df)
         self.assertTrue(df.rstrip().endswith('COPY agent/ ./agent/'))
         # Only the pins are taken from the release's Dockerfile; never its text, and no pip.

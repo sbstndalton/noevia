@@ -4,7 +4,7 @@
 # before anything is built (the same pin and checksum as services/model-manager/Dockerfile; CI
 # fails if either default differs from the lock). Dark: used only with CODE_EGRESS_IMPL=rust and
 # deploy/examples/code-egress-rust.override.yml. See docs/egress-grant-contract.md.
-FROM rust:1.99-slim-bookworm AS build
+FROM rust:1.99-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS build
 ARG NOEVIA_RS_REF=a6a50ad971339eea7534d9266d887e04a26af384
 ARG NOEVIA_RS_SHA256=056ade791458364563b7711ccb53bb604dffff046da96740d4aaa607e5acc676
 ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never
