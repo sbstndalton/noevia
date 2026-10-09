@@ -697,6 +697,10 @@ service environment passes it through (`MODEL_AUTOCONFIG: ${MODEL_AUTOCONFIG:-py
   naming the model; faults log one per reason.
 - **Rollback:** remove `MODEL_AUTOCONFIG` (or set it to `python`) and recreate model-loader. An
   unknown value also means `python`, with one warning in the log.
+- **Input prep and values (services#10):** the same binary also answers the `check` op (input prep,
+  size plan and assembled values in one call). Python stays authoritative: prep must match exactly,
+  values must match or be the conservative ones (no larger ctx, ngl, cache-ram, batch, ubatch or
+  image-max-tokens), anything else fails closed. Still dark; the switch and rollback are unchanged.
 
 ### DOCX text front (`DOCX_TEXT_IMPL`, #981)
 
