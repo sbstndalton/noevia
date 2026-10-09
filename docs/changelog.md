@@ -8,6 +8,16 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release (pending deploy) — 2026-10-09 (PROVIDER_EGRESS_IMPL, dark; #1208 and #1209 fixed in the live JS; web and core)
+
+### Services
+
+- **Web:** pins noevia-core `263aff90` ([core#46](https://github.com/sbstndalton/noevia-core/pull/46), wasm from noevia-rs `68d8fbce`, [rs#52](https://github.com/sbstndalton/noevia-rs/pull/52)): new dark switch `PROVIDER_EGRESS_IMPL=js|wasm` (default `js`). **Fixed live in the JS regardless of the switch:** [#1208](https://github.com/sbstndalton/noevia/issues/1208) the Diary-folder check was bypassable with NFD or percent-encoded names (now NFC after percent-decoding and after lowercasing); [#1209](https://github.com/sbstndalton/noevia/issues/1209) quadratic regexes on long path arguments and provider hosts (4096-code-unit path cap, loop-based trailing-dot trim) and a 2048-character cap on provider `baseUrl` (create, probe, update). See "Provider-egress front" in deployment.md, including the availability note for non-Latin Diary folder or storage names once the switch is flipped.
+- **Everything else:** no change.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`263aff90...`, tarball `25a50c79...f779`, fetched twice, identical); `dav-parse.lock` in core re-pinned to noevia-rs `68d8fbce` (wasm `68cf8a00...8a9d`). The live override gained `PROVIDER_EGRESS_IMPL: ${PROVIDER_EGRESS_IMPL:-js}` (backup `docker-compose.override.yml.bak.before-provider-egress`). The switch stays `js`; flipping it is the owner's call.
+
+Deploy evidence and the live tag are added when the release is live. Rollback target: `240eea5f`.
+
 ## Flag enabled 2026-10-09 — `CODE_ACTIONS_IMPL=wasm` and `PROJECT_FILE_NAMES_IMPL=wasm` (config only; live web stays 240eea5f)
 
 ### Services

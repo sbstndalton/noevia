@@ -1052,10 +1052,46 @@ when the port's reply is byte-identical:
 - **Rollback:** remove the key or set it to `js` and recreate web; or pin the previous release
   (`cowork-web` tag `1c5172fb` before this change).
 
+### Provider-egress front (`PROVIDER_EGRESS_IMPL`, noevia-core#46)
+
+`dav-parse.wasm` (noevia-rs `68d8fbce`, rs#52) also carries the Rust port of
+`provider-egress.cjs` (what may leave for an external provider: the external/trial-host tests, the
+egress refusal, private-toolbox stripping and the `diary_*` / `nc_webdav_*` tool refusals). The
+switch is dark: `PROVIDER_EGRESS_IMPL` defaults to `js`, an unknown value is `js` with one warning,
+and **it is not set on the live box** (the live override passes it through as
+`${PROVIDER_EGRESS_IMPL:-js}`, added 2026-10-09 after a backup
+`docker-compose.override.yml.bak.before-provider-egress`, so it can be flipped from `.env` without
+another compose edit; flip it only with `deploy/tools/flags.sh`-verified before/after reads).
+Under `wasm` the JS answer is computed first and is never weakened: whatever the JS keeps back
+stays back (the port is not asked), and what the JS lets out goes only if the port lets it out too.
+A port refusal, an unknown, a fault or a bad reply gives the strict answer (external provider,
+request refused, every private toolbox removed, or an `ERROR: ... could not be checked` tool
+result). Only projections reach the port (no API keys or storage credentials).
+
+- **Availability note (read before flipping):** under `wasm` the port is stricter than the JS. A
+  Diary folder or storage path with code points outside the NFC-inert table (Greek, Hebrew,
+  Arabic, combining marks, raw or percent-decoded), or a non-ASCII storage connection URL, closes
+  the Nextcloud file tools (`diary_*`, `nc_webdav_*`) **for external providers**. Local providers
+  are unaffected unless the module faults. A provider URL with non-ASCII text, `%` or an `xn--`
+  label also counts as external (its Diary tools are stripped and `GET /api/providers` shows
+  `external: true`). Check the Diary folder and storage names before flipping; non-Latin names
+  lose these tools for external providers until the switch is set back to `js`.
+- **Startup check:** `PROVIDER_EGRESS_IMPL=wasm` makes web verify `dav-parse.wasm` (pinned sha256,
+  no imports, expected exports incl. `provider_egress`) before listening; an unusable module
+  means exit 1.
+- **Fixed in the live JS with either value (noevia-core#46):** noevia#1208 the Diary-folder check
+  now normalizes to NFC after percent-decoding and again after lowercasing (`Tagebu%CC%88cher/x.md`
+  is refused when the folder is `Tagebücher`); noevia#1209 any path argument over 4096 code units is
+  refused before a regex runs, `hostOf` trims trailing dots with a loop instead of `/\.+$/`, and a
+  provider `baseUrl` over 2048 characters is rejected on create, probe and update.
+- **Read the live value only with** `bash deploy/tools/flags.sh cowork-web-1`.
+- **Rollback:** remove the key or set it to `js` and recreate web; or pin the previous release
+  (`cowork-web` tag `240eea5f` before this change).
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 `dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL`, `CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL`, `CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL`, `PROVIDER_EGRESS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
