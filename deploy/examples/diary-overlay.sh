@@ -33,7 +33,14 @@ B=$(ls -td "$backup_root"/ab_* 2>/dev/null | head -1 || true)
 [ "$B" -nt "$marker" ] || { echo "newest backup $B is older than this run's backup start, so the backup did not produce a new folder; not deploying" >&2; exit 1; }
 # END backup-pick
 echo "backup $B"
-for f in cowork-diary-1.tar.gz cowork-web-1.tar.gz extra_files.tar.gz; do gzip -t "$B/$f"; done; echo "backup verified"
+# BEGIN backup-verify (deploy/tests/test_overlay_scripts.py runs this block on synthetic backups)
+# The Appdata Backup plugin writes .tar.zst (since 2026-10) or .tar.gz depending on its compression setting.
+for n in cowork-diary-1 cowork-web-1 extra_files; do
+  if [ -f "$B/$n.tar.zst" ]; then zstd -tq "$B/$n.tar.zst"
+  elif [ -f "$B/$n.tar.gz" ]; then gzip -t "$B/$n.tar.gz"
+  else echo "backup $B has no $n.tar.zst or $n.tar.gz; not deploying" >&2; exit 1; fi
+done; echo "backup verified"
+# END backup-verify
 docker tag "$OLD_ID" cowork-diary:rollback-before-diary-overlay
 cp -r "$base/releases/$V/services/diary/agent" "$ctx/agent"
 # BEGIN rs-stage (deploy/tests/test_overlay_scripts.py runs this block on synthetic Dockerfiles)

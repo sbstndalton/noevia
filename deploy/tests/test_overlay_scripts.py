@@ -7,6 +7,7 @@ backup and must verify the folder it then verifies is that backup, not a leftove
 import json
 import os
 import pathlib
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -222,6 +223,49 @@ class BackupPick(unittest.TestCase):
             ok = self.pick(root, marker)
             self.assertEqual(ok.returncode, 0, ok.stderr)
             self.assertIn(f'PICKED {fresh}', ok.stdout)
+
+
+class BackupVerify(unittest.TestCase):
+    """Run the `backup-verify` block of diary-overlay.sh: .tar.zst or .tar.gz, never neither."""
+
+    NAMES = ('cowork-diary-1', 'cowork-web-1', 'extra_files')
+
+    def run_block(self, folder):
+        lines = DIARY.read_text().splitlines()
+        start = next(i for i, l in enumerate(lines) if l.startswith('# BEGIN backup-verify'))
+        end = next(i for i, l in enumerate(lines) if l.startswith('# END backup-verify'))
+        script = 'set -euo pipefail\nB=$1\n' + '\n'.join(lines[start + 1:end])
+        return subprocess.run(['bash', '-c', script, 'x', str(folder)], capture_output=True, text=True)
+
+    def test_accepts_gzip_and_zstd_backups_and_refuses_missing_or_corrupt_ones(self):
+        import gzip
+        with tempfile.TemporaryDirectory(prefix='noevia-backup-verify-') as temp:
+            temp = pathlib.Path(temp)
+            gz = temp / 'gz'
+            gz.mkdir()
+            for n in self.NAMES:
+                (gz / f'{n}.tar.gz').write_bytes(gzip.compress(b'x'))
+            ok = self.run_block(gz)
+            self.assertEqual(ok.returncode, 0, ok.stderr)
+            self.assertIn('backup verified', ok.stdout)
+
+            (gz / 'extra_files.tar.gz').write_bytes(b'not gzip')
+            self.assertNotEqual(self.run_block(gz).returncode, 0)
+
+            empty = temp / 'empty'
+            empty.mkdir()
+            missing = self.run_block(empty)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn('not deploying', missing.stderr)
+
+            if shutil.which('zstd'):
+                zs = temp / 'zs'
+                zs.mkdir()
+                for n in self.NAMES:
+                    (zs / f'{n}.tar.zst').write_bytes(subprocess.run(['zstd', '-q', '-c'], input=b'x', capture_output=True, check=True).stdout)
+                self.assertEqual(self.run_block(zs).returncode, 0)
+                (zs / 'cowork-web-1.tar.zst').write_bytes(b'not zstd')
+                self.assertNotEqual(self.run_block(zs).returncode, 0)
 
 
 class RsStage(unittest.TestCase):
