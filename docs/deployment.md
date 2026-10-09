@@ -1023,10 +1023,39 @@ The Rust path is always used and the JS runtime paths are gone. A leftover `js` 
 verifies `dav-parse.wasm` at startup before it reads auth tokens or opens any egress. Roll back by
 pinning the previous release (previous `cowork-web` tag, live 1e4e3b82 before this change).
 
+### Code-actions and project-file-names fronts (`CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL`, noevia-core#45)
+
+`dav-parse.wasm` (noevia-rs `dc91c73e`) also carries the Rust ports of `code-actions.cjs`
+(`classify`, `decide`, `pickOption`) and `project-file-names.cjs`. Both switches are dark:
+`CODE_ACTIONS_IMPL` and `PROJECT_FILE_NAMES_IMPL` default to `js`, an unknown value is `js` with
+one warning, and **neither is set on the live box** (the live override passes them through as
+`${CODE_ACTIONS_IMPL:-js}` and `${PROJECT_FILE_NAMES_IMPL:-js}`, so they can be flipped later from
+`.env` without another compose edit). Under `wasm` the JS answer is computed first and kept only
+when the port's reply is byte-identical:
+
+- **`CODE_ACTIONS_IMPL=wasm`:** a refusal, fault, bad reply or disagreement makes `classify`
+  stricter (`approval: 'always'`, never standing, `unverified: true`), `decide` at least `ask`
+  (`deny` if either side denies) and `pickOption` a cancel. Only the automatic allow and standing
+  paths are withheld; the three write-approval actions are unchanged.
+- **`PROJECT_FILE_NAMES_IMPL=wasm`:** a name resolves only when the port resolves it to the same
+  file; any doubt returns `code: 'unverified'` with a model-readable error. The lookup stays over
+  the caller's own `project.files`.
+- **Startup check:** either switch set to `wasm` makes web verify `dav-parse.wasm` (pinned sha256,
+  no imports, expected exports incl. `code_actions` and `project_file_names`) before listening; an
+  unusable module means exit 1.
+- **Read the live values only with** `bash deploy/tools/flags.sh cowork-web-1` (both keys appear
+  once the web service has the passthrough lines).
+- **Also in this pin, JS behaviour that applies with either value:** noevia#1201 (HIGH) the JS
+  `find ... -exec find ...` classification was exponential in nesting depth and is now linear (more
+  than 64 `-exec`s in one find: every class, never standing); noevia#1203 project-file names are
+  decided by their longest NFC-inert tail and the safe table is wider.
+- **Rollback:** remove the key or set it to `js` and recreate web; or pin the previous release
+  (`cowork-web` tag `1c5172fb` before this change).
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 `dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL`, `CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
