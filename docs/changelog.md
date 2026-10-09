@@ -20,6 +20,14 @@ notes follow as before. Entries before release 7b6942c keep their original free-
 
 **Rollback.** On DaServer: `cp -p /mnt/docker/appdata/cowork/config/.env.bak.before-egress-codeactions-wasm-20261009T2120Z /mnt/docker/appdata/cowork/config/.env` (or `sed -i 's/^CODE_ACTIONS_IMPL=.*/CODE_ACTIONS_IMPL=js/; s/^PROVIDER_EGRESS_IMPL=.*/PROVIDER_EGRESS_IMPL=js/'` on that file), then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. Check that no tune or Coding job is running first.
 
+## Release (pending) — 2026-10-09 (TOOL_GATE_IMPL and TOOLBOXES_PERMITTED_IMPL, dark; #1223 and #1224 fixed in the live JS; web and core)
+
+### Services
+
+- **Web:** pins noevia-core `db57506d` ([core#49](https://github.com/sbstndalton/noevia-core/pull/49), wasm from noevia-rs `35d0fd63`, [rs#55](https://github.com/sbstndalton/noevia-rs/pull/55)) and noevia-web `e80b4493` ([web#22](https://github.com/sbstndalton/noevia-web/pull/22): the `unchecked` tool reason in every locale). New dark switches `TOOL_GATE_IMPL` and `TOOLBOXES_PERMITTED_IMPL` (default `js`): the Rust ports of `tool-gate.cjs` and `toolboxes-permitted.cjs` confirm the JS decisions and can only make them stricter. Fixed in the live JS with either value: [#1223](https://github.com/sbstndalton/noevia/issues/1223) the trailing-punctuation strip is linear; [#1224](https://github.com/sbstndalton/noevia/issues/1224) hosts with an empty label are never public. All other switches stay as they were; neither new key is set in `.env`.
+- **Everything else:** no change.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`db57506d...`, tarball `60c5c1e7...39c4`) and `NOEVIA_WEB_REF/_SHA256` (`e80b4493...`, tarball `73a5901e...7271`), each fetched twice, identical; `dav-parse.lock` in core re-pinned to noevia-rs `35d0fd63` (wasm `cb6a6a6c...be1d`). The live override gains `TOOL_GATE_IMPL: ${TOOL_GATE_IMPL:-js}` and `TOOLBOXES_PERMITTED_IMPL: ${TOOLBOXES_PERMITTED_IMPL:-js}` (backup `docker-compose.override.yml.bak.before-tool-gate`).
+
 ## Release 3d06ea7d — 2026-10-09 (BROWSER_POLICY_IMPL, dark; #1218 and #1219 fixed in the live JS; web and core; live)
 
 ### Services
