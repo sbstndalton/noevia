@@ -8,6 +8,14 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release pin 88d8e398 — 2026-10-09 (retire nine always-Rust switches; web and core, #1071 batch 3)
+
+### Services
+
+- **Web:** pins noevia-core `88d8e398` ([core#44](https://github.com/sbstndalton/noevia-core/pull/44)): `POLICY_LEAVES_IMPL`, `CODE_REVIEW_VERDICT_IMPL`, `TOOL_EXCHANGE_IMPL`, `DECISION_IMPL`, `COMPLETENESS_REPORT_IMPL`, `TASK_LIFECYCLE_IMPL`, `MCP_SERVERS_IMPL`, `CODE_NET_GUARD_IMPL` and `LLAMACPP_AUTOCONFIG_IMPL` are retired. Rust is always used and a leftover `js` or `off` only logs a retired-switch warning. Startup now verifies `dav-parse.wasm` before it reads auth tokens or opens egress (see docs/deployment.md, "Retired switches (#1071 batch 3)"). Deploy result follows in its own entry.
+- **Everything else:** no change.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`88d8e398...`, tarball `84874cb6...15ad`, fetched twice, identical). Web, services and noevia-rs pins untouched.
+
 ## Release 1e4e3b82 — 2026-10-09 (Retry forwarding log, Diary reset warnings, Diary retry QA; web and Diary; live)
 
 ### Services

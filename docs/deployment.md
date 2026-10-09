@@ -1013,6 +1013,16 @@ that changes the U+1E9E mapping will therefore make web refuse to start (by desi
 `prompt framing is always Rust, but this runtime's URL parser ...` and exits. Fix it by pinning a
 Node image with the expected mapping, or by updating noevia-core's pin and Rust code together.
 
+### Retired switches (#1071 batch 3)
+
+Nine more switches are retired on the same terms as batches 1 and 2: `POLICY_LEAVES_IMPL`,
+`CODE_REVIEW_VERDICT_IMPL`, `TOOL_EXCHANGE_IMPL`, `DECISION_IMPL`, `COMPLETENESS_REPORT_IMPL`,
+`TASK_LIFECYCLE_IMPL`, `MCP_SERVERS_IMPL`, `CODE_NET_GUARD_IMPL` and `LLAMACPP_AUTOCONFIG_IMPL`.
+The Rust path is always used and the JS runtime paths are gone. A leftover `js` or `off` logs one
+`<NAME> is retired; Rust is always used` warning; `wasm`, `on` or empty is silent. Web now
+verifies `dav-parse.wasm` at startup before it reads auth tokens or opens any egress. Roll back by
+pinning the previous release (previous `cowork-web` tag, live 1e4e3b82 before this change).
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 `dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`,
@@ -1084,6 +1094,8 @@ without another compose edit. The module's sha256 changed with this pin (`ef0884
 
 ### GGUF metadata reader and policy leaves (`GGUF_META_IMPL`, `POLICY_LEAVES_IMPL`, core#30)
 
+> **Retired (noevia-core#44, #1071 batch 3):** `POLICY_LEAVES_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches (#1071 batch 3)" below.
+
 `dav-parse.wasm` also carries the Rust GGUF metadata reader and the policy leaf functions
 (noevia-rs `f1eafcaf`, core#30; `dav-parse.lock` pins the tarball and module checksums). Both
 switches are dark, independent of the others, default `js`. The hand-kept live Compose Manager
@@ -1096,6 +1108,8 @@ override passes them through as `GGUF_META_IMPL: ${GGUF_META_IMPL:-js}` and
 
 ### Code-review verdict and tool exchange (`CODE_REVIEW_VERDICT_IMPL`, `TOOL_EXCHANGE_IMPL`, core#31)
 
+> **Retired (noevia-core#44, #1071 batch 3):** `CODE_REVIEW_VERDICT_IMPL` and `TOOL_EXCHANGE_IMPL` no longer exist as switches. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches (#1071 batch 3)" below.
+
 `dav-parse.wasm` also carries the Rust review-verdict and tool-exchange ports (noevia-rs `1f775737`,
 core#31; `dav-parse.lock` pins the tarball and module checksums). Both switches are dark,
 independent of the others, default `js`. The hand-kept live Compose Manager override passes them
@@ -1107,6 +1121,8 @@ through as `CODE_REVIEW_VERDICT_IMPL: ${CODE_REVIEW_VERDICT_IMPL:-js}` and
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
 ### MCP server list and decision checks (`MCP_SERVERS_IMPL`, `DECISION_IMPL`, core#32)
+
+> **Retired (noevia-core#44, #1071 batch 3):** `MCP_SERVERS_IMPL` and `DECISION_IMPL` no longer exist as switches. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches (#1071 batch 3)" below.
 
 `dav-parse.wasm` also carries the Rust ports of `mcp-servers.cjs` (the `MCP_SERVERS` list parser and
 toolbox filter) and of `decision/index.cjs`'s request, result and cause checks (noevia-rs
@@ -1122,6 +1138,8 @@ list for such URLs before switching `MCP_SERVERS_IMPL` on.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
 ### Code-network guard decisions (`CODE_NET_GUARD_IMPL`, core#33)
+
+> **Retired (noevia-core#44, #1071 batch 3):** `CODE_NET_GUARD_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches (#1071 batch 3)" below.
 
 `dav-parse.wasm` also carries the Rust port of `code-net-guard.cjs`'s decisions (noevia-rs
 `b74eeae7`, core#33; `dav-parse.lock` pins the tarball and module checksums). The switch is dark,
@@ -1158,6 +1176,8 @@ and was not sent. The port is stricter than the JS on a few inputs (for example 
 
 ### Completeness report (`COMPLETENESS_REPORT_IMPL`, core#35)
 
+> **Retired (noevia-core#44, #1071 batch 3):** `COMPLETENESS_REPORT_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches (#1071 batch 3)" below.
+
 `dav-parse.wasm` also carries the Rust port of `completeness-report.cjs`'s report and `reportHash`
 (noevia-rs `bba1a0eb`, core#35; `dav-parse.lock` pins the tarball and module checksums). The switch
 is dark, independent of the others, default `js`. The hand-kept live Compose Manager override
@@ -1178,6 +1198,8 @@ or `status`, a job over 8 MiB as JSON); those come back unverified.
 
 ### Task lifecycle (`TASK_LIFECYCLE_IMPL`, core#36)
 
+> **Retired (noevia-core#44, #1071 batch 3):** `TASK_LIFECYCLE_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches (#1071 batch 3)" below.
+
 `dav-parse.wasm` also carries the Rust port of `task-lifecycle.cjs`'s stage moves and event fold
 (noevia-rs `5f497542`, core#36; `dav-parse.lock` pins the tarball and module checksums). The switch
 is dark, independent of the others, default `js`. The hand-kept live Compose Manager override
@@ -1197,6 +1219,8 @@ in both implementations. The completeness half of the move to reviewing is not p
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
 ### Llama.cpp autoconfig (`LLAMACPP_AUTOCONFIG_IMPL`, core#37)
+
+> **Retired (noevia-core#44, #1071 batch 3):** `LLAMACPP_AUTOCONFIG_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches (#1071 batch 3)" below.
 
 `dav-parse.wasm` also carries the Rust port of `llamacpp-autoconfig.cjs`'s sizing (`suggest`,
 `estimateInputs` and `estimateFootprint`; noevia-rs `743be45c`, core#37; `dav-parse.lock` pins the
