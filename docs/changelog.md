@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 7c2842a5 — 2026-10-08 (task lifecycle in Rust, TASK_LIFECYCLE_IMPL dark; core#36; web and core)
+
+### Services
+
+- **Web:** [#1130](https://github.com/sbstndalton/noevia/pull/1130) pins noevia-core `271a4774` (core#36; noevia-rs `5f497542`, `dav-parse.wasm` `b7e76964...c132`, now exporting `task_lifecycle`) and documents `TASK_LIFECYCLE_IMPL` in `docs/deployment.md`. Image `cowork-web:7c2842a5`, id `sha256:e6ecb8c4...e45e`. Web client stays `f20e7f61`. core#36 closes #1125, #1126, #1127.
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1` (started 2026-10-09 03:06:55 UTC, restart count 0, healthy).
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`7dff65fd...84fcf`), tarball fetched twice, identical; noevia-rs `5f497542` tarball `2c0de8f9...162db` fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed (key names identical). The live web `environment` gained `TASK_LIFECYCLE_IMPL: ${TASK_LIFECYCLE_IMPL:-js}` in the Compose Manager override, so it is `js`; every other `*_IMPL`, `NOEVIA_FEATURE_*` and `COWORK_CODE_NET_ADDR` value is unchanged.
+
+**Evidence.** Before the build and again before `up.sh`: autotune job `passed`, calibration job `passed`, code-sandbox and code-verify running only their supervisors (checked by reading `/proc`, since the images have no `ps` and `docker top` is not reliable there), and all five stored jobs terminal. Live: `/api/ready` 200 `{"ready":true,"version":"7c2842a5"}` locally and through https://noevia.daserver.work; `dav-parse.wasm` sha256 `b7e76964...c132` equals `dav-parse.lock` and the noevia-rs `5f497542` CI line "dav-parse.wasm sha256"; the web log shows the same wasm-verified flag list as before. Container healthy, 0 restarts. `dist/index.html` sha256 prefix `536934cc40f7e130`, `dist/version.json` prefix `3075f0d35052be40`. The five stored job journals are byte-for-byte untouched (same mtimes) and fold to an empty lifecycle without refusal; none is a Code task with lifecycle events, so there was no live lifecycle state to compare.
+
+**Flip evidence (not enabled live).** A throwaway container from the same image (`--network none`, read-only, tmpfs data, no live mounts or secrets) with `TASK_LIFECYCLE_IMPL=wasm` started, logged `dav-parse.wasm verified for TASK_LIFECYCLE_IMPL`, was healthy, and answered `/api/ready` 200 with its wasm equal to the lock sha. No real Code task, review or Diary access was run. Switching it on is the owner's call.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/e921406d /mnt/docker/appdata/cowork/current`, `cp /mnt/docker/appdata/cowork/config/.env.bak.before-7c2842a5 /mnt/docker/appdata/cowork/config/.env` (or `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=e921406d/'`), then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The extra override line is harmless; the previous override is `docker-compose.override.yml.bak.before-7c2842a5`. Image `cowork-web:e921406d` is still on the box.
+
 ## Release e921406d — 2026-10-08 (completeness report in Rust, COMPLETENESS_REPORT_IMPL dark; core#35; web and core)
 
 ### Services
