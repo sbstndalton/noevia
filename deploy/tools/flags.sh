@@ -11,7 +11,7 @@
 #   COWORK_CODE_NET_ADDR  COWORK_VERSION  DIARY_VERSION  MODEL_MANAGER_VERSION
 # Everything else (tokens, keys, passwords, URLs with credentials...) is never printed. Do NOT
 # grep `docker inspect` output for values in release briefs; use this or list key names only.
-set -u
+set -u -o pipefail
 allow='^([A-Z0-9_]+_IMPL|NOEVIA_FEATURE_[A-Z0-9_]+|LAYA_LOAD_ADVISOR|MODEL_AUTOCONFIG|GGUF_PARSER|MODEL_FILES_IMPL|COWORK_CODE_NET_ADDR|COWORK_VERSION|DIARY_VERSION|MODEL_MANAGER_VERSION)$'
 usage() { echo "usage: flags.sh [--keys] <container> [KEY...]" >&2; exit 2; }
 keys_only=0
