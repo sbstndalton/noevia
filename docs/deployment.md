@@ -1067,6 +1067,32 @@ in both implementations. The completeness half of the move to reviewing is not p
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
+### Llama.cpp autoconfig (`LLAMACPP_AUTOCONFIG_IMPL`, core#37)
+
+`dav-parse.wasm` also carries the Rust port of `llamacpp-autoconfig.cjs`'s sizing (`suggest`,
+`estimateInputs` and `estimateFootprint`; noevia-rs `743be45c`, core#37; `dav-parse.lock` pins the
+tarball and module checksums). The switch is dark, independent of the others, default `js`. The
+hand-kept live Compose Manager override passes it through as
+`LLAMACPP_AUTOCONFIG_IMPL: ${LLAMACPP_AUTOCONFIG_IMPL:-js}`; it is not set in `.env`. With `js`
+nothing changes. With `wasm` the JS stays authoritative: its answer is returned when the port's
+reply is byte-identical, and otherwise only if it is the conservative one (no larger context,
+cache-ram, ubatch or batch size, no smaller footprint). If neither holds, a load is refused (409,
+before anything is evicted), a preset save is refused (409, nothing written) and the Will-it-fit
+panel answers 503. File and process I/O stay in JS; nothing starts llama.cpp or loads weights.
+The port is stricter than the JS on some metadata (non-number fields, arrays holding containers,
+radix literals past 128 bits, a native context that is not an integer up to 2^53 - 1).
+
+Independent of the switch, core#37 also changes behaviour (noevia#1132): a preset whose `ctx-size`
+(or `c`), `ubatch-size` or `batch-size` is set but is not a whole number (Infinity, -1, a decimal,
+and 0 for ubatch/batch) is refused at save and at load with `code: invalid_size`. `ctx-size` 0 still
+means the native context, and a leading `+` is accepted. A non-finite footprint never passes the
+load gate. Autotune KV ceilings are planned with the JS footprint (#1133).
+
+- **Switch on (owner only):** add `LLAMACPP_AUTOCONFIG_IMPL=wasm` to `.env` and recreate web only;
+  then open the Will-it-fit panel and save a preset, and confirm neither is refused.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
