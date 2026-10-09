@@ -8,6 +8,20 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release e921406d — 2026-10-08 (completeness report in Rust, COMPLETENESS_REPORT_IMPL dark; core#35; web and core)
+
+### Services
+
+- **Web:** [#1128](https://github.com/sbstndalton/noevia/pull/1128) pins noevia-core `cfdad3ce` (core#35; noevia-rs `bba1a0eb`, `dav-parse.wasm` `bbbf172b...4c96`, now exporting `completeness_report`) and documents `COMPLETENESS_REPORT_IMPL` in `docs/deployment.md`. Image `cowork-web:e921406d`, id `sha256:805d037c...dcd73`. Web client stays `f20e7f61`.
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1` (started 2026-10-09 02:42:40 UTC, restart count 0, healthy).
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`8ecb09f6...1df7`), tarball fetched twice, identical; noevia-rs `bba1a0eb` tarball `fcdc418e...be9` fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed (key names identical). The live web `environment` gained `COMPLETENESS_REPORT_IMPL: ${COMPLETENESS_REPORT_IMPL:-js}` in the Compose Manager override, so it is `js`; the effective `*_IMPL`, `NOEVIA_FEATURE_*` and `COWORK_CODE_NET_ADDR` list differs from before only by that one added line.
+
+**Evidence.** Autotune job `passed`, calibration job `passed`, code-sandbox idle (supervisor only, checked before the build), checked again immediately before `up.sh` (the sandbox re-check errored in `docker top` and was not repeated). Live: `/api/ready` 200 `{"ready":true,"version":"e921406d"}` locally and through https://noevia.daserver.work; `dav-parse.wasm` sha256 `bbbf172b...4c96` equals `dav-parse.lock` and the noevia-rs `bba1a0eb` CI line "dav-parse.wasm sha256"; the web log shows the wasm-verified flag list as before. Container healthy, 0 restarts. `dist/index.html` sha256 prefix `09afffb016873ad8`, `dist/version.json` prefix `6d8bf03129821ba1`.
+
+**Flip evidence (not enabled live).** A throwaway container from the same image (`--network none`, read-only, tmpfs data, no live mounts or secrets) with `COMPLETENESS_REPORT_IMPL=wasm` started, logged `dav-parse.wasm verified for COMPLETENESS_REPORT_IMPL`, and answered `/api/ready` 200 with its wasm equal to the lock sha. No real Code task, review or Diary access was run. Switching it on is the owner's call.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/15538388 /mnt/docker/appdata/cowork/current`, `cp /mnt/docker/appdata/cowork/config/.env.bak.before-e921406d /mnt/docker/appdata/cowork/config/.env` (or `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=15538388/'`), then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The extra override line is harmless; the previous override is `docker-compose.override.yml.bak.before-e921406d`. Image `cowork-web:15538388` is still on the box.
+
 ## Release 15538388 — 2026-10-08 (role-context projections in Rust, ROLE_CONTEXT_IMPL dark; core#34; web and core)
 
 ### Services
