@@ -8,6 +8,28 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 2237e0d6 — 2026-10-08 (llamacpp-autoconfig in Rust, LLAMACPP_AUTOCONFIG_IMPL dark; size-knob validation; core#37; web and core)
+
+### Services
+
+- **Web:** [#1135](https://github.com/sbstndalton/noevia/pull/1135) pins noevia-core `92144747` (core#37; noevia-rs `743be45c`, `dav-parse.wasm` `a0388ae5...f1c3`, now exporting `llamacpp_autoconfig`) and documents `LLAMACPP_AUTOCONFIG_IMPL` in `docs/deployment.md`. Image `cowork-web:2237e0d6`, id `sha256:09815957...4ddc`. Web client stays `f20e7f61`. core#37 closes #1132, #1133, #1134.
+- **Everything else:** no change. A before/after snapshot of every container (name, image id, start time, restart count) differs only in `cowork-web-1` (started 2026-10-09 03:49:14 UTC, restart count 0, healthy).
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`92144747...5be4` ref, tarball `defdf47f...76f7`), fetched twice, identical; noevia-rs `743be45c` tarball `fb802690...bf9f` fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed (backup `.env.bak.before-2237e0d6`). The live web `environment` gained `LLAMACPP_AUTOCONFIG_IMPL: ${LLAMACPP_AUTOCONFIG_IMPL:-js}` in the Compose Manager override (backup `docker-compose.override.yml.bak.before-2237e0d6`), so it is `js`; every other `*_IMPL`, `NOEVIA_FEATURE_*` and `COWORK_CODE_NET_ADDR` value is unchanged. `release/versions.lock`'s model-manager entries are untouched.
+
+### Behaviour change (independent of the switch, [#1132](https://github.com/sbstndalton/noevia/issues/1132))
+
+A preset whose `ctx-size` (or `c`), `ubatch-size` or `batch-size` is set but is not a whole number (Infinity, -1, a decimal such as 4096.5, and 0 for `ubatch-size` or `batch-size`) is now refused at save and at load (`code: invalid_size`). `ctx-size` 0 still means the model's native context, and a leading `+` is accepted. A non-finite footprint never passes the load gate. Autotune KV ceilings are planned with the JS footprint (#1133), and the `estimateInputs` comparison also requires equal `moe`, `chat`, `nativeCtx` and current ctx/kv (#1134).
+
+**Evidence.** Before the build and again before `up.sh`: autotune job `passed`, calibration job `passed`, code-sandbox and code-verify running only their supervisors (read from `/proc`), all five stored jobs terminal (newest 2026-10-08 02:00, unchanged). Live: `/api/ready` 200 `{"ready":true,"version":"2237e0d6"}` locally and through https://noevia.daserver.work; `dav-parse.wasm` sha256 `a0388ae5...f1c3` equals `dav-parse.lock` and the noevia-rs `743be45c` CI line "dav-parse.wasm sha256"; `LLAMACPP_AUTOCONFIG_IMPL=js`. Container healthy, 0 restarts. `dist/index.html` sha256 prefix `0c828fe804afb644` (was `536934cc40f7e130`), `dist/version.json` prefix `81f983584b2b090a` (was `3075f0d35052be40`). No model was loaded at any point.
+
+**Live preset check (read-only).** Every section of the live `models.ini` (8 sections) was run through the new `sizeKnobProblem` rule inside the web container, both as the section alone (save) and merged over `[*]` (load): 0 refused. A synthetic file confirmed the check catches Infinity, -1, 4096.5 and ubatch 0, and accepts ctx-size 0.
+
+**Flip evidence (not enabled live).** A throwaway container from the same image (`--network none`, read-only, `--cap-drop ALL`, tmpfs data, no live mounts or secrets) with `LLAMACPP_AUTOCONFIG_IMPL=wasm` started, logged `dav-parse.wasm verified for LLAMACPP_AUTOCONFIG_IMPL`, and answered `/api/ready` 200 with its wasm equal to the lock sha; it was removed afterwards. Switching it on is the owner's call.
+
+**CI note.** The first run of "Deploy tooling shell/wrapper tests" on #1135 failed fetching a Docker Hub OAuth token; a rerun passed with no change.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/7c2842a5 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=7c2842a5/' /mnt/docker/appdata/cowork/config/.env` (or restore `.env.bak.before-2237e0d6`), then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The extra override line is harmless; the previous override is `docker-compose.override.yml.bak.before-2237e0d6`. Image `cowork-web:7c2842a5` is still on the box.
+
 ## Release 7c2842a5 — 2026-10-08 (task lifecycle in Rust, TASK_LIFECYCLE_IMPL dark; core#36; web and core)
 
 ### Services
