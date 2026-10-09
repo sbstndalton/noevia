@@ -8,6 +8,15 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Pins 2026-10-09 — Retry forwarding log (core#43), Diary reset warnings (services#17), Diary retry QA (web#21); web and Diary (deploy follows)
+
+### Services
+
+- **Web:** pins noevia-core `921a03d5` ([core#43](https://github.com/sbstndalton/noevia-core/pull/43): the server logs `[diary] forwarding X-Cowork-Storage-Retry: 1` for each explicit Retry, #1198) and noevia-web `20961fc3` ([web#21](https://github.com/sbstndalton/noevia-web/pull/21): QA script only). Merged, not yet deployed at the time of this entry; live web is still `3eab05e3`.
+- **Diary:** pins noevia-services `fb867e68` ([services#17](https://github.com/sbstndalton/noevia-services/pull/17): Diary storage-reset log lines are at warning level, #1185; `diary/agent` and its test only). Merged, not yet deployed; shipped by the Diary overlay.
+- **Model manager, OCR, Docling, code sandbox:** no change (the services diff `ed8dfad4...fb867e68` touches `diary/agent/storage_backoff.py` and `diary/tests/test_storage_backoff.py` only, so the model loader is not redeployed).
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`921a03d5...`, `9409053b...c69e`), `NOEVIA_WEB_REF/_SHA256` (`20961fc3...`, `3f44fde0...d4e6`), `NOEVIA_SERVICES_REF/_SHA256` (`fb867e68...`, `89d9d3a6...84e9`), each fetched twice, identical. `NOEVIA_RS_REF` unchanged (`af5ccf3f`).
+
 ## Flag enabled 2026-10-09 — `GGUF_META_IMPL=wasm` (config only; live web stays 3eab05e3)
 
 ### Services
