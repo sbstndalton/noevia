@@ -1147,6 +1147,10 @@ and 0 for ubatch/batch) is refused at save and at load with `code: invalid_size`
 means the native context, and a leading `+` is accepted. A non-finite footprint never passes the
 load gate. Autotune KV ceilings are planned with the JS footprint (#1133).
 
+Since core#38 (noevia#1158) `PUT /api/model-manager/sections/:name` answers a refused size with HTTP 400
+and `code: invalid_size` (it was 409, which the client showed as "settings file changed"); the
+budget refusal stays 409.
+
 - **Switch on (owner only):** add `LLAMACPP_AUTOCONFIG_IMPL=wasm` to `.env` and recreate web only;
   then open the Will-it-fit panel and save a preset, and confirm neither is refused.
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
