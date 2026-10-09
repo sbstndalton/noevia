@@ -675,6 +675,29 @@ comes from the same `NOEVIA_RS_REF` as `gguf-meta`. It is dark: `MODEL_FILES_IMP
 - **Rollback:** remove `MODEL_FILES_IMPL` (or set it to `python`) and recreate model-loader. An
   unknown value also means `python`, with one warning in the log.
 
+### Autoconfig size core (`MODEL_AUTOCONFIG`, services#8)
+
+Model-loader images built from noevia-services#8 on also carry `/usr/local/bin/model-autoconfig`,
+the Rust port of the size core behind the Models page recommendation: the fit sweep, the context
+pick and cap, the presets and the prompt cache. It comes from the same `NOEVIA_RS_REF` as
+`gguf-meta`. It is dark: `MODEL_AUTOCONFIG` defaults to `python` and then nothing is spawned. The
+service environment passes it through (`MODEL_AUTOCONFIG: ${MODEL_AUTOCONFIG:-python}` under
+`model-loader`; the live Compose Manager override is hand-kept, so the line is added there).
+
+- **Switch on (owner only):** set `MODEL_AUTOCONFIG=rust` in `config/.env` and recreate
+  model-loader only. `MODEL_AUTOCONFIG_BIN` overrides the binary path (default
+  `/usr/local/bin/model-autoconfig`; tests only).
+- **Behaviour with `rust`:** the Python size core still answers; the binary runs beside it (no
+  shell, minimal environment, 10 s timeout, 4 MB in, 16 MB out) and only *confirms* it. Python's
+  plan is used when Rust agrees exactly, or when Python's is the conservative one (same backend
+  and placement mode, and no larger context, GPU layers or prompt cache). Any other disagreement,
+  and every fault (missing binary, nonzero exit, timeout, output over the cap, malformed output),
+  **fails closed**: no recommendation is offered. The child is read with a bounded read and killed
+  when the cap is passed or the time is up. Mismatches log one warning per request shape (a hash)
+  naming the model; faults log one per reason.
+- **Rollback:** remove `MODEL_AUTOCONFIG` (or set it to `python`) and recreate model-loader. An
+  unknown value also means `python`, with one warning in the log.
+
 ### DOCX text front (`DOCX_TEXT_IMPL`, #981)
 
 OCR images built from #981 on carry `/usr/local/bin/docx-text`, the bounded Rust port of
