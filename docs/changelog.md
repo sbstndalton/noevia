@@ -8,6 +8,22 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release d28ce1c — 2026-10-09 (live-tester fixes #1154-#1160; web and core)
+
+### Services
+
+- **Web:** [#1164](https://github.com/sbstndalton/noevia/pull/1164) pins noevia-core `5dbd7865` ([core#38](https://github.com/sbstndalton/noevia-core/pull/38)) and noevia-web `4388a1cc` ([web#17](https://github.com/sbstndalton/noevia-web/pull/17)). Image `cowork-web:d28ce1c`, id `sha256:2b667a84...8a6`. Fixes [#1154](https://github.com/sbstndalton/noevia/issues/1154) (Diary root listing requested twice), [#1155](https://github.com/sbstndalton/noevia/issues/1155) ("Always allow" feedback), [#1156](https://github.com/sbstndalton/noevia/issues/1156) (Code card "Finished" vs Planner review), [#1157](https://github.com/sbstndalton/noevia/issues/1157) (blocked Code task keeps title and prompt), [#1158](https://github.com/sbstndalton/noevia/issues/1158) (invalid ctx-size inline), [#1159](https://github.com/sbstndalton/noevia/issues/1159) (Discover fit table, **partial**: context estimates can still be empty when the model manager returns none; the page now says so) and [#1160](https://github.com/sbstndalton/noevia/issues/1160) (Tune warning wording). Also the ladder test path.
+- **Everything else:** no change. A before/after snapshot of all 38 running containers (name, image id, start time, restart count) differs only in `cowork-web-1` (started 2026-10-09 06:27:37 UTC, restart count 0, healthy). Services pin (`468a7b66`) and noevia-rs pin untouched.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`5dbd7865...`, tarball `ede5e056...e46f`) and `NOEVIA_WEB_REF/_SHA256` (`4388a1cc...`, tarball `13269b84...1368`), each fetched twice, identical. `COWORK_VERSION` is the only `.env` value changed (backup `config/.env.bak.before-d28ce1c`). No Compose change.
+
+### Behaviour change
+
+`PUT /api/model-manager/sections/:name` with an invalid size (`code: invalid_size`) now answers HTTP 400; it was 409, which the client showed as "settings file changed". The budget refusal stays 409.
+
+**Evidence.** Before the build and again before `up.sh`: autotune job `passed`, calibration job `passed` (files unchanged since 2026-10-08 01:21 and 2026-09-23), no bench or tune container, web, llama, code-sandbox and code-verify at about 0% CPU, and the two sandboxes running only their supervisors plus one defunct `pi` zombie from 2026-10-07 (read from `/proc`). Candidate image: `version.json` `{"version":"d28ce1c","web":"4388a1cc...","core":"5dbd7865..."}`, wasm sha256 `a0388ae5...f1c3` equal to `dav-parse.lock`. Live: `/api/ready` 200 `{"ready":true,"version":"d28ce1c"}` locally (127.0.0.1:8021) and through https://noevia.daserver.work; live wasm sha256 equals the lock and the previous release's; the web log shows `dav-parse.wasm verified` for the same switches as before; the 31 effective `*_IMPL`, `NOEVIA_FEATURE_*`, `COWORK_CODE_NET_ADDR`, `MODEL_AUTOCONFIG` and `GGUF_PARSER` values are identical before and after (`backups/web-flags-before-d28ce1c.txt` / `-after-`). `dist/index.html` sha256 prefix `da1dbb4945a3b6b2`, `dist/version.json` prefix `e81b598c4205f968`. Container healthy, 0 restarts. No model was loaded, run or tuned, no Code task or Diary access.
+
+**Rollback.** On DaServer: `ln -sfn /mnt/docker/appdata/cowork/releases/2237e0d6 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=2237e0d6/' /mnt/docker/appdata/cowork/config/.env` (or restore `.env.bak.before-d28ce1c`), then `cd /boot/config/plugins/compose.manager/projects/Cowork && bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. Image `cowork-web:2237e0d6` (`sha256:09815957...4ddc`) is still on the box. Snapshots: `backups/snap-before-d28ce1c.txt`, `snap-after-d28ce1c.txt`.
+
 ## Release fc6ecbbf — 2026-10-09 (Diary overlay with the Rust tenant-assertion binary, TENANT_ASSERTION_IMPL off; Diary only)
 
 ### Services
