@@ -1047,6 +1047,26 @@ or `status`, a job over 8 MiB as JSON); those come back unverified.
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
+### Task lifecycle (`TASK_LIFECYCLE_IMPL`, core#36)
+
+`dav-parse.wasm` also carries the Rust port of `task-lifecycle.cjs`'s stage moves and event fold
+(noevia-rs `5f497542`, core#36; `dav-parse.lock` pins the tarball and module checksums). The switch
+is dark, independent of the others, default `js`. The hand-kept live Compose Manager override
+passes it through as `TASK_LIFECYCLE_IMPL: ${TASK_LIFECYCLE_IMPL:-js}`; it is not set in `.env`.
+With `js` nothing changes. With `wasm` the JS stays authoritative: `canTransition` is true only if
+both allow the move, and `transition`, `assertStageMove`, `foldEvents` and `deriveLifecycle` return
+the JS answer only when the port gives the same one; otherwise they throw a 409
+`TaskLifecycleError` (`impl_refused` or `impl_mismatch`) and a refused stage write appends nothing.
+On the read path a disagreement gives `lifecycle: null` and leaves every other field unchanged. The
+port is sent only the fields the fold reads, so large tool payloads are never sent. It is stricter
+than the JS on fold input over 8 MiB as JSON, and entering reviewing needs a string `reportHash`
+in both implementations. The completeness half of the move to reviewing is not part of this port.
+
+- **Switch on (owner only):** add `TASK_LIFECYCLE_IMPL=wasm` to `.env` and recreate web only; then
+  move a Code task through its stages and confirm none is refused as unverified.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
