@@ -1027,6 +1027,26 @@ and was not sent. The port is stricter than the JS on a few inputs (for example 
 - **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
 - **Rollback:** remove the variable (or set it to `js`) and recreate web.
 
+### Completeness report (`COMPLETENESS_REPORT_IMPL`, core#35)
+
+`dav-parse.wasm` also carries the Rust port of `completeness-report.cjs`'s report and `reportHash`
+(noevia-rs `bba1a0eb`, core#35; `dav-parse.lock` pins the tarball and module checksums). The switch
+is dark, independent of the others, default `js`. The hand-kept live Compose Manager override
+passes it through as `COMPLETENESS_REPORT_IMPL: ${COMPLETENESS_REPORT_IMPL:-js}`; it is not set in
+`.env`. With `js` nothing changes. With `wasm`, the JS report is still computed and is handed out
+as is only when the port gives the byte-identical canonical report and sha256. Any port refusal,
+fault, bad reply or disagreement returns the JS report marked `unverified` (`impl_refused` or
+`impl_mismatch`): `overall` stays `fail` if the JS said fail, otherwise it becomes `unknown`, and an
+unverified report cannot enter `reviewing` (the 409 names the reason). So the port can keep a task
+out of `reviewing` but never let one in. The port is stricter than the JS on a few inputs (a truthy
+`uncertain` that is not an array, an `expectedArtifacts` string, an object or array as a step `id`
+or `status`, a job over 8 MiB as JSON); those come back unverified.
+
+- **Switch on (owner only):** add `COMPLETENESS_REPORT_IMPL=wasm` to `.env` and recreate web only;
+  then move a Code task into review and confirm it is not refused as unverified.
+- **Startup check:** as for the other `*_IMPL=wasm` switches, an unusable module means exit 1.
+- **Rollback:** remove the variable (or set it to `js`) and recreate web.
+
 ### Code sandbox bridge (`SANDBOX_BRIDGE_IMPL`, #999)
 
 The code-sandbox image (core `code-sandbox/`) now also contains `sandbox-bridge.wasm`, a Rust port
