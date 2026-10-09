@@ -8,6 +8,14 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release pin 7632efbb — 2026-10-09 (retire six always-Rust switches; web and core, #1071 batch 1)
+
+### Services
+
+- **Web:** pins noevia-core `7632efbb` ([core#39](https://github.com/sbstndalton/noevia-core/pull/39)): `CHAT_TEMPLATE_CAPS_IMPL`, `AUTOTUNE_PLAN_IMPL`, `PRESET_RELOAD_IMPL`, `LAYA_LOAD_ADVISOR`, `DAV_PARSE_IMPL` and `S3_PARSE_IMPL` are retired. Rust is always used, `dav-parse.wasm` is always required at startup, and a leftover `js` or `off` only logs a retired-switch warning. The live `.env` has all six on (`wasm`/`on`), so behaviour is unchanged. The other `*_IMPL` switches are untouched. Merged; deploy result follows in its own entry.
+- **Everything else:** no change.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`7632efbb...`, tarball `4c1c87dd...7e7d`, fetched twice, identical). Web, services and noevia-rs pins untouched. The `${KEY:-}` passthrough lines in the Compose Manager override stay.
+
 ## Release c72ee95 — 2026-10-09 (Diary storage 429/401/5xx handling; Diary only)
 
 ### Services
