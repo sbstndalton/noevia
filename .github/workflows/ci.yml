@@ -104,6 +104,8 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-sidecar-restart-alert.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-flags.sh
+        if: env.RUN_JOB == 'true'
       # Every Compose file the repo ships must still parse (no containers are started).
       - run: make compose-check
         if: env.RUN_JOB == 'true'
