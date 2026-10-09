@@ -726,6 +726,38 @@ keeps extracting every document.
 - **Rollback:** remove `DOCX_TEXT_IMPL` (or set it to `python`) and recreate ocr. An unknown
   value also means `python`, with one warning in the log.
 
+### Tenant assertion check (`TENANT_ASSERTION_IMPL`)
+
+Diary images built from this change on carry `/usr/local/bin/tenant-assertion`, the bounded Rust
+port of `diary/agent/tenant_assertion.py`'s stateless check (`X-Cowork-Tenant-Assertion` v2
+signature, clock window, and the storage secretRef match). It is built from the Diary
+Dockerfile's `NOEVIA_RS_REF`, which equals release/versions.lock's. It is dark:
+`TENANT_ASSERTION_IMPL` defaults to `python`, and nothing is spawned.
+
+- **Shipping under the overlay rule:** the release overlay never rebuilds Diary, and
+  `diary-overlay.sh <SRC_SHA>` still builds FROM the running image without any pip install. When
+  `releases/<SRC_SHA>/services/diary/Dockerfile` pins noevia-rs, the overlay reads only those two
+  hex pins, builds the binary in the same checksum-verified `rust:1.99-slim-bookworm` stage
+  (DaServer needs to reach codeload.github.com and crates.io for it), copies just the binary to
+  `/usr/local/bin/tenant-assertion`, then copies `agent/`. It runs `tenant-assertion self-test` in
+  the candidate (no network) before anything is switched, and rolls back as before. A release
+  without the pin keeps the agent-only overlay.
+- **Switch on (owner only), after the overlay:** add `TENANT_ASSERTION_IMPL=rust` to the diary
+  service's environment (in the hand-kept live Compose Manager override too) and recreate diary
+  only.
+- **Behaviour with `rust`:** AND-composed and **fails closed**. A tenant request (and a storage
+  secretRef) is accepted only when Python accepts and `tenant-assertion check` accepts; a Rust
+  refusal, missing binary, other exit, a 2 s timeout or any unexpected output gives the usual 401
+  ("invalid tenant assertion"), never a Python-only acceptance. The key, header values and
+  secret go to the child on stdin only, with only `PATH` in its environment; the log gets one
+  warning per fault kind, reason codes only. The nonce (replay) cache stays in Python and runs
+  after both accept. Cost: one short process per tenant request.
+  - Stricter than Python (refused even when correctly signed): non-ASCII user id or method,
+    empty key, a body hash that is not sha256 hex or `stream`, a non-finite clock, any field over
+    256 KiB, and non-ASCII digits in the timestamp. Web never sends any of these.
+- **Rollback:** remove `TENANT_ASSERTION_IMPL` (or set it to `python`) and recreate diary. An
+  unknown value also means `python`, with one warning in the log.
+
 ### Storage listing parser (`DAV_PARSE_IMPL`, #967)
 
 Web images built from #967 on carry `server/wasm/dav-parse.wasm`, the bounded Rust port of the

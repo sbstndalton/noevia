@@ -224,5 +224,59 @@ class BackupPick(unittest.TestCase):
             self.assertIn(f'PICKED {fresh}', ok.stdout)
 
 
+class RsStage(unittest.TestCase):
+    """Run the `rs-stage` block of diary-overlay.sh against synthetic release Dockerfiles."""
+
+    REF = 'a' * 40
+    SUM = 'b' * 64
+
+    def block(self):
+        lines = DIARY.read_text().splitlines()
+        start = next(i for i, l in enumerate(lines) if l.startswith('# BEGIN rs-stage'))
+        end = next(i for i, l in enumerate(lines) if l.startswith('# END rs-stage'))
+        return '\n'.join(lines[start + 1:end])
+
+    def stage(self, dockerfile):
+        temp = pathlib.Path(tempfile.mkdtemp(prefix='noevia-rs-stage-'))
+        (temp / 'releases/abc1234/services/diary').mkdir(parents=True)
+        if dockerfile is not None:
+            (temp / 'releases/abc1234/services/diary/Dockerfile').write_text(dockerfile)
+        (temp / 'ctx').mkdir()
+        script = 'set -euo pipefail\nbase=$1; V=abc1234; ctx=$1/ctx\n' + self.block() + '\necho "STAGE $rs_stage"'
+        result = subprocess.run(['bash', '-c', script, 'x', str(temp)], capture_output=True, text=True, timeout=30)
+        out = (temp / 'ctx/Dockerfile').read_text() if (temp / 'ctx/Dockerfile').exists() else None
+        return result, out
+
+    def test_a_pinned_release_builds_the_binary_from_exactly_that_pin(self):
+        result, df = self.stage(f'FROM rust AS x\nARG NOEVIA_RS_REF={self.REF}\nARG NOEVIA_RS_SHA256={self.SUM}\nRUN pip install evil\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('STAGE 1', result.stdout)
+        self.assertIn(f'tar.gz/{self.REF} ', df)
+        self.assertIn(f'echo "{self.SUM}  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\\n', df)
+        self.assertIn('cargo build --release --locked -p tenant-assertion-cli', df)
+        self.assertIn('COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion', df)
+        self.assertTrue(df.rstrip().endswith('COPY agent/ ./agent/'))
+        # Only the pins are taken from the release's Dockerfile; never its text, and no pip.
+        self.assertNotIn('pip', df)
+        self.assertEqual(df.count('FROM cowork-diary:rollback-before-diary-overlay'), 1)
+
+    def test_an_unpinned_release_keeps_the_agent_only_overlay(self):
+        for dockerfile in ('FROM python:3.12-slim\nCOPY agent/ ./agent/\n', None):
+            with self.subTest(dockerfile=dockerfile):
+                result, df = self.stage(dockerfile)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('STAGE 0', result.stdout)
+                self.assertEqual(df, 'FROM cowork-diary:rollback-before-diary-overlay\nCOPY agent/ ./agent/\n')
+
+    def test_a_malformed_pin_stops_before_any_build(self):
+        for ref, digest in [('a' * 39, self.SUM), (self.REF, 'B' * 64), (self.REF + ';id', self.SUM), (self.REF, ''),
+                            ('', self.SUM), ('$(id)' + 'a' * 35, self.SUM)]:
+            with self.subTest(ref=ref, digest=digest):
+                result, df = self.stage(f'ARG NOEVIA_RS_REF={ref}\nARG NOEVIA_RS_SHA256={digest}\n')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('not a 40-hex ref', result.stderr)
+                self.assertIsNone(df)
+
+
 if __name__ == '__main__':
     unittest.main()
