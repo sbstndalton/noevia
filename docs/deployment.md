@@ -747,11 +747,11 @@ Dockerfile's `NOEVIA_RS_REF`, which equals release/versions.lock's. It is dark:
   only.
 - **Behaviour with `rust`:** AND-composed and **fails closed**. A tenant request (and a storage
   secretRef) is accepted only when Python accepts and `tenant-assertion check` accepts; a Rust
-  refusal, missing binary, other exit, a 2 s timeout or any unexpected output gives the usual 401
+  refusal, missing binary, other exit, a 0.5 s timeout (child killed and reaped) or any unexpected output gives the usual 401
   ("invalid tenant assertion"), never a Python-only acceptance. The key, header values and
   secret go to the child on stdin only, with only `PATH` in its environment; the log gets one
   warning per fault kind, reason codes only. The nonce (replay) cache stays in Python and runs
-  after both accept. Cost: one short process per tenant request.
+  after both accept. Cost: one short process per tenant request, run off the event loop.
   - Stricter than Python (refused even when correctly signed): non-ASCII user id or method,
     empty key, a body hash that is not sha256 hex or `stream`, a non-finite clock, any field over
     256 KiB, and non-ASCII digits in the timestamp. Web never sends any of these.
