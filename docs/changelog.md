@@ -8,6 +8,14 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release (pending) — 2026-10-09 (#1212 code-actions linear and limited in the Rust port; #1211 NFD names; web and core)
+
+### Services
+
+- **Web:** pins noevia-core `2ac82a06` ([core#47](https://github.com/sbstndalton/noevia-core/pull/47), wasm from noevia-rs `fed419ee`, [rs#53](https://github.com/sbstndalton/noevia-rs/pull/53)). [#1212](https://github.com/sbstndalton/noevia/issues/1212): the Rust code-actions classifier is linear in nested `find -exec` depth and refuses oversized input (2 MiB cap, `MAX_CODE_ACTIONS_BYTES`), with fixtures and tests for 40- to 5000-level chains. [#1211](https://github.com/sbstndalton/noevia/issues/1211): the Rust project-file-names port folds NFD names to the stored NFC name. All switches stay as they were (`CODE_ACTIONS_IMPL=js`, `PROJECT_FILE_NAMES_IMPL=wasm`, `GGUF_META_IMPL=wasm`, `PROVIDER_EGRESS_IMPL=js`).
+- **Everything else:** no change.
+- **Deploy/infra:** `NOEVIA_CORE_REF/_SHA256` (`2ac82a06...`, tarball `e1faad10...c0db`, fetched twice, identical); `dav-parse.lock` in core re-pinned to noevia-rs `fed419ee` (wasm `7f1ff7d3...fe58`).
+
 ## Release a6b287da — 2026-10-09 (PROVIDER_EGRESS_IMPL, dark; #1208 and #1209 fixed in the live JS; web and core; live)
 
 ### Services
