@@ -764,6 +764,8 @@ Dockerfile's `NOEVIA_RS_REF`, which equals release/versions.lock's. It is dark:
 
 ### Storage listing parser (`DAV_PARSE_IMPL`, #967)
 
+> **Retired (noevia-core#39, #1071 batch 1):** `DAV_PARSE_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
+
 Web images built from #967 on carry `server/wasm/dav-parse.wasm`, the bounded Rust port of the
 step that turns a WebDAV/Nextcloud PROPFIND listing (untrusted, from the configured storage
 server) into the folder entries the storage browser, project source folders and the Diary file
@@ -783,6 +785,8 @@ defaults to `js`, and the JS parser keeps producing every listing.
   also means `js`, with one warning in the log.
 
 ### S3 listing parser and storage path rules (`S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, #976, #978)
+
+> **Retired (noevia-core#39, #1071 batch 1):** `S3_PARSE_IMPL` (`STORAGE_PATH_IMPL` is still a switch` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
 
 The same `dav-parse.wasm` (one module, one sha256 in noevia-core's `server/dav-parse.lock`)
 also carries two more Rust ports, each behind its own dark switch, independent of
@@ -924,6 +928,8 @@ Compose Manager override, so it can be flipped later without another compose edi
 
 ### Chat template capabilities (`CHAT_TEMPLATE_CAPS_IMPL`, #1002, #1003)
 
+> **Retired (noevia-core#39, #1071 batch 1):** `CHAT_TEMPLATE_CAPS_IMPL` no longer exists as a switch. The Rust path is always used. A leftover `js` or `off` value only logs a warning and is ignored. See "Retired switches" below.
+
 **This switch is ON by default** (`wasm`); it fixes #1002. Before a chat on the native engine sends
 `tools`, web reads the model's chat template from llama.cpp `/props` (`chat_template`; it never
 loads a model) and checks it with the Rust `chat-template-caps` crate in `dav-parse.wasm`. A
@@ -946,10 +952,22 @@ tool shape) before it signs a profile off (#1003).
 - **No migration:** the per-model answer is kept in memory only (10 minutes; 30 seconds when the
   template could not be read).
 
+### Retired switches (#1071 batch 1)
+
+Six switches are retired; the Rust path is always used and the JS fallback is deleted:
+`CHAT_TEMPLATE_CAPS_IMPL`, `AUTOTUNE_PLAN_IMPL`, `PRESET_RELOAD_IMPL`, `LAYA_LOAD_ADVISOR`,
+`DAV_PARSE_IMPL` and `S3_PARSE_IMPL`. Web always loads and verifies `dav-parse.wasm` at startup
+(it is now always required, whatever the environment says). A leftover value of `js` or `off`
+only logs one warning (`<NAME> is retired; Rust is always used`) and changes nothing; `wasm`, `on`
+or empty is accepted silently. The `${KEY:-}` passthrough lines in the hand-kept Compose Manager
+override can stay, and the `.env` lines can be deleted at leisure. There is no per-flag rollback any
+more: roll back by pinning the previous release (previous `cowork-web` tag, live d28ce1c before this
+change).
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
-If any of `DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL`, `SSRF_IMPL`, `STREAM_GUARD_IMPL` or (explicitly) `CHAT_TEMPLATE_CAPS_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`,
+`SECRET_ENVELOPE_IMPL`, `MCP_FRAME_IMPL`, `PROMPT_FRAMING_IMPL`, `S3_SIGN_IMPL`, `SSRF_IMPL`, `STREAM_GUARD_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
