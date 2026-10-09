@@ -8,6 +8,14 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release (SHA = this PR's squash-merge commit) — 2026-10-09 (Diary overlay with the Rust tenant-assertion binary, TENANT_ASSERTION_IMPL off; Diary only)
+
+### Services
+
+- **Diary:** [#1142](https://github.com/sbstndalton/noevia/pull/1142) pins noevia-services `684db73e` ([services#9](https://github.com/sbstndalton/noevia-services/pull/9): `TENANT_ASSERTION_IMPL=python|rust`, default `python`; with `rust` the Rust check is AND-composed and fails closed; it runs off the event loop with bounded child I/O and a 0.5 s timeout) and noevia-rs `c2964151`. Fixes [#1144](https://github.com/sbstndalton/noevia/issues/1144), [#1145](https://github.com/sbstndalton/noevia/issues/1145) and [#1146](https://github.com/sbstndalton/noevia/issues/1146). Shipped as a Diary overlay (`deploy/examples/diary-overlay.sh`): the running image plus `agent/` plus `/usr/local/bin/tenant-assertion` built in the digest-pinned Rust stage. Image tag recorded in the deploy follow-up below.
+- **Everything else:** no change. Web, model-loader and the other sidecars are not recreated.
+- **Deploy/infra:** `DIARY_VERSION` is the only `.env` value changed. `TENANT_ASSERTION_IMPL` is not set, so Diary stays on the Python check. `NOEVIA_RS_REF/_SHA256` now `c2964151...` / `e3e9f696...2fd2` in `release/versions.lock`, `deploy/egress-proxy/Dockerfile` and the diary, model-manager and ocr Dockerfiles (tarball fetched twice, identical). `NOEVIA_SERVICES_SHA256` `8498d3df...89db` (fetched twice, identical). Model-manager and OCR images are not rebuilt (pin-only change).
+
 ## Release a917cf7f — 2026-10-09 (model manager: autoconfig size core behind MODEL_AUTOCONFIG, dark; model-manager only)
 
 ### Services
