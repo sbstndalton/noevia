@@ -483,6 +483,26 @@ for `docker ps | grep cowork-web`. Rolling back is repointing `current` and
 `COWORK_VERSION` at the previous SHA and re-running Compose up with `--no-build --wait`
 (a pre-split release folder still works as a rollback target: its images already exist).
 
+### Release checklist: reading switches without leaking secrets (#1193)
+
+Never `grep` or `printenv` a container's environment for values in a release brief or helper; a
+bad redaction pattern printed `MODEL_LOADER_TOKEN` once (rotated 2026-10-09). To check which
+switches are live after a release, run on the box:
+
+```sh
+bash deploy/tools/flags.sh cowork-web-1            # KEY=value, allow-listed non-secret keys only
+bash deploy/tools/flags.sh --keys cowork-web-1     # key names only, no values
+bash deploy/tools/flags.sh cowork-web-1 GGUF_PARSER MODEL_FILES_IMPL   # just these (others refused)
+```
+
+The allow-list (`*_IMPL`, `NOEVIA_FEATURE_*`, `LAYA_LOAD_ADVISOR`, `MODEL_AUTOCONFIG`,
+`GGUF_PARSER`, `MODEL_FILES_IMPL`, `COWORK_CODE_NET_ADDR`, `COWORK_VERSION`, `DIARY_VERSION`,
+`MODEL_MANAGER_VERSION`) is matched on the key name inside `jq` before any value is emitted; a key
+off the list is refused. Run it for `web`, `model-loader` and `diary` after the recreate and compare
+with the intended flags. For anything else, list key names only:
+`docker inspect <c> | jq -r '.[0].Config.Env[]|split("=")[0]'`. `deploy/tools/test-flags.sh`
+proves with a fake `docker inspect` full of secrets that none are printed.
+
 ### Favicon/app-shell cache-busting (issue #311)
 
 `COWORK_VERSION` from the `build web` step above is threaded into the web image

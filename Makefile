@@ -14,6 +14,7 @@ test-deploy:
 	bash deploy/tools/test-build-web-release.sh
 	bash deploy/tools/test-assemble-release.sh
 	bash deploy/tools/test-sidecar-restart-alert.sh
+	bash deploy/tools/test-flags.sh
 	@if command -v php >/dev/null 2>&1; then php deploy/preflight/test_check.php; else echo "php not installed; skipping deploy/preflight/test_check.php"; fi
 
 # A release tree for HEAD from the pinned repos: out/noevia-release-<sha>.tar.gz, unpacked into a
