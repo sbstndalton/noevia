@@ -8,6 +8,15 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Pins for #1159 — 2026-10-09 (hybrid-model autoconfig; web and model manager; merged, not yet deployed)
+
+### Services
+
+- **Web:** pins noevia-web `43a25dae` ([web#19](https://github.com/sbstndalton/noevia-web/pull/19)): Discover shows `estimatesReason` when a file has no context estimate (#1159). Merged, not yet deployed.
+- **Model manager:** pins noevia-services `e997f5c7` ([services#14](https://github.com/sbstndalton/noevia-services/pull/14)): autoconfig charges hybrid (Mamba) models' recurrent state and sizes only their attention layers, and refuses shared KV on the per-layer path (#1159). Merged, not yet deployed.
+- **Deploy/infra:** `NOEVIA_RS_REF` `414c7363` ([rs#49](https://github.com/sbstndalton/noevia-rs/pull/49): the GGUF summary gains `ssm_conv_kernel`/`ssm_group_count`; autoconfig sizes per-layer recurrent state), tarball sha256 `4c94ab4b...3875`, fetched twice, identical; mirrored in the model-manager, ocr and diary Dockerfiles and `deploy/egress-proxy/Dockerfile`. `git diff 6547293b 414c7363 -- crates/tenant-assertion bins/tenant-assertion` is empty and `Cargo.lock` is unchanged, so Diary is not redeployed. Web tarball `3fe2a6bf...8403`, services tarball `e546f318...1f4a`, each fetched twice, identical. Core pin untouched.
+- **Everything else:** no change.
+
 ## Release ac500b45 — 2026-10-09 (retire five always-Rust security switches; web and core, #1071 batch 2; live)
 
 ### Services
