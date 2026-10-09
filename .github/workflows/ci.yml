@@ -235,6 +235,13 @@ jobs:
             || { echo "::error::noevia-services ocr/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
           [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$ocr")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
             || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and ocr Dockerfiles"; exit 1; }
+          # The diary image (and diary-overlay.sh, which reads this Dockerfile's pins) builds
+          # tenant-assertion from the same noevia-rs pin.
+          diary="$TREE/services/diary/Dockerfile"
+          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$diary")" = "$ref" ] \
+            || { echo "::error::noevia-services diary/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
+          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$diary")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
+            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and diary Dockerfiles"; exit 1; }
       # #967: core pins its own noevia-rs ref for dav-parse.wasm (core/server/dav-parse.lock). Like
       # every lock pin, it must be on noevia-rs main before a release ships it.
       - name: core's dav-parse noevia-rs pin is on noevia-rs main
