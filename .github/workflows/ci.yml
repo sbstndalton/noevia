@@ -160,6 +160,9 @@ jobs:
             || { echo "web CODE_EGRESS_RUST_HOST must equal the proxy's code-only alias"; exit 1; }
           [ "$(jq -r '.networks.code.internal' <<<"$cfg")" = "true" ] || { echo "code network must be internal"; exit 1; }
           jq -e '.services["egress-rs"].ports == null' <<<"$cfg" >/dev/null || { echo "egress-rs must publish no ports"; exit 1; }
+      - name: Docker Hub pull-through mirror
+        if: env.RUN_JOB == 'true'
+        run: .github/scripts/docker-hub-mirror.sh
       - name: Build egress-rs image
         if: env.RUN_JOB == 'true'
         run: |
@@ -321,6 +324,9 @@ jobs:
           done
       # build-web-release.sh is what the server runs: build/web.Dockerfile on the tree, stamped and
       # checked. The image build runs the client and server tests (node --test) first.
+      - name: Docker Hub pull-through mirror
+        if: env.RUN_JOB == 'true'
+        run: .github/scripts/docker-hub-mirror.sh
       - name: Build web image with build-web-release.sh
         if: env.RUN_JOB == 'true'
         env:
