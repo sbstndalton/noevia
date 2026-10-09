@@ -1120,10 +1120,42 @@ for secrets it sees the text, names, domains and origin, never a value.
 - **Rollback:** remove the key or set it to `js` and recreate web; or pin the previous release
   (`cowork-web` tag `22e5c113` before this change).
 
+### Tool gate and permitted toolboxes (`TOOL_GATE_IMPL`, `TOOLBOXES_PERMITTED_IMPL`, noevia-core#49)
+
+`dav-parse.wasm` (noevia-rs `35d0fd63`, rs#55) also carries the Rust ports of `tool-gate.cjs` (which
+tool, if any, a message forces: the rules and the decision service's option list and answer) and
+`toolboxes-permitted.cjs` (which toolboxes and tools a project may offer and what each shows as
+available, needs approval or unavailable). Both switches are dark: each defaults to `js`, an unknown
+value is `js` with one warning, and **neither is set on the live box** (the live override passes
+them through as `${TOOL_GATE_IMPL:-js}` and `${TOOLBOXES_PERMITTED_IMPL:-js}`, added 2026-10-09
+after a backup `docker-compose.override.yml.bak.before-tool-gate`, so each can be flipped from `.env`
+without another compose edit; flip only with `deploy/tools/flags.sh`-verified before/after reads).
+
+- **`TOOL_GATE_IMPL=wasm`:** the JS answer is computed first and the port can only make the gate
+  force less. Forcing no tool is safer than requiring one, which is safer than prefetching one (the
+  server runs it on arguments taken from the message). A tool is prefetched only if both prefetch it
+  with the same arguments; any other disagreement, a fault or a bad reply forces no tool. Only
+  projections of the offered tools reach the port.
+- **`TOOLBOXES_PERMITTED_IMPL=wasm`:** the JS answer is computed first and the port can only offer
+  less: a box is carried, available or active only if both say so, and a tool's permission is the
+  stricter of the two. A fault or a reply of another shape shows every box and tool unavailable with
+  the new reason code `unchecked` ("This tool's permission couldn't be checked, so it's unavailable
+  for now.", worded in every locale since noevia-web#22).
+- **Startup check:** either switch at `wasm` makes web verify `dav-parse.wasm` (pinned sha256, no
+  imports, expected exports incl. `tool_gate` and `toolboxes_permitted`) before listening; an unusable
+  module means exit 1.
+- **Fixed in the live JS with either value (noevia-core#49):** noevia#1223 the trailing-punctuation
+  strip was quadratic on a long run of punctuation (now linear); noevia#1224 a host with an empty
+  label (`10.0.0.1..`) was treated as public, so a link such as `http://10.0.0.1../x` could be
+  prefetched (now never public).
+- **Read the live values only with** `bash deploy/tools/flags.sh cowork-web-1`.
+- **Rollback:** remove the keys or set them to `js` and recreate web; or pin the previous release
+  (`cowork-web` tag `3d06ea7d` before this change).
+
 ### Startup check for the `*_IMPL=wasm` switches (#996)
 
 `dav-parse.wasm` is always verified (the retired switches above are always on). In addition, if any of `STORAGE_PATH_IMPL`,
-`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL`, `CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL`, `PROVIDER_EGRESS_IMPL`, `BROWSER_POLICY_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
+`SECRET_ENVELOPE_IMPL`, `STREAM_GUARD_IMPL`, `CODE_ACTIONS_IMPL`, `PROJECT_FILE_NAMES_IMPL`, `PROVIDER_EGRESS_IMPL`, `BROWSER_POLICY_IMPL`, `TOOL_GATE_IMPL`, `TOOLBOXES_PERMITTED_IMPL` is `wasm`, web loads and verifies `dav-parse.wasm` before listening: the
 pinned sha256, no imports, and the expected exports. If the module is missing or does not match,
 web **refuses to start**. It logs one line and exits 1, for example `FATAL: SECRET_ENVELOPE_IMPL
 set to wasm, but dav-parse.wasm failed verification (missing): …`. The fix is to restore the
