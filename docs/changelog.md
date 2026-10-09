@@ -8,6 +8,16 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Pins for #1184, #1185, #1186 — 2026-10-09 (math rendering, Diary reset logging, per-layer GGUF arrays; web, Diary and model manager; merged, not yet deployed)
+
+### Services
+
+- **Web:** pins noevia-web `5e0f0fe3` ([web#20](https://github.com/sbstndalton/noevia-web/pull/20)): chat math renders with KaTeX (#1184) plus review nits. Merged, not yet deployed.
+- **Diary:** pins noevia-services `ed8dfad4` ([services#15](https://github.com/sbstndalton/noevia-services/pull/15): storage cool-down reset outcomes are logged, #1185). Merged, not yet deployed.
+- **Model manager:** same services pin ([services#16](https://github.com/sbstndalton/noevia-services/pull/16)): per-layer GGUF arrays stay whole and the KV estimate is never below the old 8-sample reading (#1186). Merged, not yet deployed.
+- **Deploy/infra:** `NOEVIA_RS_REF` `af5ccf3f` ([rs#50](https://github.com/sbstndalton/noevia-rs/pull/50): per-layer GGUF arrays, #1186), tarball sha256 `93014b2a...e260c4`, fetched twice, identical; mirrored in the model-manager, ocr and diary Dockerfiles and `deploy/egress-proxy/Dockerfile`. `crates/tenant-assertion` is unchanged since `414c7363`, so no Diary rebuild is needed for it. Web tarball `56ac7317...0da0`, services tarball `f53c88d8...810a`, each fetched twice, identical. Core pin untouched. KaTeX (MIT) and its fonts (OFL 1.1) are added to `THIRD_PARTY_NOTICES.md`.
+- **Everything else:** no change.
+
 ## Release f790069a — 2026-10-09 (hybrid-model autoconfig: recurrent state and attention layers, Discover estimate reason; web and model manager; live)
 
 ### Services

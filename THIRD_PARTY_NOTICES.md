@@ -52,6 +52,15 @@ Both are licensed under the SIL Open Font License, Version 1.1:
 https://openfontlicense.org/open-font-license-official-text/. The fonts are bundled with the
 web app unmodified and are not sold on their own.
 
+## KaTeX (MIT) and KaTeX fonts (SIL Open Font License 1.1)
+
+noevia-web renders chat math with KaTeX (npm `katex` 0.16.22), https://katex.org, Copyright (c)
+2013-2020 Khan Academy and other contributors, MIT License. KaTeX is bundled with the web app's
+JavaScript. Its stylesheet and the KaTeX fonts (KaTeX_Main, KaTeX_Math, KaTeX_AMS and the other
+KaTeX_* families, bundled unmodified) ship with the app; the fonts are licensed under the SIL Open
+Font License, Version 1.1: https://openfontlicense.org/open-font-license-official-text/. The
+fonts are not sold on their own.
+
 ## Impeccable (Apache-2.0)
 
 `.claude/skills/impeccable/` is the Impeccable agent skill v4.3.1 from
