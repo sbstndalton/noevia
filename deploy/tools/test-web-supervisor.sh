@@ -20,7 +20,7 @@ stub() {
 #!/usr/bin/env bash
 name=$2
 if [ "\${1:-}" = --features ]; then printf '%s\\n' \${STUB_FEATURES-code-net-guard}; exit 0; fi
-echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* UCONF=\${NOEVIA_RUST_USAGE_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
+echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* SCONF=\${NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED:-} UCONF=\${NOEVIA_RUST_USAGE_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
 trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
 for _ in \$(seq 1 300); do
   [ -f "$work/die-\$name" ] && { echo "\$name died" >> "$work/log"; exit 3; }
@@ -127,6 +127,23 @@ check "usage is confirmed to Node only after native feature probe" 'grep -q "^no
 reset; touch "$work/die-node"
 run NOEVIA_FRONT=node NOEVIA_RUST_USAGE=1 NOEVIA_RUST_USAGE_CONFIRMED=1 >/dev/null 2>&1; rc=$?
 check "node mode drops inherited usage confirmation" 'grep -q "^node .* UCONF= " "$work/log"'
+
+# Foreground sampling ownership controls: no startup without auth/feature; no inherited grant.
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_SAMPLING_SETTINGS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-sampling-settings" >/dev/null 2>"$work/err"; rc=$?
+check "sampling without native auth refuses before startup" '[ $rc -eq 2 ] && grep -q "needs NOEVIA_RUST_AUTH=1" "$work/err" && [ ! -s "$work/log" ]'
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_SAMPLING_SETTINGS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth" >/dev/null 2>"$work/err"; rc=$?
+check "sampling missing native feature refuses before startup" '[ $rc -eq 2 ] && grep -q "no rust-sampling-settings" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_SAMPLING_SETTINGS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-sampling-settings" >/dev/null 2>&1; rc=$?
+check "sampling confirmed only to Node after native probe" 'grep -q "^node .* SCONF=1 " "$work/log" && grep -q "^front .* SCONF= " "$work/log"'
+reset; touch "$work/die-front"
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-sampling-settings" >/dev/null 2>&1; rc=$?
+check "default-off Rust mode drops inherited sampling confirmation" 'grep -q "^node .* SCONF= " "$work/log" && grep -q "^front .* SCONF= " "$work/log"'
+reset; touch "$work/die-node"
+run NOEVIA_FRONT=node NOEVIA_RUST_SAMPLING_SETTINGS=1 NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED=1 >/dev/null 2>&1; rc=$?
+check "node mode drops inherited sampling confirmation" 'grep -q "^node .* SCONF= " "$work/log"'
 
 reset
 run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=65000 >/dev/null 2>&1; rc=$?
