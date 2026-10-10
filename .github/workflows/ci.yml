@@ -93,9 +93,9 @@ jobs:
       # php-cli: deploy/preflight/test_check.php. rclone (flock is part of util-linux):
       # deploy/tests/test_rclone_sync.py, which skips itself without both and would otherwise
       # pass here without running a single case.
-      - name: Install php-cli and rclone
+      - name: Install php-cli, rclone and jq
         if: env.RUN_JOB == 'true'
-        run: sudo apt-get update && sudo apt-get install -y php-cli rclone
+        run: sudo apt-get update && sudo apt-get install -y php-cli rclone jq
       - run: python3 deploy/preflight/test_wrapper.py
         if: env.RUN_JOB == 'true'
       - run: php deploy/preflight/test_check.php
