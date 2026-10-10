@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 21057c0c — 2026-10-10 (M4 slice 1: Rust project images available, off by default)
+
+### Services
+
+- **Web:** [#1261](https://github.com/sbstndalton/noevia/pull/1261) (supervisor confirms `rust-projects` to Node), pins noevia-rs `60229a78` (rs#64, merge commit), noevia-core `8bc41026` (core#60, closes #1262 and #1263) and noevia-services `792ecf5c` (services#20, Dockerfile pins only). `cowork-web:21057c0c` (id `sha256:8728718a...320291cf`), replacing `cowork-web:80852237` (id `sha256:d2c5445c...f954e3b`). Full build on DaServer with `build-web-release.sh` (1199 client/server tests pass, 0 fail, `version.json` stamped 21057c0c). Container started 2026-10-10 09:42:22 UTC, healthy, restart count 0.
+- **Everything else:** no change. The before/after snapshot of all 38 running containers (name, id, start time, restart count, image) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_RUST_PROJECTS: ${NOEVIA_RUST_PROJECTS:-0}` added to `compose.yaml`, `deploy/examples/unraid-compose-manager.yml`, `deploy/preflight/web-env-keys.txt` and the live override (backup `docker-compose.override.yml.bak.before-21057c0c`). Neither `NOEVIA_RUST_PROJECTS` nor `NOEVIA_RUST_AUTH` is set in `.env`, so both read 0; `NOEVIA_FRONT` stays `rust`. CI now requires `rust-projects` in `noevia-server --features` and `flock` in the web image.
+
+**Evidence.** rs#64 (all 10 checks green, incl. the corpus replay through the Rust front with `NOEVIA_RUST_PROJECTS=1`) and core#60 (3 checks) were green; `core.ref` and the auth fixture's `core` field were moved to the core#60 squash (identical tree, only the sha changed). On the box: `/api/ready` returned `{"ready":true,"version":"21057c0c"}` locally and through the public URL; `noevia-server --features` lists `code-net-guard`, `header-read-timeout`, `rust-auth`, `rust-projects`; `flock --version` is util-linux 2.38.1; `flags.sh cowork-web-1` output is identical before and after; no error lines in the web log. No autotune, calibration or Coding job was running before the cutover. The switch is not turned on: with it off Node keeps owning project images exactly as before.
+
+**Rollback.** `ln -sfn releases/80852237 current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=80852237/' config/.env` (or restore the newest `config/.env.bak.*` taken before this release), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait web`. `cowork-web:80852237` is kept. The extra `NOEVIA_RUST_PROJECTS` line in the override is harmless at 0 (restore `docker-compose.override.yml.bak.before-21057c0c` to drop it).
+
 ## Release 80852237 — 2026-10-10 (M3: Rust sign-in available, off by default)
 
 ### Services
