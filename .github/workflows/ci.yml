@@ -110,6 +110,8 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-web-supervisor.sh
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-sidecar-restart-alert.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-flags.sh
@@ -151,6 +153,10 @@ jobs:
           [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "NOEVIA_RS_REF in release/versions.lock is not a 40-char SHA"; exit 1; }
           df_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' deploy/egress-proxy/Dockerfile)
           [ "$df_ref" = "$ref" ] || { echo "deploy/egress-proxy/Dockerfile NOEVIA_RS_REF ($df_ref) != versions.lock ($ref)"; exit 1; }
+          # M1: the lock's tarball checksum (assemble-release.sh fetches rs/ with it) is the same pin.
+          sum=$(sed -n 's/^NOEVIA_RS_SHA256=//p' release/versions.lock)
+          df_sum=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)
+          [ "$sum" = "$df_sum" ] || { echo "release/versions.lock NOEVIA_RS_SHA256 ($sum) != deploy/egress-proxy/Dockerfile ($df_sum)"; exit 1; }
           grep -q "CODE_EGRESS_IMPL: \${CODE_EGRESS_IMPL:-node}" deploy/examples/code-egress-rust.override.yml \
             || { echo "code-egress-rust.override.yml must default CODE_EGRESS_IMPL to node"; exit 1; }
           # The proxy binds CODE_EGRESS_BIND: it must be an alias that exists on `code` only (a
@@ -229,8 +235,10 @@ jobs:
         run: |
           set -euo pipefail
           cat "$TREE/release-refs"
-          printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\nNOEVIA_SERVICES_SHA=%s\n' "$SHA" "$WEB_REF" "$CORE_REF" "$SERVICES_REF" \
+          rs_ref=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)
+          printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\nNOEVIA_SERVICES_SHA=%s\nNOEVIA_RS_SHA=%s\n' "$SHA" "$WEB_REF" "$CORE_REF" "$SERVICES_REF" "$rs_ref" \
             | diff - "$TREE/release-refs"
+          [ -f "$TREE/rs/Cargo.toml" ] || { echo "::error::rs/ (noevia-rs at NOEVIA_RS_REF) missing from the tree"; exit 1; }
           for svc in diary docling laya model-manager ocr; do
             [ -f "$TREE/services/$svc/Dockerfile" ] || { echo "::error::services/$svc build context missing"; exit 1; }
           done
@@ -387,6 +395,47 @@ jobs:
           grep -q "$SHA" /tmp/ready.json || { echo "::error::/api/ready does not report $SHA"; exit 1; }
           docker logs noevia-web-ci || true
           docker rm -f noevia-web-ci
+      # M1: the same boot with NOEVIA_FRONT=rust (noevia-server on 8021, Node on 9021 behind it),
+      # when this NOEVIA_RS_REF has the front. The page shell and /api/ready come from Rust, a Node
+      # route through the proxy; the container must keep running.
+      - name: Boot web image with NOEVIA_FRONT=rust
+        if: env.RUN_JOB == 'true'
+        env:
+          SHA: ${{ steps.assemble.outputs.sha }}
+          TREE: ${{ steps.assemble.outputs.tree }}
+        run: |
+          set -e
+          if [ ! -f "$TREE/rs/bins/noevia-server/Cargo.toml" ]; then
+            echo "NOEVIA_RS_REF predates bins/noevia-server; checking that NOEVIA_FRONT=rust refuses to start"
+            set +e; docker run --rm -e NOEVIA_FRONT=rust "cowork-web:$SHA" > /tmp/front.out 2>&1; code=$?; set -e
+            cat /tmp/front.out
+            [ "$code" = 2 ] && grep -q "no noevia-server" /tmp/front.out
+            exit 0
+          fi
+          docker run -d --name noevia-web-rust \
+            -p 8021:8021 \
+            -e NOEVIA_FRONT=rust \
+            -e UI_PORT=8021 \
+            -e UI_AUTH_TOKEN=ci-synthetic-token-$RANDOM \
+            -e DIARY_AUTH_TOKEN=ci-synthetic-diary-token-$RANDOM \
+            -e DIARY_TENANT_KEY=$(openssl rand -hex 32) \
+            -e INFERENCE_BASE_URL=http://127.0.0.1:1 \
+            -e DIARY_BASE_URL=http://127.0.0.1:1 \
+            "cowork-web:$SHA"
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8021/api/ready -o /tmp/ready.json && grep -q '"ready":true' /tmp/ready.json; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then docker logs noevia-web-rust || true; docker rm -f noevia-web-rust || true; exit 1; fi
+          grep -q "$SHA" /tmp/ready.json || { echo "::error::/api/ready does not report $SHA"; exit 1; }
+          curl -fsS -D /tmp/shell.h -o /tmp/shell.html http://localhost:8021/c/ci-synthetic
+          grep -qi '^cache-control: no-store' /tmp/shell.h && grep -qi '<html' /tmp/shell.html
+          code=$(curl -s -o /tmp/status.json -w '%{http_code}' http://localhost:8021/api/setup/status)
+          [ "$code" = 200 ] || { echo "::error::/api/setup/status through the front answered $code"; docker logs noevia-web-rust; exit 1; }
+          [ "$(docker inspect -f '{{.State.Running}}' noevia-web-rust)" = true ]
+          docker logs noevia-web-rust || true
+          docker rm -f noevia-web-rust
 
   # #952: tools/repo-split (the Rust extraction tool). It stays for a rollback-and-retry of the
   # cutover (docs/repo-split-cutover.md); its byte-identity check against the pinned repos retired

@@ -24,6 +24,24 @@ RUN set -e; rustup target add wasm32-unknown-unknown; \
     tools/build-dav-parse-wasm.sh /out/dav-parse.wasm; \
     echo "$(sed -n 's/^DAV_PARSE_WASM_SHA256=//p' /lock)  /out/dav-parse.wasm" | sha256sum -c -
 
+# The Rust front (full-Rust migration M1): noevia-rs bins/noevia-server, from the tree's rs/ (the
+# noevia-rs tarball assemble-release.sh fetched at release/versions.lock's NOEVIA_RS_REF and
+# checked against NOEVIA_RS_SHA256). Used only with NOEVIA_FRONT=rust (build/web-supervisor.sh).
+# A NOEVIA_RS_REF from before bins/noevia-server, or a tree from a lock with no NOEVIA_RS_SHA256,
+# builds an image without it; NOEVIA_FRONT=rust then refuses to start.
+FROM rust:1.99-slim-bookworm AS front
+ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never
+COPY rs/ /src/
+WORKDIR /src
+RUN set -e; mkdir -p /out; \
+    if [ -f bins/noevia-server/Cargo.toml ]; then \
+      cargo build --release --locked -p noevia-server; \
+      cp target/release/noevia-server /out/noevia-server; \
+      /out/noevia-server 2>&1 | grep -q NOEVIA_LEGACY_UPSTREAM; \
+    else \
+      echo "noevia-rs in this tree has no bins/noevia-server: the image ships without the Rust front"; \
+    fi
+
 FROM node:22-alpine AS build
 WORKDIR /app
 # COWORK_VERSION stays the noevia (integration repo) sha; it must match the assembled tree's
@@ -62,7 +80,12 @@ COPY core/server ./server
 COPY --from=dav-parse /out/dav-parse.wasm ./server/wasm/dav-parse.wasm
 # core owns contracts/; server/ requires it as ../contracts.
 COPY core/contracts ./contracts
-ENV UI_PORT=8021
+# NOEVIA_FRONT=node (default) runs Node alone as before; =rust puts noevia-server on UI_PORT and
+# Node on loopback UI_PORT+1000 (build/web-supervisor.sh; a deployment switch, removed once the
+# Rust front is proven). The rs-less build leaves /out empty and the image without the binary.
+COPY --from=front /out/ /usr/local/bin/
+COPY noevia/build/web-supervisor.sh /app/web-supervisor.sh
+ENV UI_PORT=8021 NOEVIA_FRONT=node NOEVIA_WEB_DIST=/app/dist
 EXPOSE 8021
 HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+(process.env.UI_PORT||8021)+'/api/setup/status',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "server/index.cjs"]
+CMD ["bash", "/app/web-supervisor.sh"]

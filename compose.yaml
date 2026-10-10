@@ -111,6 +111,8 @@ services:
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
       ADDITIONAL_TRUSTED_ORIGINS: ${ADDITIONAL_TRUSTED_ORIGINS:-}
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      # M1: node (default) or rust (noevia-server in front of Node); build/web-supervisor.sh.
+      NOEVIA_FRONT: ${NOEVIA_FRONT:-node}
       CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
       CORPUS_ROOT: ${CORPUS_ROOT:-}
       WEBDAV_BASE_URL: ${WEBDAV_BASE_URL:-}

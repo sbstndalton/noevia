@@ -21,9 +21,13 @@
 #                  tests/fixtures and code-sandbox/ (services/code-sandbox's build context)
 #   services/      Python sidecars (noevia-services layout): diary, docling, laya, model-manager,
 #                  ocr, one image build context each
-#   release-refs   NOEVIA_SHA / NOEVIA_WEB_SHA / NOEVIA_CORE_SHA / NOEVIA_SERVICES_SHA
-#                  (build/web.Dockerfile reads the first three)
-#   .dockerignore  keeps noevia/ and services/ out of the web image build context
+#   rs/            noevia-rs at NOEVIA_RS_REF (the whole repo), verified against NOEVIA_RS_SHA256;
+#                  build/web.Dockerfile builds the Rust front (bins/noevia-server) from it. Empty
+#                  when the lock has no NOEVIA_RS_SHA256 (locks from before M1).
+#   release-refs   NOEVIA_SHA / NOEVIA_WEB_SHA / NOEVIA_CORE_SHA / NOEVIA_SERVICES_SHA /
+#                  NOEVIA_RS_SHA (build/web.Dockerfile reads the first three)
+#   .dockerignore  keeps noevia/ (but build/web-supervisor.sh) and services/ out of the web image
+#                  build context
 #
 # The self-mode path lists match tools/repo-split's map exactly, so a self assembly and one from
 # the extracted repos differ only by those repos' README.md and .github/ (CI checks this).
@@ -146,18 +150,33 @@ fi
 services_sha="$(resolve_component NOEVIA_SERVICES noevia-services "$tree/services" services \
   diary docling laya model-manager ocr)"
 
+# noevia-rs (full-Rust migration M1): the web image builds its Rust front from this tree's rs/.
+# Locks from before M1 pin no tarball checksum for noevia-rs; their trees carry an empty rs/.
+mkdir -p "$tree/rs"
+rs_ref="$(lock_value NOEVIA_RS_REF)"
+rs_sum="$(lock_value NOEVIA_RS_SHA256)"
+rs_sha=""
+if [ -n "$rs_sum" ]; then
+  [[ "$rs_ref" =~ ^[0-9a-f]{40}$ ]] || die "NOEVIA_RS_REF in versions.lock at $sha must be a 40-char lowercase sha, got: '${rs_ref}'"
+  [[ "$rs_sum" =~ ^[0-9a-f]{64}$ ]] || die "NOEVIA_RS_SHA256 in versions.lock at $sha is not 64 lowercase hex"
+  fetch_remote noevia-rs "$rs_ref" "$rs_sum" "$tree/rs"
+  [ -f "$tree/rs/Cargo.toml" ] || die "noevia-rs at $rs_ref has no Cargo.toml"
+  rs_sha="$rs_ref"
+fi
+
 for need in web/package.json web/package-lock.json web/src web/index.html core/server/package.json core/server/index.cjs core/contracts \
             core/code-sandbox/Dockerfile services/diary/Dockerfile services/docling/Dockerfile services/laya/Dockerfile \
             services/model-manager/Dockerfile services/ocr/Dockerfile; do
   [ -e "$tree/$need" ] || die "assembled tree lacks $need"
 done
 
-printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\nNOEVIA_SERVICES_SHA=%s\n' \
-  "$sha" "$web_sha" "$core_sha" "$services_sha" > "$tree/release-refs"
-printf 'noevia\nservices\n' > "$tree/.dockerignore"
+printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\nNOEVIA_SERVICES_SHA=%s\nNOEVIA_RS_SHA=%s\n' \
+  "$sha" "$web_sha" "$core_sha" "$services_sha" "$rs_sha" > "$tree/release-refs"
+# The web image's entrypoint is the one file of noevia/ its build needs.
+printf 'noevia\n!noevia/build/web-supervisor.sh\nservices\n' > "$tree/.dockerignore"
 
 out="$out_dir/noevia-release-$sha.tar.gz"
 out_partial="$out.partial"
-COPYFILE_DISABLE=1 tar -czf "$out_partial" -C "$tree" .dockerignore release-refs noevia web core services
+COPYFILE_DISABLE=1 tar -czf "$out_partial" -C "$tree" .dockerignore release-refs noevia web core services rs
 mv -f "$out_partial" "$out"
-echo "ok: $out (noevia $full_sha, web $web_sha, core $core_sha, services $services_sha)"
+echo "ok: $out (noevia $full_sha, web $web_sha, core $core_sha, services $services_sha, rs ${rs_sha:-none})"
