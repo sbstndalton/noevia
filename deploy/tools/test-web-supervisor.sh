@@ -19,6 +19,7 @@ stub() {
   cat > "$1" <<STUB
 #!/usr/bin/env bash
 name=$2
+if [ "\${1:-}" = --features ]; then printf '%s\\n' \${STUB_FEATURES-code-net-guard}; exit 0; fi
 echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$*" >> "$work/log"
 trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
 for _ in \$(seq 1 300); do
@@ -47,6 +48,17 @@ check "an unknown NOEVIA_FRONT is refused" '[ $rc -eq 2 ] && grep -q "rust or no
 reset
 run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/missing" >/dev/null 2>"$work/err"; rc=$?
 check "rust without the binary is refused, nothing started" '[ $rc -eq 2 ] && grep -q "no noevia-server" "$work/err" && [ ! -s "$work/log" ]'
+
+reset
+run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES= COWORK_CODE_NET_ADDR=egress >/dev/null 2>"$work/err"; rc=$?
+check "rust with COWORK_CODE_NET_ADDR and a front without the guard is refused" '[ $rc -eq 2 ] && grep -q "no code-net-guard" "$work/err" && [ ! -s "$work/log" ]'
+
+reset; rm -f "$work/rc"
+(run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 COWORK_CODE_NET_ADDR=egress >/dev/null 2>&1; echo $? > "$work/rc") &
+wait_log "^front" && wait_log "^node"
+check "rust with COWORK_CODE_NET_ADDR starts when the front reports code-net-guard" 'grep -q "^front UI_HOST=" "$work/log"'
+touch "$work/die-front"
+for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
 
 reset
 run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=65000 >/dev/null 2>&1; rc=$?

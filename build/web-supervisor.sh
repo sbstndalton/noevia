@@ -24,6 +24,13 @@ if [ ! -x "$bin" ]; then
   echo "web-supervisor: NOEVIA_FRONT=rust but this image has no noevia-server (its NOEVIA_RS_REF predates bins/noevia-server); set NOEVIA_FRONT=node" >&2
   exit 2
 fi
+# The code-network guard (sbstndalton/noevia#1246): with COWORK_CODE_NET_ADDR set, Node behind
+# the front sees every request arrive on loopback, so only the front can refuse code-network
+# requests. A front that does not report the guard must not face the network.
+if [ -n "${COWORK_CODE_NET_ADDR:-}" ] && ! "$bin" --features 2>/dev/null | grep -qx 'code-net-guard'; then
+  echo "web-supervisor: COWORK_CODE_NET_ADDR is set but this noevia-server has no code-net-guard; set NOEVIA_FRONT=node or update the image" >&2
+  exit 2
+fi
 port="${UI_PORT:-8021}"
 if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 64535 ]; then
   echo "web-supervisor: UI_PORT '$port' leaves no room for the legacy port UI_PORT+1000" >&2
