@@ -106,6 +106,7 @@ jobs:
       # `rm -rf` inside overlay-release.sh), test_overlay_scripts, test_rclone_sync.
       - run: python3 -m unittest discover -v -s deploy/tests -p 'test_*.py'
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-code-actions-qualification.sh
       - run: bash deploy/tools/test-build-web-release.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-assemble-release.sh

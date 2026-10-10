@@ -63,9 +63,12 @@ COPY core/server ./server
 COPY core/tests/server ./tests/server
 COPY core/tests/fixtures ./tests/fixtures
 COPY --from=dav-parse /out/dav-parse.wasm ./server/wasm/dav-parse.wasm
+# #1279: finish both Rust compiler stages before the suite and isolated timing phase.
+COPY --from=front /out/ /tmp/qualified-front/
 # DAV_PARSE_WASM_REQUIRED: the dav-parse differential test must run against the module, not skip.
 RUN set -e; set -a; . ./release-refs; set +a; export STAMP_VERSION="$NOEVIA_SHA" DAV_PARSE_WASM_REQUIRED=1; \
-    node --test --test-timeout=120000 tests/client/*.test.cjs tests/server/*.test.cjs && npm run build && \
+    node --test --test-timeout=120000 tests/client/*.test.cjs tests/server/*.test.cjs && \
+    node --test --test-concurrency=1 tests/server/code-actions-performance.qualification.cjs && npm run build && \
     node -e 'const fs=require("fs");const f="dist/version.json";const v=JSON.parse(fs.readFileSync(f,"utf8"));if(v.version!==process.env.STAMP_VERSION){console.error("version.json not stamped with "+process.env.STAMP_VERSION);process.exit(1)}fs.writeFileSync(f,JSON.stringify({version:v.version,web:process.env.NOEVIA_WEB_SHA,core:process.env.NOEVIA_CORE_SHA})+"\n")'
 
 # Runtime (glibc for sqlite-vec / better-sqlite3).
