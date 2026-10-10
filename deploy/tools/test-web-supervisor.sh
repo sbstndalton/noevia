@@ -20,7 +20,7 @@ stub() {
 #!/usr/bin/env bash
 name=$2
 if [ "\${1:-}" = --features ]; then printf '%s\\n' \${STUB_FEATURES-code-net-guard}; exit 0; fi
-echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
+echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
 trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
 for _ in \$(seq 1 300); do
   [ -f "$work/die-\$name" ] && { echo "\$name died" >> "$work/log"; exit 3; }
@@ -88,6 +88,31 @@ rm -f "$work/rc"
 reset; touch "$work/die-node"
 run NOEVIA_FRONT=node NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 >/dev/null 2>&1
 check "node mode never passes a confirmation" 'grep -q "^node .* CONF=$" "$work/log"'
+
+# M4: rust-projects builds on rust-auth and is confirmed the same way.
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_PROJECTS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-projects" >/dev/null 2>"$work/err"; rc=$?
+check "NOEVIA_RUST_PROJECTS=1 without NOEVIA_RUST_AUTH=1 is refused, nothing started" '[ $rc -eq 2 ] && grep -q "needs NOEVIA_RUST_AUTH=1" "$work/err" && [ ! -s "$work/log" ]'
+
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth" >/dev/null 2>"$work/err"; rc=$?
+check "a front without rust-projects is refused, nothing started" '[ $rc -eq 2 ] && grep -q "no rust-projects" "$work/err" && [ ! -s "$work/log" ]'
+
+reset; rm -f "$work/rc"
+(run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-projects" UI_PORT=8021 >/dev/null 2>&1; echo $? > "$work/rc") &
+wait_log "^front" && wait_log "^node"
+check "both switches with a rust-projects front confirm both to Node only" 'grep -q "^node .* PCONF=1 CONF=1$" "$work/log" && grep -q "^front .* PCONF= CONF=$" "$work/log"'
+touch "$work/die-front"
+for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
+rm -f "$work/rc"
+
+reset; rm -f "$work/rc"
+(run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS_CONFIRMED=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-projects" UI_PORT=8021 >/dev/null 2>&1; echo $? > "$work/rc") &
+wait_log "^front" && wait_log "^node"
+check "without NOEVIA_RUST_PROJECTS an inherited projects confirmation is dropped" 'grep -q "^node .* PCONF= CONF=1$" "$work/log"'
+touch "$work/die-front"
+for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
+rm -f "$work/rc"
 
 reset
 run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=65000 >/dev/null 2>&1; rc=$?
