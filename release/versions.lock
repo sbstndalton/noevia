@@ -1,3 +1,4 @@
+# Temporary S3 draft pins (rs#65/services#21); merge blocked until merged SHA repins.
 # Pinned sources for a noevia release (ADR 0001, docs/adr-0001-rust-and-repo-split.md).
 # One KEY=<value> per line; '#' starts a comment. The server never clones: releases fetch each
 # pinned repo as an anonymous https tarball and verify its checksum.
@@ -28,11 +29,11 @@
 # ARG NOEVIA_RS_SHA256 (CI checks): assemble-release.sh fetches noevia-rs into the release tree's
 # rs/, and build/web.Dockerfile builds the Rust front (bins/noevia-server, NOEVIA_FRONT=rust) from
 # it. A ref from before bins/noevia-server builds a web image without the front.
-NOEVIA_RS_REF=60229a7890825f3beca414dfe48f57cc76bd34cf
-NOEVIA_RS_SHA256=72452aa29d8225321b4e842eb2ed5b105bf0c39a048a6a83c0a63d2bcc1d26f5
+NOEVIA_RS_REF=f96cafe6a964a775054c1d995a8ad80935dd02ca
+NOEVIA_RS_SHA256=647de9ef2a6aecb1e58dc36c02a998e5476a1d79d90b94845066aec7012f7110
 NOEVIA_WEB_REF=e80b44931f7b6062d0c99644932d450bb6cca848
 NOEVIA_WEB_SHA256=73a5901e0f01882412a78c18503ca08914febb4f01a61f2cade5e30d87817271
 NOEVIA_CORE_REF=8bc410261089fa286986b52e9eb898dd7acac992
 NOEVIA_CORE_SHA256=82e5288822dda04476e220efdbca5503fb63b903917c1e601be162ea82dd0b26
-NOEVIA_SERVICES_REF=792ecf5c30653b61a3357b2f45d8cc41b3b292c5
-NOEVIA_SERVICES_SHA256=352236465d6b0a279f8ccca6f26eb0c0c4d893d2793ee2aa8158dfbc52251474
+NOEVIA_SERVICES_REF=82517ee160200a6838f249e9678144004da7b3c9
+NOEVIA_SERVICES_SHA256=88c95adc2c3cebc676a63c056fce76cccd5df87ece5dc7e532465f75d29a6246
