@@ -396,7 +396,7 @@ jobs:
           docker logs noevia-web-ci || true
           docker rm -f noevia-web-ci
       # M1: the same boot with NOEVIA_FRONT=rust (noevia-server on 8021, Node on 9021 behind it),
-      # when this NOEVIA_RS_REF has the front. The page shell and /api/ready come from Rust, a Node
+      # (NOEVIA_RS_REF must have the front). The page shell and /api/ready come from Rust, a Node
       # route through the proxy; the container must keep running.
       - name: Boot web image with NOEVIA_FRONT=rust
         if: env.RUN_JOB == 'true'
@@ -405,13 +405,13 @@ jobs:
           TREE: ${{ steps.assemble.outputs.tree }}
         run: |
           set -e
-          if [ ! -f "$TREE/rs/bins/noevia-server/Cargo.toml" ]; then
-            echo "NOEVIA_RS_REF predates bins/noevia-server; checking that NOEVIA_FRONT=rust refuses to start"
-            set +e; docker run --rm -e NOEVIA_FRONT=rust "cowork-web:$SHA" > /tmp/front.out 2>&1; code=$?; set -e
-            cat /tmp/front.out
-            [ "$code" = 2 ] && grep -q "no noevia-server" /tmp/front.out
-            exit 0
-          fi
+          # The pinned NOEVIA_RS_REF must carry the front, and the front must carry the
+          # code-network guard (sbstndalton/noevia#1246).
+          [ -f "$TREE/rs/bins/noevia-server/Cargo.toml" ] \
+            || { echo "::error::NOEVIA_RS_REF has no bins/noevia-server"; exit 1; }
+          docker run --rm --entrypoint /usr/local/bin/noevia-server "cowork-web:$SHA" --features | tee /tmp/features
+          grep -qx code-net-guard /tmp/features \
+            || { echo "::error::the web image's noevia-server does not report code-net-guard"; exit 1; }
           docker run -d --name noevia-web-rust \
             -p 8021:8021 \
             -e NOEVIA_FRONT=rust \
