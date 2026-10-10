@@ -44,6 +44,14 @@ jobs:
               exit 1
             fi
           done
+      # ADR 0001's 2026-10-10 amendment: the milestone list must keep naming routes.toml (the one
+      # owner per route file) and the deletion of the proxy.
+      - name: ADR 0001 milestones name routes.toml
+        run: |
+          adr=docs/adr-0001-rust-and-repo-split.md
+          for needle in 'routes.toml' 'one owner' 'proxy is deleted' 'no interposer'; do
+            grep -qi -- "$needle" "$adr" || { echo "::error::$adr must mention '$needle' (2026-10-10 amendment, milestone list)"; exit 1; }
+          done
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
         with:

@@ -4,6 +4,8 @@ Status: accepted, 2026-10-06. Issue: [#897](https://github.com/sbstndalton/noevi
 Amended 2026-10-06 with the owner's language rule ([#952](https://github.com/sbstndalton/noevia/issues/952)).
 The title predates the amendment: the ADR began as "Rust for untrusted-input leaf work"; since the
 amendment it covers all new non-browser code (Language rule below) as well as ports.
+Amended 2026-10-10 with the owner's full-native decision (see "Amendment 2026-10-10" below),
+which replaces the strangler rule, "What is not ported yet" and "Request path" sections.
 Supersedes §4 "Do not port anything" of
 [research-language-consolidation.md](research-language-consolidation.md).
 
@@ -104,6 +106,41 @@ source of truth; `release/versions.lock` keeps `self` for all three.
   (`DIARY_VERSION`, `OCR_VERSION`, …) keep their current meaning. `NOEVIA_SERVICES_REF` pins
   noevia-services the same way `NOEVIA_WEB_REF` / `NOEVIA_CORE_REF` pin web and core.
 - `cowork*` identifiers are unchanged by the split.
+
+## Amendment 2026-10-10: everything native, no interposer
+
+Owner decision. Where this section disagrees with the strangler rule, "What is not ported yet"
+or "Request path: no Rust gateway" above, this section wins; those sections describe the state
+before the amendment and stay for history.
+
+- **All non-web code becomes native Rust.** There is no interposer layer: no JS-authoritative
+  wasm modules that Node calls while still owning the decision. A route is either served by Node
+  or served by Rust; Rust owns its policy (auth, CSRF, tenant scope, all three write-approval
+  actions: Allow once, Decline, Allow for this chat) once it owns the route. The wasm modules
+  already shipped stay until the route they serve moves, then are deleted.
+- **Temporary Rust front server.** A Rust server owns the ported routes and proxies every other
+  request to Node. Ownership is declared in `contracts/http/routes.toml` (noevia-rs): **one owner
+  per route**, `rust` or `node`, never both. Moving a route means flipping its owner after the
+  replay of the recorded corpus passes against the Rust implementation. When the last route is
+  Rust, Node is removed and the **proxy is deleted** with it.
+- **Python services are rewritten in Rust**, except **docling** and **laya**, which stay engine
+  images behind minimal Rust HTTP fronts (the front owns the contract, auth and limits; the
+  engine is an implementation detail).
+- **PDF text** comes from the docling / OCR sidecar, not an in-process parser.
+- **The Mac app is SwiftUI** (noevia-macos).
+- The browser client is unchanged (TypeScript, React).
+
+Milestones, in order; each is shipped dark and flipped by the owner:
+
+1. **M0, contract corpus and replay**: noevia-core records a synthetic HTTP corpus
+   (`tools/contract-corpus`), noevia-rs `tools/replay` replays it against Node and, later, Rust;
+   noevia-rs `contracts/http/routes.toml` lists every route the client names, all `node`.
+2. **M1, the front server**: Rust front server driven by `routes.toml`, every route still `node`, proxying
+   all traffic; the replay passes through it.
+3. **M2 onwards, route slices**: flip `routes.toml` ownership slice by slice, each slice passing
+   the replay, with the Node handler deleted in the same change.
+4. **Services**: rewrite the Python services in Rust (docling and laya keep their engines).
+5. **End state**: Node removed, the proxy and the `node` owner deleted from `routes.toml`.
 
 ## Preparation in this repo (#897)
 
