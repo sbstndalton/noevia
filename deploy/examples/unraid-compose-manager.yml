@@ -181,6 +181,8 @@ services:
     build:
       context: ${COWORK_SOURCE_DIR:?Set COWORK_SOURCE_DIR}/services/ocr
     image: cowork-ocr:${OCR_VERSION:?Set OCR_VERSION to the built OCR image tag}
+    environment:
+      NOEVIA_OCR_IMPL: ${NOEVIA_OCR_IMPL:-python}
     restart: unless-stopped
     read_only: true
     mem_limit: 1g

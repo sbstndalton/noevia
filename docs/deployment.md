@@ -730,6 +730,23 @@ service environment passes it through (`MODEL_AUTOCONFIG: ${MODEL_AUTOCONFIG:-py
   values must match or be the conservative ones (no larger ctx, ngl, cache-ram, batch, ubatch or
   image-max-tokens), anything else fails closed. Still dark; the switch and rollback are unchanged.
 
+### Full native OCR sidecar (`NOEVIA_OCR_IMPL`, S3)
+
+The OCR image includes `noevia-ocr` built with `native-ocr` from the checksum-verified
+noevia-rs pin. `NOEVIA_OCR_IMPL=python` remains the default in both Compose templates.
+Selecting `rust` replaces the entire HTTP service: `/health`, `/extract`, `/extract-docx`
+and `/reduce-pdf`; Python does not decide native requests. The entrypoint refuses invalid
+values and refuses Rust when its feature probe fails or omits `native-ocr`. There is no
+automatic fallback after selecting Rust. The native loopback health probe works for either
+owner and the existing private network, unprivileged user and resource limits remain.
+
+Activation requires owner approval after contract/engine CI and independent security review,
+and a normal pinned OCR image release. Set `NOEVIA_OCR_IMPL=rust` only in the OCR service
+environment, then recreate only OCR through the existing guarded release flow. Rollback sets
+`NOEVIA_OCR_IMPL=python` and recreates OCR with the retained image. `DOCX_TEXT_IMPL` applies
+only inside the Python fallback. This draft changes no live configuration or running service;
+Rust draft pins must be replaced with merged commits before release.
+
 ### DOCX text front (`DOCX_TEXT_IMPL`, #981)
 
 OCR images built from #981 on carry `/usr/local/bin/docx-text`, the bounded Rust port of
