@@ -8,6 +8,18 @@
 > release also updates web's build block in the live Compose Manager file (same section).
 > Release records below that mention `apps/web` or `services/` describe the monorepo layout.
 
+## Release 9e9bdc0f — 2026-10-10 (S3 native OCR acceptance)
+
+### Services
+
+- **Web:** integration #1272, core #61 and rs #65/#66; `cowork-web:9e9bdc0f`, image `sha256:3969e6255cb3dc236b470f381919b04b0651d130c8bad0b39d5f6f3f40d32a02`.
+- **OCR:** services #21; `cowork-ocr:9e9bdc0f`, image `sha256:0d1454a8d4373545ab42394ca70c4463075da2f1183d8ff54a5238134aa6b72e`.
+- **Diary:** no image change; same container restarted for the scoped backup.
+- **Model manager, Code sandbox, Docling:** no change.
+- **Deploy/infra:** verified assembled tree and four scoped state/config/Compose archives in `s3_9e9bdc0f_20261010T202055Z`; only web and OCR recreated.
+
+Public/internal readiness was healthy at the exact release version. Native OCR candidate scan/DOCX/26 MiB reduction and required front CI passed. Live OCR remains default Python; Rust front remains on with native auth/projects off. Rollback retains web `21057c0c` and OCR `228e2ae4`, prior images and backups. Evidence: `/mnt/docker/appdata/cowork/release-prep/9e9bdc0f/release-result.json`. Brave navigation passed both post-release rounds; existing storage rejection #1250/#1082 blocks preview (evidence 6101860561), and model parameter dash #1197 remains open. The synthetic empty QA project remains untouched pending deletion approval.
+
 ## Deployed 2026-10-01: one model at a time within an inference memory budget (#697)
 
 Deployed: web, the model loader and the llama `--models-max 1` change shipped in release

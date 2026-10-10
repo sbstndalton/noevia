@@ -20,7 +20,7 @@ stub() {
 #!/usr/bin/env bash
 name=$2
 if [ "\${1:-}" = --features ]; then printf '%s\\n' \${STUB_FEATURES-code-net-guard}; exit 0; fi
-echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
+echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* UCONF=\${NOEVIA_RUST_USAGE_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
 trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
 for _ in \$(seq 1 300); do
   [ -f "$work/die-\$name" ] && { echo "\$name died" >> "$work/log"; exit 3; }
@@ -113,6 +113,20 @@ check "without NOEVIA_RUST_PROJECTS an inherited projects confirmation is droppe
 touch "$work/die-front"
 for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
 rm -f "$work/rc"
+
+# M6: foreground-only usage feature/ownership checks.
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_USAGE=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-usage" >/dev/null 2>"$work/err"; rc=$?
+check "usage without native auth refuses before startup" '[ $rc -eq 2 ] && grep -q "needs NOEVIA_RUST_AUTH=1" "$work/err" && [ ! -s "$work/log" ]'
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_USAGE=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth" >/dev/null 2>"$work/err"; rc=$?
+check "usage missing native feature refuses before startup" '[ $rc -eq 2 ] && grep -q "no rust-usage" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_USAGE=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-usage" >/dev/null 2>&1; rc=$?
+check "usage is confirmed to Node only after native feature probe" 'grep -q "^node .* UCONF=1 " "$work/log" && grep -q "^front .* UCONF= " "$work/log"'
+reset; touch "$work/die-node"
+run NOEVIA_FRONT=node NOEVIA_RUST_USAGE=1 NOEVIA_RUST_USAGE_CONFIRMED=1 >/dev/null 2>&1; rc=$?
+check "node mode drops inherited usage confirmation" 'grep -q "^node .* UCONF= " "$work/log"'
 
 reset
 run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=65000 >/dev/null 2>&1; rc=$?
