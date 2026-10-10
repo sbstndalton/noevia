@@ -24,10 +24,15 @@
 # egress-rs image (#909, #964, #981, #926). Bumping it also means updating NOEVIA_RS_REF and
 # NOEVIA_RS_SHA256 in deploy/egress-proxy/Dockerfile and in noevia-services' model-manager/,
 # ocr/ and diary/Dockerfile (CI fails if any Dockerfile default differs from this file).
-NOEVIA_RS_REF=af5ccf3f89ba1317b00804d075107ca3c70a3d5e
+# NOEVIA_RS_SHA256 (M1) is that ref's tarball checksum, the same value as the Dockerfiles'
+# ARG NOEVIA_RS_SHA256 (CI checks): assemble-release.sh fetches noevia-rs into the release tree's
+# rs/, and build/web.Dockerfile builds the Rust front (bins/noevia-server, NOEVIA_FRONT=rust) from
+# it. A ref from before bins/noevia-server builds a web image without the front.
+NOEVIA_RS_REF=68c9f14efb2dfe7751431080ce3c021a6bd49439
+NOEVIA_RS_SHA256=585cfb115ca68072d2b110d852b50d1a99cc35d35abc1252f8f4c74ac9441e9f
 NOEVIA_WEB_REF=e80b44931f7b6062d0c99644932d450bb6cca848
 NOEVIA_WEB_SHA256=73a5901e0f01882412a78c18503ca08914febb4f01a61f2cade5e30d87817271
 NOEVIA_CORE_REF=eef6e3f5bd199c8d8f33af06286b32569badc76d
 NOEVIA_CORE_SHA256=93c9fbfa9ecd01987acea2bd8ccae5f6bef4606871ed2312b4218ad5b1e1177a
-NOEVIA_SERVICES_REF=fb867e68895522ff57224e226a57aa83294ae528
-NOEVIA_SERVICES_SHA256=89d9d3a6cb7bdd8dbdf0b07ccd79d67629017b582ea29872abbe8041da8284e9
+NOEVIA_SERVICES_REF=1bf4d507c81d9140d201a9b79bf0963344e79bc9
+NOEVIA_SERVICES_SHA256=8f0a643470c75b5fd2eaf8b9c745b7787ba56d4107990397de29a13c1d369763

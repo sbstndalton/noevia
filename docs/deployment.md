@@ -545,7 +545,8 @@ docling, laya, model-manager and ocr in
   server tests), checks `version.json` and boots it (`/api/ready`). Release the merged noevia SHA.
 - `deploy/tools/assemble-release.sh <noevia-sha> [out-dir]` (on the Mac, clean checkout) writes
   `noevia-release-<sha>.tar.gz`: `noevia/` (git archive of noevia), `web/`, `core/` (with
-  `code-sandbox/`), `services/<name>/`, `release-refs` and a `.dockerignore`. It reads the lock
+  `code-sandbox/`), `services/<name>/`, `rs/` (noevia-rs at `NOEVIA_RS_REF`, checked against
+  `NOEVIA_RS_SHA256`), `release-refs` and a `.dockerignore`. It reads the lock
   as committed at `<sha>`, refuses a pinned ref without its checksum and a checksum mismatch, and
   never clones (anonymous https only, so the box needs no credentials either).
 - **Full web build**: "The deploy" above. **Overlay** (`overlay-release.sh OLD NEW`): its
@@ -555,6 +556,13 @@ docling, laya, model-manager and ocr in
 - **Sidecars**: the tree keeps `services/<name>` at the same place a monorepo release folder had
   it, so `diary-overlay.sh`, the Docling overlay and `compose build <sidecar>` use the same
   `releases/<sha>/services/<name>` paths. Code-sandbox builds from `releases/<sha>/core/code-sandbox`.
+- **Rust front (full-Rust migration M1)**: the web image also carries `noevia-server`, built from
+  `rs/` when `NOEVIA_RS_REF` has `bins/noevia-server`. `NOEVIA_FRONT` in `.env` picks the front:
+  `node` (default) runs Node alone exactly as before; `rust` runs `noevia-server` on `UI_PORT` and
+  Node behind it on loopback `UI_PORT+1000` (`build/web-supervisor.sh`; either process exiting
+  exits the container so Docker restarts both). Rolling back is `NOEVIA_FRONT=node` and a
+  recreate of `web`. An overlay release keeps the old image's entrypoint, so the first release
+  that turns the front on must be a full web build. The switch goes once the front is proven.
 - `COWORK_VERSION` and `version.json`'s `version` stay the noevia SHA; `version.json` also lists
   the `web` and `core` SHAs the image was built from (`docker run --rm --entrypoint cat
   cowork-web:<sha> /app/dist/version.json`).

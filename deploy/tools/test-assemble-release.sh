@@ -46,6 +46,9 @@ check ".dockerignore keeps services/ out of the web context" 'grep -qx services 
 check "release-refs: version is the given sha, web/core the full sha" \
   'grep -qx "NOEVIA_SHA=$sha" "$x/release-refs" && grep -qx "NOEVIA_WEB_SHA=$full" "$x/release-refs" && grep -qx "NOEVIA_CORE_SHA=$full" "$x/release-refs"'
 check ".dockerignore keeps noevia/ out of the context" 'grep -qx noevia "$x/.dockerignore"'
+check ".dockerignore lets the web supervisor in" 'grep -qx "!noevia/build/web-supervisor.sh" "$x/.dockerignore"'
+check "a lock without NOEVIA_RS_SHA256 gives an empty rs/ and no NOEVIA_RS_SHA" \
+  '[ -d "$x/rs" ] && [ -z "$(ls -A "$x/rs")" ] && grep -qx "NOEVIA_RS_SHA=" "$x/release-refs"'
 
 : > "$work/err"
 bash "$repo/deploy/tools/assemble-release.sh" "ABC1234" "$out" >/dev/null 2>&1; rc=$?
@@ -121,6 +124,37 @@ g commit -qam nosum; nsha="$(g rev-parse --short HEAD)"; : > "$work/curl-calls"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$nsha" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "pinned ref without a checksum refused before download" \
   '[ $rc -ne 0 ] && grep -q NOEVIA_WEB_SHA256 "$work/err" && [ ! -s "$work/curl-calls" ] && [ ! -f "$out/noevia-release-$nsha.tar.gz" ]'
+
+# noevia-rs (M1): with NOEVIA_RS_SHA256 the tarball at NOEVIA_RS_REF becomes rs/.
+mkdir -p "$work/remote/noevia-rs-x/bins/noevia-server"
+echo '[workspace]' > "$work/remote/noevia-rs-x/Cargo.toml"
+echo synthetic > "$work/remote/noevia-rs-x/bins/noevia-server/Cargo.toml"
+tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-x
+rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
+cat > "$work/bin/curl" <<SHIM
+#!/usr/bin/env bash
+echo "\$*" >> "$work/curl-calls"
+src="$work/web.tgz"; case "\$*" in *noevia-rs*) src="$work/rs.tgz" ;; esac
+while [ \$# -gt 0 ]; do [ "\$1" = -o ] && { cp "\$src" "\$2"; exit 0; }; shift; done
+exit 1
+SHIM
+chmod +x "$work/bin/curl"
+rref="$(printf 'c%.0s' $(seq 1 40))"
+printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
+g commit -qam rs; rssha="$(g rev-parse --short HEAD)"; : > "$work/curl-calls"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$rssha" "$out" >/dev/null 2>"$work/err"; rc=$?
+z="$work/z"; mkdir -p "$z"; tar -xzf "$out/noevia-release-$rssha.tar.gz" -C "$z" 2>/dev/null
+check "pinned noevia-rs with its checksum becomes rs/" '[ $rc -eq 0 ] && [ -f "$z/rs/bins/noevia-server/Cargo.toml" ] && [ -f "$z/rs/Cargo.toml" ]'
+check "fetches noevia-rs from codeload at NOEVIA_RS_REF" 'grep -q "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$rref" "$work/curl-calls"'
+check "release-refs records NOEVIA_RS_SHA" 'grep -qx "NOEVIA_RS_SHA=$rref" "$z/release-refs"'
+printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%064d\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" 0 > "$repo/release/versions.lock"
+g commit -qam rsbad; rbsha="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$rbsha" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "noevia-rs checksum mismatch refused" '[ $rc -ne 0 ] && grep -q "noevia-rs tarball checksum mismatch" "$work/err" && [ ! -f "$out/noevia-release-$rbsha.tar.gz" ]'
+printf 'NOEVIA_RS_REF=main\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rsum" > "$repo/release/versions.lock"
+g commit -qam rsref; rrsha="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$rrsha" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "a non-sha NOEVIA_RS_REF with a checksum is refused" '[ $rc -ne 0 ] && grep -q NOEVIA_RS_REF "$work/err"'
 
 # A failing final tar must not leave out.partial (or a final tarball) behind. The shim writes a
 # truncated archive first, like a full disk would.

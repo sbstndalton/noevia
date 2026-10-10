@@ -13,6 +13,7 @@ test-deploy:
 	python3 deploy/nextcloud/test_repair_push.py
 	bash deploy/tools/test-build-web-release.sh
 	bash deploy/tools/test-assemble-release.sh
+	bash deploy/tools/test-web-supervisor.sh
 	bash deploy/tools/test-sidecar-restart-alert.sh
 	bash deploy/tools/test-flags.sh
 	@if command -v php >/dev/null 2>&1; then php deploy/preflight/test_check.php; else echo "php not installed; skipping deploy/preflight/test_check.php"; fi
