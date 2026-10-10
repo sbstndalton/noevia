@@ -12,8 +12,9 @@
 # restart policy brings both back together.
 set -uo pipefail
 
-# Only this script may confirm rust-auth to Node (below); never trust a value from the environment.
-unset NOEVIA_RUST_AUTH_CONFIRMED
+# Only this script may confirm rust-auth / rust-projects to Node (below); never trust a value from
+# the environment.
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED
 front="${NOEVIA_FRONT:-node}"
 case "$front" in
   node) exec node server/index.cjs ;;
@@ -52,6 +53,24 @@ if [ "${NOEVIA_RUST_AUTH:-}" = 1 ]; then
   fi
   rust_auth_confirmed=1
 fi
+# Rust-owned project routes, M4 (noevia-core server/rust-projects.cjs): with NOEVIA_RUST_PROJECTS=1
+# the front answers a project's image routes and shares projects.json with Node under one lock, and
+# Node refuses its copies of those writes. It builds on rust-auth (the front gates those routes
+# itself), and only a front whose --features lists rust-projects may take them; Node is told so
+# with NOEVIA_RUST_PROJECTS_CONFIRMED=1. The front refuses NOEVIA_RUST_PROJECTS=1 without
+# NOEVIA_RUST_AUTH=1 too; this stops before either process starts.
+rust_projects_confirmed=""
+if [ "${NOEVIA_RUST_PROJECTS:-}" = 1 ]; then
+  if [ "$rust_auth_confirmed" != 1 ]; then
+    echo "web-supervisor: NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1; set both or unset NOEVIA_RUST_PROJECTS" >&2
+    exit 2
+  fi
+  if ! grep -qx 'rust-projects' <<<"$rust_features"; then
+    echo "web-supervisor: NOEVIA_RUST_PROJECTS=1 but this noevia-server has no rust-projects; unset NOEVIA_RUST_PROJECTS, set NOEVIA_FRONT=node or update the image" >&2
+    exit 2
+  fi
+  rust_projects_confirmed=1
+fi
 port="${UI_PORT:-8021}"
 if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 64535 ]; then
   echo "web-supervisor: UI_PORT '$port' leaves no room for the legacy port UI_PORT+1000" >&2
@@ -79,7 +98,8 @@ stop() {
 }
 trap 'signalled=1; stop' TERM INT
 
-UI_HOST="$node_host" UI_PORT="$legacy" NOEVIA_RUST_AUTH_CONFIRMED="$rust_auth_confirmed" node server/index.cjs &
+UI_HOST="$node_host" UI_PORT="$legacy" NOEVIA_RUST_AUTH_CONFIRMED="$rust_auth_confirmed" \
+  NOEVIA_RUST_PROJECTS_CONFIRMED="$rust_projects_confirmed" node server/index.cjs &
 node_pid=$!
 NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$bin" &
 front_pid=$!
