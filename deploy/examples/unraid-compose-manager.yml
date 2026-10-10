@@ -112,6 +112,8 @@ services:
       # Cloudflare Tunnel on this one. Without it every request looks like it came
       # from the proxy and per-IP rate limiting throttles everyone as one client.
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      # M1: node (default) or rust (noevia-server in front of Node); build/web-supervisor.sh.
+      NOEVIA_FRONT: ${NOEVIA_FRONT:-node}
       CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
       CORPUS_ROOT: ${CORPUS_ROOT:-}
       WEBDAV_BASE_URL: ${WEBDAV_BASE_URL:-}
