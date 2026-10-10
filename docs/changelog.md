@@ -8,6 +8,18 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 80852237 — 2026-10-10 (M3: Rust sign-in available, off by default)
+
+### Services
+
+- **Web:** [#1259](https://github.com/sbstndalton/noevia/pull/1259) (supervisor confirms `rust-auth` to Node), pins noevia-rs `8ee06b15` (rs#63), noevia-core `a425d7f` (core#59) and noevia-services `fa3fa388` (services#19). `cowork-web:80852237` (id `sha256:d2c5445c...f954e3b`), replacing `cowork-web:5b2241f0` (id `sha256:7a1ca1b0...3c50897`). Container started 2026-10-10 08:02:34 UTC, healthy, restart count 0.
+- **Everything else:** no change. The before/after snapshot of all 40 containers (name, id, start time, restart count, image) differs only in `cowork-web-1`.
+- **Deploy/infra:** `NOEVIA_RUST_AUTH: ${NOEVIA_RUST_AUTH:-0}` added to `compose.yaml`, `deploy/examples/unraid-compose-manager.yml`, `deploy/preflight/web-env-keys.txt` and the live override (backup `docker-compose.override.yml.bak.before-80852237`). `NOEVIA_RUST_AUTH` is not set in `.env` (so 0); `NOEVIA_FRONT` stays `rust`. CI now requires `rust-auth` in the web image's `noevia-server --features`.
+
+**Evidence.** rs#63 fixed the differential test after core#58 (noevia#1254) made setup store `public_origin_admin`: the fixture now has a current scenario (Rust must equal Node) and a legacy one (no admin row; Rust accepts only what both Node states accept). All 9 rs checks and the 5 services checks were green; noevia CI incl. Assembled release was green. On the box: `/api/ready` returned `{"ready":true,"version":"80852237"}`, `noevia-server --features` lists `code-net-guard header-read-timeout rust-auth` (the old image lacked `rust-auth`), `flags.sh` output is identical before and after, the web log has no error or warning lines, and `/api/profile` still answers 401 without sign-in. No autotune, calibration or Coding task was running when web was recreated.
+
+**Rollback.** Restore `config/.env.bak.20261010040230` (or set `COWORK_VERSION=5b2241f0`), `ln -sfn releases/5b2241f0 current`, then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait web`. `cowork-web:5b2241f0` is kept. The extra `NOEVIA_RUST_AUTH` line in the override is harmless at 0.
+
 ## Flag enabled 2026-10-09 — `BROWSER_POLICY_IMPL`, `TOOL_GATE_IMPL` and `TOOLBOXES_PERMITTED_IMPL` = `wasm` (config only; live web stays be3043cd)
 
 ### Services
