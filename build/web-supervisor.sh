@@ -27,7 +27,13 @@ fi
 # The code-network guard (sbstndalton/noevia#1246): with COWORK_CODE_NET_ADDR set, Node behind
 # the front sees every request arrive on loopback, so only the front can refuse code-network
 # requests. A front that does not report the guard must not face the network.
-if [ -n "${COWORK_CODE_NET_ADDR:-}" ] && ! "$bin" --features 2>/dev/null | grep -qx 'code-net-guard'; then
+# (Captured first: with pipefail, grep -q exiting early could fail the pipeline via SIGPIPE.)
+if [ -n "${COWORK_CODE_NET_ADDR:-}" ]; then
+  features="$("$bin" --features 2>/dev/null || true)"
+else
+  features=code-net-guard
+fi
+if ! grep -qx 'code-net-guard' <<<"$features"; then
   echo "web-supervisor: COWORK_CODE_NET_ADDR is set but this noevia-server has no code-net-guard; set NOEVIA_FRONT=node or update the image" >&2
   exit 2
 fi

@@ -59,6 +59,7 @@ wait_log "^front" && wait_log "^node"
 check "rust with COWORK_CODE_NET_ADDR starts when the front reports code-net-guard" 'grep -q "^front UI_HOST=" "$work/log"'
 touch "$work/die-front"
 for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
+rm -f "$work/rc"
 
 reset
 run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=65000 >/dev/null 2>&1; rc=$?
