@@ -412,6 +412,8 @@ jobs:
           docker run --rm --entrypoint /usr/local/bin/noevia-server "cowork-web:$SHA" --features | tee /tmp/features
           grep -qx code-net-guard /tmp/features \
             || { echo "::error::the web image's noevia-server does not report code-net-guard"; exit 1; }
+          grep -qx rust-auth /tmp/features \
+            || { echo "::error::the web image's noevia-server does not report rust-auth (NOEVIA_RUST_AUTH=1 needs it)"; exit 1; }
           docker run -d --name noevia-web-rust \
             -p 8021:8021 \
             -e NOEVIA_FRONT=rust \

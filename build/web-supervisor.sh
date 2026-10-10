@@ -12,6 +12,8 @@
 # restart policy brings both back together.
 set -uo pipefail
 
+# Only this script may confirm rust-auth to Node (below); never trust a value from the environment.
+unset NOEVIA_RUST_AUTH_CONFIRMED
 front="${NOEVIA_FRONT:-node}"
 case "$front" in
   node) exec node server/index.cjs ;;
@@ -36,6 +38,19 @@ fi
 if ! grep -qx 'code-net-guard' <<<"$features"; then
   echo "web-supervisor: COWORK_CODE_NET_ADDR is set but this noevia-server has no code-net-guard; set NOEVIA_FRONT=node or update the image" >&2
   exit 2
+fi
+# Rust-owned sign-in (noevia-core server/rust-auth.cjs): with NOEVIA_RUST_AUTH=1 Node refuses to
+# write the account tables, so the front facing the network must answer those routes. Only a front
+# whose --features lists rust-auth may do that; Node is told so with NOEVIA_RUST_AUTH_CONFIRMED=1
+# and stays a full writer without it.
+rust_auth_confirmed=""
+if [ "${NOEVIA_RUST_AUTH:-}" = 1 ]; then
+  rust_features="$("$bin" --features 2>/dev/null || true)"
+  if ! grep -qx 'rust-auth' <<<"$rust_features"; then
+    echo "web-supervisor: NOEVIA_RUST_AUTH=1 but this noevia-server has no rust-auth; unset NOEVIA_RUST_AUTH, set NOEVIA_FRONT=node or update the image" >&2
+    exit 2
+  fi
+  rust_auth_confirmed=1
 fi
 port="${UI_PORT:-8021}"
 if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 64535 ]; then
@@ -64,7 +79,7 @@ stop() {
 }
 trap 'signalled=1; stop' TERM INT
 
-UI_HOST="$node_host" UI_PORT="$legacy" node server/index.cjs &
+UI_HOST="$node_host" UI_PORT="$legacy" NOEVIA_RUST_AUTH_CONFIRMED="$rust_auth_confirmed" node server/index.cjs &
 node_pid=$!
 NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$bin" &
 front_pid=$!
