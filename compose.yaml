@@ -114,6 +114,7 @@ services:
       # M1: node (default) or rust (noevia-server in front of Node); build/web-supervisor.sh.
       NOEVIA_FRONT: ${NOEVIA_FRONT:-node}
       NOEVIA_RUST_AUTH: ${NOEVIA_RUST_AUTH:-0}
+      NOEVIA_RUST_PROJECTS: ${NOEVIA_RUST_PROJECTS:-0}
       CORPUS_BACKEND: ${CORPUS_BACKEND:-local}
       CORPUS_ROOT: ${CORPUS_ROOT:-}
       WEBDAV_BASE_URL: ${WEBDAV_BASE_URL:-}

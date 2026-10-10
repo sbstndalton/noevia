@@ -414,6 +414,11 @@ jobs:
             || { echo "::error::the web image's noevia-server does not report code-net-guard"; exit 1; }
           grep -qx rust-auth /tmp/features \
             || { echo "::error::the web image's noevia-server does not report rust-auth (NOEVIA_RUST_AUTH=1 needs it)"; exit 1; }
+          grep -qx rust-projects /tmp/features \
+            || { echo "::error::the web image's noevia-server does not report rust-projects (NOEVIA_RUST_PROJECTS=1 needs it)"; exit 1; }
+          # core's projects.json.lock is taken with flock(1) from util-linux (#1263).
+          docker run --rm --entrypoint flock "cowork-web:$SHA" --version \
+            || { echo "::error::the web image has no flock (util-linux)"; exit 1; }
           docker run -d --name noevia-web-rust \
             -p 8021:8021 \
             -e NOEVIA_FRONT=rust \
