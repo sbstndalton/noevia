@@ -75,6 +75,7 @@ wait_log "^front" && wait_log "^node"
 check "NOEVIA_RUST_AUTH=1 with a rust-auth front confirms it to Node only" 'grep -q "^node .* CONF=1$" "$work/log" && grep -q "^front .* CONF=$" "$work/log"'
 touch "$work/die-front"
 for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
+rm -f "$work/rc"
 
 reset; rm -f "$work/rc"
 (run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH_CONFIRMED=1 NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 >/dev/null 2>&1; echo $? > "$work/rc") &
@@ -82,6 +83,7 @@ wait_log "^front" && wait_log "^node"
 check "without NOEVIA_RUST_AUTH an inherited confirmation is dropped" 'grep -q "^node .* CONF=$" "$work/log"'
 touch "$work/die-front"
 for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
+rm -f "$work/rc"
 
 reset; touch "$work/die-node"
 run NOEVIA_FRONT=node NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 >/dev/null 2>&1
