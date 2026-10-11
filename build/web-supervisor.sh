@@ -14,7 +14,7 @@ set -uo pipefail
 
 # Only this script may confirm rust-auth / rust-projects to Node (below); never trust a value from
 # the environment.
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED
 front="${NOEVIA_FRONT:-node}"
 case "$front" in
   node) exec node server/index.cjs ;;
@@ -97,6 +97,19 @@ if [ "${NOEVIA_RUST_SAMPLING_SETTINGS:-}" = 1 ]; then
   fi
   rust_sampling_settings_confirmed=1
 fi
+# Reasoning default PUT owns one fixed key after native auth and compiled feature confirmation.
+rust_reasoning_settings_confirmed=""
+if [ "${NOEVIA_RUST_REASONING_SETTINGS:-}" = 1 ]; then
+  if [ "$rust_auth_confirmed" != 1 ]; then
+    echo "web-supervisor: NOEVIA_RUST_REASONING_SETTINGS=1 needs NOEVIA_RUST_AUTH=1" >&2
+    exit 2
+  fi
+  if ! grep -qx 'rust-reasoning-settings' <<<"$rust_features"; then
+    echo "web-supervisor: NOEVIA_RUST_REASONING_SETTINGS=1 but this noevia-server has no rust-reasoning-settings" >&2
+    exit 2
+  fi
+  rust_reasoning_settings_confirmed=1
+fi
 port="${UI_PORT:-8021}"
 if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 64535 ]; then
   echo "web-supervisor: UI_PORT '$port' leaves no room for the legacy port UI_PORT+1000" >&2
@@ -126,7 +139,8 @@ trap 'signalled=1; stop' TERM INT
 
 UI_HOST="$node_host" UI_PORT="$legacy" NOEVIA_RUST_AUTH_CONFIRMED="$rust_auth_confirmed" \
   NOEVIA_RUST_PROJECTS_CONFIRMED="$rust_projects_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$rust_usage_confirmed" \
-  NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$rust_sampling_settings_confirmed" node server/index.cjs &
+  NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$rust_sampling_settings_confirmed" \
+  NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$rust_reasoning_settings_confirmed" node server/index.cjs &
 node_pid=$!
 NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$bin" &
 front_pid=$!

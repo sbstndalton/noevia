@@ -35,7 +35,7 @@ COPY rs/ /src/
 WORKDIR /src
 RUN set -e; mkdir -p /out; \
     if [ -f bins/noevia-server/Cargo.toml ]; then \
-      cargo build --release --locked -p noevia-server; \
+      cargo build --release --locked -p noevia-server --features rust-reasoning-settings; \
       cp target/release/noevia-server /out/noevia-server; \
       /out/noevia-server 2>&1 | grep -q NOEVIA_LEGACY_UPSTREAM; \
     else \

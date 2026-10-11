@@ -20,7 +20,7 @@ stub() {
 #!/usr/bin/env bash
 name=$2
 if [ "\${1:-}" = --features ]; then printf '%s\\n' \${STUB_FEATURES-code-net-guard}; exit 0; fi
-echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* SCONF=\${NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED:-} UCONF=\${NOEVIA_RUST_USAGE_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
+echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* RCONF=\${NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED:-} SCONF=\${NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED:-} UCONF=\${NOEVIA_RUST_USAGE_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
 trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
 for _ in \$(seq 1 300); do
   [ -f "$work/die-\$name" ] && { echo "\$name died" >> "$work/log"; exit 3; }
@@ -144,6 +144,23 @@ check "default-off Rust mode drops inherited sampling confirmation" 'grep -q "^n
 reset; touch "$work/die-node"
 run NOEVIA_FRONT=node NOEVIA_RUST_SAMPLING_SETTINGS=1 NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED=1 >/dev/null 2>&1; rc=$?
 check "node mode drops inherited sampling confirmation" 'grep -q "^node .* SCONF= " "$work/log"'
+
+# Foreground reasoning ownership controls: no startup without auth/feature; no inherited grant.
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_REASONING_SETTINGS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-reasoning-settings" >/dev/null 2>"$work/err"; rc=$?
+check "reasoning without native auth refuses before startup" '[ $rc -eq 2 ] && grep -q "needs NOEVIA_RUST_AUTH=1" "$work/err" && [ ! -s "$work/log" ]'
+reset
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth" >/dev/null 2>"$work/err"; rc=$?
+check "reasoning missing native feature refuses before startup" '[ $rc -eq 2 ] && grep -q "no rust-reasoning-settings" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-reasoning-settings" >/dev/null 2>&1; rc=$?
+check "reasoning confirmed only to Node after native probe" 'grep -q "^node .* RCONF=1 " "$work/log" && grep -q "^front .* RCONF= " "$work/log"'
+reset; touch "$work/die-front"
+run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-reasoning-settings" >/dev/null 2>&1; rc=$?
+check "default-off Rust mode drops inherited reasoning confirmation" 'grep -q "^node .* RCONF= " "$work/log" && grep -q "^front .* RCONF= " "$work/log"'
+reset; touch "$work/die-node"
+run NOEVIA_FRONT=node NOEVIA_RUST_REASONING_SETTINGS=1 NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED=1 >/dev/null 2>&1; rc=$?
+check "node mode drops inherited reasoning confirmation" 'grep -q "^node .* RCONF= " "$work/log"'
 
 reset
 run NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=65000 >/dev/null 2>&1; rc=$?
