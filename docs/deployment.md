@@ -1548,6 +1548,40 @@ Only `cowork-docling-1` may change container id (snapshot every container before
 back by restoring the `.env` backup (`DOCLING_VERSION=$OLD`) and re-running the same `up.sh`
 line; `cowork-docling:$OLD` is kept for exactly this.
 
+### Native Docling binary overlay (#1322)
+
+A release that adds or updates `noevia-docling` uses a binary-and-application overlay.
+The existing engine image remains the base: do not build the Dockerfile's `production`
+target, reinstall Python dependencies, or run its model-download layer. The release
+lock and all sidecar Dockerfiles must pin the same reviewed, merged Rust SHA and
+anonymous archive checksum; the assembled release CI checks this before release.
+
+From the clean assembled release on DaServer, build only the Docling Dockerfile's
+`native-docling` target. It uses the checksum-pinned Rust Bookworm builder and
+compiles `noevia-docling` with `native-docling`, without entering the engine layers.
+Copy `/out/noevia-docling` from that image using an owned, never-started temporary
+container. Construct the candidate overlay FROM the exact existing Docling image
+ID, copying that binary into `/usr/local/bin/` and the same six application files
+listed above into `/app/`, with `CMD ["noevia-docling"]`. Preserve the existing
+user, workdir, healthcheck, engine dependencies and model files. Verify the
+Bookworm runtime ABI and the binary's compiled capability before tagging.
+
+Require independent review of the exact release commands, the candidate image and
+its source pins before cutover. Qualify HTTP/worker behavior with the reviewed
+lightweight synthetic contract images; they use the real application/worker source
+and a fixed fake converter, without loading a model. The candidate based on the
+real engine image is checked only for health under the existing default Python
+selector; do not convert a document or enable native operation during this release.
+Use a bounded Compose health wait, with network disabled, a read-only filesystem,
+a private temporary filesystem and an owned temporary container name. Remove only
+the test container created for this candidate.
+
+After fresh idle and backup gates, bump only `DOCLING_VERSION`, retaining the old
+image and environment backup. Recreate only Docling through the preflight wrapper
+with `--no-build --no-deps --wait`; compare complete before/after container
+inventories, readiness, restart counts and allow-listed flags. Native activation
+remains an owner action. The existing per-service rollback recipe above applies.
+
 **A full `docker build` is only for a dependency change:** a docling, torch, torchvision or
 other Python package bump, a model revision change, or a change to the base image or the apt
 packages (Tesseract). Edit noevia-services `docling/requirements.in`, regenerate `requirements.txt`
