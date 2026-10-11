@@ -23,7 +23,7 @@
 # built by deploy/examples/diary-overlay.sh from the diary Dockerfile's pin), and into the dark
 # egress-rs image (#909, #964, #981, #926). Bumping it also means updating NOEVIA_RS_REF and
 # NOEVIA_RS_SHA256 in deploy/egress-proxy/Dockerfile and in noevia-services' model-manager/,
-# ocr/ and diary/Dockerfile (CI fails if any Dockerfile default differs from this file).
+# ocr/, diary/, docling/ and laya/Dockerfile (CI fails if any Dockerfile default differs).
 # NOEVIA_RS_SHA256 (M1) is that ref's tarball checksum, the same value as the Dockerfiles'
 # ARG NOEVIA_RS_SHA256 (CI checks): assemble-release.sh fetches noevia-rs into the release tree's
 # rs/, and build/web.Dockerfile builds the Rust front (bins/noevia-server, NOEVIA_FRONT=rust) from
