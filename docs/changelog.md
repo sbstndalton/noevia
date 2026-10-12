@@ -8,6 +8,38 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release fca7489a — 2026-10-12 (M4 chat-list slice available, off by default; missing-model popup)
+
+### Services
+
+- **Web:** [#1413](https://github.com/sbstndalton/noevia/pull/1413) (pins; supervisor support from [#1412](https://github.com/sbstndalton/noevia/pull/1412)), pins noevia-web `a8e7582b` (web#25, Auto popup missing-model warning, #1397), noevia-core `385702c2` (core#75, chat-list Node half), noevia-rs `d7d777b3` (rs#89, chat-list Rust half) and noevia-services `de51bddc` (services#31, Dockerfile `NOEVIA_RS` pins only). `cowork-web:fca7489a` (id `sha256:af6a07831cac0152d1ea891dbec68252228838e7dfe98caa9fea21165758618c`), replacing `cowork-web:dd15bf6f` (id `sha256:f5154ee2c331afa1b111eeb48b6bf311ced65253267ca2dcc7175a16f21b13f9`). Built on DaServer with `build-web-release.sh` at nice 19 / ionice idle; `noevia-server --features` lists `rust-project-chats`. Container started 2026-10-12 06:36:25 UTC, healthy, restart count 0 after more than two minutes.
+- **Everything else:** no change. The before/after snapshot of all 40 containers (name, id, start time, restart count) differs only in `cowork-web-1`; Laya and every sidecar were neither rebuilt nor restarted.
+- **Deploy/infra:** web-only cutover with the guarded `up.sh --env-file ... -- -d --no-build --no-deps --wait web`. Scoped state/config/Compose archives (integrity and compare passed) in `/mnt/disk3/noevia-backups/web_fca7489a_20261012T063623Z`; `.env` backed up as `config/.env.bak.before-fca7489a`. `NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH=0` and `NOEVIA_RUST_PROJECTS=0` are unchanged, so the chat-list slice is available but off; `flags.sh` output is identical before and after.
+
+**Evidence.** noevia-services#31 (5 checks) and noevia#1413 (all checks incl. "Assembled release") were green. Synthetic candidate (no network, read-only root, tmpfs data, throwaway token) reported `{"ready":true,"version":"fca7489a"}` with 0 error lines. Before cutover the idle gate reported no Coding job, no active autotune/calibration and no processing or deferred requests. After: `/api/ready` returned the new version on loopback and through `https://noevia.daserver.work`; the live `/app/dist` file hashes equal the built image's; the served `index-*.js` and `index-*.css` hashes equal the on-disk ones; 0 error or panic lines in the web log. Evidence: `/mnt/docker/appdata/cowork/release-prep/fca7489a/`.
+
+**Rollback.** `ln -sfn /mnt/docker/appdata/cowork/releases/dd15bf6f /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=dd15bf6f/' /mnt/docker/appdata/cowork/config/.env` (or restore `config/.env.bak.before-fca7489a`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. `cowork-web:dd15bf6f` is kept.
+
+## Release dd15bf6f — 2026-10-12 (mobile layout repair #1314, reviewed Core and native sidecar pins; web only)
+
+### Services
+
+- **Web:** [#1399](https://github.com/sbstndalton/noevia/pull/1399) (pins noevia-web `a6f8ee8a` with the mobile layout repair #1314; noevia-core `7960dd1d`; noevia-rs `5f50a0856`; noevia-services `d245183a`), on top of [#1388](https://github.com/sbstndalton/noevia/pull/1388), [#1393](https://github.com/sbstndalton/noevia/pull/1393) and [#1394](https://github.com/sbstndalton/noevia/pull/1394). `cowork-web:dd15bf6f` (id `sha256:f5154ee2c331afa1b111eeb48b6bf311ced65253267ca2dcc7175a16f21b13f9`), replacing `cowork-web:cf521caa` (id `sha256:b23842c4a0154a455573129004c323db403fc76d02b6e29d1f8c484264327422`). Container started 2026-10-12 04:29:01 UTC, healthy, restart count 0.
+- **Everything else:** no change; the cutover was web only (40 containers).
+- **Deploy/infra:** scoped state/config/Compose archives in `/mnt/disk3/noevia-backups/web_dd15bf6f_20261012T042900Z`; `.env` backed up as `config/.env.bak.before-dd15bf6f`. Switch values were identical before and after (`flags.before.txt`/`flags.after.txt`).
+
+**Rollback.** Repoint `current` and `COWORK_VERSION` at `cf521caa` and re-run the guarded `up.sh` for `web` as above; `cowork-web:cf521caa` is kept. Evidence: `/mnt/docker/appdata/cowork/release-prep/dd15bf6f/`.
+
+## Release cf521caa — 2026-10-11 (M6 native auth ownership guard pinned)
+
+### Services
+
+- **Web:** [#1307](https://github.com/sbstndalton/noevia/pull/1307) (release-pin of the landed native auth ownership guard; the M6 sampling, usage and release-qualification work from [#1285](https://github.com/sbstndalton/noevia/pull/1285), [#1291](https://github.com/sbstndalton/noevia/pull/1291) and [#1304](https://github.com/sbstndalton/noevia/pull/1304) is in the same pin chain), pins noevia-web `f7d21353`, noevia-core `96559846`, noevia-services `a5161c1d` and noevia-rs `f7c90b8f`. `cowork-web:cf521caa` (id `sha256:b23842c4a0154a455573129004c323db403fc76d02b6e29d1f8c484264327422`), replacing `cowork-web:b44dae9a`. Cutover result `status=success`; `/api/ready` returned `{"ready":true,"version":"cf521caa"}` internally and publicly.
+- **Other services:** not re-derived for this entry; the cutover evidence (candidate checks, scoped sampling backup, container snapshots) is in `/mnt/docker/appdata/cowork/release-prep/cf521caa/`.
+- **Deploy/infra:** scoped backup in `/mnt/disk3/noevia-backups/m6_cf521caa_20261011T045506Z`.
+
+**Rollback.** Repoint `current` and `COWORK_VERSION` at `b44dae9a` and re-run the guarded `up.sh` for `web`; `cowork-web:b44dae9a` is kept.
+
 ## Release 9e9bdc0f — 2026-10-10 (S3 native OCR acceptance)
 
 ### Services
