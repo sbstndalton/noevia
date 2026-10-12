@@ -430,6 +430,12 @@ jobs:
             || { echo "::error::the web image's noevia-server does not report rust-auth (NOEVIA_RUST_AUTH=1 needs it)"; exit 1; }
           grep -qx rust-projects /tmp/features \
             || { echo "::error::the web image's noevia-server does not report rust-projects (NOEVIA_RUST_PROJECTS=1 needs it)"; exit 1; }
+          # A pinned noevia-rs that has the chat-list slice (cargo feature rust-project-chats) is
+          # built with it, so the supervisor can confirm that slice to Node (#1409).
+          if grep -qx 'rust-project-chats = \[\]' "$TREE/rs/bins/noevia-server/Cargo.toml"; then
+            grep -qx rust-project-chats /tmp/features \
+              || { echo "::error::the pinned noevia-rs has rust-project-chats but the web image's noevia-server was built without it"; exit 1; }
+          fi
           # core's projects.json.lock is taken with flock(1) from util-linux (#1263).
           docker run --rm --entrypoint flock "cowork-web:$SHA" --version \
             || { echo "::error::the web image has no flock (util-linux)"; exit 1; }

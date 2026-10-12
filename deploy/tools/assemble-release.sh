@@ -164,6 +164,41 @@ if [ -n "$rs_sum" ]; then
   rs_sha="$rs_ref"
 fi
 
+# Full-Rust migration M4: the Rust front and Node share projects.json. Every project route the
+# front can own (rs/contracts/http/routes.toml, owner "rust", switch NOEVIA_RUST_PROJECTS) must be
+# one this release's core knows the front may own (core/server/rust-projects.cjs OWNED_ROUTES):
+# Node merges what the front writes for those routes per item and refuses its own copies of them.
+# A front that saves a project's chat list over a core from before noevia-core#75 would have its
+# chats dropped by Node's whole-field merge (sbstndalton/noevia#1409), so that pairing is refused
+# here. Placeholder names ({id}, {projectId}) are compared as one.
+project_routes_rs() {
+  awk '
+    function flush(  n, i, m) {
+      if (owner == "rust" && sw == "NOEVIA_RUST_PROJECTS") {
+        if (methods == "") print "ALL " path
+        n = split(methods, m, /[^A-Z]+/)
+        for (i = 1; i <= n; i++) if (m[i] != "") print m[i] " " path
+      }
+      path = ""; owner = ""; sw = ""; methods = ""
+    }
+    function value(line) { sub(/^[a-z_]+ *= */, "", line); gsub(/"/, "", line); return line }
+    /^\[\[route\]\]/ { flush(); next }
+    /^path *=/ { path = value($0) }
+    /^owner *=/ { owner = value($0) }
+    /^switch *=/ { sw = value($0) }
+    /^methods *=/ { methods = value($0) }
+    END { flush() }
+  ' "$1" | sed 's/{[^}]*}/{}/g' | sort -u
+}
+project_routes_core() {
+  [ -f "$1" ] || return 0
+  sed -n '/OWNED_ROUTES = /,/]))/p' "$1" | grep -o "'[A-Z]* /[^']*'" | tr -d "'" | sed 's/{[^}]*}/{}/g' | sort -u
+}
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <(project_routes_core "$tree/core/server/rust-projects.cjs"))"
+  [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
+fi
+
 for need in web/package.json web/package-lock.json web/src web/index.html core/server/package.json core/server/index.cjs core/contracts \
             core/code-sandbox/Dockerfile services/diary/Dockerfile services/docling/Dockerfile services/laya/Dockerfile \
             services/model-manager/Dockerfile services/ocr/Dockerfile; do

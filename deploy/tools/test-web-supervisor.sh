@@ -20,7 +20,7 @@ stub() {
 #!/usr/bin/env bash
 name=$2
 if [ "\${1:-}" = --features ]; then printf '%s\\n' \${STUB_FEATURES-code-net-guard}; exit 0; fi
-echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* RCONF=\${NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED:-} SCONF=\${NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED:-} UCONF=\${NOEVIA_RUST_USAGE_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
+echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* CCONF=\${NOEVIA_RUST_PROJECT_CHATS_CONFIRMED:-} RCONF=\${NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED:-} SCONF=\${NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED:-} UCONF=\${NOEVIA_RUST_USAGE_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
 echo "\$name TCONF=\${NOEVIA_RUST_ROUTING_MODE_CONFIRMED:-}" >> "$work/log"
 trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
 for _ in \$(seq 1 300); do
@@ -103,6 +103,7 @@ reset; rm -f "$work/rc"
 (run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-projects" UI_PORT=8021 >/dev/null 2>&1; echo $? > "$work/rc") &
 wait_log "^front" && wait_log "^node"
 check "both switches with a rust-projects front confirm both to Node only" 'grep -q "^node .* PCONF=1 CONF=1$" "$work/log" && grep -q "^front .* PCONF= CONF=$" "$work/log"'
+check "an images-only front (no rust-project-chats) leaves the chat list to Node (#1409)" 'grep -q "^node .* CCONF= " "$work/log" && grep -q "^front .* CCONF= " "$work/log"'
 touch "$work/die-front"
 for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
 rm -f "$work/rc"
@@ -114,6 +115,27 @@ check "without NOEVIA_RUST_PROJECTS an inherited projects confirmation is droppe
 touch "$work/die-front"
 for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
 rm -f "$work/rc"
+
+# M4's chat-list slice (#1409): confirmed to Node only for a front that lists rust-project-chats.
+reset; rm -f "$work/rc"
+(run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-projects rust-project-chats" UI_PORT=8021 >/dev/null 2>&1; echo $? > "$work/rc") &
+wait_log "^front" && wait_log "^node"
+check "a front with rust-project-chats has the chat slice confirmed to Node only" 'grep -q "^node .* CCONF=1 .* PCONF=1 CONF=1$" "$work/log" && grep -q "^front .* CCONF= " "$work/log"'
+touch "$work/die-front"
+for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
+rm -f "$work/rc"
+
+reset; rm -f "$work/rc"
+(run NOEVIA_FRONT=rust NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1 NOEVIA_SERVER_BIN="$work/noevia-server" STUB_FEATURES="code-net-guard rust-auth rust-projects rust-project-chats" UI_PORT=8021 >/dev/null 2>&1; echo $? > "$work/rc") &
+wait_log "^front" && wait_log "^node"
+check "without NOEVIA_RUST_PROJECTS an inherited chat confirmation is dropped, even for a front with the slice" 'grep -q "^node .* CCONF= " "$work/log"'
+touch "$work/die-front"
+for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
+rm -f "$work/rc"
+
+reset
+run NOEVIA_FRONT=node NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1 >/dev/null 2>&1
+check "node mode drops an inherited chat confirmation" 'grep -q "^node .* CCONF= " "$work/log"'
 
 # M6: foreground-only usage feature/ownership checks.
 reset
