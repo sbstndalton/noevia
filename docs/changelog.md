@@ -8,6 +8,19 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release d7b6081d — 2026-10-12 (files attached to a free chat are shown with your message, #1441; web only)
+
+What changed for you: files you attach to a chat are now presented to the model as attached to your message, so it stops saying nothing was attached. A message sent right after attaching waits up to 30 seconds for the file to be read instead of going out without it. The privacy check still reads attached files.
+
+### Services
+
+- **Web:** [#1459](https://github.com/sbstndalton/noevia/pull/1459) (pins) with noevia-core `816b219e` (core#79: a free chat's attachments are shown with the user's turn, the router and step supervision see the file text, and a stuck source job is waited for once, bounded at 30 s). noevia-web `de3e6113`, noevia-rs `667b428b` and noevia-services `6ad25b79` are unchanged. Image `cowork-web:d7b6081d`, `sha256:0b9c0c7103133f7c3c90cf29c252858dd4ffe4b417e744c029719f3990c5a792`.
+- **Everything else:** no change. The before/after snapshot of every container (name, id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** web-only cutover with the guarded `up.sh --env-file ... -- -d --no-build --no-deps --wait web` after the idle gate (no Coding job, no autotune or calibration, 0 processing and 0 deferred requests). Scoped state/config/Compose archives (integrity and compare passed) in `/mnt/disk3/noevia-backups/web_d7b6081d_20261012T104334Z`; `.env` backed up as `config/.env.bak.before-d7b6081d`. The switch listing is identical before and after; no switch was changed.
+
+**Evidence.** noevia-core#79 (all 8 checks, head `1ac91633`, independently reviewed) and noevia#1459 (incl. "Assembled release") were green. The image build's server tests passed (1217 of 1244, 0 failing). Synthetic candidates (no network, read-only root, caps dropped, tmpfs data, throwaway token) with `NOEVIA_FRONT=node` and `rust` reported ready at `d7b6081d` with 0 error lines. After cutover: `/api/ready` is `{"ready":true,"version":"d7b6081d"}` on loopback and on https://noevia.daserver.work, restart count 0 after 2 minutes, 0 error lines, the served `dist` hashes equal the image's, and the served `chat.cjs`, `rag.cjs`, `source-jobs.cjs` and `step-supervision.cjs` equal the release tree's.
+**Rollback.** `ln -sfn /mnt/docker/appdata/cowork/releases/96691012 /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=96691012/' /mnt/docker/appdata/cowork/config/.env` (or restore `config/.env.bak.before-d7b6081d`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The previous image is `cowork-web:96691012` (`sha256:0f7f96ab25eb114c5418e43a05b0fab1e21a11a4dec9e045835d6c27a31dd517`).
+
 ## Release 96691012 — 2026-10-12 (no "This looks sensitive" card when the privacy check cannot answer, #1421; web only)
 
 What changed for you: in Hybrid, when the privacy check cannot give an answer, the turn stays local and no "This looks sensitive" card appears. The Local badge tooltip says why it stayed local, so there is nothing to approve or dismiss.
