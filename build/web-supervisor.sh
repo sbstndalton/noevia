@@ -12,9 +12,9 @@
 # restart policy brings both back together.
 set -uo pipefail
 
-# Only this script may confirm rust-auth / rust-projects / rust-project-chats to Node (below); never
-# trust a value from the environment.
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED
+# Only this script may confirm rust-auth / rust-projects / rust-project-chats / rust-free-chats to
+# Node (below); never trust a value from the environment.
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_FREE_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED
 front="${NOEVIA_FRONT:-node}"
 case "$front" in
   node) exec node server/index.cjs ;;
@@ -78,6 +78,13 @@ fi
 rust_project_chats_confirmed=""
 if [ "$rust_projects_confirmed" = 1 ] && grep -qx 'rust-project-chats' <<<"$rust_features"; then
   rust_project_chats_confirmed=1
+fi
+# M4's free-chat slice: the same, for GET/POST /api/freechats and the cargo feature rust-free-chats.
+# Confirmed, Node takes free-chats.json.lock and merges the free list per item for its own writers
+# of the file, and refuses its own free-list save. Independent of the project chat slice.
+rust_free_chats_confirmed=""
+if [ "$rust_projects_confirmed" = 1 ] && grep -qx 'rust-free-chats' <<<"$rust_features"; then
+  rust_free_chats_confirmed=1
 fi
 # M6 reporting is a native owner only with validated Rust auth and its compiled feature.
 rust_usage_confirmed=""
@@ -160,6 +167,7 @@ trap 'signalled=1; stop' TERM INT
 
 UI_HOST="$node_host" UI_PORT="$legacy" NOEVIA_RUST_AUTH_CONFIRMED="$rust_auth_confirmed" \
   NOEVIA_RUST_PROJECTS_CONFIRMED="$rust_projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$rust_project_chats_confirmed" \
+  NOEVIA_RUST_FREE_CHATS_CONFIRMED="$rust_free_chats_confirmed" \
   NOEVIA_RUST_USAGE_CONFIRMED="$rust_usage_confirmed" \
   NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$rust_sampling_settings_confirmed" \
   NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$rust_reasoning_settings_confirmed" \

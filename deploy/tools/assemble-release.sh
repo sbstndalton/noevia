@@ -170,7 +170,8 @@ fi
 # Node merges what the front writes for those routes per item and refuses its own copies of them.
 # A front that saves a project's chat list over a core from before noevia-core#75 would have its
 # chats dropped by Node's whole-field merge (sbstndalton/noevia#1409), so that pairing is refused
-# here. Placeholder names ({id}, {projectId}) are compared as one.
+# here; likewise a front that saves the free-chat list (GET/POST /api/freechats) over a core from
+# before noevia-core#76, whose own free-list writers would overwrite free-chats.json whole. Placeholder names ({id}, {projectId}) are compared as one.
 project_routes_rs() {
   awk '
     function flush(  n, i, m) {

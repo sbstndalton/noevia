@@ -216,6 +216,43 @@ JS
 g add -A && g commit -qm core-chats; pc="$(g rev-parse --short HEAD)"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$pc" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "the same front over a core that lists the chat routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$pc.tar.gz" ]'
+# The free-chat slice: a front that also owns GET/POST /api/freechats over a core whose
+# OWNED_ROUTES lacks them (from before noevia-core#76, whose free-list writers would drop the
+# front's saves by a whole-file write) is refused, naming only those; the core that lists them
+# assembles. The delete route stays Node's and is not asked for.
+cat >> "$work/remote/noevia-rs-y/contracts/http/routes.toml" <<'TOML'
+
+[[route]]
+path = "/api/freechats"
+owner = "rust"
+switch = "NOEVIA_RUST_PROJECTS"
+methods = ["GET", "POST"]
+
+[[route]]
+path = "/api/freechats/{chatId}"
+owner = "node"
+TOML
+tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-y
+rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
+printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
+g commit -qam rs-free-chats; pd="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$pd" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "a free-chat front over a core that lists only the project routes is refused, naming both methods" \
+  '[ $rc -ne 0 ] && grep -q "GET /api/freechats;POST /api/freechats$" "$work/err" && ! grep -q "/api/projects" "$work/err" && [ ! -f "$out/noevia-release-$pd.tar.gz" ]'
+cat > "$w/server/rust-projects.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/assets',
+  'GET /api/projects/{id}/assets/{assetId}',
+  'DELETE /api/projects/{id}/assets/{assetId}',
+  'GET /api/projects/{id}/chats',
+  'POST /api/projects/{id}/chats',
+  'GET /api/freechats',
+  'POST /api/freechats',
+]));
+JS
+g add -A && g commit -qm core-free-chats; pe="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$pe" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "the same front over a core that lists the free-chat routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$pe.tar.gz" ]'
 g rm -q apps/web/server/rust-projects.cjs && g commit -qm core-plain
 
 # A failing final tar must not leave out.partial (or a final tarball) behind. The shim writes a

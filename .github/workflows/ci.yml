@@ -436,6 +436,11 @@ jobs:
             grep -qx rust-project-chats /tmp/features \
               || { echo "::error::the pinned noevia-rs has rust-project-chats but the web image's noevia-server was built without it"; exit 1; }
           fi
+          # Likewise the free-chat slice (cargo feature rust-free-chats).
+          if grep -qx 'rust-free-chats = \[\]' "$TREE/rs/bins/noevia-server/Cargo.toml"; then
+            grep -qx rust-free-chats /tmp/features \
+              || { echo "::error::the pinned noevia-rs has rust-free-chats but the web image's noevia-server was built without it"; exit 1; }
+          fi
           # core's projects.json.lock is taken with flock(1) from util-linux (#1263).
           docker run --rm --entrypoint flock "cowork-web:$SHA" --version \
             || { echo "::error::the web image has no flock (util-linux)"; exit 1; }
