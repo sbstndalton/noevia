@@ -8,6 +8,19 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 96691012 — 2026-10-12 (no "This looks sensitive" card when the privacy check cannot answer, #1421; web only)
+
+What changed for you: in Hybrid, when the privacy check cannot give an answer, the turn stays local and no "This looks sensitive" card appears. The Local badge tooltip says why it stayed local, so there is nothing to approve or dismiss.
+
+### Services
+
+- **Web:** [#1445](https://github.com/sbstndalton/noevia/pull/1445) (pins) with noevia-web `de3e6113` (web#27: the badge tooltip text, all nine locales, and the client type for the new reason) and noevia-core `40554273` (core#78: a failing sensitivity check resolves to local with a reason instead of an approval card). noevia-rs `667b428b` and noevia-services `6ad25b79` are unchanged. Image `cowork-web:96691012`, `sha256:0f7f96ab25eb114c5418e43a05b0fab1e21a11a4dec9e045835d6c27a31dd517`.
+- **Everything else:** no change. The before/after snapshot of every container (name, id, start time, restart count) differs only in `cowork-web-1`.
+- **Deploy/infra:** web-only cutover with the guarded `up.sh --env-file ... -- -d --no-build --no-deps --wait web` after the idle gate (no Coding job, no autotune or calibration, 0 processing and 0 deferred requests). Scoped state/config/Compose archives (integrity and compare passed) in `/mnt/disk3/noevia-backups/web_96691012_20261012T094014Z`; `.env` backed up as `config/.env.bak.before-96691012`. The switch listing is identical before and after; no switch was changed.
+
+**Evidence.** noevia-core#78 (all 8 checks, after update-branch; the diff against the reviewed head equals exactly main's additions), noevia-web#27 (both checks) and noevia#1445 (incl. "Assembled release") were green. Synthetic candidates (no network, read-only root, caps dropped, tmpfs data, throwaway token) with `NOEVIA_FRONT=node` and `rust` reported ready at `96691012` with 0 error lines. After cutover: `/api/ready` is `{"ready":true,"version":"96691012"}` on loopback and on https://noevia.daserver.work, restart count 0 after 2 minutes, 0 error lines, the served `dist` hashes equal the image's, and the served `chat.cjs` and `routing-modes.cjs` equal the release tree's.
+**Rollback.** `ln -sfn /mnt/docker/appdata/cowork/releases/8d0b2e0a /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=8d0b2e0a/' /mnt/docker/appdata/cowork/config/.env` (or restore `config/.env.bak.before-96691012`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. The previous image is `cowork-web:8d0b2e0a` (`sha256:552a27a63b358f90e2758436b04c6b44ca8040a561ace723215630c2abd6c439`).
+
 ## Release 8d0b2e0a — 2026-10-12 (Nextcloud browser sign-in, #1427 #1432 #1433; web only)
 
 ### Services
