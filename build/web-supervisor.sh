@@ -12,9 +12,9 @@
 # restart policy brings both back together.
 set -uo pipefail
 
-# Only this script may confirm rust-auth / rust-projects to Node (below); never trust a value from
-# the environment.
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED
+# Only this script may confirm rust-auth / rust-projects / rust-project-chats to Node (below); never
+# trust a value from the environment.
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED
 front="${NOEVIA_FRONT:-node}"
 case "$front" in
   node) exec node server/index.cjs ;;
@@ -70,6 +70,14 @@ if [ "${NOEVIA_RUST_PROJECTS:-}" = 1 ]; then
     exit 2
   fi
   rust_projects_confirmed=1
+fi
+# M4's chat-list slice (sbstndalton/noevia#1409): the front answers a project's chat list only when
+# built with it, and then lists rust-project-chats; only then is Node told so, with
+# NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1, and refuses its own chat-list save. A front that lists
+# rust-projects alone answers the images only and leaves the chat list to Node: not an error.
+rust_project_chats_confirmed=""
+if [ "$rust_projects_confirmed" = 1 ] && grep -qx 'rust-project-chats' <<<"$rust_features"; then
+  rust_project_chats_confirmed=1
 fi
 # M6 reporting is a native owner only with validated Rust auth and its compiled feature.
 rust_usage_confirmed=""
@@ -151,7 +159,8 @@ stop() {
 trap 'signalled=1; stop' TERM INT
 
 UI_HOST="$node_host" UI_PORT="$legacy" NOEVIA_RUST_AUTH_CONFIRMED="$rust_auth_confirmed" \
-  NOEVIA_RUST_PROJECTS_CONFIRMED="$rust_projects_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$rust_usage_confirmed" \
+  NOEVIA_RUST_PROJECTS_CONFIRMED="$rust_projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$rust_project_chats_confirmed" \
+  NOEVIA_RUST_USAGE_CONFIRMED="$rust_usage_confirmed" \
   NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$rust_sampling_settings_confirmed" \
   NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$rust_reasoning_settings_confirmed" \
   NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$rust_routing_mode_confirmed" node server/index.cjs &

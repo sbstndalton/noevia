@@ -156,6 +156,68 @@ g commit -qam rsref; rrsha="$(g rev-parse --short HEAD)"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$rrsha" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "a non-sha NOEVIA_RS_REF with a checksum is refused" '[ $rc -ne 0 ] && grep -q NOEVIA_RS_REF "$work/err"'
 
+# M4 (#1409): a front that owns project routes its core's rust-projects.cjs OWNED_ROUTES does not
+# list (a chat-list front over a core from before noevia-core#75) is refused; names of path
+# placeholders do not matter.
+mkdir -p "$work/remote/noevia-rs-y/bins/noevia-server" "$work/remote/noevia-rs-y/contracts/http"
+echo '[workspace]' > "$work/remote/noevia-rs-y/Cargo.toml"
+echo synthetic > "$work/remote/noevia-rs-y/bins/noevia-server/Cargo.toml"
+cat > "$work/remote/noevia-rs-y/contracts/http/routes.toml" <<'TOML'
+[[route]]
+path = "/api/projects/{id}/assets"
+owner = "rust"
+switch = "NOEVIA_RUST_PROJECTS"
+methods = ["POST"]
+client = false
+
+[[route]]
+path = "/api/projects/{projectId}/chats"
+owner = "rust"
+switch = "NOEVIA_RUST_PROJECTS"
+methods = ["GET", "POST"]
+
+[[route]]
+path = "/api/projects/{projectId}/chats/{chatId}"
+owner = "node"
+
+[[route]]
+path = "/api/usage"
+owner = "rust"
+switch = "NOEVIA_RUST_USAGE"
+methods = ["GET"]
+TOML
+tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-y
+rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
+printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
+g commit -qam rs-projects; pa="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$pa" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "a front owning project routes over a core without rust-projects.cjs is refused" \
+  '[ $rc -ne 0 ] && grep -q "POST /api/projects/{}/assets" "$work/err" && [ ! -f "$out/noevia-release-$pa.tar.gz" ]'
+cat > "$w/server/rust-projects.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/assets',
+  'GET /api/projects/{id}/assets/{assetId}',
+  'DELETE /api/projects/{id}/assets/{assetId}',
+]));
+JS
+g add -A && g commit -qm core-images; pb="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$pb" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "a chat-list front over a core that lists only the image routes is refused, naming both methods" \
+  '[ $rc -ne 0 ] && grep -q "GET /api/projects/{}/chats;POST /api/projects/{}/chats$" "$work/err" && ! grep -q "assets" "$work/err" && [ ! -f "$out/noevia-release-$pb.tar.gz" ]'
+cat > "$w/server/rust-projects.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/assets',
+  'GET /api/projects/{id}/assets/{assetId}',
+  'DELETE /api/projects/{id}/assets/{assetId}',
+  'GET /api/projects/{id}/chats',
+  'POST /api/projects/{id}/chats',
+]));
+JS
+g add -A && g commit -qm core-chats; pc="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$pc" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "the same front over a core that lists the chat routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$pc.tar.gz" ]'
+g rm -q apps/web/server/rust-projects.cjs && g commit -qm core-plain
+
 # A failing final tar must not leave out.partial (or a final tarball) behind. The shim writes a
 # truncated archive first, like a full disk would.
 real_tar="$(command -v tar)"
