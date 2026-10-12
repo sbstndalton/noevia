@@ -8,6 +8,17 @@ that touched that service and the image tag deployed for it (for example `cowork
 release leaves the other services on their previous tags. The prose, deploy evidence and rollback
 notes follow as before. Entries before release 7b6942c keep their original free-form layout.
 
+## Release 8d0b2e0a — 2026-10-12 (Nextcloud browser sign-in, #1427 #1432 #1433; web only)
+
+### Services
+
+- **Web:** [#1439](https://github.com/sbstndalton/noevia/pull/1439) (pins) with noevia-web `b7f5d063` (web#26, Nextcloud sign-in UI), noevia-core `e07e23c8` (core#77: sign-in flow with https and same-origin checks on the poll endpoint and returned server, the app password revoked on every failure exit, `POST /api/integrations/storage/nextcloud/cancel`), noevia-rs `667b428b` (rs#91, the cancel route in `routes.toml`) and noevia-services `6ad25b79` (services#33, rs Dockerfile pins only). `cowork-web:8d0b2e0a`, image `sha256:552a27a63b358f90e2758436b04c6b44ca8040a561ace723215630c2abd6c439`. **Owner action:** sign in once under Settings -> Diary & storage -> Sign in with Nextcloud; nothing was signed in or changed by this release.
+- **Everything else:** no change. The before/after snapshot of every container (name, id, start time, restart count) differs only in `cowork-web-1`; Laya and every sidecar were neither rebuilt nor restarted.
+- **Deploy/infra:** web-only cutover with the guarded `up.sh --env-file ... -- -d --no-build --no-deps --wait web`. Scoped state/config/Compose archives (integrity and compare passed) in `/mnt/disk3/noevia-backups/web_8d0b2e0a_20261012T090055Z`; `.env` backed up as `config/.env.bak.before-8d0b2e0a`. The switch listing is identical before and after.
+
+**Evidence.** noevia-core#77 (all checks, after update-branch; head equals the reviewed head plus core main), noevia-services#33 and noevia#1439 (incl. "Assembled release") were green. Synthetic candidates (no network, read-only root, caps dropped, tmpfs data, throwaway token) with `NOEVIA_FRONT=node` and `rust` reported `{"ready":true,"version":"8d0b2e0a"}` with 0 error lines, and an unauthenticated `POST .../nextcloud/start` and `.../cancel` were refused with 401 in both. Before cutover the idle gate reported no Coding job, no active autotune/calibration and no processing or deferred requests. After: `/api/ready` returned the new version on loopback and through `https://noevia.daserver.work`; restart count 0 after 2.5 minutes; the live `/app/dist` file hashes equal the built image's (143 files); the served `index-*.js` and `index-*.css` hashes equal the on-disk ones; 0 error or panic lines in the web log; unauthenticated start/cancel return 401 live. No real sign-in flow was started. Evidence: `/mnt/docker/appdata/cowork/release-prep/8d0b2e0a/`.
+**Rollback.** `ln -sfn /mnt/docker/appdata/cowork/releases/fdd5b48a /mnt/docker/appdata/cowork/current`, `sed -i 's/^COWORK_VERSION=.*/COWORK_VERSION=fdd5b48a/' /mnt/docker/appdata/cowork/config/.env` (or restore `config/.env.bak.before-8d0b2e0a`), then `bash /mnt/docker/appdata/cowork/tools/preflight/up.sh --env-file /mnt/docker/appdata/cowork/config/.env -- -d --no-build --no-deps --wait --wait-timeout 120 web`. `cowork-web:fdd5b48a` (`sha256:693e461196c67e1b875a73aba3ee1785a50af29812064ef0565402d55a392146`) is kept.
+
 ## Release fdd5b48a — 2026-10-12 (M4 free-chats slice available, off by default)
 
 ### Services
