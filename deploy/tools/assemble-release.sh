@@ -363,10 +363,6 @@ rust_owns_chat_delete() {
   project_routes_rs "$1" | grep -qx -e 'DELETE /api/freechats/{}' -e 'DELETE /api/projects/{}/chats/{}' \
     -e 'ALL /api/freechats/{}' -e 'ALL /api/projects/{}/chats/{}'
 }
-# Whether the pinned core refuses a chat's DELETE (rust-projects.cjs OWNED_ROUTES names either).
-core_refuses_chat_delete() {
-  project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qx -e 'DELETE /api/freechats/{}' -e 'DELETE /api/projects/{}/chats/{}'
-}
 # Explicit pairing markers (sbstndalton/noevia#2161), never source shapes: the front's internal
 # store answers POST /v1/chat/delete (crates/server-projects chat_delete.rs CHAT_DELETE_STORE_MARKER),
 # and the core deletes chats only through it (server/project-store-client.cjs
@@ -493,9 +489,14 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   if core_deletes_via_store && ! rs_serves_chat_delete; then
     die "noevia-core at $(lock_value NOEVIA_CORE_REF) deletes chats through the project store's chat/delete, but noevia-rs at $rs_ref does not serve it (no \"noevia-chat-delete-store/1\" in crates/server-projects/src); pin a noevia-rs with the #1071 slice 6 store operation"
   fi
-  if ! rust_owns_chat_delete "$routes_file" && core_refuses_chat_delete; then
-    die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses a chat's DELETE (server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so every chat delete would fail; pin a noevia-rs that owns the chat delete routes (sbstndalton/noevia#1071 slice 6)"
-  fi
+  # Check each refused route independently: the other route still being Rust-owned does not
+  # make a returned-to-Node route available (#2168).
+  for delete_path in '/api/freechats/{}' '/api/projects/{}/chats/{}'; do
+    if project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qxF "DELETE $delete_path" \
+       && ! project_routes_rs "$routes_file" | grep -qxF -e "DELETE $delete_path" -e "ALL $delete_path"; then
+      die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses a chat's DELETE (DELETE $delete_path in server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so that chat delete would fail; pin a noevia-rs that owns this chat delete route (sbstndalton/noevia#2168)"
+    fi
+  done
   # sbstndalton/noevia#2153: a core that builds brains only for origin "history" entries, beside a
   # front whose journal names no origin, would build no brain at all (every entry is mirror-only
   # and Node stops its own nudge once the journal answers). The origin field itself is safe either

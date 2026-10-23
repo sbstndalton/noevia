@@ -463,6 +463,17 @@ printf '%s\n' 'pub const CHAT_DELETE_STORE_MARKER: &str = "noevia-chat-delete-st
 rs_lock; g commit -qam rs-chat-delete-store; pcd5="$(g rev-parse --short HEAD)"
 assemble_at "$pcd5"; rc=$?
 check "#1071 slice 6: ...and assembles once the core refuses the routes and deletes through the store the front serves" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$pcd5.tar.gz" ]'
+# #2168: one DELETE returned to Node must fail even while the other remains Rust-owned.
+for route in '/api/freechats/{chatId}' '/api/projects/{projectId}/chats/{chatId}'; do
+  cp "$rt" "$work/routes-chat-delete-both.toml"
+  sed -i.bak "\#^path = \"$route\"\$#{n;s/^owner = \"rust\"\$/owner = \"node\"/;n;/^methods = \[\"DELETE\"\]\$/d;}" "$rt" && rm -f "$rt.bak"
+  rs_lock; g commit -qam rs-one-delete-node; mixed="$(g rev-parse --short HEAD)"
+  assemble_at "$mixed"; rc=$?
+  normalized="$(printf '%s' "$route" | sed 's/{[^}]*}/{}/g')"
+  check "#2168: core refusal of DELETE $route requires that individual Rust route" \
+    '[ $rc -ne 0 ] && grep -q "refuses a chat" "$work/err" && grep -qF "DELETE $normalized in" "$work/err" && [ ! -f "$out/noevia-release-$mixed.tar.gz" ]'
+  cp "$work/routes-chat-delete-both.toml" "$rt"
+done
 # The other way round: a core that refuses the delete beside a front that hands it back to Node.
 for route in '/api/freechats/{chatId}' '/api/projects/{projectId}/chats/{chatId}'; do
   sed -i.bak "\#^path = \"$route\"\$#{n;s/^owner = \"rust\"\$/owner = \"node\"/;n;/^methods = \[\"DELETE\"\]\$/d;}" "$rt" && rm -f "$rt.bak"
@@ -477,6 +488,17 @@ sed -i.bak "/^  'DELETE \/api\/freechats\/{chatId}',$/d; /^  'DELETE \/api\/proj
 g add -A && g commit -qm core-chat-delete-node-again; pcd7="$(g rev-parse --short HEAD)"
 assemble_at "$pcd7"; rc=$?
 check "#1071 slice 6: ...and assembles once that core answers the routes again (its deletes still through the store)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$pcd7.tar.gz" ]'
+# Conversely, a single Rust DELETE requires the corresponding individual core refusal.
+for route in '/api/freechats/{chatId}' '/api/projects/{projectId}/chats/{chatId}'; do
+  cp "$rt" "$work/routes-chat-delete-node.toml"
+  sed -i.bak "\#^path = \"$route\"\$#{n;s/^owner = \"node\"\$/owner = \"rust\"\nmethods = [\"DELETE\"]/;}" "$rt" && rm -f "$rt.bak"
+  rs_lock; g commit -qam rs-one-delete-rust; mixed="$(g rev-parse --short HEAD)"
+  assemble_at "$mixed"; rc=$?
+  normalized="$(printf '%s' "$route" | sed 's/{[^}]*}/{}/g')"
+  check "#2168: DELETE $route in Rust requires that individual core refusal" \
+    '[ $rc -ne 0 ] && grep -q "OWNED_ROUTES" "$work/err" && grep -qF "DELETE $normalized" "$work/err" && [ ! -f "$out/noevia-release-$mixed.tar.gz" ]'
+  cp "$work/routes-chat-delete-node.toml" "$rt"
+done
 # The history route goes back to Node for the checks below (they swap the core's guard files).
 hn="$(grep -n '^path = "/api/chats/{chatId}/history"$' "$work/remote/noevia-rs-y/contracts/http/routes.toml" | cut -d: -f1)"
 sed -i.bak "$((hn-2)),$((hn+2))d" "$work/remote/noevia-rs-y/contracts/http/routes.toml" && rm -f "$work/remote/noevia-rs-y/contracts/http/routes.toml.bak"
