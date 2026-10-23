@@ -287,7 +287,7 @@ routes_toml() {
 }
 project_routes_rs() {
   routes_toml "$1" | awk -F'\t' '
-    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$|freechats\/[^\/]+$)/ || $1 ~ /^\/api\/chats\/[^/]+\/context$/) {
+    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$|freechats\/[^\/]+$)/ || $1 ~ /^\/api\/chats\/[^/]+\/(context|move)$/) {
       if ($4 == "-") { print "ALL " $1; next }
       n = split($4, m, /[^A-Z]+/)
       for (i = 1; i <= n; i++) if (m[i] != "") print m[i] " " $1
@@ -373,6 +373,54 @@ rs_serves_chat_delete() {
 core_deletes_via_store() {
   grep -qF "'noevia-chat-delete-client/1'" "$tree/core/server/project-store-client.cjs" 2>/dev/null
 }
+# Slice7: exact canonical declarations + actual shorthand exports, never comment literals.
+# A transitional handler must be a named exported async chatMoveRoute in its actual route module.
+move_capability() {
+  [ -f "$1" ] || return 1
+  awk -v name="$2" -v value="$3" -v kind="$4" '
+    function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    {
+      line=clean($0)
+      if (block) { if (index(line,"*/")) block=0; next }
+      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
+      if (line ~ /^\/\//) next
+      if (kind=="features" && index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
+      if (features) {
+        fend=index(line,"];")
+        if(fend) line=substr(line,1,fend-1)
+        n=split(line,fields,",")
+        for(i=1;i<=n;i++) if(clean(fields[i])==sprintf("%c",34) value sprintf("%c",34)) observed++
+        if(fend) features=0
+      }
+      if (kind=="rust" && line == "pub const " name ": &str = \"" value "\";") decl++
+      if (kind=="js" && line == "const " name " = " sprintf("%c",39) value sprintf("%c",39) ";") decl++
+      if (kind=="function" && line ~ ("^async function " name "\\(")) decl++
+      if (index(line,"module.exports = {")==1) { exporting=1; line=substr(line,length("module.exports = {")+1) }
+      if (exporting) {
+        ending=index(line,"}")
+        if (ending) line=substr(line,1,ending-1)
+        n=split(line,fields,",")
+        for(i=1;i<=n;i++) if(clean(fields[i])==name) exported++
+        if(ending) exporting=0
+      }
+    }
+    END { exit !(decl==1 && (kind=="rust" || (kind=="features" && observed==1) || (kind!="features" && exported==1))) }
+  ' "$1"
+}
+rust_owns_chat_move() {
+  project_routes_rs "$1" | grep -qxF 'POST /api/chats/{}/move'
+}
+core_refuses_chat_move() {
+  project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qxF 'POST /api/chats/{}/move'
+}
+rs_move_foundation() { move_capability "$tree/rs/crates/server-projects/src/chat_move.rs" MOVE_MARKER noevia-chat-move-foundation/1 rust; }
+rs_move_start() { move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES start-id features; }
+rs_move_journal() { move_capability "$tree/rs/crates/server-projects/src/journal.rs" CHAT_MOVE_JOURNAL_MARKER noevia-chat-move-journal/1 rust; }
+core_move_client() { move_capability "$tree/core/server/project-store-client.cjs" CHAT_MOVE_CLIENT_MARKER noevia-chat-move-client/1 js; }
+core_move_enforcement() { move_capability "$tree/core/server/chat.cjs" CHAT_MOVE_ENFORCEMENT_MARKER noevia-chat-move-enforcement/1 js; }
+core_move_reader() { move_capability "$tree/core/server/chat-change-journal.cjs" CHAT_MOVE_READER_MARKER noevia-chat-move-reader/1 js; }
+core_move_owner() { move_capability "$tree/core/server/rust-projects.cjs" CHAT_MOVE_PUBLIC_OWNER "$1" js; }
+core_move_handler() { move_capability "$tree/core/server/routes/chat-lists.cjs" chatMoveRoute - function; }
 # Whether the pinned front reads NOEVIA_START_ID: a Rust source under rs/bins names it, or a
 # FEATURES list there carries "start-id".
 rs_reads_start_id() {
@@ -497,6 +545,28 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses a chat's DELETE (DELETE $delete_path in server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so that chat delete would fail; pin a noevia-rs that owns this chat delete route (sbstndalton/noevia#2168)"
     fi
   done
+  # #1071 slice7: an internal move capability is unsafe beside old Node grants too.
+  # Refuse partial security/provenance stacks even before switching public ownership.
+  if rust_owns_chat_move "$routes_file" || core_refuses_chat_move || rs_move_foundation || rs_move_journal \
+     || core_move_client || core_move_enforcement || core_move_reader; then
+    move_other_methods="$( { project_routes_rs "$routes_file"; project_routes_core "$tree/core/server/rust-projects.cjs" || true; } | awk '$2=="/api/chats/{}/move" && $1!="POST"')"
+    [ -z "$move_other_methods" ] || die "chat move POST ownership pairing: non-POST move ownership/refusal would remove its existing fallback"
+    rs_move_foundation && rs_move_journal && rs_move_start \
+      || die "chat move capability pairing: Rust needs canonical foundation, live/recovery journal and shared start support"
+    core_move_client && core_move_enforcement && core_move_reader && core_tails_change_journal && rs_serves_change_journal \
+      || die "chat move capability pairing: Node needs exported client, final-dispatch enforcement and move journal reader"
+    if core_move_owner rust; then
+      rust_owns_chat_move "$routes_file" && core_refuses_chat_move \
+        || die "chat move POST ownership pairing: declared rust requires exact native POST and Node POST refusal"
+      ! core_move_handler \
+        || die "chat move owner/handler contradiction: declared rust retains an exported Node move handler"
+    elif core_move_owner node; then
+      ! rust_owns_chat_move "$routes_file" && ! core_refuses_chat_move && core_move_handler \
+        || die "chat move POST ownership pairing: declared node requires a real exported delegation handler and no native/refused POST"
+    else
+      die "chat move capability pairing: missing, unknown or unexported CHAT_MOVE_PUBLIC_OWNER declaration"
+    fi
+  fi
   # sbstndalton/noevia#2153: a core that builds brains only for origin "history" entries, beside a
   # front whose journal names no origin, would build no brain at all (every entry is mirror-only
   # and Node stops its own nudge once the journal answers). The origin field itself is safe either
