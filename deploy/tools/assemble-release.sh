@@ -449,6 +449,14 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
     rs_serves_change_journal \
       || die "noevia-rs at $rs_ref answers POST /api/chats/{chatId}/history but does not journal transcript changes (no /v1/changes/read under rs/bins), so the chat mirror and brain would stop following saves; pin a noevia-rs with the sbstndalton/noevia#2153 journal"
   fi
+  # sbstndalton/noevia#1071 slice 5, the other way round: a core that refuses the history save
+  # (rust-projects.cjs OWNED_ROUTES, noevia-core with the Node handler deleted) beside a front that
+  # does not answer it (before noevia-rs#291) would leave every chat save to a Node that answers
+  # 503 RUST_PROJECTS_OWNED.
+  if ! rust_owns_history_post "$routes_file" \
+     && project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qx 'POST /api/chats/{}/history'; then
+    die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses POST /api/chats/{chatId}/history (server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so every chat save would fail; pin a noevia-rs that owns the history save (noevia-rs#291, sbstndalton/noevia#1071 slice 5)"
+  fi
   # sbstndalton/noevia#2153: a core that builds brains only for origin "history" entries, beside a
   # front whose journal names no origin, would build no brain at all (every entry is mirror-only
   # and Node stops its own nudge once the journal answers). The origin field itself is safe either

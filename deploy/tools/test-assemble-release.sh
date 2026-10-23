@@ -430,7 +430,14 @@ sed -i.bak "$((hn-2)),$((hn+2))d" "$work/remote/noevia-rs-y/contracts/http/route
 tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-y
 rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
 printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
-g commit -qam rs-history-node-again
+g commit -qam rs-history-node-again; ph11="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph11" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "#1071 slice 5: a core that refuses the history save beside a front that does not answer it is refused" \
+  '[ $rc -ne 0 ] && grep -q "refuses POST /api/chats/{chatId}/history" "$work/err" && grep -q "does not answer it" "$work/err" && [ ! -f "$out/noevia-release-$ph11.tar.gz" ]'
+# ...so the core hands the save back to Node too.
+sed -i.bak "/^  'POST \/api\/chats\/{chatId}\/history',$/d" "$w/server/rust-projects.cjs" && rm -f "$w/server/rust-projects.cjs.bak"
+! grep -q "POST /api/chats/{chatId}/history" "$w/server/rust-projects.cjs" || { echo "FAIL - the history save was not taken out of the core fixture"; fails=$((fails+1)); }
+g commit -qam core-history-node-again
 # ...and the core's history-op client goes too, since the fronts below serve no history ops.
 g rm -q apps/web/server/project-store-client.cjs && g commit -qm core-no-history-ops
 # #1264/#1071: context is permanent. Old switched Rust must be refused even
