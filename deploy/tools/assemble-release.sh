@@ -451,7 +451,7 @@ rs_research_store() {
   local route route_source
   route_source="$(sed '/^[[:space:]]*\/\//d; /\/\*/,/\*\//d' "$tree/rs/bins/noevia-server/src/project_store.rs" | tr '\n' ' ')" || return 1
   for route in recover start abandon event cancel finish report prepare artifact clear read list; do
-    grep -Eq "\.route\([[:space:]]*\"/v1/research-jobs/$route\",[[:space:]]*research_route\(ResearchOp::${route^}\)[[:space:]]*\)" <<<"$route_source" || return 1
+    grep -Eq "\.route\([[:space:]]*\"/v1/research-jobs/$route\",[[:space:]]*research_route\(ResearchOp::${route^}\)[[:space:]]*,?[[:space:]]*\)" <<<"$route_source" || return 1
   done
 }
 
