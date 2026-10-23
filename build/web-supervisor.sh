@@ -97,6 +97,14 @@ if [ "$web_address_front_owner" != "$web_address_core_owner" ]; then
   echo "web-supervisor: web-address GET ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# Both POST actions move together. A binary/core mismatch is refused before either starts.
+web_write_front_owner=""
+grep -qx 'rust-web-address-write' <<<"$rust_features" && web_write_front_owner=rust
+web_write_core_owner="$(node -e "try { const m = require('./server/rust-web-address.cjs'); if (m.WEB_ADDRESS_WRITE_OWNER === 'noevia-web-address-write-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
+  echo "web-supervisor: web-address POST ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # #2027: Node's legacy workspace prologue delegates only to the actual selected front
 # when that binary advertises the filesystem-only helper. Never inherit an arbitrary path.
 legacy_claim_bin=""

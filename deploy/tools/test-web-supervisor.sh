@@ -122,6 +122,17 @@ check "web-address: ported core over old front is refused before launch" '[ $rc 
 reset; touch "$work/die-front"
 run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" >/dev/null 2>"$work/err"; rc=$?
 check "web-address: matching exported core and compiled front start together" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+printf "%s\n" "module.exports = { WEB_ADDRESS_READ_OWNER: 'noevia-web-address-read-rust/1', WEB_ADDRESS_WRITE_OWNER: 'noevia-web-address-write-rust/1' };" > "$work/server/rust-web-address.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" >/dev/null 2>"$work/err"; rc=$?
+check "web-address POST: ported core over read-only front is refused before launch" '[ $rc -eq 2 ] && grep -q "web-address POST ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-web-address-read rust-web-address-write" >/dev/null 2>"$work/err"; rc=$?
+check "web-address POST: matching writer pair starts together" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+printf "%s\n" "module.exports = { WEB_ADDRESS_READ_OWNER: 'noevia-web-address-read-rust/1' };" > "$work/server/rust-web-address.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-web-address-read rust-web-address-write" >/dev/null 2>"$work/err"; rc=$?
+check "web-address POST: writer front over read-only core is refused before launch" '[ $rc -eq 2 ] && grep -q "web-address POST ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 printf "%s\n" "module.exports = { WEB_ADDRESS_READ_OWNER: 'wrong' };" > "$work/server/rust-web-address.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" WEB_ADDRESS_READ_OWNER=noevia-web-address-read-rust/1 >/dev/null 2>"$work/err"; rc=$?
