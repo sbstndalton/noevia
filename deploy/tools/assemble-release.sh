@@ -438,6 +438,23 @@ rs_source_store() {
   done
 }
 
+# Deep research still executes in Node; Rust alone owns its kind-scoped journal. The
+# selected pair must contain the exported live client and the compiled internal store routes.
+core_research_client() {
+  move_capability "$tree/core/server/project-store-client.cjs" RESEARCH_JOBS_CLIENT_MARKER noevia-research-jobs-client/1 js
+}
+rs_research_store() {
+  move_capability "$tree/rs/crates/server-projects/src/research_jobs.rs" RESEARCH_JOBS_STORE_MARKER noevia-research-jobs-store/1 rust || return 1
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER feature_ref || return 1
+  grep -qxF 'pub mod research_jobs;' "$tree/rs/crates/server-projects/src/lib.rs" || return 1
+  grep -qF 'use server_projects::research_jobs as jobs;' "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
+  local route route_source
+  route_source="$(sed '/^[[:space:]]*\/\//d; /\/\*/,/\*\//d' "$tree/rs/bins/noevia-server/src/project_store.rs" | tr '\n' ' ')" || return 1
+  for route in recover start abandon event cancel finish report prepare artifact clear read list; do
+    grep -Eq "\.route\([[:space:]]*\"/v1/research-jobs/$route\",[[:space:]]*research_route\(ResearchOp::${route^}\)[[:space:]]*\)" <<<"$route_source" || return 1
+  done
+}
+
 # Whether the pinned front reads NOEVIA_START_ID: a Rust source under rs/bins names it, or a
 # FEATURES list there carries "start-id".
 rs_reads_start_id() {
@@ -457,6 +474,11 @@ if [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
    || grep -qE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
    || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
   core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
+fi
+if [ -f "$tree/rs/crates/server-projects/src/research_jobs.rs" ] \
+   || grep -qE 'RESEARCH_JOBS_CLIENT_MARKER|researchJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+   || grep -qF 'workspace.researchJobs' "$tree/core/server/research-jobs.cjs" 2>/dev/null; then
+  core_research_client && rs_research_store || die "research job store pairing: core needs an exported research client and Rust needs the compiled research store capability and internal routes"
 fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
