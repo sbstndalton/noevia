@@ -87,6 +87,16 @@ if [ -n "$missing" ]; then
   echo "web-supervisor: this noevia-server lacks the front route feature(s):$missing; Node no longer answers those routes (sbstndalton/noevia#1071), so update the image" >&2
   exit 2
 fi
+# The three web-address GETs are a paired owner change. The front's compiled capability
+# and core's exported marker must agree before either process starts; source pins alone cannot
+# protect a manually mixed installed pair. Neither result comes from an inherited environment.
+web_address_front_owner=""
+grep -qx 'rust-web-address-read' <<<"$rust_features" && web_address_front_owner=rust
+web_address_core_owner="$(node -e "try { const m = require('./server/rust-web-address.cjs'); if (m.WEB_ADDRESS_READ_OWNER === 'noevia-web-address-read-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$web_address_front_owner" != "$web_address_core_owner" ]; then
+  echo "web-supervisor: web-address GET ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # #2027: Node's legacy workspace prologue delegates only to the actual selected front
 # when that binary advertises the filesystem-only helper. Never inherit an arbitrary path.
 legacy_claim_bin=""

@@ -294,6 +294,28 @@ project_routes_rs() {
     }
   ' | sed 's/{[^}]*}/{}/g' | sort -u
 }
+# The exact permanent read-only web-address GETs. Non-GET methods must continue to Node.
+web_address_routes_rs() {
+  routes_toml "$1" | awk -F'\t' '
+    $1 == "/api/instance" || $1 == "/.well-known/webauthn" || $1 == "/api/admin/web-address" {
+      if ($2 == "rust") {
+        if ($3 != "-" || $4 != "GET") { print "invalid " $1; next }
+        print "GET " $1
+      }
+    }
+  ' | sort -u
+}
+# The core's explicit exported refusal declaration must be wired before its public/auth mounts.
+# Parse each path independently, so one missing GET cannot hide behind two paired siblings.
+web_address_routes_core() {
+  local source="$tree/core/server/rust-web-address.cjs"
+  [ -f "$source" ] || return 0
+  grep -qxF "const WEB_ADDRESS_READ_OWNER = 'noevia-web-address-read-rust/1';" "$source" || { echo invalid-marker; return; }
+  grep -qxF 'module.exports = { WEB_ADDRESS_READ_OWNER, OWNED_GET_PATHS, ROUTE_REFUSAL, ownedRead, refuseOwnedRead };' "$source" || { echo invalid-export; return; }
+  grep -qxF "  return method === 'GET' && OWNED_GET_PATHS.includes(pathname);" "$source" || { echo invalid-method; return; }
+  grep -qxF "    if (require('./rust-web-address.cjs').refuseOwnedRead(req, res, p, json)) return;" "$tree/core/server/index.cjs" || { echo invalid-wiring; return; }
+  sed -n '/^const OWNED_GET_PATHS = /,/]);/p' "$source" | grep -oE "'/(api/instance|api/admin/web-address|\.well-known/webauthn)'" | tr -d "'" | sed 's/^/GET /' | sort -u
+}
 # Whether routes.toml gives GET /api/auth/session to Rust with no switch (sign-in is the front's
 # permanently, sbstndalton/noevia#1071).
 rust_auth_unswitched() {
@@ -434,6 +456,12 @@ project_routes_core() {
   [ -f "$1" ] || return 0
   sed -n "/^const ${2:-OWNED_ROUTES} = /,/]))/p" "$1" | grep -o "'[A-Z]* /[^']*'" | tr -d "'" | sed 's/{[^}]*}/{}/g' | sort -u
 }
+# A ported core with no Rust route contract cannot be paired at all. Keep this outside the
+# routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
+if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then
+  web_core="$(web_address_routes_core)"
+  [ -z "$web_core" ] || die "web-address GET ownership pairing: core refuses GETs but Rust routes.toml is missing"
+fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.
@@ -443,6 +471,21 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   route_switches="$(switched_routes "$routes_file")"
   if printf '%s\n' "$route_switches" | grep -q '^NOEVIA_RUST_PROJECT_WRITES '; then
     die "noevia-rs at $rs_ref still gates chat context on NOEVIA_RUST_PROJECT_WRITES; pin permanent GET/POST context ownership (sbstndalton/noevia#1071)"
+  fi
+  # The three web-address GETs change owner together. A read-only Rust front must be
+  # paired with Node's early refusal; an early refusal needs a Rust answer. Other methods
+  # (especially HEAD and both POST writers) remain Node's.
+  web_rs="$(web_address_routes_rs "$routes_file")"
+  web_core="$(web_address_routes_core)"
+  web_expected="$(printf 'GET /api/admin/web-address\nGET /api/instance\nGET /.well-known/webauthn' | sort)"
+  if [ -n "$web_rs" ] || [ -n "$web_core" ]; then
+    [ "$web_rs" = "$web_expected" ] && [ "$web_core" = "$web_expected" ] \
+      || die "web-address GET ownership pairing: Rust must own exactly three GETs and Node must refuse those exact GETs before public/auth routing; preserve HEAD/POST fallback"
+    move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-web-address-read features \
+      || die "web-address GET ownership pairing: Rust route table lacks a compiled --features declaration"
+    grep -qF 'WEB_ADDRESS_READ_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+      && grep -qF "rust-web-address-read" "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+      || die "web-address GET ownership pairing: web supervisor lacks a prelaunch capability comparison"
   fi
   # sbstndalton/noevia#1071: the project routes are the front's with no switch. The web supervisor
   # no longer passes NOEVIA_RUST_PROJECTS, so a front that still gates them on it (before the
