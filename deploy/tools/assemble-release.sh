@@ -481,7 +481,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   if [ -n "$web_rs" ] || [ -n "$web_core" ]; then
     [ "$web_rs" = "$web_expected" ] && [ "$web_core" = "$web_expected" ] \
       || die "web-address GET ownership pairing: Rust must own exactly three GETs and Node must refuse those exact GETs before public/auth routing; preserve HEAD/POST fallback"
-    grep -qF '"rust-web-address-read"' "$tree/rs/bins/noevia-server/src/lib.rs" 2>/dev/null \
+    move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-web-address-read features \
       || die "web-address GET ownership pairing: Rust route table lacks a compiled --features declaration"
     grep -qF 'WEB_ADDRESS_READ_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
       && grep -qF "rust-web-address-read" "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \

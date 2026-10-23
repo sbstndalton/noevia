@@ -683,6 +683,14 @@ web_routes() {
 web_try() { web_routes > "$work/web-routes"; try_routes "$1" < "$work/web-routes"; }
 web_try web-paired
 check "#1071 web-address: exact three GETs pair with Node refusal" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/web-features.saved"
+printf '%s\n' '//! "rust-web-address-read" is planned' > "$rz/bins/noevia-server/src/lib.rs"
+web_try web-feature-comment-only
+check "#1071 web-address: a comment does not grant the compiled feature" 'refused "lacks a compiled --features declaration"'
+printf '%s\n' 'pub const OTHER: &[&str] = &["rust-web-address-read"];' 'pub const FEATURES: &[&str] = &[];' > "$rz/bins/noevia-server/src/lib.rs"
+web_try web-feature-outside-list
+check "#1071 web-address: a feature outside FEATURES does not grant the capability" 'refused "lacks a compiled --features declaration"'
+cp "$work/web-features.saved" "$rz/bins/noevia-server/src/lib.rs"
 omit_routes=1 web_try web-no-routes
 check "#1071 web-address: ported core with missing Rust routes.toml is refused" 'refused "web-address GET ownership pairing: core refuses GETs but Rust routes.toml is missing"'
 for web_skip in '/api/instance' '/.well-known/webauthn' '/api/admin/web-address'; do
