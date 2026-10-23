@@ -1,0 +1,80 @@
+name: Native release idle qualification
+on:
+  pull_request:
+    paths:
+      - tools/release-idle/**
+      - .github/workflows/release-idle-native.yml
+  push:
+    branches: [main]
+    paths:
+      - tools/release-idle/**
+      - .github/workflows/release-idle-native.yml
+permissions:
+  contents: read
+jobs:
+  release-idle-native:
+    name: Native release idle synthetic Linux qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+      - name: Compile and qualify exact synthetic Rust operator sources
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/release-idle-native"
+          test ! -e "$evidence" && test ! -L "$evidence"
+          mkdir -m 700 "$evidence"
+          git rev-parse HEAD 'HEAD^{tree}' > "$evidence/source.identity"
+          sha256sum tools/release-idle/Cargo.toml tools/release-idle/Cargo.lock tools/release-idle/README.md tools/release-idle/src/*.rs tools/release-idle/tests/synthetic.rs > "$evidence/source.sha256"
+          rustc -vV > "$evidence/compiler.version"
+          grep -qx 'release: 1.99.0' "$evidence/compiler.version"
+          uname -srm > "$evidence/runtime.txt"
+          printf '%s\n' 'cargo fmt --manifest-path tools/release-idle/Cargo.toml -- --check' > "$evidence/fmt.command"
+          set +e
+          cargo fmt --manifest-path tools/release-idle/Cargo.toml -- --check > "$evidence/fmt.stdout" 2> "$evidence/fmt.stderr"
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$evidence/fmt.status"
+          test "$code" = 0
+          printf '%s\n' 'cargo clippy --locked --manifest-path tools/release-idle/Cargo.toml --bin noevia-release-idle --test synthetic --message-format=json -- -D warnings' > "$evidence/clippy.command"
+          set +e
+          cargo clippy --locked --manifest-path tools/release-idle/Cargo.toml --bin noevia-release-idle --test synthetic --message-format=json -- -D warnings > "$evidence/clippy.stdout" 2> "$evidence/clippy.stderr"
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$evidence/clippy.status"
+          test "$code" = 0
+          printf '%s\n' 'cargo test --locked --manifest-path tools/release-idle/Cargo.toml --test synthetic --no-run --message-format=json' > "$evidence/build.command"
+          set +e
+          cargo test --locked --manifest-path tools/release-idle/Cargo.toml --test synthetic --no-run --message-format=json > "$evidence/build.stdout" 2> "$evidence/build.stderr"
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$evidence/build.status"
+          test "$code" = 0
+          jq -r 'select(.reason == "compiler-artifact" and .target.name == "synthetic" and .profile.test == true and .executable != null) | .executable' "$evidence/build.stdout" > "$evidence/executable.txt"
+          test "$(wc -l < "$evidence/executable.txt")" = 1
+          exe="$(realpath "$(cat "$evidence/executable.txt")")"
+          case "$exe" in "$GITHUB_WORKSPACE/tools/release-idle/target/debug/deps/"synthetic-*) ;; *) exit 1 ;; esac
+          test -f "$exe" && test ! -L "$exe" && test -x "$exe"
+          sha256sum -c "$evidence/source.sha256"
+          sha256sum "$exe" > "$evidence/binary.sha256"
+          printf '%s\n' "$exe" --nocapture > "$evidence/control.command"
+          set +e
+          "$exe" --nocapture > "$evidence/control.stdout" 2> "$evidence/control.stderr"
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$evidence/control.status"
+          sha256sum -c "$evidence/source.sha256"
+          test "$code" = 0
+          grep -Eq '^test result: ok\. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;' "$evidence/control.stdout"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-release-idle-synthetic-linux
+          path: ${{ runner.temp }}/release-idle-native
+          if-no-files-found: error
