@@ -837,6 +837,75 @@ TOML
 }
 move_try move-transitional
 check "slice7 complete declared Node transition assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Source-job internal store pairing is independent of public routes.toml. It requires the
+# core's real export, the Rust store declaration, its compiled FEATURES reference and routes.
+cp "$w/server/project-store-client.cjs" "$work/source-move-client.saved"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/source-move-features.saved"
+cat > "$w/server/project-store-client.cjs" <<'JS'
+const CHAT_MOVE_CLIENT_MARKER = 'noevia-chat-move-client/1';
+const SOURCE_JOBS_CLIENT_MARKER = 'noevia-source-jobs-client/1';
+function sourceJobsFor(user) { return { user }; }
+module.exports = { CHAT_MOVE_CLIENT_MARKER, SOURCE_JOBS_CLIENT_MARKER, sourceJobsFor };
+JS
+source_try() {
+  move_try "$1" <<'TOML'
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "node"
+methods = ["POST"]
+TOML
+}
+source_try source-new-core-old-rust
+check "source job new core with old Rust is refused" 'refused "source job store pairing"'
+rm -f "$rz/contracts/http/routes.toml"
+tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-t
+rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
+printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
+g add -A && g commit -qm source-no-routes; tsha="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$tsha" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "source pairing is checked even without Rust public routes.toml" 'refused "source job store pairing"'
+mkdir -p "$rz/crates/server-projects/src"
+echo 'pub const SOURCE_JOBS_STORE_MARKER: &str = "noevia-source-jobs-store/1";' > "$rz/crates/server-projects/src/source_jobs.rs"
+echo 'pub mod source_jobs;' > "$rz/crates/server-projects/src/lib.rs"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];' > "$rz/bins/noevia-server/src/lib.rs"
+{
+  echo 'use server_projects::source_jobs as jobs;'
+  for op in recover start abandon progress finish read; do
+    echo ".route(\"/v1/source-jobs/$op\", source_route(SourceOp::Start))"
+  done
+} > "$rz/bins/noevia-server/src/project_store.rs"
+source_try source-matched
+check "matching exported source client and compiled Rust store assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$w/server/project-store-client.cjs" "$work/source-client.saved"
+printf '%s\n' 'function sourceJobsFor(user) { return { user }; }' 'module.exports = { sourceJobsFor };' > "$w/server/project-store-client.cjs"
+source_try source-stripped-core-marker
+check "ported core with stripped source marker is refused" 'refused "source job store pairing"'
+cp "$work/source-client.saved" "$w/server/project-store-client.cjs"
+grep -v '^module.exports' "$w/server/project-store-client.cjs" > "$work/source-unexported"
+cp "$work/source-unexported" "$w/server/project-store-client.cjs"
+source_try source-unexported-core-marker
+check "unexported source client marker is refused" 'refused "source job store pairing"'
+cp "$work/source-client.saved" "$w/server/project-store-client.cjs"
+cp "$rz/crates/server-projects/src/source_jobs.rs" "$work/source-store.saved"
+printf '%s\n' '/* pub const SOURCE_JOBS_STORE_MARKER: &str = "noevia-source-jobs-store/1"; */' > "$rz/crates/server-projects/src/source_jobs.rs"
+source_try source-comment-only-rust-marker
+check "comment-only Rust source marker is refused" 'refused "source job store pairing"'
+cp "$work/source-store.saved" "$rz/crates/server-projects/src/source_jobs.rs"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/source-features.saved"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id"];' > "$rz/bins/noevia-server/src/lib.rs"
+source_try source-uncompiled-rust-marker
+check "uncompiled Rust source marker is refused" 'refused "source job store pairing"'
+cp "$work/source-features.saved" "$rz/bins/noevia-server/src/lib.rs"
+cp "$rz/bins/noevia-server/src/project_store.rs" "$work/source-routes.saved"
+grep -v '/v1/source-jobs/finish' "$rz/bins/noevia-server/src/project_store.rs" > "$work/source-missing-route"
+cp "$work/source-missing-route" "$rz/bins/noevia-server/src/project_store.rs"
+source_try source-missing-finish
+check "missing live source store route is refused" 'refused "source job store pairing"'
+cp "$work/source-routes.saved" "$rz/bins/noevia-server/src/project_store.rs"
+cp "$work/source-move-client.saved" "$w/server/project-store-client.cjs"
+cp "$work/source-move-features.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$rz/crates/server-projects/src/source_jobs.rs" "$rz/crates/server-projects/src/lib.rs" "$rz/bins/noevia-server/src/project_store.rs"
+
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
  "core:chat.cjs:CHAT_MOVE_ENFORCEMENT_MARKER" "core:chat-change-journal.cjs:CHAT_MOVE_READER_MARKER" \
