@@ -172,7 +172,9 @@ fi
 # A front that saves a project's chat list over a core from before noevia-core#75 would have its
 # chats dropped by Node's whole-field merge (sbstndalton/noevia#1409), so that pairing is refused
 # here; likewise a front that saves the free-chat list (GET/POST /api/freechats) over a core from
-# before noevia-core#76, whose own free-list writers would overwrite free-chats.json whole. Placeholder names ({id}, {projectId}) are compared as one.
+# before noevia-core#76, whose own free-list writers would overwrite free-chats.json whole, and a
+# front that answers a chat's DELETE (/api/freechats/{chatId}, /api/projects/{id}/chats/{chatId},
+# #1071 slice 6) over a core that still answers it too. Placeholder names ({id}, {projectId}) are compared as one.
 # Includes the permanent context slice (#1264). routes.toml is read by routes_toml below, which
 # understands the TOML that matters here (indented keys, spaces or tabs around "=", "basic" or
 # 'literal' strings, trailing comments, multi-line arrays, quoted keys, [[ route ]] headers) rather
@@ -285,7 +287,7 @@ routes_toml() {
 }
 project_routes_rs() {
   routes_toml "$1" | awk -F'\t' '
-    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$)/ || $1 ~ /^\/api\/chats\/[^/]+\/context$/) {
+    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$|freechats\/[^\/]+$)/ || $1 ~ /^\/api\/chats\/[^/]+\/context$/) {
       if ($4 == "-") { print "ALL " $1; next }
       n = split($4, m, /[^A-Z]+/)
       for (i = 1; i <= n; i++) if (m[i] != "") print m[i] " " $1
@@ -354,6 +356,22 @@ core_needs_journal_origin() {
 # Whether the pinned front's journal entries carry that origin (crates/server-projects journal.rs).
 rs_journals_origin() {
   grep -qs '"origin"' "$tree/rs/crates/server-projects/src/journal.rs"
+}
+# Whether routes.toml gives a chat's DELETE to Rust (sbstndalton/noevia#1071 slice 6): either of
+# DELETE /api/freechats/{chatId} and DELETE /api/projects/{projectId}/chats/{chatId}.
+rust_owns_chat_delete() {
+  project_routes_rs "$1" | grep -qx -e 'DELETE /api/freechats/{}' -e 'DELETE /api/projects/{}/chats/{}' \
+    -e 'ALL /api/freechats/{}' -e 'ALL /api/projects/{}/chats/{}'
+}
+# Explicit pairing markers (sbstndalton/noevia#2161), never source shapes: the front's internal
+# store answers POST /v1/chat/delete (crates/server-projects chat_delete.rs CHAT_DELETE_STORE_MARKER),
+# and the core deletes chats only through it (server/project-store-client.cjs
+# CHAT_DELETE_CLIENT_MARKER).
+rs_serves_chat_delete() {
+  grep -rqsF --include='*.rs' -e '"noevia-chat-delete-store/1"' "$tree/rs/crates/server-projects/src"
+}
+core_deletes_via_store() {
+  grep -qF "'noevia-chat-delete-client/1'" "$tree/core/server/project-store-client.cjs" 2>/dev/null
 }
 # Whether the pinned front reads NOEVIA_START_ID: a Rust source under rs/bins names it, or a
 # FEATURES list there carries "start-id".
@@ -457,6 +475,28 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
      && project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qx 'POST /api/chats/{}/history'; then
     die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses POST /api/chats/{chatId}/history (server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so every chat save would fail; pin a noevia-rs that owns the history save (noevia-rs#291, sbstndalton/noevia#1071 slice 5)"
   fi
+  # sbstndalton/noevia#1071 slice 6: a chat's delete is one store operation in the front. A front
+  # that answers the DELETE routes needs a core that refuses them (the generic OWNED_ROUTES check
+  # above names any missing one) and whose own deletes (the retention sweep, a project's purge) go
+  # through that operation too, or Node removes transcripts and writes tombstones beside it with no
+  # lock. A core that deletes through the operation needs a front that serves it, or every one of
+  # those deletes fails. And a core that refuses the routes beside a front that does not answer
+  # them would leave every chat delete to a 503.
+  if rust_owns_chat_delete "$routes_file"; then
+    core_deletes_via_store \
+      || die "noevia-rs at $rs_ref answers a chat's DELETE, but noevia-core at $(lock_value NOEVIA_CORE_REF) still deletes chats itself (no 'noevia-chat-delete-client/1' in server/project-store-client.cjs); pin a core that deletes through the store (sbstndalton/noevia#1071 slice 6)"
+  fi
+  if core_deletes_via_store && ! rs_serves_chat_delete; then
+    die "noevia-core at $(lock_value NOEVIA_CORE_REF) deletes chats through the project store's chat/delete, but noevia-rs at $rs_ref does not serve it (no \"noevia-chat-delete-store/1\" in crates/server-projects/src); pin a noevia-rs with the #1071 slice 6 store operation"
+  fi
+  # Check each refused route independently: the other route still being Rust-owned does not
+  # make a returned-to-Node route available (#2168).
+  for delete_path in '/api/freechats/{}' '/api/projects/{}/chats/{}'; do
+    if project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qxF "DELETE $delete_path" \
+       && ! project_routes_rs "$routes_file" | grep -qxF -e "DELETE $delete_path" -e "ALL $delete_path"; then
+      die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses a chat's DELETE (DELETE $delete_path in server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so that chat delete would fail; pin a noevia-rs that owns this chat delete route (sbstndalton/noevia#2168)"
+    fi
+  done
   # sbstndalton/noevia#2153: a core that builds brains only for origin "history" entries, beside a
   # front whose journal names no origin, would build no brain at all (every entry is mirror-only
   # and Node stops its own nudge once the journal answers). The origin field itself is safe either

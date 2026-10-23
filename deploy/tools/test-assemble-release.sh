@@ -423,6 +423,82 @@ printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_
 g commit -qam rs-journal-origin; ph10p="$(g rev-parse --short HEAD)"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10p" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "#2153: ...and assembles once the front journals the origin" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$ph10p.tar.gz" ]'
+# #1071 slice 6: a chat's delete is one store operation in the front. Pairings by explicit
+# markers (#2161): the front's store "noevia-chat-delete-store/1", the core's client
+# 'noevia-chat-delete-client/1'.
+rs_lock() {
+  tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-y
+  rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
+  printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
+}
+assemble_at() { PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$1" "$out" >/dev/null 2>"$work/err"; }
+rt="$work/remote/noevia-rs-y/contracts/http/routes.toml"
+# Both delete routes are listed owner "node" in the fixture (once each): flip them in place.
+for route in '/api/freechats/{chatId}' '/api/projects/{projectId}/chats/{chatId}'; do
+  [ "$(grep -c "^path = \"$route\"$" "$rt")" -eq 1 ] || { echo "FAIL - $route is not listed exactly once in the fixture"; fails=$((fails+1)); }
+  sed -i.bak "\#^path = \"$route\"\$#{n;s/^owner = \"node\"\$/owner = \"rust\"\nmethods = [\"DELETE\"]/;}" "$rt" && rm -f "$rt.bak"
+done
+[ "$(grep -c '^methods = \["DELETE"\]$' "$rt")" -eq 2 ] || { echo "FAIL - the chat delete routes were not given to the fixture front"; fails=$((fails+1)); }
+rs_lock; g commit -qam rs-chat-delete; pcd1="$(g rev-parse --short HEAD)"
+assemble_at "$pcd1"; rc=$?
+check "#1071 slice 6: a front that answers a chat's DELETE over a core that does not refuse it is refused, naming both routes" \
+  '[ $rc -ne 0 ] && grep -q "OWNED_ROUTES" "$work/err" && grep -q "DELETE /api/freechats/{};DELETE /api/projects/{}/chats/{}" "$work/err" && [ ! -f "$out/noevia-release-$pcd1.tar.gz" ]'
+sed -i.bak "s#  'POST /api/chats/{chatId}/history',#  'POST /api/chats/{chatId}/history',\n  'DELETE /api/freechats/{chatId}',\n  'DELETE /api/projects/{id}/chats/{chatId}',#" "$w/server/rust-projects.cjs" && rm -f "$w/server/rust-projects.cjs.bak"
+g add -A && g commit -qm core-refuses-chat-delete; pcd2="$(g rev-parse --short HEAD)"
+assemble_at "$pcd2"; rc=$?
+check "#1071 slice 6: ...and refused over a core that refuses the routes but still deletes chats itself" \
+  '[ $rc -ne 0 ] && grep -q "still deletes chats itself" "$work/err" && [ ! -f "$out/noevia-release-$pcd2.tar.gz" ]'
+printf '%s\n' "const CHAT_DELETE_CLIENT_MARKER = 'noevia-chat-delete-client/1';" >> "$w/server/project-store-client.cjs"
+g add -A && g commit -qm core-chat-delete-client; pcd3="$(g rev-parse --short HEAD)"
+assemble_at "$pcd3"; rc=$?
+check "#1071 slice 6: ...and refused while the front's store does not serve the delete operation" \
+  '[ $rc -ne 0 ] && grep -q "does not serve it" "$work/err" && grep -q "noevia-chat-delete-store/1" "$work/err" && [ ! -f "$out/noevia-release-$pcd3.tar.gz" ]'
+# A doc comment or a route string is not the marker: only the quoted constant counts.
+printf '%s\n' '//! serves /v1/chat/delete (noevia-chat-delete-store/1 lands with slice 6)' > "$work/remote/noevia-rs-y/crates/server-projects/src/chat_delete.rs"
+rs_lock; g commit -qam rs-chat-delete-comment-only; pcd4="$(g rev-parse --short HEAD)"
+assemble_at "$pcd4"; rc=$?
+check "#2161: an unquoted mention of the store marker does not satisfy the pairing" \
+  '[ $rc -ne 0 ] && grep -q "does not serve it" "$work/err" && [ ! -f "$out/noevia-release-$pcd4.tar.gz" ]'
+printf '%s\n' 'pub const CHAT_DELETE_STORE_MARKER: &str = "noevia-chat-delete-store/1";' >> "$work/remote/noevia-rs-y/crates/server-projects/src/chat_delete.rs"
+rs_lock; g commit -qam rs-chat-delete-store; pcd5="$(g rev-parse --short HEAD)"
+assemble_at "$pcd5"; rc=$?
+check "#1071 slice 6: ...and assembles once the core refuses the routes and deletes through the store the front serves" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$pcd5.tar.gz" ]'
+# #2168: one DELETE returned to Node must fail even while the other remains Rust-owned.
+for route in '/api/freechats/{chatId}' '/api/projects/{projectId}/chats/{chatId}'; do
+  cp "$rt" "$work/routes-chat-delete-both.toml"
+  sed -i.bak "\#^path = \"$route\"\$#{n;s/^owner = \"rust\"\$/owner = \"node\"/;n;/^methods = \[\"DELETE\"\]\$/d;}" "$rt" && rm -f "$rt.bak"
+  rs_lock; g commit -qam rs-one-delete-node; mixed="$(g rev-parse --short HEAD)"
+  assemble_at "$mixed"; rc=$?
+  normalized="$(printf '%s' "$route" | sed 's/{[^}]*}/{}/g')"
+  check "#2168: core refusal of DELETE $route requires that individual Rust route" \
+    '[ $rc -ne 0 ] && grep -q "refuses a chat" "$work/err" && grep -qF "DELETE $normalized in" "$work/err" && [ ! -f "$out/noevia-release-$mixed.tar.gz" ]'
+  cp "$work/routes-chat-delete-both.toml" "$rt"
+done
+# The other way round: a core that refuses the delete beside a front that hands it back to Node.
+for route in '/api/freechats/{chatId}' '/api/projects/{projectId}/chats/{chatId}'; do
+  sed -i.bak "\#^path = \"$route\"\$#{n;s/^owner = \"rust\"\$/owner = \"node\"/;n;/^methods = \[\"DELETE\"\]\$/d;}" "$rt" && rm -f "$rt.bak"
+done
+! grep -q 'methods = \["DELETE"\]' "$rt" || { echo "FAIL - the delete routes were not handed back to Node in the fixture"; fails=$((fails+1)); }
+rs_lock; g commit -qam rs-chat-delete-node-again; pcd6="$(g rev-parse --short HEAD)"
+assemble_at "$pcd6"; rc=$?
+check "#1071 slice 6: a core that refuses a chat's DELETE beside a front that does not answer it is refused" \
+  '[ $rc -ne 0 ] && grep -q "refuses a chat'"'"'s DELETE" "$work/err" && grep -q "does not answer it" "$work/err" && [ ! -f "$out/noevia-release-$pcd6.tar.gz" ]'
+# A core that deletes through the store but answers the routes itself beside that front assembles.
+sed -i.bak "/^  'DELETE \/api\/freechats\/{chatId}',$/d; /^  'DELETE \/api\/projects\/{id}\/chats\/{chatId}',$/d" "$w/server/rust-projects.cjs" && rm -f "$w/server/rust-projects.cjs.bak"
+g add -A && g commit -qm core-chat-delete-node-again; pcd7="$(g rev-parse --short HEAD)"
+assemble_at "$pcd7"; rc=$?
+check "#1071 slice 6: ...and assembles once that core answers the routes again (its deletes still through the store)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$pcd7.tar.gz" ]'
+# Conversely, a single Rust DELETE requires the corresponding individual core refusal.
+for route in '/api/freechats/{chatId}' '/api/projects/{projectId}/chats/{chatId}'; do
+  cp "$rt" "$work/routes-chat-delete-node.toml"
+  sed -i.bak "\#^path = \"$route\"\$#{n;s/^owner = \"node\"\$/owner = \"rust\"\nmethods = [\"DELETE\"]/;}" "$rt" && rm -f "$rt.bak"
+  rs_lock; g commit -qam rs-one-delete-rust; mixed="$(g rev-parse --short HEAD)"
+  assemble_at "$mixed"; rc=$?
+  normalized="$(printf '%s' "$route" | sed 's/{[^}]*}/{}/g')"
+  check "#2168: DELETE $route in Rust requires that individual core refusal" \
+    '[ $rc -ne 0 ] && grep -q "OWNED_ROUTES" "$work/err" && grep -qF "DELETE $normalized" "$work/err" && [ ! -f "$out/noevia-release-$mixed.tar.gz" ]'
+  cp "$work/routes-chat-delete-node.toml" "$rt"
+done
 # The history route goes back to Node for the checks below (they swap the core's guard files).
 hn="$(grep -n '^path = "/api/chats/{chatId}/history"$' "$work/remote/noevia-rs-y/contracts/http/routes.toml" | cut -d: -f1)"
 sed -i.bak "$((hn-2)),$((hn+2))d" "$work/remote/noevia-rs-y/contracts/http/routes.toml" && rm -f "$work/remote/noevia-rs-y/contracts/http/routes.toml.bak"
