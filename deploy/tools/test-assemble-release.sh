@@ -906,6 +906,66 @@ cp "$work/source-move-client.saved" "$w/server/project-store-client.cjs"
 cp "$work/source-move-features.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$rz/crates/server-projects/src/source_jobs.rs" "$rz/crates/server-projects/src/lib.rs" "$rz/bins/noevia-server/src/project_store.rs"
 
+# Research journals are a separate kind-scoped internal capability. Every selected pair
+# must have the live client export and all compiled store operations, including report-first.
+cp "$w/server/project-store-client.cjs" "$work/research-client.previous"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/research-features.previous"
+cat > "$w/server/project-store-client.cjs" <<'JS'
+const CHAT_MOVE_CLIENT_MARKER = 'noevia-chat-move-client/1';
+const RESEARCH_JOBS_CLIENT_MARKER = 'noevia-research-jobs-client/1';
+function researchJobsFor(user) { return { user }; }
+module.exports = { CHAT_MOVE_CLIENT_MARKER, RESEARCH_JOBS_CLIENT_MARKER, researchJobsFor };
+JS
+research_try() { move_try "$1"; }
+research_try research-new-core-old-rust
+check "research new core with old Rust is refused" 'refused "research job store pairing"'
+mkdir -p "$rz/crates/server-projects/src"
+echo 'pub const RESEARCH_JOBS_STORE_MARKER: &str = "noevia-research-jobs-store/1";' > "$rz/crates/server-projects/src/research_jobs.rs"
+echo 'pub mod research_jobs;' > "$rz/crates/server-projects/src/lib.rs"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER];' > "$rz/bins/noevia-server/src/lib.rs"
+{
+  echo 'use server_projects::research_jobs as jobs;'
+  for op in recover start abandon event cancel finish report prepare artifact clear read list; do
+    if [ "$op" = recover ] || [ "$op" = report ]; then
+      # rustfmt emits this trailing comma when the live route spans multiple lines.
+      printf '.route(\n  "%s",\n  research_route(ResearchOp::%s),\n)\n' "/v1/research-jobs/$op" "${op^}"
+    else
+      printf '.route("%s", research_route(ResearchOp::%s))\n' "/v1/research-jobs/$op" "${op^}"
+    fi
+  done
+} > "$rz/bins/noevia-server/src/project_store.rs"
+research_try research-matched
+check "matching research client and compiled Rust store assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$w/server/project-store-client.cjs" "$work/research-client.saved"
+printf '%s\n' 'function researchJobsFor(user) { return { user }; }' 'module.exports = { researchJobsFor };' > "$w/server/project-store-client.cjs"
+research_try research-stripped-core-marker
+check "ported research core with stripped marker is refused" 'refused "research job store pairing"'
+cp "$work/research-client.saved" "$w/server/project-store-client.cjs"
+grep -v '^module.exports' "$w/server/project-store-client.cjs" > "$work/research-unexported"
+cp "$work/research-unexported" "$w/server/project-store-client.cjs"
+research_try research-unexported-client
+check "unexported research client marker is refused" 'refused "research job store pairing"'
+cp "$work/research-client.saved" "$w/server/project-store-client.cjs"
+cp "$rz/crates/server-projects/src/research_jobs.rs" "$work/research-store.saved"
+printf '%s\n' '/* pub const RESEARCH_JOBS_STORE_MARKER: &str = "noevia-research-jobs-store/1"; */' > "$rz/crates/server-projects/src/research_jobs.rs"
+research_try research-comment-only-marker
+check "comment-only research store marker is refused" 'refused "research job store pairing"'
+cp "$work/research-store.saved" "$rz/crates/server-projects/src/research_jobs.rs"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id"];' > "$rz/bins/noevia-server/src/lib.rs"
+research_try research-uncompiled
+check "uncompiled research store marker is refused" 'refused "research job store pairing"'
+printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER];' > "$rz/bins/noevia-server/src/lib.rs"
+grep -v '/v1/research-jobs/report' "$rz/bins/noevia-server/src/project_store.rs" > "$work/research-missing-route"
+cp "$work/research-missing-route" "$rz/bins/noevia-server/src/project_store.rs"
+research_try research-missing-report-route
+check "missing live research report route is refused" 'refused "research job store pairing"'
+echo '// .route("/v1/research-jobs/report", research_route(ResearchOp::Report))' >> "$rz/bins/noevia-server/src/project_store.rs"
+research_try research-comment-only-route
+check "comment-only research report route is refused" 'refused "research job store pairing"'
+cp "$work/research-client.previous" "$w/server/project-store-client.cjs"
+cp "$work/research-features.previous" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$rz/crates/server-projects/src/research_jobs.rs" "$rz/crates/server-projects/src/lib.rs" "$rz/bins/noevia-server/src/project_store.rs"
+
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
  "core:chat.cjs:CHAT_MOVE_ENFORCEMENT_MARKER" "core:chat-change-journal.cjs:CHAT_MOVE_READER_MARKER" \
