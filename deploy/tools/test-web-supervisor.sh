@@ -24,12 +24,14 @@ ROUTE_FEATURES="rust-chatgpt-status rust-storage-reads rust-storage-browse rust-
 BASE_FEATURES="code-net-guard rust-auth $ROUTE_FEATURES"
 RETIRED="NOEVIA_RUST_AUTH NOEVIA_RUST_USAGE NOEVIA_RUST_SAMPLING_SETTINGS NOEVIA_RUST_REASONING_SETTINGS NOEVIA_RUST_ROUTING_MODE NOEVIA_RUST_ROUTING_DEFAULT NOEVIA_RUST_STATS NOEVIA_RUST_EXPORT NOEVIA_RUST_CHATGPT_STATUS NOEVIA_RUST_STORAGE_READS NOEVIA_RUST_STORAGE_BROWSE NOEVIA_RUST_PROJECT_WRITES NOEVIA_RUST_PROJECTS NOEVIA_RUST_PROJECT_CHATS NOEVIA_RUST_FREE_CHATS NOEVIA_RUST_PROJECT_STORE"
 
+real_node="$(command -v node)"
 mkdir -p "$work/bin"
 # Each stub records its environment, then lives until killed or until its "die" file appears.
 stub() {
   cat > "$1" <<STUB
 #!/usr/bin/env bash
 name=$2
+if [ "\${1:-}" = -e ]; then exec "$real_node" "\$@"; fi
 if [ "\${1:-}" = --features ]; then printf '%s\\n' \${STUB_FEATURES-$BASE_FEATURES}; exit 0; fi
 [ "\$name" = node ] && [ -n "\${STUB_NODE_DELAY:-}" ] && sleep "\$STUB_NODE_DELAY"
 echo "\$name UI_HOST=\${UI_HOST:-} UI_PORT=\${UI_PORT:-} UPSTREAM=\${NOEVIA_LEGACY_UPSTREAM:-} ARGS=\$* CCONF=\${NOEVIA_RUST_PROJECT_CHATS_CONFIRMED:-} FCONF=\${NOEVIA_RUST_FREE_CHATS_CONFIRMED:-} PCONF=\${NOEVIA_RUST_PROJECTS_CONFIRMED:-} CONF=\${NOEVIA_RUST_AUTH_CONFIRMED:-}" >> "$work/log"
@@ -111,6 +113,35 @@ reset
 run UI_PORT=65000 >/dev/null 2>&1; rc=$?
 check "a UI_PORT with no room for +1000 is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
 
+# Source-journal pairing probes the actual installed Node export and Rust binary --features.
+mkdir -p "$work/server"
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const SOURCE_JOBS_CLIENT_MARKER = 'noevia-source-jobs-client/1';
+module.exports = { SOURCE_JOBS_CLIENT_MARKER };
+JS
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "new core with old Rust source store is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires noevia-source-jobs-store/1" "$work/err" && [ ! -s "$work/log" ]'
+reset
+printf '%s\n' "function sourceJobsFor(user) { return { user }; }" "module.exports = { sourceJobsFor };" > "$work/server/project-store-client.cjs"
+run >/dev/null 2>"$work/err"; rc=$?
+check "ported core with stripped marker is refused beside old Rust" '[ $rc -eq 2 ] && grep -q "does not export its canonical capability" "$work/err" && [ ! -s "$work/log" ]'
+reset
+printf '%s\n' "/* SOURCE_JOBS_CLIENT_MARKER */" "module.exports = {};" > "$work/server/project-store-client.cjs"
+run STUB_FEATURES="$BASE_FEATURES noevia-source-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "comment-only core marker cannot satisfy runtime capability" '[ $rc -eq 2 ] && grep -q "does not export its canonical capability" "$work/err" && [ ! -s "$work/log" ]'
+reset
+rm -f "$work/server/project-store-client.cjs"
+run STUB_FEATURES="$BASE_FEATURES noevia-source-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "new Rust source store with old core is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires a paired core" "$work/err" && [ ! -s "$work/log" ]'
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const SOURCE_JOBS_CLIENT_MARKER = 'noevia-source-jobs-client/1';
+module.exports = { SOURCE_JOBS_CLIENT_MARKER };
+JS
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES noevia-source-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "matching source client and store start both processes" '[ $rc -eq 3 ] && grep -q "^node UI_HOST=" "$work/log" && grep -q "^front UI_HOST=" "$work/log"'
+rm -f "$work/server/project-store-client.cjs"
 # --- The live configuration ------------------------------------------------------------------
 reset; touch "$work/die-front"
 retired_env=(); for v in $RETIRED; do retired_env+=("$v=1" "${v}_CONFIRMED=1"); done

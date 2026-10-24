@@ -384,12 +384,12 @@ move_capability() {
       if (block) { if (index(line,"*/")) block=0; next }
       if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
       if (line ~ /^\/\//) next
-      if (kind=="features" && index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
+      if ((kind=="features" || kind=="feature_ref") && index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
       if (features) {
         fend=index(line,"];")
         if(fend) line=substr(line,1,fend-1)
         n=split(line,fields,",")
-        for(i=1;i<=n;i++) if(clean(fields[i])==sprintf("%c",34) value sprintf("%c",34)) observed++
+        for(i=1;i<=n;i++) if(clean(fields[i])==(kind=="feature_ref" ? value : sprintf("%c",34) value sprintf("%c",34))) observed++
         if(fend) features=0
       }
       if (kind=="rust" && line == "pub const " name ": &str = \"" value "\";") decl++
@@ -404,7 +404,7 @@ move_capability() {
         if(ending) exporting=0
       }
     }
-    END { exit !(decl==1 && (kind=="rust" || (kind=="features" && observed==1) || (kind!="features" && exported==1))) }
+    END { exit !(decl==1 && (kind=="rust" || ((kind=="features" || kind=="feature_ref") && observed==1) || (kind!="features" && exported==1))) }
   ' "$1"
 }
 rust_owns_chat_move() {
@@ -421,6 +421,23 @@ core_move_enforcement() { move_capability "$tree/core/server/chat.cjs" CHAT_MOVE
 core_move_reader() { move_capability "$tree/core/server/chat-change-journal.cjs" CHAT_MOVE_READER_MARKER noevia-chat-move-reader/1 js; }
 core_move_owner() { move_capability "$tree/core/server/rust-projects.cjs" CHAT_MOVE_PUBLIC_OWNER "$1" js; }
 core_move_handler() { move_capability "$tree/core/server/routes/chat-lists.cjs" chatMoveRoute - function; }
+# Source jobs retain the Node executor while Rust alone owns their persisted journals. A
+# marker is accepted only when exported from the actual client, referenced by the compiled
+# server FEATURES list, and backed by all six authenticated internal store routes.
+core_source_client() {
+  move_capability "$tree/core/server/project-store-client.cjs" SOURCE_JOBS_CLIENT_MARKER noevia-source-jobs-client/1 js
+}
+rs_source_store() {
+  move_capability "$tree/rs/crates/server-projects/src/source_jobs.rs" SOURCE_JOBS_STORE_MARKER noevia-source-jobs-store/1 rust || return 1
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER feature_ref || return 1
+  grep -qxF 'pub mod source_jobs;' "$tree/rs/crates/server-projects/src/lib.rs" || return 1
+  grep -qF 'use server_projects::source_jobs as jobs;' "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
+  local route
+  for route in recover start abandon progress finish read; do
+    grep -qF ".route(\"/v1/source-jobs/$route\", source_route(" "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
+  done
+}
+
 # Whether the pinned front reads NOEVIA_START_ID: a Rust source under rs/bins names it, or a
 # FEATURES list there carries "start-id".
 rs_reads_start_id() {
@@ -434,6 +451,13 @@ project_routes_core() {
   [ -f "$1" ] || return 0
   sed -n "/^const ${2:-OWNED_ROUTES} = /,/]))/p" "$1" | grep -o "'[A-Z]* /[^']*'" | tr -d "'" | sed 's/{[^}]*}/{}/g' | sort -u
 }
+# A partially ported source journal would either strand a 202 without a reader or give
+# source files two owners. Old core/old Rust remains an allowed rollback pair.
+if [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
+   || grep -qE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+   || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
+  core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
+fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.
