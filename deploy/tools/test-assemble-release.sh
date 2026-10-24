@@ -787,6 +787,128 @@ printf "[meta]\nnote = '''\n[[route]]\nswitch = \"X\"\n'''\n\n[[route]]\npath = 
 try_routes triple-in-meta < "$work/t.toml"
 check "#2096: ...and in another table, where it could hide a header" 'unreadable && grep -q "multi-line strings are not read" "$work/err"'
 
+
+# Slice7 exact declarations/exports, real delegation/refusal, method and owner matrix.
+mkdir -p "$rz/crates/server-projects/src" "$rz/bins/noevia-server/src" "$w/server/routes"
+echo 'pub const MOVE_MARKER: &str = "noevia-chat-move-foundation/1";' > "$rz/crates/server-projects/src/chat_move.rs"
+echo 'pub const CHAT_MOVE_JOURNAL_MARKER: &str = "noevia-chat-move-journal/1";' > "$rz/crates/server-projects/src/journal.rs"
+echo 'pub const FEATURES: &[&str] = &["start-id"];' > "$rz/bins/noevia-server/src/lib.rs"
+echo 'fn route() { let op = "/v1/changes/read"; }' > "$rz/bins/noevia-server/src/main.rs"
+cat > "$w/server/project-store-client.cjs" <<'JS'
+const CHAT_MOVE_CLIENT_MARKER = 'noevia-chat-move-client/1';
+module.exports = { CHAT_MOVE_CLIENT_MARKER };
+JS
+cat > "$w/server/chat.cjs" <<'JS'
+const CHAT_MOVE_ENFORCEMENT_MARKER = 'noevia-chat-move-enforcement/1';
+module.exports = { CHAT_MOVE_ENFORCEMENT_MARKER };
+JS
+cat > "$w/server/chat-change-journal.cjs" <<'JS'
+const JOURNAL_READER_MARKER = 'noevia-chat-change-journal-reader/1';
+const CHAT_MOVE_READER_MARKER = 'noevia-chat-move-reader/1';
+module.exports = { CHAT_MOVE_READER_MARKER, JOURNAL_READER_MARKER };
+JS
+cat > "$w/server/routes/chat-lists.cjs" <<'JS'
+async function chatMoveRoute(store,user,chat,target) {
+  return store.chatMove(user,chat,target);
+}
+module.exports = { chatMoveRoute };
+JS
+cat > "$w/server/rust-projects.cjs" <<'JS'
+const CHAT_MOVE_PUBLIC_OWNER = 'node';
+function refuseOwnedRoute() { return false; }
+const OWNED_ROUTES = Object.freeze(new Set([
+]));
+module.exports = { CHAT_MOVE_PUBLIC_OWNER, refuseOwnedRoute };
+JS
+node - "$w/server/routes/chat-lists.cjs" <<'JS'
+const assert=require('node:assert/strict'),{chatMoveRoute}=require(process.argv[2]);let calls=0;
+(async()=>{const r=await chatMoveRoute({chatMove:async(...args)=>{calls++;assert.deepEqual(args,['qa-user','qa-chat',null]);return{status:200};}},'qa-user','qa-chat',null);assert.equal(r.status,200);assert.equal(calls,1);})().catch(()=>process.exit(1));
+JS
+node_rc=$?
+check "slice7 fixture really delegates one move to its store" '[ $node_rc -eq 0 ]'
+move_owner=node; move_method=POST
+move_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "$move_owner"
+methods = ["$move_method"]
+TOML
+}
+move_try move-transitional
+check "slice7 complete declared Node transition assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
+ "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
+ "core:chat.cjs:CHAT_MOVE_ENFORCEMENT_MARKER" "core:chat-change-journal.cjs:CHAT_MOVE_READER_MARKER" \
+ "core:rust-projects.cjs:CHAT_MOVE_PUBLIC_OWNER"; do
+ kind="$(echo "$item"|cut -d: -f1)"; file="$(echo "$item"|cut -d: -f2)"; name="$(echo "$item"|cut -d: -f3)"
+ if [ "$kind" = rs ]; then target="$rz/crates/server-projects/src/$file"
+ elif [ "$kind" = features ]; then target="$rz/bins/noevia-server/src/$file"
+ else target="$w/server/$file"; fi
+ cp "$target" "$work/move-cap.saved"
+ { echo '/*'; cat "$work/move-cap.saved"; echo '*/'; } > "$target"
+ move_try "move-comment-$name"
+ check "slice7 comment-only $name cannot grant capability" 'refused "chat move capability pairing"'
+ cp "$work/move-cap.saved" "$target"
+ if [ "$name" = CHAT_MOVE_PUBLIC_OWNER ]; then
+  grep -v "^const CHAT_MOVE_PUBLIC_OWNER =" "$work/move-cap.saved" > "$target"
+ else : > "$target"; fi
+ move_try "move-missing-$name"
+ check "slice7 missing $name cannot grant capability" 'refused "chat move capability pairing"'
+ cp "$work/move-cap.saved" "$target"
+ if [ "$kind" = core ]; then
+  grep -v '^module.exports' "$target" > "$work/move-unexported"; cp "$work/move-unexported" "$target"
+  move_try "move-unexported-$name"
+  check "slice7 unexported $name cannot grant capability" 'refused "chat move capability pairing"'
+  cp "$work/move-cap.saved" "$target"
+ fi
+done
+cp "$w/server/rust-projects.cjs" "$work/move-node-owner.saved"
+cp "$w/server/routes/chat-lists.cjs" "$work/move-handler.saved"
+sed "s/'node'/'unknown'/" "$work/move-node-owner.saved" > "$w/server/rust-projects.cjs"
+move_try move-unknown-owner
+check "slice7 unknown declared owner refuses" 'refused "CHAT_MOVE_PUBLIC_OWNER"'
+cp "$work/move-node-owner.saved" "$w/server/rust-projects.cjs"
+printf '%s\n' 'module.exports = {};' > "$w/server/routes/chat-lists.cjs"
+move_try move-missing-handler
+check "slice7 declared node without real exported handler refuses" 'refused "declared node requires"'
+cp "$work/move-handler.saved" "$w/server/routes/chat-lists.cjs"
+move_owner=rust; move_try move-native-with-node-core
+check "slice7 Rust POST requires that exact core refusal" 'refused "POST /api/chats/{}/move"'
+cat > "$w/server/rust-projects.cjs" <<'JS'
+const CHAT_MOVE_PUBLIC_OWNER = 'rust';
+function refuseOwnedRoute(req,res,path,json) {
+  if(req.method==='POST'&&/^\/api\/chats\/[^/]+\/move$/.test(path))return json(res,503,{code:'RUST_PROJECTS_OWNED'});
+  return false;
+}
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/chats/{chatId}/move',
+]));
+module.exports = { CHAT_MOVE_PUBLIC_OWNER, refuseOwnedRoute };
+JS
+printf '%s\n' 'module.exports = {};' > "$w/server/routes/chat-lists.cjs"
+node - "$w/server/rust-projects.cjs" <<'JS'
+const assert=require('node:assert/strict'),{refuseOwnedRoute}=require(process.argv[2]);const replies=[];
+refuseOwnedRoute({method:'POST'},{},'/api/chats/qa/move',(_r,status,body)=>replies.push({status,body}));
+assert.equal(replies[0].status,503);assert.equal(replies[0].body.code,'RUST_PROJECTS_OWNED');
+assert.equal(refuseOwnedRoute({method:'GET'},{},'/api/chats/qa/move',()=>{throw Error('GET refused');}),false);
+JS
+node_rc=$?
+check "slice7 final fixture really returns503 for POST only" '[ $node_rc -eq 0 ]'
+move_try move-native
+check "slice7 exact native POST and Node refusal assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+move_owner=node;move_try move-refusal-with-node-route
+check "slice7 Node refusal cannot pair with Node public owner" 'refused "exact native POST"'
+move_owner=rust;move_method=GET;move_try move-get-only
+check "slice7 GET-only cannot satisfy POST refusal" 'refused "GET /api/chats/{}/move\\|exact native POST"'
+move_method=ALL;move_try move-all
+check "slice7 ALL cannot claim the non-POST fallback" 'refused "ALL /api/chats/{}/move\\|non-POST"'
+move_method=POST;cp "$work/move-handler.saved" "$w/server/routes/chat-lists.cjs"
+move_try move-duplicate
+check "slice7 native owner with duplicate Node handler refuses" 'refused "owner/handler contradiction"'
+# Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
+rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
+rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"
 g rm -q apps/web/server/rust-auth.cjs apps/web/server/rust-projects.cjs && g commit -qm core-plain-2096
 
 # A failing final tar must not leave out.partial (or a final tarball) behind. The shim writes a
