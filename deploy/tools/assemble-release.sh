@@ -287,7 +287,7 @@ routes_toml() {
 }
 project_routes_rs() {
   routes_toml "$1" | awk -F'\t' '
-    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$|freechats\/[^\/]+$)/ || $1 ~ /^\/api\/chats\/[^/]+\/(context|move)$/) {
+    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$|freechats\/[^\/]+$)/ || $1 ~ /^\/api\/chats\/[^\/]+\/(context|move)$/) {
       if ($4 == "-") { print "ALL " $1; next }
       n = split($4, m, /[^A-Z]+/)
       for (i = 1; i <= n; i++) if (m[i] != "") print m[i] " " $1
