@@ -142,6 +142,31 @@ reset; touch "$work/die-front"
 run STUB_FEATURES="$BASE_FEATURES noevia-source-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
 check "matching source client and store start both processes" '[ $rc -eq 3 ] && grep -q "^node UI_HOST=" "$work/log" && grep -q "^front UI_HOST=" "$work/log"'
 rm -f "$work/server/project-store-client.cjs"
+# Research journal pairing is independent from source-job pairing.
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const RESEARCH_JOBS_CLIENT_MARKER = 'noevia-research-jobs-client/1';
+module.exports = { RESEARCH_JOBS_CLIENT_MARKER };
+JS
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "new research core with old Rust is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires noevia-research-jobs-store/1" "$work/err" && [ ! -s "$work/log" ]'
+reset
+printf '%s
+' "function researchJobsFor(user) { return { user }; }" "module.exports = { researchJobsFor };" > "$work/server/project-store-client.cjs"
+run >/dev/null 2>"$work/err"; rc=$?
+check "ported research core with stripped marker is refused" '[ $rc -eq 2 ] && grep -q "does not export its canonical capability" "$work/err" && [ ! -s "$work/log" ]'
+reset
+rm -f "$work/server/project-store-client.cjs"
+run STUB_FEATURES="$BASE_FEATURES noevia-research-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "new Rust research store with old core is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires a paired core research job client" "$work/err" && [ ! -s "$work/log" ]'
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const RESEARCH_JOBS_CLIENT_MARKER = 'noevia-research-jobs-client/1';
+module.exports = { RESEARCH_JOBS_CLIENT_MARKER };
+JS
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES noevia-research-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "matching research client and store start both processes" '[ $rc -eq 3 ] && grep -q "^node UI_HOST=" "$work/log" && grep -q "^front UI_HOST=" "$work/log"'
+rm -f "$work/server/project-store-client.cjs"
 # --- The live configuration ------------------------------------------------------------------
 reset; touch "$work/die-front"
 retired_env=(); for v in $RETIRED; do retired_env+=("$v=1" "${v}_CONFIRMED=1"); done
