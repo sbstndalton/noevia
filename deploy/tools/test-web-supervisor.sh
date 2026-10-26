@@ -132,6 +132,60 @@ reset
 run UI_PORT=65000 >/dev/null 2>&1; rc=$?
 check "a UI_PORT with no room for +1000 is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
 
+# Source-journal pairing probes the actual installed Node export and Rust binary --features.
+mkdir -p "$work/server"
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const SOURCE_JOBS_CLIENT_MARKER = 'noevia-source-jobs-client/1';
+module.exports = { SOURCE_JOBS_CLIENT_MARKER };
+JS
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "new core with old Rust source store is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires noevia-source-jobs-store/1" "$work/err" && [ ! -s "$work/log" ]'
+reset
+printf '%s\n' "function sourceJobsFor(user) { return { user }; }" "module.exports = { sourceJobsFor };" > "$work/server/project-store-client.cjs"
+run >/dev/null 2>"$work/err"; rc=$?
+check "ported core with stripped marker is refused beside old Rust" '[ $rc -eq 2 ] && grep -q "does not export its canonical capability" "$work/err" && [ ! -s "$work/log" ]'
+reset
+printf '%s\n' "/* SOURCE_JOBS_CLIENT_MARKER */" "module.exports = {};" > "$work/server/project-store-client.cjs"
+run STUB_FEATURES="$BASE_FEATURES noevia-source-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "comment-only core marker cannot satisfy runtime capability" '[ $rc -eq 2 ] && grep -q "does not export its canonical capability" "$work/err" && [ ! -s "$work/log" ]'
+reset
+rm -f "$work/server/project-store-client.cjs"
+run STUB_FEATURES="$BASE_FEATURES noevia-source-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "new Rust source store with old core is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires a paired core" "$work/err" && [ ! -s "$work/log" ]'
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const SOURCE_JOBS_CLIENT_MARKER = 'noevia-source-jobs-client/1';
+module.exports = { SOURCE_JOBS_CLIENT_MARKER };
+JS
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES noevia-source-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "matching source client and store start both processes" '[ $rc -eq 3 ] && grep -q "^node UI_HOST=" "$work/log" && grep -q "^front UI_HOST=" "$work/log"'
+rm -f "$work/server/project-store-client.cjs"
+# Research journal pairing is independent from source-job pairing.
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const RESEARCH_JOBS_CLIENT_MARKER = 'noevia-research-jobs-client/1';
+module.exports = { RESEARCH_JOBS_CLIENT_MARKER };
+JS
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "new research core with old Rust is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires noevia-research-jobs-store/1" "$work/err" && [ ! -s "$work/log" ]'
+reset
+printf '%s
+' "function researchJobsFor(user) { return { user }; }" "module.exports = { researchJobsFor };" > "$work/server/project-store-client.cjs"
+run >/dev/null 2>"$work/err"; rc=$?
+check "ported research core with stripped marker is refused" '[ $rc -eq 2 ] && grep -q "does not export its canonical capability" "$work/err" && [ ! -s "$work/log" ]'
+reset
+rm -f "$work/server/project-store-client.cjs"
+run STUB_FEATURES="$BASE_FEATURES noevia-research-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "new Rust research store with old core is refused before either starts" '[ $rc -eq 2 ] && grep -q "requires a paired core research job client" "$work/err" && [ ! -s "$work/log" ]'
+cat > "$work/server/project-store-client.cjs" <<'JS'
+const RESEARCH_JOBS_CLIENT_MARKER = 'noevia-research-jobs-client/1';
+module.exports = { RESEARCH_JOBS_CLIENT_MARKER };
+JS
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES noevia-research-jobs-store/1" >/dev/null 2>"$work/err"; rc=$?
+check "matching research client and store start both processes" '[ $rc -eq 3 ] && grep -q "^node UI_HOST=" "$work/log" && grep -q "^front UI_HOST=" "$work/log"'
+rm -f "$work/server/project-store-client.cjs"
 # --- The live configuration ------------------------------------------------------------------
 reset; touch "$work/die-front"
 retired_env=(); for v in $RETIRED; do retired_env+=("$v=1" "${v}_CONFIRMED=1"); done
