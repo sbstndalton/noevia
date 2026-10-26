@@ -671,7 +671,7 @@ mkdir -p "$rz/bins/noevia-server/src" "$repo/build"
 printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-web-address-read"];' > "$rz/bins/noevia-server/src/lib.rs"
 cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
 try_routes web-core-only </dev/null
-check "#1071 web-address: core refusal without Rust GETs is refused" 'refused "web-address GET ownership pairing"'
+check "#1071 web-address: core refusal without Rust GETs is refused" 'refused "web-address ownership pairing"'
 web_routes() {
   for path in '/api/instance' '/.well-known/webauthn' '/api/admin/web-address'; do
     [ "$path" = "${web_skip:-}" ] && continue
@@ -695,16 +695,66 @@ omit_routes=1 web_try web-no-routes
 check "#1071 web-address: ported core with missing Rust routes.toml is refused" 'refused "web-address GET ownership pairing: core refuses GETs but Rust routes.toml is missing"'
 for web_skip in '/api/instance' '/.well-known/webauthn' '/api/admin/web-address'; do
   web_try "web-missing-${web_skip##*/}"
-  check "#1071 web-address: Rust missing $web_skip is refused individually" 'refused "web-address GET ownership pairing"'
+  check "#1071 web-address: Rust missing $web_skip is refused individually" 'refused "web-address ownership pairing"'
 done
 unset web_skip
 web_extra_path='/api/admin/web-address' web_try web-post-too
-check "#1071 web-address: Rust POST ownership is refused" 'refused "web-address GET ownership pairing"'
+check "#1071 web-address: Rust POST ownership is refused" 'refused "web-address ownership pairing"'
 sed -i.bak "s#'/api/admin/web-address'##" "$w/server/rust-web-address.cjs" && rm -f "$w/server/rust-web-address.cjs.bak"
 web_try web-core-missing-admin
-check "#1071 web-address: core missing one GET refusal is refused" 'refused "web-address GET ownership pairing"'
+check "#1071 web-address: core missing one GET refusal is refused" 'refused "web-address ownership pairing"'
+# The dependent writer pair adds both POSTs, an exported Node marker, and a hard
+# settings guard. Either POST alone, or a comment-only feature, cannot assemble.
+cat > "$w/server/rust-web-address.cjs" <<'JS'
+const WEB_ADDRESS_READ_OWNER = 'noevia-web-address-read-rust/1';
+const WEB_ADDRESS_WRITE_OWNER = 'noevia-web-address-write-rust/1';
+const OWNED_GET_PATHS = Object.freeze(['/api/instance', '/.well-known/webauthn', '/api/admin/web-address']);
+const OWNED_POST_PATHS = Object.freeze(['/api/admin/web-address', '/api/admin/web-address/remove']);
+const ROUTE_REFUSAL = {};
+const WRITE_REFUSAL = {};
+function ownedRead(method, pathname) {
+  return method === 'GET' && OWNED_GET_PATHS.includes(pathname);
+}
+function ownedWrite(method, pathname) {
+  return method === 'POST' && OWNED_POST_PATHS.includes(pathname);
+}
+function refuseOwnedRead() {}
+function refuseOwnedWrite() {}
+function refuseOwned(req, res, pathname, json) {
+  return refuseOwnedRead(req, res, pathname, json) || refuseOwnedWrite(req, res, pathname, json);
+}
+module.exports = { WEB_ADDRESS_READ_OWNER, WEB_ADDRESS_WRITE_OWNER, OWNED_GET_PATHS, OWNED_POST_PATHS, ROUTE_REFUSAL, WRITE_REFUSAL, ownedRead, ownedWrite, refuseOwnedRead, refuseOwnedWrite, refuseOwned };
+JS
+sed -i.bak "s#refuseOwnedRead(req, res, p, json)#refuseOwned(req, res, p, json)#" "$w/server/index.cjs" && rm -f "$w/server/index.cjs.bak"
+cp "$w/server/rust-auth.cjs" "$work/web-rust-auth.saved"
+printf "%s\n" "  previous_origins: ['Web address changes are owned by the Rust front.', 'RUST_WEB_ADDRESS_WRITE_OWNED']," >> "$w/server/rust-auth.cjs"
+web_writer_routes() {
+  printf '[[route]]\npath = "/api/instance"\nowner = "rust"\nmethods = ["GET"]\n\n'
+  printf '[[route]]\npath = "/.well-known/webauthn"\nowner = "rust"\nmethods = ["GET"]\n\n'
+  printf '[[route]]\npath = "/api/admin/web-address"\nowner = "rust"\nmethods = ["GET", "POST"]\n\n'
+  [ "${web_writer_skip:-}" = remove ] || printf '[[route]]\npath = "/api/admin/web-address/remove"\nowner = "rust"\nmethods = ["POST"]\nclient = false\n\n'
+}
+web_writer_try() { web_writer_routes > "$work/web-writer-routes"; try_routes "$1" < "$work/web-writer-routes"; }
+web_try web-write-core-over-GET-only
+check "#1071 web-address POST: writer core over GET-only routes is refused" 'refused "web-address ownership pairing"'
+web_writer_try web-write-core-only
+check "#1071 web-address POST: writer core without compiled writer feature is refused" 'refused "web-address POST ownership pairing"'
+printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-web-address-read", "rust-web-address-write"];' > "$rz/bins/noevia-server/src/lib.rs"
+web_writer_try web-write-paired
+check "#1071 web-address POST: both writers pair with Node refusal" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$w/server/rust-web-address.cjs" "$work/web-write-core.saved"
+sed -i.bak 's#return refuseOwnedRead(req, res, pathname, json) || refuseOwnedWrite(req, res, pathname, json);#return refuseOwnedRead(req, res, pathname, json);#' "$w/server/rust-web-address.cjs" && rm -f "$w/server/rust-web-address.cjs.bak"
+web_writer_try web-write-unwired
+check "#1071 web-address POST: exported marker without invoked POST refusal cannot pair" 'refused "web-address ownership pairing"'
+cp "$work/web-write-core.saved" "$w/server/rust-web-address.cjs"
+web_writer_skip=remove web_writer_try web-write-missing-remove
+check "#1071 web-address POST: missing removal cannot pair" 'refused "web-address ownership pairing"'
+printf '%s\n' '//! "rust-web-address-write" planned' 'pub const FEATURES: &[&str] = &["rust-web-address-read"];' > "$rz/bins/noevia-server/src/lib.rs"
+web_writer_try web-write-comment-feature
+check "#1071 web-address POST: comment-only feature cannot pair" 'refused "web-address POST ownership pairing"'
 rm -f "$rz/bins/noevia-server/src/lib.rs"
 g rm -q apps/web/server/rust-web-address.cjs build/web-supervisor.sh
+cp "$work/web-rust-auth.saved" "$w/server/rust-auth.cjs"
 sed -i.bak "/require('.\/rust-web-address.cjs').refuseOwnedRead/d" "$w/server/index.cjs" && rm -f "$w/server/index.cjs.bak"
 g add -A && g commit -qm web-guard-fixture-restored
 

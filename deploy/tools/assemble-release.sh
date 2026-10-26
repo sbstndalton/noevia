@@ -294,27 +294,43 @@ project_routes_rs() {
     }
   ' | sed 's/{[^}]*}/{}/g' | sort -u
 }
-# The exact permanent read-only web-address GETs. Non-GET methods must continue to Node.
+# The three GETs and (when paired) both POST writers. No HEAD or other method moves.
 web_address_routes_rs() {
   routes_toml "$1" | awk -F'\t' '
-    $1 == "/api/instance" || $1 == "/.well-known/webauthn" || $1 == "/api/admin/web-address" {
+    $1 == "/api/instance" || $1 == "/.well-known/webauthn" || $1 == "/api/admin/web-address" || $1 == "/api/admin/web-address/remove" {
       if ($2 == "rust") {
-        if ($3 != "-" || $4 != "GET") { print "invalid " $1; next }
-        print "GET " $1
+        if ($3 != "-" || $4 == "-") { print "invalid " $1; next }
+        n = split($4, methods, ",")
+        for (i = 1; i <= n; i++) {
+          gsub(/[ \t]/, "", methods[i])
+          if (methods[i] !~ /^(GET|POST)$/) { print "invalid " $1; next }
+          print methods[i] " " $1
+        }
       }
     }
   ' | sort -u
 }
-# The core's explicit exported refusal declaration must be wired before its public/auth mounts.
-# Parse each path independently, so one missing GET cannot hide behind two paired siblings.
+# A writer-capable core must export both markers, both exact POST paths, and refuse the
+# methods before public/auth dispatch. Older GET-only pins remain a valid separate pair.
 web_address_routes_core() {
   local source="$tree/core/server/rust-web-address.cjs"
   [ -f "$source" ] || return 0
   grep -qxF "const WEB_ADDRESS_READ_OWNER = 'noevia-web-address-read-rust/1';" "$source" || { echo invalid-marker; return; }
-  grep -qxF 'module.exports = { WEB_ADDRESS_READ_OWNER, OWNED_GET_PATHS, ROUTE_REFUSAL, ownedRead, refuseOwnedRead };' "$source" || { echo invalid-export; return; }
   grep -qxF "  return method === 'GET' && OWNED_GET_PATHS.includes(pathname);" "$source" || { echo invalid-method; return; }
-  grep -qxF "    if (require('./rust-web-address.cjs').refuseOwnedRead(req, res, p, json)) return;" "$tree/core/server/index.cjs" || { echo invalid-wiring; return; }
-  sed -n '/^const OWNED_GET_PATHS = /,/]);/p' "$source" | grep -oE "'/(api/instance|api/admin/web-address|\.well-known/webauthn)'" | tr -d "'" | sed 's/^/GET /' | sort -u
+  if grep -qxF "const WEB_ADDRESS_WRITE_OWNER = 'noevia-web-address-write-rust/1';" "$source"; then
+    grep -qxF 'module.exports = { WEB_ADDRESS_READ_OWNER, WEB_ADDRESS_WRITE_OWNER, OWNED_GET_PATHS, OWNED_POST_PATHS, ROUTE_REFUSAL, WRITE_REFUSAL, ownedRead, ownedWrite, refuseOwnedRead, refuseOwnedWrite, refuseOwned };' "$source" || { echo invalid-export; return; }
+    grep -qxF "const OWNED_POST_PATHS = Object.freeze(['/api/admin/web-address', '/api/admin/web-address/remove']);" "$source" || { echo invalid-write-paths; return; }
+    grep -qxF "  return method === 'POST' && OWNED_POST_PATHS.includes(pathname);" "$source" || { echo invalid-write-method; return; }
+    grep -qxF "  return refuseOwnedRead(req, res, pathname, json) || refuseOwnedWrite(req, res, pathname, json);" "$source" || { echo invalid-write-refusal; return; }
+    grep -qxF "    if (require('./rust-web-address.cjs').refuseOwned(req, res, p, json)) return;" "$tree/core/server/index.cjs" || { echo invalid-wiring; return; }
+    grep -qxF "  previous_origins: ['Web address changes are owned by the Rust front.', 'RUST_WEB_ADDRESS_WRITE_OWNED']," "$tree/core/server/rust-auth.cjs" || { echo invalid-write-guard; return; }
+    sed -n '/^const OWNED_GET_PATHS = /,/]);/p' "$source" | grep -oE "'/(api/instance|api/admin/web-address|\.well-known/webauthn)'" | tr -d "'" | sed 's/^/GET /'
+    sed -n '/^const OWNED_POST_PATHS = /,/]);/p' "$source" | grep -oE "'/api/admin/web-address(/remove)?'" | tr -d "'" | sed 's/^/POST /'
+  else
+    grep -qxF 'module.exports = { WEB_ADDRESS_READ_OWNER, OWNED_GET_PATHS, ROUTE_REFUSAL, ownedRead, refuseOwnedRead };' "$source" || { echo invalid-export; return; }
+    grep -qxF "    if (require('./rust-web-address.cjs').refuseOwnedRead(req, res, p, json)) return;" "$tree/core/server/index.cjs" || { echo invalid-wiring; return; }
+    sed -n '/^const OWNED_GET_PATHS = /,/]);/p' "$source" | grep -oE "'/(api/instance|api/admin/web-address|\.well-known/webauthn)'" | tr -d "'" | sed 's/^/GET /'
+  fi | sort -u
 }
 # Whether routes.toml gives GET /api/auth/session to Rust with no switch (sign-in is the front's
 # permanently, sbstndalton/noevia#1071).
@@ -519,17 +535,24 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   if printf '%s\n' "$route_switches" | grep -q '^NOEVIA_RUST_PROJECT_WRITES '; then
     die "noevia-rs at $rs_ref still gates chat context on NOEVIA_RUST_PROJECT_WRITES; pin permanent GET/POST context ownership (sbstndalton/noevia#1071)"
   fi
-  # The three web-address GETs change owner together. A read-only Rust front must be
-  # paired with Node's early refusal; an early refusal needs a Rust answer. Other methods
-  # (especially HEAD and both POST writers) remain Node's.
+  # The three GETs pair together; the two POST writers transfer together on the
+  # dependent pair. HEAD and every other method remain Node's.
   web_rs="$(web_address_routes_rs "$routes_file")"
   web_core="$(web_address_routes_core)"
   web_expected="$(printf 'GET /api/admin/web-address\nGET /api/instance\nGET /.well-known/webauthn' | sort)"
+  web_write_expected="$(printf '%s\nPOST /api/admin/web-address\nPOST /api/admin/web-address/remove' "$web_expected" | sort)"
   if [ -n "$web_rs" ] || [ -n "$web_core" ]; then
-    [ "$web_rs" = "$web_expected" ] && [ "$web_core" = "$web_expected" ] \
-      || die "web-address GET ownership pairing: Rust must own exactly three GETs and Node must refuse those exact GETs before public/auth routing; preserve HEAD/POST fallback"
+    { [ "$web_rs" = "$web_expected" ] && [ "$web_core" = "$web_expected" ]; } \
+      || { [ "$web_rs" = "$web_write_expected" ] && [ "$web_core" = "$web_write_expected" ]; } \
+      || die "web-address ownership pairing: Rust and Node must agree on three GETs and both POST writers together; preserve HEAD/other methods"
     move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-web-address-read features \
       || die "web-address GET ownership pairing: Rust route table lacks a compiled --features declaration"
+    if [ "$web_rs" = "$web_write_expected" ]; then
+      move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-web-address-write features \
+        || die "web-address POST ownership pairing: Rust route table lacks a compiled --features declaration"
+      grep -qF "rust-web-address-write" "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+        || die "web-address POST ownership pairing: web supervisor lacks a prelaunch capability comparison"
+    fi
     grep -qF 'WEB_ADDRESS_READ_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
       && grep -qF "rust-web-address-read" "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
       || die "web-address GET ownership pairing: web supervisor lacks a prelaunch capability comparison"
