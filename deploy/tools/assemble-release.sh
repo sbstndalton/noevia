@@ -470,10 +470,11 @@ rs_research_store() {
   move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER feature_ref || return 1
   grep -qxF 'pub mod research_jobs;' "$tree/rs/crates/server-projects/src/lib.rs" || return 1
   grep -qF 'use server_projects::research_jobs as jobs;' "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
-  local route route_source
+  local route route_source route_op
   route_source="$(sed '/^[[:space:]]*\/\//d; /\/\*/,/\*\//d' "$tree/rs/bins/noevia-server/src/project_store.rs" | tr '\n' ' ')" || return 1
   for route in recover start abandon event cancel finish report prepare artifact clear read list; do
-    grep -Eq "\.route\([[:space:]]*\"/v1/research-jobs/$route\",[[:space:]]*research_route\(ResearchOp::${route^}\)[[:space:]]*,?[[:space:]]*\)" <<<"$route_source" || return 1
+    route_op="$(printf '%s' "$route" | cut -c1 | tr '[:lower:]' '[:upper:]')${route#?}"
+    grep -Eq "\.route\([[:space:]]*\"/v1/research-jobs/$route\",[[:space:]]*research_route\(ResearchOp::${route_op}\)[[:space:]]*,?[[:space:]]*\)" <<<"$route_source" || return 1
   done
 }
 

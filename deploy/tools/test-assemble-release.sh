@@ -981,11 +981,12 @@ printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", server_projects::rese
 {
   echo 'use server_projects::research_jobs as jobs;'
   for op in recover start abandon event cancel finish report prepare artifact clear read list; do
+    op_title="$(printf '%s' "$op" | cut -c1 | tr '[:lower:]' '[:upper:]')${op#?}"
     if [ "$op" = recover ] || [ "$op" = report ]; then
       # rustfmt emits this trailing comma when the live route spans multiple lines.
-      printf '.route(\n  "%s",\n  research_route(ResearchOp::%s),\n)\n' "/v1/research-jobs/$op" "${op^}"
+      printf '.route(\n  "%s",\n  research_route(ResearchOp::%s),\n)\n' "/v1/research-jobs/$op" "${op_title}"
     else
-      printf '.route("%s", research_route(ResearchOp::%s))\n' "/v1/research-jobs/$op" "${op^}"
+      printf '.route("%s", research_route(ResearchOp::%s))\n' "/v1/research-jobs/$op" "${op_title}"
     fi
   done
 } > "$rz/bins/noevia-server/src/project_store.rs"
