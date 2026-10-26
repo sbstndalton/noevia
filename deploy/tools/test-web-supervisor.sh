@@ -109,6 +109,25 @@ done
 reset
 run STUB_FEATURES="code-net-guard rust-auth rust-usage" >/dev/null 2>"$work/err"; rc=$?
 check "every missing feature is listed at once" '[ $rc -eq 2 ] && grep -q "rust-chatgpt-status rust-storage-reads rust-storage-browse rust-export rust-free-chats rust-stats .* rust-projects rust-project-chats rust-project-writes project-store;" "$work/err" && [ ! -s "$work/log" ]'
+# A manually mixed installed core/front pair fails before either process starts. The
+# core result comes from its exported module at runtime, not an inherited environment value.
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" >/dev/null 2>"$work/err"; rc=$?
+check "web-address: new front over old core is refused before launch" '[ $rc -eq 2 ] && grep -q "web-address GET ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+mkdir -p "$work/server"
+printf "%s\n" "module.exports = { WEB_ADDRESS_READ_OWNER: 'noevia-web-address-read-rust/1' };" > "$work/server/rust-web-address.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "web-address: ported core over old front is refused before launch" '[ $rc -eq 2 ] && grep -q "web-address GET ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" >/dev/null 2>"$work/err"; rc=$?
+check "web-address: matching exported core and compiled front start together" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+printf "%s\n" "module.exports = { WEB_ADDRESS_READ_OWNER: 'wrong' };" > "$work/server/rust-web-address.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" WEB_ADDRESS_READ_OWNER=noevia-web-address-read-rust/1 >/dev/null 2>"$work/err"; rc=$?
+check "web-address: inherited owner value cannot spoof a wrong core" '[ $rc -eq 2 ] && grep -q "web-address GET ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm -f "$work/server/rust-web-address.cjs"
+
 reset
 run UI_PORT=65000 >/dev/null 2>&1; rc=$?
 check "a UI_PORT with no room for +1000 is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'

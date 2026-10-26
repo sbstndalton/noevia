@@ -645,6 +645,7 @@ printf '%s\n' "function refuseOwned(req, res, pathname, json) { return false; }"
 # try_routes <name>: routes.toml = the sign-in route (unless auth_route=0), then stdin; pins it and assembles. Sets rc, tsha.
 try_routes() {
   { [ "${auth_route:-1}" = 0 ] || printf '[[route]]\npath = "/api/auth/session"\nowner = "rust"\nmethods = ["GET"]\n\n'; cat; } > "$rz/contracts/http/routes.toml"
+  [ "${omit_routes:-0}" != 1 ] || rm -f "$rz/contracts/http/routes.toml"
   tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-t
   rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
   printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
@@ -652,6 +653,60 @@ try_routes() {
   PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$tsha" "$out" >/dev/null 2>"$work/err"; rc=$?
 }
 refused() { [ $rc -ne 0 ] && grep -q "$1" "$work/err" && [ ! -f "$out/noevia-release-$tsha.tar.gz" ]; }
+
+# #1071 web-address GET read pairing: either side alone fails; exact three pair, other
+# methods remain with Node. The synthetic core guard mirrors its exported source contract.
+cat > "$w/server/rust-web-address.cjs" <<'JS'
+const WEB_ADDRESS_READ_OWNER = 'noevia-web-address-read-rust/1';
+const OWNED_GET_PATHS = Object.freeze(['/api/instance', '/.well-known/webauthn', '/api/admin/web-address']);
+const ROUTE_REFUSAL = {};
+function ownedRead(method, pathname) {
+  return method === 'GET' && OWNED_GET_PATHS.includes(pathname);
+}
+function refuseOwnedRead(req, res, pathname, json) { if (!ownedRead(req.method, pathname)) return false; json(res, 503, ROUTE_REFUSAL); return true; }
+module.exports = { WEB_ADDRESS_READ_OWNER, OWNED_GET_PATHS, ROUTE_REFUSAL, ownedRead, refuseOwnedRead };
+JS
+printf '%s\n' "    if (require('./rust-web-address.cjs').refuseOwnedRead(req, res, p, json)) return;" >> "$w/server/index.cjs"
+mkdir -p "$rz/bins/noevia-server/src" "$repo/build"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-web-address-read"];' > "$rz/bins/noevia-server/src/lib.rs"
+cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+try_routes web-core-only </dev/null
+check "#1071 web-address: core refusal without Rust GETs is refused" 'refused "web-address GET ownership pairing"'
+web_routes() {
+  for path in '/api/instance' '/.well-known/webauthn' '/api/admin/web-address'; do
+    [ "$path" = "${web_skip:-}" ] && continue
+    method=GET
+    [ "$path" = "${web_extra_path:-}" ] && method='GET", "POST'
+    printf '[[route]]\npath = "%s"\nowner = "rust"\nmethods = ["%s"]\n\n' "$path" "$method"
+  done
+}
+web_try() { web_routes > "$work/web-routes"; try_routes "$1" < "$work/web-routes"; }
+web_try web-paired
+check "#1071 web-address: exact three GETs pair with Node refusal" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/web-features.saved"
+printf '%s\n' '//! "rust-web-address-read" is planned' > "$rz/bins/noevia-server/src/lib.rs"
+web_try web-feature-comment-only
+check "#1071 web-address: a comment does not grant the compiled feature" 'refused "lacks a compiled --features declaration"'
+printf '%s\n' 'pub const OTHER: &[&str] = &["rust-web-address-read"];' 'pub const FEATURES: &[&str] = &[];' > "$rz/bins/noevia-server/src/lib.rs"
+web_try web-feature-outside-list
+check "#1071 web-address: a feature outside FEATURES does not grant the capability" 'refused "lacks a compiled --features declaration"'
+cp "$work/web-features.saved" "$rz/bins/noevia-server/src/lib.rs"
+omit_routes=1 web_try web-no-routes
+check "#1071 web-address: ported core with missing Rust routes.toml is refused" 'refused "web-address GET ownership pairing: core refuses GETs but Rust routes.toml is missing"'
+for web_skip in '/api/instance' '/.well-known/webauthn' '/api/admin/web-address'; do
+  web_try "web-missing-${web_skip##*/}"
+  check "#1071 web-address: Rust missing $web_skip is refused individually" 'refused "web-address GET ownership pairing"'
+done
+unset web_skip
+web_extra_path='/api/admin/web-address' web_try web-post-too
+check "#1071 web-address: Rust POST ownership is refused" 'refused "web-address GET ownership pairing"'
+sed -i.bak "s#'/api/admin/web-address'##" "$w/server/rust-web-address.cjs" && rm -f "$w/server/rust-web-address.cjs.bak"
+web_try web-core-missing-admin
+check "#1071 web-address: core missing one GET refusal is refused" 'refused "web-address GET ownership pairing"'
+rm -f "$rz/bins/noevia-server/src/lib.rs"
+g rm -q apps/web/server/rust-web-address.cjs build/web-supervisor.sh
+sed -i.bak "/require('.\/rust-web-address.cjs').refuseOwnedRead/d" "$w/server/index.cjs" && rm -f "$w/server/index.cjs.bak"
+g add -A && g commit -qm web-guard-fixture-restored
 
 try_routes comments-only <<'TOML'
 # The old switch = "NOEVIA_RUST_PROJECTS" and switch = "NOEVIA_RUST_PROJECT_WRITES" are retired.
@@ -926,11 +981,12 @@ printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", server_projects::rese
 {
   echo 'use server_projects::research_jobs as jobs;'
   for op in recover start abandon event cancel finish report prepare artifact clear read list; do
+    op_title="$(printf '%s' "$op" | cut -c1 | tr '[:lower:]' '[:upper:]')${op#?}"
     if [ "$op" = recover ] || [ "$op" = report ]; then
       # rustfmt emits this trailing comma when the live route spans multiple lines.
-      printf '.route(\n  "%s",\n  research_route(ResearchOp::%s),\n)\n' "/v1/research-jobs/$op" "${op^}"
+      printf '.route(\n  "%s",\n  research_route(ResearchOp::%s),\n)\n' "/v1/research-jobs/$op" "${op_title}"
     else
-      printf '.route("%s", research_route(ResearchOp::%s))\n' "/v1/research-jobs/$op" "${op^}"
+      printf '.route("%s", research_route(ResearchOp::%s))\n' "/v1/research-jobs/$op" "${op_title}"
     fi
   done
 } > "$rz/bins/noevia-server/src/project_store.rs"
