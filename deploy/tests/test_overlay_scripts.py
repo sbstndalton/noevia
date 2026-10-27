@@ -3,7 +3,10 @@
 The release SHA becomes a path component, an image tag and a sed replacement, so both scripts
 refuse anything but a hex SHA before touching anything. The Diary overlay archives its own state
 (#1487) and may stop or recreate only the Diary container; it never runs the Appdata Backup plugin.
+Synthetic Dockerfiles exercise the final-stage COPY/ADD contract in both parsers.
+The requirements probe's argv and hash refusals are checked with a recording docker stub.
 """
+import hashlib
 import json
 import os
 import pathlib
@@ -23,14 +26,15 @@ RCLONE = ROOT / 'deploy/offsite/rclone-sync.sh'
 BAD_SHAS = ['', 'ABCDEF1', 'abc12', 'abc123g', '../../etc', 'abc1234;touch x', 'abc1234 x', '$(id)', 'a' * 41]
 
 
-# Shaped like the release's Diary Dockerfile: dependencies first, then the three directories that land in /app.
+# Generated overlay shape: binary bundle plus the three app directories.
+# Real release Dockerfiles copy the two binaries individually; both shapes are checked below.
 DIARY_DOCKERFILE = """FROM rust:slim AS tenant-assertion
 ADD https://example.invalid/source.tar.gz /tmp/source.tar.gz
 COPY tools/ ./tools/
 FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
-COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion
+COPY --from=tenant-assertion /out/ /usr/local/bin/
 COPY agent/ ./agent/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
@@ -223,7 +227,7 @@ case "$*" in
     if [ -n "${LATER_IMAGE:-}" ] && [ -e "$CALL_LOG.inspected" ]; then echo "$LATER_IMAGE"; else : > "$CALL_LOG.inspected"; echo "@OLD_ID@"; fi ;;
   "inspect cowork-diary-1 --format diary"*) echo "diary healthy restarts=0" ;;
   "exec cowork-diary-1 python -c"*) exit 1 ;;
-  "run --rm --network none --entrypoint sh cowork-diary:@OLD@ -c"*)
+  "run --rm "*"--entrypoint sh cowork-diary:@OLD@ -c"*)
     # The running image's /app/requirements.txt (#2112): the overlay installs no dependencies.
     [ -f "$RUNNING_APP/requirements.txt" ] && sha256sum "$RUNNING_APP/requirements.txt" ;;
   "run --rm --entrypoint python"*) echo "candidate imports ok" ;;
@@ -694,15 +698,16 @@ class RsStage(unittest.TestCase):
         return '\n'.join(lines[start + 1:end])
 
     def stage(self, dockerfile):
-        temp = pathlib.Path(tempfile.mkdtemp(prefix='noevia-rs-stage-'))
-        (temp / 'releases/abc1234/services/diary').mkdir(parents=True)
-        if dockerfile is not None:
-            (temp / 'releases/abc1234/services/diary/Dockerfile').write_text(dockerfile)
-        (temp / 'ctx').mkdir()
-        script = 'set -euo pipefail\nbase=$1; V=abc1234; ctx=$1/ctx\n' + self.block('overlay-dirs') + '\n' + self.block() + '\necho "STAGE $rs_stage"'
-        result = subprocess.run(['bash', '-c', script, 'x', str(temp)], capture_output=True, text=True, timeout=30)
-        out = (temp / 'ctx/Dockerfile').read_text() if (temp / 'ctx/Dockerfile').exists() else None
-        return result, out
+        with tempfile.TemporaryDirectory(prefix='noevia-rs-stage-') as directory:
+            temp = pathlib.Path(directory)
+            (temp / 'releases/abc1234/services/diary').mkdir(parents=True)
+            if dockerfile is not None:
+                (temp / 'releases/abc1234/services/diary/Dockerfile').write_text(dockerfile)
+            (temp / 'ctx').mkdir()
+            script = 'set -euo pipefail\nbase=$1; V=abc1234; ctx=$1/ctx\n' + self.block('overlay-dirs') + '\n' + self.block() + '\necho "STAGE $rs_stage"'
+            result = subprocess.run(['bash', '-c', script, 'x', str(temp)], capture_output=True, text=True, timeout=30)
+            out = (temp / 'ctx/Dockerfile').read_text() if (temp / 'ctx/Dockerfile').exists() else None
+            return result, out
 
     def test_a_pinned_release_builds_the_binary_from_exactly_that_pin(self):
         result, df = self.stage(f'FROM rust AS x\nARG NOEVIA_RS_REF={self.REF}\nARG NOEVIA_RS_SHA256={self.SUM}\nRUN pip install evil\n')
@@ -744,6 +749,175 @@ class RsStage(unittest.TestCase):
                 self.assertIsNone(df)
 
 
+class DiaryCopyContract(unittest.TestCase):
+    """Run the final-stage check and the CI parser on the same synthetic instructions."""
+
+    def check(self, dockerfile):
+        with tempfile.TemporaryDirectory(prefix='noevia-copy-contract-') as temp:
+            path = pathlib.Path(temp) / 'Dockerfile'
+            path.write_text(dockerfile)
+            block = RsStage().block('dockerfile-copy-check')
+            script = ('set -euo pipefail\ndiary_df_check=$1; overlay_dirs="agent config scripts"\n'
+                      + block + '\nprintf "CHECKED\\n%s\\n" "$df_dirs"')
+            return subprocess.run(['bash', '-c', script, 'x', str(path)],
+                                  capture_output=True, text=True, timeout=30)
+
+    def accepted(self, dockerfile):
+        result = self.check(dockerfile)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['CHECKED', 'agent', 'config', 'scripts'])
+        self.assertEqual(OverlayDirsInSync.dockerfile_dirs(dockerfile), {'agent', 'config', 'scripts'})
+
+    def refused(self, instruction):
+        # Keep the directory set valid: only the instruction under test can cause refusal.
+        dockerfile = DIARY_DOCKERFILE + instruction + '\n'
+        with self.subTest(parser='production', instruction=instruction):
+            result = self.check(dockerfile)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn(instruction.splitlines()[0], result.stderr)
+        with self.subTest(parser='CI', instruction=instruction):
+            with self.assertRaises(ValueError):
+                OverlayDirsInSync.dockerfile_dirs(dockerfile)
+
+    def test_requirements_copy_exception(self):
+        self.accepted(DIARY_DOCKERFILE.replace('COPY --from=tenant-assertion /out/ /usr/local/bin/\n', ''))
+
+    def test_binary_copy_exception(self):
+        self.accepted(DIARY_DOCKERFILE.replace('COPY requirements.txt .\n', ''))
+
+    def test_directory_copies_and_whitespace(self):
+        text = DIARY_DOCKERFILE.replace('COPY requirements.txt .\n', '').replace(
+            'COPY --from=tenant-assertion /out/ /usr/local/bin/\n', '')
+        self.accepted(text.replace('COPY ', ' \tCOPY ').replace('/\n', '/ \t\n'))
+
+    def test_builder_copies_are_ignored_before_final_stage(self):
+        self.accepted('FROM builder\nCOPY unknown /elsewhere\nADD other /other\n  fRoM runtime\n'
+                      + DIARY_DOCKERFILE.split('FROM python:3.12-slim\n')[1])
+
+    def test_binary_copy_stage_must_match(self):
+        self.refused('COPY --from=other /out/ /usr/local/bin/')
+
+    def test_binary_copy_source_must_match(self):
+        self.refused('COPY --from=tenant-assertion /elsewhere/ /usr/local/bin/')
+
+    def test_binary_copy_destination_must_match(self):
+        self.refused('COPY --from=tenant-assertion /out/ /elsewhere/')
+
+    def test_binary_copy_has_no_extra_operand(self):
+        self.refused('COPY --from=tenant-assertion /out/ /extra/ /usr/local/bin/')
+
+    def test_unknown_final_stage_copy_and_add_refuse(self):
+        for instruction in ['COPY --chown=1000:1000 agent/ ./agent/', 'COPY agent ./agent',
+                            'COPY web-assets/ ./web-assets/', 'ADD agent/ ./agent/',
+                            'COPY entry.sh ./', 'copy agent/ ./agent/', 'COPY ["agent/", "./agent/"]',
+                            'COPY agent/ ./config/', 'COPY /agent/ ./agent/', 'COPY', 'ADD',
+                            'COPY requirements.txt ./', 'COPY agent/ \\\n  ./agent/']:
+            self.refused(instruction)
+
+    def test_individual_release_binary_copies_pass_both_parsers(self):
+        copies = '\n'.join(
+            f'COPY --from=tenant-assertion /src/target/release/{name} /usr/local/bin/{name}'
+            for name in ('tenant-assertion', 'workspace-restore-verify')) + '\n'
+        self.accepted(DIARY_DOCKERFILE.replace(
+            'COPY --from=tenant-assertion /out/ /usr/local/bin/\n', copies))
+
+    @unittest.skipUnless(os.environ.get('NOEVIA_SERVICES_DIR'), 'set NOEVIA_SERVICES_DIR for actual release COPY controls')
+    def test_actual_release_dockerfile_passes_both_parsers(self):
+        text = (pathlib.Path(os.environ['NOEVIA_SERVICES_DIR']) / 'diary/Dockerfile').read_text()
+        self.accepted(text)
+        # Independently alter the real artifact, rather than replacing it with a
+        # synthetic generated Dockerfile that teaches the same assumption twice.
+        for name in ('tenant-assertion', 'workspace-restore-verify'):
+            original = f'COPY --from=tenant-assertion /src/target/release/{name} /usr/local/bin/{name}'
+            self.assertIn(original, text)
+            altered = text.replace(original, original.replace('/src/target/release/', '/elsewhere/'))
+            with self.subTest(binary=name):
+                self.assertNotEqual(self.check(altered).returncode, 0)
+                with self.assertRaises(ValueError):
+                    OverlayDirsInSync.dockerfile_dirs(altered)
+
+    def test_release_binary_stage_source_destination_and_operands_are_exact(self):
+        for name in ('tenant-assertion', 'workspace-restore-verify'):
+            source = f'/src/target/release/{name}'
+            destination = f'/usr/local/bin/{name}'
+            for instruction in (
+                f'COPY --from=other {source} {destination}',
+                f'COPY --from=tenant-assertion /elsewhere/{name} {destination}',
+                f'COPY --from=tenant-assertion {source} /elsewhere/{name}',
+                f'COPY --from=tenant-assertion {source} /usr/local/bin/',
+                f'COPY --from=tenant-assertion {source} /extra {destination}',
+                f'COPY --chown=1000:1000 --from=tenant-assertion {source} {destination}',
+                f'COPY --from=tenant-assertion {source} {destination}-other',
+            ):
+                self.refused(instruction)
+
+    def test_generated_binary_copy_spans_both_parsers(self):
+        result, generated = RsStage().stage(
+            f'ARG NOEVIA_RS_REF={RsStage.REF}\nARG NOEVIA_RS_SHA256={RsStage.SUM}\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        copies = [line for line in generated.splitlines() if line.startswith('COPY --from=')]
+        self.assertEqual(copies, ['COPY --from=tenant-assertion /out/ /usr/local/bin/'])
+        self.accepted(generated)
+
+
+class DiaryRequirementsProbe(unittest.TestCase):
+    """Exercise the requirements check with a recording docker stub, without an engine."""
+
+    REQUIREMENTS = b'synthetic-dependency==1.0\n'
+    HASH = hashlib.sha256(REQUIREMENTS).hexdigest()
+
+    def probe(self, output=None, status=0, missing=False):
+        with tempfile.TemporaryDirectory(prefix='noevia-requirements-probe-') as temp:
+            base = pathlib.Path(temp)
+            release = base / 'releases/abc1234/services/diary'
+            release.mkdir(parents=True)
+            if not missing:
+                (release / 'requirements.txt').write_bytes(self.REQUIREMENTS)
+            docker = base / 'docker'
+            docker.write_text('#!/usr/bin/env python3\nimport json, os, sys\n'
+                              'with open(os.environ["ARGV_LOG"], "w") as log: json.dump(sys.argv[1:], log)\n'
+                              'print(os.environ["PROBE_OUTPUT"])\nsys.exit(int(os.environ["PROBE_STATUS"]))\n')
+            docker.chmod(0o755)
+            block = RsStage().block('requirements-check')
+            script = 'set -euo pipefail\nbase=$1; V=abc1234; OLD=def5678\n' + block + '\necho PROBED'
+            result = subprocess.run(['bash', '-c', script, 'x', str(base)],
+                                    env=dict(os.environ, PATH=f'{base}:{os.environ["PATH"]}',
+                                             ARGV_LOG=str(base / 'argv.json'),
+                                             PROBE_OUTPUT=output if output is not None else self.HASH + '  /app/requirements.txt',
+                                             PROBE_STATUS=str(status)),
+                                    capture_output=True, text=True, timeout=30)
+            return result, json.loads((base / 'argv.json').read_text())
+
+    def successful_probe(self):
+        result, argv = self.probe()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['PROBED'])
+        return argv
+
+    def test_requirements_probe_is_read_only(self):
+        self.assertIn('--read-only', self.successful_probe())
+
+    def test_requirements_probe_never_pulls(self):
+        argv = self.successful_probe()
+        self.assertIn('--pull', argv)
+        self.assertEqual(argv[argv.index('--pull') + 1], 'never')
+
+    def test_requirements_probe_command_preserves_its_restrictions(self):
+        self.assertEqual(self.successful_probe(), [
+            'run', '--rm', '--network', 'none', '--read-only', '--pull', 'never',
+            '--entrypoint', 'sh', 'cowork-diary:def5678', '-c', 'sha256sum /app/requirements.txt'])
+
+    def test_requirements_probe_refuses_missing_mismatched_or_unreadable_hashes(self):
+        self.successful_probe()
+        for kwargs in [{'missing': True}, {'output': 'c' * 64 + '  /app/requirements.txt'},
+                       {'output': ''}, {'output': 'not-a-hash'}, {'status': 1}]:
+            with self.subTest(kwargs=kwargs):
+                result, argv = self.probe(**kwargs)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('PROBED', result.stdout)
+                self.assertEqual(argv[-2:], ['-c', 'sha256sum /app/requirements.txt'])
+
+
 class OverlayDirsInSync(unittest.TestCase):
     """#2112: the directory list of diary-overlay.sh, its documentation and the Diary Dockerfile stay one list."""
 
@@ -755,7 +929,24 @@ class OverlayDirsInSync(unittest.TestCase):
     @staticmethod
     def dockerfile_dirs(text):
         final_stage = re.split(r'(?mi)^[ \t]*FROM[ \t].*$', text)[-1]   # the image is its last stage
-        return set(re.findall(r'(?m)^COPY ([a-z_][a-z0-9_]*)/ \./\1/\s*$', final_stage))
+        dirs = set()
+        for line in final_stage.splitlines():
+            line = line.strip()
+            if not re.match(r'(?i)^(COPY|ADD)(\s|$)', line):
+                continue
+            if line == 'COPY requirements.txt .':
+                continue
+            if line in (
+                'COPY --from=tenant-assertion /out/ /usr/local/bin/',
+                'COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion',
+                'COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify',
+            ):
+                continue
+            match = re.fullmatch(r'COPY ([a-z_][a-z0-9_]*)/ \./\1/', line)
+            if not match:
+                raise ValueError(f'unsupported final-stage COPY/ADD: {line}')
+            dirs.add(match[1])
+        return dirs
 
     def test_the_list_is_exactly_agent_config_and_scripts(self):
         self.assertEqual(self.script_dirs(), {'agent', 'config', 'scripts'})

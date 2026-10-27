@@ -62,8 +62,10 @@ done
 # part of the image. Either way the overlay stops before anything is built, stopped or changed.
 diary_df_check=$base/releases/$V/services/diary/Dockerfile
 [ -f "$diary_df_check" ] || { echo "no releases/$V/services/diary/Dockerfile to check the overlay directories against; not deploying" >&2; exit 1; }
-# Every COPY and ADD of the final stage is significant. Only three shapes are known: the dependency list, the binaries
-# taken from the Rust stage, and `COPY <dir>/ ./<dir>/` for a directory of the app. Any other line that copies something
+# BEGIN dockerfile-copy-check (deploy/tests/test_overlay_scripts.py runs this block)
+# Every COPY and ADD of the final stage is significant. Known shapes are the dependency list, the generated
+# /out/ binary bundle, the release's two exact individual binary copies, and COPY <dir>/ ./<dir>/ for app directories.
+# An arbitrary source/destination from the Rust stage is not accepted. Any other line that copies something
 # (a file, a hyphenated directory, --chown, ADD, JSON form, a continued line) would put content into the image that
 # this overlay does not ship, so it stops the overlay instead of being ignored.
 final_stage=$(awk 'tolower($0) ~ /^[ \t]*from[ \t]/ { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$diary_df_check")
@@ -72,7 +74,9 @@ while IFS= read -r df_line || [ -n "$df_line" ]; do
   df_line="${df_line#"${df_line%%[![:space:]]*}"}"; df_line="${df_line%"${df_line##*[![:space:]]}"}"
   case "$(printf '%s' "$df_line" | tr 'A-Z' 'a-z')" in copy|copy[[:space:]]*|add|add[[:space:]]*) ;; *) continue ;; esac
   if [ "$df_line" = "COPY requirements.txt ." ]; then continue
-  elif [[ $df_line =~ ^COPY\ --from=tenant-assertion\ [^[:space:]]+\ [^[:space:]]+$ ]]; then continue
+  elif [ "$df_line" = "COPY --from=tenant-assertion /out/ /usr/local/bin/" ]; then continue
+  elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion" ]; then continue
+  elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify" ]; then continue
   elif [[ $df_line =~ ^COPY\ ([a-z_][a-z0-9_]*)/\ \./([a-z_][a-z0-9_]*)/$ ]] && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]; then
     df_dirs="$df_dirs${BASH_REMATCH[1]}"$'\n'
   else df_unknown="$df_unknown$df_line"$'\n'
@@ -81,6 +85,7 @@ done <<< "$final_stage"
 if [ -n "$df_unknown" ]; then
   echo "the release Diary Dockerfile copies something into the image that this overlay does not know how to ship:" >&2
   printf '%s' "$df_unknown" | head -n 5 | sed 's/^/  /' >&2
+  echo "Rust COPY must be the exact /out/ bundle or an exact tenant-assertion/workspace-restore-verify release binary path into /usr/local/bin/" >&2
   echo "update diary-overlay.sh (and its test) for these lines, or rebuild the image; not deploying" >&2
   exit 1
 fi
@@ -93,16 +98,20 @@ if [ "$df_dirs" != "$my_dirs" ]; then
   echo "update overlay_dirs in diary-overlay.sh (and its test) before overlaying this release; not deploying" >&2
   exit 1
 fi
+# END dockerfile-copy-check
 ! docker image inspect cowork-diary:$V >/dev/null 2>&1 || { echo "cowork-diary:$V already exists; refusing to overwrite"; exit 1; }
 OLD_ID=$(docker image inspect cowork-diary:$OLD --format '{{.Id}}')
 RUN_ID=$(docker inspect cowork-diary-1 --format '{{.Image}}')
 [ "$OLD_ID" = "$RUN_ID" ] || { echo "running Diary is not cowork-diary:$OLD"; exit 1; }
 echo "current cowork-diary:$OLD $OLD_ID"
 # #2112: the overlay keeps the running image's dependencies, so requirements.txt must be the one the release has.
+# BEGIN requirements-check (deploy/tests/test_overlay_scripts.py runs this block with stub docker)
+# Read the existing image without network access, a writable root filesystem or an image pull.
 req_want=$(sha256sum "$base/releases/$V/services/diary/requirements.txt" 2>/dev/null | cut -d' ' -f1) || req_want=""
-req_have=$(docker run --rm --network none --entrypoint sh cowork-diary:$OLD -c 'sha256sum /app/requirements.txt' 2>/dev/null | cut -d' ' -f1) || req_have=""
+req_have=$(docker run --rm --network none --read-only --pull never --entrypoint sh cowork-diary:$OLD -c 'sha256sum /app/requirements.txt' 2>/dev/null | cut -d' ' -f1) || req_have=""
 [ -n "$req_want" ] && [ "$req_want" = "$req_have" ] \
   || { echo "requirements.txt in releases/$V/services/diary is missing or differs from the running image's (or could not be read there): the overlay installs no dependencies, rebuild the image instead; not deploying" >&2; exit 1; }
+# END requirements-check
 # The scoped backup below needs both; checked here so a bad layout fails before anything is built (#1487).
 backup_root=${BACKUP_ROOT:-/mnt/disk3/noevia-backups}
 [ -d "$backup_root" ] || { echo "backup root $backup_root is missing; not deploying" >&2; exit 1; }
