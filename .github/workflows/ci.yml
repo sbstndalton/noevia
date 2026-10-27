@@ -295,12 +295,12 @@ jobs:
             || { echo "::error::noevia-services laya/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
           [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$laya")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
             || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and laya Dockerfiles"; exit 1; }
-      # #2112: diary-overlay.sh's directory list is compared with the pinned services' real diary/Dockerfile.
-      - name: Diary overlay directories match the pinned Diary Dockerfile
+      # #2112: exercise the directory list and actual production COPY parser against the assembled Diary Dockerfile.
+      - name: Diary overlay COPY contract matches the pinned Diary Dockerfile
         if: env.RUN_JOB == 'true'
         env:
           NOEVIA_SERVICES_DIR: ${{ steps.assemble.outputs.tree }}/services
-        run: python3 -m unittest -v deploy.tests.test_overlay_scripts.OverlayDirsInSync
+        run: python3 -m unittest -v deploy.tests.test_overlay_scripts.DiaryCopyContract deploy.tests.test_overlay_scripts.OverlayDirsInSync
       # #967: core pins its own noevia-rs ref for dav-parse.wasm (core/server/dav-parse.lock). Like
       # every lock pin, it must be on noevia-rs main before a release ships it.
       - name: core's dav-parse noevia-rs pin is on noevia-rs main
