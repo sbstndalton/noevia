@@ -197,6 +197,30 @@ jobs:
           cat /tmp/egress.out
           [ "$code" = 2 ] && grep -q "no grants" /tmp/egress.out
 
+      # Exact companion source inputs qualify the native profile independently of the still
+      # selected release pins. The complete paired packet must be published in dependency order.
+      - name: Reviewed native egress source
+        if: env.RUN_JOB == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-rs
+          ref: e4c9f1eb5cf3d58fd55cee737bcebeaa223d4fe3
+          path: .native-egress/rs
+          persist-credentials: false
+      - name: Reviewed native egress Core client
+        if: env.RUN_JOB == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-core
+          ref: 3ae8205c411e1cfbd1b6ec79cf29baedf885ec13
+          path: .native-egress/core
+          persist-credentials: false
+      - name: Required isolated native image and mounted Core control qualification
+        if: env.RUN_JOB == 'true'
+        env:
+          NOEVIA_EGRESS_ISOLATED_QUALIFICATION: '1'
+        run: bash deploy/tools/qualify-egress-native-image.sh .native-egress/rs .native-egress/core
+
   # The release path (#922, #952), end to end at this commit: assemble the release tarball from the
   # repos pinned in release/versions.lock (assemble-release.sh, exactly as a release does), check
   # the tree and the Compose build contexts that point into it, build the web image with
