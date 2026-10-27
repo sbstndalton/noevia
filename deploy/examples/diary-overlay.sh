@@ -63,9 +63,9 @@ done
 diary_df_check=$base/releases/$V/services/diary/Dockerfile
 [ -f "$diary_df_check" ] || { echo "no releases/$V/services/diary/Dockerfile to check the overlay directories against; not deploying" >&2; exit 1; }
 # BEGIN dockerfile-copy-check (deploy/tests/test_overlay_scripts.py runs this block)
-# Every COPY and ADD of the final stage is significant. Only three shapes are known: the dependency list, the binaries
-# copied by `COPY --from=tenant-assertion /out/ /usr/local/bin/`, and `COPY <dir>/ ./<dir>/` for a directory
-# of the app. Any other line that copies something
+# Every COPY and ADD of the final stage is significant. Known shapes are the dependency list, the generated
+# /out/ binary bundle, the release's two exact individual binary copies, and COPY <dir>/ ./<dir>/ for app directories.
+# An arbitrary source/destination from the Rust stage is not accepted. Any other line that copies something
 # (a file, a hyphenated directory, --chown, ADD, JSON form, a continued line) would put content into the image that
 # this overlay does not ship, so it stops the overlay instead of being ignored.
 final_stage=$(awk 'tolower($0) ~ /^[ \t]*from[ \t]/ { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$diary_df_check")
@@ -75,6 +75,8 @@ while IFS= read -r df_line || [ -n "$df_line" ]; do
   case "$(printf '%s' "$df_line" | tr 'A-Z' 'a-z')" in copy|copy[[:space:]]*|add|add[[:space:]]*) ;; *) continue ;; esac
   if [ "$df_line" = "COPY requirements.txt ." ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /out/ /usr/local/bin/" ]; then continue
+  elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion" ]; then continue
+  elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify" ]; then continue
   elif [[ $df_line =~ ^COPY\ ([a-z_][a-z0-9_]*)/\ \./([a-z_][a-z0-9_]*)/$ ]] && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]; then
     df_dirs="$df_dirs${BASH_REMATCH[1]}"$'\n'
   else df_unknown="$df_unknown$df_line"$'\n'
@@ -83,7 +85,7 @@ done <<< "$final_stage"
 if [ -n "$df_unknown" ]; then
   echo "the release Diary Dockerfile copies something into the image that this overlay does not know how to ship:" >&2
   printf '%s' "$df_unknown" | head -n 5 | sed 's/^/  /' >&2
-  echo "the only Rust COPY allowed is: COPY --from=tenant-assertion /out/ /usr/local/bin/" >&2
+  echo "Rust COPY must be the exact /out/ bundle or an exact tenant-assertion/workspace-restore-verify release binary path into /usr/local/bin/" >&2
   echo "update diary-overlay.sh (and its test) for these lines, or rebuild the image; not deploying" >&2
   exit 1
 fi

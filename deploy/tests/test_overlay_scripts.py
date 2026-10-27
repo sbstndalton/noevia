@@ -26,7 +26,8 @@ RCLONE = ROOT / 'deploy/offsite/rclone-sync.sh'
 BAD_SHAS = ['', 'ABCDEF1', 'abc12', 'abc123g', '../../etc', 'abc1234;touch x', 'abc1234 x', '$(id)', 'a' * 41]
 
 
-# Shaped like the release's Diary Dockerfile: dependencies first, then the three directories that land in /app.
+# Generated overlay shape: binary bundle plus the three app directories.
+# Real release Dockerfiles copy the two binaries individually; both shapes are checked below.
 DIARY_DOCKERFILE = """FROM rust:slim AS tenant-assertion
 ADD https://example.invalid/source.tar.gz /tmp/source.tar.gz
 COPY tools/ ./tools/
@@ -813,6 +814,43 @@ class DiaryCopyContract(unittest.TestCase):
                             'COPY requirements.txt ./', 'COPY agent/ \\\n  ./agent/']:
             self.refused(instruction)
 
+    def test_individual_release_binary_copies_pass_both_parsers(self):
+        copies = '\n'.join(
+            f'COPY --from=tenant-assertion /src/target/release/{name} /usr/local/bin/{name}'
+            for name in ('tenant-assertion', 'workspace-restore-verify')) + '\n'
+        self.accepted(DIARY_DOCKERFILE.replace(
+            'COPY --from=tenant-assertion /out/ /usr/local/bin/\n', copies))
+
+    @unittest.skipUnless(os.environ.get('NOEVIA_SERVICES_DIR'), 'set NOEVIA_SERVICES_DIR for actual release COPY controls')
+    def test_actual_release_dockerfile_passes_both_parsers(self):
+        text = (pathlib.Path(os.environ['NOEVIA_SERVICES_DIR']) / 'diary/Dockerfile').read_text()
+        self.accepted(text)
+        # Independently alter the real artifact, rather than replacing it with a
+        # synthetic generated Dockerfile that teaches the same assumption twice.
+        for name in ('tenant-assertion', 'workspace-restore-verify'):
+            original = f'COPY --from=tenant-assertion /src/target/release/{name} /usr/local/bin/{name}'
+            self.assertIn(original, text)
+            altered = text.replace(original, original.replace('/src/target/release/', '/elsewhere/'))
+            with self.subTest(binary=name):
+                self.assertNotEqual(self.check(altered).returncode, 0)
+                with self.assertRaises(ValueError):
+                    OverlayDirsInSync.dockerfile_dirs(altered)
+
+    def test_release_binary_stage_source_destination_and_operands_are_exact(self):
+        for name in ('tenant-assertion', 'workspace-restore-verify'):
+            source = f'/src/target/release/{name}'
+            destination = f'/usr/local/bin/{name}'
+            for instruction in (
+                f'COPY --from=other {source} {destination}',
+                f'COPY --from=tenant-assertion /elsewhere/{name} {destination}',
+                f'COPY --from=tenant-assertion {source} /elsewhere/{name}',
+                f'COPY --from=tenant-assertion {source} /usr/local/bin/',
+                f'COPY --from=tenant-assertion {source} /extra {destination}',
+                f'COPY --chown=1000:1000 --from=tenant-assertion {source} {destination}',
+                f'COPY --from=tenant-assertion {source} {destination}-other',
+            ):
+                self.refused(instruction)
+
     def test_generated_binary_copy_spans_both_parsers(self):
         result, generated = RsStage().stage(
             f'ARG NOEVIA_RS_REF={RsStage.REF}\nARG NOEVIA_RS_SHA256={RsStage.SUM}\n')
@@ -898,7 +936,11 @@ class OverlayDirsInSync(unittest.TestCase):
                 continue
             if line == 'COPY requirements.txt .':
                 continue
-            if line == 'COPY --from=tenant-assertion /out/ /usr/local/bin/':
+            if line in (
+                'COPY --from=tenant-assertion /out/ /usr/local/bin/',
+                'COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion',
+                'COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify',
+            ):
                 continue
             match = re.fullmatch(r'COPY ([a-z_][a-z0-9_]*)/ \./\1/', line)
             if not match:
