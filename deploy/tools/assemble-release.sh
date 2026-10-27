@@ -172,7 +172,9 @@ fi
 # A front that saves a project's chat list over a core from before noevia-core#75 would have its
 # chats dropped by Node's whole-field merge (sbstndalton/noevia#1409), so that pairing is refused
 # here; likewise a front that saves the free-chat list (GET/POST /api/freechats) over a core from
-# before noevia-core#76, whose own free-list writers would overwrite free-chats.json whole. Placeholder names ({id}, {projectId}) are compared as one.
+# before noevia-core#76, whose own free-list writers would overwrite free-chats.json whole, and a
+# front that answers a chat's DELETE (/api/freechats/{chatId}, /api/projects/{id}/chats/{chatId},
+# #1071 slice 6) over a core that still answers it too. Placeholder names ({id}, {projectId}) are compared as one.
 # Includes the permanent context slice (#1264). routes.toml is read by routes_toml below, which
 # understands the TOML that matters here (indented keys, spaces or tabs around "=", "basic" or
 # 'literal' strings, trailing comments, multi-line arrays, quoted keys, [[ route ]] headers) rather
@@ -285,12 +287,50 @@ routes_toml() {
 }
 project_routes_rs() {
   routes_toml "$1" | awk -F'\t' '
-    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$)/ || $1 ~ /^\/api\/chats\/[^/]+\/context$/) {
+    $2 == "rust" && $3 == "-" && ($1 ~ /^\/api\/(projects\/|freechats$|freechats\/[^\/]+$)/ || $1 ~ /^\/api\/chats\/[^\/]+\/(context|move)$/) {
       if ($4 == "-") { print "ALL " $1; next }
       n = split($4, m, /[^A-Z]+/)
       for (i = 1; i <= n; i++) if (m[i] != "") print m[i] " " $1
     }
   ' | sed 's/{[^}]*}/{}/g' | sort -u
+}
+# The three GETs and (when paired) both POST writers. No HEAD or other method moves.
+web_address_routes_rs() {
+  routes_toml "$1" | awk -F'\t' '
+    $1 == "/api/instance" || $1 == "/.well-known/webauthn" || $1 == "/api/admin/web-address" || $1 == "/api/admin/web-address/remove" {
+      if ($2 == "rust") {
+        if ($3 != "-" || $4 == "-") { print "invalid " $1; next }
+        n = split($4, methods, ",")
+        for (i = 1; i <= n; i++) {
+          gsub(/[ \t]/, "", methods[i])
+          if (methods[i] !~ /^(GET|POST)$/) { print "invalid " $1; next }
+          print methods[i] " " $1
+        }
+      }
+    }
+  ' | sort -u
+}
+# A writer-capable core must export both markers, both exact POST paths, and refuse the
+# methods before public/auth dispatch. Older GET-only pins remain a valid separate pair.
+web_address_routes_core() {
+  local source="$tree/core/server/rust-web-address.cjs"
+  [ -f "$source" ] || return 0
+  grep -qxF "const WEB_ADDRESS_READ_OWNER = 'noevia-web-address-read-rust/1';" "$source" || { echo invalid-marker; return; }
+  grep -qxF "  return method === 'GET' && OWNED_GET_PATHS.includes(pathname);" "$source" || { echo invalid-method; return; }
+  if grep -qxF "const WEB_ADDRESS_WRITE_OWNER = 'noevia-web-address-write-rust/1';" "$source"; then
+    grep -qxF 'module.exports = { WEB_ADDRESS_READ_OWNER, WEB_ADDRESS_WRITE_OWNER, OWNED_GET_PATHS, OWNED_POST_PATHS, ROUTE_REFUSAL, WRITE_REFUSAL, ownedRead, ownedWrite, refuseOwnedRead, refuseOwnedWrite, refuseOwned };' "$source" || { echo invalid-export; return; }
+    grep -qxF "const OWNED_POST_PATHS = Object.freeze(['/api/admin/web-address', '/api/admin/web-address/remove']);" "$source" || { echo invalid-write-paths; return; }
+    grep -qxF "  return method === 'POST' && OWNED_POST_PATHS.includes(pathname);" "$source" || { echo invalid-write-method; return; }
+    grep -qxF "  return refuseOwnedRead(req, res, pathname, json) || refuseOwnedWrite(req, res, pathname, json);" "$source" || { echo invalid-write-refusal; return; }
+    grep -qxF "    if (require('./rust-web-address.cjs').refuseOwned(req, res, p, json)) return;" "$tree/core/server/index.cjs" || { echo invalid-wiring; return; }
+    grep -qxF "  previous_origins: ['Web address changes are owned by the Rust front.', 'RUST_WEB_ADDRESS_WRITE_OWNED']," "$tree/core/server/rust-auth.cjs" || { echo invalid-write-guard; return; }
+    sed -n '/^const OWNED_GET_PATHS = /,/]);/p' "$source" | grep -oE "'/(api/instance|api/admin/web-address|\.well-known/webauthn)'" | tr -d "'" | sed 's/^/GET /'
+    sed -n '/^const OWNED_POST_PATHS = /,/]);/p' "$source" | grep -oE "'/api/admin/web-address(/remove)?'" | tr -d "'" | sed 's/^/POST /'
+  else
+    grep -qxF 'module.exports = { WEB_ADDRESS_READ_OWNER, OWNED_GET_PATHS, ROUTE_REFUSAL, ownedRead, refuseOwnedRead };' "$source" || { echo invalid-export; return; }
+    grep -qxF "    if (require('./rust-web-address.cjs').refuseOwnedRead(req, res, p, json)) return;" "$tree/core/server/index.cjs" || { echo invalid-wiring; return; }
+    sed -n '/^const OWNED_GET_PATHS = /,/]);/p' "$source" | grep -oE "'/(api/instance|api/admin/web-address|\.well-known/webauthn)'" | tr -d "'" | sed 's/^/GET /'
+  fi | sort -u
 }
 # Whether routes.toml gives GET /api/auth/session to Rust with no switch (sign-in is the front's
 # permanently, sbstndalton/noevia#1071).
@@ -355,6 +395,105 @@ core_needs_journal_origin() {
 rs_journals_origin() {
   grep -qs '"origin"' "$tree/rs/crates/server-projects/src/journal.rs"
 }
+# Whether routes.toml gives a chat's DELETE to Rust (sbstndalton/noevia#1071 slice 6): either of
+# DELETE /api/freechats/{chatId} and DELETE /api/projects/{projectId}/chats/{chatId}.
+rust_owns_chat_delete() {
+  project_routes_rs "$1" | grep -qx -e 'DELETE /api/freechats/{}' -e 'DELETE /api/projects/{}/chats/{}' \
+    -e 'ALL /api/freechats/{}' -e 'ALL /api/projects/{}/chats/{}'
+}
+# Explicit pairing markers (sbstndalton/noevia#2161), never source shapes: the front's internal
+# store answers POST /v1/chat/delete (crates/server-projects chat_delete.rs CHAT_DELETE_STORE_MARKER),
+# and the core deletes chats only through it (server/project-store-client.cjs
+# CHAT_DELETE_CLIENT_MARKER).
+rs_serves_chat_delete() {
+  grep -rqsF --include='*.rs' -e '"noevia-chat-delete-store/1"' "$tree/rs/crates/server-projects/src"
+}
+core_deletes_via_store() {
+  grep -qF "'noevia-chat-delete-client/1'" "$tree/core/server/project-store-client.cjs" 2>/dev/null
+}
+# Slice7: exact canonical declarations + actual shorthand exports, never comment literals.
+# A transitional handler must be a named exported async chatMoveRoute in its actual route module.
+move_capability() {
+  [ -f "$1" ] || return 1
+  awk -v name="$2" -v value="$3" -v kind="$4" '
+    function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    {
+      line=clean($0)
+      if (block) { if (index(line,"*/")) block=0; next }
+      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
+      if (line ~ /^\/\//) next
+      if ((kind=="features" || kind=="feature_ref") && index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
+      if (features) {
+        fend=index(line,"];")
+        if(fend) line=substr(line,1,fend-1)
+        n=split(line,fields,",")
+        for(i=1;i<=n;i++) if(clean(fields[i])==(kind=="feature_ref" ? value : sprintf("%c",34) value sprintf("%c",34))) observed++
+        if(fend) features=0
+      }
+      if (kind=="rust" && line == "pub const " name ": &str = \"" value "\";") decl++
+      if (kind=="js" && line == "const " name " = " sprintf("%c",39) value sprintf("%c",39) ";") decl++
+      if (kind=="function" && line ~ ("^async function " name "\\(")) decl++
+      if (index(line,"module.exports = {")==1) { exporting=1; line=substr(line,length("module.exports = {")+1) }
+      if (exporting) {
+        ending=index(line,"}")
+        if (ending) line=substr(line,1,ending-1)
+        n=split(line,fields,",")
+        for(i=1;i<=n;i++) if(clean(fields[i])==name) exported++
+        if(ending) exporting=0
+      }
+    }
+    END { exit !(decl==1 && (kind=="rust" || ((kind=="features" || kind=="feature_ref") && observed==1) || (kind!="features" && exported==1))) }
+  ' "$1"
+}
+rust_owns_chat_move() {
+  project_routes_rs "$1" | grep -qxF 'POST /api/chats/{}/move'
+}
+core_refuses_chat_move() {
+  project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qxF 'POST /api/chats/{}/move'
+}
+rs_move_foundation() { move_capability "$tree/rs/crates/server-projects/src/chat_move.rs" MOVE_MARKER noevia-chat-move-foundation/1 rust; }
+rs_move_start() { move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES start-id features; }
+rs_move_journal() { move_capability "$tree/rs/crates/server-projects/src/journal.rs" CHAT_MOVE_JOURNAL_MARKER noevia-chat-move-journal/1 rust; }
+core_move_client() { move_capability "$tree/core/server/project-store-client.cjs" CHAT_MOVE_CLIENT_MARKER noevia-chat-move-client/1 js; }
+core_move_enforcement() { move_capability "$tree/core/server/chat.cjs" CHAT_MOVE_ENFORCEMENT_MARKER noevia-chat-move-enforcement/1 js; }
+core_move_reader() { move_capability "$tree/core/server/chat-change-journal.cjs" CHAT_MOVE_READER_MARKER noevia-chat-move-reader/1 js; }
+core_move_owner() { move_capability "$tree/core/server/rust-projects.cjs" CHAT_MOVE_PUBLIC_OWNER "$1" js; }
+core_move_handler() { move_capability "$tree/core/server/routes/chat-lists.cjs" chatMoveRoute - function; }
+# Source jobs retain the Node executor while Rust alone owns their persisted journals. A
+# marker is accepted only when exported from the actual client, referenced by the compiled
+# server FEATURES list, and backed by all six authenticated internal store routes.
+core_source_client() {
+  move_capability "$tree/core/server/project-store-client.cjs" SOURCE_JOBS_CLIENT_MARKER noevia-source-jobs-client/1 js
+}
+rs_source_store() {
+  move_capability "$tree/rs/crates/server-projects/src/source_jobs.rs" SOURCE_JOBS_STORE_MARKER noevia-source-jobs-store/1 rust || return 1
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER feature_ref || return 1
+  grep -qxF 'pub mod source_jobs;' "$tree/rs/crates/server-projects/src/lib.rs" || return 1
+  grep -qF 'use server_projects::source_jobs as jobs;' "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
+  local route
+  for route in recover start abandon progress finish read; do
+    grep -qF ".route(\"/v1/source-jobs/$route\", source_route(" "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
+  done
+}
+
+# Deep research still executes in Node; Rust alone owns its kind-scoped journal. The
+# selected pair must contain the exported live client and the compiled internal store routes.
+core_research_client() {
+  move_capability "$tree/core/server/project-store-client.cjs" RESEARCH_JOBS_CLIENT_MARKER noevia-research-jobs-client/1 js
+}
+rs_research_store() {
+  move_capability "$tree/rs/crates/server-projects/src/research_jobs.rs" RESEARCH_JOBS_STORE_MARKER noevia-research-jobs-store/1 rust || return 1
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER feature_ref || return 1
+  grep -qxF 'pub mod research_jobs;' "$tree/rs/crates/server-projects/src/lib.rs" || return 1
+  grep -qF 'use server_projects::research_jobs as jobs;' "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
+  local route route_source route_op
+  route_source="$(sed '/^[[:space:]]*\/\//d; /\/\*/,/\*\//d' "$tree/rs/bins/noevia-server/src/project_store.rs" | tr '\n' ' ')" || return 1
+  for route in recover start abandon event cancel finish report prepare artifact clear read list; do
+    route_op="$(printf '%s' "$route" | cut -c1 | tr '[:lower:]' '[:upper:]')${route#?}"
+    grep -Eq "\.route\([[:space:]]*\"/v1/research-jobs/$route\",[[:space:]]*research_route\(ResearchOp::${route_op}\)[[:space:]]*,?[[:space:]]*\)" <<<"$route_source" || return 1
+  done
+}
+
 # Whether the pinned front reads NOEVIA_START_ID: a Rust source under rs/bins names it, or a
 # FEATURES list there carries "start-id".
 rs_reads_start_id() {
@@ -368,6 +507,24 @@ project_routes_core() {
   [ -f "$1" ] || return 0
   sed -n "/^const ${2:-OWNED_ROUTES} = /,/]))/p" "$1" | grep -o "'[A-Z]* /[^']*'" | tr -d "'" | sed 's/{[^}]*}/{}/g' | sort -u
 }
+# A ported core with no Rust route contract cannot be paired at all. Keep this outside the
+# routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
+if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then
+  web_core="$(web_address_routes_core)"
+  [ -z "$web_core" ] || die "web-address GET ownership pairing: core refuses GETs but Rust routes.toml is missing"
+fi
+# A partially ported source journal would either strand a 202 without a reader or give
+# source files two owners. Old core/old Rust remains an allowed rollback pair.
+if [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
+   || grep -qE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+   || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
+  core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
+fi
+if [ -f "$tree/rs/crates/server-projects/src/research_jobs.rs" ] \
+   || grep -qE 'RESEARCH_JOBS_CLIENT_MARKER|researchJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+   || grep -qF 'workspace.researchJobs' "$tree/core/server/research-jobs.cjs" 2>/dev/null; then
+  core_research_client && rs_research_store || die "research job store pairing: core needs an exported research client and Rust needs the compiled research store capability and internal routes"
+fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.
@@ -377,6 +534,28 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   route_switches="$(switched_routes "$routes_file")"
   if printf '%s\n' "$route_switches" | grep -q '^NOEVIA_RUST_PROJECT_WRITES '; then
     die "noevia-rs at $rs_ref still gates chat context on NOEVIA_RUST_PROJECT_WRITES; pin permanent GET/POST context ownership (sbstndalton/noevia#1071)"
+  fi
+  # The three GETs pair together; the two POST writers transfer together on the
+  # dependent pair. HEAD and every other method remain Node's.
+  web_rs="$(web_address_routes_rs "$routes_file")"
+  web_core="$(web_address_routes_core)"
+  web_expected="$(printf 'GET /api/admin/web-address\nGET /api/instance\nGET /.well-known/webauthn' | sort)"
+  web_write_expected="$(printf '%s\nPOST /api/admin/web-address\nPOST /api/admin/web-address/remove' "$web_expected" | sort)"
+  if [ -n "$web_rs" ] || [ -n "$web_core" ]; then
+    { [ "$web_rs" = "$web_expected" ] && [ "$web_core" = "$web_expected" ]; } \
+      || { [ "$web_rs" = "$web_write_expected" ] && [ "$web_core" = "$web_write_expected" ]; } \
+      || die "web-address ownership pairing: Rust and Node must agree on three GETs and both POST writers together; preserve HEAD/other methods"
+    move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-web-address-read features \
+      || die "web-address GET ownership pairing: Rust route table lacks a compiled --features declaration"
+    if [ "$web_rs" = "$web_write_expected" ]; then
+      move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-web-address-write features \
+        || die "web-address POST ownership pairing: Rust route table lacks a compiled --features declaration"
+      grep -qF "rust-web-address-write" "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+        || die "web-address POST ownership pairing: web supervisor lacks a prelaunch capability comparison"
+    fi
+    grep -qF 'WEB_ADDRESS_READ_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+      && grep -qF "rust-web-address-read" "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+      || die "web-address GET ownership pairing: web supervisor lacks a prelaunch capability comparison"
   fi
   # sbstndalton/noevia#1071: the project routes are the front's with no switch. The web supervisor
   # no longer passes NOEVIA_RUST_PROJECTS, so a front that still gates them on it (before the
@@ -448,6 +627,58 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "noevia-rs at $rs_ref answers POST /api/chats/{chatId}/history, but noevia-core at $(lock_value NOEVIA_CORE_REF) does not tail the chat change journal (no noevia-chat-change-journal-reader/1 in server/chat-change-journal.cjs), so the chat mirror and brain would stop following saves; pin a core with the sbstndalton/noevia#2153 reader"
     rs_serves_change_journal \
       || die "noevia-rs at $rs_ref answers POST /api/chats/{chatId}/history but does not journal transcript changes (no /v1/changes/read under rs/bins), so the chat mirror and brain would stop following saves; pin a noevia-rs with the sbstndalton/noevia#2153 journal"
+  fi
+  # sbstndalton/noevia#1071 slice 5, the other way round: a core that refuses the history save
+  # (rust-projects.cjs OWNED_ROUTES, noevia-core with the Node handler deleted) beside a front that
+  # does not answer it (before noevia-rs#291) would leave every chat save to a Node that answers
+  # 503 RUST_PROJECTS_OWNED.
+  if ! rust_owns_history_post "$routes_file" \
+     && project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qx 'POST /api/chats/{}/history'; then
+    die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses POST /api/chats/{chatId}/history (server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so every chat save would fail; pin a noevia-rs that owns the history save (noevia-rs#291, sbstndalton/noevia#1071 slice 5)"
+  fi
+  # sbstndalton/noevia#1071 slice 6: a chat's delete is one store operation in the front. A front
+  # that answers the DELETE routes needs a core that refuses them (the generic OWNED_ROUTES check
+  # above names any missing one) and whose own deletes (the retention sweep, a project's purge) go
+  # through that operation too, or Node removes transcripts and writes tombstones beside it with no
+  # lock. A core that deletes through the operation needs a front that serves it, or every one of
+  # those deletes fails. And a core that refuses the routes beside a front that does not answer
+  # them would leave every chat delete to a 503.
+  if rust_owns_chat_delete "$routes_file"; then
+    core_deletes_via_store \
+      || die "noevia-rs at $rs_ref answers a chat's DELETE, but noevia-core at $(lock_value NOEVIA_CORE_REF) still deletes chats itself (no 'noevia-chat-delete-client/1' in server/project-store-client.cjs); pin a core that deletes through the store (sbstndalton/noevia#1071 slice 6)"
+  fi
+  if core_deletes_via_store && ! rs_serves_chat_delete; then
+    die "noevia-core at $(lock_value NOEVIA_CORE_REF) deletes chats through the project store's chat/delete, but noevia-rs at $rs_ref does not serve it (no \"noevia-chat-delete-store/1\" in crates/server-projects/src); pin a noevia-rs with the #1071 slice 6 store operation"
+  fi
+  # Check each refused route independently: the other route still being Rust-owned does not
+  # make a returned-to-Node route available (#2168).
+  for delete_path in '/api/freechats/{}' '/api/projects/{}/chats/{}'; do
+    if project_routes_core "$tree/core/server/rust-projects.cjs" | grep -qxF "DELETE $delete_path" \
+       && ! project_routes_rs "$routes_file" | grep -qxF -e "DELETE $delete_path" -e "ALL $delete_path"; then
+      die "noevia-core at $(lock_value NOEVIA_CORE_REF) refuses a chat's DELETE (DELETE $delete_path in server/rust-projects.cjs OWNED_ROUTES), but noevia-rs at $rs_ref does not answer it (routes.toml), so that chat delete would fail; pin a noevia-rs that owns this chat delete route (sbstndalton/noevia#2168)"
+    fi
+  done
+  # #1071 slice7: an internal move capability is unsafe beside old Node grants too.
+  # Refuse partial security/provenance stacks even before switching public ownership.
+  if rust_owns_chat_move "$routes_file" || core_refuses_chat_move || rs_move_foundation || rs_move_journal \
+     || core_move_client || core_move_enforcement || core_move_reader; then
+    move_other_methods="$( { project_routes_rs "$routes_file"; project_routes_core "$tree/core/server/rust-projects.cjs" || true; } | awk '$2=="/api/chats/{}/move" && $1!="POST"')"
+    [ -z "$move_other_methods" ] || die "chat move POST ownership pairing: non-POST move ownership/refusal would remove its existing fallback"
+    rs_move_foundation && rs_move_journal && rs_move_start \
+      || die "chat move capability pairing: Rust needs canonical foundation, live/recovery journal and shared start support"
+    core_move_client && core_move_enforcement && core_move_reader && core_tails_change_journal && rs_serves_change_journal \
+      || die "chat move capability pairing: Node needs exported client, final-dispatch enforcement and move journal reader"
+    if core_move_owner rust; then
+      rust_owns_chat_move "$routes_file" && core_refuses_chat_move \
+        || die "chat move POST ownership pairing: declared rust requires exact native POST and Node POST refusal"
+      ! core_move_handler \
+        || die "chat move owner/handler contradiction: declared rust retains an exported Node move handler"
+    elif core_move_owner node; then
+      ! rust_owns_chat_move "$routes_file" && ! core_refuses_chat_move && core_move_handler \
+        || die "chat move POST ownership pairing: declared node requires a real exported delegation handler and no native/refused POST"
+    else
+      die "chat move capability pairing: missing, unknown or unexported CHAT_MOVE_PUBLIC_OWNER declaration"
+    fi
   fi
   # sbstndalton/noevia#2153: a core that builds brains only for origin "history" entries, beside a
   # front whose journal names no origin, would build no brain at all (every entry is mirror-only

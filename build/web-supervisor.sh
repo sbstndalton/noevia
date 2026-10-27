@@ -87,6 +87,71 @@ if [ -n "$missing" ]; then
   echo "web-supervisor: this noevia-server lacks the front route feature(s):$missing; Node no longer answers those routes (sbstndalton/noevia#1071), so update the image" >&2
   exit 2
 fi
+# The three web-address GETs are a paired owner change. The front's compiled capability
+# and core's exported marker must agree before either process starts; source pins alone cannot
+# protect a manually mixed installed pair. Neither result comes from an inherited environment.
+web_address_front_owner=""
+grep -qx 'rust-web-address-read' <<<"$rust_features" && web_address_front_owner=rust
+web_address_core_owner="$(node -e "try { const m = require('./server/rust-web-address.cjs'); if (m.WEB_ADDRESS_READ_OWNER === 'noevia-web-address-read-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$web_address_front_owner" != "$web_address_core_owner" ]; then
+  echo "web-supervisor: web-address GET ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# Both POST actions move together. A binary/core mismatch is refused before either starts.
+web_write_front_owner=""
+grep -qx 'rust-web-address-write' <<<"$rust_features" && web_write_front_owner=rust
+web_write_core_owner="$(node -e "try { const m = require('./server/rust-web-address.cjs'); if (m.WEB_ADDRESS_WRITE_OWNER === 'noevia-web-address-write-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
+  echo "web-supervisor: web-address POST ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# Source job journals are a paired internal-store capability: this Node client has no local
+# source journal fallback. Probe the installed client export and the actual front binary before
+# either process starts. The release assembler also checks their canonical source declarations.
+source_client_file="$PWD/server/project-store-client.cjs"
+source_client_marker="$(node -e 'const c=require(process.argv[1]); if(c.SOURCE_JOBS_CLIENT_MARKER) process.stdout.write(c.SOURCE_JOBS_CLIENT_MARKER)' "$source_client_file" 2>/dev/null || true)"
+if { grep -qE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(' "$source_client_file" 2>/dev/null \
+     || grep -qF 'workspace.sourceJobs' "$PWD/server/source-jobs.cjs" 2>/dev/null; } \
+   && [ "$source_client_marker" != 'noevia-source-jobs-client/1' ]; then
+  echo "web-supervisor: core declares a source job store client but does not export its canonical capability" >&2
+  exit 2
+fi
+if [ -n "$source_client_marker" ] && [ "$source_client_marker" != 'noevia-source-jobs-client/1' ]; then
+  echo "web-supervisor: unknown source job client capability" >&2
+  exit 2
+fi
+source_store_reported=""
+if grep -qx 'noevia-source-jobs-store/1' <<<"$rust_features"; then source_store_reported=1; fi
+if [ -n "$source_client_marker" ] && [ -z "$source_store_reported" ]; then
+  echo "web-supervisor: core source job client requires noevia-source-jobs-store/1 from this noevia-server" >&2
+  exit 2
+fi
+if [ -z "$source_client_marker" ] && [ -n "$source_store_reported" ]; then
+  echo "web-supervisor: noevia-server source job store requires a paired core source job client" >&2
+  exit 2
+fi
+# The deep-research executor also requires a paired Rust journal store. Probe the real
+# client export and this binary's compiled feature before starting either process.
+research_client_file="$PWD/server/project-store-client.cjs"
+research_client_marker="$(node -e 'const c=require(process.argv[1]); if(c.RESEARCH_JOBS_CLIENT_MARKER) process.stdout.write(c.RESEARCH_JOBS_CLIENT_MARKER)' "$research_client_file" 2>/dev/null || true)"
+if { grep -qE 'RESEARCH_JOBS_CLIENT_MARKER|researchJobsFor\(' "$research_client_file" 2>/dev/null      || grep -qF 'workspace.researchJobs' "$PWD/server/research-jobs.cjs" 2>/dev/null; }    && [ "$research_client_marker" != 'noevia-research-jobs-client/1' ]; then
+  echo "web-supervisor: core declares a research job store client but does not export its canonical capability" >&2
+  exit 2
+fi
+if [ -n "$research_client_marker" ] && [ "$research_client_marker" != 'noevia-research-jobs-client/1' ]; then
+  echo "web-supervisor: unknown research job client capability" >&2
+  exit 2
+fi
+research_store_reported=""
+if grep -qx 'noevia-research-jobs-store/1' <<<"$rust_features"; then research_store_reported=1; fi
+if [ -n "$research_client_marker" ] && [ -z "$research_store_reported" ]; then
+  echo "web-supervisor: core research job client requires noevia-research-jobs-store/1 from this noevia-server" >&2
+  exit 2
+fi
+if [ -z "$research_client_marker" ] && [ -n "$research_store_reported" ]; then
+  echo "web-supervisor: noevia-server research job store requires a paired core research job client" >&2
+  exit 2
+fi
 # #2027: Node's legacy workspace prologue delegates only to the actual selected front
 # when that binary advertises the filesystem-only helper. Never inherit an arbitrary path.
 legacy_claim_bin=""
