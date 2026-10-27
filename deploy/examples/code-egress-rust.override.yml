@@ -23,7 +23,7 @@ services:
     # activation requires a coherently qualified release containing the paired native source.
     build:
       # Relative to the first compose file (unchanged by the repo split: deploy/ stays in noevia).
-      context: ../../deploy/egress-proxy
+      context: ./deploy/egress-proxy
       target: native-control
     # Tagged separately from the web release (per-service versioning).
     image: cowork-egress-rs:${EGRESS_RS_VERSION:-local}

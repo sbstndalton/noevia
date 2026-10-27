@@ -3,14 +3,17 @@
 
 This is a source/profile check, never an authenticated Ready or runtime qualification.
 """
+import argparse
 import json
+from pathlib import Path
 import sys
 
 
 TARGET = '/run/noevia-egress-control'
+ROOT = Path(__file__).resolve().parents[2]
 
 
-def validate(config):
+def validate(config, project_root=ROOT):
     def require(condition, reason):
         if not condition:
             raise ValueError(reason)
@@ -27,6 +30,9 @@ def validate(config):
     require(config['networks']['code']['internal'] is True, 'code network must be internal')
     require(not native.get('ports'), 'native ports must not be published')
     require(native['build']['target'] == 'native-control', 'native image capability gate required')
+    context = Path(native['build']['context'])
+    require(context.is_absolute() and context.resolve() == (Path(project_root).resolve() / 'deploy/egress-proxy'), 'native build context must select this project recipe')
+    require(native['build'].get('dockerfile', 'Dockerfile') == 'Dockerfile' and (context / 'Dockerfile').is_file(), 'native recipe is missing or replaced')
     require(native['command'] == ['--native-control-v1'], 'explicit native mode required')
     require(we['CODE_EGRESS_IMPL'] == 'rust', 'Node fallback is retired')
     require(we['CODE_EGRESS_RUST_HOST'] == bind, 'web/native endpoint mismatch')
@@ -57,8 +63,11 @@ def validate(config):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--project-root', type=Path, default=ROOT)
+    args = parser.parse_args()
     try:
-        validate(json.load(sys.stdin))
+        validate(json.load(sys.stdin), args.project_root)
     except (ValueError, KeyError, TypeError) as exc:
         sys.exit('native egress profile rejected: ' + str(exc))
     print('native egress profile pairing/isolation PASS (runtime readiness not tested)')
