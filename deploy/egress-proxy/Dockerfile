@@ -16,9 +16,20 @@ RUN echo "${NOEVIA_RS_SHA256}  /tmp/noevia-rs.tar.gz" | sha256sum -c - \
  && cargo build --release --locked -p egress-proxy \
  && (./target/release/egress-proxy --help 2>&1 || true) | grep -q usage
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS runtime
 COPY --from=build /src/target/release/egress-proxy /usr/local/bin/egress-proxy
 # No shell tools are needed at run time; the proxy runs unprivileged and reads only the grant key
 # file from its read-only mount.
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/egress-proxy"]
+
+# Explicit native profile: an older globally selected pin must fail the image build rather
+# than silently start a legacy grant listener. Metadata is only a source-compatibility gate.
+FROM runtime AS native-control
+RUN probe="$(/usr/local/bin/egress-proxy --capabilities)" \
+ && printf '%s\n' "$probe" | grep -F '"nativeControl":true' \
+ && printf '%s\n' "$probe" | grep -F '"noevia-code-egress-control/1"' \
+ && printf '%s\n' "$probe" | grep -F '"readiness":"requires-authenticated-ready"'
+
+# Keep the selected release's existing default image and pin smoke check unchanged.
+FROM runtime AS release
