@@ -212,7 +212,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-core
-          ref: cd77fa320c2d82b8d7b13ae3841c0c124df330f3
+          ref: bb1060b119d5e3f80cd315785fb0b54beb5e30d6
           path: .native-egress/core
           persist-credentials: false
       - name: Required isolated native image and mounted Core control qualification
