@@ -54,7 +54,8 @@ compose-check:
 	# #1636: the optional EmbeddingGemma 2 server stays CPU-only and unpublished, and nomic-v1 stays the default profile.
 	env $(COMPOSE_STUBS) docker compose $(COMPOSE_ENV) --profile embed-next -f compose.yaml -f compose.llamacpp.yaml -f compose.embed.yaml config --format json \
 		| jq -e '.services["embed-next"].command[0:2] == ["--device","none"] and .services["embed-next"].devices == null and .services["embed-next"].mem_limit != null and .services["embed-next"].ports == null and .services.embed.ports == null and .services.web.environment.EMBEDDING_PROFILE == "nomic-v1" and .services.diary.environment.LLM_EMBED_PROFILE == "nomic-v1" and (.services.web.environment.EMBEDDING_NEXT_MODEL // "") == ""' >/dev/null
-	docker compose $(COMPOSE_ENV) --profile code -f compose.yaml -f deploy/examples/code-sandbox.override.yml -f deploy/examples/code-egress-rust.override.yml config --quiet
+	# Render-only placeholder: never create or mount a host key directory during validation.
+	CODE_EGRESS_CONTROL_KEY_DIR=/tmp/noevia-compose-check-native-key docker compose $(COMPOSE_ENV) --profile code -f compose.yaml -f deploy/examples/code-sandbox.override.yml -f deploy/examples/code-egress-rust.override.yml config --quiet
 	# #2115: on a separate inference machine the gate takes over the router's published port (synthetic machine stub).
 	MODEL_MANAGER_VERSION=stub INFERENCE_GATE_PUBLISH=192.0.2.10:18000 docker compose $(COMPOSE_ENV) -f deploy/tests/fixtures/inference-machine.stub.yml -f deploy/examples/inference-gate.override.yml config --format json \
 		| jq -e '(.services.llama.ports // []) == [] and .services["inference-gate"].ports[0].published == "18000" and .services["inference-gate"].command == ["noevia-inference-gate"]' >/dev/null

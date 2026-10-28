@@ -1,42 +1,33 @@
-# Rust egress proxy for Code mode (#926). DARK: not part of any deployment until the owner adds
-# this file AND sets CODE_EGRESS_IMPL=rust. Layer it after code-sandbox.override.yml:
+# Native egress profile; layer after code-sandbox.override.yml only for a qualified release.
+# Web owns control-key publication and authenticated Ready/5 s renewal; Rust owns forwarding,
+# admission, revocation and reports. CODE_EGRESS_IMPL=node is unsupported, never a fallback.
+# Merely building this image or observing --capabilities is NOT authenticated readiness.
 #
-#   docker compose -f docker-compose.yml -f code-sandbox.override.yml \
-#     -f code-egress-rust.override.yml --profile code up -d
+# Before activation, explicitly prepare a NEW trusted local CODE_EGRESS_CONTROL_KEY_DIR:
+# canonical absolute path, owner CODE_EGRESS_KEY_UID (web's actual UID, default 0), group
+# CODE_EGRESS_KEY_GID (default 1006), mode 0750, no symlink path components. A preexisting
+# current.key must be regular, single-link, same UID/GID and mode 0440. Web creates/replaces
+# only that key. Neither container creates or repairs this directory or the old grant volume.
+# The sandbox never receives this mount. Actual Linux mounted ownership/startup and full
+# release qualification remain required; these example settings do not grant host access.
 #
-# With CODE_EGRESS_IMPL unset or `node` (the default) web keeps its in-process proxy
-# (code-egress.cjs) and this service merely idles with no grants it can verify (no key file is
-# written in node mode, so every request is refused). Rolling back = CODE_EGRESS_IMPL=node.
-#
-# What changes with CODE_EGRESS_IMPL=rust:
-#   * web derives the grant key (secretStore.derive('code-egress-grant')) and writes it, hex, to
-#     CODE_EGRESS_GRANT_KEY_FILE on the `code-egress-key` volume — mounted by web (rw) and this
-#     proxy (ro) only, never by the sandbox. Mode 0440, group CODE_EGRESS_KEY_GID: web (root)
-#     owns it, the proxy (uid 65532) reads it through group_add of that same fixed gid. Never
-#     world-readable.
-#   * tasks are pointed at egress-rs-code:CODE_EGRESS_PORT with a signed per-task grant
-#     (docs/egress-grant-contract.md); web posts a signed revoke there when a task ends.
-#   * the proxy listens only on its address on the internal `code` network and reaches the
-#     internet through `default`. No ports are published.
-#
-# Bind (security review of #955): CODE_EGRESS_BIND must NOT be the service name — Docker DNS
-# answers a service name on every network the container joins, so it could resolve to the
-# `default` address first, binding the proxy where the sandbox cannot reach it and exposing it on
-# `default`. `egress-rs-code` is an alias declared on `code` only, so it resolves to the code
-# address alone. After bringing it up, verify:
-#   docker exec cowork-web-1 getent ahosts egress-rs-code   # one address, inside the code subnet
-#   docker network inspect <project>_code -f '{{.IPAM.Config}}'
-#   docker logs cowork-egress-rs-1 | grep egress.listening  # bind = that address
+# Both listeners use the same explicit port. egress-rs-code exists on the internal code
+# network ONLY: never bind the multi-network service name. No ports are published. Web's
+# separate `egress` alias remains for its model relay and code-network UI refusal boundary.
+# Removing this profile requires disabling egress (CODE_EGRESS_PORT unset/0), not selecting
+# the retired Node listener. Preserve the prior qualified release for operational rollback.
 services:
   egress-rs:
     profiles: ["code"]
-    # Built from the Dockerfile's pinned NOEVIA_RS_REF + NOEVIA_RS_SHA256 (= release/versions.lock).
-    # Deliberately no build args: overriding the ref without its checksum would only fail the build.
+    # The native target rejects legacy binaries. Release ref/checksum defaults remain locked;
+    # activation requires a coherently qualified release containing the paired native source.
     build:
       # Relative to the first compose file (unchanged by the repo split: deploy/ stays in noevia).
-      context: ../../deploy/egress-proxy
+      context: ./deploy/egress-proxy
+      target: native-control
     # Tagged separately from the web release (per-service versioning).
     image: cowork-egress-rs:${EGRESS_RS_VERSION:-local}
+    command: ["--native-control-v1"]
     restart: unless-stopped
     read_only: true
     cap_drop: ["ALL"]
@@ -51,23 +42,34 @@ services:
     environment:
       CODE_EGRESS_BIND: egress-rs-code
       CODE_EGRESS_PORT: ${CODE_EGRESS_PORT:-8040}
-      CODE_EGRESS_GRANT_KEY_FILE: /run/noevia-egress/grant.key
+      CODE_EGRESS_CONTROL_KEY_FILE: /run/noevia-egress-control/current.key
+      CODE_EGRESS_CONTROL_KEY_UID: "${CODE_EGRESS_KEY_UID:-0}"
+      CODE_EGRESS_CONTROL_KEY_GID: "${CODE_EGRESS_KEY_GID:-1006}"
       CODE_EGRESS_MAX_CONNECTIONS: ${CODE_EGRESS_MAX_CONNECTIONS:-256}
       CODE_EGRESS_MAX_CONNECTIONS_PER_TASK: ${CODE_EGRESS_MAX_CONNECTIONS_PER_TASK:-64}
       CODE_EGRESS_TUNNEL_IDLE_MS: ${CODE_EGRESS_TUNNEL_IDLE_MS:-600000}
     volumes:
-      - code-egress-key:/run/noevia-egress:ro
+      - type: bind
+        source: ${CODE_EGRESS_CONTROL_KEY_DIR:?prepare a private native control key directory first}
+        target: /run/noevia-egress-control
+        read_only: true
+        bind:
+          create_host_path: false
 
   web:
     environment:
-      CODE_EGRESS_IMPL: ${CODE_EGRESS_IMPL:-node}
+      CODE_EGRESS_IMPL: ${CODE_EGRESS_IMPL:-rust}
+      CODE_EGRESS_PORT: ${CODE_EGRESS_PORT:-8040}
       CODE_EGRESS_RUST_HOST: egress-rs-code
-      CODE_EGRESS_GRANT_KEY_FILE: /run/noevia-egress/grant.key
-      CODE_EGRESS_KEY_GID: ${CODE_EGRESS_KEY_GID:-1006}
+      CODE_EGRESS_CONTROL_KEY_FILE: /run/noevia-egress-control/current.key
+      CODE_EGRESS_KEY_UID: "${CODE_EGRESS_KEY_UID:-0}"
+      CODE_EGRESS_KEY_GID: "${CODE_EGRESS_KEY_GID:-1006}"
       # Grant lifetime (absolute, ms): default 2 h, capped at 24 h by the contract.
       CODE_EGRESS_GRANT_LIFETIME_MS: ${CODE_EGRESS_GRANT_LIFETIME_MS:-7200000}
     volumes:
-      - code-egress-key:/run/noevia-egress
-
-volumes:
-  code-egress-key:
+      - type: bind
+        source: ${CODE_EGRESS_CONTROL_KEY_DIR:?prepare a private native control key directory first}
+        target: /run/noevia-egress-control
+        read_only: false
+        bind:
+          create_host_path: false
