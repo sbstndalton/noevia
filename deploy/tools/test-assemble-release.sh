@@ -1367,6 +1367,59 @@ check "a rust-decision-settings front cannot pair with the old Core handlers" 'r
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try decision-old-pair
 check "historic decision settings old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Round 3 (#2190): the storage integration pair, exactly POST of all five routes.
+storage_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/folder"
+owner = "rust"
+$storage_methods
+[[route]]
+path = "/api/integrations/storage/test"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/nextcloud/start"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/nextcloud/poll"
+owner = "$storage_poll_owner"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/nextcloud/cancel"
+owner = "rust"
+methods = ["POST"]
+TOML
+}
+storage_methods='methods = ["POST"]'; storage_poll_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-storage-integrations.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+storage_try storage-core-only
+check "storage integration Core refusal requires the native capability" 'refused "storage integration ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-storage-integrations"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+storage_try storage-pair
+check "matching storage integration pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_methods=''
+storage_try storage-all-methods
+check "an all-methods storage folder route is refused (Node keeps the other methods)" 'refused "storage integration ownership pairing"'
+storage_methods='methods = ["POST", "PUT"]'
+storage_try storage-extra-method
+check "a storage route with a method beside POST is refused" 'refused "storage integration ownership pairing"'
+storage_methods='methods = ["POST"]'; storage_poll_owner=node
+storage_try storage-poll-node
+check "a Node-owned Nextcloud poll beside a native pair is refused" 'refused "storage integration ownership pairing"'
+storage_poll_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+storage_try storage-front-only
+check "a rust-storage-integrations front cannot pair with the old Core handlers" 'refused "storage integration ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try storage-old-pair
+check "historic storage integration old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"

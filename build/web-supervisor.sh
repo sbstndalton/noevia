@@ -123,7 +123,9 @@ fi
 # The public pages and the device approval page (sbstndalton/noevia#2190, server/rust-public-pages.cjs
 # beside the front's rust-public-pages), and the plugin directory (server/rust-plugin-directory.cjs
 # beside rust-plugin-directory), and the decision settings (server/rust-decision-settings.cjs beside
-# rust-decision-settings; Rust is the decision:configuration row's single writer): each group moves as one owner. Old/old images remain usable for
+# rust-decision-settings; Rust is the decision:configuration row's single writer), and the storage
+# integrations (server/rust-storage-integrations.cjs beside rust-storage-integrations; Rust owns the
+# Nextcloud sign-in's flows file): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -138,6 +140,7 @@ done <<'PAIRS'
 rust-public-pages.cjs rust-public-pages public page
 rust-plugin-directory.cjs rust-plugin-directory plugin directory
 rust-decision-settings.cjs rust-decision-settings decision settings
+rust-storage-integrations.cjs rust-storage-integrations storage integration
 PAIRS
 
 # The three web-address GETs are a paired owner change. The front's compiled capability

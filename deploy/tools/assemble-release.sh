@@ -642,6 +642,33 @@ if [ "$decision_rs_owner" = rust ]; then
   decision_expected="$(printf '%s\n' /api/admin/decision-settings /api/admin/decision-settings/test | sort)"
   [ "$decision_routes" = "$decision_expected" ] || die "decision settings ownership pairing: incomplete route ownership"
 fi
+# The storage integrations (sbstndalton/noevia#2190, round 3): Core's rust-storage-integrations.cjs
+# refusal and the front's rust-storage-integrations capability (the folder write, the connection test
+# and the Nextcloud sign-in, whose flows file Rust owns), exactly POST of all five routes Rust's in
+# routes.toml (Node answered only POST there; the other methods stay Node's).
+storage_core_owner=""
+storage_rs_owner=""
+grep -qF "require('./rust-storage-integrations.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && storage_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-storage-integrations features; then
+  storage_rs_owner=rust
+fi
+[ "$storage_core_owner" = "$storage_rs_owner" ] \
+  || die "storage integration ownership pairing: Core and Rust must move together"
+if [ "$storage_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "storage integration ownership pairing: missing route contract"
+  storage_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/integrations/storage/folder" || $1 == "/api/integrations/storage/test" ||
+    $1 == "/api/integrations/storage/nextcloud/start" || $1 == "/api/integrations/storage/nextcloud/poll" ||
+    $1 == "/api/integrations/storage/nextcloud/cancel" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | sort)" || die "storage integration ownership pairing: exactly POST of all five routes must belong to Rust"
+  storage_expected="$(printf '%s\n' /api/integrations/storage/folder /api/integrations/storage/test /api/integrations/storage/nextcloud/start /api/integrations/storage/nextcloud/poll /api/integrations/storage/nextcloud/cancel | sort)"
+  [ "$storage_routes" = "$storage_expected" ] || die "storage integration ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
