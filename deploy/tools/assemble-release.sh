@@ -621,6 +621,27 @@ if [ "$directory_rs_owner" = rust ]; then
     }')" || die "plugin directory ownership pairing: all methods must belong to Rust"
   [ "$directory_routes" = /api/plugins/directory ] || die "plugin directory ownership pairing: incomplete route ownership"
 fi
+# The decision settings (sbstndalton/noevia#2190): Core's rust-decision-settings.cjs refusal and the
+# front's rust-decision-settings capability (Rust the single writer of decision:configuration), every
+# method of both routes Rust's in routes.toml.
+decision_core_owner=""
+decision_rs_owner=""
+grep -qF "require('./rust-decision-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && decision_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-decision-settings features; then
+  decision_rs_owner=rust
+fi
+[ "$decision_core_owner" = "$decision_rs_owner" ] \
+  || die "decision settings ownership pairing: Core and Rust must move together"
+if [ "$decision_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "decision settings ownership pairing: missing route contract"
+  decision_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/admin/decision-settings" || $1 == "/api/admin/decision-settings/test" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }' | sort)" || die "decision settings ownership pairing: all methods must belong to Rust"
+  decision_expected="$(printf '%s\n' /api/admin/decision-settings /api/admin/decision-settings/test | sort)"
+  [ "$decision_routes" = "$decision_expected" ] || die "decision settings ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.

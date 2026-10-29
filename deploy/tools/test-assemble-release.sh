@@ -1330,6 +1330,43 @@ check "#2190 fronts cannot pair with the old Core handlers" 'refused "ownership 
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try singles-old-pair
 check "historic #2190 old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Round 2 (#2190): the decision settings pair, every method of both routes.
+decision_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/admin/decision-settings"
+owner = "rust"
+$decision_limit
+[[route]]
+path = "/api/admin/decision-settings/test"
+owner = "$decision_test_owner"
+TOML
+}
+decision_limit=""; decision_test_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-decision-settings.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+decision_try decision-core-only
+check "decision settings Core refusal requires the native capability" 'refused "decision settings ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-decision-settings"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+decision_try decision-pair
+check "matching decision settings pair assembles with the round 1 pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+decision_limit='methods = ["GET", "PUT", "DELETE"]'
+decision_try decision-some-methods
+check "a method-limited decision settings route is refused (Node answered every method)" 'refused "decision settings ownership pairing"'
+decision_limit=""; decision_test_owner=node
+decision_try decision-test-node
+check "a Node-owned connection test beside a native pair is refused" 'refused "decision settings ownership pairing"'
+decision_test_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+decision_try decision-front-only
+check "a rust-decision-settings front cannot pair with the old Core handlers" 'refused "decision settings ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try decision-old-pair
+check "historic decision settings old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"

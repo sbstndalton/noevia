@@ -122,7 +122,8 @@ if [ "$models_core_owner" != "$models_front_owner" ]; then
 fi
 # The public pages and the device approval page (sbstndalton/noevia#2190, server/rust-public-pages.cjs
 # beside the front's rust-public-pages), and the plugin directory (server/rust-plugin-directory.cjs
-# beside rust-plugin-directory): each group moves as one owner. Old/old images remain usable for
+# beside rust-plugin-directory), and the decision settings (server/rust-decision-settings.cjs beside
+# rust-decision-settings; Rust is the decision:configuration row's single writer): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -136,6 +137,7 @@ while read -r pair_marker pair_capability pair_label; do
 done <<'PAIRS'
 rust-public-pages.cjs rust-public-pages public page
 rust-plugin-directory.cjs rust-plugin-directory plugin directory
+rust-decision-settings.cjs rust-decision-settings decision settings
 PAIRS
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
