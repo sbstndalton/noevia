@@ -642,6 +642,31 @@ if [ "$decision_rs_owner" = rust ]; then
   decision_expected="$(printf '%s\n' /api/admin/decision-settings /api/admin/decision-settings/test | sort)"
   [ "$decision_routes" = "$decision_expected" ] || die "decision settings ownership pairing: incomplete route ownership"
 fi
+# The two read-only model sizing reads (sbstndalton/noevia#2189) move as one owner: Core's
+# rust-model-sizing.cjs refusal of their GET and the front's rust-model-sizing capability, with
+# exactly GET of both routes Rust's in routes.toml (Node keeps every other method). Historic old/old
+# pins remain valid rollback pairs.
+sizing_core_owner=""
+sizing_rs_owner=""
+grep -qF "require('./rust-model-sizing.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && sizing_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-sizing features; then
+  sizing_rs_owner=rust
+fi
+[ "$sizing_core_owner" = "$sizing_rs_owner" ] \
+  || die "model sizing ownership pairing: Core and Rust must move together"
+if [ "$sizing_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "model sizing ownership pairing: missing route contract"
+  sizing_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/models/estimate" || $1 == "/api/models/preset/suggest" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | sort)" || die "model sizing ownership pairing: exactly GET of both routes must belong to Rust"
+  sizing_expected="$(printf '%s\n' /api/models/estimate /api/models/preset/suggest | sort)"
+  [ "$sizing_routes" = "$sizing_expected" ] || die "model sizing ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
