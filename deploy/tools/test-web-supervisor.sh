@@ -321,6 +321,27 @@ check "rust-model-reads front with old Core refuses before launch" '[ $rc -eq 2 
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
+# both directions and independently of the other (one group may roll back alone).
+for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory"; do
+  read -r p_marker p_cap p_label <<<"$pair"
+  printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+  reset
+  run >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+  reset; touch "$work/die-front"
+  run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: matching native pair starts both processes (the other group old/old)" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+  rm "$work/server/index.cjs"
+  reset
+  run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+done
+printf '%s\n' "  if (require('./rust-public-pages.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-public-pages rust-plugin-directory" >/dev/null 2>"$work/err"; rc=$?
+check "both #2190 pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset
