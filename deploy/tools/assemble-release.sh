@@ -507,6 +507,27 @@ project_routes_core() {
   [ -f "$1" ] || return 0
   sed -n "/^const ${2:-OWNED_ROUTES} = /,/]))/p" "$1" | grep -o "'[A-Z]* /[^']*'" | tr -d "'" | sed 's/{[^}]*}/{}/g' | sort -u
 }
+# Feature authority moves as one three-namespace owner. Historic old/old pins remain
+# valid rollback pairs; either mixed generation is refused before producing an archive.
+feature_core_owner=""
+feature_rs_owner=""
+grep -qF '.createReadOnlyFeatures(' "$tree/core/server/index.cjs" 2>/dev/null && feature_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-feature-owner features; then
+  feature_rs_owner=rust
+fi
+[ "$feature_core_owner" = "$feature_rs_owner" ] \
+  || die "feature ownership pairing: Core and Rust must move together"
+if [ "$feature_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "feature ownership pairing: missing route contract"
+  feature_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/features" || $1 == "/api/admin/features" || $1 == "/api/admin/features/{name}" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }' | sort)" || die "feature ownership pairing: all methods must belong to Rust"
+  feature_expected="$(printf '%s\n' /api/features /api/admin/features '/api/admin/features/{name}' | sort)"
+  [ "$feature_routes" = "$feature_expected" ] || die "feature ownership pairing: incomplete namespace ownership"
+fi
+
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
 if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then

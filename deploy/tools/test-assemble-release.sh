@@ -1141,6 +1141,47 @@ check "slice7 ALL cannot claim the non-POST fallback" 'refused "ALL /api/chats/{
 move_method=POST;cp "$work/move-handler.saved" "$w/server/routes/chat-lists.cjs"
 move_try move-duplicate
 check "slice7 native owner with duplicate Node handler refuses" 'refused "owner/handler contradiction"'
+# Feature owner release matrix. Keep the previously qualified move pair coherent.
+printf '%s\n' 'module.exports = {};' > "$w/server/routes/chat-lists.cjs"
+cp "$w/server/index.cjs" "$work/feature-index.saved"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/feature-lib.saved"
+feature_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/features"
+owner = "rust"
+[[route]]
+path = "/api/admin/features"
+owner = "rust"
+[[route]]
+path = "/api/admin/features/{name}"
+owner = "rust"
+$feature_limit
+TOML
+}
+feature_limit=""
+printf '%s\n' 'const setup = factory.createReadOnlyFeatures({});' >> "$w/server/index.cjs"
+feature_try feature-core-only
+check "feature Core retirement requires the native capability" 'refused "feature ownership pairing"'
+# Add the real FEATURES declaration entry, preserving all unrelated capabilities.
+sed 's/"start-id"/"start-id", "rust-feature-owner"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+feature_try feature-pair
+check "matching feature pair with all three all-method namespaces assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+feature_limit='methods = ["GET"]'
+feature_try feature-get-only
+check "GET-only feature suffix ownership is refused" 'refused "feature ownership pairing"'
+feature_limit=""
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+feature_try feature-front-only
+check "native feature front cannot pair with the old Core writer" 'refused "feature ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try feature-old-pair
+check "historic feature old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"
