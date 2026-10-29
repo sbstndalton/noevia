@@ -281,6 +281,20 @@ reset; touch "$work/die-front"
 run STUB_NODE_DELAY=0.4 >/dev/null 2>&1
 check "a front dying at once does not truncate a slow Node's startup log" 'grep -q "^node WCONF= WRITES=unset$" "$work/log" && grep -q "^node KCONF=" "$work/log"'
 
+# Feature ownership must agree in both directions before either process launches.
+mkdir -p "$work/server"
+printf '%s\n' "const setup = factory.createReadOnlyFeatures({});" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "native feature Core with old front refuses before launch" '[ $rc -eq 2 ] && grep -q "feature ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-feature-owner" >/dev/null 2>"$work/err"; rc=$?
+check "matching native feature pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-feature-owner" >/dev/null 2>"$work/err"; rc=$?
+check "native feature front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "feature ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+
 # --- Process lifecycle -----------------------------------------------------------------------
 reset
 (run UI_PORT=8021 UI_HOST=0.0.0.0 COWORK_DAV_PORT=0 >/dev/null 2>"$work/err"; echo $? > "$work/rc") &

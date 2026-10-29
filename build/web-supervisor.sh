@@ -87,6 +87,17 @@ if [ -n "$missing" ]; then
   echo "web-supervisor: this noevia-server lacks the front route feature(s):$missing; Node no longer answers those routes (sbstndalton/noevia#1071), so update the image" >&2
   exit 2
 fi
+# Compare the baked Core entrypoint with the actual selected binary, independently of
+# environment switches. Old/old images remain usable for rollback; mixed owners do not.
+feature_core_owner=""
+feature_front_owner=""
+grep -qF '.createReadOnlyFeatures(' "$PWD/server/index.cjs" 2>/dev/null && feature_core_owner=rust
+grep -qx 'rust-feature-owner' <<<"$rust_features" && feature_front_owner=rust
+if [ "$feature_core_owner" != "$feature_front_owner" ]; then
+  echo "web-supervisor: feature ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
 # protect a manually mixed installed pair. Neither result comes from an inherited environment.
