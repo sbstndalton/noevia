@@ -97,6 +97,17 @@ if [ "$feature_core_owner" != "$feature_front_owner" ]; then
   echo "web-supervisor: feature ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# The five proxy-only Diary routes (sbstndalton/noevia#2185): a Core that refuses them
+# (server/rust-diary.cjs) needs a front that answers them (rust-diary), and a rust-diary front
+# needs that Core. Old/old images remain usable for rollback; mixed owners do not.
+diary_core_owner=""
+diary_front_owner=""
+grep -qF "require('./rust-diary.cjs')" "$PWD/server/index.cjs" 2>/dev/null && diary_core_owner=rust
+grep -qx 'rust-diary' <<<"$rust_features" && diary_front_owner=rust
+if [ "$diary_core_owner" != "$diary_front_owner" ]; then
+  echo "web-supervisor: Diary route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
