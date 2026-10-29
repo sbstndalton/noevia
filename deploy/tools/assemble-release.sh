@@ -669,6 +669,26 @@ if [ "$storage_rs_owner" = rust ]; then
   storage_expected="$(printf '%s\n' /api/integrations/storage/folder /api/integrations/storage/test /api/integrations/storage/nextcloud/start /api/integrations/storage/nextcloud/poll /api/integrations/storage/nextcloud/cancel | sort)"
   [ "$storage_routes" = "$storage_expected" ] || die "storage integration ownership pairing: incomplete route ownership"
 fi
+# The vault-mirror preferences (#2190, round 3): Core's rust-vault-mirror-preferences.cjs refusal (every
+# method; Node's route answered them all, 405 for the others) and the front's
+# rust-vault-mirror-preferences capability, with the path Rust's for every method in routes.toml.
+mirror_core_owner=""
+mirror_rs_owner=""
+grep -qF "require('./rust-vault-mirror-preferences.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mirror_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-vault-mirror-preferences features; then
+  mirror_rs_owner=rust
+fi
+[ "$mirror_core_owner" = "$mirror_rs_owner" ] \
+  || die "vault mirror preference ownership pairing: Core and Rust must move together"
+if [ "$mirror_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "vault mirror preference ownership pairing: missing route contract"
+  mirror_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/chat-vault-mirror/preferences" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "vault mirror preference ownership pairing: every method of the path must belong to Rust"
+  [ "$mirror_routes" = /api/chat-vault-mirror/preferences ] || die "vault mirror preference ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.

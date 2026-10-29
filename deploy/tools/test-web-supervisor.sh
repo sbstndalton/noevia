@@ -323,7 +323,7 @@ run >/dev/null 2>"$work/err"; rc=$?
 check "old model read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
-for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration"; do
+for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
@@ -359,6 +359,15 @@ check "all four #2190 pairs native start both processes" '[ $rc -eq 3 ] && grep 
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-public-pages rust-plugin-directory rust-decision-settings" >/dev/null 2>"$work/err"; rc=$?
 check "storage integration Core without the front capability refuses even with the other pairs native" '[ $rc -eq 2 ] && grep -q "storage integration route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+# Round 3 (#2190): the vault-mirror preference pair beside the storage pair, and alone.
+printf '%s\n' "  if (require('./rust-storage-integrations.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-vault-mirror-preferences.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-storage-integrations rust-vault-mirror-preferences" >/dev/null 2>"$work/err"; rc=$?
+check "the storage and vault-mirror pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-storage-integrations" >/dev/null 2>"$work/err"; rc=$?
+check "vault mirror Core without the front capability refuses beside a native storage pair" '[ $rc -eq 2 ] && grep -q "vault mirror preference route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm "$work/server/index.cjs"
 
 # --- Process lifecycle -----------------------------------------------------------------------

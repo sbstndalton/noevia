@@ -125,7 +125,9 @@ fi
 # beside rust-plugin-directory), and the decision settings (server/rust-decision-settings.cjs beside
 # rust-decision-settings; Rust is the decision:configuration row's single writer), and the storage
 # integrations (server/rust-storage-integrations.cjs beside rust-storage-integrations; Rust owns the
-# Nextcloud sign-in's flows file): each group moves as one owner. Old/old images remain usable for
+# Nextcloud sign-in's flows file), and the vault-mirror preferences (server/rust-vault-mirror-preferences.cjs
+# beside rust-vault-mirror-preferences; Rust writes the setting and the nudges Node polls): each group
+# moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -141,6 +143,7 @@ rust-public-pages.cjs rust-public-pages public page
 rust-plugin-directory.cjs rust-plugin-directory plugin directory
 rust-decision-settings.cjs rust-decision-settings decision settings
 rust-storage-integrations.cjs rust-storage-integrations storage integration
+rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference
 PAIRS
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
