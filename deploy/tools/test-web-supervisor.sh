@@ -321,6 +321,21 @@ check "rust-model-reads front with old Core refuses before launch" '[ $rc -eq 2 
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project source read route ownership (sbstndalton/noevia#2191) must agree in both directions before launch.
+printf '%s\n' "  if (require('./rust-project-reads.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-read-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project source read ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-reads" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project source read pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-reads" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-reads front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project source read ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old project source read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset

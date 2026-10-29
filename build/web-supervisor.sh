@@ -120,6 +120,18 @@ if [ "$models_core_owner" != "$models_front_owner" ]; then
   echo "web-supervisor: model read route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# A project source's stored reads (sbstndalton/noevia#2191: GET .../sources/text, .../documents/original
+# and .../uploads/original): a Core that refuses them (server/rust-project-reads.cjs) needs a front that
+# answers them (rust-project-reads), and a rust-project-reads front needs that Core. Old/old images
+# remain usable for rollback; mixed owners do not.
+project_reads_core_owner=""
+project_reads_front_owner=""
+grep -qF "require('./rust-project-reads.cjs')" "$PWD/server/index.cjs" 2>/dev/null && project_reads_core_owner=rust
+grep -qx 'rust-project-reads' <<<"$rust_features" && project_reads_front_owner=rust
+if [ "$project_reads_core_owner" != "$project_reads_front_owner" ]; then
+  echo "web-supervisor: project source read ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot

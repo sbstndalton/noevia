@@ -1266,6 +1266,63 @@ check "a rust-model-reads front cannot pair with the old Core handlers" 'refused
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try models-old-pair
 check "historic model read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Project source read owner release matrix (sbstndalton/noevia#2191): three routes, GET only.
+project_reads_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/sources/text"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/projects/{id}/documents/original"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "$project_reads_last"
+owner = "rust"
+$project_reads_limit
+TOML
+}
+project_reads_last="/api/projects/{id}/{*}/original"; project_reads_limit='methods = ["GET"]'
+printf '%s\n' "  if (require('./rust-project-reads.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cat > "$w/server/rust-project-reads.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'GET /api/projects/{id}/sources/text',
+  'GET /api/projects/{id}/documents/original',
+  'GET /api/projects/{id}/{*}/original',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+project_reads_try project-reads-core-only
+check "project source read Core refusal requires the native capability" 'refused "project source read ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-project-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_reads_try project-reads-pair
+check "matching project source read pair with three GET-only routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mv "$w/server/rust-project-reads.cjs" "$work/rust-project-reads.saved"
+project_reads_try project-reads-unlisted
+check "a front owning the source reads needs a Core that lists them (OWNED_ROUTES)" 'refused "does not list in server/rust-projects.cjs OWNED_ROUTES"'
+mv "$work/rust-project-reads.saved" "$w/server/rust-project-reads.cjs"
+project_reads_limit=""
+project_reads_try project-reads-all-methods
+check "an all-method project source read route is refused (Node keeps the other methods)" 'refused "project source read ownership pairing"'
+project_reads_limit='methods = ["GET", "DELETE"]'
+project_reads_try project-reads-get-delete
+check "a project source read route with more than GET is refused" 'refused "project source read ownership pairing"'
+project_reads_limit='methods = ["GET"]'; project_reads_last="/api/projects/{id}/documents/pages"
+project_reads_try project-reads-incomplete
+check "an incomplete project source read route set is refused" 'refused "project source read ownership pairing"'
+project_reads_last="/api/projects/{id}/{*}/original"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+project_reads_try project-reads-front-only
+check "a rust-project-reads front cannot pair with the old Core handlers" 'refused "project source read ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try project-reads-old-pair
+check "historic project source read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-reads.cjs"
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
