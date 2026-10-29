@@ -1323,6 +1323,59 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-reads-old-pair
 check "historic project source read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-reads.cjs"
+# Project create/delete owner release matrix (sbstndalton/noevia#2191 round 2): POST /api/projects and
+# DELETE /api/projects/{projectId}, nothing else.
+project_lifecycle_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects"
+owner = "rust"
+$project_lifecycle_create
+[[route]]
+path = "$project_lifecycle_one"
+owner = "rust"
+methods = ["DELETE"]
+TOML
+}
+project_lifecycle_create='methods = ["POST"]'; project_lifecycle_one="/api/projects/{projectId}"
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cat > "$w/server/rust-project-lifecycle.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects',
+  'DELETE /api/projects/{projectId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+project_lifecycle_try project-lifecycle-core-only
+check "project create/delete Core refusal requires the native capability" 'refused "project create/delete ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-project-lifecycle"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-lifecycle-pair
+check "matching project create/delete pair with POST and DELETE only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mv "$w/server/rust-project-lifecycle.cjs" "$work/rust-project-lifecycle.saved"
+project_lifecycle_try project-lifecycle-unlisted
+check "a front owning the project delete needs a Core that lists it (OWNED_ROUTES)" 'refused "does not list in server/rust-projects.cjs OWNED_ROUTES"'
+mv "$work/rust-project-lifecycle.saved" "$w/server/rust-project-lifecycle.cjs"
+project_lifecycle_create=""
+project_lifecycle_try project-lifecycle-all-methods
+check "an all-method /api/projects route is refused (Node keeps the other methods)" 'refused "project create/delete ownership pairing"'
+project_lifecycle_create='methods = ["POST", "GET"]'
+project_lifecycle_try project-lifecycle-post-get
+check "a /api/projects route with more than POST is refused" 'refused "project create/delete ownership pairing"'
+project_lifecycle_create='methods = ["POST"]'; project_lifecycle_one="/api/projects/{projectId}/config"
+project_lifecycle_try project-lifecycle-incomplete
+check "an incomplete project create/delete route set is refused" 'refused "project create/delete ownership pairing"'
+project_lifecycle_one="/api/projects/{projectId}"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+project_lifecycle_try project-lifecycle-front-only
+check "a rust-project-lifecycle front cannot pair with the old Core handlers" 'refused "project create/delete ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try project-lifecycle-old-pair
+check "historic project create/delete old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-lifecycle.cjs"
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"

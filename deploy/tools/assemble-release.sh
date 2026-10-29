@@ -599,6 +599,32 @@ if [ "$project_reads_rs_owner" = rust ]; then
   project_read_expected="$(printf '%s\n' '/api/projects/{id}/sources/text' '/api/projects/{id}/documents/original' '/api/projects/{id}/{*}/original' | sort)"
   [ "$project_read_routes" = "$project_read_expected" ] || die "project source read ownership pairing: incomplete route ownership"
 fi
+# A project's create and delete (sbstndalton/noevia#2191 round 2) move as one owner: Core's
+# rust-project-lifecycle.cjs refusal and the front's rust-project-lifecycle capability, with exactly POST
+# of /api/projects and DELETE of /api/projects/{projectId} Rust's in routes.toml (Node keeps every other
+# method of both paths). Historic old/old pins remain valid rollback pairs.
+project_lifecycle_core_owner=""
+project_lifecycle_rs_owner=""
+grep -qF "require('./rust-project-lifecycle.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && project_lifecycle_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-lifecycle features; then
+  project_lifecycle_rs_owner=rust
+fi
+[ "$project_lifecycle_core_owner" = "$project_lifecycle_rs_owner" ] \
+  || die "project create/delete ownership pairing: Core and Rust must move together"
+if [ "$project_lifecycle_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project create/delete ownership pairing: missing route contract"
+  project_lifecycle_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/projects" || $1 == "/api/projects/{projectId}" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      want = ($1 == "/api/projects") ? "POST" : "DELETE"
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != want) exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | sort)" || die "project create/delete ownership pairing: exactly POST /api/projects and DELETE /api/projects/{projectId} must belong to Rust"
+  project_lifecycle_expected="$(printf '%s\n' '/api/projects' '/api/projects/{projectId}' | sort)"
+  [ "$project_lifecycle_routes" = "$project_lifecycle_expected" ] || die "project create/delete ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
@@ -661,8 +687,9 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   if ! grep -q '^function refuseOwnedRoute' "$tree/core/server/rust-projects.cjs" 2>/dev/null; then
     die "noevia-core at $(lock_value NOEVIA_CORE_REF) still gates its project routes on NOEVIA_RUST_PROJECTS (no unconditional refuseOwnedRoute in server/rust-projects.cjs), which this web supervisor no longer passes; pin a core that refuses them always (sbstndalton/noevia#1071)"
   fi
-  # sbstndalton/noevia#2191: a project source's stored reads are listed by core/server/rust-project-reads.cjs.
-  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; } | sort -u))"
+  # sbstndalton/noevia#2191: a project source's stored reads are listed by core/server/rust-project-reads.cjs,
+  # a project's create and delete (round 2) by core/server/rust-project-lifecycle.cjs.
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; } | sort -u))"
   [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
   # sbstndalton/noevia#1071: a front that owns sign-in with no switch (routes.toml: GET
   # /api/auth/session owner "rust", no `switch`) needs a core whose rust-auth guard is unconditional

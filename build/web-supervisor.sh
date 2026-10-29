@@ -132,6 +132,19 @@ if [ "$project_reads_core_owner" != "$project_reads_front_owner" ]; then
   echo "web-supervisor: project source read ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# A project's create and delete (sbstndalton/noevia#2191 round 2: POST /api/projects, DELETE
+# /api/projects/{projectId}): a Core that refuses them (server/rust-project-lifecycle.cjs) needs a front
+# that answers them (rust-project-lifecycle), and a rust-project-lifecycle front needs that Core (it also
+# publishes the toolbox catalogue the create reads and drains the index outbox). Old/old images remain
+# usable for rollback; mixed owners do not.
+project_lifecycle_core_owner=""
+project_lifecycle_front_owner=""
+grep -qF "require('./rust-project-lifecycle.cjs')" "$PWD/server/index.cjs" 2>/dev/null && project_lifecycle_core_owner=rust
+grep -qx 'rust-project-lifecycle' <<<"$rust_features" && project_lifecycle_front_owner=rust
+if [ "$project_lifecycle_core_owner" != "$project_lifecycle_front_owner" ]; then
+  echo "web-supervisor: project create/delete ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
