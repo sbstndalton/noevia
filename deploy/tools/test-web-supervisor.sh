@@ -306,6 +306,21 @@ rm "$work/server/index.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-diary" >/dev/null 2>"$work/err"; rc=$?
 check "rust-diary front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "Diary route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Model read route ownership (sbstndalton/noevia#2187) must agree in both directions before launch.
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "model-read-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "model read route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads" >/dev/null 2>"$work/err"; rc=$?
+check "matching native model read pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads" >/dev/null 2>"$work/err"; rc=$?
+check "rust-model-reads front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "model read route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old model read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset

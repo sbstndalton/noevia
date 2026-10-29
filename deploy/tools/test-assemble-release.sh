@@ -1226,6 +1226,46 @@ check "a rust-diary front cannot pair with the old Core proxy" 'refused "Diary o
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try diary-old-pair
 check "historic Diary old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Model read owner release matrix (sbstndalton/noevia#2187): two routes, GET only.
+models_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/models/capabilities"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "$models_last"
+owner = "rust"
+$models_limit
+TOML
+}
+models_last="/api/models/hardware"; models_limit='methods = ["GET"]'
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+models_try models-core-only
+check "model read Core refusal requires the native capability" 'refused "model read ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-model-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+models_try models-pair
+check "matching model read pair with both GET-only routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+models_limit=""
+models_try models-all-methods
+check "an all-method model read route is refused (Node keeps the other methods)" 'refused "model read ownership pairing"'
+models_limit='methods = ["GET", "PUT"]'
+models_try models-get-put
+check "a model read route with more than GET is refused" 'refused "model read ownership pairing"'
+models_limit='methods = ["GET"]'; models_last="/api/models/hardwarex"
+models_try models-incomplete
+check "an incomplete model read route set is refused" 'refused "model read ownership pairing"'
+models_last="/api/models/hardware"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+models_try models-front-only
+check "a rust-model-reads front cannot pair with the old Core handlers" 'refused "model read ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try models-old-pair
+check "historic model read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
