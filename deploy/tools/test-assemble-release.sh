@@ -1181,6 +1181,51 @@ check "native feature front cannot pair with the old Core writer" 'refused "feat
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try feature-old-pair
 check "historic feature old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Diary owner release matrix (sbstndalton/noevia#2185): the five proxy-only routes, all methods.
+diary_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/diary/source"
+owner = "rust"
+[[route]]
+path = "/api/diary/today"
+owner = "rust"
+[[route]]
+path = "/api/diary/storage-import"
+owner = "rust"
+[[route]]
+path = "/api/diary/workspace-export"
+owner = "rust"
+[[route]]
+path = "$diary_last"
+owner = "rust"
+$diary_limit
+TOML
+}
+diary_last="/api/diary/workspace-import"; diary_limit=""
+printf '%s\n' "  if (require('./rust-diary.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+diary_try diary-core-only
+check "Diary Core refusal requires the native capability" 'refused "Diary ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-diary"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+diary_try diary-pair
+check "matching Diary pair with all five all-method routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+diary_limit='methods = ["GET"]'
+diary_try diary-get-only
+check "a GET-only Diary route is refused" 'refused "Diary ownership pairing"'
+diary_limit=""; diary_last="/api/diary/workspace-importx"
+diary_try diary-incomplete
+check "an incomplete Diary route set is refused" 'refused "Diary ownership pairing"'
+diary_last="/api/diary/workspace-import"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+diary_try diary-front-only
+check "a rust-diary front cannot pair with the old Core proxy" 'refused "Diary ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try diary-old-pair
+check "historic Diary old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"

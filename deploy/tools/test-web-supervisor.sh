@@ -294,6 +294,18 @@ rm "$work/server/index.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-feature-owner" >/dev/null 2>"$work/err"; rc=$?
 check "native feature front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "feature ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Diary route ownership (sbstndalton/noevia#2185) must agree in both directions before launch.
+printf '%s\n' "  if (require('./rust-diary.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "Diary-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "Diary route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-diary" >/dev/null 2>"$work/err"; rc=$?
+check "matching native Diary pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-diary" >/dev/null 2>"$work/err"; rc=$?
+check "rust-diary front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "Diary route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset

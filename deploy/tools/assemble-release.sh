@@ -527,6 +527,28 @@ if [ "$feature_rs_owner" = rust ]; then
   feature_expected="$(printf '%s\n' /api/features /api/admin/features '/api/admin/features/{name}' | sort)"
   [ "$feature_routes" = "$feature_expected" ] || die "feature ownership pairing: incomplete namespace ownership"
 fi
+# The five proxy-only Diary routes (sbstndalton/noevia#2185) move as one owner: Core's
+# rust-diary.cjs refusal and the front's rust-diary capability, all methods of all five in
+# routes.toml. Historic old/old pins remain valid rollback pairs.
+diary_core_owner=""
+diary_rs_owner=""
+grep -qF "require('./rust-diary.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && diary_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary features; then
+  diary_rs_owner=rust
+fi
+[ "$diary_core_owner" = "$diary_rs_owner" ] \
+  || die "Diary ownership pairing: Core and Rust must move together"
+if [ "$diary_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary ownership pairing: missing route contract"
+  diary_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/diary/source" || $1 == "/api/diary/today" || $1 == "/api/diary/storage-import" ||
+    $1 == "/api/diary/workspace-export" || $1 == "/api/diary/workspace-import" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }' | sort)" || die "Diary ownership pairing: all methods must belong to Rust"
+  diary_expected="$(printf '%s\n' /api/diary/source /api/diary/today /api/diary/storage-import /api/diary/workspace-export /api/diary/workspace-import | sort)"
+  [ "$diary_routes" = "$diary_expected" ] || die "Diary ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
