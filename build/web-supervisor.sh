@@ -108,6 +108,18 @@ if [ "$diary_core_owner" != "$diary_front_owner" ]; then
   echo "web-supervisor: Diary route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# The two configuration-only model reads (sbstndalton/noevia#2187, GET /api/models/capabilities and
+# GET /api/models/hardware): a Core that refuses them (server/rust-models.cjs) needs a front that
+# answers them (rust-model-reads), and a rust-model-reads front needs that Core. Old/old images
+# remain usable for rollback; mixed owners do not.
+models_core_owner=""
+models_front_owner=""
+grep -qF "require('./rust-models.cjs')" "$PWD/server/index.cjs" 2>/dev/null && models_core_owner=rust
+grep -qx 'rust-model-reads' <<<"$rust_features" && models_front_owner=rust
+if [ "$models_core_owner" != "$models_front_owner" ]; then
+  echo "web-supervisor: model read route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot

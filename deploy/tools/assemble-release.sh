@@ -549,6 +549,31 @@ if [ "$diary_rs_owner" = rust ]; then
   diary_expected="$(printf '%s\n' /api/diary/source /api/diary/today /api/diary/storage-import /api/diary/workspace-export /api/diary/workspace-import | sort)"
   [ "$diary_routes" = "$diary_expected" ] || die "Diary ownership pairing: incomplete route ownership"
 fi
+# The two configuration-only model reads (sbstndalton/noevia#2187) move as one owner: Core's
+# rust-models.cjs refusal of their GET and the front's rust-model-reads capability, with exactly
+# GET of both routes Rust's in routes.toml (Node keeps every other method). Historic old/old pins
+# remain valid rollback pairs.
+models_core_owner=""
+models_rs_owner=""
+grep -qF "require('./rust-models.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && models_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-reads features; then
+  models_rs_owner=rust
+fi
+[ "$models_core_owner" = "$models_rs_owner" ] \
+  || die "model read ownership pairing: Core and Rust must move together"
+if [ "$models_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "model read ownership pairing: missing route contract"
+  model_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/models/capabilities" || $1 == "/api/models/hardware" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | sort)" || die "model read ownership pairing: exactly GET of both routes must belong to Rust"
+  model_expected="$(printf '%s\n' /api/models/capabilities /api/models/hardware | sort)"
+  [ "$model_routes" = "$model_expected" ] || die "model read ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
