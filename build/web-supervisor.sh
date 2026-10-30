@@ -228,7 +228,10 @@ fi
 # one call's access token or key headers), and the close-out GETs (sbstndalton/noevia#2190, #2191): the health
 # check (server/rust-health.cjs beside rust-health, which also publishes rag-status.json), the auto-roles read
 # (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
-# list (server/rust-workspace.cjs beside rust-workspace): each group moves as one owner. Old/old images remain usable for
+# list (server/rust-workspace.cjs beside rust-workspace), a project's configuration and instruction skills
+# (server/rust-project-config.cjs beside rust-project-config, sbstndalton/noevia#2191 round 9) and an account's
+# deletion (server/rust-admin-users.cjs beside rust-admin-users, #2190: Rust deletes the rows, the folder and every
+# credential, and Core can no longer delete an account): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -257,6 +260,8 @@ rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 rust-health.cjs rust-health health check
 rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
+rust-project-config.cjs rust-project-config project configuration
+rust-admin-users.cjs rust-admin-users account deletion
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
