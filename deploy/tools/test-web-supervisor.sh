@@ -440,7 +440,7 @@ run STUB_FEATURES="$BASE_FEATURES rust-large-document-host-lock" >/dev/null 2>"$
 check "host-lock front with an in-process-lock Core refuses before launch" '[ $rc -eq 2 ] && grep -q "large-document lock mismatch" "$work/err" && [ ! -s "$work/log" ]'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
-for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test"; do
+for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
@@ -533,6 +533,16 @@ check "rust-model-sizing front with old Core refuses before launch" '[ $rc -eq 2
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model sizing pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+
+# Round 5 (#2190): the ChatGPT sign-in pair beside the provider test pair, and alone.
+printf '%s\n' "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-provider-test rust-chatgpt-oauth" >/dev/null 2>"$work/err"; rc=$?
+check "the provider test and ChatGPT sign-in pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-provider-test" >/dev/null 2>"$work/err"; rc=$?
+check "ChatGPT sign-in Core without the front capability refuses beside a native provider test pair" '[ $rc -eq 2 ] && grep -q "ChatGPT sign-in route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset
