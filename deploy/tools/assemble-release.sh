@@ -664,6 +664,81 @@ if [ "$project_files_rs_owner" = rust ]; then
     }')" || die "project file delete ownership pairing: exactly DELETE /api/projects/{id}/files must belong to Rust"
   [ "$project_files_routes" = "/api/projects/{id}/files" ] || die "project file delete ownership pairing: incomplete route ownership"
 fi
+# A stored document's page reader (sbstndalton/noevia#2191 round 4) moves as one owner: Core's
+# rust-project-document-pages.cjs refusal and the front's rust-project-document-pages capability, with
+# exactly GET of /api/projects/{id}/documents/pages Rust's in routes.toml. It reads the results Core's
+# extraction writes once per version, so it needs no other pair.
+document_pages_core_owner=""
+document_pages_rs_owner=""
+grep -qF "require('./rust-project-document-pages.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && document_pages_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-document-pages features; then
+  document_pages_rs_owner=rust
+fi
+[ "$document_pages_core_owner" = "$document_pages_rs_owner" ] \
+  || die "project document page reader ownership pairing: Core and Rust must move together"
+if [ "$document_pages_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project document page reader ownership pairing: missing route contract"
+  document_pages_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/projects/{id}/documents/pages" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "project document page reader ownership pairing: exactly GET /api/projects/{id}/documents/pages must belong to Rust"
+  [ "$document_pages_routes" = "/api/projects/{id}/documents/pages" ] || die "project document page reader ownership pairing: incomplete route ownership"
+fi
+# The conversation import (sbstndalton/noevia#2191 round 4) moves as one owner: Core's
+# rust-conversation-import.cjs refusal and the front's rust-conversation-import capability, with exactly
+# POST of /api/import/conversations Rust's in routes.toml. It creates projects through the front's create,
+# so it needs the project create/delete pair.
+conversation_import_core_owner=""
+conversation_import_rs_owner=""
+grep -qF "require('./rust-conversation-import.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && conversation_import_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-conversation-import features; then
+  conversation_import_rs_owner=rust
+fi
+[ "$conversation_import_core_owner" = "$conversation_import_rs_owner" ] \
+  || die "conversation import ownership pairing: Core and Rust must move together"
+if [ "$conversation_import_rs_owner" = rust ]; then
+  [ "$project_lifecycle_rs_owner" = rust ] || die "conversation import ownership pairing: needs the project create/delete pair"
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "conversation import ownership pairing: missing route contract"
+  conversation_import_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/import/conversations" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "conversation import ownership pairing: exactly POST /api/import/conversations must belong to Rust"
+  [ "$conversation_import_routes" = "/api/import/conversations" ] || die "conversation import ownership pairing: incomplete route ownership"
+fi
+# The project document upload (sbstndalton/noevia#2191 round 5) moves as one owner: Core's
+# rust-project-documents.cjs refusal and the front's rust-project-documents capability, with exactly POST of
+# /api/projects/{id}/documents Rust's in routes.toml. It runs on the front's extraction pipeline, so the
+# front must also list rust-document-extraction.
+project_documents_core_owner=""
+project_documents_rs_owner=""
+grep -qF "require('./rust-project-documents.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && project_documents_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-documents features; then
+  project_documents_rs_owner=rust
+fi
+[ "$project_documents_core_owner" = "$project_documents_rs_owner" ] \
+  || die "project document upload ownership pairing: Core and Rust must move together"
+if [ "$project_documents_rs_owner" = rust ]; then
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-document-extraction features \
+    || die "project document upload ownership pairing: needs the rust-document-extraction pipeline"
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project document upload ownership pairing: missing route contract"
+  project_documents_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/projects/{id}/documents" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "project document upload ownership pairing: exactly POST /api/projects/{id}/documents must belong to Rust"
+  [ "$project_documents_routes" = "/api/projects/{id}/documents" ] || die "project document upload ownership pairing: incomplete route ownership"
+fi
 # The public pages (sbstndalton/noevia#2190) move as one owner: Core's rust-public-pages.cjs refusal
 # and the front's rust-public-pages capability, with exactly GET and HEAD of /about and /privacy and
 # every method of /device Rust's in routes.toml (Node keeps the pages' other methods).
@@ -913,9 +988,65 @@ if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then
   web_core="$(web_address_routes_core)"
   [ -z "$web_core" ] || die "web-address GET ownership pairing: core refuses GETs but Rust routes.toml is missing"
 fi
+# sbstndalton/noevia#2191 round 7 (#697): the large-document lock is the host's. Core's
+# large-document-lock.cjs taking large-document-file-lock.cjs and the front's
+# rust-large-document-host-lock capability go together, so one large document is held at a time.
+large_lock_core_owner=""
+large_lock_rs_owner=""
+grep -qF "require('./large-document-file-lock.cjs')" "$tree/core/server/large-document-lock.cjs" 2>/dev/null \
+  && [ -f "$tree/core/server/large-document-file-lock.cjs" ] && large_lock_core_owner=host
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-large-document-host-lock features; then
+  large_lock_rs_owner=host
+fi
+[ "$large_lock_core_owner" = "$large_lock_rs_owner" ] \
+  || die "large-document lock pairing: Core and Rust must share the host lock"
+# Both halves must also lock the same thing the same way, or each holds its own "host" lock and two
+# large documents run at once again: the lock file's name and the SQLite statement that takes it are
+# read from both sources and compared.
+if [ "$large_lock_core_owner" = host ]; then
+  core_lock_file="$(sed -n "s/^const LOCK_FILE = '\([^']*\)';.*/\1/p" "$tree/core/server/large-document-file-lock.cjs" | head -1)"
+  rs_lock_file="$(sed -n 's/^pub const LARGE_LOCK_FILE: &str = "\([^"]*\)";.*/\1/p' "$tree/rs/crates/server-projects/src/extract.rs" | head -1)"
+  { [ -n "$core_lock_file" ] && [ "$core_lock_file" = "$rs_lock_file" ]; } \
+    || die "large-document lock pairing: Core and Rust must name the same lock file (Core '$core_lock_file', Rust '$rs_lock_file')"
+  grep -qF "db.exec('BEGIN IMMEDIATE')" "$tree/core/server/large-document-file-lock.cjs" \
+    && grep -qF 'execute_batch("BEGIN IMMEDIATE")' "$tree/rs/crates/server-projects/src/extract.rs" \
+    || die "large-document lock pairing: Core and Rust must both take the lock with BEGIN IMMEDIATE"
+fi
 # A partially ported source journal would either strand a 202 without a reader or give
 # source files two owners. Old core/old Rust remains an allowed rollback pair.
-if [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
+# sbstndalton/noevia#2191 round 6: the source jobs move as one owner. Core's rust-source-jobs.cjs
+# refusal and the front's rust-source-jobs capability go together; in that generation Core keeps no
+# source journal client (no marker, no sourceJobsFor, no source-jobs.cjs), the front serves no
+# internal source store (no marker, no /v1/source-jobs/ route), and routes.toml gives Rust exactly
+# POST of the upload and the sync (the background start) and GET of the poll.
+source_jobs_core_owner=""
+source_jobs_rs_owner=""
+grep -qF "require('./rust-source-jobs.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && source_jobs_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-source-jobs features; then
+  source_jobs_rs_owner=rust
+fi
+[ "$source_jobs_core_owner" = "$source_jobs_rs_owner" ] \
+  || die "source job ownership pairing: Core and Rust must move together"
+if [ "$source_jobs_rs_owner" = rust ]; then
+  ! grep -qE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+    && [ ! -e "$tree/core/server/source-jobs.cjs" ] \
+    || die "source job ownership pairing: Core still carries a source journal client"
+  ! grep -qF 'SOURCE_JOBS_STORE_MARKER' "$tree/rs/bins/noevia-server/src/lib.rs" 2>/dev/null \
+    && ! grep -qF '/v1/source-jobs/' "$tree/rs/bins/noevia-server/src/project_store.rs" 2>/dev/null \
+    || die "source job ownership pairing: the front still serves the internal source store"
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "source job ownership pairing: missing route contract"
+  source_jobs_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/projects/{id}/upload" || $1 == "/api/projects/{id}/sources/sync" || $1 == "/api/projects/{id}/source-jobs/{jobId}" {
+      want = ($1 ~ /source-jobs/) ? "GET" : "POST"
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != want) exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | LC_ALL=C sort | tr '\n' ' ')" || die "source job ownership pairing: exactly POST of the upload and the sync and GET of the poll must belong to Rust"
+  [ "$source_jobs_routes" = "/api/projects/{id}/source-jobs/{jobId} /api/projects/{id}/sources/sync /api/projects/{id}/upload " ] \
+    || die "source job ownership pairing: incomplete route ownership"
+elif [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
    || grep -qE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
    || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
   core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
@@ -970,8 +1101,10 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   fi
   # sbstndalton/noevia#2191: a project source's stored reads are listed by core/server/rust-project-reads.cjs,
   # a project's create and delete (round 2) by core/server/rust-project-lifecycle.cjs, a source file's
-  # delete (round 3) by core/server/rust-project-files.cjs.
-  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; } | sort -u))"
+  # delete (round 3) by core/server/rust-project-files.cjs, a document's page reader (round 4) by
+  # core/server/rust-project-document-pages.cjs, a document's upload (round 5) by
+  # core/server/rust-project-documents.cjs, the source jobs (round 6) by core/server/rust-source-jobs.cjs.
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; } | sort -u))"
   [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
   # sbstndalton/noevia#1071: a front that owns sign-in with no switch (routes.toml: GET
   # /api/auth/session owner "rust", no `switch`) needs a core whose rust-auth guard is unconditional

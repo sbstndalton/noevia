@@ -1472,6 +1472,280 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-project-files.cjs" "$w/server/rust-project-storage.cjs"
 rm -f "$w/server/rust-project-lifecycle.cjs"
+# Document page reader owner release matrix (sbstndalton/noevia#2191 round 4): GET
+# /api/projects/{id}/documents/pages only; no other pair needed.
+document_pages_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/documents/pages"
+owner = "rust"
+$document_pages_methods
+TOML
+}
+document_pages_methods='methods = ["GET"]'
+cat > "$w/server/rust-project-document-pages.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'GET /api/projects/{id}/documents/pages',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+pages_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${1:-}" = pages ] && printf '%s\n' "  if (require('./rust-project-document-pages.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+pages_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+pages_core pages; pages_front ""
+document_pages_try document-pages-core-only
+check "document page reader Core refusal requires the native capability" 'refused "project document page reader ownership pairing"'
+pages_front ', \"rust-project-document-pages\"'
+document_pages_try document-pages-pair
+check "matching document page reader pair with GET only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mv "$w/server/rust-project-document-pages.cjs" "$work/rust-project-document-pages.saved"
+document_pages_try document-pages-unlisted
+check "a front owning the page reader needs a Core that lists it (OWNED_ROUTES)" 'refused "does not list in server/rust-projects.cjs OWNED_ROUTES"'
+mv "$work/rust-project-document-pages.saved" "$w/server/rust-project-document-pages.cjs"
+document_pages_methods=""
+document_pages_try document-pages-all-methods
+check "an all-method document pages route is refused (Node keeps the other methods)" 'refused "project document page reader ownership pairing"'
+document_pages_methods='methods = ["GET"]'
+pages_core
+document_pages_try document-pages-front-only
+check "a rust-project-document-pages front cannot pair with the old Core handler" 'refused "project document page reader ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try document-pages-old-pair
+check "historic document page reader old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-document-pages.cjs"
+# Conversation import owner release matrix (sbstndalton/noevia#2191 round 4): POST
+# /api/import/conversations only, on top of the create/delete pair.
+conversation_import_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{projectId}"
+owner = "rust"
+methods = ["DELETE"]
+[[route]]
+path = "/api/import/conversations"
+owner = "rust"
+$conversation_import_methods
+TOML
+}
+conversation_import_methods='methods = ["POST"]'
+import_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${2:-}" = nolifecycle ] || printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  [ "${1:-}" = import ] && printf '%s\n' "  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+import_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cat > "$w/server/rust-project-lifecycle.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects',
+  'DELETE /api/projects/{projectId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+cat > "$w/server/rust-conversation-import.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/import/conversations',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+import_core import; import_front ', \"rust-project-lifecycle\"'
+conversation_import_try conversation-import-core-only
+check "conversation import Core refusal requires the native capability" 'refused "conversation import ownership pairing"'
+import_front ', \"rust-project-lifecycle\", \"rust-conversation-import\"'
+conversation_import_try conversation-import-pair
+check "matching conversation import pair with POST only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+conversation_import_methods=""
+conversation_import_try conversation-import-all-methods
+check "an all-method import route is refused (Node keeps the 405)" 'refused "conversation import ownership pairing"'
+conversation_import_methods='methods = ["POST"]'
+import_core
+conversation_import_try conversation-import-front-only
+check "a rust-conversation-import front cannot pair with the old Core handler" 'refused "conversation import ownership pairing"'
+import_core import nolifecycle; import_front ', \"rust-conversation-import\"'
+conversation_import_try conversation-import-without-lifecycle
+check "a conversation import pair without the create/delete pair is refused" 'refused "needs the project create/delete pair"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try conversation-import-old-pair
+check "historic conversation import old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-conversation-import.cjs" "$w/server/rust-project-lifecycle.cjs"
+# Project document upload owner release matrix (sbstndalton/noevia#2191 round 5): POST
+# /api/projects/{id}/documents only, with the rust-document-extraction pipeline.
+documents_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/documents"
+owner = "rust"
+$documents_methods
+TOML
+}
+documents_methods='methods = ["POST"]'
+documents_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${1:-}" = documents ] && printf '%s\n' "  if (require('./rust-project-documents.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+documents_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cat > "$w/server/rust-project-documents.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/documents',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+documents_core documents; documents_front ', \"rust-document-extraction\"'
+documents_try documents-core-only
+check "document upload Core refusal requires the native capability" 'refused "project document upload ownership pairing"'
+documents_front ', \"rust-document-extraction\", \"rust-project-documents\"'
+documents_try documents-pair
+check "matching document upload pair with POST only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+documents_methods=""
+documents_try documents-all-methods
+check "an all-method document route is refused" 'refused "project document upload ownership pairing"'
+documents_methods='methods = ["POST"]'
+documents_front ', \"rust-project-documents\"'
+documents_try documents-without-pipeline
+check "a document upload front without the extraction pipeline is refused" 'refused "needs the rust-document-extraction pipeline"'
+documents_core
+documents_front ', \"rust-document-extraction\", \"rust-project-documents\"'
+documents_try documents-front-only
+check "a rust-project-documents front cannot pair with the old Core handler" 'refused "project document upload ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try documents-old-pair
+check "historic document upload old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-documents.cjs"
+# Source job owner release matrix (sbstndalton/noevia#2191 round 6): POST of the upload and the sync
+# (the background start) and GET of the poll; no Node client, no internal store.
+sj_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/upload"
+owner = "rust"
+$sj_methods
+[[route]]
+path = "/api/projects/{id}/sources/sync"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/source-jobs/{jobId}"
+owner = "rust"
+methods = ["GET"]
+TOML
+}
+sj_methods='methods = ["POST"]'
+sj_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${1:-}" = jobs ] && printf '%s\n' "  if (require('./rust-source-jobs.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+sj_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cat > "$w/server/rust-source-jobs.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/upload',
+  'POST /api/projects/{id}/sources/sync',
+  'GET /api/projects/{id}/source-jobs/{jobId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+# The old generation's client and internal store, set aside for the new pair and put back for the
+# old/old rollback case.
+# (the source lines only: the other pairings read the same files).
+for f in "$w/server/project-store-client.cjs" "$w/server/source-jobs.cjs" "$rz/bins/noevia-server/src/project_store.rs" "$rz/crates/server-projects/src/source_jobs.rs"; do
+  if [ -e "$f" ]; then cp "$f" "$f.sj-saved"; fi
+done
+rm -f "$w/server/source-jobs.cjs"
+for f in "$w/server/project-store-client.cjs" "$rz/bins/noevia-server/src/project_store.rs" "$rz/crates/server-projects/src/source_jobs.rs"; do
+  if [ -e "$f" ]; then grep -vE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(|/v1/source-jobs/|SOURCE_JOBS_STORE_MARKER|use server_projects::source_jobs as jobs;' "$f.sj-saved" > "$f" || true; fi
+done
+sj_core jobs; sj_front ''
+sj_try source-jobs-core-only
+check "source job Core refusal requires the native capability" 'refused "source job ownership pairing: Core and Rust must move together"'
+sj_front ', \"rust-source-jobs\"'
+sj_try source-jobs-pair
+check "matching source job pair with exact methods assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+sj_methods=""
+sj_try source-jobs-all-methods
+check "an all-method upload route is refused" 'refused "source job ownership pairing: exactly POST"'
+sj_methods='methods = ["POST"]'
+cp "$w/server/project-store-client.cjs" "$work/sj-client"
+printf '%s\n' "const SOURCE_JOBS_CLIENT_MARKER = 'noevia-source-jobs-client/1';" >> "$w/server/project-store-client.cjs"
+sj_try source-jobs-with-client
+check "a source job pair whose Core keeps the journal client is refused" 'refused "Core still carries a source journal client"'
+cp "$work/sj-client" "$w/server/project-store-client.cjs"
+cp "$rz/bins/noevia-server/src/project_store.rs" "$work/sj-store"
+printf '%s\n' '        .route("/v1/source-jobs/start", source_route(SourceOp::Start))' >> "$rz/bins/noevia-server/src/project_store.rs"
+sj_try source-jobs-with-store
+check "a source job pair whose front keeps the internal store is refused" 'refused "the front still serves the internal source store"'
+cp "$work/sj-store" "$rz/bins/noevia-server/src/project_store.rs"
+sj_core
+sj_try source-jobs-front-only
+check "a rust-source-jobs front cannot pair with the old Core" 'refused "source job ownership pairing: Core and Rust must move together"'
+for f in "$w/server/project-store-client.cjs" "$w/server/source-jobs.cjs" "$rz/bins/noevia-server/src/project_store.rs" "$rz/crates/server-projects/src/source_jobs.rs"; do
+  if [ -e "$f.sj-saved" ]; then mv "$f.sj-saved" "$f"; fi
+done
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try source-jobs-old-pair
+check "historic source job old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# sbstndalton/noevia#2191 round 7 (#697): the host-wide large-document lock pairs in both directions.
+printf '%s\n' "const fileLock = require('./large-document-file-lock.cjs');" > "$w/server/large-document-lock.cjs"
+printf '%s\n' "const LOCK_FILE = 'large-document.lock';" "  try { db.exec('BEGIN IMMEDIATE'); return db; } catch (err) { throw err; }" "module.exports = { LOCK_FILE };" > "$w/server/large-document-file-lock.cjs"
+printf '%s\n' 'pub const LARGE_LOCK_FILE: &str = "large-document.lock";' '        match conn.execute_batch("BEGIN IMMEDIATE") {' > "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-core-only
+check "a host-lock Core cannot pair with an in-process-lock front" 'refused "large-document lock pairing: Core and Rust must share the host lock"'
+sed 's/"start-id"/"start-id", "rust-large-document-host-lock"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try large-lock-pair
+check "matching host large-document lock pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Both halves must also name the same lock file and take it the same way (review #2191 r6+7).
+cp "$w/server/large-document-file-lock.cjs" "$work/file-lock.saved"
+cp "$rz/crates/server-projects/src/extract.rs" "$work/extract-lock.saved"
+sed "s/large-document.lock/other.lock/" "$work/file-lock.saved" > "$w/server/large-document-file-lock.cjs"
+move_try large-lock-core-name
+check "a Core that locks another file than the front is refused" 'refused "large-document lock pairing: Core and Rust must name the same lock file (Core .other.lock., Rust .large-document.lock.)"'
+cp "$work/file-lock.saved" "$w/server/large-document-file-lock.cjs"
+sed "s/large-document.lock/other.lock/" "$work/extract-lock.saved" > "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-rust-name
+check "a front that locks another file than Core is refused" 'refused "large-document lock pairing: Core and Rust must name the same lock file (Core .large-document.lock., Rust .other.lock.)"'
+cp "$work/extract-lock.saved" "$rz/crates/server-projects/src/extract.rs"
+sed "s/BEGIN IMMEDIATE/BEGIN DEFERRED/" "$work/file-lock.saved" > "$w/server/large-document-file-lock.cjs"
+move_try large-lock-core-statement
+check "a Core that takes the lock another way is refused" 'refused "large-document lock pairing: Core and Rust must both take the lock with BEGIN IMMEDIATE"'
+cp "$work/file-lock.saved" "$w/server/large-document-file-lock.cjs"
+sed "s/BEGIN IMMEDIATE/BEGIN DEFERRED/" "$work/extract-lock.saved" > "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-rust-statement
+check "a front that takes the lock another way is refused" 'refused "large-document lock pairing: Core and Rust must both take the lock with BEGIN IMMEDIATE"'
+cp "$work/extract-lock.saved" "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-pair-again
+check "the matching host lock pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/large-document-lock.cjs" "$w/server/large-document-file-lock.cjs" "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-front-only
+check "a host-lock front cannot pair with an in-process-lock Core" 'refused "large-document lock pairing: Core and Rust must share the host lock"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-source-jobs.cjs"
 # Public page and plugin directory owner release matrix (sbstndalton/noevia#2190): two independent pairs.
 singles_try() {
   try_routes "$1" <<TOML

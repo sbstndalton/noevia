@@ -168,6 +168,39 @@ if [ "$project_files_core_owner" != "$project_files_front_owner" ]; then
   echo "web-supervisor: project file delete ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# A stored document's page reader (sbstndalton/noevia#2191 round 4: GET /api/projects/{id}/documents/pages):
+# a Core that refuses it (server/rust-project-document-pages.cjs) needs a front that answers it
+# (rust-project-document-pages), and such a front needs that Core. Old/old remains usable for rollback.
+document_pages_core_owner=""
+document_pages_front_owner=""
+grep -qF "require('./rust-project-document-pages.cjs')" "$PWD/server/index.cjs" 2>/dev/null && document_pages_core_owner=rust
+grep -qx 'rust-project-document-pages' <<<"$rust_features" && document_pages_front_owner=rust
+if [ "$document_pages_core_owner" != "$document_pages_front_owner" ]; then
+  echo "web-supervisor: project document page reader ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# The conversation import (sbstndalton/noevia#2191 round 4: POST /api/import/conversations): a Core that
+# refuses it (server/rust-conversation-import.cjs) needs a front that answers it (rust-conversation-import),
+# and such a front needs that Core. Old/old remains usable for rollback.
+conversation_import_core_owner=""
+conversation_import_front_owner=""
+grep -qF "require('./rust-conversation-import.cjs')" "$PWD/server/index.cjs" 2>/dev/null && conversation_import_core_owner=rust
+grep -qx 'rust-conversation-import' <<<"$rust_features" && conversation_import_front_owner=rust
+if [ "$conversation_import_core_owner" != "$conversation_import_front_owner" ]; then
+  echo "web-supervisor: conversation import ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# The project document upload (sbstndalton/noevia#2191 round 5: POST /api/projects/{id}/documents, on the
+# front's Docling extraction pipeline): a Core that refuses it (server/rust-project-documents.cjs) needs a
+# front that answers it (rust-project-documents), and such a front needs that Core. Old/old stays usable.
+project_documents_core_owner=""
+project_documents_front_owner=""
+grep -qF "require('./rust-project-documents.cjs')" "$PWD/server/index.cjs" 2>/dev/null && project_documents_core_owner=rust
+grep -qx 'rust-project-documents' <<<"$rust_features" && project_documents_front_owner=rust
+if [ "$project_documents_core_owner" != "$project_documents_front_owner" ]; then
+  echo "web-supervisor: project document upload ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # The public pages and the device approval page (sbstndalton/noevia#2190, server/rust-public-pages.cjs
 # beside the front's rust-public-pages), and the plugin directory (server/rust-plugin-directory.cjs
 # beside rust-plugin-directory), and the decision settings (server/rust-decision-settings.cjs beside
@@ -257,6 +290,31 @@ if [ -n "$source_client_marker" ] && [ -z "$source_store_reported" ]; then
 fi
 if [ -z "$source_client_marker" ] && [ -n "$source_store_reported" ]; then
   echo "web-supervisor: noevia-server source job store requires a paired core source job client" >&2
+  exit 2
+fi
+# The source jobs (sbstndalton/noevia#2191 round 6): the front becomes the one owning process of the
+# source-job store and Node keeps no source journal client. A Core that refuses the background starts
+# and the poll (server/rust-source-jobs.cjs) needs a front that answers them (rust-source-jobs), and
+# such a front needs that Core. The older pair (Node's client, the front's internal store) is checked
+# above; old/old stays usable.
+source_jobs_core_owner=""
+source_jobs_front_owner=""
+grep -qF "require('./rust-source-jobs.cjs')" "$PWD/server/index.cjs" 2>/dev/null && source_jobs_core_owner=rust
+grep -qx 'rust-source-jobs' <<<"$rust_features" && source_jobs_front_owner=rust
+if [ "$source_jobs_core_owner" != "$source_jobs_front_owner" ]; then
+  echo "web-supervisor: source job ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# The large-document lock (sbstndalton/noevia#2191 round 7, #697): a core whose large-document-lock.cjs
+# also takes the host-wide lock file (large-document-file-lock.cjs) needs a front that takes it too
+# (rust-large-document-host-lock), and the reverse; otherwise the two could each hold a document over
+# 25 MiB at once. Old/old stays usable.
+large_lock_core_owner=""
+large_lock_front_owner=""
+grep -qF "require('./large-document-file-lock.cjs')" "$PWD/server/large-document-lock.cjs" 2>/dev/null && large_lock_core_owner=host
+grep -qx 'rust-large-document-host-lock' <<<"$rust_features" && large_lock_front_owner=host
+if [ "$large_lock_core_owner" != "$large_lock_front_owner" ]; then
+  echo "web-supervisor: large-document lock mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
 # The deep-research executor also requires a paired Rust journal store. Probe the real
