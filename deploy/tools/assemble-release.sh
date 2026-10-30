@@ -411,6 +411,21 @@ rs_serves_chat_delete() {
 core_deletes_via_store() {
   grep -qF "'noevia-chat-delete-client/1'" "$tree/core/server/project-store-client.cjs" 2>/dev/null
 }
+# True when the file has a line of CODE matching the extended regex: comment-only lines (`//` ones and
+# `/* ... */` blocks) never count, so a marker or an op name that only a comment mentions is not one.
+# (The text is captured first: `grep -q` closing the pipe early would fail the pipeline under pipefail.)
+code_has() {
+  [ -f "$1" ] || return 1
+  local code
+  code="$(awk '
+    block { if (index($0, "*/")) block = 0; next }
+    { line = $0; sub(/^[ \t]+/, "", line) }
+    line ~ /^\/\// { next }
+    line ~ /^\/\*/ { if (!index(line, "*/")) block = 1; next }
+    { print }
+  ' "$1")" || return 1
+  grep -qE -e "$2" <<<"$code"
+}
 # Slice7: exact canonical declarations + actual shorthand exports, never comment literals.
 # A transitional handler must be a named exported async chatMoveRoute in its actual route module.
 move_capability() {
@@ -1005,7 +1020,7 @@ fi
 # access token or key: a pair without either side would leave a second writer or a chat with no key.
 mcp_core_owner=""
 mcp_rs_owner=""
-grep -qF "require('./rust-mcp-credentials.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mcp_core_owner=rust
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-mcp-credentials\\.cjs'\\)" && mcp_core_owner=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-mcp-credentials features; then
   mcp_rs_owner=rust
 fi
@@ -1033,10 +1048,11 @@ if [ "$mcp_rs_owner" = rust ]; then
     }' | LC_ALL=C sort | tr '\n' ' ')" || die "MCP credential ownership pairing: exactly the broker's methods of the routes must belong to Rust"
   [ "$mcp_routes" = "/api/mcp-keys/servers /api/mcp-keys/{*} /api/mcp-oauth/callback /api/mcp-oauth/servers /api/mcp-oauth/{id} /api/mcp-oauth/{id}/connect " ] \
     || die "MCP credential ownership pairing: incomplete route ownership"
-  grep -qF '/v1/mcp/' "$tree/rs/bins/noevia-server/src/project_store.rs" 2>/dev/null \
+  # Code, not comments: a mention of the path or of an op in a comment serves and calls nothing.
+  code_has "$tree/rs/bins/noevia-server/src/project_store.rs" '/v1/mcp/' \
     || die "MCP credential ownership pairing: the front does not serve /v1/mcp/*"
   for op in mcpSession mcpKey mcpReseal; do
-    grep -qF "$op" "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+    code_has "$tree/core/server/project-store-client.cjs" "(^|[^A-Za-z0-9_])$op[[:space:]]*\\(" \
       || die "MCP credential ownership pairing: Core's store client does not call $op"
   done
 fi

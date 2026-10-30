@@ -2107,11 +2107,17 @@ methods = ["GET"]'
 mcp_keys_methods='methods = ["DELETE", "PUT"]'; mcp_owner=rust; mcp_callback="$mcp_callback_rust"
 cp "$w/server/project-store-client.cjs" "$work/mcp-client.saved"
 if [ -f "$rz/bins/noevia-server/src/project_store.rs" ]; then cp "$rz/bins/noevia-server/src/project_store.rs" "$work/mcp-store.saved"; else rm -f "$work/mcp-store.saved"; fi
-mcp_files() { # store yes|no, client yes|no
+mcp_files() { # store yes|no|comment, client yes|no|comment ("comment": only a comment mentions it, which serves/asks nothing)
   cp "$work/mcp-client.saved" "$w/server/project-store-client.cjs"
   if [ -f "$work/mcp-store.saved" ]; then cp "$work/mcp-store.saved" "$rz/bins/noevia-server/src/project_store.rs"; else : > "$rz/bins/noevia-server/src/project_store.rs"; fi
-  [ "$1" = yes ] && printf '%s\n' 'router.route(&format!("/v1/mcp/{op}"), post(mcp_op));' >> "$rz/bins/noevia-server/src/project_store.rs"
-  [ "$2" = yes ] && printf '%s\n' '// mcpSession(user, server) mcpKey(user, server) mcpReseal()' >> "$w/server/project-store-client.cjs"
+  case "$1" in
+    yes) printf '%s\n' 'router.route(&format!("/v1/mcp/{op}"), post(mcp_op));' >> "$rz/bins/noevia-server/src/project_store.rs";;
+    comment) printf '%s\n' '// router.route(&format!("/v1/mcp/{op}"), post(mcp_op));' '/// the internal store: POST /v1/mcp/session' >> "$rz/bins/noevia-server/src/project_store.rs";;
+  esac
+  case "$2" in
+    yes) printf '%s\n' 'async mcpSession(user, server) { return call("mcp/session"); }' 'async mcpKey(user, server) { return call("mcp/key"); }' 'async mcpReseal() { return call("mcp/reseal"); }' >> "$w/server/project-store-client.cjs";;
+    comment) printf '%s\n' '// mcpSession(user, server) mcpKey(user, server) mcpReseal()' '/* async mcpSession(user, server) {}' '   async mcpKey(user, server) {}' '   async mcpReseal() {} */' >> "$w/server/project-store-client.cjs";;
+  esac
   return 0
 }
 cp "$work/feature-index.saved" "$w/server/index.cjs"
@@ -2141,10 +2147,24 @@ mcp_callback="$mcp_callback_rust"
 mcp_files no yes
 mcp_try mcp-no-store-route
 check "a front whose store serves no /v1/mcp/* is refused" 'refused "MCP credential ownership pairing: the front does not serve"'
+mcp_files comment yes
+mcp_try mcp-store-comment-only
+check "a /v1/mcp/ that only a comment names is not a store that serves it" 'refused "MCP credential ownership pairing: the front does not serve"'
 mcp_files yes no
 mcp_try mcp-no-client-ops
 check "a Core whose store client never asks for a session, a key or the re-seal is refused" 'refused "MCP credential ownership pairing: Core.s store client"'
+mcp_files yes comment
+mcp_try mcp-client-comment-only
+check "store-client ops that only comments name (line and block) are not calls" 'refused "MCP credential ownership pairing: Core.s store client"'
+cp "$work/mcp-client.saved" "$w/server/project-store-client.cjs"
+printf '%s\n' 'async mcpSession(u, s) {}' 'async mcpKey(u, s) {}' '// async mcpReseal() {}  (not yet)' >> "$w/server/project-store-client.cjs"
+mcp_try mcp-client-one-op-in-comment
+check "one op present only in a comment, the others in code, is still refused" 'refused "MCP credential ownership pairing: Core.s store client does not call mcpReseal"'
 mcp_files yes yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  // if (require('./rust-mcp-credentials.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp_try mcp-marker-comment-only
+check "a Core marker that only a comment names is the old Core, not a pair" 'refused "MCP credential ownership pairing: Core and Rust must move together"'
 cp "$work/feature-index.saved" "$w/server/index.cjs"
 mcp_try mcp-front-only
 check "a rust-mcp-credentials front cannot pair with the old Core (which would write the tables)" 'refused "MCP credential ownership pairing: Core and Rust must move together"'
