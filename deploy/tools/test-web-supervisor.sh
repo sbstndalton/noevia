@@ -366,6 +366,18 @@ check "rust-project-storage front with old Core refuses before launch" '[ $rc -e
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old project storage pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project file delete ownership (sbstndalton/noevia#2191 round 3) must agree in both directions.
+printf '%s\n' "  if (require('./rust-project-files.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-file-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project file delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-files" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project file delete pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-files" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-files front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project file delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset

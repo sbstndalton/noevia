@@ -157,6 +157,17 @@ if [ "$project_storage_core_owner" != "$project_storage_front_owner" ]; then
   echo "web-supervisor: project storage write ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# A project source file's delete (sbstndalton/noevia#2191 round 3: DELETE /api/projects/{id}/files): a
+# Core that refuses it (server/rust-project-files.cjs) and runs the `unindex` jobs needs a front that
+# answers it (rust-project-files), and such a front needs that Core. Old/old remains usable for rollback.
+project_files_core_owner=""
+project_files_front_owner=""
+grep -qF "require('./rust-project-files.cjs')" "$PWD/server/index.cjs" 2>/dev/null && project_files_core_owner=rust
+grep -qx 'rust-project-files' <<<"$rust_features" && project_files_front_owner=rust
+if [ "$project_files_core_owner" != "$project_files_front_owner" ]; then
+  echo "web-supervisor: project file delete ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
