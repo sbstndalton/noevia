@@ -228,7 +228,9 @@ fi
 # one call's access token or key headers), the close-out GETs (sbstndalton/noevia#2190, #2191): the health
 # check (server/rust-health.cjs beside rust-health, which also publishes rag-status.json), the auto-roles read
 # (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
-# list (server/rust-workspace.cjs beside rust-workspace), and since #2202 round 2 the admin MCP directory
+# list (server/rust-workspace.cjs beside rust-workspace), the rest of the Diary routes
+# (server/rust-diary-routes.cjs beside rust-diary-routes, sbstndalton/noevia#2206; Rust owns the connector
+# credentials table and reads the running-exchange set Node publishes), and since #2202 round 2 the admin MCP directory
 # (server/rust-mcp-directory.cjs beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the
 # only writer of directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs
 # beside rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last
@@ -261,6 +263,7 @@ rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 rust-health.cjs rust-health health check
 rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
+rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
 rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
 rust-connectors.cjs rust-connectors connectors
