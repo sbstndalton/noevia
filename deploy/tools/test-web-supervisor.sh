@@ -321,6 +321,36 @@ check "rust-model-reads front with old Core refuses before launch" '[ $rc -eq 2 
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project source read route ownership (sbstndalton/noevia#2191) must agree in both directions before launch.
+printf '%s\n' "  if (require('./rust-project-reads.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-read-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project source read ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-reads" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project source read pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-reads" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-reads front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project source read ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old project source read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project create/delete route ownership (sbstndalton/noevia#2191 round 2) must agree in both directions.
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-lifecycle-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project create/delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-lifecycle" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project create/delete pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-lifecycle" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-lifecycle front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project create/delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old project create/delete pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
 for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings"; do

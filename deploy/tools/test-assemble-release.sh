@@ -1266,6 +1266,116 @@ check "a rust-model-reads front cannot pair with the old Core handlers" 'refused
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try models-old-pair
 check "historic model read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Project source read owner release matrix (sbstndalton/noevia#2191): three routes, GET only.
+project_reads_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/sources/text"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/projects/{id}/documents/original"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "$project_reads_last"
+owner = "rust"
+$project_reads_limit
+TOML
+}
+project_reads_last="/api/projects/{id}/{*}/original"; project_reads_limit='methods = ["GET"]'
+printf '%s\n' "  if (require('./rust-project-reads.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cat > "$w/server/rust-project-reads.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'GET /api/projects/{id}/sources/text',
+  'GET /api/projects/{id}/documents/original',
+  'GET /api/projects/{id}/{*}/original',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+project_reads_try project-reads-core-only
+check "project source read Core refusal requires the native capability" 'refused "project source read ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-project-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_reads_try project-reads-pair
+check "matching project source read pair with three GET-only routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mv "$w/server/rust-project-reads.cjs" "$work/rust-project-reads.saved"
+project_reads_try project-reads-unlisted
+check "a front owning the source reads needs a Core that lists them (OWNED_ROUTES)" 'refused "does not list in server/rust-projects.cjs OWNED_ROUTES"'
+mv "$work/rust-project-reads.saved" "$w/server/rust-project-reads.cjs"
+project_reads_limit=""
+project_reads_try project-reads-all-methods
+check "an all-method project source read route is refused (Node keeps the other methods)" 'refused "project source read ownership pairing"'
+project_reads_limit='methods = ["GET", "DELETE"]'
+project_reads_try project-reads-get-delete
+check "a project source read route with more than GET is refused" 'refused "project source read ownership pairing"'
+project_reads_limit='methods = ["GET"]'; project_reads_last="/api/projects/{id}/documents/pages"
+project_reads_try project-reads-incomplete
+check "an incomplete project source read route set is refused" 'refused "project source read ownership pairing"'
+project_reads_last="/api/projects/{id}/{*}/original"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+project_reads_try project-reads-front-only
+check "a rust-project-reads front cannot pair with the old Core handlers" 'refused "project source read ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try project-reads-old-pair
+check "historic project source read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-reads.cjs"
+# Project create/delete owner release matrix (sbstndalton/noevia#2191 round 2): POST /api/projects and
+# DELETE /api/projects/{projectId}, nothing else.
+project_lifecycle_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects"
+owner = "rust"
+$project_lifecycle_create
+[[route]]
+path = "$project_lifecycle_one"
+owner = "rust"
+methods = ["DELETE"]
+TOML
+}
+project_lifecycle_create='methods = ["POST"]'; project_lifecycle_one="/api/projects/{projectId}"
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cat > "$w/server/rust-project-lifecycle.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects',
+  'DELETE /api/projects/{projectId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+project_lifecycle_try project-lifecycle-core-only
+check "project create/delete Core refusal requires the native capability" 'refused "project create/delete ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-project-lifecycle"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-lifecycle-pair
+check "matching project create/delete pair with POST and DELETE only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mv "$w/server/rust-project-lifecycle.cjs" "$work/rust-project-lifecycle.saved"
+project_lifecycle_try project-lifecycle-unlisted
+check "a front owning the project delete needs a Core that lists it (OWNED_ROUTES)" 'refused "does not list in server/rust-projects.cjs OWNED_ROUTES"'
+mv "$work/rust-project-lifecycle.saved" "$w/server/rust-project-lifecycle.cjs"
+project_lifecycle_create=""
+project_lifecycle_try project-lifecycle-all-methods
+check "an all-method /api/projects route is refused (Node keeps the other methods)" 'refused "project create/delete ownership pairing"'
+project_lifecycle_create='methods = ["POST", "GET"]'
+project_lifecycle_try project-lifecycle-post-get
+check "a /api/projects route with more than POST is refused" 'refused "project create/delete ownership pairing"'
+project_lifecycle_create='methods = ["POST"]'; project_lifecycle_one="/api/projects/{projectId}/config"
+project_lifecycle_try project-lifecycle-incomplete
+check "an incomplete project create/delete route set is refused" 'refused "project create/delete ownership pairing"'
+project_lifecycle_one="/api/projects/{projectId}"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+project_lifecycle_try project-lifecycle-front-only
+check "a rust-project-lifecycle front cannot pair with the old Core handlers" 'refused "project create/delete ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try project-lifecycle-old-pair
+check "historic project create/delete old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-lifecycle.cjs"
 # Public page and plugin directory owner release matrix (sbstndalton/noevia#2190): two independent pairs.
 singles_try() {
   try_routes "$1" <<TOML
