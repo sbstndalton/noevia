@@ -2103,6 +2103,119 @@ check "a rust-provider-models front cannot pair with the old Core list" 'refused
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try pmod-old-pair
 check "historic provider model list old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Round 6 (#2190): the provider registry. The routes: the list (GET, POST), one row (PUT, DELETE), the
+# ChatGPT disconnect (GET stays the status read, DELETE joins it) and the probe's id reading (POST
+# plus PUT and DELETE); with the pair the probe's route needs exactly those three.
+prov_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers"
+owner = "$prov_owner"
+$prov_list
+[[route]]
+path = "/api/providers/{id}"
+owner = "rust"
+methods = ["PUT", "DELETE"]
+[[route]]
+path = "/api/providers/chatgpt"
+owner = "rust"
+methods = ["GET", "DELETE"]
+$prov_test
+TOML
+}
+prov_test_rust='[[route]]
+path = "/api/providers/test"
+owner = "rust"
+methods = ["POST", "PUT", "DELETE"]'
+prov_list='methods = ["GET", "POST"]'; prov_owner=rust; prov_test="$prov_test_rust"
+# The key re-seal (round 6 review) moves with the registry: Core's store client asks for it, the front's
+# store serves it. The fixture files are put back at the end of the block.
+cp "$w/server/project-store-client.cjs" "$work/reseal-client.saved"
+if [ -f "$rz/bins/noevia-server/src/project_store.rs" ]; then cp "$rz/bins/noevia-server/src/project_store.rs" "$work/reseal-store.saved"; else rm -f "$work/reseal-store.saved"; fi
+reseal_files() {
+  # The fixture's own client and store files, with the re-seal's call and route appended (yes) or not (no).
+  cp "$work/reseal-client.saved" "$w/server/project-store-client.cjs"
+  if [ -f "$work/reseal-store.saved" ]; then cp "$work/reseal-store.saved" "$rz/bins/noevia-server/src/project_store.rs"; else : > "$rz/bins/noevia-server/src/project_store.rs"; fi
+  if [ "$1" = yes ]; then
+    printf '%s\n' '// providersReseal(scope) is called by the rotation' >> "$w/server/project-store-client.cjs"
+    printf '%s\n' '.route("/v1/providers/reseal", post(providers_reseal))' >> "$rz/bins/noevia-server/src/project_store.rs"
+  fi
+}
+reseal_index() { # registry yes|no, reseal yes|no
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "$1" = yes ] && printf '%s\n' "  if (require('./rust-providers.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  [ "$2" = yes ] && printf '%s\n' "  const providersReseal = require('./rust-providers-reseal.cjs');" >> "$w/server/index.cjs"
+  return 0
+}
+reseal_lib() { # registry yes|no, reseal yes|no
+  features='"start-id"'
+  [ "$1" = yes ] && features="$features, \"rust-providers\""
+  [ "$2" = yes ] && features="$features, \"rust-providers-reseal\""
+  sed "s/\"start-id\"/$features/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+}
+reseal_files yes
+reseal_index yes no
+prov_try prov-core-only
+check "provider registry Core refusal requires the native capability" 'refused "provider registry ownership pairing"'
+reseal_index yes yes; reseal_lib yes yes
+prov_try prov-pair
+check "matching provider registry and key re-seal pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+reseal_index yes no; reseal_lib yes no
+prov_try prov-pair-no-reseal
+check "a native registry pair without the key re-seal on either side is refused (the rotation would be a second writer)" 'refused "provider key reseal ownership pairing"'
+reseal_index yes yes; reseal_lib yes no
+prov_try prov-reseal-core-only
+check "a Core that rotates through the front's store cannot pair with a front without the op" 'refused "provider key reseal ownership pairing"'
+reseal_index yes no; reseal_lib yes yes
+prov_try prov-reseal-front-only
+check "a front with the key re-seal cannot pair with a Core that still rewrites the provider files" 'refused "provider key reseal ownership pairing"'
+reseal_index no yes; reseal_lib no yes
+prov_try prov-reseal-no-registry
+check "the key re-seal without the provider registry is refused" 'refused "provider key reseal ownership pairing"'
+reseal_index yes yes; reseal_lib yes yes
+reseal_files no
+prov_try prov-reseal-no-ops
+check "a native pair whose store serves no /v1/providers/reseal and whose client never asks is refused" 'refused "provider key reseal ownership pairing"'
+reseal_files no; printf '%s\n' '// providersReseal(scope) is called by the rotation' >> "$w/server/project-store-client.cjs"
+prov_try prov-reseal-no-route
+check "a front whose store has no /v1/providers/reseal route is refused" 'refused "provider key reseal ownership pairing: the front does not serve"'
+reseal_files yes
+cp "$work/reseal-client.saved" "$w/server/project-store-client.cjs"
+prov_try prov-reseal-no-client
+check "a Core whose store client never calls the re-seal is refused" 'refused "provider key reseal ownership pairing: Core.s store client"'
+reseal_files yes
+reseal_index yes yes; reseal_lib yes yes
+prov_list='methods = ["GET"]'
+prov_try prov-get-only
+check "a provider list route without POST is refused (Core refuses the connect)" 'refused "provider registry ownership pairing"'
+prov_list=''
+prov_try prov-all-methods
+check "a provider list route Rust's for every method is refused (Node keeps the others)" 'refused "provider registry ownership pairing"'
+prov_list='methods = ["GET", "POST", "PUT"]'
+prov_try prov-extra-method
+check "a provider list route with an extra method is refused" 'refused "provider registry ownership pairing"'
+prov_list='methods = ["GET", "POST"]'; prov_owner=node
+prov_try prov-node-route
+check "a Node-owned provider list route beside a native pair is refused" 'refused "provider registry ownership pairing"'
+prov_owner=rust; prov_test='[[route]]
+path = "/api/providers/test"
+owner = "rust"
+methods = ["POST"]'
+prov_try prov-probe-post-only
+check "a native registry pair whose probe route lacks PUT and DELETE is refused" 'refused "provider registry ownership pairing\|provider test ownership pairing"'
+prov_test="$prov_test_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+prov_try prov-front-only
+check "a rust-providers front cannot pair with the old Core registry" 'refused "provider registry ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try prov-old-pair
+check "historic provider registry old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$work/reseal-client.saved" "$w/server/project-store-client.cjs"
+if [ -f "$work/reseal-store.saved" ]; then cp "$work/reseal-store.saved" "$rz/bins/noevia-server/src/project_store.rs"; else rm -f "$rz/bins/noevia-server/src/project_store.rs"; fi
 # Model sizing owner release matrix (sbstndalton/noevia#2189): two routes, GET only.
 sizing_try() {
   try_routes "$1" <<TOML
