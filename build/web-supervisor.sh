@@ -237,7 +237,8 @@ fi
 # two computed by the front from the discovery snapshot Node publishes, a project's configuration and instruction skills
 # (server/rust-project-config.cjs beside rust-project-config, sbstndalton/noevia#2191 round 9) and an account's
 # deletion (server/rust-admin-users.cjs beside rust-admin-users, #2190: Rust deletes the rows, the folder and every
-# credential, and Core can no longer delete an account): each group moves as one owner. Old/old images
+# credential, and Core can no longer delete an account), deep research (server/rust-research.cjs beside rust-research,
+# #2218: the jobs run on the front, Node keeps only their admission lease and tool bridge): each group moves as one owner. Old/old images
 # remain usable for rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -272,6 +273,7 @@ rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
 rust-connectors.cjs rust-connectors connectors
 rust-project-config.cjs rust-project-config project configuration
 rust-admin-users.cjs rust-admin-users account deletion
+rust-research.cjs rust-research deep research
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
@@ -413,7 +415,8 @@ if [ -n "$research_client_marker" ] && [ -z "$research_store_reported" ]; then
   echo "web-supervisor: core research job client requires noevia-research-jobs-store/1 from this noevia-server" >&2
   exit 2
 fi
-if [ -z "$research_client_marker" ] && [ -n "$research_store_reported" ]; then
+# A rust-research front runs the jobs itself (#2218): the store stays compiled and Core has no client any more.
+if [ -z "$research_client_marker" ] && [ -n "$research_store_reported" ] && ! grep -qx 'rust-research' <<<"$rust_features"; then
   echo "web-supervisor: noevia-server research job store requires a paired core research job client" >&2
   exit 2
 fi

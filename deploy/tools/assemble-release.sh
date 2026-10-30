@@ -731,7 +731,7 @@ fi
 # A project's configuration, its instruction skills and a published skill's install (sbstndalton/noevia#2191
 # round 9) move as one owner: Core's rust-project-config.cjs refusal and the front's rust-project-config
 # capability, with exactly the methods Node answered Rust's in routes.toml (POST config; GET and PUT
-# instruction-skills; GET manifests and a manifest's content; POST install). The browser, code and research routes
+# instruction-skills; GET manifests and a manifest's content; POST install). The browser and code routes
 # and GET /api/code/active are chat-bound and must stay Node's. Core must refuse exactly those six, keep no
 # project route mount (server/routes/projects.cjs is gone), and publish every toolbox it knows for the front's
 # manifests. Historic old/old pins remain valid rollback pairs; either mixed generation is refused.
@@ -754,7 +754,7 @@ if [ "$pc_rs_owner" = rust ]; then
       if (path == "/api/projects/{project}/skills/install") return "POST"
       return ""
     }
-    $1 == "/api/projects/{projectId}/browser" || $1 == "/api/projects/{projectId}/code" || $1 == "/api/projects/{projectId}/research" || $1 == "/api/code/active" { if ($2 != "node") exit 1 }
+    $1 == "/api/projects/{projectId}/browser" || $1 == "/api/projects/{projectId}/code" || $1 == "/api/code/active" { if ($2 != "node") exit 1 }
     want($1) != "" {
       if ($2 != "rust" || $3 != "-" || $4 == "-") exit 1
       w = want($1)
@@ -763,7 +763,7 @@ if [ "$pc_rs_owner" = rust ]; then
       for (i = 1; i <= n; i++) if (m[i] != "") { if (!(m[i] in ok) || (m[i] in seen)) exit 1; seen[m[i]] = 1; k++ }
       if (k != ne) exit 1
       print $1
-    }')" || die "project configuration ownership pairing: exactly the methods Node answered must belong to Rust, and the browser, code and research routes must stay Node's"
+    }')" || die "project configuration ownership pairing: exactly the methods Node answered must belong to Rust, and the browser and code routes must stay Node's"
   pc_routes="$(printf '%s\n' "$pc_routes" | sort | tr '\n' ' ')"
   pc_expected="$(printf '%s\n' /api/projects/{project}/skills/install /api/projects/{projectId}/config /api/projects/{projectId}/instruction-skills /api/projects/{projectId}/instruction-skills/manifests '/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content' | sort | tr '\n' ' ')"
   [ "$pc_routes" = "$pc_expected" ] || die "project configuration ownership pairing: incomplete route ownership"
@@ -775,6 +775,64 @@ if [ "$pc_rs_owner" = rust ]; then
     || die "project configuration ownership pairing: Core still mounts the project routes"
   grep -qF "known: allToolboxes()" "$tree/core/server/index.cjs" 2>/dev/null \
     || die "project configuration ownership pairing: Core does not publish the toolbox ids the front validates skills against"
+fi
+# Deep research (sbstndalton/noevia#2218) moves as one owner: Core's rust-research.cjs refusal and the front's
+# rust-research capability, with all five paths Rust's for every method, as Node's matcher took them. Core must have
+# dropped its handlers and offer the front its admission lease and tool bridge. Historic old/old pins remain valid
+# rollback pairs (the journal stays readable by both); either mixed generation is refused.
+rr_core_owner=""
+rr_rs_owner=""
+grep -qF "require('./rust-research.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && rr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-research features; then
+  rr_rs_owner=rust
+fi
+[ "$rr_core_owner" = "$rr_rs_owner" ] \
+  || die "deep research ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # An unreadable table is the route-table check's to report, below.
+  rr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || rr_table=""
+  rr_routes="$(printf '%s\n' "$rr_table" | awk -F'\t' -v want="$rr_rs_owner" '
+    $1 ~ /^\/api\/projects\/\{projectId\}\/research(\/plan|\/\{job\}(\/cancel|\/save)?)?$/ {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "deep research ownership pairing: its routes must be Rust's for every method with the new pair, and Node's with the old"
+  if [ "$rr_rs_owner" = rust ]; then
+    [ "$(printf '%s\n' "$rr_routes" | sort -u | wc -l | tr -d ' ')" = 5 ] || die "deep research ownership pairing: incomplete route ownership"
+    rr_refused="$( { project_routes_core "$tree/core/server/rust-research.cjs" || true; } | sort | tr '\n' ' ')"
+    rr_refused_expected="$(printf '%s\n' 'ALL /api/projects/{}/research' 'ALL /api/projects/{}/research/plan' 'ALL /api/projects/{}/research/{}' 'ALL /api/projects/{}/research/{}/cancel' 'ALL /api/projects/{}/research/{}/save' | sort | tr '\n' ' ')"
+    [ "$rr_refused" = "$rr_refused_expected" ] \
+      || die "deep research ownership pairing: Core must refuse exactly the five paths the front answers"
+    { [ ! -e "$tree/core/server/routes/research.cjs" ] && [ ! -e "$tree/core/server/research-service.cjs" ]; } \
+      || die "deep research ownership pairing: Core still carries the research handlers"
+    { [ -f "$tree/core/server/inference-admission-lease.cjs" ] && [ -f "$tree/core/server/rust-research-bridge.cjs" ]; } \
+      || die "deep research ownership pairing: Core does not offer the front its admission lease and tool bridge"
+    # The files are not the feature: index.cjs must mount both, and hand both the front's secret. Core's project-store
+    # client deletes NOEVIA_PROJECT_STORE_TOKEN from process.env when it is built, so a secret read after that is
+    # empty and every call from the front is a 404 (review H1 of #2218). The secret has to be captured in a constant
+    # before clientFromEnv runs, never read from the environment after it, and passed to both constructors.
+    rr_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'inferenceAdmission\.handle\(req, res\)' <<<"$rr_index" \
+      || die "deep research ownership pairing: Core does not mount the admission lease route"
+    grep -qE 'researchBridge\(req, res\)' <<<"$rr_index" \
+      || die "deep research ownership pairing: Core does not mount the research bridge"
+    rr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$rr_index" | head -1)"
+    [ -n "$rr_secret" ] \
+      || die "deep research ownership pairing: Core does not capture the front's secret before its project-store client deletes it"
+    awk -v c="$rr_secret" '
+      /clientFromEnv\(/ && !cut { cut = NR }
+      index($0, "const " c " = String(process.env.NOEVIA_PROJECT_STORE_TOKEN") && !cap { cap = NR; next }
+      /process\.env\.NOEVIA_PROJECT_STORE_TOKEN/ && cut && NR > cut { late = 1 }
+      /createAdmissionRoutes\(\{/ { adm = NR }
+      /createResearchBridge\(\{/ { bridge = NR }
+      index($0, "secret: " c) {
+        if (adm && NR - adm <= 3) admok = 1
+        if (bridge && NR - bridge <= 3) bridgeok = 1
+      }
+      END { exit !(cap && cut && cap < cut && !late && admok && bridgeok) }
+    ' <<<"$rr_index" \
+      || die "deep research ownership pairing: Core does not hand its admission lease and research bridge the front's secret (captured before clientFromEnv, never read from process.env after it)"
+  fi
 fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
@@ -1560,9 +1618,10 @@ elif [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
    || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
   core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
 fi
-if [ -f "$tree/rs/crates/server-projects/src/research_jobs.rs" ] \
+# A rust-research pair runs the jobs on the front (#2218): no client is left, the store stays compiled.
+if [ "$rr_rs_owner" != rust ] && { [ -f "$tree/rs/crates/server-projects/src/research_jobs.rs" ] \
    || grep -qE 'RESEARCH_JOBS_CLIENT_MARKER|researchJobsFor\(' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
-   || grep -qF 'workspace.researchJobs' "$tree/core/server/research-jobs.cjs" 2>/dev/null; then
+   || grep -qF 'workspace.researchJobs' "$tree/core/server/research-jobs.cjs" 2>/dev/null; }; then
   core_research_client && rs_research_store || die "research job store pairing: core needs an exported research client and Rust needs the compiled research store capability and internal routes"
 fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
@@ -1614,8 +1673,8 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # core/server/rust-project-document-pages.cjs, a document's upload (round 5) by
   # core/server/rust-project-documents.cjs, the source jobs (round 6) by core/server/rust-source-jobs.cjs, the
   # source operations (round 8) by core/server/rust-project-source-work.cjs, a project's configuration and
-  # instruction skills (round 9) by core/server/rust-project-config.cjs.
-  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; project_routes_core "$tree/core/server/rust-project-source-work.cjs"; project_routes_core "$tree/core/server/rust-project-config.cjs"; } | sort -u))"
+  # instruction skills (round 9) by core/server/rust-project-config.cjs, deep research (#2218) by core/server/rust-research.cjs.
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; project_routes_core "$tree/core/server/rust-project-source-work.cjs"; project_routes_core "$tree/core/server/rust-project-config.cjs"; project_routes_core "$tree/core/server/rust-research.cjs"; } | sort -u))"
   [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
   # sbstndalton/noevia#1071: a front that owns sign-in with no switch (routes.toml: GET
   # /api/auth/session owner "rust", no `switch`) needs a core whose rust-auth guard is unconditional

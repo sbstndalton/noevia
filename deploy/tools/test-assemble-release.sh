@@ -1638,6 +1638,111 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-config-old-pair
 check "historic project configuration old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-config.cjs"
+# Deep research owner release matrix (sbstndalton/noevia#2218): all five paths, every method.
+rr_rows() {
+  for path in research research/plan 'research/{job}' 'research/{job}/cancel' 'research/{job}/save'; do
+    [ "$path" = "${rr_skip:-}" ] && continue
+    printf '[[route]]\npath = "/api/projects/{projectId}/%s"\nowner = "%s"\n' "$path" "$rr_owner"
+    [ -n "${rr_methods:-}" ] && [ "$path" = research ] && printf '%s\n' "$rr_methods"
+  done
+  return 0
+}
+rr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; rr_rows)
+}
+cat > "$w/server/rust-research.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'ALL /api/projects/{projectId}/research',
+  'ALL /api/projects/{projectId}/research/plan',
+  'ALL /api/projects/{projectId}/research/{job}',
+  'ALL /api/projects/{projectId}/research/{job}/cancel',
+  'ALL /api/projects/{projectId}/research/{job}/save',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
+# Core's index.cjs for a research pair: the marker, both routes mounted, and the front's secret captured before
+# clientFromEnv deletes it from process.env and handed to the lease and the bridge (review H1).
+rr_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const PROJECT_STORE = require('./project-store-client.cjs').clientFromEnv(process.env);
+const inferenceAdmission = require('./inference-admission-lease.cjs').createAdmissionRoutes({
+  secret: FRONT_SECRET, modelManager, json, readJson,
+});
+const researchBridge = require('./rust-research-bridge.cjs').createResearchBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+  if (require('./rust-research.cjs').refuseOwned(req, res, {})) return;
+  if (await inferenceAdmission.handle(req, res)) return;
+  if (await researchBridge(req, res)) return;
+JS
+}
+rr_front() { sed "s/\"start-id\"/\"start-id\", \"rust-research\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+rr_core; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; rr_owner=rust
+rr_try research-core-only
+check "deep research Core refusal requires the native capability" 'refused "deep research ownership pairing"'
+rr_front
+rr_try research-pair
+check "matching deep research pair with all five paths assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rr_methods='methods = ["GET"]'
+rr_try research-one-method
+check "a research path with only some methods is refused (Node's matcher took them all)" 'refused "deep research ownership pairing"'
+rr_methods=""; rr_skip='research/{job}/save'
+rr_try research-missing-path
+check "a pair missing one research path is refused" 'refused "incomplete route ownership"'
+rr_skip=""; rr_owner=node
+rr_try research-node-rows
+check "a rust-research front with Node's rows is refused" 'refused "deep research ownership pairing"'
+rr_owner=rust
+mv "$w/server/rust-research.cjs" "$work/rust-research.saved"; printf 'module.exports = {};\n' > "$w/server/rust-research.cjs"
+rr_try research-unlisted
+check "a front owning research needs a Core refusing exactly its paths" 'refused "Core must refuse exactly the five paths"'
+mv "$work/rust-research.saved" "$w/server/rust-research.cjs"
+touch "$w/server/research-service.cjs"
+rr_try research-old-handlers
+check "a Core still carrying the research handlers is refused" 'refused "still carries the research handlers"'
+rm -f "$w/server/research-service.cjs" "$w/server/rust-research-bridge.cjs"
+rr_try research-no-bridge
+check "a Core without the bridge is refused" 'refused "admission lease and tool bridge"'
+touch "$w/server/rust-research-bridge.cjs"
+# The files exist but Core's index.cjs does not wire them (or wires them with an empty secret): refused.
+cp "$w/server/index.cjs" "$work/rr-index.saved"
+sed '/inferenceAdmission\.handle/d' "$work/rr-index.saved" > "$w/server/index.cjs"
+rr_try research-no-lease-mount
+check "a Core that does not mount the admission lease route is refused" 'refused "does not mount the admission lease route"'
+sed '/researchBridge(req, res)/d' "$work/rr-index.saved" > "$w/server/index.cjs"
+rr_try research-no-bridge-mount
+check "a Core that does not mount the research bridge is refused" 'refused "does not mount the research bridge"'
+# The old bug: the secret read from process.env after clientFromEnv has deleted it.
+sed "s/^const FRONT_SECRET = .*/const FRONT_SECRET = 'x';/; s/secret: FRONT_SECRET, json, readJson,\$/secret: String(process.env.NOEVIA_PROJECT_STORE_TOKEN || ''), json, readJson,/" "$work/rr-index.saved" > "$w/server/index.cjs"
+rr_try research-late-secret
+check "a Core that reads the secret from process.env after clientFromEnv is refused" 'refused "does not capture the front.s secret"'
+grep -v '^const FRONT_SECRET' "$work/rr-index.saved" | sed "s/secret: FRONT_SECRET/secret: String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '')/" > "$w/server/index.cjs"
+rr_try research-env-secret
+check "a Core with no captured secret is refused" 'refused "does not capture the front.s secret"'
+# Captured, but after clientFromEnv: already deleted, so empty.
+rr_after="const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');"
+awk -v l="$rr_after" '/^const FRONT_SECRET/ { next } { print } /clientFromEnv/ { print l }' "$work/rr-index.saved" > "$w/server/index.cjs"
+rr_try research-secret-after
+check "a Core that captures the secret after clientFromEnv is refused" 'refused "hand its admission lease and research bridge the front.s secret"'
+# Captured but only one of the two gets it.
+sed "/createResearchBridge/{n;s/secret: FRONT_SECRET/secret: ''/;}" "$work/rr-index.saved" > "$w/server/index.cjs"
+rr_try research-bridge-no-secret
+check "a Core that gives the bridge no secret is refused" 'refused "hand its admission lease and research bridge the front.s secret"'
+sed "/createAdmissionRoutes/{n;s/secret: FRONT_SECRET/secret: ''/;}" "$work/rr-index.saved" > "$w/server/index.cjs"
+rr_try research-lease-no-secret
+check "a Core that gives the lease no secret is refused" 'refused "hand its admission lease and research bridge the front.s secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+rr_try research-front-only
+check "a rust-research front cannot pair with the old Core handlers" 'refused "deep research ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rr_owner=rust; rr_try research-old-core-rust-rows
+check "old pair whose route table gives research to Rust is refused" 'refused "deep research ownership pairing"'
+move_try research-old-pair
+check "historic deep research old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-research.cjs" "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.
 au_try() {
