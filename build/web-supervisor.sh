@@ -168,6 +168,17 @@ if [ "$project_files_core_owner" != "$project_files_front_owner" ]; then
   echo "web-supervisor: project file delete ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# A stored document's page reader (sbstndalton/noevia#2191 round 4: GET /api/projects/{id}/documents/pages):
+# a Core that refuses it (server/rust-project-document-pages.cjs) needs a front that answers it
+# (rust-project-document-pages), and such a front needs that Core. Old/old remains usable for rollback.
+document_pages_core_owner=""
+document_pages_front_owner=""
+grep -qF "require('./rust-project-document-pages.cjs')" "$PWD/server/index.cjs" 2>/dev/null && document_pages_core_owner=rust
+grep -qx 'rust-project-document-pages' <<<"$rust_features" && document_pages_front_owner=rust
+if [ "$document_pages_core_owner" != "$document_pages_front_owner" ]; then
+  echo "web-supervisor: project document page reader ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot

@@ -664,6 +664,30 @@ if [ "$project_files_rs_owner" = rust ]; then
     }')" || die "project file delete ownership pairing: exactly DELETE /api/projects/{id}/files must belong to Rust"
   [ "$project_files_routes" = "/api/projects/{id}/files" ] || die "project file delete ownership pairing: incomplete route ownership"
 fi
+# A stored document's page reader (sbstndalton/noevia#2191 round 4) moves as one owner: Core's
+# rust-project-document-pages.cjs refusal and the front's rust-project-document-pages capability, with
+# exactly GET of /api/projects/{id}/documents/pages Rust's in routes.toml. It reads the results Core's
+# extraction writes once per version, so it needs no other pair.
+document_pages_core_owner=""
+document_pages_rs_owner=""
+grep -qF "require('./rust-project-document-pages.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && document_pages_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-document-pages features; then
+  document_pages_rs_owner=rust
+fi
+[ "$document_pages_core_owner" = "$document_pages_rs_owner" ] \
+  || die "project document page reader ownership pairing: Core and Rust must move together"
+if [ "$document_pages_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project document page reader ownership pairing: missing route contract"
+  document_pages_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/projects/{id}/documents/pages" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "project document page reader ownership pairing: exactly GET /api/projects/{id}/documents/pages must belong to Rust"
+  [ "$document_pages_routes" = "/api/projects/{id}/documents/pages" ] || die "project document page reader ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
@@ -728,8 +752,9 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   fi
   # sbstndalton/noevia#2191: a project source's stored reads are listed by core/server/rust-project-reads.cjs,
   # a project's create and delete (round 2) by core/server/rust-project-lifecycle.cjs, a source file's
-  # delete (round 3) by core/server/rust-project-files.cjs.
-  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; } | sort -u))"
+  # delete (round 3) by core/server/rust-project-files.cjs, a document's page reader (round 4) by
+  # core/server/rust-project-document-pages.cjs.
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; } | sort -u))"
   [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
   # sbstndalton/noevia#1071: a front that owns sign-in with no switch (routes.toml: GET
   # /api/auth/session owner "rust", no `switch`) needs a core whose rust-auth guard is unconditional

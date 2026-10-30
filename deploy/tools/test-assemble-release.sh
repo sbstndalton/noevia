@@ -1472,6 +1472,55 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-project-files.cjs" "$w/server/rust-project-storage.cjs"
 rm -f "$w/server/rust-project-lifecycle.cjs"
+# Document page reader owner release matrix (sbstndalton/noevia#2191 round 4): GET
+# /api/projects/{id}/documents/pages only; no other pair needed.
+document_pages_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/documents/pages"
+owner = "rust"
+$document_pages_methods
+TOML
+}
+document_pages_methods='methods = ["GET"]'
+cat > "$w/server/rust-project-document-pages.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'GET /api/projects/{id}/documents/pages',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+pages_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${1:-}" = pages ] && printf '%s\n' "  if (require('./rust-project-document-pages.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+pages_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+pages_core pages; pages_front ""
+document_pages_try document-pages-core-only
+check "document page reader Core refusal requires the native capability" 'refused "project document page reader ownership pairing"'
+pages_front ', \"rust-project-document-pages\"'
+document_pages_try document-pages-pair
+check "matching document page reader pair with GET only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mv "$w/server/rust-project-document-pages.cjs" "$work/rust-project-document-pages.saved"
+document_pages_try document-pages-unlisted
+check "a front owning the page reader needs a Core that lists it (OWNED_ROUTES)" 'refused "does not list in server/rust-projects.cjs OWNED_ROUTES"'
+mv "$work/rust-project-document-pages.saved" "$w/server/rust-project-document-pages.cjs"
+document_pages_methods=""
+document_pages_try document-pages-all-methods
+check "an all-method document pages route is refused (Node keeps the other methods)" 'refused "project document page reader ownership pairing"'
+document_pages_methods='methods = ["GET"]'
+pages_core
+document_pages_try document-pages-front-only
+check "a rust-project-document-pages front cannot pair with the old Core handler" 'refused "project document page reader ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try document-pages-old-pair
+check "historic document page reader old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-document-pages.cjs"
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
