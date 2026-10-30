@@ -190,6 +190,17 @@ if [ "$conversation_import_core_owner" != "$conversation_import_front_owner" ]; 
   echo "web-supervisor: conversation import ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# The project document upload (sbstndalton/noevia#2191 round 5: POST /api/projects/{id}/documents, on the
+# front's Docling extraction pipeline): a Core that refuses it (server/rust-project-documents.cjs) needs a
+# front that answers it (rust-project-documents), and such a front needs that Core. Old/old stays usable.
+project_documents_core_owner=""
+project_documents_front_owner=""
+grep -qF "require('./rust-project-documents.cjs')" "$PWD/server/index.cjs" 2>/dev/null && project_documents_core_owner=rust
+grep -qx 'rust-project-documents' <<<"$rust_features" && project_documents_front_owner=rust
+if [ "$project_documents_core_owner" != "$project_documents_front_owner" ]; then
+  echo "web-supervisor: project document upload ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot

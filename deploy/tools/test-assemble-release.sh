@@ -1585,6 +1585,55 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try conversation-import-old-pair
 check "historic conversation import old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-conversation-import.cjs" "$w/server/rust-project-lifecycle.cjs"
+# Project document upload owner release matrix (sbstndalton/noevia#2191 round 5): POST
+# /api/projects/{id}/documents only, with the rust-document-extraction pipeline.
+documents_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/documents"
+owner = "rust"
+$documents_methods
+TOML
+}
+documents_methods='methods = ["POST"]'
+documents_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${1:-}" = documents ] && printf '%s\n' "  if (require('./rust-project-documents.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+documents_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cat > "$w/server/rust-project-documents.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/documents',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+documents_core documents; documents_front ', \"rust-document-extraction\"'
+documents_try documents-core-only
+check "document upload Core refusal requires the native capability" 'refused "project document upload ownership pairing"'
+documents_front ', \"rust-document-extraction\", \"rust-project-documents\"'
+documents_try documents-pair
+check "matching document upload pair with POST only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+documents_methods=""
+documents_try documents-all-methods
+check "an all-method document route is refused" 'refused "project document upload ownership pairing"'
+documents_methods='methods = ["POST"]'
+documents_front ', \"rust-project-documents\"'
+documents_try documents-without-pipeline
+check "a document upload front without the extraction pipeline is refused" 'refused "needs the rust-document-extraction pipeline"'
+documents_core
+documents_front ', \"rust-document-extraction\", \"rust-project-documents\"'
+documents_try documents-front-only
+check "a rust-project-documents front cannot pair with the old Core handler" 'refused "project document upload ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try documents-old-pair
+check "historic document upload old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-documents.cjs"
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
