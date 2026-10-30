@@ -715,6 +715,30 @@ if [ "$conn_rs_owner" = rust ]; then
   [ "$conn_routes" = /api/integrations/storage ] || die "storage connection ownership pairing: incomplete route ownership"
 fi
 
+# The provider probe (#2190, round 4): Core's rust-provider-test.cjs refusal (POST on the exact path;
+# Node keeps the other methods, its /api/providers/{id} handler reads `test` as an id) and the front's
+# rust-provider-test capability, with exactly POST of /api/providers/test Rust's in routes.toml.
+ptest_core_owner=""
+ptest_rs_owner=""
+grep -qF "require('./rust-provider-test.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ptest_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-provider-test features; then
+  ptest_rs_owner=rust
+fi
+[ "$ptest_core_owner" = "$ptest_rs_owner" ] \
+  || die "provider test ownership pairing: Core and Rust must move together"
+if [ "$ptest_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "provider test ownership pairing: missing route contract"
+  ptest_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/providers/test" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "provider test ownership pairing: exactly POST of the path must belong to Rust"
+  [ "$ptest_routes" = /api/providers/test ] || die "provider test ownership pairing: incomplete route ownership"
+fi
+
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
 if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then

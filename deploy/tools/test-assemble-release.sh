@@ -1497,6 +1497,44 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try conn-old-pair
 check "historic storage connection old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Round 4 (#2190): the provider probe, exactly POST of the path Rust's.
+ptest_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/test"
+owner = "$ptest_owner"
+$ptest_methods
+TOML
+}
+ptest_methods='methods = ["POST"]'; ptest_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+ptest_try ptest-core-only
+check "provider test Core refusal requires the native capability" 'refused "provider test ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-provider-test"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ptest_try ptest-pair
+check "matching provider test pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ptest_methods=''
+ptest_try ptest-all-methods
+check "a provider test route Rust's for every method is refused (Node keeps PUT/DELETE)" 'refused "provider test ownership pairing"'
+ptest_methods='methods = ["POST", "PUT"]'
+ptest_try ptest-extra-method
+check "a provider test route with an extra method is refused" 'refused "provider test ownership pairing"'
+ptest_methods='methods = ["POST"]'; ptest_owner=node
+ptest_try ptest-node-route
+check "a Node-owned provider test route beside a native pair is refused" 'refused "provider test ownership pairing"'
+ptest_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+ptest_try ptest-front-only
+check "a rust-provider-test front cannot pair with the old Core probe" 'refused "provider test ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try ptest-old-pair
+check "historic provider test old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"

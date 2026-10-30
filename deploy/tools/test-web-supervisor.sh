@@ -323,7 +323,7 @@ run >/dev/null 2>"$work/err"; rc=$?
 check "old model read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
-for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection"; do
+for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
@@ -378,6 +378,16 @@ check "the storage integration and connection pairs native start both processes"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-storage-integrations" >/dev/null 2>"$work/err"; rc=$?
 check "storage connection Core without the front capability refuses beside a native integration pair" '[ $rc -eq 2 ] && grep -q "storage connection route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+
+# Round 4 (#2190): the provider test pair beside the storage connection pair, and alone.
+printf '%s\n' "  if (require('./rust-storage-connection.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-storage-connection rust-provider-test" >/dev/null 2>"$work/err"; rc=$?
+check "the storage connection and provider test pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-storage-connection" >/dev/null 2>"$work/err"; rc=$?
+check "provider test Core without the front capability refuses beside a native connection pair" '[ $rc -eq 2 ] && grep -q "provider test route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm "$work/server/index.cjs"
 
 # --- Process lifecycle -----------------------------------------------------------------------
