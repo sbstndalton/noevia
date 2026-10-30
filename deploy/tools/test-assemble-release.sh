@@ -2462,6 +2462,50 @@ move_try prov-old-pair
 check "historic provider registry old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 cp "$work/reseal-client.saved" "$w/server/project-store-client.cjs"
 if [ -f "$work/reseal-store.saved" ]; then cp "$work/reseal-store.saved" "$rz/bins/noevia-server/src/project_store.rs"; else rm -f "$rz/bins/noevia-server/src/project_store.rs"; fi
+# The close-out GETs (#2190 health and auto-roles, #2191 workspace): each its own pair of Core refusal and
+# front capability, and exactly the GET of the path Rust's. Checked one at a time with the others old/old.
+close_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "$close_path"
+owner = "$close_owner"
+$close_methods
+TOML
+}
+for close_entry in "rust-health.cjs|rust-health|/api/health|health check" "rust-auto-roles.cjs|rust-auto-roles|/api/auto-roles|auto-roles read" "rust-workspace.cjs|rust-workspace|/api/workspace|workspace list"; do
+  IFS='|' read -r close_marker close_cap close_path close_label <<<"$close_entry"
+  close_methods='methods = ["GET"]'; close_owner=rust
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./$close_marker').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  close_try "close-$close_cap-core-only"
+  check "$close_label: Core refusal requires the native capability" 'refused "$close_label ownership pairing"'
+  sed "s/\"start-id\"/\"start-id\", \"$close_cap\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+  close_try "close-$close_cap-pair"
+  check "$close_label: matching pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+  close_methods='methods = ["GET", "PUT"]'
+  close_try "close-$close_cap-extra-method"
+  check "$close_label: a route with a method besides GET is refused" 'refused "$close_label ownership pairing"'
+  close_methods='methods = ["PUT"]'
+  close_try "close-$close_cap-put-only"
+  check "$close_label: a PUT-only route is refused" 'refused "$close_label ownership pairing"'
+  close_methods=''
+  close_try "close-$close_cap-all-methods"
+  check "$close_label: a route Rust's for every method is refused (Node keeps the others)" 'refused "$close_label ownership pairing"'
+  close_methods='methods = ["GET"]'; close_owner=node
+  close_try "close-$close_cap-node-route"
+  check "$close_label: a Node-owned route beside a native pair is refused" 'refused "$close_label ownership pairing"'
+  close_owner=rust
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  close_try "close-$close_cap-front-only"
+  check "$close_label: a front with the capability cannot pair with the old Core" 'refused "$close_label ownership pairing"'
+  cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+  move_try "close-$close_cap-old-pair"
+  check "$close_label: the historic old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+done
 # Round 7 (#2190): Google Drive's token authority, exactly the connector writes' methods Rust's.
 gdrv_try() {
   try_routes "$1" <<TOML

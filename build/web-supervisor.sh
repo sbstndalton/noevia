@@ -222,10 +222,13 @@ fi
 # provider file the front owns), Google Drive's token authority
 # (server/rust-google-drive.cjs beside rust-google-drive, round 7; Rust owns the sign-ins, the sealed refresh tokens
 # and tool_policies, and Node's chat tools ask it for access tokens through the internal store), the off-site
-# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7) and the MCP server credentials
+# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7), the MCP server credentials
 # (server/rust-mcp-credentials.cjs beside rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every
 # account's OAuth sign-ins and own server keys, the only writer of their three tables, and Node's chat asks it for
-# one call's access token or key headers): each group moves as one owner. Old/old images remain usable for
+# one call's access token or key headers), and the close-out GETs (sbstndalton/noevia#2190, #2191): the health
+# check (server/rust-health.cjs beside rust-health, which also publishes rag-status.json), the auto-roles read
+# (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
+# list (server/rust-workspace.cjs beside rust-workspace): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -251,6 +254,9 @@ rust-providers-reseal.cjs rust-providers-reseal provider key reseal
 rust-google-drive.cjs rust-google-drive Google Drive
 rust-offsite-backup.cjs rust-offsite-backup off-site backup
 rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
+rust-health.cjs rust-health health check
+rust-auto-roles.cjs rust-auto-roles auto-roles read
+rust-workspace.cjs rust-workspace workspace list
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
