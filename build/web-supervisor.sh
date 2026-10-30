@@ -225,8 +225,12 @@ fi
 # backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7) and the MCP server credentials
 # (server/rust-mcp-credentials.cjs beside rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every
 # account's OAuth sign-ins and own server keys, the only writer of their three tables, and Node's chat asks it for
-# one call's access token or key headers): each group moves as one owner. Old/old images remain usable for
-# rollback; mixed owners do not.
+# one call's access token or key headers), and since round 2 the admin MCP directory (server/rust-mcp-directory.cjs
+# beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the only writer of
+# directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs beside
+# rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last two
+# computed by the front from the discovery snapshot Node publishes: each group moves as one owner. Old/old images
+# remain usable for rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
   pair_front_owner=""
@@ -251,6 +255,9 @@ rust-providers-reseal.cjs rust-providers-reseal provider key reseal
 rust-google-drive.cjs rust-google-drive Google Drive
 rust-offsite-backup.cjs rust-offsite-backup off-site backup
 rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
+rust-mcp-directory.cjs rust-mcp-directory MCP directory
+rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
+rust-connectors.cjs rust-connectors connectors
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front

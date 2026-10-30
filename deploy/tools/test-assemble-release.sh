@@ -2315,6 +2315,121 @@ cp "$work/mcp-client.saved" "$w/server/project-store-client.cjs"
 move_try mcp-old-pair
 check "historic MCP credential old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# #2202 round 2: the admin MCP directory, the permitted-tools view and the connectors list: three Core refusals
+# paired with three front capabilities, with exactly the methods the front answers, the discovery snapshot Core
+# publishes and the front reads, and a Core whose directory module holds no write of the table.
+cp "$w/server/project-store-client.cjs" "$work/mcp2-client.saved"
+mcp2_files() { # discovery yes|no|comment (Core publishes it), writes none|code|comment (directory-mcp.cjs), front lib mod yes|no
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  case "$1" in
+    yes) printf '%s\n' "const publisher = require('./mcp-discovery-snapshot.cjs').createMcpDiscoveryPublisher({ dataDir });" >> "$w/server/index.cjs";;
+    comment) printf '%s\n' "// const publisher = require('./mcp-discovery-snapshot.cjs').createMcpDiscoveryPublisher({ dataDir });" >> "$w/server/index.cjs";;
+  esac
+  echo "// the catalogue" > "$w/server/mcp-discovery-snapshot.cjs"
+  case "$2" in
+    none) printf '%s\n' "const rows = db.prepare('SELECT id FROM directory_mcp_servers').all();" > "$w/server/directory-mcp.cjs";;
+    code) printf '%s\n' "db.prepare('INSERT INTO directory_mcp_servers(id) VALUES(?)').run(id);" > "$w/server/directory-mcp.cjs";;
+    comment) printf '%s\n' "// the front does INSERT INTO directory_mcp_servers and DELETE FROM directory_mcp_servers" "const rows = db.prepare('SELECT id FROM directory_mcp_servers').all();" > "$w/server/directory-mcp.cjs";;
+  esac
+  printf '%s\n' "const TABLES = ['mcp_oauth_tokens', 'directory_mcp_servers'];" > "$w/server/rust-mcp-credentials.cjs"
+  printf '%s\n' '"SELECT id FROM directory_mcp_servers WHERE headers_enc IS NOT NULL"' > "$rz/bins/noevia-server/src/mcp_broker.rs"
+  case "$3" in
+    yes) sed 's/"start-id"/"start-id", "rust-mcp-directory", "rust-toolboxes-permitted", "rust-connectors"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; printf '%s\n' 'pub mod mcp_discovery;' >> "$rz/bins/noevia-server/src/lib.rs";;
+    no) sed 's/"start-id"/"start-id", "rust-mcp-directory", "rust-toolboxes-permitted", "rust-connectors"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs";;
+  esac
+  return 0
+}
+mcp2_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+$mcp2_dir
+$mcp2_perm
+$mcp2_cnx
+TOML
+}
+mcp2_route() { printf '[[route]]\npath = "%s"\nowner = "%s"\n%s\n' "$1" "$2" "$3"; }
+mcp2_dir_rust="$(for p in /api/admin/mcp-directory /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys' '/api/admin/mcp-directory/{id}/oauth-client'; do mcp2_route "$p" rust ''; done)"
+mcp2_perm_rust="$(mcp2_route /api/toolboxes/permitted rust '')"
+mcp2_cnx_rust="$(mcp2_route /api/connectors rust 'methods = ["GET"]'; mcp2_route /api/connectors/nextcloud/policy rust 'methods = ["PUT"]')"
+mcp2_dir="$mcp2_dir_rust"; mcp2_perm="$mcp2_perm_rust"; mcp2_cnx="$mcp2_cnx_rust"
+# The Core half alone, the front half alone.
+mcp2_files yes none no
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-dir-core-only
+check "an MCP directory Core refusal requires the native capability" 'refused "MCP directory ownership pairing: Core and Rust must move together"'
+mcp2_files yes none yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+mcp2_try mcp2-front-only
+check "rust-mcp-directory, rust-toolboxes-permitted and rust-connectors fronts cannot pair with the old Core" 'refused "ownership pairing: Core and Rust must move together"'
+# The matching pairs.
+mcp2_files yes none yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-pair
+check "the matching MCP directory, permitted tools and connectors pairs assemble with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Routes: exactly the front's.
+mcp2_dir="$(mcp2_route /api/admin/mcp-directory rust 'methods = ["GET"]'; for p in /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys' '/api/admin/mcp-directory/{id}/oauth-client'; do mcp2_route "$p" rust ''; done)"
+mcp2_try mcp2-dir-get-only
+check "a directory route that is Rust's for GET only is refused (core's 405 for the rest is the front's)" 'refused "MCP directory ownership pairing: every method"'
+mcp2_dir="$(for p in /api/admin/mcp-directory /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys'; do mcp2_route "$p" rust ''; done; mcp2_route '/api/admin/mcp-directory/{id}/oauth-client' node '')"
+mcp2_try mcp2-dir-node-route
+check "a Node-owned directory route beside a native pair is refused" 'refused "MCP directory ownership pairing: every method"'
+mcp2_dir="$(for p in /api/admin/mcp-directory /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys'; do mcp2_route "$p" rust ''; done)"
+mcp2_try mcp2-dir-missing-route
+check "a native directory pair without the app route is refused" 'refused "MCP directory ownership pairing: incomplete route ownership"'
+mcp2_dir="$mcp2_dir_rust"
+mcp2_perm="$(mcp2_route /api/toolboxes/permitted rust 'methods = ["GET"]')"
+mcp2_try mcp2-perm-get-only
+check "a permitted-tools route that is Rust's for GET only is refused" 'refused "permitted tools ownership pairing: every method"'
+mcp2_perm="$mcp2_perm_rust"
+mcp2_cnx="$(mcp2_route /api/connectors rust ''; mcp2_route /api/connectors/nextcloud/policy rust 'methods = ["PUT"]')"
+mcp2_try mcp2-cnx-all-methods
+check "a connectors list that is Rust's for every method is refused (Node keeps the others)" 'refused "connectors ownership pairing: exactly"'
+mcp2_cnx="$(mcp2_route /api/connectors rust 'methods = ["GET"]'; mcp2_route /api/connectors/nextcloud/policy rust 'methods = ["PUT", "POST"]')"
+mcp2_try mcp2-cnx-extra-method
+check "a Nextcloud policy route with an extra method is refused" 'refused "connectors ownership pairing: exactly"'
+mcp2_cnx="$(mcp2_route /api/connectors rust 'methods = ["GET"]')"
+mcp2_try mcp2-cnx-missing
+check "a connectors pair without the Nextcloud policy route is refused" 'refused "connectors ownership pairing: incomplete route ownership"'
+mcp2_cnx="$mcp2_cnx_rust"
+# The snapshot Node publishes and the front reads.
+mcp2_files no none yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-no-publisher
+check "a Core that publishes no discovery snapshot cannot pair with the front that reads it" 'refused "ownership pairing: Core does not publish the discovery snapshot"'
+mcp2_files comment none yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-publisher-comment
+check "a publisher that only a comment names publishes nothing" 'refused "ownership pairing: Core does not publish the discovery snapshot"'
+mcp2_files yes none no
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-no-reader
+check "a front that does not read the discovery snapshot cannot pair with Core's publisher-less views" 'refused "ownership pairing: Core does not publish the discovery snapshot"'
+# One writer of the table.
+mcp2_files yes code yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-second-writer
+check "a Core whose directory module still writes directory_mcp_servers beside the front is refused" 'refused "MCP directory ownership pairing: Core still writes directory_mcp_servers"'
+mcp2_files yes comment yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-writer-comment
+check "a write of the table that only a comment names is not a writer" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Marker in a comment only: the old Core.
+mcp2_files yes none yes
+printf '%s\n' "  // if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-marker-comment
+check "a directory marker that only a comment names is the old Core, not a pair" 'refused "MCP directory ownership pairing: Core and Rust must move together"'
+# Back to old/old.
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/mcp-discovery-snapshot.cjs" "$w/server/directory-mcp.cjs" "$w/server/rust-mcp-credentials.cjs" "$rz/bins/noevia-server/src/mcp_broker.rs"
+cp "$work/mcp2-client.saved" "$w/server/project-store-client.cjs"
+move_try mcp2-old-pair
+check "historic MCP directory, permitted tools and connectors old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Round 5 (#2190): the provider model lists, the route Rust's for every method.
 pmod_try() {
   try_routes "$1" <<TOML
