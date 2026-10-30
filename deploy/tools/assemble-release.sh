@@ -688,6 +688,31 @@ if [ "$document_pages_rs_owner" = rust ]; then
     }')" || die "project document page reader ownership pairing: exactly GET /api/projects/{id}/documents/pages must belong to Rust"
   [ "$document_pages_routes" = "/api/projects/{id}/documents/pages" ] || die "project document page reader ownership pairing: incomplete route ownership"
 fi
+# The conversation import (sbstndalton/noevia#2191 round 4) moves as one owner: Core's
+# rust-conversation-import.cjs refusal and the front's rust-conversation-import capability, with exactly
+# POST of /api/import/conversations Rust's in routes.toml. It creates projects through the front's create,
+# so it needs the project create/delete pair.
+conversation_import_core_owner=""
+conversation_import_rs_owner=""
+grep -qF "require('./rust-conversation-import.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && conversation_import_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-conversation-import features; then
+  conversation_import_rs_owner=rust
+fi
+[ "$conversation_import_core_owner" = "$conversation_import_rs_owner" ] \
+  || die "conversation import ownership pairing: Core and Rust must move together"
+if [ "$conversation_import_rs_owner" = rust ]; then
+  [ "$project_lifecycle_rs_owner" = rust ] || die "conversation import ownership pairing: needs the project create/delete pair"
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "conversation import ownership pairing: missing route contract"
+  conversation_import_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/import/conversations" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "conversation import ownership pairing: exactly POST /api/import/conversations must belong to Rust"
+  [ "$conversation_import_routes" = "/api/import/conversations" ] || die "conversation import ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.

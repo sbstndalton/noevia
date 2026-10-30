@@ -1521,6 +1521,70 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try document-pages-old-pair
 check "historic document page reader old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-document-pages.cjs"
+# Conversation import owner release matrix (sbstndalton/noevia#2191 round 4): POST
+# /api/import/conversations only, on top of the create/delete pair.
+conversation_import_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{projectId}"
+owner = "rust"
+methods = ["DELETE"]
+[[route]]
+path = "/api/import/conversations"
+owner = "rust"
+$conversation_import_methods
+TOML
+}
+conversation_import_methods='methods = ["POST"]'
+import_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${2:-}" = nolifecycle ] || printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  [ "${1:-}" = import ] && printf '%s\n' "  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+import_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cat > "$w/server/rust-project-lifecycle.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects',
+  'DELETE /api/projects/{projectId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+cat > "$w/server/rust-conversation-import.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/import/conversations',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+import_core import; import_front ', \"rust-project-lifecycle\"'
+conversation_import_try conversation-import-core-only
+check "conversation import Core refusal requires the native capability" 'refused "conversation import ownership pairing"'
+import_front ', \"rust-project-lifecycle\", \"rust-conversation-import\"'
+conversation_import_try conversation-import-pair
+check "matching conversation import pair with POST only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+conversation_import_methods=""
+conversation_import_try conversation-import-all-methods
+check "an all-method import route is refused (Node keeps the 405)" 'refused "conversation import ownership pairing"'
+conversation_import_methods='methods = ["POST"]'
+import_core
+conversation_import_try conversation-import-front-only
+check "a rust-conversation-import front cannot pair with the old Core handler" 'refused "conversation import ownership pairing"'
+import_core import nolifecycle; import_front ', \"rust-conversation-import\"'
+conversation_import_try conversation-import-without-lifecycle
+check "a conversation import pair without the create/delete pair is refused" 'refused "needs the project create/delete pair"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try conversation-import-old-pair
+check "historic conversation import old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-conversation-import.cjs" "$w/server/rust-project-lifecycle.cjs"
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"

@@ -390,6 +390,18 @@ rm "$work/server/index.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-project-document-pages" >/dev/null 2>"$work/err"; rc=$?
 check "rust-project-document-pages front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project document page reader ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Conversation import ownership (sbstndalton/noevia#2191 round 4) must agree in both directions.
+printf '%s\n' "  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "conversation-import-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "conversation import ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-conversation-import" >/dev/null 2>"$work/err"; rc=$?
+check "matching native conversation import pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-conversation-import" >/dev/null 2>"$work/err"; rc=$?
+check "rust-conversation-import front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "conversation import ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset
