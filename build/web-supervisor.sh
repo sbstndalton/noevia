@@ -219,10 +219,13 @@ fi
 # and shared-providers.json and Node re-reads them), and its key re-seal (server/rust-providers-reseal.cjs
 # beside rust-providers-reseal, round 6 review; a Core that rotates secrets through the front's internal
 # store needs a front that answers it, and a front that has it needs that Core, so Node never rewrites a
-# provider file the front owns), and Google Drive's token authority
+# provider file the front owns), Google Drive's token authority
 # (server/rust-google-drive.cjs beside rust-google-drive, round 7; Rust owns the sign-ins, the sealed refresh tokens
-# and tool_policies, and Node's chat tools ask it for access tokens through the internal store) and the off-site
-# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7): each group moves as one owner. Old/old images remain usable for
+# and tool_policies, and Node's chat tools ask it for access tokens through the internal store), the off-site
+# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7) and the MCP server credentials
+# (server/rust-mcp-credentials.cjs beside rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every
+# account's OAuth sign-ins and own server keys, the only writer of their three tables, and Node's chat asks it for
+# one call's access token or key headers): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -247,6 +250,7 @@ rust-providers.cjs rust-providers provider registry
 rust-providers-reseal.cjs rust-providers-reseal provider key reseal
 rust-google-drive.cjs rust-google-drive Google Drive
 rust-offsite-backup.cjs rust-offsite-backup off-site backup
+rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
