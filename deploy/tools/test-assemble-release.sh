@@ -2156,6 +2156,94 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try ptest-old-pair
 check "historic provider test old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Round 5 (#2190): Sign in with ChatGPT's token broker, exactly the broker's methods Rust's.
+cgpt_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/chatgpt/device"
+owner = "$cgpt_owner"
+$cgpt_post
+[[route]]
+path = "/api/providers/chatgpt/device/cancel"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/chatgpt/device/poll"
+owner = "rust"
+methods = ["POST"]
+$cgpt_models
+TOML
+}
+cgpt_models_rust='[[route]]
+path = "/api/providers/chatgpt/models"
+owner = "rust"
+methods = ["GET"]'
+cgpt_post='methods = ["POST"]'; cgpt_owner=rust; cgpt_models="$cgpt_models_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cgpt_try cgpt-core-only
+check "ChatGPT sign-in Core refusal requires the native capability" 'refused "ChatGPT sign-in ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-chatgpt-oauth"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+cgpt_try cgpt-pair
+check "matching ChatGPT sign-in pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cgpt_post=''
+cgpt_try cgpt-all-methods
+check "a ChatGPT device route Rust's for every method is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_post='methods = ["GET"]'
+cgpt_try cgpt-wrong-method
+check "a ChatGPT device route with the wrong method is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_post='methods = ["POST"]'; cgpt_owner=node
+cgpt_try cgpt-node-route
+check "a Node-owned ChatGPT device route beside a native pair is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_owner=rust; cgpt_models=''
+cgpt_try cgpt-missing-models
+check "a native ChatGPT pair without the model list route is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_models="$cgpt_models_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cgpt_try cgpt-front-only
+check "a rust-chatgpt-oauth front cannot pair with the old Core sign-in" 'refused "ChatGPT sign-in ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try cgpt-old-pair
+check "historic ChatGPT sign-in old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Round 5 (#2190): the provider model lists, the route Rust's for every method.
+pmod_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/{providerId}/models{*?}"
+owner = "$pmod_owner"
+$pmod_methods
+TOML
+}
+pmod_methods=''; pmod_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-provider-models.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+pmod_try pmod-core-only
+check "provider model list Core refusal requires the native capability" 'refused "provider model list ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-provider-models"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+pmod_try pmod-pair
+check "matching provider model list pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+pmod_methods='methods = ["GET"]'
+pmod_try pmod-get-only
+check "a provider model list route Rust's for GET only is refused (Node would keep the 405s)" 'refused "provider model list ownership pairing"'
+pmod_methods=''; pmod_owner=node
+pmod_try pmod-node-route
+check "a Node-owned provider model list route beside a native pair is refused" 'refused "provider model list ownership pairing"'
+pmod_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+pmod_try pmod-front-only
+check "a rust-provider-models front cannot pair with the old Core list" 'refused "provider model list ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try pmod-old-pair
+check "historic provider model list old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # Model sizing owner release matrix (sbstndalton/noevia#2189): two routes, GET only.
 sizing_try() {
   try_routes "$1" <<TOML
