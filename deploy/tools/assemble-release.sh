@@ -1052,6 +1052,64 @@ if [ "$pmod_rs_owner" = rust ]; then
   [ "$pmod_routes" = "/api/providers/{providerId}/models{*?}" ] || die "provider model list ownership pairing: incomplete route ownership"
 fi
 
+# Google Drive's token authority (#2190, round 7): Core's rust-google-drive.cjs refusal and the front's
+# rust-google-drive capability, with exactly POST of the connect and disconnect routes and PUT of the policy
+# and backup-copy routes Rust's in routes.toml (GET /api/connectors and the Nextcloud policy stay Node's).
+gdrv_core_owner=""
+gdrv_rs_owner=""
+grep -qF "require('./rust-google-drive.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && gdrv_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-google-drive features; then
+  gdrv_rs_owner=rust
+fi
+[ "$gdrv_core_owner" = "$gdrv_rs_owner" ] \
+  || die "Google Drive ownership pairing: Core and Rust must move together"
+if [ "$gdrv_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Google Drive ownership pairing: missing route contract"
+  gdrv_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/connectors/gdrive/connect" || path == "/api/connectors/gdrive/disconnect") return "POST"
+      if (path == "/api/connectors/gdrive/policy" || path == "/api/connectors/gdrive/backup-copy") return "PUT"
+      return ""
+    }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != want($1)) exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "Google Drive ownership pairing: exactly the connector writes' methods of the routes must belong to Rust"
+  gdrv_routes="$(printf '%s\n' "$gdrv_routes" | sort | tr '\n' ' ')"
+  [ "$gdrv_routes" = "/api/connectors/gdrive/backup-copy /api/connectors/gdrive/connect /api/connectors/gdrive/disconnect /api/connectors/gdrive/policy " ] \
+    || die "Google Drive ownership pairing: incomplete route ownership"
+fi
+
+# The off-site backup (#2190, round 7): Core's rust-offsite-backup.cjs refusal and the front's
+# rust-offsite-backup capability, with all eight paths (the seven of the first cut and the review's
+# new-store action) Rust's for every method in routes.toml.
+offs_core_owner=""
+offs_rs_owner=""
+grep -qF "require('./rust-offsite-backup.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && offs_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-offsite-backup features; then
+  offs_rs_owner=rust
+fi
+[ "$offs_core_owner" = "$offs_rs_owner" ] \
+  || die "off-site backup ownership pairing: Core and Rust must move together"
+if [ "$offs_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "off-site backup ownership pairing: missing route contract"
+  offs_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 ~ /^\/api\/admin\/offsite-backup(\/|$)/ {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "off-site backup ownership pairing: every method of the paths must belong to Rust"
+  offs_routes="$(printf '%s\n' "$offs_routes" | sort | tr '\n' ' ')"
+  [ "$offs_routes" = "/api/admin/offsite-backup /api/admin/offsite-backup/copy /api/admin/offsite-backup/google/connect /api/admin/offsite-backup/google/disconnect /api/admin/offsite-backup/new-store /api/admin/offsite-backup/recovery-key /api/admin/offsite-backup/run /api/admin/offsite-backup/verify " ] \
+    || die "off-site backup ownership pairing: incomplete route ownership"
+  # Core refuses exactly the paths the front answers: the new-store action included, or a stale Core
+  # would route an administrator's "this is a new store" to a Node that has no such path.
+  grep -qF "'/api/admin/offsite-backup/new-store'" "$tree/core/server/rust-offsite-backup.cjs" 2>/dev/null \
+    || die "off-site backup ownership pairing: Core does not refuse the new-store path"
+fi
+
 # The two read-only model sizing reads (sbstndalton/noevia#2189) move as one owner: Core's
 # rust-model-sizing.cjs refusal of their GET and the front's rust-model-sizing capability, with
 # exactly GET of both routes Rust's in routes.toml (Node keeps every other method). Historic old/old
