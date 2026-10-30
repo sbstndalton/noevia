@@ -2357,6 +2357,137 @@ move_try prov-old-pair
 check "historic provider registry old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 cp "$work/reseal-client.saved" "$w/server/project-store-client.cjs"
 if [ -f "$work/reseal-store.saved" ]; then cp "$work/reseal-store.saved" "$rz/bins/noevia-server/src/project_store.rs"; else rm -f "$rz/bins/noevia-server/src/project_store.rs"; fi
+# Round 7 (#2190): Google Drive's token authority, exactly the connector writes' methods Rust's.
+gdrv_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/connectors/gdrive/connect"
+owner = "$gdrv_owner"
+$gdrv_post
+[[route]]
+path = "/api/connectors/gdrive/disconnect"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/connectors/gdrive/policy"
+owner = "rust"
+methods = ["PUT"]
+$gdrv_copy
+TOML
+}
+gdrv_copy_rust='[[route]]
+path = "/api/connectors/gdrive/backup-copy"
+owner = "rust"
+methods = ["PUT"]'
+gdrv_post='methods = ["POST"]'; gdrv_owner=rust; gdrv_copy="$gdrv_copy_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-google-drive.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+gdrv_try gdrv-core-only
+check "Google Drive Core refusal requires the native capability" 'refused "Google Drive ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-google-drive"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+gdrv_try gdrv-pair
+check "matching Google Drive pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+gdrv_post=''
+gdrv_try gdrv-all-methods
+check "a Google Drive connector route Rust's for every method is refused (Node keeps the 404s)" 'refused "Google Drive ownership pairing"'
+gdrv_post='methods = ["PUT"]'
+gdrv_try gdrv-wrong-method
+check "a Google Drive connector route with the wrong method is refused" 'refused "Google Drive ownership pairing"'
+gdrv_post='methods = ["POST"]'; gdrv_owner=node
+gdrv_try gdrv-node-route
+check "a Node-owned Google Drive connector route beside a native pair is refused" 'refused "Google Drive ownership pairing"'
+gdrv_owner=rust; gdrv_copy=''
+gdrv_try gdrv-missing-copy
+check "a native Google Drive pair without the backup-copy route is refused" 'refused "Google Drive ownership pairing"'
+gdrv_copy="$gdrv_copy_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+gdrv_try gdrv-front-only
+check "a rust-google-drive front cannot pair with the old Core connectors" 'refused "Google Drive ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try gdrv-old-pair
+check "historic Google Drive old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Round 7 (#2190): the off-site backup, all eight paths Rust's for every method.
+offs_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/admin/offsite-backup"
+owner = "$offs_owner"
+$offs_methods
+[[route]]
+path = "/api/admin/offsite-backup/copy"
+owner = "rust"
+[[route]]
+path = "/api/admin/offsite-backup/google/connect"
+owner = "rust"
+[[route]]
+path = "/api/admin/offsite-backup/google/disconnect"
+owner = "rust"
+$offs_newstore
+[[route]]
+path = "/api/admin/offsite-backup/recovery-key"
+owner = "rust"
+[[route]]
+path = "/api/admin/offsite-backup/run"
+owner = "rust"
+$offs_verify
+TOML
+}
+offs_verify_rust='[[route]]
+path = "/api/admin/offsite-backup/verify"
+owner = "rust"'
+offs_newstore_rust='[[route]]
+path = "/api/admin/offsite-backup/new-store"
+owner = "rust"'
+offs_methods=''; offs_owner=rust; offs_verify="$offs_verify_rust"; offs_newstore="$offs_newstore_rust"
+# Core's own list of the paths it refuses (server/rust-offsite-backup.cjs), with the new-store action (yes) or without it.
+offs_core_file() {
+  if [ "$1" = yes ]; then
+    printf '%s\n' "const OWNED_PATHS = ['/api/admin/offsite-backup', '/api/admin/offsite-backup/new-store'];" > "$w/server/rust-offsite-backup.cjs"
+  else
+    printf '%s\n' "const OWNED_PATHS = ['/api/admin/offsite-backup'];" > "$w/server/rust-offsite-backup.cjs"
+  fi
+}
+offs_core_file yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-offsite-backup.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+offs_try offs-core-only
+check "off-site backup Core refusal requires the native capability" 'refused "off-site backup ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-offsite-backup"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+offs_try offs-pair
+check "matching off-site backup pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+offs_methods='methods = ["GET"]'
+offs_try offs-get-only
+check "an off-site backup path Rust's for GET only is refused (Node would keep the 405s)" 'refused "off-site backup ownership pairing"'
+offs_methods=''; offs_owner=node
+offs_try offs-node-route
+check "a Node-owned off-site backup path beside a native pair is refused" 'refused "off-site backup ownership pairing"'
+offs_owner=rust; offs_verify=''
+offs_try offs-missing-verify
+check "a native off-site backup pair without the restore-test route is refused" 'refused "off-site backup ownership pairing"'
+offs_verify="$offs_verify_rust"; offs_newstore=''
+offs_try offs-missing-newstore
+check "a native off-site backup pair without the new-store route is refused" 'refused "off-site backup ownership pairing: incomplete route ownership"'
+offs_newstore="$offs_newstore_rust"
+offs_core_file no
+offs_try offs-core-without-newstore
+check "a Core that does not refuse the new-store path cannot pair with a front that answers it" 'refused "off-site backup ownership pairing: Core does not refuse the new-store path"'
+offs_core_file yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+offs_try offs-front-only
+check "a rust-offsite-backup front cannot pair with the old Core backup" 'refused "off-site backup ownership pairing"'
+rm -f "$w/server/rust-offsite-backup.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try offs-old-pair
+check "historic off-site backup old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # Model sizing owner release matrix (sbstndalton/noevia#2189): two routes, GET only.
 sizing_try() {
   try_routes "$1" <<TOML
