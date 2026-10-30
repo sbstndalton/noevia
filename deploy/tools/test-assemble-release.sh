@@ -2103,6 +2103,67 @@ check "a rust-provider-models front cannot pair with the old Core list" 'refused
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try pmod-old-pair
 check "historic provider model list old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Round 6 (#2190): the provider registry. The routes: the list (GET, POST), one row (PUT, DELETE), the
+# ChatGPT disconnect (GET stays the status read, DELETE joins it) and the probe's id reading (POST
+# plus PUT and DELETE); with the pair the probe's route needs exactly those three.
+prov_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers"
+owner = "$prov_owner"
+$prov_list
+[[route]]
+path = "/api/providers/{id}"
+owner = "rust"
+methods = ["PUT", "DELETE"]
+[[route]]
+path = "/api/providers/chatgpt"
+owner = "rust"
+methods = ["GET", "DELETE"]
+$prov_test
+TOML
+}
+prov_test_rust='[[route]]
+path = "/api/providers/test"
+owner = "rust"
+methods = ["POST", "PUT", "DELETE"]'
+prov_list='methods = ["GET", "POST"]'; prov_owner=rust; prov_test="$prov_test_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-providers.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+prov_try prov-core-only
+check "provider registry Core refusal requires the native capability" 'refused "provider registry ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-providers"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+prov_try prov-pair
+check "matching provider registry pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+prov_list='methods = ["GET"]'
+prov_try prov-get-only
+check "a provider list route without POST is refused (Core refuses the connect)" 'refused "provider registry ownership pairing"'
+prov_list=''
+prov_try prov-all-methods
+check "a provider list route Rust's for every method is refused (Node keeps the others)" 'refused "provider registry ownership pairing"'
+prov_list='methods = ["GET", "POST", "PUT"]'
+prov_try prov-extra-method
+check "a provider list route with an extra method is refused" 'refused "provider registry ownership pairing"'
+prov_list='methods = ["GET", "POST"]'; prov_owner=node
+prov_try prov-node-route
+check "a Node-owned provider list route beside a native pair is refused" 'refused "provider registry ownership pairing"'
+prov_owner=rust; prov_test='[[route]]
+path = "/api/providers/test"
+owner = "rust"
+methods = ["POST"]'
+prov_try prov-probe-post-only
+check "a native registry pair whose probe route lacks PUT and DELETE is refused" 'refused "provider registry ownership pairing\|provider test ownership pairing"'
+prov_test="$prov_test_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+prov_try prov-front-only
+check "a rust-providers front cannot pair with the old Core registry" 'refused "provider registry ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try prov-old-pair
+check "historic provider registry old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # Model sizing owner release matrix (sbstndalton/noevia#2189): two routes, GET only.
 sizing_try() {
   try_routes "$1" <<TOML
