@@ -321,6 +321,63 @@ check "rust-model-reads front with old Core refuses before launch" '[ $rc -eq 2 
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project source read route ownership (sbstndalton/noevia#2191) must agree in both directions before launch.
+printf '%s\n' "  if (require('./rust-project-reads.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-read-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project source read ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-reads" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project source read pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-reads" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-reads front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project source read ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old project source read pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project create/delete route ownership (sbstndalton/noevia#2191 round 2) must agree in both directions.
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-lifecycle-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project create/delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-lifecycle" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project create/delete pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-lifecycle" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-lifecycle front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project create/delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old project create/delete pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project storage write ownership (sbstndalton/noevia#2191 round 3) must agree in both directions.
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-storage Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project storage pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-storage front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old project storage pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project file delete ownership (sbstndalton/noevia#2191 round 3) must agree in both directions.
+printf '%s\n' "  if (require('./rust-project-files.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-file-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project file delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-files" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project file delete pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-files" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-files front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project file delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
 for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list"; do
@@ -389,6 +446,33 @@ reset
 run STUB_FEATURES="$BASE_FEATURES rust-storage-connection" >/dev/null 2>"$work/err"; rc=$?
 check "provider test Core without the front capability refuses beside a native connection pair" '[ $rc -eq 2 ] && grep -q "provider test route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm "$work/server/index.cjs"
+# Model sizing route ownership (sbstndalton/noevia#2189) must agree in both directions before launch,
+# separately from the #2187 model reads (each generation pairs on its own).
+printf '%s\n' "  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "model-sizing-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "matching native model sizing pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" "  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads" >/dev/null 2>"$work/err"; rc=$?
+check "an M2-A Core with an M1-only front refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "the M1 and M2-A Core with a front that has both starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "an M2-A front beside an M1-only Core refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "rust-model-sizing front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old model sizing pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
 # Round 5 (#2190): the ChatGPT sign-in pair beside the provider test pair, and alone.
 printf '%s\n' "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
