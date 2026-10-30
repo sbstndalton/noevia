@@ -739,6 +739,37 @@ if [ "$ptest_rs_owner" = rust ]; then
   [ "$ptest_routes" = /api/providers/test ] || die "provider test ownership pairing: incomplete route ownership"
 fi
 
+# Sign in with ChatGPT's token broker (#2190, round 5): Core's rust-chatgpt-oauth.cjs refusal and
+# the front's rust-chatgpt-oauth capability, with exactly POST of the three device routes and GET of
+# the model list Rust's in routes.toml (Node keeps DELETE /api/providers/chatgpt, the disconnect).
+cgpt_core_owner=""
+cgpt_rs_owner=""
+grep -qF "require('./rust-chatgpt-oauth.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && cgpt_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chatgpt-oauth features; then
+  cgpt_rs_owner=rust
+fi
+[ "$cgpt_core_owner" = "$cgpt_rs_owner" ] \
+  || die "ChatGPT sign-in ownership pairing: Core and Rust must move together"
+if [ "$cgpt_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "ChatGPT sign-in ownership pairing: missing route contract"
+  cgpt_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/providers/chatgpt/device" || path == "/api/providers/chatgpt/device/poll" || path == "/api/providers/chatgpt/device/cancel") return "POST"
+      if (path == "/api/providers/chatgpt/models") return "GET"
+      return ""
+    }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != want($1)) exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "ChatGPT sign-in ownership pairing: exactly the broker's methods of the routes must belong to Rust"
+  cgpt_routes="$(printf '%s\n' "$cgpt_routes" | sort | tr '\n' ' ')"
+  [ "$cgpt_routes" = "/api/providers/chatgpt/device /api/providers/chatgpt/device/cancel /api/providers/chatgpt/device/poll /api/providers/chatgpt/models " ] \
+    || die "ChatGPT sign-in ownership pairing: incomplete route ownership"
+fi
+
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
 if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then

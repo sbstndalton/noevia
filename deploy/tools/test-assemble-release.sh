@@ -1535,6 +1535,60 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try ptest-old-pair
 check "historic provider test old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Round 5 (#2190): Sign in with ChatGPT's token broker, exactly the broker's methods Rust's.
+cgpt_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/chatgpt/device"
+owner = "$cgpt_owner"
+$cgpt_post
+[[route]]
+path = "/api/providers/chatgpt/device/cancel"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/chatgpt/device/poll"
+owner = "rust"
+methods = ["POST"]
+$cgpt_models
+TOML
+}
+cgpt_models_rust='[[route]]
+path = "/api/providers/chatgpt/models"
+owner = "rust"
+methods = ["GET"]'
+cgpt_post='methods = ["POST"]'; cgpt_owner=rust; cgpt_models="$cgpt_models_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cgpt_try cgpt-core-only
+check "ChatGPT sign-in Core refusal requires the native capability" 'refused "ChatGPT sign-in ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-chatgpt-oauth"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+cgpt_try cgpt-pair
+check "matching ChatGPT sign-in pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cgpt_post=''
+cgpt_try cgpt-all-methods
+check "a ChatGPT device route Rust's for every method is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_post='methods = ["GET"]'
+cgpt_try cgpt-wrong-method
+check "a ChatGPT device route with the wrong method is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_post='methods = ["POST"]'; cgpt_owner=node
+cgpt_try cgpt-node-route
+check "a Node-owned ChatGPT device route beside a native pair is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_owner=rust; cgpt_models=''
+cgpt_try cgpt-missing-models
+check "a native ChatGPT pair without the model list route is refused" 'refused "ChatGPT sign-in ownership pairing"'
+cgpt_models="$cgpt_models_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cgpt_try cgpt-front-only
+check "a rust-chatgpt-oauth front cannot pair with the old Core sign-in" 'refused "ChatGPT sign-in ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try cgpt-old-pair
+check "historic ChatGPT sign-in old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"
