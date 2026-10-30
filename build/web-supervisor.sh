@@ -145,6 +145,18 @@ if [ "$project_lifecycle_core_owner" != "$project_lifecycle_front_owner" ]; then
   echo "web-supervisor: project create/delete ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# A project's storage writes (sbstndalton/noevia#2191 round 3): a Core whose outbox executor claims only
+# its own job kinds (server/rust-project-storage.cjs, required by index.cjs) needs a front that runs the
+# storage sweep jobs and #687's create-time storage step itself (rust-project-storage), and such a front
+# needs that Core (an older one would run the same sweeps). Old/old images remain usable for rollback.
+project_storage_core_owner=""
+project_storage_front_owner=""
+grep -qF "require('./rust-project-storage.cjs')" "$PWD/server/index.cjs" 2>/dev/null && project_storage_core_owner=rust
+grep -qx 'rust-project-storage' <<<"$rust_features" && project_storage_front_owner=rust
+if [ "$project_storage_core_owner" != "$project_storage_front_owner" ]; then
+  echo "web-supervisor: project storage write ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot

@@ -625,6 +625,20 @@ if [ "$project_lifecycle_rs_owner" = rust ]; then
   project_lifecycle_expected="$(printf '%s\n' '/api/projects' '/api/projects/{projectId}' | sort)"
   [ "$project_lifecycle_routes" = "$project_lifecycle_expected" ] || die "project create/delete ownership pairing: incomplete route ownership"
 fi
+# A project's storage writes (sbstndalton/noevia#2191 round 3) move as one owner: Core's
+# rust-project-storage.cjs job-kind split (required by index.cjs) and the front's rust-project-storage
+# capability. No route moves with it; it builds on the create/delete pair, which must be Rust's too.
+project_storage_core_owner=""
+project_storage_rs_owner=""
+grep -qF "require('./rust-project-storage.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && project_storage_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-storage features; then
+  project_storage_rs_owner=rust
+fi
+[ "$project_storage_core_owner" = "$project_storage_rs_owner" ] \
+  || die "project storage write ownership pairing: Core and Rust must move together"
+if [ "$project_storage_rs_owner" = rust ] && [ "$project_lifecycle_rs_owner" != rust ]; then
+  die "project storage write ownership pairing: needs the project create/delete pair"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.

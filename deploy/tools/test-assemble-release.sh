@@ -1374,6 +1374,34 @@ project_lifecycle_try project-lifecycle-front-only
 check "a rust-project-lifecycle front cannot pair with the old Core handlers" 'refused "project create/delete ownership pairing"'
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-lifecycle-old-pair
+# Project storage write owner release matrix (sbstndalton/noevia#2191 round 3): no route of its own, on
+# top of the create/delete pair.
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," >> "$w/server/index.cjs"
+cat > "$w/server/rust-project-storage.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set());
+module.exports = { OWNED_ROUTES, CORE_KINDS: ['index'], FRONT_KINDS: ['sweep'] };
+JS
+sed 's/"start-id"/"start-id", "rust-project-lifecycle"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-storage-core-only
+check "project storage Core split requires the native capability" 'refused "project storage write ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-project-lifecycle", "rust-project-storage"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-storage-pair
+check "matching project storage pair on the create/delete pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+project_lifecycle_try project-storage-front-only
+check "a rust-project-storage front cannot pair with a Core that runs every job kind" 'refused "project storage write ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," >> "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-project-storage"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try project-storage-without-lifecycle
+check "a project storage pair without the create/delete pair is refused" 'refused "needs the project create/delete pair"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try project-storage-old-pair
+check "historic project storage old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-storage.cjs"
 check "historic project create/delete old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-lifecycle.cjs"
 

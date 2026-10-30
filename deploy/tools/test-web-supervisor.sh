@@ -351,6 +351,21 @@ check "rust-project-lifecycle front with old Core refuses before launch" '[ $rc 
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old project create/delete pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Project storage write ownership (sbstndalton/noevia#2191 round 3) must agree in both directions.
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "project-storage Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "matching native project storage pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-storage front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old project storage pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset
