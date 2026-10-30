@@ -214,7 +214,12 @@ fi
 # round 4), and Sign in with ChatGPT's token broker (server/rust-chatgpt-oauth.cjs beside
 # rust-chatgpt-oauth, round 5; Rust owns the device sign-in, the tokens and their refresh, and Node's
 # chat asks it for access tokens through the internal store), and the provider model lists
-# (server/rust-provider-models.cjs beside rust-provider-models, round 5), and Google Drive's token authority
+# (server/rust-provider-models.cjs beside rust-provider-models, round 5), and the provider registry
+# (server/rust-providers.cjs beside rust-providers, round 6; Rust is the only writer of providers.json
+# and shared-providers.json and Node re-reads them), and its key re-seal (server/rust-providers-reseal.cjs
+# beside rust-providers-reseal, round 6 review; a Core that rotates secrets through the front's internal
+# store needs a front that answers it, and a front that has it needs that Core, so Node never rewrites a
+# provider file the front owns), and Google Drive's token authority
 # (server/rust-google-drive.cjs beside rust-google-drive, round 7; Rust owns the sign-ins, the sealed refresh tokens
 # and tool_policies, and Node's chat tools ask it for access tokens through the internal store) and the off-site
 # backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7): each group moves as one owner. Old/old images remain usable for
@@ -238,6 +243,8 @@ rust-storage-connection.cjs rust-storage-connection storage connection
 rust-provider-test.cjs rust-provider-test provider test
 rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in
 rust-provider-models.cjs rust-provider-models provider model list
+rust-providers.cjs rust-providers provider registry
+rust-providers-reseal.cjs rust-providers-reseal provider key reseal
 rust-google-drive.cjs rust-google-drive Google Drive
 rust-offsite-backup.cjs rust-offsite-backup off-site backup
 PAIRS

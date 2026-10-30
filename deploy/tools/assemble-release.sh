@@ -880,9 +880,68 @@ if [ "$conn_rs_owner" = rust ]; then
   [ "$conn_routes" = /api/integrations/storage ] || die "storage connection ownership pairing: incomplete route ownership"
 fi
 
+# The provider registry (#2190, round 6): Core's rust-providers.cjs refusal and the front's
+# rust-providers capability. Detected first because it widens the probe's route below: with it,
+# PUT and DELETE of /api/providers/test (a provider id like any other) are Rust's too.
+prov_core_owner=""
+prov_rs_owner=""
+grep -qF "require('./rust-providers.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && prov_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-providers features; then
+  prov_rs_owner=rust
+fi
+[ "$prov_core_owner" = "$prov_rs_owner" ] \
+  || die "provider registry ownership pairing: Core and Rust must move together"
+if [ "$prov_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "provider registry ownership pairing: missing route contract"
+  prov_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/providers") return "GET,POST"
+      if (path == "/api/providers/{id}") return "PUT,DELETE"
+      if (path == "/api/providers/chatgpt") return "DELETE,GET"
+      if (path == "/api/providers/test") return "DELETE,POST,PUT"
+      return ""
+    }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      delete seen
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] in seen) exit 1; seen[m[i]] = 1; k++ }
+      nw = split(want($1), w, ",")
+      if (k != nw) exit 1
+      for (i = 1; i <= nw; i++) if (!(w[i] in seen)) exit 1
+      print $1
+    }' | sort)" || die "provider registry ownership pairing: exactly the registry's methods of the routes must belong to Rust"
+  prov_expected="$(printf '%s\n' /api/providers /api/providers/chatgpt /api/providers/test '/api/providers/{id}' | sort)"
+  [ "$prov_routes" = "$prov_expected" ] || die "provider registry ownership pairing: incomplete route ownership"
+fi
+
+# The provider keys' re-seal (#2190, round 6 review): Core's secrets rotation no longer rewrites the
+# provider files, it asks the front's internal store (rust-providers-reseal.cjs in Core,
+# rust-providers-reseal in the front's FEATURES, POST /v1/providers/reseal in project_store.rs and
+# providersReseal in Core's store client). It moves with the registry: a registry without it would
+# leave a second writer of the files (the rotation), and the op alone has no files of its own.
+reseal_core_owner=""
+reseal_rs_owner=""
+grep -qF "require('./rust-providers-reseal.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && reseal_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-providers-reseal features; then
+  reseal_rs_owner=rust
+fi
+[ "$reseal_core_owner" = "$reseal_rs_owner" ] \
+  || die "provider key reseal ownership pairing: Core and Rust must move together"
+[ "$reseal_rs_owner" = "$prov_rs_owner" ] \
+  || die "provider key reseal ownership pairing: it moves with the provider registry (a registry without it leaves a second writer of the provider files)"
+if [ "$reseal_rs_owner" = rust ]; then
+  grep -qF '"/v1/providers/reseal"' "$tree/rs/bins/noevia-server/src/project_store.rs" 2>/dev/null \
+    || die "provider key reseal ownership pairing: the front does not serve /v1/providers/reseal"
+  grep -qF 'providersReseal' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+    || die "provider key reseal ownership pairing: Core's store client does not call /v1/providers/reseal"
+fi
+
 # The provider probe (#2190, round 4): Core's rust-provider-test.cjs refusal (POST on the exact path;
 # Node keeps the other methods, its /api/providers/{id} handler reads `test` as an id) and the front's
 # rust-provider-test capability, with exactly POST of /api/providers/test Rust's in routes.toml.
+# With the provider registry (round 6) the route is also Rust's for PUT and DELETE, and then those
+# three methods exactly.
 ptest_core_owner=""
 ptest_rs_owner=""
 grep -qF "require('./rust-provider-test.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ptest_core_owner=rust
@@ -893,12 +952,15 @@ fi
   || die "provider test ownership pairing: Core and Rust must move together"
 if [ "$ptest_rs_owner" = rust ]; then
   [ -f "$tree/rs/contracts/http/routes.toml" ] || die "provider test ownership pairing: missing route contract"
-  ptest_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+  ptest_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v registry="$prov_rs_owner" '
     $1 == "/api/providers/test" {
       if ($2 != "rust" || $3 != "-") exit 1
       n = split($4, m, /[^A-Z]+/); k = 0
-      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
-      if (k != 1) exit 1
+      for (i = 1; i <= n; i++) if (m[i] != "") {
+        if (m[i] != "POST" && !(registry == "rust" && (m[i] == "PUT" || m[i] == "DELETE"))) exit 1
+        k++
+      }
+      if (k != (registry == "rust" ? 3 : 1)) exit 1
       print $1
     }')" || die "provider test ownership pairing: exactly POST of the path must belong to Rust"
   [ "$ptest_routes" = /api/providers/test ] || die "provider test ownership pairing: incomplete route ownership"
@@ -988,7 +1050,8 @@ if [ "$gdrv_rs_owner" = rust ]; then
 fi
 
 # The off-site backup (#2190, round 7): Core's rust-offsite-backup.cjs refusal and the front's
-# rust-offsite-backup capability, with all seven paths Rust's for every method in routes.toml.
+# rust-offsite-backup capability, with all eight paths (the seven of the first cut and the review's
+# new-store action) Rust's for every method in routes.toml.
 offs_core_owner=""
 offs_rs_owner=""
 grep -qF "require('./rust-offsite-backup.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && offs_core_owner=rust
@@ -1005,8 +1068,12 @@ if [ "$offs_rs_owner" = rust ]; then
       print $1
     }')" || die "off-site backup ownership pairing: every method of the paths must belong to Rust"
   offs_routes="$(printf '%s\n' "$offs_routes" | sort | tr '\n' ' ')"
-  [ "$offs_routes" = "/api/admin/offsite-backup /api/admin/offsite-backup/copy /api/admin/offsite-backup/google/connect /api/admin/offsite-backup/google/disconnect /api/admin/offsite-backup/recovery-key /api/admin/offsite-backup/run /api/admin/offsite-backup/verify " ] \
+  [ "$offs_routes" = "/api/admin/offsite-backup /api/admin/offsite-backup/copy /api/admin/offsite-backup/google/connect /api/admin/offsite-backup/google/disconnect /api/admin/offsite-backup/new-store /api/admin/offsite-backup/recovery-key /api/admin/offsite-backup/run /api/admin/offsite-backup/verify " ] \
     || die "off-site backup ownership pairing: incomplete route ownership"
+  # Core refuses exactly the paths the front answers: the new-store action included, or a stale Core
+  # would route an administrator's "this is a new store" to a Node that has no such path.
+  grep -qF "'/api/admin/offsite-backup/new-store'" "$tree/core/server/rust-offsite-backup.cjs" 2>/dev/null \
+    || die "off-site backup ownership pairing: Core does not refuse the new-store path"
 fi
 
 # The two read-only model sizing reads (sbstndalton/noevia#2189) move as one owner: Core's
