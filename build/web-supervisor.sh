@@ -222,7 +222,9 @@ fi
 # provider file the front owns), and Google Drive's token authority
 # (server/rust-google-drive.cjs beside rust-google-drive, round 7; Rust owns the sign-ins, the sealed refresh tokens
 # and tool_policies, and Node's chat tools ask it for access tokens through the internal store) and the off-site
-# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7): each group moves as one owner. Old/old images remain usable for
+# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7) and the rest of the Diary routes
+# (server/rust-diary-routes.cjs beside rust-diary-routes, sbstndalton/noevia#2206; Rust owns the connector
+# credentials table and reads the running-exchange set Node publishes): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -247,6 +249,7 @@ rust-providers.cjs rust-providers provider registry
 rust-providers-reseal.cjs rust-providers-reseal provider key reseal
 rust-google-drive.cjs rust-google-drive Google Drive
 rust-offsite-backup.cjs rust-offsite-backup off-site backup
+rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front

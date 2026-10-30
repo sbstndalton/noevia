@@ -1226,6 +1226,75 @@ check "a rust-diary front cannot pair with the old Core proxy" 'refused "Diary o
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try diary-old-pair
 check "historic Diary old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# The rest of the Diary routes (sbstndalton/noevia#2206): Core's rust-diary-routes.cjs refusal beside the
+# front's rust-diary-routes capability, with the exact methods Node answered.
+dr_routes() {
+  local base='[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'
+  printf "$base"
+  printf '[[route]]\npath = "/api/diary"\nowner = "rust"\n%s\n' "${dr_all:-}"
+  printf '[[route]]\npath = "/api/diary-connector"\nowner = "rust"\n\n'
+  printf '[[route]]\npath = "/api/diary/storage-status"\nowner = "rust"\n\n'
+  printf '[[route]]\npath = "/api/diary/context"\nowner = "rust"\nmethods = %s\n\n' "${dr_context:-[\"GET\", \"POST\"]}"
+  printf '[[route]]\npath = "/api/diary/exchanges"\nowner = "rust"\nmethods = %s\n\n' "${dr_exchanges:-[\"GET\", \"POST\"]}"
+  printf '[[route]]\npath = "/api/profile/diary-connectors"\nowner = "rust"\nmethods = %s\n\n' "${dr_connectors:-[\"GET\", \"POST\"]}"
+  printf '[[route]]\npath = "%s"\nowner = "rust"\nmethods = %s\n\n' "${dr_one:-/api/profile/diary-connectors/{*\}}" "${dr_delete:-[\"DELETE\"]}"
+  printf '[[route]]\npath = "/api/diary/local-exchange"\nowner = "%s"\n\n' "${dr_local:-node}"
+}
+dr_try() { dr_routes > "$work/dr-routes"; try_routes "$1" < "$work/dr-routes"; }
+dr_refusal() {
+  printf "%s\n" "const FIXED = { '/api/diary': 0, '/api/diary-connector': 0, '/api/diary/storage-status': 0, '/api/diary/context': 0, '/api/diary/exchanges': 0, '/api/profile/diary-connectors': 0 };" > "$w/server/rust-diary-routes.cjs"
+  [ -z "${dr_skip:-}" ] || sed -i.bak "s#'${dr_skip}': 0,##" "$w/server/rust-diary-routes.cjs" && rm -f "$w/server/rust-diary-routes.cjs.bak"
+}
+cp "$w/server/rust-auth.cjs" "$work/dr-auth.saved"
+dr_all=""
+dr_refusal
+printf '%s\n' "  if (require('./rust-diary-routes.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+printf '%s\n' "const t = require('./rust-diary-routes.cjs').TABLE;" >> "$w/server/rust-auth.cjs"
+dr_try dr-core-only
+check "Diary routes Core refusal requires the native capability" 'refused "Diary route ownership pairing: Core and Rust must move together"'
+sed 's/"start-id"/"start-id", "rust-diary-routes"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+dr_try dr-pair
+check "matching Diary routes pair with the exact methods assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+dr_context='["GET"]'; dr_try dr-context-get-only
+check "a GET-only Diary context is refused (Node answered POST too)" 'refused "Diary route ownership pairing"'
+dr_context='["GET", "POST", "PUT"]'; dr_try dr-context-more
+check "a Diary context with more methods than Node answered is refused" 'refused "Diary route ownership pairing"'
+dr_context='["GET", "POST"]'
+dr_exchanges='["POST"]'; dr_try dr-exchanges-post-only
+check "a POST-only Diary exchanges route is refused" 'refused "Diary route ownership pairing"'
+dr_exchanges='["GET", "GET", "POST"]'; dr_try dr-exchanges-duplicate
+check "a repeated method in the Diary exchanges route is refused" 'refused "Diary route ownership pairing"'
+dr_exchanges='["GET", "POST"]'
+dr_connectors='["GET"]'; dr_try dr-connectors-get-only
+check "a GET-only connector list is refused" 'refused "Diary route ownership pairing"'
+dr_connectors='["GET", "POST"]'
+dr_delete='["DELETE", "GET"]'; dr_try dr-delete-more
+check "a connector route with more than DELETE is refused" 'refused "Diary route ownership pairing"'
+dr_delete='["DELETE"]'
+dr_all=$'methods = ["GET"]'; dr_try dr-bare-diary-get
+check "a GET-only /api/diary is refused (it has no methods in Node)" 'refused "Diary route ownership pairing"'
+dr_all=""
+dr_one="/api/profile/diary-connectors/{id}"; dr_try dr-one-renamed
+check "an incomplete Diary route set is refused" 'refused "Diary route ownership pairing"'
+dr_one='/api/profile/diary-connectors/{*}'
+dr_local=rust; dr_try dr-local-exchange-moved
+check "the local exchange moving to Rust is refused (Node still answers it)" 'refused "Diary route ownership pairing"'
+dr_local=node
+dr_skip="/api/diary/exchanges"; dr_refusal; dr_try dr-core-not-refusing
+check "a Core that does not refuse a Diary path the front answers is refused" 'refused "Core does not refuse /api/diary/exchanges"'
+dr_skip=""; dr_refusal
+cp "$work/dr-auth.saved" "$w/server/rust-auth.cjs"
+dr_try dr-table-not-guarded
+check "a Core whose guard leaves the connector table to Node is refused" 'refused "still lets Node write the connector table"'
+printf '%s\n' "const t = require('./rust-diary-routes.cjs').TABLE;" >> "$w/server/rust-auth.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+dr_try dr-front-only
+check "a rust-diary-routes front cannot pair with the old Core" 'refused "Diary route ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-diary-routes.cjs"
+cp "$work/dr-auth.saved" "$w/server/rust-auth.cjs"
+move_try dr-old-pair
+check "historic Diary routes old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # Model read owner release matrix (sbstndalton/noevia#2187): two routes, GET only.
 models_try() {
   try_routes "$1" <<TOML

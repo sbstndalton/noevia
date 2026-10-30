@@ -552,6 +552,52 @@ if [ "$diary_rs_owner" = rust ]; then
   diary_expected="$(printf '%s\n' /api/diary/source /api/diary/today /api/diary/storage-import /api/diary/workspace-export /api/diary/workspace-import | sort)"
   [ "$diary_routes" = "$diary_expected" ] || die "Diary ownership pairing: incomplete route ownership"
 fi
+# The rest of the Diary routes the web client names (sbstndalton/noevia#2206) move as one owner: Core's
+# rust-diary-routes.cjs refusal and the front's rust-diary-routes capability, with the methods Node
+# answered Rust's in routes.toml: every method of /api/diary, /api/diary-connector and the storage
+# status; GET and POST of the context, the exchanges and the connector credentials; DELETE of one
+# credential. POST /api/diary/local-exchange stays Node's (the model throttle and the inference
+# gate), so it must not be Rust's here. Core must refuse exactly those paths and be the one that keeps
+# the diary_connectors table out of Node's hands. Historic old/old pins remain valid rollback pairs.
+dr_core_owner=""
+dr_rs_owner=""
+grep -qF "require('./rust-diary-routes.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && dr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary-routes features; then
+  dr_rs_owner=rust
+fi
+[ "$dr_core_owner" = "$dr_rs_owner" ] \
+  || die "Diary route ownership pairing: Core and Rust must move together"
+if [ "$dr_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary route ownership pairing: missing route contract"
+  dr_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/diary" || path == "/api/diary-connector" || path == "/api/diary/storage-status") return "ALL"
+      if (path == "/api/diary/context" || path == "/api/diary/exchanges" || path == "/api/profile/diary-connectors") return "GET,POST"
+      if (path == "/api/profile/diary-connectors/{*}") return "DELETE"
+      return ""
+    }
+    $1 == "/api/diary/local-exchange" { if ($2 != "node") exit 1 }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      w = want($1)
+      if (w == "ALL") { if ($4 != "-") exit 1; print $1; next }
+      ne = split(w, e, ","); delete ok; for (j = 1; j <= ne; j++) ok[e[j]] = 1
+      n = split($4, m, /[^A-Z]+/); k = 0; delete seen
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (!(m[i] in ok) || (m[i] in seen)) exit 1; seen[m[i]] = 1; k++ }
+      if (k != ne) exit 1
+      print $1
+    }')" || die "Diary route ownership pairing: exactly the methods Node answered must belong to Rust, and the local exchange must stay Node's"
+  dr_routes="$(printf '%s\n' "$dr_routes" | sort | tr '\n' ' ')"
+  [ "$dr_routes" = "/api/diary /api/diary-connector /api/diary/context /api/diary/exchanges /api/diary/storage-status /api/profile/diary-connectors /api/profile/diary-connectors/{*} " ] \
+    || die "Diary route ownership pairing: incomplete route ownership"
+  # Core refuses exactly the paths the front answers, and keeps the credential table out of Node's hands.
+  for dr_path in /api/diary /api/diary-connector /api/diary/context /api/diary/exchanges /api/diary/storage-status /api/profile/diary-connectors; do
+    grep -qF "'$dr_path'" "$tree/core/server/rust-diary-routes.cjs" 2>/dev/null \
+      || die "Diary route ownership pairing: Core does not refuse $dr_path"
+  done
+  grep -qF "rust-diary-routes.cjs" "$tree/core/server/rust-auth.cjs" 2>/dev/null \
+    || die "Diary route ownership pairing: Core still lets Node write the connector table"
+fi
 # The two configuration-only model reads (sbstndalton/noevia#2187) move as one owner: Core's
 # rust-models.cjs refusal of their GET and the front's rust-model-reads capability, with exactly
 # GET of both routes Rust's in routes.toml (Node keeps every other method). Historic old/old pins
