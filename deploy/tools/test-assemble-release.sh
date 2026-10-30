@@ -1456,6 +1456,47 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try mirror-old-pair
 check "historic vault mirror old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Round 4 (#2190): the storage connection save, exactly GET and PUT of the path Rust's.
+conn_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage"
+owner = "$conn_owner"
+$conn_methods
+TOML
+}
+conn_methods='methods = ["GET", "PUT"]'; conn_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-storage-connection.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+conn_try conn-core-only
+check "storage connection Core refusal requires the native capability" 'refused "storage connection ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-storage-connection"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+conn_try conn-pair
+check "matching storage connection pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+conn_methods='methods = ["GET"]'
+conn_try conn-get-only
+check "a storage connection route without PUT is refused (Core refuses the save)" 'refused "storage connection ownership pairing"'
+conn_methods=''
+conn_try conn-all-methods
+check "a storage connection route Rust's for every method is refused (Node keeps the others)" 'refused "storage connection ownership pairing"'
+conn_methods='methods = ["GET", "PUT", "DELETE"]'
+conn_try conn-extra-method
+check "a storage connection route with an extra method is refused" 'refused "storage connection ownership pairing"'
+conn_methods='methods = ["GET", "PUT"]'; conn_owner=node
+conn_try conn-node-route
+check "a Node-owned storage connection route beside a native pair is refused" 'refused "storage connection ownership pairing"'
+conn_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+conn_try conn-front-only
+check "a rust-storage-connection front cannot pair with the old Core save" 'refused "storage connection ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try conn-old-pair
+check "historic storage connection old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"

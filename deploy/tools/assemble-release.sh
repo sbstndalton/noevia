@@ -690,6 +690,31 @@ if [ "$mirror_rs_owner" = rust ]; then
   [ "$mirror_routes" = /api/chat-vault-mirror/preferences ] || die "vault mirror preference ownership pairing: incomplete route ownership"
 fi
 
+# The storage connection save (#2190, round 4): Core's rust-storage-connection.cjs refusal (PUT on the
+# exact path; Core's guard then refuses every Node write of storage_connections, and its legacy WebDAV
+# setup asks the front's internal store) and the front's rust-storage-connection capability, with
+# exactly GET and PUT of /api/integrations/storage Rust's in routes.toml (GET is the metadata worker's).
+conn_core_owner=""
+conn_rs_owner=""
+grep -qF "require('./rust-storage-connection.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && conn_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-storage-connection features; then
+  conn_rs_owner=rust
+fi
+[ "$conn_core_owner" = "$conn_rs_owner" ] \
+  || die "storage connection ownership pairing: Core and Rust must move together"
+if [ "$conn_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "storage connection ownership pairing: missing route contract"
+  conn_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/integrations/storage" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0; get = 0; put = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { k++; if (m[i] == "GET") get = 1; else if (m[i] == "PUT") put = 1; else exit 1 }
+      if (k != 2 || !get || !put) exit 1
+      print $1
+    }')" || die "storage connection ownership pairing: exactly GET and PUT of the path must belong to Rust"
+  [ "$conn_routes" = /api/integrations/storage ] || die "storage connection ownership pairing: incomplete route ownership"
+fi
+
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
 if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then
