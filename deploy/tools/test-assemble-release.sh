@@ -742,6 +742,12 @@ check "#1071 web-address POST: writer core without compiled writer feature is re
 printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-web-address-read", "rust-web-address-write"];' > "$rz/bins/noevia-server/src/lib.rs"
 web_writer_try web-write-paired
 check "#1071 web-address POST: both writers pair with Node refusal" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# The real lib.rs documents routes such as `/v1/chatgpt/*` in its `///` lines: a `/*` there is not a block comment, and
+# must not hide the FEATURES list that follows (the assembler found no capability in the real file since 2026-10-29).
+printf '%s\n' '/// the internal store (`/v1/chatgpt/*`) and the routes the paired core refuses' 'pub const FEATURES: &[&str] = &["rust-web-address-read", "rust-web-address-write"];' > "$rz/bins/noevia-server/src/lib.rs"
+web_writer_try web-write-slash-star-doc
+check "a '/*' inside a /// doc line does not hide the FEATURES list" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-web-address-read", "rust-web-address-write"];' > "$rz/bins/noevia-server/src/lib.rs"
 cp "$w/server/rust-web-address.cjs" "$work/web-write-core.saved"
 sed -i.bak 's#return refuseOwnedRead(req, res, pathname, json) || refuseOwnedWrite(req, res, pathname, json);#return refuseOwnedRead(req, res, pathname, json);#' "$w/server/rust-web-address.cjs" && rm -f "$w/server/rust-web-address.cjs.bak"
 web_writer_try web-write-unwired
@@ -1541,6 +1547,160 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-project-files.cjs" "$w/server/rust-project-storage.cjs"
 rm -f "$w/server/rust-project-lifecycle.cjs"
+# Project configuration owner release matrix (sbstndalton/noevia#2191 round 9): POST config, GET and PUT
+# instruction-skills, GET manifests and a manifest's content, POST install; the browser, code and research routes stay Node's.
+pc_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{projectId}/config"
+owner = "rust"
+$pc_config_methods
+[[route]]
+path = "/api/projects/{projectId}/instruction-skills"
+owner = "rust"
+$pc_skills_methods
+[[route]]
+path = "/api/projects/{projectId}/instruction-skills/manifests"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/projects/{project}/skills/install"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{projectId}/browser"
+owner = "$pc_browser_owner"
+TOML
+}
+pc_config_methods='methods = ["POST"]'; pc_skills_methods='methods = ["GET", "PUT"]'; pc_browser_owner=node
+cat > "$w/server/rust-project-config.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{projectId}/config',
+  'GET /api/projects/{projectId}/instruction-skills',
+  'PUT /api/projects/{projectId}/instruction-skills',
+  'GET /api/projects/{projectId}/instruction-skills/manifests',
+  'GET /api/projects/{projectId}/instruction-skills/manifests/{skillId}/content',
+  'POST /api/projects/{project}/skills/install',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+pc_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./rust-project-config.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  [ "${1:-}" = noknown ] || printf '%s\n' "    known: allToolboxes().map((b) => b.id)," >> "$w/server/index.cjs"
+  [ "${1:-}" = mount ] && printf '%s\n' "const projectRoutes = require('./routes/projects.cjs');" >> "$w/server/index.cjs"
+  return 0
+}
+pc_front() { sed "s/\"start-id\"/\"start-id\", \"rust-project-config\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+pc_core; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+pc_try project-config-core-only
+check "project configuration Core refusal requires the native capability" 'refused "project configuration ownership pairing"'
+pc_front
+pc_try project-config-pair
+check "matching project configuration pair with the exact routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+pc_config_methods=""
+pc_try project-config-all-methods
+check "an all-method config route is refused (Node keeps the other methods)" 'refused "project configuration ownership pairing"'
+pc_config_methods='methods = ["POST"]'; pc_skills_methods='methods = ["GET"]'
+pc_try project-config-get-only
+check "an instruction-skills route without its PUT is refused" 'refused "project configuration ownership pairing"'
+pc_skills_methods='methods = ["GET", "PUT", "POST"]'
+pc_try project-config-extra-method
+check "an instruction-skills route with a method Node never answered is refused" 'refused "project configuration ownership pairing"'
+pc_skills_methods='methods = ["GET", "PUT"]'; pc_browser_owner=rust
+pc_try project-config-browser-moved
+check "the chat-bound browser route must stay Node's" 'refused "project configuration ownership pairing"'
+pc_browser_owner=node
+mv "$w/server/rust-project-config.cjs" "$work/rust-project-config.saved"
+printf 'module.exports = {};\n' > "$w/server/rust-project-config.cjs"
+pc_try project-config-unlisted
+check "a front owning the config routes needs a Core that refuses exactly those six" 'refused "Core must refuse exactly the six routes"'
+mv "$work/rust-project-config.saved" "$w/server/rust-project-config.cjs"
+pc_core mount; mkdir -p "$w/server/routes"; echo "// the old mount" > "$w/server/routes/projects.cjs"
+pc_try project-config-mount
+check "a Core that still mounts the project routes is refused" 'refused "Core still mounts the project routes"'
+rm -f "$w/server/routes/projects.cjs"; rmdir "$w/server/routes" 2>/dev/null || true
+pc_core noknown
+pc_try project-config-no-known
+check "a Core that does not publish the known toolboxes is refused" 'refused "does not publish the toolbox ids"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+pc_try project-config-front-only
+check "a rust-project-config front cannot pair with the old Core handlers" 'refused "project configuration ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try project-config-old-pair
+check "historic project configuration old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-config.cjs"
+# Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
+# and a Core with no way left to delete an account.
+au_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/admin/users/{id}"
+owner = "rust"
+$au_methods
+TOML
+}
+au_methods='methods = ["DELETE"]'
+cp "$w/server/rust-auth.cjs" "$work/au-rust-auth.saved"
+cat > "$w/server/rust-admin-users.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'DELETE /api/admin/users/{id}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+printf '%s\n' "function refuseOwned(req, res, pathname, json) { return false; }" "const FRONT_TABLES = { users: { message: 'users is written by the Rust front' } };" > "$w/server/rust-auth.cjs"
+printf '%s\n' "module.exports = { createAuth() { return { listUsers() {} }; } };" > "$w/server/auth.cjs"
+au_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./rust-admin-users.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+}
+au_front() { sed "s/\"start-id\"/\"start-id\", \"rust-admin-users\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+au_core; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+au_try admin-users-core-only
+check "account deletion Core refusal requires the native capability" 'refused "account deletion ownership pairing"'
+au_front
+au_try admin-users-pair
+check "matching account deletion pair with DELETE only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+au_methods=""
+au_try admin-users-all-methods
+check "an all-method account route is refused (Node keeps the other methods)" 'refused "account deletion ownership pairing"'
+au_methods='methods = ["DELETE", "PUT"]'
+au_try admin-users-extra-method
+check "an account route with another method is refused" 'refused "account deletion ownership pairing"'
+au_methods='methods = ["DELETE"]'
+printf '%s\n' "module.exports = { createAuth() { return {" "    deleteUser(actorId, userId, username) { return false; }," "  }; } };" > "$w/server/auth.cjs"
+au_try admin-users-core-can-delete
+check "a Core that can still delete an account is refused" 'refused "Core can still delete an account"'
+printf '%s\n' "module.exports = { createAuth() { return { listUsers() {} }; } };" > "$w/server/auth.cjs"
+printf '%s\n' "function refuseOwned(req, res, pathname, json) { return false; }" "const FRONT_TABLES = {};" > "$w/server/rust-auth.cjs"
+au_try admin-users-guard-open
+check "a Core whose guard does not refuse users is refused" 'refused "Core can still delete an account"'
+printf '%s\n' "function refuseOwned(req, res, pathname, json) { return false; }" "const FRONT_TABLES = { users: { message: 'users is written by the Rust front' } };" > "$w/server/rust-auth.cjs"
+mv "$w/server/rust-admin-users.cjs" "$work/rust-admin-users.saved"
+printf 'module.exports = {};\n' > "$w/server/rust-admin-users.cjs"
+au_try admin-users-unlisted
+check "a Core that refuses nothing is refused" 'refused "Core must refuse exactly DELETE"'
+mv "$work/rust-admin-users.saved" "$w/server/rust-admin-users.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+au_try admin-users-front-only
+check "a rust-admin-users front cannot pair with the old Core handler" 'refused "account deletion ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try admin-users-old-pair
+check "historic account deletion old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-admin-users.cjs" "$w/server/auth.cjs"
+cp "$work/au-rust-auth.saved" "$w/server/rust-auth.cjs"
 # Document page reader owner release matrix (sbstndalton/noevia#2191 round 4): GET
 # /api/projects/{id}/documents/pages only; no other pair needed.
 document_pages_try() {
@@ -2383,6 +2543,121 @@ mcp_files no no
 cp "$work/mcp-client.saved" "$w/server/project-store-client.cjs"
 move_try mcp-old-pair
 check "historic MCP credential old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# #2202 round 2: the admin MCP directory, the permitted-tools view and the connectors list: three Core refusals
+# paired with three front capabilities, with exactly the methods the front answers, the discovery snapshot Core
+# publishes and the front reads, and a Core whose directory module holds no write of the table.
+cp "$w/server/project-store-client.cjs" "$work/mcp2-client.saved"
+mcp2_files() { # discovery yes|no|comment (Core publishes it), writes none|code|comment (directory-mcp.cjs), front lib mod yes|no
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  case "$1" in
+    yes) printf '%s\n' "const publisher = require('./mcp-discovery-snapshot.cjs').createMcpDiscoveryPublisher({ dataDir });" >> "$w/server/index.cjs";;
+    comment) printf '%s\n' "// const publisher = require('./mcp-discovery-snapshot.cjs').createMcpDiscoveryPublisher({ dataDir });" >> "$w/server/index.cjs";;
+  esac
+  echo "// the catalogue" > "$w/server/mcp-discovery-snapshot.cjs"
+  case "$2" in
+    none) printf '%s\n' "const rows = db.prepare('SELECT id FROM directory_mcp_servers').all();" > "$w/server/directory-mcp.cjs";;
+    code) printf '%s\n' "db.prepare('INSERT INTO directory_mcp_servers(id) VALUES(?)').run(id);" > "$w/server/directory-mcp.cjs";;
+    comment) printf '%s\n' "// the front does INSERT INTO directory_mcp_servers and DELETE FROM directory_mcp_servers" "const rows = db.prepare('SELECT id FROM directory_mcp_servers').all();" > "$w/server/directory-mcp.cjs";;
+  esac
+  printf '%s\n' "const TABLES = ['mcp_oauth_tokens', 'directory_mcp_servers'];" > "$w/server/rust-mcp-credentials.cjs"
+  printf '%s\n' '"SELECT id FROM directory_mcp_servers WHERE headers_enc IS NOT NULL"' > "$rz/bins/noevia-server/src/mcp_broker.rs"
+  case "$3" in
+    yes) sed 's/"start-id"/"start-id", "rust-mcp-directory", "rust-toolboxes-permitted", "rust-connectors"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; printf '%s\n' 'pub mod mcp_discovery;' >> "$rz/bins/noevia-server/src/lib.rs";;
+    no) sed 's/"start-id"/"start-id", "rust-mcp-directory", "rust-toolboxes-permitted", "rust-connectors"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs";;
+  esac
+  return 0
+}
+mcp2_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+$mcp2_dir
+$mcp2_perm
+$mcp2_cnx
+TOML
+}
+mcp2_route() { printf '[[route]]\npath = "%s"\nowner = "%s"\n%s\n' "$1" "$2" "$3"; }
+mcp2_dir_rust="$(for p in /api/admin/mcp-directory /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys' '/api/admin/mcp-directory/{id}/oauth-client'; do mcp2_route "$p" rust ''; done)"
+mcp2_perm_rust="$(mcp2_route /api/toolboxes/permitted rust '')"
+mcp2_cnx_rust="$(mcp2_route /api/connectors rust 'methods = ["GET"]'; mcp2_route /api/connectors/nextcloud/policy rust 'methods = ["PUT"]')"
+mcp2_dir="$mcp2_dir_rust"; mcp2_perm="$mcp2_perm_rust"; mcp2_cnx="$mcp2_cnx_rust"
+# The Core half alone, the front half alone.
+mcp2_files yes none no
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-dir-core-only
+check "an MCP directory Core refusal requires the native capability" 'refused "MCP directory ownership pairing: Core and Rust must move together"'
+mcp2_files yes none yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+mcp2_try mcp2-front-only
+check "rust-mcp-directory, rust-toolboxes-permitted and rust-connectors fronts cannot pair with the old Core" 'refused "ownership pairing: Core and Rust must move together"'
+# The matching pairs.
+mcp2_files yes none yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-pair
+check "the matching MCP directory, permitted tools and connectors pairs assemble with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Routes: exactly the front's.
+mcp2_dir="$(mcp2_route /api/admin/mcp-directory rust 'methods = ["GET"]'; for p in /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys' '/api/admin/mcp-directory/{id}/oauth-client'; do mcp2_route "$p" rust ''; done)"
+mcp2_try mcp2-dir-get-only
+check "a directory route that is Rust's for GET only is refused (core's 405 for the rest is the front's)" 'refused "MCP directory ownership pairing: every method"'
+mcp2_dir="$(for p in /api/admin/mcp-directory /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys'; do mcp2_route "$p" rust ''; done; mcp2_route '/api/admin/mcp-directory/{id}/oauth-client' node '')"
+mcp2_try mcp2-dir-node-route
+check "a Node-owned directory route beside a native pair is refused" 'refused "MCP directory ownership pairing: every method"'
+mcp2_dir="$(for p in /api/admin/mcp-directory /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys'; do mcp2_route "$p" rust ''; done)"
+mcp2_try mcp2-dir-missing-route
+check "a native directory pair without the app route is refused" 'refused "MCP directory ownership pairing: incomplete route ownership"'
+mcp2_dir="$mcp2_dir_rust"
+mcp2_perm="$(mcp2_route /api/toolboxes/permitted rust 'methods = ["GET"]')"
+mcp2_try mcp2-perm-get-only
+check "a permitted-tools route that is Rust's for GET only is refused" 'refused "permitted tools ownership pairing: every method"'
+mcp2_perm="$mcp2_perm_rust"
+mcp2_cnx="$(mcp2_route /api/connectors rust ''; mcp2_route /api/connectors/nextcloud/policy rust 'methods = ["PUT"]')"
+mcp2_try mcp2-cnx-all-methods
+check "a connectors list that is Rust's for every method is refused (Node keeps the others)" 'refused "connectors ownership pairing: exactly"'
+mcp2_cnx="$(mcp2_route /api/connectors rust 'methods = ["GET"]'; mcp2_route /api/connectors/nextcloud/policy rust 'methods = ["PUT", "POST"]')"
+mcp2_try mcp2-cnx-extra-method
+check "a Nextcloud policy route with an extra method is refused" 'refused "connectors ownership pairing: exactly"'
+mcp2_cnx="$(mcp2_route /api/connectors rust 'methods = ["GET"]')"
+mcp2_try mcp2-cnx-missing
+check "a connectors pair without the Nextcloud policy route is refused" 'refused "connectors ownership pairing: incomplete route ownership"'
+mcp2_cnx="$mcp2_cnx_rust"
+# The snapshot Node publishes and the front reads.
+mcp2_files no none yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-no-publisher
+check "a Core that publishes no discovery snapshot cannot pair with the front that reads it" 'refused "ownership pairing: Core does not publish the discovery snapshot"'
+mcp2_files comment none yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-publisher-comment
+check "a publisher that only a comment names publishes nothing" 'refused "ownership pairing: Core does not publish the discovery snapshot"'
+mcp2_files yes none no
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-no-reader
+check "a front that does not read the discovery snapshot cannot pair with Core's publisher-less views" 'refused "ownership pairing: Core does not publish the discovery snapshot"'
+# One writer of the table.
+mcp2_files yes code yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-second-writer
+check "a Core whose directory module still writes directory_mcp_servers beside the front is refused" 'refused "MCP directory ownership pairing: Core still writes directory_mcp_servers"'
+mcp2_files yes comment yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-writer-comment
+check "a write of the table that only a comment names is not a writer" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Marker in a comment only: the old Core.
+mcp2_files yes none yes
+printf '%s\n' "  // if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp2_try mcp2-marker-comment
+check "a directory marker that only a comment names is the old Core, not a pair" 'refused "MCP directory ownership pairing: Core and Rust must move together"'
+# Back to old/old.
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/mcp-discovery-snapshot.cjs" "$w/server/directory-mcp.cjs" "$w/server/rust-mcp-credentials.cjs" "$rz/bins/noevia-server/src/mcp_broker.rs"
+cp "$work/mcp2-client.saved" "$w/server/project-store-client.cjs"
+move_try mcp2-old-pair
+check "historic MCP directory, permitted tools and connectors old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
 # Round 5 (#2190): the provider model lists, the route Rust's for every method.
 pmod_try() {

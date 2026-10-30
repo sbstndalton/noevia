@@ -438,8 +438,8 @@ move_capability() {
     {
       line=clean($0)
       if (block) { if (index(line,"*/")) block=0; next }
-      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
       if (line ~ /^\/\//) next
+      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
       if ((kind=="features" || kind=="feature_ref") && index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
       if (features) {
         fend=index(line,"];")
@@ -727,6 +727,84 @@ if [ "$project_files_rs_owner" = rust ]; then
       print $1
     }')" || die "project file delete ownership pairing: exactly DELETE /api/projects/{id}/files must belong to Rust"
   [ "$project_files_routes" = "/api/projects/{id}/files" ] || die "project file delete ownership pairing: incomplete route ownership"
+fi
+# A project's configuration, its instruction skills and a published skill's install (sbstndalton/noevia#2191
+# round 9) move as one owner: Core's rust-project-config.cjs refusal and the front's rust-project-config
+# capability, with exactly the methods Node answered Rust's in routes.toml (POST config; GET and PUT
+# instruction-skills; GET manifests and a manifest's content; POST install). The browser, code and research routes
+# and GET /api/code/active are chat-bound and must stay Node's. Core must refuse exactly those six, keep no
+# project route mount (server/routes/projects.cjs is gone), and publish every toolbox it knows for the front's
+# manifests. Historic old/old pins remain valid rollback pairs; either mixed generation is refused.
+pc_core_owner=""
+pc_rs_owner=""
+grep -qF "require('./rust-project-config.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pc_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-config features; then
+  pc_rs_owner=rust
+fi
+[ "$pc_core_owner" = "$pc_rs_owner" ] \
+  || die "project configuration ownership pairing: Core and Rust must move together"
+if [ "$pc_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project configuration ownership pairing: missing route contract"
+  pc_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/projects/{projectId}/config") return "POST"
+      if (path == "/api/projects/{projectId}/instruction-skills") return "GET,PUT"
+      if (path == "/api/projects/{projectId}/instruction-skills/manifests") return "GET"
+      if (path == "/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content") return "GET"
+      if (path == "/api/projects/{project}/skills/install") return "POST"
+      return ""
+    }
+    $1 == "/api/projects/{projectId}/browser" || $1 == "/api/projects/{projectId}/code" || $1 == "/api/projects/{projectId}/research" || $1 == "/api/code/active" { if ($2 != "node") exit 1 }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-" || $4 == "-") exit 1
+      w = want($1)
+      ne = split(w, e, ","); delete ok; for (j = 1; j <= ne; j++) ok[e[j]] = 1
+      n = split($4, m, /[^A-Z]+/); k = 0; delete seen
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (!(m[i] in ok) || (m[i] in seen)) exit 1; seen[m[i]] = 1; k++ }
+      if (k != ne) exit 1
+      print $1
+    }')" || die "project configuration ownership pairing: exactly the methods Node answered must belong to Rust, and the browser, code and research routes must stay Node's"
+  pc_routes="$(printf '%s\n' "$pc_routes" | sort | tr '\n' ' ')"
+  pc_expected="$(printf '%s\n' /api/projects/{project}/skills/install /api/projects/{projectId}/config /api/projects/{projectId}/instruction-skills /api/projects/{projectId}/instruction-skills/manifests '/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content' | sort | tr '\n' ' ')"
+  [ "$pc_routes" = "$pc_expected" ] || die "project configuration ownership pairing: incomplete route ownership"
+  pc_refused="$( { project_routes_core "$tree/core/server/rust-project-config.cjs" || true; } | sort | tr '\n' ' ')"
+  pc_refused_expected="$(printf '%s\n' 'GET /api/projects/{}/instruction-skills' 'GET /api/projects/{}/instruction-skills/manifests' 'GET /api/projects/{}/instruction-skills/manifests/{}/content' 'POST /api/projects/{}/config' 'POST /api/projects/{}/skills/install' 'PUT /api/projects/{}/instruction-skills' | sort | tr '\n' ' ')"
+  [ "$pc_refused" = "$pc_refused_expected" ] \
+    || die "project configuration ownership pairing: Core must refuse exactly the six routes the front answers"
+  { [ ! -e "$tree/core/server/routes/projects.cjs" ] && ! grep -qF "routes/projects.cjs" "$tree/core/server/index.cjs" 2>/dev/null; } \
+    || die "project configuration ownership pairing: Core still mounts the project routes"
+  grep -qF "known: allToolboxes()" "$tree/core/server/index.cjs" 2>/dev/null \
+    || die "project configuration ownership pairing: Core does not publish the toolbox ids the front validates skills against"
+fi
+# An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
+# refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
+# routes.toml. Core must have no way left to delete an account: no deleteUser in auth.cjs, and the single-writer
+# guard refusing `users` to every statement (rust-auth.cjs), not even inside exempt().
+au_core_owner=""
+au_rs_owner=""
+grep -qF "require('./rust-admin-users.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && au_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-admin-users features; then
+  au_rs_owner=rust
+fi
+[ "$au_core_owner" = "$au_rs_owner" ] \
+  || die "account deletion ownership pairing: Core and Rust must move together"
+if [ "$au_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "account deletion ownership pairing: missing route contract"
+  au_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/admin/users/{id}" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "DELETE") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "account deletion ownership pairing: exactly DELETE /api/admin/users/{id} must belong to Rust"
+  [ "$au_routes" = "/api/admin/users/{id}" ] || die "account deletion ownership pairing: incomplete route ownership"
+  [ "$(project_routes_core "$tree/core/server/rust-admin-users.cjs")" = "DELETE /api/admin/users/{}" ] \
+    || die "account deletion ownership pairing: Core must refuse exactly DELETE /api/admin/users/{id}"
+  if grep -qE '^[[:space:]]+deleteUser[[:space:]]*\(' "$tree/core/server/auth.cjs" 2>/dev/null \
+     || ! grep -qF "users is written by the Rust front" "$tree/core/server/rust-auth.cjs" 2>/dev/null; then
+    die "account deletion ownership pairing: Core can still delete an account (auth.cjs deleteUser, or rust-auth.cjs does not refuse users)"
+  fi
 fi
 # A stored document's page reader (sbstndalton/noevia#2191 round 4) moves as one owner: Core's
 # rust-project-document-pages.cjs refusal and the front's rust-project-document-pages capability, with
@@ -1137,6 +1215,95 @@ if [ "$mcp_rs_owner" = rust ]; then
   done
 fi
 
+# The admin MCP directory, the permitted-tools view and the connectors list (#2202 round 2): each is a Core refusal
+# (rust-mcp-directory.cjs, rust-toolboxes-permitted.cjs, rust-connectors.cjs) paired with a front capability of the
+# same name, with exactly the methods the front answers Rust's in routes.toml. Together they make the front the
+# only writer of directory_mcp_servers (Node re-reads it: its directory-mcp.cjs must hold no write of it) and move
+# the last two views onto the discovery snapshot Node publishes (mcp-discovery.json): a pair without the Core half
+# that publishes it, or the front half that reads it, would answer from nothing.
+discovery_pair_ok() {
+  code_has "$tree/core/server/index.cjs" "createMcpDiscoveryPublisher[[:space:]]*\\(" \
+    && [ -f "$tree/core/server/mcp-discovery-snapshot.cjs" ] \
+    && code_has "$tree/rs/bins/noevia-server/src/lib.rs" "pub[[:space:]]+mod[[:space:]]+mcp_discovery"
+}
+mcpd_core_owner=""
+mcpd_rs_owner=""
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-mcp-directory\\.cjs'\\)" && mcpd_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-mcp-directory features; then
+  mcpd_rs_owner=rust
+fi
+[ "$mcpd_core_owner" = "$mcpd_rs_owner" ] \
+  || die "MCP directory ownership pairing: Core and Rust must move together"
+if [ "$mcpd_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "MCP directory ownership pairing: missing route contract"
+  mcpd_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 ~ /^\/api\/admin\/mcp-directory(\/|$)/ {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "MCP directory ownership pairing: every method of the paths must belong to Rust"
+  mcpd_routes="$(printf '%s\n' "$mcpd_routes" | LC_ALL=C sort | tr '\n' ' ')"
+  [ "$mcpd_routes" = "/api/admin/mcp-directory /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview /api/admin/mcp-directory/{*} /api/admin/mcp-directory/{*}/keys /api/admin/mcp-directory/{id}/oauth-client " ] \
+    || die "MCP directory ownership pairing: incomplete route ownership"
+  discovery_pair_ok || die "MCP directory ownership pairing: Core does not publish the discovery snapshot the front reads"
+  # Node re-reads the table and never writes it: a Core that still writes it beside the front would be a second writer.
+  ! code_has "$tree/core/server/directory-mcp.cjs" "(INSERT[[:space:]]+(OR[[:space:]]+[A-Za-z]+[[:space:]]+)?INTO|REPLACE[[:space:]]+INTO|UPDATE|DELETE[[:space:]]+FROM)[[:space:]]+.?directory_mcp_servers" \
+    || die "MCP directory ownership pairing: Core still writes directory_mcp_servers"
+  # The table is on Core's list of the front's, and the front re-seals the shared key for a rotation.
+  code_has "$tree/core/server/rust-mcp-credentials.cjs" "directory_mcp_servers" \
+    || die "MCP directory ownership pairing: Core does not treat directory_mcp_servers as the front's"
+  code_has "$tree/rs/bins/noevia-server/src/mcp_broker.rs" "directory_mcp_servers" \
+    || die "MCP directory ownership pairing: the front does not re-seal the shared keys"
+fi
+
+ptb_core_owner=""
+ptb_rs_owner=""
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-toolboxes-permitted\\.cjs'\\)" && ptb_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-toolboxes-permitted features; then
+  ptb_rs_owner=rust
+fi
+[ "$ptb_core_owner" = "$ptb_rs_owner" ] \
+  || die "permitted tools ownership pairing: Core and Rust must move together"
+if [ "$ptb_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "permitted tools ownership pairing: missing route contract"
+  ptb_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/toolboxes/permitted" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "permitted tools ownership pairing: every method of the path must belong to Rust"
+  [ "$(printf '%s' "$ptb_routes" | tr '\n' ' ')" = "/api/toolboxes/permitted" ] \
+    || die "permitted tools ownership pairing: incomplete route ownership"
+  discovery_pair_ok || die "permitted tools ownership pairing: Core does not publish the discovery snapshot the front reads"
+fi
+
+cnx_core_owner=""
+cnx_rs_owner=""
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-connectors\\.cjs'\\)" && cnx_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-connectors features; then
+  cnx_rs_owner=rust
+fi
+[ "$cnx_core_owner" = "$cnx_rs_owner" ] \
+  || die "connectors ownership pairing: Core and Rust must move together"
+if [ "$cnx_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "connectors ownership pairing: missing route contract"
+  cnx_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/connectors") return "GET"
+      if (path == "/api/connectors/nextcloud/policy") return "PUT"
+      return ""
+    }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != want($1)) exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "connectors ownership pairing: exactly GET /api/connectors and PUT /api/connectors/nextcloud/policy must belong to Rust"
+  cnx_routes="$(printf '%s\n' "$cnx_routes" | LC_ALL=C sort | tr '\n' ' ')"
+  [ "$cnx_routes" = "/api/connectors /api/connectors/nextcloud/policy " ] \
+    || die "connectors ownership pairing: incomplete route ownership"
+  discovery_pair_ok || die "connectors ownership pairing: Core does not publish the discovery snapshot the front reads"
+fi
+
 # The provider model lists (#2190, round 5): Core's rust-provider-models.cjs refusal (every method on
 # the exact path) and the front's rust-provider-models capability, with the route Rust's for every
 # method in routes.toml.
@@ -1446,8 +1613,9 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # delete (round 3) by core/server/rust-project-files.cjs, a document's page reader (round 4) by
   # core/server/rust-project-document-pages.cjs, a document's upload (round 5) by
   # core/server/rust-project-documents.cjs, the source jobs (round 6) by core/server/rust-source-jobs.cjs, the
-  # source operations (round 8) by core/server/rust-project-source-work.cjs.
-  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; project_routes_core "$tree/core/server/rust-project-source-work.cjs"; } | sort -u))"
+  # source operations (round 8) by core/server/rust-project-source-work.cjs, a project's configuration and
+  # instruction skills (round 9) by core/server/rust-project-config.cjs.
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; project_routes_core "$tree/core/server/rust-project-source-work.cjs"; project_routes_core "$tree/core/server/rust-project-config.cjs"; } | sort -u))"
   [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
   # sbstndalton/noevia#1071: a front that owns sign-in with no switch (routes.toml: GET
   # /api/auth/session owner "rust", no `switch`) needs a core whose rust-auth guard is unconditional
