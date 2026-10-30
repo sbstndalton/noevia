@@ -389,6 +389,33 @@ reset
 run STUB_FEATURES="$BASE_FEATURES rust-storage-connection" >/dev/null 2>"$work/err"; rc=$?
 check "provider test Core without the front capability refuses beside a native connection pair" '[ $rc -eq 2 ] && grep -q "provider test route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm "$work/server/index.cjs"
+# Model sizing route ownership (sbstndalton/noevia#2189) must agree in both directions before launch,
+# separately from the #2187 model reads (each generation pairs on its own).
+printf '%s\n' "  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "model-sizing-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "matching native model sizing pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" "  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads" >/dev/null 2>"$work/err"; rc=$?
+check "an M2-A Core with an M1-only front refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "the M1 and M2-A Core with a front that has both starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "an M2-A front beside an M1-only Core refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "rust-model-sizing front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "model sizing route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old model sizing pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset
