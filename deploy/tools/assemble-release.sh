@@ -739,6 +739,196 @@ if [ "$project_documents_rs_owner" = rust ]; then
     }')" || die "project document upload ownership pairing: exactly POST /api/projects/{id}/documents must belong to Rust"
   [ "$project_documents_routes" = "/api/projects/{id}/documents" ] || die "project document upload ownership pairing: incomplete route ownership"
 fi
+# The public pages (sbstndalton/noevia#2190) move as one owner: Core's rust-public-pages.cjs refusal
+# and the front's rust-public-pages capability, with exactly GET and HEAD of /about and /privacy and
+# every method of /device Rust's in routes.toml (Node keeps the pages' other methods).
+pages_core_owner=""
+pages_rs_owner=""
+grep -qF "require('./rust-public-pages.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pages_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-public-pages features; then
+  pages_rs_owner=rust
+fi
+[ "$pages_core_owner" = "$pages_rs_owner" ] \
+  || die "public page ownership pairing: Core and Rust must move together"
+if [ "$pages_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "public page ownership pairing: missing route contract"
+  page_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/about" || $1 == "/privacy" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0; g = 0; h = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] == "GET") g++; else if (m[i] == "HEAD") h++; else exit 1; k++ }
+      if (k != 2 || g != 1 || h != 1) exit 1
+      print $1
+    }
+    $1 == "/device" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }' | sort)" || die "public page ownership pairing: GET and HEAD of the pages and every method of /device must belong to Rust"
+  page_expected="$(printf '%s\n' /about /privacy /device | sort)"
+  [ "$page_routes" = "$page_expected" ] || die "public page ownership pairing: incomplete route ownership"
+fi
+# The plugin directory (sbstndalton/noevia#2190): Core's rust-plugin-directory.cjs refusal and the
+# front's rust-plugin-directory capability, every method of the route Rust's in routes.toml.
+directory_core_owner=""
+directory_rs_owner=""
+grep -qF "require('./rust-plugin-directory.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && directory_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-plugin-directory features; then
+  directory_rs_owner=rust
+fi
+[ "$directory_core_owner" = "$directory_rs_owner" ] \
+  || die "plugin directory ownership pairing: Core and Rust must move together"
+if [ "$directory_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "plugin directory ownership pairing: missing route contract"
+  directory_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/plugins/directory" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "plugin directory ownership pairing: all methods must belong to Rust"
+  [ "$directory_routes" = /api/plugins/directory ] || die "plugin directory ownership pairing: incomplete route ownership"
+fi
+# The decision settings (sbstndalton/noevia#2190): Core's rust-decision-settings.cjs refusal and the
+# front's rust-decision-settings capability (Rust the single writer of decision:configuration), every
+# method of both routes Rust's in routes.toml.
+decision_core_owner=""
+decision_rs_owner=""
+grep -qF "require('./rust-decision-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && decision_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-decision-settings features; then
+  decision_rs_owner=rust
+fi
+[ "$decision_core_owner" = "$decision_rs_owner" ] \
+  || die "decision settings ownership pairing: Core and Rust must move together"
+if [ "$decision_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "decision settings ownership pairing: missing route contract"
+  decision_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/admin/decision-settings" || $1 == "/api/admin/decision-settings/test" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }' | sort)" || die "decision settings ownership pairing: all methods must belong to Rust"
+  decision_expected="$(printf '%s\n' /api/admin/decision-settings /api/admin/decision-settings/test | sort)"
+  [ "$decision_routes" = "$decision_expected" ] || die "decision settings ownership pairing: incomplete route ownership"
+fi
+# The storage integrations (sbstndalton/noevia#2190, round 3): Core's rust-storage-integrations.cjs
+# refusal and the front's rust-storage-integrations capability (the folder write, the connection test
+# and the Nextcloud sign-in, whose flows file Rust owns), exactly POST of all five routes Rust's in
+# routes.toml (Node answered only POST there; the other methods stay Node's).
+storage_core_owner=""
+storage_rs_owner=""
+grep -qF "require('./rust-storage-integrations.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && storage_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-storage-integrations features; then
+  storage_rs_owner=rust
+fi
+[ "$storage_core_owner" = "$storage_rs_owner" ] \
+  || die "storage integration ownership pairing: Core and Rust must move together"
+if [ "$storage_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "storage integration ownership pairing: missing route contract"
+  storage_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/integrations/storage/folder" || $1 == "/api/integrations/storage/test" ||
+    $1 == "/api/integrations/storage/nextcloud/start" || $1 == "/api/integrations/storage/nextcloud/poll" ||
+    $1 == "/api/integrations/storage/nextcloud/cancel" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | sort)" || die "storage integration ownership pairing: exactly POST of all five routes must belong to Rust"
+  storage_expected="$(printf '%s\n' /api/integrations/storage/folder /api/integrations/storage/test /api/integrations/storage/nextcloud/start /api/integrations/storage/nextcloud/poll /api/integrations/storage/nextcloud/cancel | sort)"
+  [ "$storage_routes" = "$storage_expected" ] || die "storage integration ownership pairing: incomplete route ownership"
+fi
+# The vault-mirror preferences (#2190, round 3): Core's rust-vault-mirror-preferences.cjs refusal (every
+# method; Node's route answered them all, 405 for the others) and the front's
+# rust-vault-mirror-preferences capability, with the path Rust's for every method in routes.toml.
+mirror_core_owner=""
+mirror_rs_owner=""
+grep -qF "require('./rust-vault-mirror-preferences.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mirror_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-vault-mirror-preferences features; then
+  mirror_rs_owner=rust
+fi
+[ "$mirror_core_owner" = "$mirror_rs_owner" ] \
+  || die "vault mirror preference ownership pairing: Core and Rust must move together"
+if [ "$mirror_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "vault mirror preference ownership pairing: missing route contract"
+  mirror_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/chat-vault-mirror/preferences" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "vault mirror preference ownership pairing: every method of the path must belong to Rust"
+  [ "$mirror_routes" = /api/chat-vault-mirror/preferences ] || die "vault mirror preference ownership pairing: incomplete route ownership"
+fi
+
+# The storage connection save (#2190, round 4): Core's rust-storage-connection.cjs refusal (PUT on the
+# exact path; Core's guard then refuses every Node write of storage_connections, and its legacy WebDAV
+# setup asks the front's internal store) and the front's rust-storage-connection capability, with
+# exactly GET and PUT of /api/integrations/storage Rust's in routes.toml (GET is the metadata worker's).
+conn_core_owner=""
+conn_rs_owner=""
+grep -qF "require('./rust-storage-connection.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && conn_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-storage-connection features; then
+  conn_rs_owner=rust
+fi
+[ "$conn_core_owner" = "$conn_rs_owner" ] \
+  || die "storage connection ownership pairing: Core and Rust must move together"
+if [ "$conn_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "storage connection ownership pairing: missing route contract"
+  conn_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/integrations/storage" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0; get = 0; put = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { k++; if (m[i] == "GET") get = 1; else if (m[i] == "PUT") put = 1; else exit 1 }
+      if (k != 2 || !get || !put) exit 1
+      print $1
+    }')" || die "storage connection ownership pairing: exactly GET and PUT of the path must belong to Rust"
+  [ "$conn_routes" = /api/integrations/storage ] || die "storage connection ownership pairing: incomplete route ownership"
+fi
+
+# The provider probe (#2190, round 4): Core's rust-provider-test.cjs refusal (POST on the exact path;
+# Node keeps the other methods, its /api/providers/{id} handler reads `test` as an id) and the front's
+# rust-provider-test capability, with exactly POST of /api/providers/test Rust's in routes.toml.
+ptest_core_owner=""
+ptest_rs_owner=""
+grep -qF "require('./rust-provider-test.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ptest_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-provider-test features; then
+  ptest_rs_owner=rust
+fi
+[ "$ptest_core_owner" = "$ptest_rs_owner" ] \
+  || die "provider test ownership pairing: Core and Rust must move together"
+if [ "$ptest_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "provider test ownership pairing: missing route contract"
+  ptest_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/providers/test" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "provider test ownership pairing: exactly POST of the path must belong to Rust"
+  [ "$ptest_routes" = /api/providers/test ] || die "provider test ownership pairing: incomplete route ownership"
+fi
+
+# The two read-only model sizing reads (sbstndalton/noevia#2189) move as one owner: Core's
+# rust-model-sizing.cjs refusal of their GET and the front's rust-model-sizing capability, with
+# exactly GET of both routes Rust's in routes.toml (Node keeps every other method). Historic old/old
+# pins remain valid rollback pairs.
+sizing_core_owner=""
+sizing_rs_owner=""
+grep -qF "require('./rust-model-sizing.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && sizing_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-sizing features; then
+  sizing_rs_owner=rust
+fi
+[ "$sizing_core_owner" = "$sizing_rs_owner" ] \
+  || die "model sizing ownership pairing: Core and Rust must move together"
+if [ "$sizing_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "model sizing ownership pairing: missing route contract"
+  sizing_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/models/estimate" || $1 == "/api/models/preset/suggest" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | sort)" || die "model sizing ownership pairing: exactly GET of both routes must belong to Rust"
+  sizing_expected="$(printf '%s\n' /api/models/estimate /api/models/preset/suggest | sort)"
+  [ "$sizing_routes" = "$sizing_expected" ] || die "model sizing ownership pairing: incomplete route ownership"
+fi
 
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.

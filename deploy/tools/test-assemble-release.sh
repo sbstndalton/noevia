@@ -1746,6 +1746,348 @@ move_try large-lock-front-only
 check "a host-lock front cannot pair with an in-process-lock Core" 'refused "large-document lock pairing: Core and Rust must share the host lock"'
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-source-jobs.cjs"
+# Public page and plugin directory owner release matrix (sbstndalton/noevia#2190): two independent pairs.
+singles_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/about"
+owner = "rust"
+methods = ["GET", "HEAD"]
+[[route]]
+path = "/privacy"
+owner = "$pages_owner"
+$pages_limit
+[[route]]
+path = "/device"
+owner = "rust"
+$device_limit
+[[route]]
+path = "/api/plugins/directory"
+owner = "$dir_owner"
+$dir_limit
+TOML
+}
+pages_owner=rust; pages_limit='methods = ["GET", "HEAD"]'; device_limit=""; dir_owner=rust; dir_limit=""
+printf '%s\n' "  if (require('./rust-public-pages.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+singles_try pages-core-only
+check "public page Core refusal requires the native capability" 'refused "public page ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-public-pages"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+singles_try pages-pair
+check "matching public page pair assembles with the directory old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+pages_limit='methods = ["GET"]'
+singles_try pages-get-only
+check "a page without HEAD is refused" 'refused "public page ownership pairing"'
+pages_limit=""
+singles_try pages-all-methods
+check "an all-method page is refused (Node keeps the pages' other methods)" 'refused "public page ownership pairing"'
+pages_limit='methods = ["GET", "HEAD"]'; device_limit='methods = ["GET"]'
+singles_try pages-device-get
+check "a GET-only /device is refused (every method is Rust's)" 'refused "public page ownership pairing"'
+device_limit=""; pages_owner=node
+singles_try pages-incomplete
+check "a Node-owned /privacy is refused" 'refused "public page ownership pairing"'
+pages_owner=rust
+printf '%s\n' "  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+singles_try directory-core-only
+check "plugin directory Core refusal requires the native capability" 'refused "plugin directory ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-public-pages", "rust-plugin-directory"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+singles_try singles-pair
+check "both #2190 pairs native assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+dir_limit='methods = ["GET"]'
+singles_try directory-get-only
+check "a GET-only plugin directory is refused (Node answered every method)" 'refused "plugin directory ownership pairing"'
+dir_limit=""; dir_owner=node
+singles_try directory-node-owned
+check "a Node-owned plugin directory beside a native pair is refused" 'refused "plugin directory ownership pairing"'
+dir_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+singles_try singles-front-only
+check "#2190 fronts cannot pair with the old Core handlers" 'refused "ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try singles-old-pair
+check "historic #2190 old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Round 2 (#2190): the decision settings pair, every method of both routes.
+decision_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/admin/decision-settings"
+owner = "rust"
+$decision_limit
+[[route]]
+path = "/api/admin/decision-settings/test"
+owner = "$decision_test_owner"
+TOML
+}
+decision_limit=""; decision_test_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-decision-settings.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+decision_try decision-core-only
+check "decision settings Core refusal requires the native capability" 'refused "decision settings ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-decision-settings"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+decision_try decision-pair
+check "matching decision settings pair assembles with the round 1 pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+decision_limit='methods = ["GET", "PUT", "DELETE"]'
+decision_try decision-some-methods
+check "a method-limited decision settings route is refused (Node answered every method)" 'refused "decision settings ownership pairing"'
+decision_limit=""; decision_test_owner=node
+decision_try decision-test-node
+check "a Node-owned connection test beside a native pair is refused" 'refused "decision settings ownership pairing"'
+decision_test_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+decision_try decision-front-only
+check "a rust-decision-settings front cannot pair with the old Core handlers" 'refused "decision settings ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try decision-old-pair
+check "historic decision settings old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Round 3 (#2190): the storage integration pair, exactly POST of all five routes.
+storage_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/folder"
+owner = "rust"
+$storage_methods
+[[route]]
+path = "/api/integrations/storage/test"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/nextcloud/start"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/nextcloud/poll"
+owner = "$storage_poll_owner"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage/nextcloud/cancel"
+owner = "rust"
+methods = ["POST"]
+TOML
+}
+storage_methods='methods = ["POST"]'; storage_poll_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-storage-integrations.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+storage_try storage-core-only
+check "storage integration Core refusal requires the native capability" 'refused "storage integration ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-storage-integrations"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+storage_try storage-pair
+check "matching storage integration pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_methods=''
+storage_try storage-all-methods
+check "an all-methods storage folder route is refused (Node keeps the other methods)" 'refused "storage integration ownership pairing"'
+storage_methods='methods = ["POST", "PUT"]'
+storage_try storage-extra-method
+check "a storage route with a method beside POST is refused" 'refused "storage integration ownership pairing"'
+storage_methods='methods = ["POST"]'; storage_poll_owner=node
+storage_try storage-poll-node
+check "a Node-owned Nextcloud poll beside a native pair is refused" 'refused "storage integration ownership pairing"'
+storage_poll_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+storage_try storage-front-only
+check "a rust-storage-integrations front cannot pair with the old Core handlers" 'refused "storage integration ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try storage-old-pair
+check "historic storage integration old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Round 3 (#2190): the vault-mirror preferences, every method Rust's.
+mirror_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/chat-vault-mirror/preferences"
+owner = "$mirror_owner"
+$mirror_methods
+TOML
+}
+mirror_methods=''; mirror_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-vault-mirror-preferences.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mirror_try mirror-core-only
+check "vault mirror Core refusal requires the native capability" 'refused "vault mirror preference ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-vault-mirror-preferences"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mirror_try mirror-pair
+check "matching vault mirror pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mirror_methods='methods = ["GET", "PUT"]'
+mirror_try mirror-some-methods
+check "a vault mirror route limited to some methods is refused (Core refuses them all)" 'refused "vault mirror preference ownership pairing"'
+mirror_methods=''; mirror_owner=node
+mirror_try mirror-node-route
+check "a Node-owned vault mirror route beside a native pair is refused" 'refused "vault mirror preference ownership pairing"'
+mirror_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+mirror_try mirror-front-only
+check "a rust-vault-mirror-preferences front cannot pair with the old Core route" 'refused "vault mirror preference ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try mirror-old-pair
+check "historic vault mirror old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Round 4 (#2190): the storage connection save, exactly GET and PUT of the path Rust's.
+conn_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/integrations/storage"
+owner = "$conn_owner"
+$conn_methods
+TOML
+}
+conn_methods='methods = ["GET", "PUT"]'; conn_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-storage-connection.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+conn_try conn-core-only
+check "storage connection Core refusal requires the native capability" 'refused "storage connection ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-storage-connection"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+conn_try conn-pair
+check "matching storage connection pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+conn_methods='methods = ["GET"]'
+conn_try conn-get-only
+check "a storage connection route without PUT is refused (Core refuses the save)" 'refused "storage connection ownership pairing"'
+conn_methods=''
+conn_try conn-all-methods
+check "a storage connection route Rust's for every method is refused (Node keeps the others)" 'refused "storage connection ownership pairing"'
+conn_methods='methods = ["GET", "PUT", "DELETE"]'
+conn_try conn-extra-method
+check "a storage connection route with an extra method is refused" 'refused "storage connection ownership pairing"'
+conn_methods='methods = ["GET", "PUT"]'; conn_owner=node
+conn_try conn-node-route
+check "a Node-owned storage connection route beside a native pair is refused" 'refused "storage connection ownership pairing"'
+conn_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+conn_try conn-front-only
+check "a rust-storage-connection front cannot pair with the old Core save" 'refused "storage connection ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try conn-old-pair
+check "historic storage connection old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Round 4 (#2190): the provider probe, exactly POST of the path Rust's.
+ptest_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/test"
+owner = "$ptest_owner"
+$ptest_methods
+TOML
+}
+ptest_methods='methods = ["POST"]'; ptest_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+ptest_try ptest-core-only
+check "provider test Core refusal requires the native capability" 'refused "provider test ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-provider-test"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ptest_try ptest-pair
+check "matching provider test pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ptest_methods=''
+ptest_try ptest-all-methods
+check "a provider test route Rust's for every method is refused (Node keeps PUT/DELETE)" 'refused "provider test ownership pairing"'
+ptest_methods='methods = ["POST", "PUT"]'
+ptest_try ptest-extra-method
+check "a provider test route with an extra method is refused" 'refused "provider test ownership pairing"'
+ptest_methods='methods = ["POST"]'; ptest_owner=node
+ptest_try ptest-node-route
+check "a Node-owned provider test route beside a native pair is refused" 'refused "provider test ownership pairing"'
+ptest_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+ptest_try ptest-front-only
+check "a rust-provider-test front cannot pair with the old Core probe" 'refused "provider test ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try ptest-old-pair
+check "historic provider test old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Model sizing owner release matrix (sbstndalton/noevia#2189): two routes, GET only.
+sizing_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/models/estimate"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "$sizing_last"
+owner = "rust"
+$sizing_limit
+TOML
+}
+sizing_last="/api/models/preset/suggest"; sizing_limit='methods = ["GET"]'
+printf '%s\n' "  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+sizing_try sizing-core-only
+check "model sizing Core refusal requires the native capability" 'refused "model sizing ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-model-sizing"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+sizing_try sizing-pair
+check "matching model sizing pair with both GET-only routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+sizing_limit=""
+sizing_try sizing-all-methods
+check "an all-method model sizing route is refused (Node keeps the other methods)" 'refused "model sizing ownership pairing"'
+sizing_limit='methods = ["GET", "POST"]'
+sizing_try sizing-get-post
+check "a model sizing route with more than GET is refused" 'refused "model sizing ownership pairing"'
+sizing_limit='methods = ["GET"]'; sizing_last="/api/models/preset"
+sizing_try sizing-incomplete
+check "an incomplete model sizing route set is refused" 'refused "model sizing ownership pairing"'
+sizing_last="/api/models/preset/suggest"
+# An M1 and M2-A Core beside an M1-only front: the #2187 pair holds, the #2189 one does not.
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-model-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+both_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/models/capabilities"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/models/hardware"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/models/estimate"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/models/preset/suggest"
+owner = "rust"
+methods = ["GET"]
+TOML
+}
+both_try sizing-m1-front
+check "an M2-A Core cannot pair with an M1-only front" 'refused "model sizing ownership pairing: Core and Rust must move together"'
+sed 's/"start-id"/"start-id", "rust-model-reads", "rust-model-sizing"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+both_try sizing-m1-m2a-pair
+check "the M1 and M2-A Core with a front that has both assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-model-sizing"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+sizing_try sizing-front-only
+check "a rust-model-sizing front cannot pair with the old Core handlers" 'refused "model sizing ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try sizing-old-pair
+check "historic model sizing old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
