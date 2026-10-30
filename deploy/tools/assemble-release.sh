@@ -997,6 +997,50 @@ if [ "$cgpt_rs_owner" = rust ]; then
     || die "ChatGPT sign-in ownership pairing: incomplete route ownership"
 fi
 
+# The MCP server credentials (#2202): Core's rust-mcp-credentials.cjs refusal and the front's
+# rust-mcp-credentials capability, with exactly the methods the broker answers Rust's in routes.toml
+# (the keys, the sign-in servers, the connect, the disconnect and the sign-in callback). The front is
+# the only writer of the three credential tables, and Core's chat asks its internal store
+# (/v1/mcp/*; mcpSession, mcpKey and the rotation's mcpReseal in Core's store client) for one call's
+# access token or key: a pair without either side would leave a second writer or a chat with no key.
+mcp_core_owner=""
+mcp_rs_owner=""
+grep -qF "require('./rust-mcp-credentials.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mcp_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-mcp-credentials features; then
+  mcp_rs_owner=rust
+fi
+[ "$mcp_core_owner" = "$mcp_rs_owner" ] \
+  || die "MCP credential ownership pairing: Core and Rust must move together"
+if [ "$mcp_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "MCP credential ownership pairing: missing route contract"
+  mcp_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/mcp-keys/servers" || path == "/api/mcp-oauth/servers" || path == "/api/mcp-oauth/callback") return "GET"
+      if (path == "/api/mcp-keys/{*}") return "DELETE,PUT"
+      if (path == "/api/mcp-oauth/{id}") return "DELETE"
+      if (path == "/api/mcp-oauth/{id}/connect") return "POST"
+      return ""
+    }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      delete seen
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] in seen) exit 1; seen[m[i]] = 1; k++ }
+      nw = split(want($1), w, ",")
+      if (k != nw) exit 1
+      for (i = 1; i <= nw; i++) if (!(w[i] in seen)) exit 1
+      print $1
+    }' | LC_ALL=C sort | tr '\n' ' ')" || die "MCP credential ownership pairing: exactly the broker's methods of the routes must belong to Rust"
+  [ "$mcp_routes" = "/api/mcp-keys/servers /api/mcp-keys/{*} /api/mcp-oauth/callback /api/mcp-oauth/servers /api/mcp-oauth/{id} /api/mcp-oauth/{id}/connect " ] \
+    || die "MCP credential ownership pairing: incomplete route ownership"
+  grep -qF '/v1/mcp/' "$tree/rs/bins/noevia-server/src/project_store.rs" 2>/dev/null \
+    || die "MCP credential ownership pairing: the front does not serve /v1/mcp/*"
+  for op in mcpSession mcpKey mcpReseal; do
+    grep -qF "$op" "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+      || die "MCP credential ownership pairing: Core's store client does not call $op"
+  done
+fi
+
 # The provider model lists (#2190, round 5): Core's rust-provider-models.cjs refusal (every method on
 # the exact path) and the front's rust-provider-models capability, with the route Rust's for every
 # method in routes.toml.

@@ -219,7 +219,10 @@ fi
 # and shared-providers.json and Node re-reads them), and its key re-seal (server/rust-providers-reseal.cjs
 # beside rust-providers-reseal, round 6 review; a Core that rotates secrets through the front's internal
 # store needs a front that answers it, and a front that has it needs that Core, so Node never rewrites a
-# provider file the front owns): each group moves as one owner. Old/old images remain usable for
+# provider file the front owns), and the MCP server credentials (server/rust-mcp-credentials.cjs beside
+# rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every account's OAuth sign-ins
+# and own server keys, the only writer of their three tables, and Node's chat asks it for one call's
+# access token or key headers): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -242,6 +245,7 @@ rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in
 rust-provider-models.cjs rust-provider-models provider model list
 rust-providers.cjs rust-providers provider registry
 rust-providers-reseal.cjs rust-providers-reseal provider key reseal
+rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
