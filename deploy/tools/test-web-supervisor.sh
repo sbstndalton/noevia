@@ -380,7 +380,7 @@ run STUB_FEATURES="$BASE_FEATURES rust-project-files" >/dev/null 2>"$work/err"; 
 check "rust-project-files front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project file delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
-for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings"; do
+for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
@@ -407,6 +407,44 @@ check "all three #2190 pairs native start both processes" '[ $rc -eq 3 ] && grep
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-public-pages rust-plugin-directory" >/dev/null 2>"$work/err"; rc=$?
 check "decision settings Core without the front capability refuses even with the other pairs native" '[ $rc -eq 2 ] && grep -q "decision settings route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+# Round 3 (#2190): the storage integration pair beside the earlier pairs, and alone.
+printf '%s\n' "  if (require('./rust-public-pages.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-decision-settings.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-storage-integrations.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-public-pages rust-plugin-directory rust-decision-settings rust-storage-integrations" >/dev/null 2>"$work/err"; rc=$?
+check "all four #2190 pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-public-pages rust-plugin-directory rust-decision-settings" >/dev/null 2>"$work/err"; rc=$?
+check "storage integration Core without the front capability refuses even with the other pairs native" '[ $rc -eq 2 ] && grep -q "storage integration route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+# Round 3 (#2190): the vault-mirror preference pair beside the storage pair, and alone.
+printf '%s\n' "  if (require('./rust-storage-integrations.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-vault-mirror-preferences.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-storage-integrations rust-vault-mirror-preferences" >/dev/null 2>"$work/err"; rc=$?
+check "the storage and vault-mirror pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-storage-integrations" >/dev/null 2>"$work/err"; rc=$?
+check "vault mirror Core without the front capability refuses beside a native storage pair" '[ $rc -eq 2 ] && grep -q "vault mirror preference route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+
+# Round 4 (#2190): the storage connection pair beside the storage integration pair, and alone.
+printf '%s\n' "  if (require('./rust-storage-integrations.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-storage-connection.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-storage-integrations rust-storage-connection" >/dev/null 2>"$work/err"; rc=$?
+check "the storage integration and connection pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-storage-integrations" >/dev/null 2>"$work/err"; rc=$?
+check "storage connection Core without the front capability refuses beside a native integration pair" '[ $rc -eq 2 ] && grep -q "storage connection route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs"
+
+# Round 4 (#2190): the provider test pair beside the storage connection pair, and alone.
+printf '%s\n' "  if (require('./rust-storage-connection.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-storage-connection rust-provider-test" >/dev/null 2>"$work/err"; rc=$?
+check "the storage connection and provider test pairs native start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-storage-connection" >/dev/null 2>"$work/err"; rc=$?
+check "provider test Core without the front capability refuses beside a native connection pair" '[ $rc -eq 2 ] && grep -q "provider test route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm "$work/server/index.cjs"
 # Model sizing route ownership (sbstndalton/noevia#2189) must agree in both directions before launch,
 # separately from the #2187 model reads (each generation pairs on its own).
