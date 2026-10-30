@@ -145,6 +145,37 @@ if [ "$project_lifecycle_core_owner" != "$project_lifecycle_front_owner" ]; then
   echo "web-supervisor: project create/delete ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# The public pages and the device approval page (sbstndalton/noevia#2190, server/rust-public-pages.cjs
+# beside the front's rust-public-pages), and the plugin directory (server/rust-plugin-directory.cjs
+# beside rust-plugin-directory), and the decision settings (server/rust-decision-settings.cjs beside
+# rust-decision-settings; Rust is the decision:configuration row's single writer): each group moves as one owner. Old/old images remain usable for
+# rollback; mixed owners do not.
+while read -r pair_marker pair_capability pair_label; do
+  pair_core_owner=""
+  pair_front_owner=""
+  grep -qF "require('./$pair_marker')" "$PWD/server/index.cjs" 2>/dev/null && pair_core_owner=rust
+  grep -qx "$pair_capability" <<<"$rust_features" && pair_front_owner=rust
+  if [ "$pair_core_owner" != "$pair_front_owner" ]; then
+    echo "web-supervisor: $pair_label route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+    exit 2
+  fi
+done <<'PAIRS'
+rust-public-pages.cjs rust-public-pages public page
+rust-plugin-directory.cjs rust-plugin-directory plugin directory
+rust-decision-settings.cjs rust-decision-settings decision settings
+PAIRS
+# The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
+# /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
+# that answers them (rust-model-sizing), and a rust-model-sizing front needs that Core. Old/old images
+# remain usable for rollback; mixed owners do not.
+sizing_core_owner=""
+sizing_front_owner=""
+grep -qF "require('./rust-model-sizing.cjs')" "$PWD/server/index.cjs" 2>/dev/null && sizing_core_owner=rust
+grep -qx 'rust-model-sizing' <<<"$rust_features" && sizing_front_owner=rust
+if [ "$sizing_core_owner" != "$sizing_front_owner" ]; then
+  echo "web-supervisor: model sizing route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
