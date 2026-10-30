@@ -1711,6 +1711,18 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try source-jobs-old-pair
 check "historic source job old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# sbstndalton/noevia#2191 round 7 (#697): the host-wide large-document lock pairs in both directions.
+printf '%s\n' "const fileLock = require('./large-document-file-lock.cjs');" > "$w/server/large-document-lock.cjs"
+printf '%s\n' "module.exports = { LOCK_FILE: 'large-document.lock' };" > "$w/server/large-document-file-lock.cjs"
+move_try large-lock-core-only
+check "a host-lock Core cannot pair with an in-process-lock front" 'refused "large-document lock pairing: Core and Rust must share the host lock"'
+sed 's/"start-id"/"start-id", "rust-large-document-host-lock"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try large-lock-pair
+check "matching host large-document lock pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/large-document-lock.cjs" "$w/server/large-document-file-lock.cjs"
+move_try large-lock-front-only
+check "a host-lock front cannot pair with an in-process-lock Core" 'refused "large-document lock pairing: Core and Rust must share the host lock"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-source-jobs.cjs"
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.

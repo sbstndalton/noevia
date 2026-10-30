@@ -258,6 +258,18 @@ if [ "$source_jobs_core_owner" != "$source_jobs_front_owner" ]; then
   echo "web-supervisor: source job ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# The large-document lock (sbstndalton/noevia#2191 round 7, #697): a core whose large-document-lock.cjs
+# also takes the host-wide lock file (large-document-file-lock.cjs) needs a front that takes it too
+# (rust-large-document-host-lock), and the reverse; otherwise the two could each hold a document over
+# 25 MiB at once. Old/old stays usable.
+large_lock_core_owner=""
+large_lock_front_owner=""
+grep -qF "require('./large-document-file-lock.cjs')" "$PWD/server/large-document-lock.cjs" 2>/dev/null && large_lock_core_owner=host
+grep -qx 'rust-large-document-host-lock' <<<"$rust_features" && large_lock_front_owner=host
+if [ "$large_lock_core_owner" != "$large_lock_front_owner" ]; then
+  echo "web-supervisor: large-document lock mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # The deep-research executor also requires a paired Rust journal store. Probe the real
 # client export and this binary's compiled feature before starting either process.
 research_client_file="$PWD/server/project-store-client.cjs"

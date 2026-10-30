@@ -746,6 +746,18 @@ if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then
   web_core="$(web_address_routes_core)"
   [ -z "$web_core" ] || die "web-address GET ownership pairing: core refuses GETs but Rust routes.toml is missing"
 fi
+# sbstndalton/noevia#2191 round 7 (#697): the large-document lock is the host's. Core's
+# large-document-lock.cjs taking large-document-file-lock.cjs and the front's
+# rust-large-document-host-lock capability go together, so one large document is held at a time.
+large_lock_core_owner=""
+large_lock_rs_owner=""
+grep -qF "require('./large-document-file-lock.cjs')" "$tree/core/server/large-document-lock.cjs" 2>/dev/null \
+  && [ -f "$tree/core/server/large-document-file-lock.cjs" ] && large_lock_core_owner=host
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-large-document-host-lock features; then
+  large_lock_rs_owner=host
+fi
+[ "$large_lock_core_owner" = "$large_lock_rs_owner" ] \
+  || die "large-document lock pairing: Core and Rust must share the host lock"
 # A partially ported source journal would either strand a 202 without a reader or give
 # source files two owners. Old core/old Rust remains an allowed rollback pair.
 # sbstndalton/noevia#2191 round 6: the source jobs move as one owner. Core's rust-source-jobs.cjs
