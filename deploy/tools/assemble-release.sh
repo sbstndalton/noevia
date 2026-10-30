@@ -370,10 +370,18 @@ rs_serves_history_ops() {
 # Whether the pinned core writes transcripts only through the store ops (sbstndalton/noevia#1071
 # slice 4): the client has them, the interrupted-reply path and the import use them, and the
 # local writer projects.cjs writeHistory is gone.
+# Since #2191 round 4 the front owns the conversation import: Core has no conversation-import.cjs and
+# refuses the route, so that import cannot write a transcript from Node.
+core_refuses_conversation_import() {
+  [ ! -e "$tree/core/server/conversation-import.cjs" ] \
+    && [ -f "$tree/core/server/rust-conversation-import.cjs" ] \
+    && grep -qF "require('./rust-conversation-import.cjs')" "$tree/core/server/index.cjs" 2>/dev/null
+}
 core_writes_history_via_store() {
   grep -q 'historyAppendIfLast' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
     && grep -q 'transcripts.appendIfLast(' "$tree/core/server/chat-interrupted-turn.cjs" 2>/dev/null \
-    && grep -q 'ctx.transcripts.write(' "$tree/core/server/conversation-import.cjs" 2>/dev/null \
+    && { grep -q 'ctx.transcripts.write(' "$tree/core/server/conversation-import.cjs" 2>/dev/null \
+      || core_refuses_conversation_import; } \
     && ! grep -q 'function writeHistory' "$tree/core/server/projects.cjs" 2>/dev/null
 }
 # Whether the pinned core calls the transcript ops at all (then the front must serve them).

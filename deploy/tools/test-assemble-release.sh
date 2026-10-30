@@ -409,6 +409,21 @@ printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_
 g commit -qam rs-change-journal; ph10="$(g rev-parse --short HEAD)"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "#1071 slice 5: ...and assembles once the core refuses the save, writes only through the store and tails the journal the front writes" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$ph10.tar.gz" ]'
+# #2191 round 4: a core without conversation-import.cjs passes this check only when it refuses that import for the front.
+g rm -q apps/web/server/conversation-import.cjs && g commit -qm core-no-import; ph10b="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10b" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "#2191: a core with no import writer that does not refuse the import is still refused" \
+  '[ $rc -ne 0 ] && grep -q "still writes transcripts itself" "$work/err" && [ ! -f "$out/noevia-release-$ph10b.tar.gz" ]'
+cp "$w/server/index.cjs" "$work/index.keep"
+printf '%s\n' 'exports.refuseOwned = () => false;' > "$w/server/rust-conversation-import.cjs"
+printf '%s\n' "require('./rust-conversation-import.cjs');" >> "$w/server/index.cjs"
+g add -A && g commit -qm core-refuses-import; ph10c="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10c" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "#2191: ...and passes this check once the core refuses the import (the import pair guard then decides)" \
+  '[ $rc -ne 0 ] && ! grep -q "still writes transcripts itself" "$work/err"'
+cp "$work/index.keep" "$w/server/index.cjs"; rm -f "$w/server/rust-conversation-import.cjs"
+printf '%s\n' 'let published = await ctx.transcripts.write(chat.id, history, { ifAbsent: true });' > "$w/server/conversation-import.cjs"
+g add -A && g commit -qm core-import-writer-back
 # #2153: a core that builds brains only for origin "history" entries needs a front that journals it.
 printf '%s\n' "const JOURNAL_READER_MARKER = 'noevia-chat-change-journal-reader/1';" "function isHistorySave(e) { return !!e && e.op === 'write' && e.origin === 'history'; }" > "$w/server/chat-change-journal.cjs"
 g add -A && g commit -qm core-journal-origin; ph10o="$(g rev-parse --short HEAD)"
