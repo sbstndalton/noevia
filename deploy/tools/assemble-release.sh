@@ -789,6 +789,37 @@ if [ "$directory_rs_owner" = rust ]; then
     }')" || die "plugin directory ownership pairing: all methods must belong to Rust"
   [ "$directory_routes" = /api/plugins/directory ] || die "plugin directory ownership pairing: incomplete route ownership"
 fi
+# The close-out routes: GET /api/health and GET /api/auto-roles (sbstndalton/noevia#2190) and GET
+# /api/workspace (#2191). Each is Core's refusal (server/rust-health.cjs, rust-auto-roles.cjs,
+# rust-workspace.cjs, which also publish rag-status.json and auto-roles-snapshot.json for the front) beside
+# the front's capability of the same name, with exactly the GET of the path Rust's in routes.toml (the
+# other methods stay Node's: the auto-roles PUT warms the roles in the engine). Old/old stays valid; a
+# mixed pair is refused, so a front never answers from a snapshot nobody publishes and a Core never
+# refuses a route nobody answers.
+get_only_pair() {
+  local marker=$1 capability=$2 label=$3 route=$4 core_owner="" rs_owner="" owned
+  grep -qF "require('./$marker')" "$tree/core/server/index.cjs" 2>/dev/null && core_owner=rust
+  if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES "$capability" features; then
+    rs_owner=rust
+  fi
+  [ "$core_owner" = "$rs_owner" ] \
+    || die "$label ownership pairing: Core and Rust must move together"
+  if [ "$rs_owner" = rust ]; then
+    [ -f "$tree/rs/contracts/http/routes.toml" ] || die "$label ownership pairing: missing route contract"
+    owned="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$route" '
+      $1 == want {
+        if ($2 != "rust" || $3 != "-") exit 1
+        n = split($4, m, /[^A-Z]+/); k = 0; g = 0
+        for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] == "GET") g++; k++ }
+        if (k != 1 || g != 1) exit 1
+        print $1
+      }')" || die "$label ownership pairing: exactly GET of $route must belong to Rust"
+    [ "$owned" = "$route" ] || die "$label ownership pairing: incomplete route ownership"
+  fi
+}
+get_only_pair rust-health.cjs rust-health "health check" /api/health
+get_only_pair rust-auto-roles.cjs rust-auto-roles "auto-roles read" /api/auto-roles
+get_only_pair rust-workspace.cjs rust-workspace "workspace list" /api/workspace
 # The decision settings (sbstndalton/noevia#2190): Core's rust-decision-settings.cjs refusal and the
 # front's rust-decision-settings capability (Rust the single writer of decision:configuration), every
 # method of both routes Rust's in routes.toml.
