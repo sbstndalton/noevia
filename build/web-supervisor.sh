@@ -245,6 +245,19 @@ if [ -z "$source_client_marker" ] && [ -n "$source_store_reported" ]; then
   echo "web-supervisor: noevia-server source job store requires a paired core source job client" >&2
   exit 2
 fi
+# The source jobs (sbstndalton/noevia#2191 round 6): the front becomes the one owning process of the
+# source-job store and Node keeps no source journal client. A Core that refuses the background starts
+# and the poll (server/rust-source-jobs.cjs) needs a front that answers them (rust-source-jobs), and
+# such a front needs that Core. The older pair (Node's client, the front's internal store) is checked
+# above; old/old stays usable.
+source_jobs_core_owner=""
+source_jobs_front_owner=""
+grep -qF "require('./rust-source-jobs.cjs')" "$PWD/server/index.cjs" 2>/dev/null && source_jobs_core_owner=rust
+grep -qx 'rust-source-jobs' <<<"$rust_features" && source_jobs_front_owner=rust
+if [ "$source_jobs_core_owner" != "$source_jobs_front_owner" ]; then
+  echo "web-supervisor: source job ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # The deep-research executor also requires a paired Rust journal store. Probe the real
 # client export and this binary's compiled feature before starting either process.
 research_client_file="$PWD/server/project-store-client.cjs"

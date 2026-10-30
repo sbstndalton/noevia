@@ -414,6 +414,18 @@ rm "$work/server/index.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-document-extraction rust-project-documents" >/dev/null 2>"$work/err"; rc=$?
 check "rust-project-documents front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project document upload ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Source job ownership (sbstndalton/noevia#2191 round 6) must agree in both directions.
+printf '%s\n' "  if (require('./rust-source-jobs.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "source-job-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "source job ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-source-jobs" >/dev/null 2>"$work/err"; rc=$?
+check "matching native source job pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-source-jobs" >/dev/null 2>"$work/err"; rc=$?
+check "rust-source-jobs front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "source job ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 
 # --- Process lifecycle -----------------------------------------------------------------------
 reset

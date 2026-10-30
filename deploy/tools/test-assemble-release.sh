@@ -1634,6 +1634,84 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try documents-old-pair
 check "historic document upload old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-documents.cjs"
+# Source job owner release matrix (sbstndalton/noevia#2191 round 6): POST of the upload and the sync
+# (the background start) and GET of the poll; no Node client, no internal store.
+sj_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/upload"
+owner = "rust"
+$sj_methods
+[[route]]
+path = "/api/projects/{id}/sources/sync"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/source-jobs/{jobId}"
+owner = "rust"
+methods = ["GET"]
+TOML
+}
+sj_methods='methods = ["POST"]'
+sj_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  [ "${1:-}" = jobs ] && printf '%s\n' "  if (require('./rust-source-jobs.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+sj_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cat > "$w/server/rust-source-jobs.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/upload',
+  'POST /api/projects/{id}/sources/sync',
+  'GET /api/projects/{id}/source-jobs/{jobId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+# The old generation's client and internal store, set aside for the new pair and put back for the
+# old/old rollback case.
+# (the source lines only: the other pairings read the same files).
+for f in "$w/server/project-store-client.cjs" "$w/server/source-jobs.cjs" "$rz/bins/noevia-server/src/project_store.rs" "$rz/crates/server-projects/src/source_jobs.rs"; do
+  if [ -e "$f" ]; then cp "$f" "$f.sj-saved"; fi
+done
+rm -f "$w/server/source-jobs.cjs"
+for f in "$w/server/project-store-client.cjs" "$rz/bins/noevia-server/src/project_store.rs" "$rz/crates/server-projects/src/source_jobs.rs"; do
+  if [ -e "$f" ]; then grep -vE 'SOURCE_JOBS_CLIENT_MARKER|sourceJobsFor\(|/v1/source-jobs/|SOURCE_JOBS_STORE_MARKER|use server_projects::source_jobs as jobs;' "$f.sj-saved" > "$f" || true; fi
+done
+sj_core jobs; sj_front ''
+sj_try source-jobs-core-only
+check "source job Core refusal requires the native capability" 'refused "source job ownership pairing: Core and Rust must move together"'
+sj_front ', \"rust-source-jobs\"'
+sj_try source-jobs-pair
+check "matching source job pair with exact methods assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+sj_methods=""
+sj_try source-jobs-all-methods
+check "an all-method upload route is refused" 'refused "source job ownership pairing: exactly POST"'
+sj_methods='methods = ["POST"]'
+cp "$w/server/project-store-client.cjs" "$work/sj-client"
+printf '%s\n' "const SOURCE_JOBS_CLIENT_MARKER = 'noevia-source-jobs-client/1';" >> "$w/server/project-store-client.cjs"
+sj_try source-jobs-with-client
+check "a source job pair whose Core keeps the journal client is refused" 'refused "Core still carries a source journal client"'
+cp "$work/sj-client" "$w/server/project-store-client.cjs"
+cp "$rz/bins/noevia-server/src/project_store.rs" "$work/sj-store"
+printf '%s\n' '        .route("/v1/source-jobs/start", source_route(SourceOp::Start))' >> "$rz/bins/noevia-server/src/project_store.rs"
+sj_try source-jobs-with-store
+check "a source job pair whose front keeps the internal store is refused" 'refused "the front still serves the internal source store"'
+cp "$work/sj-store" "$rz/bins/noevia-server/src/project_store.rs"
+sj_core
+sj_try source-jobs-front-only
+check "a rust-source-jobs front cannot pair with the old Core" 'refused "source job ownership pairing: Core and Rust must move together"'
+for f in "$w/server/project-store-client.cjs" "$w/server/source-jobs.cjs" "$rz/bins/noevia-server/src/project_store.rs" "$rz/crates/server-projects/src/source_jobs.rs"; do
+  if [ -e "$f.sj-saved" ]; then mv "$f.sj-saved" "$f"; fi
+done
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try source-jobs-old-pair
+check "historic source job old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-source-jobs.cjs"
 
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
