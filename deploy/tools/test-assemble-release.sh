@@ -1266,6 +1266,107 @@ check "a rust-model-reads front cannot pair with the old Core handlers" 'refused
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try models-old-pair
 check "historic model read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Public page and plugin directory owner release matrix (sbstndalton/noevia#2190): two independent pairs.
+singles_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/about"
+owner = "rust"
+methods = ["GET", "HEAD"]
+[[route]]
+path = "/privacy"
+owner = "$pages_owner"
+$pages_limit
+[[route]]
+path = "/device"
+owner = "rust"
+$device_limit
+[[route]]
+path = "/api/plugins/directory"
+owner = "$dir_owner"
+$dir_limit
+TOML
+}
+pages_owner=rust; pages_limit='methods = ["GET", "HEAD"]'; device_limit=""; dir_owner=rust; dir_limit=""
+printf '%s\n' "  if (require('./rust-public-pages.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+singles_try pages-core-only
+check "public page Core refusal requires the native capability" 'refused "public page ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-public-pages"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+singles_try pages-pair
+check "matching public page pair assembles with the directory old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+pages_limit='methods = ["GET"]'
+singles_try pages-get-only
+check "a page without HEAD is refused" 'refused "public page ownership pairing"'
+pages_limit=""
+singles_try pages-all-methods
+check "an all-method page is refused (Node keeps the pages' other methods)" 'refused "public page ownership pairing"'
+pages_limit='methods = ["GET", "HEAD"]'; device_limit='methods = ["GET"]'
+singles_try pages-device-get
+check "a GET-only /device is refused (every method is Rust's)" 'refused "public page ownership pairing"'
+device_limit=""; pages_owner=node
+singles_try pages-incomplete
+check "a Node-owned /privacy is refused" 'refused "public page ownership pairing"'
+pages_owner=rust
+printf '%s\n' "  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+singles_try directory-core-only
+check "plugin directory Core refusal requires the native capability" 'refused "plugin directory ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-public-pages", "rust-plugin-directory"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+singles_try singles-pair
+check "both #2190 pairs native assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+dir_limit='methods = ["GET"]'
+singles_try directory-get-only
+check "a GET-only plugin directory is refused (Node answered every method)" 'refused "plugin directory ownership pairing"'
+dir_limit=""; dir_owner=node
+singles_try directory-node-owned
+check "a Node-owned plugin directory beside a native pair is refused" 'refused "plugin directory ownership pairing"'
+dir_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+singles_try singles-front-only
+check "#2190 fronts cannot pair with the old Core handlers" 'refused "ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try singles-old-pair
+check "historic #2190 old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Round 2 (#2190): the decision settings pair, every method of both routes.
+decision_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/admin/decision-settings"
+owner = "rust"
+$decision_limit
+[[route]]
+path = "/api/admin/decision-settings/test"
+owner = "$decision_test_owner"
+TOML
+}
+decision_limit=""; decision_test_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-decision-settings.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+decision_try decision-core-only
+check "decision settings Core refusal requires the native capability" 'refused "decision settings ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-decision-settings"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+decision_try decision-pair
+check "matching decision settings pair assembles with the round 1 pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+decision_limit='methods = ["GET", "PUT", "DELETE"]'
+decision_try decision-some-methods
+check "a method-limited decision settings route is refused (Node answered every method)" 'refused "decision settings ownership pairing"'
+decision_limit=""; decision_test_owner=node
+decision_try decision-test-node
+check "a Node-owned connection test beside a native pair is refused" 'refused "decision settings ownership pairing"'
+decision_test_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+decision_try decision-front-only
+check "a rust-decision-settings front cannot pair with the old Core handlers" 'refused "decision settings ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try decision-old-pair
+check "historic decision settings old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # Model sizing owner release matrix (sbstndalton/noevia#2189): two routes, GET only.
 sizing_try() {
   try_routes "$1" <<TOML
