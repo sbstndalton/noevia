@@ -312,6 +312,20 @@ if [ "$source_work_core_owner" != "$source_work_front_owner" ]; then
   echo "web-supervisor: project source operations ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# In that generation Core keeps no worker path: a Core that refuses the source operations but still ships the
+# worker call (its registry, folder import, PDF reduction or the worker header) would run them a second time.
+if [ "$source_work_core_owner" = rust ]; then
+  for worker_file in source-work.cjs folder-import.cjs pdf-reduce.cjs; do
+    if [ -e "$PWD/server/$worker_file" ]; then
+      echo "web-supervisor: project source operations ownership mismatch between noevia-server and noevia-core (Core still carries server/$worker_file); update the paired image" >&2
+      exit 2
+    fi
+  done
+  if grep -qiF 'x-noevia-source-work' "$PWD/server/routes/projects.cjs" "$PWD/server/index.cjs" 2>/dev/null; then
+    echo "web-supervisor: project source operations ownership mismatch between noevia-server and noevia-core (Core still answers the worker call); update the paired image" >&2
+    exit 2
+  fi
+fi
 # The large-document lock (sbstndalton/noevia#2191 round 7, #697): a core whose large-document-lock.cjs
 # also takes the host-wide lock file (large-document-file-lock.cjs) needs a front that takes it too
 # (rust-large-document-host-lock), and the reverse; otherwise the two could each hold a document over

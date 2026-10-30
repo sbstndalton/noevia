@@ -1718,7 +1718,7 @@ sw_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   printf '%s\n' "  if (require('./rust-source-jobs.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
   if [ "${1:-}" = work ]; then
-    printf '%s\n' "  if (require('./rust-project-source-work.cjs').refuseOwned(req, res, {})) return;" "// storage-latch.db" >> "$w/server/index.cjs"
+    printf '%s\n' "  if (require('./rust-project-source-work.cjs').refuseOwned(req, res, {})) return;" "const storageLatch = require('./storage-latch.cjs').createStorageLatch({ file: require('node:path').join(DATA_DIR, 'storage-latch.db') });" >> "$w/server/index.cjs"
   fi
   return 0
 }
@@ -1759,14 +1759,46 @@ sw_front ", \"rust-source-jobs\", \"rust-large-document-host-lock\", \"rust-proj
 sw_try source-work-no-extraction
 check "source operations without the Docling extraction pipeline are refused" 'refused "project source work ownership pairing: needs the rust-document-extraction capability"'
 sw_front "$sw_all, \"rust-project-source-work\""
-printf '%s\n' "// stub" > "$w/server/source-work.cjs"
-sw_try source-work-worker-path
-check "a pair whose Core keeps the worker path is refused" 'refused "project source work ownership pairing: Core still carries the worker path"'
-rm -f "$w/server/source-work.cjs"
+# Each piece of the worker path is refused on its own, not only the registry: the folder import, the PDF
+# reduction and the worker header a route or the index would still answer.
+mkdir -p "$w/server/routes"
+for worker_file in source-work.cjs folder-import.cjs pdf-reduce.cjs; do
+  printf '%s\n' "// stub" > "$w/server/$worker_file"
+  sw_try "source-work-worker-path-$worker_file"
+  check "a pair whose Core keeps server/$worker_file is refused" 'refused "project source work ownership pairing: Core still carries the worker path"'
+  rm -f "$w/server/$worker_file"
+done
+cp "$w/server/index.cjs" "$work/sw-index-saved"
+printf '%s\n' "if (req.headers['x-noevia-source-work']) {}" > "$w/server/routes/projects.cjs"
+sw_try source-work-worker-header-route
+check "a pair whose Core routes still answer the worker header is refused" 'refused "project source work ownership pairing: Core still carries the worker path"'
+rm -f "$w/server/routes/projects.cjs"
+printf '%s\n' "if (req.headers['x-noevia-source-work']) {}" >> "$w/server/index.cjs"
+sw_try source-work-worker-header-index
+check "a pair whose Core index still answers the worker header is refused" 'refused "project source work ownership pairing: Core still carries the worker path"'
+cp "$work/sw-index-saved" "$w/server/index.cjs"
 cp "$w/server/storage-latch.cjs" "$work/sw-latch-core"; cp "$rz/crates/server-projects/src/storage_latch.rs" "$work/sw-latch-rs"
 sed "s/storage-latch.db/other.db/" "$work/sw-latch-rs" > "$rz/crates/server-projects/src/storage_latch.rs"
 sw_try source-work-latch-name
 check "a front that keeps its latch in another file than Core is refused" 'refused "project source work ownership pairing: Core and Rust must name the same storage latch file"'
+cp "$work/sw-latch-rs" "$rz/crates/server-projects/src/storage_latch.rs"
+# The latch file named only in a comment of Core's index, or not at all, is not a pairing (and the script says
+# so instead of ending without a word).
+sed "s|^const storageLatch = .*|// storage-latch.db|" "$work/sw-index-saved" > "$w/server/index.cjs"
+sw_try source-work-latch-name-comment
+check "a Core that names its latch file only in a comment is refused" 'refused "project source work ownership pairing: Core and Rust must name the same storage latch file"'
+grep -v "storage-latch" "$work/sw-index-saved" > "$w/server/index.cjs"
+sw_try source-work-latch-name-absent
+check "a Core that never names its latch file is refused with a message" 'refused "project source work ownership pairing: Core and Rust must name the same storage latch file"'
+cp "$work/sw-index-saved" "$w/server/index.cjs"
+# BEGIN IMMEDIATE only in a comment does not make the change atomic.
+sed "s|^db.exec('BEGIN IMMEDIATE');|// db.exec('BEGIN IMMEDIATE');|" "$work/sw-latch-core" > "$w/server/storage-latch.cjs"
+sw_try source-work-latch-statement-core-comment
+check "a Core whose latch transaction is only a comment is refused" 'refused "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"'
+cp "$work/sw-latch-core" "$w/server/storage-latch.cjs"
+sed 's|^    conn.execute_batch("BEGIN IMMEDIATE")?;|    // conn.execute_batch("BEGIN IMMEDIATE")?;|' "$work/sw-latch-rs" > "$rz/crates/server-projects/src/storage_latch.rs"
+sw_try source-work-latch-statement-rs-comment
+check "a front whose latch transaction is only a comment is refused" 'refused "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"'
 cp "$work/sw-latch-rs" "$rz/crates/server-projects/src/storage_latch.rs"
 sed "s/BEGIN IMMEDIATE/BEGIN DEFERRED/" "$work/sw-latch-core" > "$w/server/storage-latch.cjs"
 sw_try source-work-latch-statement

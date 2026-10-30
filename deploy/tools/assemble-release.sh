@@ -45,6 +45,9 @@
 set -euo pipefail
 
 die() { echo "assemble-release: $*" >&2; exit 1; }
+# A source file without its comment lines: a pairing check that reads code must not be satisfied by a
+# sentence that mentions the thing (nor end the script silently when a file or a match is absent).
+code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 
 lock_file=""
 if [ "${1:-}" = --lock ]; then
@@ -981,11 +984,12 @@ if [ "$source_work_rs_owner" = rust ]; then
       || die "project source work ownership pairing: needs the $needed capability"
   done
   { [ ! -e "$tree/core/server/source-work.cjs" ] && [ ! -e "$tree/core/server/folder-import.cjs" ] && [ ! -e "$tree/core/server/pdf-reduce.cjs" ] \
-    && ! grep -qiF 'x-noevia-source-work' "$tree/core/server/routes/projects.cjs" 2>/dev/null; } \
+    && ! grep -qiF 'x-noevia-source-work' "$tree/core/server/routes/projects.cjs" 2>/dev/null \
+    && ! grep -qiF 'x-noevia-source-work' "$tree/core/server/index.cjs" 2>/dev/null; } \
     || die "project source work ownership pairing: Core still carries the worker path"
   [ -f "$tree/core/server/rust-source-ops.cjs" ] && [ -f "$tree/core/server/storage-latch.cjs" ] \
     || die "project source work ownership pairing: Core lacks its readers of the front's file operations and storage latch"
-  core_latch="$(grep -o "storage-latch\.db" "$tree/core/server/index.cjs" 2>/dev/null | head -1)"
+  core_latch="$(code_lines "$tree/core/server/index.cjs" | grep -o "storage-latch\.db" | head -1 || true)"
   rs_latch="$(sed -n 's/^pub const FILE: &str = "\(storage-latch\.db\)";.*/\1/p' "$tree/rs/crates/server-projects/src/storage_latch.rs" 2>/dev/null | head -1)"
   { [ -n "$core_latch" ] && [ "$core_latch" = "$rs_latch" ]; } \
     || die "project source work ownership pairing: Core and Rust must name the same storage latch file (Core '$core_latch', Rust '$rs_latch')"
@@ -993,7 +997,9 @@ if [ "$source_work_rs_owner" = rust ]; then
   rs_ops="$(sed -n 's/^pub const FILE: &str = "\(source-file-ops\.json\)";.*/\1/p' "$tree/rs/crates/server-projects/src/source_ops.rs" 2>/dev/null | head -1)"
   { [ -n "$core_ops" ] && [ "$core_ops" = "$rs_ops" ]; } \
     || die "project source work ownership pairing: Core and Rust must name the same file-operation list (Core '$core_ops', Rust '$rs_ops')"
-  grep -qF 'BEGIN IMMEDIATE' "$tree/core/server/storage-latch.cjs" 2>/dev/null && grep -qF 'BEGIN IMMEDIATE' "$tree/rs/crates/server-projects/src/storage_latch.rs" 2>/dev/null \
+  latch_core_code="$(code_lines "$tree/core/server/storage-latch.cjs")"
+  latch_rs_code="$(code_lines "$tree/rs/crates/server-projects/src/storage_latch.rs")"
+  { grep -qF "exec('BEGIN IMMEDIATE')" <<<"$latch_core_code" && grep -qF 'execute_batch("BEGIN IMMEDIATE")' <<<"$latch_rs_code"; } \
     || die "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"
   [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project source work ownership pairing: missing route contract"
   source_work_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
