@@ -222,14 +222,17 @@ fi
 # provider file the front owns), Google Drive's token authority
 # (server/rust-google-drive.cjs beside rust-google-drive, round 7; Rust owns the sign-ins, the sealed refresh tokens
 # and tool_policies, and Node's chat tools ask it for access tokens through the internal store), the off-site
-# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7) and the MCP server credentials
+# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7), the MCP server credentials
 # (server/rust-mcp-credentials.cjs beside rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every
 # account's OAuth sign-ins and own server keys, the only writer of their three tables, and Node's chat asks it for
-# one call's access token or key headers), and since round 2 the admin MCP directory (server/rust-mcp-directory.cjs
-# beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the only writer of
-# directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs beside
-# rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last two
-# computed by the front from the discovery snapshot Node publishes: each group moves as one owner. Old/old images
+# one call's access token or key headers), the close-out GETs (sbstndalton/noevia#2190, #2191): the health
+# check (server/rust-health.cjs beside rust-health, which also publishes rag-status.json), the auto-roles read
+# (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
+# list (server/rust-workspace.cjs beside rust-workspace), and since #2202 round 2 the admin MCP directory
+# (server/rust-mcp-directory.cjs beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the
+# only writer of directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs
+# beside rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last
+# two computed by the front from the discovery snapshot Node publishes: each group moves as one owner. Old/old images
 # remain usable for rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -255,6 +258,9 @@ rust-providers-reseal.cjs rust-providers-reseal provider key reseal
 rust-google-drive.cjs rust-google-drive Google Drive
 rust-offsite-backup.cjs rust-offsite-backup off-site backup
 rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
+rust-health.cjs rust-health health check
+rust-auto-roles.cjs rust-auto-roles auto-roles read
+rust-workspace.cjs rust-workspace workspace list
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
 rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
 rust-connectors.cjs rust-connectors connectors
