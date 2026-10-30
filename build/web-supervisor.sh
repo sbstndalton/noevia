@@ -219,10 +219,13 @@ fi
 # and shared-providers.json and Node re-reads them), and its key re-seal (server/rust-providers-reseal.cjs
 # beside rust-providers-reseal, round 6 review; a Core that rotates secrets through the front's internal
 # store needs a front that answers it, and a front that has it needs that Core, so Node never rewrites a
-# provider file the front owns), and the MCP server credentials (server/rust-mcp-credentials.cjs beside
-# rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every account's OAuth sign-ins
-# and own server keys, the only writer of their three tables, and Node's chat asks it for one call's
-# access token or key headers): each group moves as one owner. Old/old images remain usable for
+# provider file the front owns), Google Drive's token authority
+# (server/rust-google-drive.cjs beside rust-google-drive, round 7; Rust owns the sign-ins, the sealed refresh tokens
+# and tool_policies, and Node's chat tools ask it for access tokens through the internal store), the off-site
+# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7) and the MCP server credentials
+# (server/rust-mcp-credentials.cjs beside rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every
+# account's OAuth sign-ins and own server keys, the only writer of their three tables, and Node's chat asks it for
+# one call's access token or key headers): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -245,6 +248,8 @@ rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in
 rust-provider-models.cjs rust-provider-models provider model list
 rust-providers.cjs rust-providers provider registry
 rust-providers-reseal.cjs rust-providers-reseal provider key reseal
+rust-google-drive.cjs rust-google-drive Google Drive
+rust-offsite-backup.cjs rust-offsite-backup off-site backup
 rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
@@ -315,6 +320,32 @@ grep -qx 'rust-source-jobs' <<<"$rust_features" && source_jobs_front_owner=rust
 if [ "$source_jobs_core_owner" != "$source_jobs_front_owner" ]; then
   echo "web-supervisor: source job ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
+fi
+# The project source operations (sbstndalton/noevia#2191 round 8): the upload, the folder sync and the folder
+# import's plan run in the front, with no worker call to Node. A Core that refuses them
+# (server/rust-project-source-work.cjs) and reads the front's storage latch and file-operation list needs a
+# front that runs them (rust-project-source-work), and such a front needs that Core. Old/old stays usable.
+source_work_core_owner=""
+source_work_front_owner=""
+grep -qF "require('./rust-project-source-work.cjs')" "$PWD/server/index.cjs" 2>/dev/null && source_work_core_owner=rust
+grep -qx 'rust-project-source-work' <<<"$rust_features" && source_work_front_owner=rust
+if [ "$source_work_core_owner" != "$source_work_front_owner" ]; then
+  echo "web-supervisor: project source operations ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# In that generation Core keeps no worker path: a Core that refuses the source operations but still ships the
+# worker call (its registry, folder import, PDF reduction or the worker header) would run them a second time.
+if [ "$source_work_core_owner" = rust ]; then
+  for worker_file in source-work.cjs folder-import.cjs pdf-reduce.cjs; do
+    if [ -e "$PWD/server/$worker_file" ]; then
+      echo "web-supervisor: project source operations ownership mismatch between noevia-server and noevia-core (Core still carries server/$worker_file); update the paired image" >&2
+      exit 2
+    fi
+  done
+  if grep -qiF 'x-noevia-source-work' "$PWD/server/routes/projects.cjs" "$PWD/server/index.cjs" 2>/dev/null; then
+    echo "web-supervisor: project source operations ownership mismatch between noevia-server and noevia-core (Core still answers the worker call); update the paired image" >&2
+    exit 2
+  fi
 fi
 # The large-document lock (sbstndalton/noevia#2191 round 7, #697): a core whose large-document-lock.cjs
 # also takes the host-wide lock file (large-document-file-lock.cjs) needs a front that takes it too

@@ -1687,6 +1687,147 @@ check "source job Core refusal requires the native capability" 'refused "source 
 sj_front ', \"rust-source-jobs\"'
 sj_try source-jobs-pair
 check "matching source job pair with exact methods assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# sbstndalton/noevia#2191 round 8: the project source operations ride on that pair, with the host lock,
+# Docling extraction, the storage latch file and the file-operation list.
+sw_plan='methods = ["POST"]'
+sw_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/upload"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/sources/sync"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{id}/folder-import/plan"
+owner = "rust"
+$sw_plan
+[[route]]
+path = "/api/projects/{id}/source-jobs/{jobId}"
+owner = "rust"
+methods = ["GET"]
+TOML
+}
+sw_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./rust-source-jobs.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  if [ "${1:-}" = work ]; then
+    printf '%s\n' "  if (require('./rust-project-source-work.cjs').refuseOwned(req, res, {})) return;" "const storageLatch = require('./storage-latch.cjs').createStorageLatch({ file: require('node:path').join(DATA_DIR, 'storage-latch.db') });" >> "$w/server/index.cjs"
+  fi
+  return 0
+}
+cat > "$w/server/rust-source-jobs.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'GET /api/projects/{id}/source-jobs/{jobId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+cat > "$w/server/rust-project-source-work.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/upload',
+  'POST /api/projects/{id}/sources/sync',
+  'POST /api/projects/{id}/folder-import/plan',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+printf '%s\n' "const FILE = 'source-file-ops.json';" > "$w/server/rust-source-ops.cjs"
+printf '%s\n' "db.exec('BEGIN IMMEDIATE');" > "$w/server/storage-latch.cjs"
+printf '%s\n' 'pub const FILE: &str = "storage-latch.db";' '    conn.execute_batch("BEGIN IMMEDIATE")?;' > "$rz/crates/server-projects/src/storage_latch.rs"
+printf '%s\n' 'pub const FILE: &str = "source-file-ops.json";' > "$rz/crates/server-projects/src/source_ops.rs"
+# The host lock the front takes (the capability this one needs) and Core's side of it.
+printf '%s\n' "const fileLock = require('./large-document-file-lock.cjs');" > "$w/server/large-document-lock.cjs"
+printf '%s\n' "const LOCK_FILE = 'large-document.lock';" "  try { db.exec('BEGIN IMMEDIATE'); return db; } catch (err) { throw err; }" "module.exports = { LOCK_FILE };" > "$w/server/large-document-file-lock.cjs"
+printf '%s\n' 'pub const LARGE_LOCK_FILE: &str = "large-document.lock";' '        match conn.execute_batch("BEGIN IMMEDIATE") {' > "$rz/crates/server-projects/src/extract.rs"
+sw_front() { sed "s/\"start-id\"/\"start-id\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+sw_all=', \"rust-source-jobs\", \"rust-document-extraction\", \"rust-large-document-host-lock\"'
+sw_core work; sw_front "$sw_all"
+sw_try source-work-core-only
+check "a source-work Core refuses an old front" 'refused "project source work ownership pairing: Core and Rust must move together"'
+sw_core; sw_front "$sw_all, \"rust-project-source-work\""
+sw_try source-work-front-only
+check "a rust-project-source-work front refuses an old Core" 'refused "project source work ownership pairing: Core and Rust must move together"'
+sw_core work; sw_front "$sw_all, \"rust-project-source-work\""
+sw_try source-work-pair
+check "the matching source operations pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+sw_front ", \"rust-source-jobs\", \"rust-large-document-host-lock\", \"rust-project-source-work\""
+sw_try source-work-no-extraction
+check "source operations without the Docling extraction pipeline are refused" 'refused "project source work ownership pairing: needs the rust-document-extraction capability"'
+sw_front "$sw_all, \"rust-project-source-work\""
+# Each piece of the worker path is refused on its own, not only the registry: the folder import, the PDF
+# reduction and the worker header a route or the index would still answer.
+mkdir -p "$w/server/routes"
+for worker_file in source-work.cjs folder-import.cjs pdf-reduce.cjs; do
+  printf '%s\n' "// stub" > "$w/server/$worker_file"
+  sw_try "source-work-worker-path-$worker_file"
+  check "a pair whose Core keeps server/$worker_file is refused" 'refused "project source work ownership pairing: Core still carries the worker path"'
+  rm -f "$w/server/$worker_file"
+done
+cp "$w/server/index.cjs" "$work/sw-index-saved"
+printf '%s\n' "if (req.headers['x-noevia-source-work']) {}" > "$w/server/routes/projects.cjs"
+sw_try source-work-worker-header-route
+check "a pair whose Core routes still answer the worker header is refused" 'refused "project source work ownership pairing: Core still carries the worker path"'
+rm -f "$w/server/routes/projects.cjs"
+printf '%s\n' "if (req.headers['x-noevia-source-work']) {}" >> "$w/server/index.cjs"
+sw_try source-work-worker-header-index
+check "a pair whose Core index still answers the worker header is refused" 'refused "project source work ownership pairing: Core still carries the worker path"'
+cp "$work/sw-index-saved" "$w/server/index.cjs"
+cp "$w/server/storage-latch.cjs" "$work/sw-latch-core"; cp "$rz/crates/server-projects/src/storage_latch.rs" "$work/sw-latch-rs"
+sed "s/storage-latch.db/other.db/" "$work/sw-latch-rs" > "$rz/crates/server-projects/src/storage_latch.rs"
+sw_try source-work-latch-name
+check "a front that keeps its latch in another file than Core is refused" 'refused "project source work ownership pairing: Core and Rust must name the same storage latch file"'
+cp "$work/sw-latch-rs" "$rz/crates/server-projects/src/storage_latch.rs"
+# The latch file named only in a comment of Core's index, or not at all, is not a pairing (and the script says
+# so instead of ending without a word).
+sed "s|^const storageLatch = .*|// storage-latch.db|" "$work/sw-index-saved" > "$w/server/index.cjs"
+sw_try source-work-latch-name-comment
+check "a Core that names its latch file only in a comment is refused" 'refused "project source work ownership pairing: Core and Rust must name the same storage latch file"'
+grep -v "storage-latch" "$work/sw-index-saved" > "$w/server/index.cjs"
+sw_try source-work-latch-name-absent
+check "a Core that never names its latch file is refused with a message" 'refused "project source work ownership pairing: Core and Rust must name the same storage latch file"'
+cp "$work/sw-index-saved" "$w/server/index.cjs"
+# BEGIN IMMEDIATE only in a comment does not make the change atomic.
+sed "s|^db.exec('BEGIN IMMEDIATE');|// db.exec('BEGIN IMMEDIATE');|" "$work/sw-latch-core" > "$w/server/storage-latch.cjs"
+sw_try source-work-latch-statement-core-comment
+check "a Core whose latch transaction is only a comment is refused" 'refused "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"'
+cp "$work/sw-latch-core" "$w/server/storage-latch.cjs"
+sed 's|^    conn.execute_batch("BEGIN IMMEDIATE")?;|    // conn.execute_batch("BEGIN IMMEDIATE")?;|' "$work/sw-latch-rs" > "$rz/crates/server-projects/src/storage_latch.rs"
+sw_try source-work-latch-statement-rs-comment
+check "a front whose latch transaction is only a comment is refused" 'refused "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"'
+cp "$work/sw-latch-rs" "$rz/crates/server-projects/src/storage_latch.rs"
+sed "s/BEGIN IMMEDIATE/BEGIN DEFERRED/" "$work/sw-latch-core" > "$w/server/storage-latch.cjs"
+sw_try source-work-latch-statement
+check "a Core that changes the latch another way is refused" 'refused "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"'
+cp "$work/sw-latch-core" "$w/server/storage-latch.cjs"
+printf '%s\n' 'pub const FILE: &str = "other-ops.json";' > "$rz/crates/server-projects/src/source_ops.rs"
+sw_try source-work-ops-name
+check "a front that lists its operations in another file than Core reads is refused" 'refused "project source work ownership pairing: Core and Rust must name the same file-operation list"'
+printf '%s\n' 'pub const FILE: &str = "source-file-ops.json";' > "$rz/crates/server-projects/src/source_ops.rs"
+rm -f "$w/server/rust-source-ops.cjs"
+sw_try source-work-no-ops-reader
+check "a Core without its file-operation reader is refused" 'refused "project source work ownership pairing: Core lacks its readers"'
+printf '%s\n' "const FILE = 'source-file-ops.json';" > "$w/server/rust-source-ops.cjs"
+sw_plan='methods = ["POST", "GET"]'
+sw_try source-work-plan-methods
+check "a folder plan route that is not exactly POST is refused" 'refused "project source work ownership pairing: exactly POST of the upload, the sync and the folder import"'
+sw_plan='methods = ["POST"]'
+sw_try source-work-pair-again
+check "the matching source operations pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-source-work.cjs" "$w/server/rust-source-ops.cjs" "$w/server/storage-latch.cjs" "$w/server/large-document-lock.cjs" "$w/server/large-document-file-lock.cjs" "$rz/crates/server-projects/src/storage_latch.rs" "$rz/crates/server-projects/src/source_ops.rs" "$rz/crates/server-projects/src/extract.rs"
+cat > "$w/server/rust-source-jobs.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{id}/upload',
+  'POST /api/projects/{id}/sources/sync',
+  'GET /api/projects/{id}/source-jobs/{jobId}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+sj_core jobs; sj_front ', \"rust-source-jobs\"'
 sj_methods=""
 sj_try source-jobs-all-methods
 check "an all-method upload route is refused" 'refused "source job ownership pairing: exactly POST"'
@@ -2321,6 +2462,137 @@ move_try prov-old-pair
 check "historic provider registry old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 cp "$work/reseal-client.saved" "$w/server/project-store-client.cjs"
 if [ -f "$work/reseal-store.saved" ]; then cp "$work/reseal-store.saved" "$rz/bins/noevia-server/src/project_store.rs"; else rm -f "$rz/bins/noevia-server/src/project_store.rs"; fi
+# Round 7 (#2190): Google Drive's token authority, exactly the connector writes' methods Rust's.
+gdrv_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/connectors/gdrive/connect"
+owner = "$gdrv_owner"
+$gdrv_post
+[[route]]
+path = "/api/connectors/gdrive/disconnect"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/connectors/gdrive/policy"
+owner = "rust"
+methods = ["PUT"]
+$gdrv_copy
+TOML
+}
+gdrv_copy_rust='[[route]]
+path = "/api/connectors/gdrive/backup-copy"
+owner = "rust"
+methods = ["PUT"]'
+gdrv_post='methods = ["POST"]'; gdrv_owner=rust; gdrv_copy="$gdrv_copy_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-google-drive.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+gdrv_try gdrv-core-only
+check "Google Drive Core refusal requires the native capability" 'refused "Google Drive ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-google-drive"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+gdrv_try gdrv-pair
+check "matching Google Drive pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+gdrv_post=''
+gdrv_try gdrv-all-methods
+check "a Google Drive connector route Rust's for every method is refused (Node keeps the 404s)" 'refused "Google Drive ownership pairing"'
+gdrv_post='methods = ["PUT"]'
+gdrv_try gdrv-wrong-method
+check "a Google Drive connector route with the wrong method is refused" 'refused "Google Drive ownership pairing"'
+gdrv_post='methods = ["POST"]'; gdrv_owner=node
+gdrv_try gdrv-node-route
+check "a Node-owned Google Drive connector route beside a native pair is refused" 'refused "Google Drive ownership pairing"'
+gdrv_owner=rust; gdrv_copy=''
+gdrv_try gdrv-missing-copy
+check "a native Google Drive pair without the backup-copy route is refused" 'refused "Google Drive ownership pairing"'
+gdrv_copy="$gdrv_copy_rust"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+gdrv_try gdrv-front-only
+check "a rust-google-drive front cannot pair with the old Core connectors" 'refused "Google Drive ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try gdrv-old-pair
+check "historic Google Drive old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Round 7 (#2190): the off-site backup, all eight paths Rust's for every method.
+offs_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/admin/offsite-backup"
+owner = "$offs_owner"
+$offs_methods
+[[route]]
+path = "/api/admin/offsite-backup/copy"
+owner = "rust"
+[[route]]
+path = "/api/admin/offsite-backup/google/connect"
+owner = "rust"
+[[route]]
+path = "/api/admin/offsite-backup/google/disconnect"
+owner = "rust"
+$offs_newstore
+[[route]]
+path = "/api/admin/offsite-backup/recovery-key"
+owner = "rust"
+[[route]]
+path = "/api/admin/offsite-backup/run"
+owner = "rust"
+$offs_verify
+TOML
+}
+offs_verify_rust='[[route]]
+path = "/api/admin/offsite-backup/verify"
+owner = "rust"'
+offs_newstore_rust='[[route]]
+path = "/api/admin/offsite-backup/new-store"
+owner = "rust"'
+offs_methods=''; offs_owner=rust; offs_verify="$offs_verify_rust"; offs_newstore="$offs_newstore_rust"
+# Core's own list of the paths it refuses (server/rust-offsite-backup.cjs), with the new-store action (yes) or without it.
+offs_core_file() {
+  if [ "$1" = yes ]; then
+    printf '%s\n' "const OWNED_PATHS = ['/api/admin/offsite-backup', '/api/admin/offsite-backup/new-store'];" > "$w/server/rust-offsite-backup.cjs"
+  else
+    printf '%s\n' "const OWNED_PATHS = ['/api/admin/offsite-backup'];" > "$w/server/rust-offsite-backup.cjs"
+  fi
+}
+offs_core_file yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-offsite-backup.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+offs_try offs-core-only
+check "off-site backup Core refusal requires the native capability" 'refused "off-site backup ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-offsite-backup"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+offs_try offs-pair
+check "matching off-site backup pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+offs_methods='methods = ["GET"]'
+offs_try offs-get-only
+check "an off-site backup path Rust's for GET only is refused (Node would keep the 405s)" 'refused "off-site backup ownership pairing"'
+offs_methods=''; offs_owner=node
+offs_try offs-node-route
+check "a Node-owned off-site backup path beside a native pair is refused" 'refused "off-site backup ownership pairing"'
+offs_owner=rust; offs_verify=''
+offs_try offs-missing-verify
+check "a native off-site backup pair without the restore-test route is refused" 'refused "off-site backup ownership pairing"'
+offs_verify="$offs_verify_rust"; offs_newstore=''
+offs_try offs-missing-newstore
+check "a native off-site backup pair without the new-store route is refused" 'refused "off-site backup ownership pairing: incomplete route ownership"'
+offs_newstore="$offs_newstore_rust"
+offs_core_file no
+offs_try offs-core-without-newstore
+check "a Core that does not refuse the new-store path cannot pair with a front that answers it" 'refused "off-site backup ownership pairing: Core does not refuse the new-store path"'
+offs_core_file yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+offs_try offs-front-only
+check "a rust-offsite-backup front cannot pair with the old Core backup" 'refused "off-site backup ownership pairing"'
+rm -f "$w/server/rust-offsite-backup.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try offs-old-pair
+check "historic off-site backup old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # Model sizing owner release matrix (sbstndalton/noevia#2189): two routes, GET only.
 sizing_try() {
   try_routes "$1" <<TOML

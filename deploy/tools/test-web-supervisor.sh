@@ -426,6 +426,32 @@ rm "$work/server/index.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-source-jobs" >/dev/null 2>"$work/err"; rc=$?
 check "rust-source-jobs front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "source job ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Project source operations ownership (sbstndalton/noevia#2191 round 8) must agree in both directions.
+printf '%s\n' "  if (require('./rust-project-source-work.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "source-work-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project source operations ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-source-work" >/dev/null 2>"$work/err"; rc=$?
+check "matching native source operations pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# A matching pair whose Core still ships any piece of the worker path is refused: the pair is read, not just
+# its two switches (so the case above is a control with something to be refused for).
+for worker_file in source-work.cjs folder-import.cjs pdf-reduce.cjs; do
+  reset; : > "$work/server/$worker_file"
+  run STUB_FEATURES="$BASE_FEATURES rust-project-source-work" >/dev/null 2>"$work/err"; rc=$?
+  check "a native source operations pair whose Core keeps server/$worker_file refuses before launch" '[ $rc -eq 2 ] && grep -q "project source operations ownership mismatch" "$work/err" && grep -q "'"$worker_file"'" "$work/err" && [ ! -s "$work/log" ]'
+  rm -f "$work/server/$worker_file"
+done
+mkdir -p "$work/server/routes"
+printf '%s\n' "if (req.headers['x-noevia-source-work']) {}" > "$work/server/routes/projects.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-source-work" >/dev/null 2>"$work/err"; rc=$?
+check "a native source operations pair whose Core still answers the worker header refuses before launch" '[ $rc -eq 2 ] && grep -q "still answers the worker call" "$work/err" && [ ! -s "$work/log" ]'
+rm -f "$work/server/routes/projects.cjs"
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-source-work" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-source-work front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project source operations ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 # The host-wide large-document lock (sbstndalton/noevia#2191 round 7, #697) must agree in both directions.
 printf '%s\n' "const fileLock = require('./large-document-file-lock.cjs');" > "$work/server/large-document-lock.cjs"
 reset
@@ -440,7 +466,7 @@ run STUB_FEATURES="$BASE_FEATURES rust-large-document-host-lock" >/dev/null 2>"$
 check "host-lock front with an in-process-lock Core refuses before launch" '[ $rc -eq 2 ] && grep -q "large-document lock mismatch" "$work/err" && [ ! -s "$work/log" ]'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
-for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list" "rust-providers.cjs rust-providers provider registry" "rust-providers-reseal.cjs rust-providers-reseal provider key reseal" "rust-mcp-credentials.cjs rust-mcp-credentials MCP credential"; do
+for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list" "rust-providers.cjs rust-providers provider registry" "rust-providers-reseal.cjs rust-providers-reseal provider key reseal" "rust-google-drive.cjs rust-google-drive Google Drive" "rust-offsite-backup.cjs rust-offsite-backup off-site backup" "rust-mcp-credentials.cjs rust-mcp-credentials MCP credential"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset

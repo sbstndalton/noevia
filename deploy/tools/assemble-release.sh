@@ -45,6 +45,9 @@
 set -euo pipefail
 
 die() { echo "assemble-release: $*" >&2; exit 1; }
+# A source file without its comment lines: a pairing check that reads code must not be satisfied by a
+# sentence that mentions the thing (nor end the script silently when a file or a match is absent).
+code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 
 lock_file=""
 if [ "${1:-}" = --lock ]; then
@@ -1078,6 +1081,64 @@ if [ "$pmod_rs_owner" = rust ]; then
   [ "$pmod_routes" = "/api/providers/{providerId}/models{*?}" ] || die "provider model list ownership pairing: incomplete route ownership"
 fi
 
+# Google Drive's token authority (#2190, round 7): Core's rust-google-drive.cjs refusal and the front's
+# rust-google-drive capability, with exactly POST of the connect and disconnect routes and PUT of the policy
+# and backup-copy routes Rust's in routes.toml (GET /api/connectors and the Nextcloud policy stay Node's).
+gdrv_core_owner=""
+gdrv_rs_owner=""
+grep -qF "require('./rust-google-drive.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && gdrv_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-google-drive features; then
+  gdrv_rs_owner=rust
+fi
+[ "$gdrv_core_owner" = "$gdrv_rs_owner" ] \
+  || die "Google Drive ownership pairing: Core and Rust must move together"
+if [ "$gdrv_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Google Drive ownership pairing: missing route contract"
+  gdrv_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    function want(path) {
+      if (path == "/api/connectors/gdrive/connect" || path == "/api/connectors/gdrive/disconnect") return "POST"
+      if (path == "/api/connectors/gdrive/policy" || path == "/api/connectors/gdrive/backup-copy") return "PUT"
+      return ""
+    }
+    want($1) != "" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != want($1)) exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }')" || die "Google Drive ownership pairing: exactly the connector writes' methods of the routes must belong to Rust"
+  gdrv_routes="$(printf '%s\n' "$gdrv_routes" | sort | tr '\n' ' ')"
+  [ "$gdrv_routes" = "/api/connectors/gdrive/backup-copy /api/connectors/gdrive/connect /api/connectors/gdrive/disconnect /api/connectors/gdrive/policy " ] \
+    || die "Google Drive ownership pairing: incomplete route ownership"
+fi
+
+# The off-site backup (#2190, round 7): Core's rust-offsite-backup.cjs refusal and the front's
+# rust-offsite-backup capability, with all eight paths (the seven of the first cut and the review's
+# new-store action) Rust's for every method in routes.toml.
+offs_core_owner=""
+offs_rs_owner=""
+grep -qF "require('./rust-offsite-backup.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && offs_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-offsite-backup features; then
+  offs_rs_owner=rust
+fi
+[ "$offs_core_owner" = "$offs_rs_owner" ] \
+  || die "off-site backup ownership pairing: Core and Rust must move together"
+if [ "$offs_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "off-site backup ownership pairing: missing route contract"
+  offs_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 ~ /^\/api\/admin\/offsite-backup(\/|$)/ {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "off-site backup ownership pairing: every method of the paths must belong to Rust"
+  offs_routes="$(printf '%s\n' "$offs_routes" | sort | tr '\n' ' ')"
+  [ "$offs_routes" = "/api/admin/offsite-backup /api/admin/offsite-backup/copy /api/admin/offsite-backup/google/connect /api/admin/offsite-backup/google/disconnect /api/admin/offsite-backup/new-store /api/admin/offsite-backup/recovery-key /api/admin/offsite-backup/run /api/admin/offsite-backup/verify " ] \
+    || die "off-site backup ownership pairing: incomplete route ownership"
+  # Core refuses exactly the paths the front answers: the new-store action included, or a stale Core
+  # would route an administrator's "this is a new store" to a Node that has no such path.
+  grep -qF "'/api/admin/offsite-backup/new-store'" "$tree/core/server/rust-offsite-backup.cjs" 2>/dev/null \
+    || die "off-site backup ownership pairing: Core does not refuse the new-store path"
+fi
+
 # The two read-only model sizing reads (sbstndalton/noevia#2189) move as one owner: Core's
 # rust-model-sizing.cjs refusal of their GET and the front's rust-model-sizing capability, with
 # exactly GET of both routes Rust's in routes.toml (Node keeps every other method). Historic old/old
@@ -1133,6 +1194,56 @@ if [ "$large_lock_core_owner" = host ]; then
   grep -qF "db.exec('BEGIN IMMEDIATE')" "$tree/core/server/large-document-file-lock.cjs" \
     && grep -qF 'execute_batch("BEGIN IMMEDIATE")' "$tree/rs/crates/server-projects/src/extract.rs" \
     || die "large-document lock pairing: Core and Rust must both take the lock with BEGIN IMMEDIATE"
+fi
+# sbstndalton/noevia#2191 round 8: the project source operations move as one owner. Core's
+# rust-project-source-work.cjs refusal (with its storage latch file and its file-operation reader) and the
+# front's rust-project-source-work capability go together. In that generation Core keeps no worker path
+# (no source-work.cjs, folder-import.cjs, pdf-reduce.cjs, no `x-noevia-source-work`), the front still runs
+# the source jobs (rust-source-jobs), Docling extraction and the host-wide large-document lock, both sides
+# name the same storage latch and file-operation files, and routes.toml gives Rust exactly POST of the
+# upload, the sync and the folder import's plan.
+source_work_core_owner=""
+source_work_rs_owner=""
+grep -qF "require('./rust-project-source-work.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && source_work_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-source-work features; then
+  source_work_rs_owner=rust
+fi
+[ "$source_work_core_owner" = "$source_work_rs_owner" ] \
+  || die "project source work ownership pairing: Core and Rust must move together"
+if [ "$source_work_rs_owner" = rust ]; then
+  for needed in rust-source-jobs rust-document-extraction rust-large-document-host-lock; do
+    move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES "$needed" features \
+      || die "project source work ownership pairing: needs the $needed capability"
+  done
+  { [ ! -e "$tree/core/server/source-work.cjs" ] && [ ! -e "$tree/core/server/folder-import.cjs" ] && [ ! -e "$tree/core/server/pdf-reduce.cjs" ] \
+    && ! grep -qiF 'x-noevia-source-work' "$tree/core/server/routes/projects.cjs" 2>/dev/null \
+    && ! grep -qiF 'x-noevia-source-work' "$tree/core/server/index.cjs" 2>/dev/null; } \
+    || die "project source work ownership pairing: Core still carries the worker path"
+  [ -f "$tree/core/server/rust-source-ops.cjs" ] && [ -f "$tree/core/server/storage-latch.cjs" ] \
+    || die "project source work ownership pairing: Core lacks its readers of the front's file operations and storage latch"
+  core_latch="$(code_lines "$tree/core/server/index.cjs" | grep -o "storage-latch\.db" | head -1 || true)"
+  rs_latch="$(sed -n 's/^pub const FILE: &str = "\(storage-latch\.db\)";.*/\1/p' "$tree/rs/crates/server-projects/src/storage_latch.rs" 2>/dev/null | head -1)"
+  { [ -n "$core_latch" ] && [ "$core_latch" = "$rs_latch" ]; } \
+    || die "project source work ownership pairing: Core and Rust must name the same storage latch file (Core '$core_latch', Rust '$rs_latch')"
+  core_ops="$(sed -n "s/^const FILE = '\(source-file-ops\.json\)';.*/\1/p" "$tree/core/server/rust-source-ops.cjs" 2>/dev/null | head -1)"
+  rs_ops="$(sed -n 's/^pub const FILE: &str = "\(source-file-ops\.json\)";.*/\1/p' "$tree/rs/crates/server-projects/src/source_ops.rs" 2>/dev/null | head -1)"
+  { [ -n "$core_ops" ] && [ "$core_ops" = "$rs_ops" ]; } \
+    || die "project source work ownership pairing: Core and Rust must name the same file-operation list (Core '$core_ops', Rust '$rs_ops')"
+  latch_core_code="$(code_lines "$tree/core/server/storage-latch.cjs")"
+  latch_rs_code="$(code_lines "$tree/rs/crates/server-projects/src/storage_latch.rs")"
+  { grep -qF "exec('BEGIN IMMEDIATE')" <<<"$latch_core_code" && grep -qF 'execute_batch("BEGIN IMMEDIATE")' <<<"$latch_rs_code"; } \
+    || die "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project source work ownership pairing: missing route contract"
+  source_work_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/projects/{id}/upload" || $1 == "/api/projects/{id}/sources/sync" || $1 == "/api/projects/{id}/folder-import/plan" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); k = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "POST") exit 1; k++ }
+      if (k != 1) exit 1
+      print $1
+    }' | LC_ALL=C sort | tr '\n' ' ')" || die "project source work ownership pairing: exactly POST of the upload, the sync and the folder import's plan must belong to Rust"
+  [ "$source_work_routes" = "/api/projects/{id}/folder-import/plan /api/projects/{id}/sources/sync /api/projects/{id}/upload " ] \
+    || die "project source work ownership pairing: incomplete route ownership"
 fi
 # A partially ported source journal would either strand a 202 without a reader or give
 # source files two owners. Old core/old Rust remains an allowed rollback pair.
@@ -1225,8 +1336,9 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # a project's create and delete (round 2) by core/server/rust-project-lifecycle.cjs, a source file's
   # delete (round 3) by core/server/rust-project-files.cjs, a document's page reader (round 4) by
   # core/server/rust-project-document-pages.cjs, a document's upload (round 5) by
-  # core/server/rust-project-documents.cjs, the source jobs (round 6) by core/server/rust-source-jobs.cjs.
-  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; } | sort -u))"
+  # core/server/rust-project-documents.cjs, the source jobs (round 6) by core/server/rust-source-jobs.cjs, the
+  # source operations (round 8) by core/server/rust-project-source-work.cjs.
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; project_routes_core "$tree/core/server/rust-project-source-work.cjs"; } | sort -u))"
   [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
   # sbstndalton/noevia#1071: a front that owns sign-in with no switch (routes.toml: GET
   # /api/auth/session owner "rust", no `switch`) needs a core whose rust-auth guard is unconditional
