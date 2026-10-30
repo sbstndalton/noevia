@@ -214,7 +214,10 @@ fi
 # round 4), and Sign in with ChatGPT's token broker (server/rust-chatgpt-oauth.cjs beside
 # rust-chatgpt-oauth, round 5; Rust owns the device sign-in, the tokens and their refresh, and Node's
 # chat asks it for access tokens through the internal store), and the provider model lists
-# (server/rust-provider-models.cjs beside rust-provider-models, round 5): each group moves as one owner. Old/old images remain usable for
+# (server/rust-provider-models.cjs beside rust-provider-models, round 5), and Google Drive's token authority
+# (server/rust-google-drive.cjs beside rust-google-drive, round 7; Rust owns the sign-ins, the sealed refresh tokens
+# and tool_policies, and Node's chat tools ask it for access tokens through the internal store) and the off-site
+# backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -235,6 +238,8 @@ rust-storage-connection.cjs rust-storage-connection storage connection
 rust-provider-test.cjs rust-provider-test provider test
 rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in
 rust-provider-models.cjs rust-provider-models provider model list
+rust-google-drive.cjs rust-google-drive Google Drive
+rust-offsite-backup.cjs rust-offsite-backup off-site backup
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
