@@ -2210,6 +2210,111 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try cgpt-old-pair
 check "historic ChatGPT sign-in old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# #2202: the MCP server credentials, exactly the broker's methods Rust's, with the store's /v1/mcp/*
+# ops served by the front and asked for by Core.
+mcp_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/mcp-keys/servers"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/mcp-keys/{*}"
+owner = "$mcp_owner"
+$mcp_keys_methods
+[[route]]
+path = "/api/mcp-oauth/servers"
+owner = "rust"
+methods = ["GET"]
+[[route]]
+path = "/api/mcp-oauth/{id}"
+owner = "rust"
+methods = ["DELETE"]
+[[route]]
+path = "/api/mcp-oauth/{id}/connect"
+owner = "rust"
+methods = ["POST"]
+$mcp_callback
+TOML
+}
+mcp_callback_rust='[[route]]
+path = "/api/mcp-oauth/callback"
+owner = "rust"
+methods = ["GET"]'
+mcp_keys_methods='methods = ["DELETE", "PUT"]'; mcp_owner=rust; mcp_callback="$mcp_callback_rust"
+cp "$w/server/project-store-client.cjs" "$work/mcp-client.saved"
+if [ -f "$rz/bins/noevia-server/src/project_store.rs" ]; then cp "$rz/bins/noevia-server/src/project_store.rs" "$work/mcp-store.saved"; else rm -f "$work/mcp-store.saved"; fi
+mcp_files() { # store yes|no|comment, client yes|no|comment ("comment": only a comment mentions it, which serves/asks nothing)
+  cp "$work/mcp-client.saved" "$w/server/project-store-client.cjs"
+  if [ -f "$work/mcp-store.saved" ]; then cp "$work/mcp-store.saved" "$rz/bins/noevia-server/src/project_store.rs"; else : > "$rz/bins/noevia-server/src/project_store.rs"; fi
+  case "$1" in
+    yes) printf '%s\n' 'router.route(&format!("/v1/mcp/{op}"), post(mcp_op));' >> "$rz/bins/noevia-server/src/project_store.rs";;
+    comment) printf '%s\n' '// router.route(&format!("/v1/mcp/{op}"), post(mcp_op));' '/// the internal store: POST /v1/mcp/session' >> "$rz/bins/noevia-server/src/project_store.rs";;
+  esac
+  case "$2" in
+    yes) printf '%s\n' 'async mcpSession(user, server) { return call("mcp/session"); }' 'async mcpKey(user, server) { return call("mcp/key"); }' 'async mcpReseal() { return call("mcp/reseal"); }' >> "$w/server/project-store-client.cjs";;
+    comment) printf '%s\n' '// mcpSession(user, server) mcpKey(user, server) mcpReseal()' '/* async mcpSession(user, server) {}' '   async mcpKey(user, server) {}' '   async mcpReseal() {} */' >> "$w/server/project-store-client.cjs";;
+  esac
+  return 0
+}
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-mcp-credentials.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp_files yes yes
+mcp_try mcp-core-only
+check "MCP credential Core refusal requires the native capability" 'refused "MCP credential ownership pairing: Core and Rust must move together"'
+sed 's/"start-id"/"start-id", "rust-mcp-credentials"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mcp_try mcp-pair
+check "matching MCP credential pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mcp_keys_methods=''
+mcp_try mcp-all-methods
+check "an MCP key route Rust's for every method is refused (Node keeps the others)" 'refused "MCP credential ownership pairing: exactly"'
+mcp_keys_methods='methods = ["PUT"]'
+mcp_try mcp-missing-method
+check "an MCP key route without DELETE is refused" 'refused "MCP credential ownership pairing: exactly"'
+mcp_keys_methods='methods = ["DELETE", "PUT", "GET"]'
+mcp_try mcp-extra-method
+check "an MCP key route with an extra method is refused" 'refused "MCP credential ownership pairing: exactly"'
+mcp_keys_methods='methods = ["DELETE", "PUT"]'; mcp_owner=node
+mcp_try mcp-node-route
+check "a Node-owned MCP key route beside a native pair is refused" 'refused "MCP credential ownership pairing: exactly"'
+mcp_owner=rust; mcp_callback=''
+mcp_try mcp-missing-callback
+check "a native MCP pair without the sign-in callback route is refused" 'refused "MCP credential ownership pairing: incomplete route ownership"'
+mcp_callback="$mcp_callback_rust"
+mcp_files no yes
+mcp_try mcp-no-store-route
+check "a front whose store serves no /v1/mcp/* is refused" 'refused "MCP credential ownership pairing: the front does not serve"'
+mcp_files comment yes
+mcp_try mcp-store-comment-only
+check "a /v1/mcp/ that only a comment names is not a store that serves it" 'refused "MCP credential ownership pairing: the front does not serve"'
+mcp_files yes no
+mcp_try mcp-no-client-ops
+check "a Core whose store client never asks for a session, a key or the re-seal is refused" 'refused "MCP credential ownership pairing: Core.s store client"'
+mcp_files yes comment
+mcp_try mcp-client-comment-only
+check "store-client ops that only comments name (line and block) are not calls" 'refused "MCP credential ownership pairing: Core.s store client"'
+cp "$work/mcp-client.saved" "$w/server/project-store-client.cjs"
+printf '%s\n' 'async mcpSession(u, s) {}' 'async mcpKey(u, s) {}' '// async mcpReseal() {}  (not yet)' >> "$w/server/project-store-client.cjs"
+mcp_try mcp-client-one-op-in-comment
+check "one op present only in a comment, the others in code, is still refused" 'refused "MCP credential ownership pairing: Core.s store client does not call mcpReseal"'
+mcp_files yes yes
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  // if (require('./rust-mcp-credentials.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+mcp_try mcp-marker-comment-only
+check "a Core marker that only a comment names is the old Core, not a pair" 'refused "MCP credential ownership pairing: Core and Rust must move together"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+mcp_try mcp-front-only
+check "a rust-mcp-credentials front cannot pair with the old Core (which would write the tables)" 'refused "MCP credential ownership pairing: Core and Rust must move together"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+mcp_files no no
+cp "$work/mcp-client.saved" "$w/server/project-store-client.cjs"
+move_try mcp-old-pair
+check "historic MCP credential old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Round 5 (#2190): the provider model lists, the route Rust's for every method.
 pmod_try() {
   try_routes "$1" <<TOML
