@@ -1589,6 +1589,41 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try cgpt-old-pair
 check "historic ChatGPT sign-in old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Round 5 (#2190): the provider model lists, the route Rust's for every method.
+pmod_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/providers/{providerId}/models{*?}"
+owner = "$pmod_owner"
+$pmod_methods
+TOML
+}
+pmod_methods=''; pmod_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-provider-models.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+pmod_try pmod-core-only
+check "provider model list Core refusal requires the native capability" 'refused "provider model list ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-provider-models"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+pmod_try pmod-pair
+check "matching provider model list pair assembles with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+pmod_methods='methods = ["GET"]'
+pmod_try pmod-get-only
+check "a provider model list route Rust's for GET only is refused (Node would keep the 405s)" 'refused "provider model list ownership pairing"'
+pmod_methods=''; pmod_owner=node
+pmod_try pmod-node-route
+check "a Node-owned provider model list route beside a native pair is refused" 'refused "provider model list ownership pairing"'
+pmod_owner=rust
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+pmod_try pmod-front-only
+check "a rust-provider-models front cannot pair with the old Core list" 'refused "provider model list ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try pmod-old-pair
+check "historic provider model list old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"

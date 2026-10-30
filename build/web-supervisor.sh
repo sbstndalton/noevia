@@ -132,7 +132,8 @@ fi
 # internal store), the provider probe (server/rust-provider-test.cjs beside rust-provider-test,
 # round 4), and Sign in with ChatGPT's token broker (server/rust-chatgpt-oauth.cjs beside
 # rust-chatgpt-oauth, round 5; Rust owns the device sign-in, the tokens and their refresh, and Node's
-# chat asks it for access tokens through the internal store): each group moves as one owner. Old/old images remain usable for
+# chat asks it for access tokens through the internal store), and the provider model lists
+# (server/rust-provider-models.cjs beside rust-provider-models, round 5): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -152,6 +153,7 @@ rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror pre
 rust-storage-connection.cjs rust-storage-connection storage connection
 rust-provider-test.cjs rust-provider-test provider test
 rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in
+rust-provider-models.cjs rust-provider-models provider model list
 PAIRS
 
 # The three web-address GETs are a paired owner change. The front's compiled capability

@@ -770,6 +770,27 @@ if [ "$cgpt_rs_owner" = rust ]; then
     || die "ChatGPT sign-in ownership pairing: incomplete route ownership"
 fi
 
+# The provider model lists (#2190, round 5): Core's rust-provider-models.cjs refusal (every method on
+# the exact path) and the front's rust-provider-models capability, with the route Rust's for every
+# method in routes.toml.
+pmod_core_owner=""
+pmod_rs_owner=""
+grep -qF "require('./rust-provider-models.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pmod_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-provider-models features; then
+  pmod_rs_owner=rust
+fi
+[ "$pmod_core_owner" = "$pmod_rs_owner" ] \
+  || die "provider model list ownership pairing: Core and Rust must move together"
+if [ "$pmod_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "provider model list ownership pairing: missing route contract"
+  pmod_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/providers/{providerId}/models{*?}" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "provider model list ownership pairing: the route must belong to Rust for every method"
+  [ "$pmod_routes" = "/api/providers/{providerId}/models{*?}" ] || die "provider model list ownership pairing: incomplete route ownership"
+fi
+
 # A ported core with no Rust route contract cannot be paired at all. Keep this outside the
 # routes-file conditional: otherwise removing that file bypasses the GET/refusal pairing.
 if [ ! -f "$tree/rs/contracts/http/routes.toml" ]; then
