@@ -438,8 +438,8 @@ move_capability() {
     {
       line=clean($0)
       if (block) { if (index(line,"*/")) block=0; next }
-      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
       if (line ~ /^\/\//) next
+      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
       if ((kind=="features" || kind=="feature_ref") && index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
       if (features) {
         fend=index(line,"];")

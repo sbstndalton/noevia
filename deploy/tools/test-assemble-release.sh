@@ -742,6 +742,12 @@ check "#1071 web-address POST: writer core without compiled writer feature is re
 printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-web-address-read", "rust-web-address-write"];' > "$rz/bins/noevia-server/src/lib.rs"
 web_writer_try web-write-paired
 check "#1071 web-address POST: both writers pair with Node refusal" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# The real lib.rs documents routes such as `/v1/chatgpt/*` in its `///` lines: a `/*` there is not a block comment, and
+# must not hide the FEATURES list that follows (the assembler found no capability in the real file since 2026-10-29).
+printf '%s\n' '/// the internal store (`/v1/chatgpt/*`) and the routes the paired core refuses' 'pub const FEATURES: &[&str] = &["rust-web-address-read", "rust-web-address-write"];' > "$rz/bins/noevia-server/src/lib.rs"
+web_writer_try web-write-slash-star-doc
+check "a '/*' inside a /// doc line does not hide the FEATURES list" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-web-address-read", "rust-web-address-write"];' > "$rz/bins/noevia-server/src/lib.rs"
 cp "$w/server/rust-web-address.cjs" "$work/web-write-core.saved"
 sed -i.bak 's#return refuseOwnedRead(req, res, pathname, json) || refuseOwnedWrite(req, res, pathname, json);#return refuseOwnedRead(req, res, pathname, json);#' "$w/server/rust-web-address.cjs" && rm -f "$w/server/rust-web-address.cjs.bak"
 web_writer_try web-write-unwired
