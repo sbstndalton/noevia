@@ -1375,6 +1375,102 @@ check "a rust-project-lifecycle front cannot pair with the old Core handlers" 'r
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-lifecycle-old-pair
 check "historic project create/delete old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Project storage write owner release matrix (sbstndalton/noevia#2191 round 3): no route of its own, on
+# top of the create/delete pair.
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," >> "$w/server/index.cjs"
+cat > "$w/server/rust-project-storage.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set());
+module.exports = { OWNED_ROUTES, CORE_KINDS: ['index'], FRONT_KINDS: ['sweep'] };
+JS
+sed 's/"start-id"/"start-id", "rust-project-lifecycle"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-storage-core-only
+check "project storage Core split requires the native capability" 'refused "project storage write ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-project-lifecycle", "rust-project-storage"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-storage-pair
+check "matching project storage pair on the create/delete pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+project_lifecycle_try project-storage-front-only
+check "a rust-project-storage front cannot pair with a Core that runs every job kind" 'refused "project storage write ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," >> "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-project-storage"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try project-storage-without-lifecycle
+check "a project storage pair without the create/delete pair is refused" 'refused "needs the project create/delete pair"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try project-storage-old-pair
+check "historic project storage old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-project-storage.cjs"
+# Project file delete owner release matrix (sbstndalton/noevia#2191 round 3): DELETE
+# /api/projects/{id}/files only, on top of the create/delete and storage pairs.
+project_files_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/projects/{projectId}"
+owner = "rust"
+methods = ["DELETE"]
+[[route]]
+path = "/api/projects/{id}/files"
+owner = "rust"
+$project_files_methods
+TOML
+}
+project_files_methods='methods = ["DELETE"]'
+cat > "$w/server/rust-project-storage.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set());
+module.exports = { OWNED_ROUTES, CORE_KINDS: ['index', 'unindex'], FRONT_KINDS: ['sweep'] };
+JS
+cat > "$w/server/rust-project-files.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'DELETE /api/projects/{id}/files',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+files_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," >> "$w/server/index.cjs"
+  [ "${1:-}" = files ] && printf '%s\n' "  if (require('./rust-project-files.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  return 0
+}
+files_front() { sed "s/\"start-id\"/\"start-id\", \"rust-project-lifecycle\", \"rust-project-storage\"$1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+files_core files; files_front ""
+project_files_try project-files-core-only
+check "project file delete Core refusal requires the native capability" 'refused "project file delete ownership pairing"'
+files_front ', \"rust-project-files\"'
+project_files_try project-files-pair
+check "matching project file delete pair with DELETE only assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mv "$w/server/rust-project-files.cjs" "$work/rust-project-files.saved"
+project_files_try project-files-unlisted
+check "a front owning the file delete needs a Core that lists it (OWNED_ROUTES)" 'refused "does not list in server/rust-projects.cjs OWNED_ROUTES"'
+mv "$work/rust-project-files.saved" "$w/server/rust-project-files.cjs"
+project_files_methods=""
+project_files_try project-files-all-methods
+check "an all-method project files route is refused (Node keeps the other methods)" 'refused "project file delete ownership pairing"'
+project_files_methods='methods = ["DELETE"]'
+files_core
+project_files_try project-files-front-only
+check "a rust-project-files front cannot pair with the old Core handler" 'refused "project file delete ownership pairing"'
+files_core files
+sed "s/\"start-id\"/\"start-id\", \"rust-project-lifecycle\", \"rust-project-files\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-project-files.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+project_files_try project-files-without-storage
+check "a project file delete pair without the storage pair is refused" 'refused "needs the project storage pair"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-project-files.cjs" "$w/server/rust-project-storage.cjs"
 rm -f "$w/server/rust-project-lifecycle.cjs"
 # Public page and plugin directory owner release matrix (sbstndalton/noevia#2190): two independent pairs.
 singles_try() {
