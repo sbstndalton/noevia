@@ -758,6 +758,18 @@ if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-large-
 fi
 [ "$large_lock_core_owner" = "$large_lock_rs_owner" ] \
   || die "large-document lock pairing: Core and Rust must share the host lock"
+# Both halves must also lock the same thing the same way, or each holds its own "host" lock and two
+# large documents run at once again: the lock file's name and the SQLite statement that takes it are
+# read from both sources and compared.
+if [ "$large_lock_core_owner" = host ]; then
+  core_lock_file="$(sed -n "s/^const LOCK_FILE = '\([^']*\)';.*/\1/p" "$tree/core/server/large-document-file-lock.cjs" | head -1)"
+  rs_lock_file="$(sed -n 's/^pub const LARGE_LOCK_FILE: &str = "\([^"]*\)";.*/\1/p' "$tree/rs/crates/server-projects/src/extract.rs" | head -1)"
+  { [ -n "$core_lock_file" ] && [ "$core_lock_file" = "$rs_lock_file" ]; } \
+    || die "large-document lock pairing: Core and Rust must name the same lock file (Core '$core_lock_file', Rust '$rs_lock_file')"
+  grep -qF "db.exec('BEGIN IMMEDIATE')" "$tree/core/server/large-document-file-lock.cjs" \
+    && grep -qF 'execute_batch("BEGIN IMMEDIATE")' "$tree/rs/crates/server-projects/src/extract.rs" \
+    || die "large-document lock pairing: Core and Rust must both take the lock with BEGIN IMMEDIATE"
+fi
 # A partially ported source journal would either strand a 202 without a reader or give
 # source files two owners. Old core/old Rust remains an allowed rollback pair.
 # sbstndalton/noevia#2191 round 6: the source jobs move as one owner. Core's rust-source-jobs.cjs

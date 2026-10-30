@@ -1713,13 +1713,35 @@ move_try source-jobs-old-pair
 check "historic source job old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # sbstndalton/noevia#2191 round 7 (#697): the host-wide large-document lock pairs in both directions.
 printf '%s\n' "const fileLock = require('./large-document-file-lock.cjs');" > "$w/server/large-document-lock.cjs"
-printf '%s\n' "module.exports = { LOCK_FILE: 'large-document.lock' };" > "$w/server/large-document-file-lock.cjs"
+printf '%s\n' "const LOCK_FILE = 'large-document.lock';" "  try { db.exec('BEGIN IMMEDIATE'); return db; } catch (err) { throw err; }" "module.exports = { LOCK_FILE };" > "$w/server/large-document-file-lock.cjs"
+printf '%s\n' 'pub const LARGE_LOCK_FILE: &str = "large-document.lock";' '        match conn.execute_batch("BEGIN IMMEDIATE") {' > "$rz/crates/server-projects/src/extract.rs"
 move_try large-lock-core-only
 check "a host-lock Core cannot pair with an in-process-lock front" 'refused "large-document lock pairing: Core and Rust must share the host lock"'
 sed 's/"start-id"/"start-id", "rust-large-document-host-lock"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
 move_try large-lock-pair
 check "matching host large-document lock pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
-rm -f "$w/server/large-document-lock.cjs" "$w/server/large-document-file-lock.cjs"
+# Both halves must also name the same lock file and take it the same way (review #2191 r6+7).
+cp "$w/server/large-document-file-lock.cjs" "$work/file-lock.saved"
+cp "$rz/crates/server-projects/src/extract.rs" "$work/extract-lock.saved"
+sed "s/large-document.lock/other.lock/" "$work/file-lock.saved" > "$w/server/large-document-file-lock.cjs"
+move_try large-lock-core-name
+check "a Core that locks another file than the front is refused" 'refused "large-document lock pairing: Core and Rust must name the same lock file (Core .other.lock., Rust .large-document.lock.)"'
+cp "$work/file-lock.saved" "$w/server/large-document-file-lock.cjs"
+sed "s/large-document.lock/other.lock/" "$work/extract-lock.saved" > "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-rust-name
+check "a front that locks another file than Core is refused" 'refused "large-document lock pairing: Core and Rust must name the same lock file (Core .large-document.lock., Rust .other.lock.)"'
+cp "$work/extract-lock.saved" "$rz/crates/server-projects/src/extract.rs"
+sed "s/BEGIN IMMEDIATE/BEGIN DEFERRED/" "$work/file-lock.saved" > "$w/server/large-document-file-lock.cjs"
+move_try large-lock-core-statement
+check "a Core that takes the lock another way is refused" 'refused "large-document lock pairing: Core and Rust must both take the lock with BEGIN IMMEDIATE"'
+cp "$work/file-lock.saved" "$w/server/large-document-file-lock.cjs"
+sed "s/BEGIN IMMEDIATE/BEGIN DEFERRED/" "$work/extract-lock.saved" > "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-rust-statement
+check "a front that takes the lock another way is refused" 'refused "large-document lock pairing: Core and Rust must both take the lock with BEGIN IMMEDIATE"'
+cp "$work/extract-lock.saved" "$rz/crates/server-projects/src/extract.rs"
+move_try large-lock-pair-again
+check "the matching host lock pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/large-document-lock.cjs" "$w/server/large-document-file-lock.cjs" "$rz/crates/server-projects/src/extract.rs"
 move_try large-lock-front-only
 check "a host-lock front cannot pair with an in-process-lock Core" 'refused "large-document lock pairing: Core and Rust must share the host lock"'
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
