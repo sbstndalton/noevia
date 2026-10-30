@@ -378,6 +378,66 @@ rm "$work/server/index.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-project-files" >/dev/null 2>"$work/err"; rc=$?
 check "rust-project-files front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project file delete ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Document page reader ownership (sbstndalton/noevia#2191 round 4) must agree in both directions.
+printf '%s\n' "  if (require('./rust-project-document-pages.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "document-pages-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project document page reader ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-document-pages" >/dev/null 2>"$work/err"; rc=$?
+check "matching native document page reader pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-document-pages" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-document-pages front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project document page reader ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Conversation import ownership (sbstndalton/noevia#2191 round 4) must agree in both directions.
+printf '%s\n' "  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "conversation-import-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "conversation import ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-conversation-import" >/dev/null 2>"$work/err"; rc=$?
+check "matching native conversation import pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-conversation-import" >/dev/null 2>"$work/err"; rc=$?
+check "rust-conversation-import front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "conversation import ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Project document upload ownership (sbstndalton/noevia#2191 round 5) must agree in both directions.
+printf '%s\n' "  if (require('./rust-project-documents.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "document-upload-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "project document upload ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-document-extraction rust-project-documents" >/dev/null 2>"$work/err"; rc=$?
+check "matching native document upload pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-document-extraction rust-project-documents" >/dev/null 2>"$work/err"; rc=$?
+check "rust-project-documents front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "project document upload ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# Source job ownership (sbstndalton/noevia#2191 round 6) must agree in both directions.
+printf '%s\n' "  if (require('./rust-source-jobs.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "source-job-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "source job ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-source-jobs" >/dev/null 2>"$work/err"; rc=$?
+check "matching native source job pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-source-jobs" >/dev/null 2>"$work/err"; rc=$?
+check "rust-source-jobs front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "source job ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# The host-wide large-document lock (sbstndalton/noevia#2191 round 7, #697) must agree in both directions.
+printf '%s\n' "const fileLock = require('./large-document-file-lock.cjs');" > "$work/server/large-document-lock.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "host-lock Core with an in-process-lock front refuses before launch" '[ $rc -eq 2 ] && grep -q "large-document lock mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-large-document-host-lock" >/dev/null 2>"$work/err"; rc=$?
+check "matching host large-document lock pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/large-document-lock.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-large-document-host-lock" >/dev/null 2>"$work/err"; rc=$?
+check "host-lock front with an in-process-lock Core refuses before launch" '[ $rc -eq 2 ] && grep -q "large-document lock mismatch" "$work/err" && [ ! -s "$work/log" ]'
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
 for pair in "rust-public-pages.cjs rust-public-pages public page" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test"; do
