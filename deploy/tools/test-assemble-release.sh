@@ -1638,6 +1638,67 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-config-old-pair
 check "historic project configuration old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-config.cjs"
+# Deep research owner release matrix (sbstndalton/noevia#2218): all five paths, every method.
+rr_rows() {
+  for path in research research/plan 'research/{job}' 'research/{job}/cancel' 'research/{job}/save'; do
+    [ "$path" = "${rr_skip:-}" ] && continue
+    printf '[[route]]\npath = "/api/projects/{projectId}/%s"\nowner = "%s"\n' "$path" "$rr_owner"
+    [ -n "${rr_methods:-}" ] && [ "$path" = research ] && printf '%s\n' "$rr_methods"
+  done
+  return 0
+}
+rr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; rr_rows)
+}
+cat > "$w/server/rust-research.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'ALL /api/projects/{projectId}/research',
+  'ALL /api/projects/{projectId}/research/plan',
+  'ALL /api/projects/{projectId}/research/{job}',
+  'ALL /api/projects/{projectId}/research/{job}/cancel',
+  'ALL /api/projects/{projectId}/research/{job}/save',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
+rr_core() { cp "$work/feature-index.saved" "$w/server/index.cjs"; printf '%s\n' "  if (require('./rust-research.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"; }
+rr_front() { sed "s/\"start-id\"/\"start-id\", \"rust-research\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+rr_core; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; rr_owner=rust
+rr_try research-core-only
+check "deep research Core refusal requires the native capability" 'refused "deep research ownership pairing"'
+rr_front
+rr_try research-pair
+check "matching deep research pair with all five paths assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rr_methods='methods = ["GET"]'
+rr_try research-one-method
+check "a research path with only some methods is refused (Node's matcher took them all)" 'refused "deep research ownership pairing"'
+rr_methods=""; rr_skip='research/{job}/save'
+rr_try research-missing-path
+check "a pair missing one research path is refused" 'refused "incomplete route ownership"'
+rr_skip=""; rr_owner=node
+rr_try research-node-rows
+check "a rust-research front with Node's rows is refused" 'refused "deep research ownership pairing"'
+rr_owner=rust
+mv "$w/server/rust-research.cjs" "$work/rust-research.saved"; printf 'module.exports = {};\n' > "$w/server/rust-research.cjs"
+rr_try research-unlisted
+check "a front owning research needs a Core refusing exactly its paths" 'refused "Core must refuse exactly the five paths"'
+mv "$work/rust-research.saved" "$w/server/rust-research.cjs"
+touch "$w/server/research-service.cjs"
+rr_try research-old-handlers
+check "a Core still carrying the research handlers is refused" 'refused "still carries the research handlers"'
+rm -f "$w/server/research-service.cjs" "$w/server/rust-research-bridge.cjs"
+rr_try research-no-bridge
+check "a Core without the bridge is refused" 'refused "admission lease and tool bridge"'
+touch "$w/server/rust-research-bridge.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+rr_try research-front-only
+check "a rust-research front cannot pair with the old Core handlers" 'refused "deep research ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rr_owner=rust; rr_try research-old-core-rust-rows
+check "old pair whose route table gives research to Rust is refused" 'refused "deep research ownership pairing"'
+move_try research-old-pair
+check "historic deep research old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-research.cjs" "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.
 au_try() {
