@@ -225,14 +225,20 @@ fi
 # backup (server/rust-offsite-backup.cjs beside rust-offsite-backup, round 7), the MCP server credentials
 # (server/rust-mcp-credentials.cjs beside rust-mcp-credentials, sbstndalton/noevia#2202; Rust is the broker of every
 # account's OAuth sign-ins and own server keys, the only writer of their three tables, and Node's chat asks it for
-# one call's access token or key headers), and the close-out GETs (sbstndalton/noevia#2190, #2191): the health
+# one call's access token or key headers), the close-out GETs (sbstndalton/noevia#2190, #2191): the health
 # check (server/rust-health.cjs beside rust-health, which also publishes rag-status.json), the auto-roles read
 # (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
-# list (server/rust-workspace.cjs beside rust-workspace), a project's configuration and instruction skills
+# list (server/rust-workspace.cjs beside rust-workspace), the rest of the Diary routes
+# (server/rust-diary-routes.cjs beside rust-diary-routes, sbstndalton/noevia#2206; Rust owns the connector
+# credentials table and reads the running-exchange set Node publishes), since #2202 round 2 the admin MCP directory
+# (server/rust-mcp-directory.cjs beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the
+# only writer of directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs
+# beside rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last
+# two computed by the front from the discovery snapshot Node publishes, a project's configuration and instruction skills
 # (server/rust-project-config.cjs beside rust-project-config, sbstndalton/noevia#2191 round 9) and an account's
 # deletion (server/rust-admin-users.cjs beside rust-admin-users, #2190: Rust deletes the rows, the folder and every
-# credential, and Core can no longer delete an account): each group moves as one owner. Old/old images remain usable for
-# rollback; mixed owners do not.
+# credential, and Core can no longer delete an account): each group moves as one owner. Old/old images
+# remain usable for rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
   pair_front_owner=""
@@ -260,6 +266,10 @@ rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 rust-health.cjs rust-health health check
 rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
+rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
+rust-mcp-directory.cjs rust-mcp-directory MCP directory
+rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
+rust-connectors.cjs rust-connectors connectors
 rust-project-config.cjs rust-project-config project configuration
 rust-admin-users.cjs rust-admin-users account deletion
 PAIRS
