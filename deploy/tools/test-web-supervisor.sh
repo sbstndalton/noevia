@@ -569,6 +569,34 @@ reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model sizing pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
+# Model maintenance route ownership (sbstndalton/noevia#2210) must agree in both directions before launch,
+# separately from the model reads (#2187) and the sizing reads (#2189).
+printf '%s\n' "  if (require('./rust-model-maintenance.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "model-maintenance-refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "model maintenance route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-maintenance" >/dev/null 2>"$work/err"; rc=$?
+check "matching native model maintenance pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" "  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads rust-model-sizing rust-model-maintenance" >/dev/null 2>"$work/err"; rc=$?
+check "a maintenance front beside a Core with only the reads and sizing refuses before launch" '[ $rc -eq 2 ] && grep -q "model maintenance route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" "  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" "  if (require('./rust-model-maintenance.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads rust-model-sizing" >/dev/null 2>"$work/err"; rc=$?
+check "a maintenance Core beside a front with only the reads and sizing refuses before launch" '[ $rc -eq 2 ] && grep -q "model maintenance route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-reads rust-model-sizing rust-model-maintenance" >/dev/null 2>"$work/err"; rc=$?
+check "reads, sizing and maintenance on both sides start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-maintenance" >/dev/null 2>"$work/err"; rc=$?
+check "rust-model-maintenance front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "model maintenance route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old model maintenance pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+
 # Round 5 (#2190): the ChatGPT sign-in pair beside the provider test pair, and alone.
 printf '%s\n' "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
 reset; touch "$work/die-front"

@@ -3160,6 +3160,70 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try sizing-old-pair
 check "historic model sizing old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Model maintenance owner release matrix (sbstndalton/noevia#2210): three routes, one method each; the recheck
+# stays Node's.
+maint_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/models/presets/reload"
+owner = "rust"
+$maint_reload
+[[route]]
+path = "/api/models/evidence"
+owner = "rust"
+$maint_evidence
+$maint_import
+$maint_recheck
+TOML
+}
+maint_reload='methods = ["POST"]'; maint_evidence='methods = ["GET"]'
+maint_import='[[route]]
+path = "/api/models/evidence/import"
+owner = "rust"
+methods = ["POST"]'
+maint_recheck=''
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-model-maintenance.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+maint_try maint-core-only
+check "model maintenance Core refusal requires the native capability" 'refused "model maintenance ownership pairing: Core and Rust must move together"'
+sed 's/"start-id"/"start-id", "rust-model-maintenance"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+maint_try maint-pair
+check "matching model maintenance pair with the three one-method routes assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+maint_reload=''
+maint_try maint-reload-all-methods
+check "an all-method preset reload is refused (Node keeps the other methods)" 'refused "model maintenance ownership pairing"'
+maint_reload='methods = ["POST", "PUT"]'
+maint_try maint-reload-put
+check "a preset reload with more than POST is refused" 'refused "model maintenance ownership pairing"'
+maint_reload='methods = ["POST"]'; maint_evidence='methods = ["GET", "POST"]'
+maint_try maint-evidence-post
+check "an evidence read with more than GET is refused" 'refused "model maintenance ownership pairing"'
+maint_evidence='methods = ["GET"]'; maint_import=''
+maint_try maint-incomplete
+check "an incomplete model maintenance route set is refused" 'refused "model maintenance ownership pairing: incomplete route ownership"'
+maint_import='[[route]]
+path = "/api/models/evidence/import"
+owner = "rust"
+methods = ["POST"]'
+maint_recheck='[[route]]
+path = "/api/models/evidence/recheck"
+owner = "rust"
+methods = ["POST"]'
+maint_try maint-recheck-rust
+check "a Rust-owned recheck (it loads a model after Node's admission check) is refused" 'refused "model maintenance ownership pairing: the recheck stays Node"'
+maint_recheck=''
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+maint_try maint-front-only
+check "a rust-model-maintenance front cannot pair with the old Core handlers" 'refused "model maintenance ownership pairing: Core and Rust must move together"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try maint-old-pair
+check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"

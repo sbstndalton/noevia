@@ -288,6 +288,21 @@ if [ "$sizing_core_owner" != "$sizing_front_owner" ]; then
   exit 2
 fi
 
+# The model maintenance routes (sbstndalton/noevia#2210: POST /api/models/presets/reload, GET
+# /api/models/evidence, POST /api/models/evidence/import): a Core that refuses them
+# (server/rust-model-maintenance.cjs) needs a front that answers them (rust-model-maintenance), and a
+# rust-model-maintenance front needs that Core. The front is the single writer of the reload guard state
+# file and of the evidence store, and Core's producers queue their records for it, so a mixed pair would
+# have two writers (or none). Old/old images remain usable for rollback; mixed owners do not.
+maintenance_core_owner=""
+maintenance_front_owner=""
+grep -qF "require('./rust-model-maintenance.cjs')" "$PWD/server/index.cjs" 2>/dev/null && maintenance_core_owner=rust
+grep -qx 'rust-model-maintenance' <<<"$rust_features" && maintenance_front_owner=rust
+if [ "$maintenance_core_owner" != "$maintenance_front_owner" ]; then
+  echo "web-supervisor: model maintenance route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
 # protect a manually mixed installed pair. Neither result comes from an inherited environment.
