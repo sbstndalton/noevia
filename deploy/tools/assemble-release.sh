@@ -915,6 +915,28 @@ if [ "$prov_rs_owner" = rust ]; then
   [ "$prov_routes" = "$prov_expected" ] || die "provider registry ownership pairing: incomplete route ownership"
 fi
 
+# The provider keys' re-seal (#2190, round 6 review): Core's secrets rotation no longer rewrites the
+# provider files, it asks the front's internal store (rust-providers-reseal.cjs in Core,
+# rust-providers-reseal in the front's FEATURES, POST /v1/providers/reseal in project_store.rs and
+# providersReseal in Core's store client). It moves with the registry: a registry without it would
+# leave a second writer of the files (the rotation), and the op alone has no files of its own.
+reseal_core_owner=""
+reseal_rs_owner=""
+grep -qF "require('./rust-providers-reseal.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && reseal_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-providers-reseal features; then
+  reseal_rs_owner=rust
+fi
+[ "$reseal_core_owner" = "$reseal_rs_owner" ] \
+  || die "provider key reseal ownership pairing: Core and Rust must move together"
+[ "$reseal_rs_owner" = "$prov_rs_owner" ] \
+  || die "provider key reseal ownership pairing: it moves with the provider registry (a registry without it leaves a second writer of the provider files)"
+if [ "$reseal_rs_owner" = rust ]; then
+  grep -qF '"/v1/providers/reseal"' "$tree/rs/bins/noevia-server/src/project_store.rs" 2>/dev/null \
+    || die "provider key reseal ownership pairing: the front does not serve /v1/providers/reseal"
+  grep -qF 'providersReseal' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
+    || die "provider key reseal ownership pairing: Core's store client does not call /v1/providers/reseal"
+fi
+
 # The provider probe (#2190, round 4): Core's rust-provider-test.cjs refusal (POST on the exact path;
 # Node keeps the other methods, its /api/providers/{id} handler reads `test` as an id) and the front's
 # rust-provider-test capability, with exactly POST of /api/providers/test Rust's in routes.toml.

@@ -216,7 +216,10 @@ fi
 # chat asks it for access tokens through the internal store), and the provider model lists
 # (server/rust-provider-models.cjs beside rust-provider-models, round 5), and the provider registry
 # (server/rust-providers.cjs beside rust-providers, round 6; Rust is the only writer of providers.json
-# and shared-providers.json and Node re-reads them): each group moves as one owner. Old/old images remain usable for
+# and shared-providers.json and Node re-reads them), and its key re-seal (server/rust-providers-reseal.cjs
+# beside rust-providers-reseal, round 6 review; a Core that rotates secrets through the front's internal
+# store needs a front that answers it, and a front that has it needs that Core, so Node never rewrites a
+# provider file the front owns): each group moves as one owner. Old/old images remain usable for
 # rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -238,6 +241,7 @@ rust-provider-test.cjs rust-provider-test provider test
 rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in
 rust-provider-models.cjs rust-provider-models provider model list
 rust-providers.cjs rust-providers provider registry
+rust-providers-reseal.cjs rust-providers-reseal provider key reseal
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
