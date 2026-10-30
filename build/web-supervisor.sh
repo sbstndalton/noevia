@@ -300,6 +300,18 @@ if [ "$source_jobs_core_owner" != "$source_jobs_front_owner" ]; then
   echo "web-supervisor: source job ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# The project source operations (sbstndalton/noevia#2191 round 8): the upload, the folder sync and the folder
+# import's plan run in the front, with no worker call to Node. A Core that refuses them
+# (server/rust-project-source-work.cjs) and reads the front's storage latch and file-operation list needs a
+# front that runs them (rust-project-source-work), and such a front needs that Core. Old/old stays usable.
+source_work_core_owner=""
+source_work_front_owner=""
+grep -qF "require('./rust-project-source-work.cjs')" "$PWD/server/index.cjs" 2>/dev/null && source_work_core_owner=rust
+grep -qx 'rust-project-source-work' <<<"$rust_features" && source_work_front_owner=rust
+if [ "$source_work_core_owner" != "$source_work_front_owner" ]; then
+  echo "web-supervisor: project source operations ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # The large-document lock (sbstndalton/noevia#2191 round 7, #697): a core whose large-document-lock.cjs
 # also takes the host-wide lock file (large-document-file-lock.cjs) needs a front that takes it too
 # (rust-large-document-host-lock), and the reverse; otherwise the two could each hold a document over
