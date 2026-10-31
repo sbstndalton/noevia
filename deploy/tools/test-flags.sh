@@ -7,6 +7,8 @@ script="$here/flags.sh"
 work="$(mktemp -d "${TMPDIR:-/tmp}/flags-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/bin"
+# A new LITERAL allow-list name in flags.sh also needs a value in this shim's Env, or its "accept" case below
+# fails (loudly, as "FAIL - accept NAME"). Wildcard names are probed with the sample instance named in the loop.
 cat > "$work/bin/docker" <<'SHIM'
 #!/usr/bin/env bash
 [ "$1" = inspect ] || exit 1
@@ -97,14 +99,19 @@ cover() { # cover <sample> <anchored refusals...>: exact sample accepted; each r
   try accept "$n"
   for v in "$@" "${n,,}" "$n"$'\n' $'\n'"$n"; do try refuse "$v"; done
 }
-allow_body="$(sed -n -E 's/^allow=.\^?\((.*)\)\$?.$/\1/p' "$script")"
-if [ -z "$allow_body" ]; then fails=$((fails+1)); echo "FAIL - allow-list not found in flags.sh"; fi
+# Exactly one allow= line must match: read -a would use only the first, so a second one would go unprobed.
+allow_lines="$(sed -n -E 's/^allow=.\^?\((.*)\)\$?.$/\1/p' "$script")"
+allow_count="$(printf '%s\n' "$allow_lines" | grep -c .)"
+allow_body="$(printf '%s\n' "$allow_lines" | head -n1)"
+if [ "$allow_count" -ne 1 ]; then fails=$((fails+1)); echo "FAIL - expected exactly one allow= line in flags.sh, found $allow_count"; fi
 IFS='|' read -r -a allow_alts <<< "$allow_body"
 echo "covering ${#allow_alts[@]} allow-list entries from flags.sh"
 for alt in "${allow_alts[@]}"; do
   case "$alt" in
-    '[A-Z0-9_]+_IMPL') s=STREAM_GUARD_IMPL; cover "$s" "${s}_X" "${s}X" ;;
-    'NOEVIA_FEATURE_[A-Z0-9_]+') s=NOEVIA_FEATURE_DEEP_RESEARCH; cover "$s" "X_${s}" "X${s}" ;;
+    # The open side is probed directly too: the class must refuse a bad character, an empty prefix and an empty suffix,
+    # so a drift to `.*_IMPL` or `NOEVIA_FEATURE_.*` is caught here and not only by the secret-leak checks.
+    '[A-Z0-9_]+_IMPL') s=STREAM_GUARD_IMPL; cover "$s" "${s}_X" "${s}X" 'bad-name_IMPL' '_IMPL' 'bad name_IMPL' 'a.b_IMPL' ;;
+    'NOEVIA_FEATURE_[A-Z0-9_]+') s=NOEVIA_FEATURE_DEEP_RESEARCH; cover "$s" "X_${s}" "X${s}" 'NOEVIA_FEATURE_' 'NOEVIA_FEATURE_a-b' 'NOEVIA_FEATURE_A-B' 'NOEVIA_FEATURE_A B' ;;
     *'['*) fails=$((fails+1)); echo "FAIL - no sample instance for new wildcard allow-list entry: $alt" ;;
     *) cover "$alt" "${alt}_X" "X_${alt}" "${alt}X" "X${alt}" ;;
   esac
