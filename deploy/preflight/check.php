@@ -146,6 +146,7 @@ function nativeEgressProfile(array $config): array {
     if ($port === '' || $port === '0') return [];
     $errors = [];
     $native = $config['services']['egress-rs'] ?? null;
+    if (!preg_match('/^[1-9][0-9]{0,4}$/', $port) || (int)$port > 65535) return ['CODE_EGRESS_PORT is not a valid port.'];
     if (!is_array($native)) return ['CODE_EGRESS_PORT is set but the egress-rs service is missing (noevia#2226): see deploy/examples/code-egress-rust.override.yml.'];
     $ne = serviceEnv($native);
     if (($we['CODE_EGRESS_IMPL'] ?? 'rust') !== 'rust') $errors[] = 'CODE_EGRESS_IMPL must be rust.';

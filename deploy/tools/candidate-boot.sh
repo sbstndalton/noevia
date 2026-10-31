@@ -12,6 +12,7 @@
 #   CANDIDATE_EGRESS_IMAGE=I    a native egress image (deploy/egress-proxy, target native-control). The
 #                               candidate then boots with CODE_EGRESS_PORT set beside a disposable egress-rs
 #                               on an internal network, as an installation with egress does (#2226).
+#                               This proves boot and authenticated Ready only: no traffic passes through it.
 #   CANDIDATE_EGRESS=off        boot without egress. Says plainly that the egress path was not qualified.
 #                               One of these two is required: a boot without egress missed #2226.
 #

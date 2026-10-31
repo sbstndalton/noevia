@@ -72,6 +72,8 @@ try {
     verify(nativeEgressProfile($egress) === [], 'Complete native egress profile rejected');
     verify(nativeEgressProfile(['services'=>['web'=>['environment'=>[]]]]) === [], 'Unset port rejected');
     verify(nativeEgressProfile(['services'=>['web'=>['environment'=>['CODE_EGRESS_PORT'=>'0']]]]) === [], 'Disabled port rejected');
+    $badPort = $egress; $badPort['services']['web']['environment']['CODE_EGRESS_PORT'] = '70000'; $badPort['services']['egress-rs']['environment']['CODE_EGRESS_PORT'] = '70000';
+    verify(count(nativeEgressProfile($badPort)) > 0, 'Invalid port accepted');
     $noService = $egress; unset($noService['services']['egress-rs']);
     verify(count(nativeEgressProfile($noService)) > 0, 'Port set without egress-rs accepted');
     foreach ([
