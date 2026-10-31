@@ -439,7 +439,23 @@ g add -A && g commit -qm core-journal-origin; ph10o="$(g rev-parse --short HEAD)
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10o" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "#2153: ...but a core that needs the journal origin is refused beside a front that journals none" \
   '[ $rc -ne 0 ] && grep -q "journals no origin" "$work/err" && [ ! -f "$out/noevia-release-$ph10o.tar.gz" ]'
+# #2161: the front's journal source only MENTIONS an origin in a doc comment (as the real file's header does);
+# that is not journaling one.
 mkdir -p "$work/remote/noevia-rs-y/crates/server-projects/src"
+printf '%s\n' '//! `{"seq":7,"op":"write","origin":"history"|"import"}`' > "$work/remote/noevia-rs-y/crates/server-projects/src/journal.rs"
+tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-y
+rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
+printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
+g commit -qam rs-journal-origin-comment-only; ph10c="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10c" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "#2161: ...and a doc comment that mentions an origin does not count as the front journaling one" \
+  '[ $rc -ne 0 ] && grep -q "journals no origin" "$work/err" && [ ! -f "$out/noevia-release-$ph10c.tar.gz" ]'
+# #2161: the core's origin test under another variable name is still that test.
+printf '%s\n' "const JOURNAL_READER_MARKER = 'noevia-chat-change-journal-reader/1';" "function isHistorySave(entry) { return !!entry && entry.op === 'write' && entry.origin === \"history\"; }" > "$w/server/chat-change-journal.cjs"
+g add -A && g commit -qm core-journal-origin-renamed; ph10r="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10r" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "#2161: ...and a core that tests the origin under another variable name is still refused beside a front that journals none" \
+  '[ $rc -ne 0 ] && grep -q "journals no origin" "$work/err" && [ ! -f "$out/noevia-release-$ph10r.tar.gz" ]'
 printf '%s\n' '        "origin": origin.as_str(),' >> "$work/remote/noevia-rs-y/crates/server-projects/src/journal.rs"
 tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-y
 rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
