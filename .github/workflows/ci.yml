@@ -124,6 +124,9 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-flags.sh
         if: env.RUN_JOB == 'true'
+      # #2241: the synthetic Settings preview fixture and the dead-link check on the research notes.
+      - run: bash deploy/tools/test-docs-prototypes.sh
+        if: env.RUN_JOB == 'true'
       # #2005: bash -x must not print the remote auth key (remote-services.sh).
       - run: bash deploy/tools/test-remote-services-xtrace.sh
         if: env.RUN_JOB == 'true'

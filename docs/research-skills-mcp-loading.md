@@ -2,7 +2,7 @@
 
 Implementation and research gates for [issue #19](https://github.com/sbstndalton/noevia/issues/19). The offline experiment is implemented; live quality and adoption remain pending. This is not a deployment record.
 
-Run instructions, contract boundaries and reproducible results: [offline experiment](https://github.com/sbstndalton/noevia/tree/9ee4b821/experiments/system-one/skills-mcp/README.md). The [runtime matrix](../experiments/system-one/skills-mcp/compatibility.md) and [script design](../experiments/system-one/skills-mcp/script-execution-design.md) separate supported behavior from deferred capabilities.
+Run instructions, contract boundaries and reproducible results: [offline experiment](https://github.com/sbstndalton/noevia/blob/9ee4b821/experiments/system-one/skills-mcp/README.md). The [runtime matrix](https://github.com/sbstndalton/noevia/blob/9ee4b821/experiments/system-one/skills-mcp/compatibility.md) and [script design](https://github.com/sbstndalton/noevia/blob/9ee4b821/experiments/system-one/skills-mcp/script-execution-design.md) separate supported behavior from deferred capabilities.
 
 ## Evidence and current behavior
 

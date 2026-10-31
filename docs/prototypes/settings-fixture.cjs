@@ -1,4 +1,13 @@
 // Explicit, process-local synthetic settings. No credentials, storage or live APIs.
+// The appearance choice the real Settings accepts: a mode and one palette for light and for dark (the front's
+// crates/server-account answers the same message). Inlined here; the Node module that held it is gone.
+const PALETTES = ['warm', 'cool', 'neutral', 'sage', 'iris'];
+function validateAppearance(value) {
+  if (!value || typeof value !== 'object' || !['light', 'dark', 'system'].includes(value.theme) || !PALETTES.includes(value.light) || !PALETTES.includes(value.dark)) {
+    throw Error('Choose a valid mode and a palette for both light and dark.');
+  }
+  return { theme: value.theme, light: value.light, dark: value.dark };
+}
 function createSettingsFixture() {
   const user={id:'synthetic-diary-only',username:'fixture',displayName:'Synthetic settings QA',role:'admin',diaryEnabled:true,onboarded:true,disabled:false};
   let fail = '';
@@ -21,7 +30,7 @@ function createSettingsFixture() {
     let body;try {body=raw?JSON.parse(raw):{};}catch {json({error:'Invalid JSON'},400);return true;}
     if(url.pathname==='/api/profile/appearance') {
       if(req.method==='GET'){json(appearance);return true;}
-      if(req.method==='PUT'){try{appearance=require('../../apps/web/server/appearance.cjs').validateAppearance(body);json(appearance);}catch(e){json({error:e.message},400);}return true;}
+      if(req.method==='PUT'){try{appearance=validateAppearance(body);json(appearance);}catch(e){json({error:e.message},400);}return true;}
     }
     if(req.method==='GET') {
       const values={
