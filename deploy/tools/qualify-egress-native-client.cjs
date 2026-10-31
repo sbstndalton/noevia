@@ -44,20 +44,28 @@ async function run() {
     assert.equal((await client.forget(lease, result.report.snapshotId)).confirmed, true);
     const forgotten = await client.activity(lease);
     assert.equal(forgotten.available, false); assert.equal(Object.hasOwn(forgotten, 'hosts'), false);
-    // The real mounted provider must observe a permission fault. Restoring file
-    // permissions cannot revive the old Core client/session after that observation.
+    // The real mounted provider must observe a permission fault: authority stops while it lasts.
+    // Afterwards the same client recovers by itself, and only through a new session (#2226).
     fs.chmodSync(key, 0o444);
     await assert.rejects(client.renew(), { code: 'EGRESS_UNAVAILABLE' });
+    await assert.rejects(client.grant({ taskId: 'owned.not.during.fault', domains: ['owned.invalid'] }), { code: 'EGRESS_UNAVAILABLE' });
+    assert.equal(client.available(), false);
     fs.chmodSync(key, 0o440);
-    await assert.rejects(client.ready(), { code: 'EGRESS_UNAVAILABLE' });
-    await assert.rejects(client.grant({ taskId: 'owned.must.not.revive', domains: ['owned.invalid'] }), { code: 'EGRESS_UNAVAILABLE' });
+    const end = Date.now() + 40000;
+    while (!client.available()) { assert.ok(Date.now() < end, 'client did not recover'); await new Promise((resolve) => setTimeout(resolve, 250)); }
+    const revived = await client.grant({ taskId: 'owned.revived', domains: ['owned.invalid'] });
+    assert.notEqual(revived.token, lease.token);
+    const closed = await client.revoke(revived);
+    assert.equal(closed.confirmed, true); assert.equal(closed.report.final, true);
+    assert.equal((await client.forget(revived, closed.report.snapshotId)).confirmed, true);
+    // A new web incarnation still takes over with a new key.
     replacement = create();
     await replacement.ready(); await replacement.renew();
     const fresh = await replacement.grant({ taskId: 'owned.replacement', domains: ['owned.invalid'] });
     const ended = await replacement.revoke(fresh);
     assert.equal(ended.confirmed, true); assert.equal(ended.report.final, true);
     assert.equal((await replacement.forget(fresh, ended.report.snapshotId)).confirmed, true);
-    console.log('PASS: control fixture current-key identity, authenticated Ready/renew, revoke retry/report/Forget, permission retirement and replacement');
+    console.log('PASS: control fixture current-key identity, authenticated Ready/renew, revoke retry/report/Forget, permission retirement, self-recovery and replacement');
   } finally {
     if (key && fs.existsSync(key)) fs.chmodSync(key, 0o440);
     if (replacement) await replacement.close();

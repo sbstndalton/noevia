@@ -110,6 +110,15 @@ must be one of `hosts` or a subdomain of one, every resolved address must be pub
 proxy connects to the address it checked. `Proxy-Authorization` and other hop-by-hop headers are
 stripped. Connection caps and the tunnel idle timeout are the same.
 
+## Control session recovery (#2226)
+
+A control failure drops web's authority at once. Web then sends Ready until one proves a session other than the
+one it lost: `replace` naming that session, then `initial` if the proxy answers 409 (it restarted or saw a new key).
+The proxy refuses both while the old session is live, and web stops renewing, so a new session means every older token
+is dead. After an uncertain revoke web sends no Ready before that lease has run out. If the key file is missing, web
+restores its own key to the same checked directory. It never replaces a file that is present. A clock regression is
+final until web restarts.
+
 ## Changing the contract
 
 A breaking change gets a new prefix (`ngr2.`), a new `v`, a new schema file and new vectors. The

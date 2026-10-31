@@ -72,9 +72,12 @@ egress profile is deployed beside it, so a release from an older image must add 
 The installed preflight refuses `CODE_EGRESS_PORT` without this profile. `CODE_EGRESS_PORT` unset or `0` boots but
 removes network access for Code and Browser tasks, so it is a decision, not a fix.
 
-Behaviour to plan for. Web's session with `egress-rs` does not recover by itself: after `egress-rs` restarts, Code and
-Browser network grants fail closed until web is recreated too. Restarting web alone is safe. Web also exits at startup
-if `egress-rs` is not reachable, and its restart policy retries. Rolling back to an image older than this requirement
+Behaviour to plan for. Web and `egress-rs` can start in either order and either can restart. While `egress-rs` is away,
+new Code and Browser network grants are refused, the Code and Browser panels report no network and web logs
+`egress.control_unavailable`. Web retries with a backoff of at most 15 s, then logs `egress.control_ready` with
+`recovered: true`. A task that was running keeps its old token, which no new session accepts: it stays without network
+until it ends. A wrong egress profile (key directory, ids, port) is a configuration error and still stops web at
+startup. Rolling back to an image older than this requirement
 must restore that image's Compose files, environment file and preflight `check.php`, and remove `egress-rs`.
 
 ## Diary model settings gate (#2105)

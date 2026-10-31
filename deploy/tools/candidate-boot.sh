@@ -118,12 +118,25 @@ while :; do
   sleep 2
 done
 
+# Web no longer waits for egress at startup (#2226), so ready alone says nothing about the pair. With a
+# native listener beside it, the candidate must also have logged an authenticated Ready.
+egress_ready=1
+if [ "$ready" = 1 ] && [ -n "$egress_image" ]; then
+  egress_ready=0
+  while :; do
+    if docker logs "$name" 2>&1 | grep -q '"event":"egress.control_ready"'; then egress_ready=1; break; fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then break; fi
+    sleep 2
+  done
+fi
+
 # Count, never print, the log lines: they can carry paths and request detail.
 errors="$(docker logs "$name" 2>&1 | grep -Eci 'error|EROFS|FATAL' || true)"
 if [ "$ready" = 1 ]; then
   if [ -n "$egress_image" ]; then egress_said="qualified beside $egress_image"; else egress_said="NOT qualified"; fi
-  echo "ok: $image ready at $sha ($body), error lines: $errors (front $front, egress $egress_said)"
-  exit 0
+  if [ "$egress_ready" = 1 ]; then echo "ok: $image ready at $sha ($body), error lines: $errors (front $front, egress $egress_said)"; else
+    echo "error: $image has no authenticated egress Ready beside $egress_image within ${wait_s}s (front $front, error lines: $errors)" >&2; exit 1; fi
+  if [ "$egress_ready" = 1 ]; then exit 0; fi
 fi
 echo "error: $image not ready at $sha within ${wait_s}s (front $front, last answer: ${body:-none}, error lines: $errors)" >&2
 exit 1
