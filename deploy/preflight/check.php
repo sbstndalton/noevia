@@ -160,6 +160,8 @@ function nativeEgressProfile(array $config): array {
         if (!preg_match('/^(0|[1-9][0-9]{0,9})$/', $we[$key] ?? '')) $errors[] = "$key must be set on web.";
     }
     if (($we['CODE_EGRESS_KEY_GID'] ?? '') === '0') $errors[] = 'CODE_EGRESS_KEY_GID must not be 0.';
+    foreach (['CODE_EGRESS_KEY_UID', 'CODE_EGRESS_KEY_GID'] as $key) if ((int)($we[$key] ?? 0) >= 0xffffffff) $errors[] = "$key is out of range.";
+    if (!in_array($we['CODE_EGRESS_KEY_GID'] ?? '', array_map('strval', (array)($native['group_add'] ?? [])), true)) $errors[] = 'egress-rs group_add must include CODE_EGRESS_KEY_GID, or it cannot read the key.';
     if (($we['CODE_EGRESS_KEY_UID'] ?? '') !== ($ne['CODE_EGRESS_CONTROL_KEY_UID'] ?? null) || ($we['CODE_EGRESS_KEY_GID'] ?? '') !== ($ne['CODE_EGRESS_CONTROL_KEY_GID'] ?? null)) $errors[] = 'web and egress-rs key owner settings differ.';
     $file = $we['CODE_EGRESS_CONTROL_KEY_FILE'] ?? '';
     if ($file === '' || $file !== ($ne['CODE_EGRESS_CONTROL_KEY_FILE'] ?? '')) { $errors[] = 'CODE_EGRESS_CONTROL_KEY_FILE must be set and equal on web and egress-rs.'; return $errors; }
@@ -170,6 +172,7 @@ function nativeEgressProfile(array $config): array {
     $wm = $mount($web); $nm = $mount($native);
     if (!$wm || !$nm || ($wm['type'] ?? '') !== 'bind' || ($nm['type'] ?? '') !== 'bind' || ($wm['source'] ?? '') === '' || ($wm['source'] ?? '') !== ($nm['source'] ?? '')) $errors[] = 'web and egress-rs must bind the same control key directory.';
     elseif (!empty($wm['read_only']) || empty($nm['read_only'])) $errors[] = 'the control key directory must be writable on web and read-only on egress-rs.';
+    elseif (($wm['bind']['create_host_path'] ?? null) !== false || ($nm['bind']['create_host_path'] ?? null) !== false) $errors[] = 'the control key directory must be prepared in advance (create_host_path: false).';
     return $errors;
 }
 function preflightMain(array $arguments): int {
