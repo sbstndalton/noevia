@@ -78,8 +78,10 @@ new Code and Browser network grants are refused, the Code and Browser panels rep
 `recovered: true`. A task that was running keeps its old token, which no new session accepts: it stays without network
 until it ends. If `egress-rs` holds a session web cannot name (a Ready whose reply was lost), web logs
 `egress.control_conflict`, and after 25 s of signed refusals it writes a new key over its own and logs
-`egress.control_rekeyed`. `egress.control_rekey_refused` or `egress.key_superseded` means the key file holds another
-web's key: web stays without network grants until it is restarted.
+`egress.control_rekeyed`. `egress.control_rekey_refused` means that write did not happen, for example a bad file mode
+or a failed write: web stays without network grants and tries again, so fix the cause and it recovers.
+`egress.key_superseded` means the key file holds another web's key: this web never writes the file again and stays
+without network grants until it is restarted.
 
 Web itself stops at startup only for bad syntax (port, host, ids, implementation) or a key directory or file that fails
 the ownership checks. A valid but wrong port or host, or a missing service, boots into the outage above, so read the log

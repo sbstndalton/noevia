@@ -116,8 +116,16 @@ A control failure drops web's authority at once. Web then sends Ready until one 
 one it lost: `replace` naming that session, then `initial` if the proxy answers 409 (it restarted or saw a new key).
 The proxy refuses both while the old session is live, and web stops renewing, so a new session means every older token
 is dead. After an uncertain revoke web sends no Ready before that lease has run out. If the key file is missing, web
-restores its own key to the same checked directory. It never replaces a file that is present. A clock regression is
-final until web restarts.
+restores its own key to the same checked directory.
+
+A Ready can commit on the proxy while its reply never reaches web. The proxy then holds a session web cannot name and
+refuses both modes with a signed 409. Once those refusals have run unbroken for at least 25 s, longer than any session
+web could still renew, web writes a new key over the file and sends `initial`. The proxy reads the file on every request,
+and a changed key retires its session. Network failures and unsigned answers never count towards this.
+
+Web replaces a present file only in that case, and only if it still holds this process's own key. Another web's key is
+never overwritten, and a process that has seen one never writes the file again. A clock regression is final until web
+restarts.
 
 ## Changing the contract
 

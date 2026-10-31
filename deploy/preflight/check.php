@@ -134,8 +134,9 @@ function modelLoaderBoundary(array $config, string $manager = 'model-loader', st
 }
 
 /**
- * noevia#2226: a current Core with CODE_EGRESS_PORT set requires the native egress profile and stops at
- * startup without it. Key names only in messages. Rolling back to an older image restores the check.php
+ * noevia#2226: a current Core with CODE_EGRESS_PORT set requires the native egress profile, and this check
+ * refuses an installation without it. Web itself stops at startup only for bad syntax or a key directory or
+ * file that fails its ownership checks; a missing service boots into a logged outage. Key names only in messages. Rolling back to an older image restores the check.php
  * that shipped beside it, because that image still uses its in-process proxy.
  */
 function nativeEgressProfile(array $config): array {
