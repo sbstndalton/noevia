@@ -67,7 +67,7 @@ try {
     // ---- native egress profile (noevia#2226) ----
     $k = '/run/noevia-egress-control';
     $egress = ['services'=>[
-        'web'=>['environment'=>['CODE_EGRESS_PORT'=>'8040','CODE_EGRESS_RUST_HOST'=>'egress-rs-code','CODE_EGRESS_KEY_UID'=>'0','CODE_EGRESS_KEY_GID'=>'1006','CODE_EGRESS_CONTROL_KEY_FILE'=>"$k/current.key"],'volumes'=>[['type'=>'bind','source'=>'/keys','target'=>$k,'bind'=>['create_host_path'=>false]]]],
+        'web'=>['networks'=>['code'=>null],'environment'=>['CODE_EGRESS_PORT'=>'8040','CODE_EGRESS_RUST_HOST'=>'egress-rs-code','CODE_EGRESS_KEY_UID'=>'0','CODE_EGRESS_KEY_GID'=>'1006','CODE_EGRESS_CONTROL_KEY_FILE'=>"$k/current.key"],'volumes'=>[['type'=>'bind','source'=>'/keys','target'=>$k,'bind'=>['create_host_path'=>false]]]],
         'egress-rs'=>['environment'=>['CODE_EGRESS_PORT'=>'8040','CODE_EGRESS_BIND'=>'egress-rs-code','CODE_EGRESS_CONTROL_KEY_UID'=>'0','CODE_EGRESS_CONTROL_KEY_GID'=>'1006','CODE_EGRESS_CONTROL_KEY_FILE'=>"$k/current.key"],'group_add'=>['1006'],'networks'=>['code'=>['aliases'=>['egress-rs-code']]],'volumes'=>[['type'=>'bind','source'=>'/keys','target'=>$k,'read_only'=>true,'bind'=>['create_host_path'=>false]]]]]];
     verify(nativeEgressProfile($egress) === [], 'Complete native egress profile rejected');
     verify(nativeEgressProfile(['services'=>['web'=>['environment'=>[]]]]) === [], 'Unset port rejected');
@@ -88,6 +88,7 @@ try {
         function($c){ unset($c['services']['web']['environment']['CODE_EGRESS_CONTROL_KEY_FILE']); return $c; },
         fn($c)=>[$c['services']['web']['volumes'] = [], $c][1],
         fn($c)=>[$c['services']['egress-rs']['group_add'] = [], $c][1],
+        fn($c)=>[$c['services']['web']['networks'] = ['default'=>null], $c][1],
         fn($c)=>[$c['services']['web']['environment']['CODE_EGRESS_KEY_UID'] = '4294967295', $c][1],
         fn($c)=>[$c['services']['egress-rs']['volumes'][0]['bind']['create_host_path'] = true, $c][1],
         fn($c)=>[$c['services']['egress-rs']['volumes'][0]['source'] = '/other', $c][1],

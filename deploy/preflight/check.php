@@ -155,6 +155,7 @@ function nativeEgressProfile(array $config): array {
     if ($bind === '' || ($we['CODE_EGRESS_RUST_HOST'] ?? 'egress-rs-code') !== $bind) $errors[] = 'CODE_EGRESS_RUST_HOST does not name the egress-rs CODE_EGRESS_BIND.';
     $aliases = $native['networks']['code']['aliases'] ?? [];
     if ($bind !== '' && !in_array($bind, is_array($aliases) ? $aliases : [], true)) $errors[] = 'egress-rs CODE_EGRESS_BIND is not its alias on the code network.';
+    if (!array_key_exists('code', (array)($web['networks'] ?? []))) $errors[] = 'web must be on the code network to reach egress-rs.';
     if (!empty($native['ports'])) $errors[] = 'egress-rs must not publish ports.';
     foreach (['CODE_EGRESS_KEY_UID', 'CODE_EGRESS_KEY_GID'] as $key) {
         if (!preg_match('/^(0|[1-9][0-9]{0,9})$/', $we[$key] ?? '')) $errors[] = "$key must be set on web.";
