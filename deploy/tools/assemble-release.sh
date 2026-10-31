@@ -410,8 +410,10 @@ core_tails_change_journal() {
 core_needs_journal_origin() {
   # Any variable name (#2161: a rename must not skip the guard), either quote, code lines only. Also `e?.origin`,
   # `e['origin']` / `e?.['origin']`, and the string on the left (#2252): each reads the origin as `history`.
-  local field="[A-Za-z_][A-Za-z0-9_]*(\\?\\.|\\.)origin|[A-Za-z_][A-Za-z0-9_]*(\\?\\.)?\\[['\"]origin['\"]\\]"
-  local history="['\"]history['\"]" eq="[[:space:]]*===?[[:space:]]*"
+  # #2255: also a destructured bare `origin` (`const { origin } = e`) and the negated tests `!==` / `!=`
+  # (`e.origin !== 'history'` returns early for everything else, so the core reads the origin the same way).
+  local field="[A-Za-z_][A-Za-z0-9_]*(\\?\\.|\\.)origin|[A-Za-z_][A-Za-z0-9_]*(\\?\\.)?\\[['\"]origin['\"]\\]|(^|[^A-Za-z0-9_\$.'\"-])origin"
+  local history="['\"]history['\"]" eq="[[:space:]]*(===?|!==?)[[:space:]]*"
   code_lines "$tree/core/server/chat-change-journal.cjs" | grep -qE "(${field})${eq}${history}|${history}${eq}(${field})"
 }
 # Whether the pinned front's journal entries carry that origin (crates/server-projects journal.rs).

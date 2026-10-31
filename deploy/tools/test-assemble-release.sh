@@ -451,6 +451,14 @@ yes|a loose equality|const ok = e.origin == 'history';
 yes|e['origin'] === 'history'|const ok = e['origin'] === 'history';
 yes|e?.['origin'] === "history"|const ok = e?.['origin'] === "history";
 yes|the string on the left|const ok = 'history' === e?.origin;
+yes|a negated test (#2255)|if (e.origin !== 'history') return;
+yes|a loosely negated test (#2255)|if (e?.origin != "history") return;
+yes|a destructured origin (#2255)|const { op, origin } = e; if (origin === 'history') build();
+yes|a destructured origin, negated (#2255)|const { origin } = e; if (origin !== 'history') return;
+yes|a destructured origin, string on the left (#2255)|if ('history' === origin) build();
+no|a destructured origin against another value (#2255)|const { origin } = e; if (origin === 'import') return;
+no|a name that only ends in origin (#2255)|if (previous_origin === 'history') return;
+no|a property named like a prefix (#2255)|if (e.origins === 'history') return;
 no|a comment|// builds a brain when e.origin === 'history'
 no|another origin value|const ok = e?.origin === 'import';
 no|a doc block|/* e?.origin === 'history' */
