@@ -408,11 +408,13 @@ core_tails_change_journal() {
 # Whether the pinned core builds a chat's brain only for journal entries with origin "history"
 # (sbstndalton/noevia#2153: then it no longer nudges the brain itself while the front journals).
 core_needs_journal_origin() {
-  grep -q "e.origin === 'history'" "$tree/core/server/chat-change-journal.cjs" 2>/dev/null
+  # Any variable name (#2161: a rename must not skip the guard), either quote, code lines only.
+  code_lines "$tree/core/server/chat-change-journal.cjs" | grep -qE "[A-Za-z_][A-Za-z0-9_]*\\.origin[[:space:]]*===?[[:space:]]*['\"]history['\"]"
 }
 # Whether the pinned front's journal entries carry that origin (crates/server-projects journal.rs).
 rs_journals_origin() {
-  grep -qs '"origin"' "$tree/rs/crates/server-projects/src/journal.rs"
+  # The entry's field is built from the origin value in code; a doc comment naming "origin" is not it (#2161).
+  code_lines "$tree/rs/crates/server-projects/src/journal.rs" | grep -qF '"origin": origin.as_str()'
 }
 # Whether routes.toml gives a chat's DELETE to Rust (sbstndalton/noevia#1071 slice 6): either of
 # DELETE /api/freechats/{chatId} and DELETE /api/projects/{projectId}/chats/{chatId}.
