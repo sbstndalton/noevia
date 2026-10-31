@@ -1528,6 +1528,53 @@ if [ "$sizing_rs_owner" = rust ]; then
   [ "$sizing_routes" = "$sizing_expected" ] || die "model sizing ownership pairing: incomplete route ownership"
 fi
 
+# GET inference-budget and GET installed (sbstndalton/noevia#2262) move as one owner: Core's rust-model-state-reads.cjs
+# refusal and the front's rust-model-state-reads capability, with exactly GET of both Rust's in routes.toml (the budget's
+# PUT stays Node's). Core must have dropped the handlers and hand the front its facts on the loopback check, with the
+# secret captured as for research. Old/old remains a valid rollback pair; either mixed generation is refused.
+ms_core_owner=""
+ms_rs_owner=""
+grep -qF "require('./rust-model-state-reads.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ms_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-state-reads features; then
+  ms_rs_owner=rust
+fi
+[ "$ms_core_owner" = "$ms_rs_owner" ] \
+  || die "model state read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # An unreadable table is the route-table check's to report, below.
+  ms_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ms_table=""
+  ms_routes="$(printf '%s\n' "$ms_table" | awk -F'\t' -v want="$ms_rs_owner" '
+    $1 == "/api/models/inference-budget" || $1 == "/api/models/installed" {
+      if (want == "rust") {
+        if ($2 != "rust" || $3 != "-") exit 1
+        n = split($4, m, /[^A-Z]+/); k = 0
+        for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+        if (k != 1) exit 1
+      }
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model state read ownership pairing: exactly GET of both routes must be Rust's with the new pair, and Node's with the old"
+  if [ "$ms_rs_owner" = rust ]; then
+    [ "$(printf '%s\n' "$ms_routes" | sort -u | wc -l | tr -d ' ')" = 2 ] || die "model state read ownership pairing: incomplete route ownership"
+    grep -qF "OWNED_PATHS = Object.freeze(['/api/models/inference-budget', '/api/models/installed'])" "$tree/core/server/rust-model-state-reads.cjs" 2>/dev/null \
+      || die "model state read ownership pairing: Core must refuse exactly the two reads the front answers"
+    ! grep -qE 'inferenceEstimates|await modelsInstalled\(\)\)' "$tree/core/server/routes/models.cjs" 2>/dev/null \
+      || die "model state read ownership pairing: Core still carries the read handlers"
+    [ -f "$tree/core/server/rust-model-facts.cjs" ] \
+      || die "model state read ownership pairing: Core does not offer the front its model facts"
+    ms_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'modelFactsBridge\(req, res\)' <<<"$ms_index" \
+      || die "model state read ownership pairing: Core does not mount the model facts bridge"
+    ms_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ms_index" | head -1)"
+    [ -n "$ms_secret" ] && awk -v c="$ms_secret" '
+      /createModelFactsBridge\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$ms_index" \
+      || die "model state read ownership pairing: Core does not hand its model facts bridge the front's captured secret"
+  fi
+fi
+
 # The model maintenance routes (sbstndalton/noevia#2210) move as one owner: Core's rust-model-maintenance.cjs
 # refusal and the front's rust-model-maintenance capability, with exactly POST /api/models/presets/reload,
 # GET /api/models/evidence and POST /api/models/evidence/import Rust's in routes.toml (Node keeps every other
