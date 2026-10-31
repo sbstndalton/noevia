@@ -409,6 +409,30 @@ printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_
 g commit -qam rs-change-journal; ph10="$(g rev-parse --short HEAD)"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "#1071 slice 5: ...and assembles once the core refuses the save, writes only through the store and tails the journal the front writes" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$ph10.tar.gz" ]'
+# #2191 round 4: a core without conversation-import.cjs passes the transcript check only when it really
+# refuses that import. The import pair guard runs first in a full assembly, so test the function itself.
+{
+  saved_tree="${tree:-}"; tree="$work/import-tree"; c="$tree/core/server"; mkdir -p "$c/routes"
+  eval "$(sed -n -e '/^code_lines() {/p' -e '/^core_refuses_conversation_import() {/,/^}/p' "$here/assemble-release.sh")"
+  call="  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, {})) return;"
+  route="    if (authn && await importRoutes(req, res, { path: p, authn })) return;"
+  printf '%s\n' "const OWNED_ROUTES = new Set(['POST /api/import/conversations']);" 'function refuseOwned(req, res) { return true; }' > "$c/rust-conversation-import.cjs"
+  printf '%s\n' "$call" "$route" > "$c/index.cjs"
+  check "#2191: a real refusal that runs before the import route passes" 'core_refuses_conversation_import'
+  printf '%s\n' "$route" "$call" > "$c/index.cjs"
+  check "#2191: a refusal after the import route is refused" '! core_refuses_conversation_import'
+  printf '%s\n' "require('./rust-conversation-import.cjs');" > "$c/index.cjs"
+  check "#2191: only naming the helper is refused" '! core_refuses_conversation_import'
+  printf '%s\n' "$call" "$route" > "$c/index.cjs"
+  printf '%s\n' 'function refuseOwned() { return true; }' > "$c/rust-conversation-import.cjs"
+  check "#2191: a helper that does not own the import route is refused" '! core_refuses_conversation_import'
+  printf '%s\n' "const OWNED_ROUTES = new Set(['POST /api/import/conversations']);" 'function refuseOwned(req, res) { return true; }' > "$c/rust-conversation-import.cjs"
+  printf '%s\n' 'ctx.transcripts.write(id, history);' > "$c/routes/import.cjs"
+  check "#2191: an import route that still writes transcripts is refused" '! core_refuses_conversation_import'
+  rm "$c/routes/import.cjs"; printf '%s\n' 'x' > "$c/conversation-import.cjs"
+  check "#2191: a core that still has conversation-import.cjs is refused" '! core_refuses_conversation_import'
+  tree="$saved_tree"
+}
 # #2153: a core that builds brains only for origin "history" entries needs a front that journals it.
 printf '%s\n' "const JOURNAL_READER_MARKER = 'noevia-chat-change-journal-reader/1';" "function isHistorySave(e) { return !!e && e.op === 'write' && e.origin === 'history'; }" > "$w/server/chat-change-journal.cjs"
 g add -A && g commit -qm core-journal-origin; ph10o="$(g rev-parse --short HEAD)"
