@@ -179,6 +179,12 @@ function nativeEgressProfile(array $config): array {
     elseif (!empty($wm['read_only']) || empty($nm['read_only'])) $errors[] = 'the control key directory must be writable on web and read-only on egress-rs.';
     // Compose renders create_host_path: false as an empty bind block, so only an explicit true is refused.
     elseif (($wm['bind']['create_host_path'] ?? false) === true || ($nm['bind']['create_host_path'] ?? false) === true) $errors[] = 'the control key directory must be prepared in advance (create_host_path: false).';
+    if ($wm) foreach ($config['services'] as $name => $service) {
+        if ($name === 'web' || $name === 'egress-rs' || !is_array($service)) continue;
+        foreach ($service['volumes'] ?? [] as $v) {
+            if (is_array($v) && (($v['source'] ?? '') === ($wm['source'] ?? null) || ($v['target'] ?? '') === dirname($file))) $errors[] = "the control key directory must not be mounted into $name.";
+        }
+    }
     return $errors;
 }
 function preflightMain(array $arguments): int {

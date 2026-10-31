@@ -78,6 +78,8 @@ try {
     verify(nativeEgressProfile($blank) === [], 'Empty values Core defaults were rejected');
     $space = $egress; $space['services']['web']['environment']['CODE_EGRESS_RUST_HOST'] = ' ';
     verify(count(nativeEgressProfile($space)) > 0, 'A whitespace host that Core refuses was accepted');
+    $third = $egress; $third['services']['code-sandbox'] = ['volumes'=>[['type'=>'bind','source'=>'/keys','target'=>'/elsewhere','read_only'=>true]]];
+    verify(count(nativeEgressProfile($third)) > 0, 'Key directory mounted into a third service accepted');
     $noService = $egress; unset($noService['services']['egress-rs']);
     verify(count(nativeEgressProfile($noService)) > 0, 'Port set without egress-rs accepted');
     foreach ([
