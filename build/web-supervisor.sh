@@ -397,29 +397,6 @@ if [ "$large_lock_core_owner" != "$large_lock_front_owner" ]; then
   echo "web-supervisor: large-document lock mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
-# The deep-research executor also requires a paired Rust journal store. Probe the real
-# client export and this binary's compiled feature before starting either process.
-research_client_file="$PWD/server/project-store-client.cjs"
-research_client_marker="$(node -e 'const c=require(process.argv[1]); if(c.RESEARCH_JOBS_CLIENT_MARKER) process.stdout.write(c.RESEARCH_JOBS_CLIENT_MARKER)' "$research_client_file" 2>/dev/null || true)"
-if { grep -qE 'RESEARCH_JOBS_CLIENT_MARKER|researchJobsFor\(' "$research_client_file" 2>/dev/null      || grep -qF 'workspace.researchJobs' "$PWD/server/research-jobs.cjs" 2>/dev/null; }    && [ "$research_client_marker" != 'noevia-research-jobs-client/1' ]; then
-  echo "web-supervisor: core declares a research job store client but does not export its canonical capability" >&2
-  exit 2
-fi
-if [ -n "$research_client_marker" ] && [ "$research_client_marker" != 'noevia-research-jobs-client/1' ]; then
-  echo "web-supervisor: unknown research job client capability" >&2
-  exit 2
-fi
-research_store_reported=""
-if grep -qx 'noevia-research-jobs-store/1' <<<"$rust_features"; then research_store_reported=1; fi
-if [ -n "$research_client_marker" ] && [ -z "$research_store_reported" ]; then
-  echo "web-supervisor: core research job client requires noevia-research-jobs-store/1 from this noevia-server" >&2
-  exit 2
-fi
-# A rust-research front runs the jobs itself (#2218): the store stays compiled and Core has no client any more.
-if [ -z "$research_client_marker" ] && [ -n "$research_store_reported" ] && ! grep -qx 'rust-research' <<<"$rust_features"; then
-  echo "web-supervisor: noevia-server research job store requires a paired core research job client" >&2
-  exit 2
-fi
 # #2027: Node's legacy workspace prologue delegates only to the actual selected front
 # when that binary advertises the filesystem-only helper. Never inherit an arbitrary path.
 legacy_claim_bin=""
