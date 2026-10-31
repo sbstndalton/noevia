@@ -149,10 +149,13 @@ function nativeEgressProfile(array $config): array {
     if (!preg_match('/^[1-9][0-9]{0,4}$/', $port) || (int)$port > 65535) return ['CODE_EGRESS_PORT is not a valid port.'];
     if (!is_array($native)) return ['CODE_EGRESS_PORT is set but the egress-rs service is missing (noevia#2226): see deploy/examples/code-egress-rust.override.yml.'];
     $ne = serviceEnv($native);
-    if (($we['CODE_EGRESS_IMPL'] ?? 'rust') !== 'rust') $errors[] = 'CODE_EGRESS_IMPL must be rust.';
+    // As Core reads them: trimmed, with empty meaning the default.
+    $impl = trim($we['CODE_EGRESS_IMPL'] ?? '') ?: 'rust';
+    $host = trim($we['CODE_EGRESS_RUST_HOST'] ?? '') ?: 'egress-rs-code';
+    if ($impl !== 'rust') $errors[] = 'CODE_EGRESS_IMPL must be rust.';
     if (($ne['CODE_EGRESS_PORT'] ?? '') !== $port) $errors[] = 'web and egress-rs CODE_EGRESS_PORT differ.';
     $bind = $ne['CODE_EGRESS_BIND'] ?? '';
-    if ($bind === '' || ($we['CODE_EGRESS_RUST_HOST'] ?? 'egress-rs-code') !== $bind) $errors[] = 'CODE_EGRESS_RUST_HOST does not name the egress-rs CODE_EGRESS_BIND.';
+    if ($bind === '' || $host !== $bind) $errors[] = 'CODE_EGRESS_RUST_HOST does not name the egress-rs CODE_EGRESS_BIND.';
     $aliases = $native['networks']['code']['aliases'] ?? [];
     if ($bind !== '' && !in_array($bind, is_array($aliases) ? $aliases : [], true)) $errors[] = 'egress-rs CODE_EGRESS_BIND is not its alias on the code network.';
     if (!array_key_exists('code', (array)($web['networks'] ?? []))) $errors[] = 'web must be on the code network to reach egress-rs.';
