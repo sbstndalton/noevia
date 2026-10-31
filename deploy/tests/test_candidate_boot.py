@@ -90,6 +90,7 @@ class CandidateBootTests(unittest.TestCase):
 
     def test_egress_image_boots_the_candidate_beside_a_native_listener(self):
         self.answer('{"ready":true,"version":"%s"}' % SHA)
+        (self.dir / 'logs').write_text('[egress] {"event":"egress.control_ready","recovered":false}\n')
         result = self.run_script(SHA, CANDIDATE_EGRESS='', CANDIDATE_EGRESS_IMAGE='egress:test')
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.calls()
@@ -110,6 +111,17 @@ class CandidateBootTests(unittest.TestCase):
         self.assertFalse(pathlib.Path(mount.split(':')[0]).parent.exists(), 'the key directory is removed afterwards')
         self.assertTrue(any(c.startswith('network rm ') for c in calls))
         self.assertEqual(len([c for c in calls if c.startswith('rm -f')]), 2)
+
+    def test_egress_image_requires_an_authenticated_ready_in_the_log(self):
+        self.answer('{"ready":true,"version":"%s"}' % SHA)
+        result = self.run_script(SHA, CANDIDATE_EGRESS='', CANDIDATE_EGRESS_IMAGE='egress:test', CANDIDATE_WAIT_SECONDS='0')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('no authenticated egress Ready', result.stderr)
+        self.assertTrue(any(c.startswith('rm -f ') for c in self.calls()), 'candidate not removed')
+        (self.dir / 'logs').write_text('[egress] {"event":"egress.control_ready","recovered":false}\n')
+        result = self.run_script(SHA, CANDIDATE_EGRESS='', CANDIDATE_EGRESS_IMAGE='egress:test', CANDIDATE_WAIT_SECONDS='0')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('qualified beside egress:test', result.stdout)
 
     def test_refuses_a_non_sha_without_touching_docker(self):
         result = self.run_script('not-a-sha')

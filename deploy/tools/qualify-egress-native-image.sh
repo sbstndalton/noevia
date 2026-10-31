@@ -7,8 +7,10 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 rs=$(cd "$1" && pwd)
 core=$(cd "$2" && pwd)
-rs_ref=e4c9f1eb5cf3d58fd55cee737bcebeaa223d4fe3
-core_ref=bb1060b119d5e3f80cd315785fb0b54beb5e30d6
+# The release's own pins: what is qualified here is what the lock ships.
+rs_ref=$(sed -n 's/^NOEVIA_RS_REF=//p' "$root/release/versions.lock")
+core_ref=$(sed -n 's/^NOEVIA_CORE_REF=//p' "$root/release/versions.lock")
+[[ $rs_ref =~ ^[0-9a-f]{40}$ && $core_ref =~ ^[0-9a-f]{40}$ ]] || { echo 'release lock has no exact Rust and Core refs' >&2; exit 2; }
 [[ $(git -C "$rs" rev-parse HEAD) == "$rs_ref" && -z $(git -C "$rs" status --porcelain) ]] || { echo 'reviewed Rust checkout mismatch' >&2; exit 2; }
 [[ $(git -C "$core" rev-parse HEAD) == "$core_ref" && -z $(git -C "$core" status --porcelain) ]] || { echo 'reviewed Core checkout mismatch' >&2; exit 2; }
 work=$(mktemp -d)
