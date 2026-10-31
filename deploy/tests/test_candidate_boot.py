@@ -25,7 +25,7 @@ case "$1" in
   inspect) echo "${STUB_RUNNING:-true}"; exit 0 ;;
   exec) cat "$STUB_DIR/ready" 2>/dev/null; exit "${STUB_EXEC_RC:-0}" ;;
   logs) cat "$STUB_DIR/logs" 2>/dev/null; exit 0 ;;
-  rm) exit 0 ;;
+  rm|network) exit 0 ;;
   *) exit 1 ;;
 esac
 '''
@@ -39,6 +39,9 @@ class CandidateBootTests(unittest.TestCase):
         stub = self.dir / 'bin' / 'docker'
         stub.write_text(STUB)
         stub.chmod(stub.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        inst = self.dir / 'bin' / 'install'
+        inst.write_text('#!/usr/bin/env bash\necho "$*" >> "$STUB_DIR/install"\nfor last; do :; done\nmkdir -p "$last"\n')
+        inst.chmod(0o755)
         (self.dir / 'calls').write_text('')
         (self.dir / 'logs').write_text('')
 
@@ -54,6 +57,8 @@ class CandidateBootTests(unittest.TestCase):
         full_env['STUB_DIR'] = str(self.dir)
         full_env.pop('CANDIDATE_FRONT', None)
         full_env.pop('CANDIDATE_WAIT_SECONDS', None)
+        full_env.pop('CANDIDATE_EGRESS_IMAGE', None)
+        full_env['CANDIDATE_EGRESS'] = 'off'
         full_env.update(env)
         return subprocess.run(['bash', str(SCRIPT), *args], capture_output=True, text=True, env=full_env, timeout=60)
 
@@ -70,6 +75,41 @@ class CandidateBootTests(unittest.TestCase):
         found = [p.split('=', 1)[1] for p in pairs if p.startswith(key + '=')]
         self.assertEqual(len(found), 1, f'{key} passed {len(found)} times')
         return found[0]
+
+    def test_refuses_without_an_explicit_egress_choice(self):
+        result = self.run_script(SHA, CANDIDATE_EGRESS='')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('#2226', result.stderr)
+        self.assertEqual(self.calls(), [])
+
+    def test_off_says_the_egress_path_was_not_qualified(self):
+        self.answer('{"ready":true,"version":"%s"}' % SHA)
+        result = self.run_script(SHA)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('egress NOT qualified', result.stdout)
+
+    def test_egress_image_boots_the_candidate_beside_a_native_listener(self):
+        self.answer('{"ready":true,"version":"%s"}' % SHA)
+        result = self.run_script(SHA, CANDIDATE_EGRESS='', CANDIDATE_EGRESS_IMAGE='egress:test')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertTrue(any(c.startswith('network create --internal ') for c in calls))
+        runs = [shlex.split(c) for c in calls if c.startswith('run ')]
+        self.assertEqual(len(runs), 2)
+        native, web = runs
+        self.assertIn('egress:test', native)
+        self.assertEqual(native[native.index('--network-alias') + 1], 'egress-rs-code')
+        self.assertNotIn('-p', native)
+        self.assertEqual(self.env_value(web, 'CODE_EGRESS_PORT'), '8040')
+        self.assertEqual(self.env_value(web, 'CODE_EGRESS_RUST_HOST'), 'egress-rs-code')
+        self.assertEqual(self.env_value(web, 'CODE_EGRESS_KEY_GID'), '1006')
+        self.assertNotEqual(web[web.index('--network') + 1], 'none')
+        self.assertEqual(web[web.index('--cap-add') + 1], 'CHOWN')
+        self.assertIn('-m 0750 -o 0 -g 1006', (self.dir / 'install').read_text())
+        mount = next(a for a in native if a.endswith(':ro'))
+        self.assertFalse(pathlib.Path(mount.split(':')[0]).parent.exists(), 'the key directory is removed afterwards')
+        self.assertTrue(any(c.startswith('network rm ') for c in calls))
+        self.assertEqual(len([c for c in calls if c.startswith('rm -f')]), 2)
 
     def test_refuses_a_non_sha_without_touching_docker(self):
         result = self.run_script('not-a-sha')
