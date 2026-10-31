@@ -56,5 +56,13 @@ for n in 264 265; do
   check "run plan $n says where its archived experiment files are" 'grep -q "archived at\|last tree is commit 9ee4b821" "$root/docs/handoffs/2026-09-25-run-plan-$n.md" && grep -q "Archived experiment files" "$root/docs/handoffs/2026-09-25-run-plan-$n.md"'
 done
 
+# #2252: this test runs in the deploy-tests job, which the change filter in ci.yml starts only for the paths listed under
+# `deploy:`. A change to the fixture or to the notes the test reads must be among them, or it merges without this test.
+ci="$root/.github/workflows/ci.yml"
+deploy_filter="$(awk '/^            deploy:/{on=1; next} on && /^            [a-z]+:/{on=0} on' "$ci")"
+for pattern in 'docs/prototypes/**' 'docs/research-skills-mcp-loading.md' 'docs/handoffs/2026-09-25-run-plan-26*.md'; do
+  check "ci.yml's deploy filter runs this test for $pattern" 'printf "%s\n" "$deploy_filter" | grep -qxF "              - '"'"'$pattern'"'"'"'
+done
+
 echo "$passes passed, $fails failed"
 [ $fails -eq 0 ]
