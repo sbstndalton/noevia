@@ -2,7 +2,7 @@
 
 Implementation and research gates for [issue #19](https://github.com/sbstndalton/noevia/issues/19). The offline experiment is implemented; live quality and adoption remain pending. This is not a deployment record.
 
-Run instructions, contract boundaries and reproducible results: [offline experiment](../experiments/system-one/skills-mcp/README.md). The [runtime matrix](../experiments/system-one/skills-mcp/compatibility.md) and [script design](../experiments/system-one/skills-mcp/script-execution-design.md) separate supported behavior from deferred capabilities.
+Run instructions, contract boundaries and reproducible results: [offline experiment](https://github.com/sbstndalton/noevia/tree/9ee4b821/experiments/system-one/skills-mcp/README.md). The [runtime matrix](../experiments/system-one/skills-mcp/compatibility.md) and [script design](../experiments/system-one/skills-mcp/script-execution-design.md) separate supported behavior from deferred capabilities.
 
 ## Evidence and current behavior
 
@@ -20,7 +20,7 @@ System-One currently routes model roles and supports step supervision. It does n
 
 ## First implementation slice: offline and default-off
 
-The fixture-driven experiment lives under `experiments/system-one/skills-mcp/`. It must not be wired into production chat, call a live model/provider, install a package, start an MCP server, execute a skill script or change a production setting.
+The fixture-driven experiment lived under `experiments/system-one/skills-mcp/` until 9ee4b821, which is the last tree with it. It must not be wired into production chat, call a live model/provider, install a package, start an MCP server, execute a skill script or change a production setting.
 
 Compare three modes on identical frozen and held-out synthetic fixtures:
 
