@@ -1868,6 +1868,80 @@ tr_try tasks-old-with-rust-rows
 check "an old pair whose table gives the reads to Rust is refused" 'refused "task read ownership pairing"'
 rm -f "$w/server/rust-task-reads.cjs" "$w/server/rust-task-facts.cjs"
 rm -f "$w/server/rust-research.cjs" "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
+# GET inference-budget and GET installed (sbstndalton/noevia#2262): the pair, its rows and what Core must have done.
+ms_rows() {
+  for path in inference-budget installed; do
+    [ "${ms_skip:-}" = "$path" ] && continue
+    printf '[[route]]\npath = "/api/models/%s"\nowner = "%s"\n' "$path" "$ms_owner"
+    [ "$ms_owner" = rust ] && printf '%s\n' "${ms_methods:-methods = [\"GET\"]}"
+  done
+  return 0
+}
+ms_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows)
+}
+printf '%s\n' "const OWNED_PATHS = Object.freeze(['/api/models/inference-budget', '/api/models/installed']);" > "$w/server/rust-model-state-reads.cjs"
+touch "$w/server/rust-model-facts.cjs"
+ms_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const PROJECT_STORE = require('./project-store-client.cjs').clientFromEnv(process.env);
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+  if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+  if (await modelFactsBridge(req, res)) return;
+JS
+}
+ms_front() { sed "s/\"start-id\"/\"start-id\", \"rust-model-state-reads\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ms_owner=rust; ms_core; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ms_try model-state-core-only
+check "a model state refusal needs the native capability" 'refused "model state read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ms_front
+ms_try model-state-front-only
+check "a rust-model-state-reads front cannot pair with an old Core" 'refused "model state read ownership pairing"'
+ms_core
+ms_try model-state-pair
+check "the matching model state pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ms_methods='methods = ["GET", "PUT"]'
+ms_try model-state-put-too
+check "the budget PUT given to the front is refused (it stays Node's)" 'refused "model state read ownership pairing"'
+ms_methods=""; ms_skip=installed
+ms_try model-state-missing-row
+check "a model state pair missing one read is refused" 'refused "incomplete route ownership"'
+ms_skip=""; ms_owner=node
+ms_try model-state-node-rows
+check "a rust-model-state-reads pair with Node's rows is refused" 'refused "model state read ownership pairing"'
+ms_owner=rust
+cp "$w/server/rust-model-state-reads.cjs" "$work/ms-reads.saved"; printf 'module.exports = {};\n' > "$w/server/rust-model-state-reads.cjs"
+ms_try model-state-unlisted
+check "a Core not refusing exactly the two reads is refused" 'refused "Core must refuse exactly the two reads"'
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"
+mkdir -p "$w/server/routes"; [ -f "$w/server/routes/models.cjs" ] && cp "$w/server/routes/models.cjs" "$work/ms-models.saved" || : > "$work/ms-models.saved"
+printf 'await modelManager.inferenceEstimates();\n' >> "$w/server/routes/models.cjs"
+ms_try model-state-old-handlers
+check "a Core still carrying the read handlers is refused" 'refused "still carries the read handlers"'
+if [ -s "$work/ms-models.saved" ]; then cp "$work/ms-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+rm -f "$w/server/rust-model-facts.cjs"
+ms_try model-state-no-facts
+check "a Core without the model facts bridge is refused" 'refused "does not offer the front its model facts"'
+touch "$w/server/rust-model-facts.cjs"
+cp "$w/server/index.cjs" "$work/ms-index.saved"
+sed '/modelFactsBridge(req, res)/d' "$work/ms-index.saved" > "$w/server/index.cjs"
+ms_try model-state-no-mount
+check "a Core that does not mount the model facts bridge is refused" 'refused "does not mount the model facts bridge"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/ms-index.saved" > "$w/server/index.cjs"
+ms_try model-state-no-secret
+check "a Core that gives the model facts bridge no secret is refused" 'refused "front.s captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=node
+ms_try model-state-old-pair
+check "the old model state pair with Node's rows stays a valid rollback" '[ $rc -eq 0 ]'
+ms_owner=rust
+ms_try model-state-old-with-rust-rows
+check "an old pair whose table gives the model state reads to Rust is refused" 'refused "model state read ownership pairing"'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.
 au_try() {
