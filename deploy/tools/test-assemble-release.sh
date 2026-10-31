@@ -433,6 +433,30 @@ check "#1071 slice 5: ...and assembles once the core refuses the save, writes on
   check "#2191: a core that still has conversation-import.cjs is refused" '! core_refuses_conversation_import'
   tree="$saved_tree"
 }
+# #2252 (review of #2250): the core's origin test in any ordinary spelling is still that test. Optional chaining
+# (`e?.origin === 'history'`), a bracket read, loose equality, and the string on the left all turn the
+# pairing guard on; a comment that names the test, and an origin compared with another value, do not.
+{
+  saved_tree="${tree:-}"; tree="$work/origin-tree"; c="$tree/core/server"; mkdir -p "$c"
+  eval "$(sed -n -e '/^code_lines() {/p' -e '/^core_needs_journal_origin() {/,/^}/p' "$here/assemble-release.sh")"
+  while IFS='|' read -r want label line; do
+    printf '%s\n' "$line" > "$c/chat-change-journal.cjs"
+    if [ "$want" = yes ]; then check "#2252: $label is the journal origin test" 'core_needs_journal_origin'
+    else check "#2252: $label is not the journal origin test" '! core_needs_journal_origin'; fi
+  done <<'FORMS'
+yes|e.origin === 'history'|const ok = e.origin === 'history';
+yes|e?.origin === 'history'|const ok = e?.origin === 'history';
+yes|entry?.origin === "history"|const ok = !!entry && entry?.origin === "history";
+yes|a loose equality|const ok = e.origin == 'history';
+yes|e['origin'] === 'history'|const ok = e['origin'] === 'history';
+yes|e?.['origin'] === "history"|const ok = e?.['origin'] === "history";
+yes|the string on the left|const ok = 'history' === e?.origin;
+no|a comment|// builds a brain when e.origin === 'history'
+no|another origin value|const ok = e?.origin === 'import';
+no|a doc block|/* e?.origin === 'history' */
+FORMS
+  tree="$saved_tree"
+}
 # #2153: a core that builds brains only for origin "history" entries needs a front that journals it.
 printf '%s\n' "const JOURNAL_READER_MARKER = 'noevia-chat-change-journal-reader/1';" "function isHistorySave(e) { return !!e && e.op === 'write' && e.origin === 'history'; }" > "$w/server/chat-change-journal.cjs"
 g add -A && g commit -qm core-journal-origin; ph10o="$(g rev-parse --short HEAD)"
