@@ -408,8 +408,11 @@ core_tails_change_journal() {
 # Whether the pinned core builds a chat's brain only for journal entries with origin "history"
 # (sbstndalton/noevia#2153: then it no longer nudges the brain itself while the front journals).
 core_needs_journal_origin() {
-  # Any variable name (#2161: a rename must not skip the guard), either quote, code lines only.
-  code_lines "$tree/core/server/chat-change-journal.cjs" | grep -qE "[A-Za-z_][A-Za-z0-9_]*\\.origin[[:space:]]*===?[[:space:]]*['\"]history['\"]"
+  # Any variable name (#2161: a rename must not skip the guard), either quote, code lines only. Also `e?.origin`,
+  # `e['origin']` / `e?.['origin']`, and the string on the left (#2252): each reads the origin as `history`.
+  local field="[A-Za-z_][A-Za-z0-9_]*(\\?\\.|\\.)origin|[A-Za-z_][A-Za-z0-9_]*(\\?\\.)?\\[['\"]origin['\"]\\]"
+  local history="['\"]history['\"]" eq="[[:space:]]*===?[[:space:]]*"
+  code_lines "$tree/core/server/chat-change-journal.cjs" | grep -qE "(${field})${eq}${history}|${history}${eq}(${field})"
 }
 # Whether the pinned front's journal entries carry that origin (crates/server-projects journal.rs).
 rs_journals_origin() {

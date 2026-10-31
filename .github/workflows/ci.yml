@@ -64,6 +64,10 @@ jobs:
               - 'deploy/**'
               - 'build/**'
               - 'docs/deployment.md'
+              # #2241/#2252: what deploy/tools/test-docs-prototypes.sh reads.
+              - 'docs/prototypes/**'
+              - 'docs/research-skills-mcp-loading.md'
+              - 'docs/handoffs/2026-09-25-run-plan-26*.md'
               - 'release/versions.lock'
             assembly:
               - 'deploy/**'
