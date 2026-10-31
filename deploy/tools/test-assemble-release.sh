@@ -417,6 +417,19 @@ check "#2191: a core with no import writer that does not refuse the import is st
 cp "$w/server/index.cjs" "$work/index.keep"
 printf '%s\n' 'exports.refuseOwned = () => false;' > "$w/server/rust-conversation-import.cjs"
 printf '%s\n' "require('./rust-conversation-import.cjs');" >> "$w/server/index.cjs"
+g add -A && g commit -qm core-names-import-helper-only; ph10n="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10n" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "#2191: ...a core that only names the helper, without calling a real refusal, is still refused" \
+  '[ $rc -ne 0 ] && grep -q "still writes transcripts itself" "$work/err"'
+printf '%s\n' "const OWNED_ROUTES = new Set(['POST /api/import/conversations']);" 'function refuseOwned(req, res) { return true; }' 'module.exports = { refuseOwned };' > "$w/server/rust-conversation-import.cjs"
+cp "$work/index.keep" "$w/server/index.cjs"
+printf '%s\n' "    if (authn && await importRoutes(req, res, { path: p, authn })) return;" "  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+g add -A && g commit -qm core-refuses-import-too-late; ph10l="$(g rev-parse --short HEAD)"
+PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10l" "$out" >/dev/null 2>"$work/err"; rc=$?
+check "#2191: ...a refusal that runs after the import route is still refused" \
+  '[ $rc -ne 0 ] && grep -q "still writes transcripts itself" "$work/err"'
+cp "$work/index.keep" "$w/server/index.cjs"
+printf '%s\n' "  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, {})) return;" "    if (authn && await importRoutes(req, res, { path: p, authn })) return;" >> "$w/server/index.cjs"
 g add -A && g commit -qm core-refuses-import; ph10c="$(g rev-parse --short HEAD)"
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ph10c" "$out" >/dev/null 2>"$work/err"; rc=$?
 check "#2191: ...and passes this check once the core refuses the import (the import pair guard then decides)" \

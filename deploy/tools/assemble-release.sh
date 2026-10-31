@@ -373,9 +373,17 @@ rs_serves_history_ops() {
 # Since #2191 round 4 the front owns the conversation import: Core has no conversation-import.cjs and
 # refuses the route, so that import cannot write a transcript from Node.
 core_refuses_conversation_import() {
-  [ ! -e "$tree/core/server/conversation-import.cjs" ] \
-    && [ -f "$tree/core/server/rust-conversation-import.cjs" ] \
-    && grep -qF "require('./rust-conversation-import.cjs')" "$tree/core/server/index.cjs" 2>/dev/null
+  local refusal="if (require('./rust-conversation-import.cjs').refuseOwned(req, res" helper index refuse_at route_at
+  helper="$tree/core/server/rust-conversation-import.cjs"; index="$tree/core/server/index.cjs"
+  [ ! -e "$tree/core/server/conversation-import.cjs" ] && [ -f "$helper" ] && [ -f "$index" ] || return 1
+  code_lines "$helper" | grep -qF "'POST /api/import/conversations'" || return 1
+  code_lines "$helper" | grep -qE '^function refuseOwned\(' || return 1
+  # The route must not write a transcript itself, and the refusal must run before it.
+  ! code_lines "$tree/core/server/routes/import.cjs" | grep -qE 'transcripts\.|writeHistory' || return 1
+  refuse_at="$(code_lines "$index" | grep -nF "$refusal" | head -1 | cut -d: -f1)"
+  route_at="$(code_lines "$index" | grep -n 'await importRoutes(' | head -1 | cut -d: -f1)"
+  [ -n "$refuse_at" ] || return 1
+  [ -z "$route_at" ] || [ "$refuse_at" -lt "$route_at" ]
 }
 core_writes_history_via_store() {
   grep -q 'historyAppendIfLast' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
