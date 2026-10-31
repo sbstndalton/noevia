@@ -1753,6 +1753,94 @@ rr_owner=rust; rr_try research-old-core-rust-rows
 check "old pair whose route table gives research to Rust is refused" 'refused "deep research ownership pairing"'
 move_try research-old-pair
 check "historic deep research old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# The Code and Browser task reads (sbstndalton/noevia#2257): the pair, its rows and what Core must have done.
+tr_project_rows() {
+  for path in code 'code/{task}' browser 'browser/{task}'; do
+    [ "${tr_skip:-}" = "$path" ] && continue
+    printf '[[route]]\npath = "/api/projects/{projectId}/%s"\nowner = "%s"\n' "$path" "$tr_owner"
+    [ "$tr_owner" = rust ] && printf '%s\n' "${tr_methods:-methods = [\"GET\"]}"
+  done
+  printf '[[route]]\npath = "/api/code/active"\nowner = "%s"\n' "$tr_owner"
+  [ -n "${tr_active_methods:-}" ] && printf '%s\n' "$tr_active_methods"
+  return 0
+}
+tr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; tr_project_rows)
+}
+cat > "$w/server/rust-task-reads.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'ALL /api/code/active',
+  'GET /api/projects/{projectId}/code',
+  'GET /api/projects/{projectId}/code/{task}',
+  'GET /api/projects/{projectId}/browser',
+  'GET /api/projects/{projectId}/browser/{task}',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-task-facts.cjs"
+tr_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const PROJECT_STORE = require('./project-store-client.cjs').clientFromEnv(process.env);
+const taskFactsBridge = require('./rust-task-facts.cjs').createTaskFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+  if (require('./rust-task-reads.cjs').refuseOwned(req, res, {})) return;
+  if (await taskFactsBridge(req, res)) return;
+JS
+}
+tr_front() { sed "s/\"start-id\"/\"start-id\", \"rust-task-reads\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+tr_owner=rust; tr_core; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+tr_try tasks-core-only
+check "a task read refusal needs the native capability" 'refused "task read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; tr_front
+tr_try tasks-front-only
+check "a rust-task-reads front cannot pair with an old Core" 'refused "task read ownership pairing"'
+tr_core
+tr_try tasks-pair
+check "the matching task read pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+tr_methods='methods = ["GET", "POST"]'
+tr_try tasks-post-too
+check "a task POST given to the front is refused (supervision stays Node's)" 'refused "task read ownership pairing"'
+tr_methods=""; tr_skip='browser/{task}'
+tr_try tasks-missing-row
+check "a pair missing one read is refused" 'refused "incomplete route ownership"'
+tr_skip=""; tr_active_methods='methods = ["GET"]'
+tr_try tasks-active-get-only
+check "an active list owned for GET alone is refused" 'refused "task read ownership pairing"'
+tr_active_methods=""; tr_owner=node
+tr_try tasks-node-rows
+check "a rust-task-reads pair with Node's rows is refused" 'refused "task read ownership pairing"'
+tr_owner=rust
+cp "$w/server/rust-task-reads.cjs" "$work/rust-task-reads.saved"; printf 'module.exports = {};\n' > "$w/server/rust-task-reads.cjs"
+tr_try tasks-unlisted
+check "a Core not refusing exactly the five reads is refused" 'refused "Core must refuse exactly the five reads"'
+cp "$work/rust-task-reads.saved" "$w/server/rust-task-reads.cjs"
+mkdir -p "$w/server/routes"; [ -f "$w/server/routes/code.cjs" ] && cp "$w/server/routes/code.cjs" "$work/tr-code.saved" || : > "$work/tr-code.saved"
+printf 'send(200, service.list(ws, project));\n' >> "$w/server/routes/code.cjs"
+tr_try tasks-old-handlers
+check "a Core still carrying the read handlers is refused" 'refused "still carries the task read handlers"'
+if [ -s "$work/tr-code.saved" ]; then cp "$work/tr-code.saved" "$w/server/routes/code.cjs"; else rm -f "$w/server/routes/code.cjs"; fi
+rm -f "$w/server/rust-task-facts.cjs"
+tr_try tasks-no-facts
+check "a Core without the facts bridge is refused" 'refused "does not offer the front its task facts"'
+touch "$w/server/rust-task-facts.cjs"
+cp "$w/server/index.cjs" "$work/tr-index.saved"
+sed '/taskFactsBridge(req, res)/d' "$work/tr-index.saved" > "$w/server/index.cjs"
+tr_try tasks-no-mount
+check "a Core that does not mount the facts bridge is refused" 'refused "does not mount the task facts bridge"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/tr-index.saved" > "$w/server/index.cjs"
+tr_try tasks-no-secret
+check "a Core that gives the facts bridge no secret is refused" 'refused "front.s captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+tr_owner=node
+tr_try tasks-old-pair
+check "the old pair with Node's rows stays a valid rollback" '[ $rc -eq 0 ]'
+tr_owner=rust
+tr_try tasks-old-with-rust-rows
+check "an old pair whose table gives the reads to Rust is refused" 'refused "task read ownership pairing"'
+rm -f "$w/server/rust-task-reads.cjs" "$w/server/rust-task-facts.cjs"
 rm -f "$w/server/rust-research.cjs" "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.

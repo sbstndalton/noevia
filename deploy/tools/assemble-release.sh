@@ -839,6 +839,62 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "deep research ownership pairing: Core does not hand its admission lease and research bridge the front's secret (captured before clientFromEnv, never read from process.env after it)"
   fi
 fi
+# The Code and Browser task reads (sbstndalton/noevia#2257) move as one owner: Core's rust-task-reads.cjs refusal and
+# the front's rust-task-reads capability, with the active list Rust's for every method and the four project reads
+# for GET only (the POSTs and supervision stay Node's). Core must have dropped the read branches and hand the front
+# its facts on the loopback check, with the secret captured as for research. Old/old remains a valid rollback pair
+# (Node stays the journals' only writer either way); either mixed generation is refused.
+tr_core_owner=""
+tr_rs_owner=""
+grep -qF "require('./rust-task-reads.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && tr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-task-reads features; then
+  tr_rs_owner=rust
+fi
+[ "$tr_core_owner" = "$tr_rs_owner" ] \
+  || die "task read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # An unreadable table is the route-table check's to report, below.
+  tr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || tr_table=""
+  tr_routes="$(printf '%s\n' "$tr_table" | awk -F'\t' -v want="$tr_rs_owner" '
+    $1 == "/api/code/active" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }
+    $1 ~ /^\/api\/projects\/\{projectId\}\/(code|browser)(\/\{task\})?$/ {
+      if (want == "rust") {
+        if ($2 != "rust" || $3 != "-") exit 1
+        n = split($4, m, /[^A-Z]+/); k = 0
+        for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+        if (k != 1) exit 1
+      }
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "task read ownership pairing: the active list must be Rust's whole and the four project reads Rust's for GET alone with the new pair, and Node's with the old"
+  if [ "$tr_rs_owner" = rust ]; then
+    [ "$(printf '%s\n' "$tr_routes" | sort -u | wc -l | tr -d ' ')" = 5 ] || die "task read ownership pairing: incomplete route ownership"
+    tr_refused="$( { project_routes_core "$tree/core/server/rust-task-reads.cjs" || true; } | sort | tr '\n' ' ')"
+    tr_refused_expected="$(printf '%s\n' 'ALL /api/code/active' 'GET /api/projects/{}/code' 'GET /api/projects/{}/code/{}' 'GET /api/projects/{}/browser' 'GET /api/projects/{}/browser/{}' | sort | tr '\n' ' ')"
+    [ "$tr_refused" = "$tr_refused_expected" ] \
+      || die "task read ownership pairing: Core must refuse exactly the five reads the front answers"
+    for tr_file in routes/code.cjs routes/browser.cjs; do
+      ! grep -qE 'service\.(list|listActive|get)\(' "$tree/core/server/$tr_file" 2>/dev/null \
+        || die "task read ownership pairing: Core still carries the task read handlers"
+    done
+    [ -f "$tree/core/server/rust-task-facts.cjs" ] \
+      || die "task read ownership pairing: Core does not offer the front its task facts"
+    tr_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'taskFactsBridge\(req, res\)' <<<"$tr_index" \
+      || die "task read ownership pairing: Core does not mount the task facts bridge"
+    tr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tr_index" | head -1)"
+    [ -n "$tr_secret" ] && awk -v c="$tr_secret" '
+      /createTaskFactsBridge\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$tr_index" \
+      || die "task read ownership pairing: Core does not hand its task facts bridge the front's captured secret"
+  fi
+fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
 # routes.toml. Core must have no way left to delete an account: no deleteUser in auth.cjs, and the single-writer
@@ -1672,8 +1728,8 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # core/server/rust-project-document-pages.cjs, a document's upload (round 5) by
   # core/server/rust-project-documents.cjs, the source jobs (round 6) by core/server/rust-source-jobs.cjs, the
   # source operations (round 8) by core/server/rust-project-source-work.cjs, a project's configuration and
-  # instruction skills (round 9) by core/server/rust-project-config.cjs, deep research (#2218) by core/server/rust-research.cjs.
-  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; project_routes_core "$tree/core/server/rust-project-source-work.cjs"; project_routes_core "$tree/core/server/rust-project-config.cjs"; project_routes_core "$tree/core/server/rust-research.cjs"; } | sort -u))"
+  # instruction skills (round 9) by core/server/rust-project-config.cjs, deep research (#2218) by core/server/rust-research.cjs, the task reads (#2257) by core/server/rust-task-reads.cjs.
+  missing="$(comm -23 <(project_routes_rs "$tree/rs/contracts/http/routes.toml") <({ project_routes_core "$tree/core/server/rust-projects.cjs"; project_routes_core "$tree/core/server/rust-project-reads.cjs"; project_routes_core "$tree/core/server/rust-project-lifecycle.cjs"; project_routes_core "$tree/core/server/rust-project-files.cjs"; project_routes_core "$tree/core/server/rust-project-document-pages.cjs"; project_routes_core "$tree/core/server/rust-project-documents.cjs"; project_routes_core "$tree/core/server/rust-source-jobs.cjs"; project_routes_core "$tree/core/server/rust-project-source-work.cjs"; project_routes_core "$tree/core/server/rust-project-config.cjs"; project_routes_core "$tree/core/server/rust-research.cjs"; project_routes_core "$tree/core/server/rust-task-reads.cjs"; } | sort -u))"
   [ -z "$missing" ] || die "noevia-rs at $rs_ref owns project routes that noevia-core at $(lock_value NOEVIA_CORE_REF) does not list in server/rust-projects.cjs OWNED_ROUTES (pin a core that does): $(printf '%s' "$missing" | tr '\n' ';')"
   # sbstndalton/noevia#1071: a front that owns sign-in with no switch (routes.toml: GET
   # /api/auth/session owner "rust", no `switch`) needs a core whose rust-auth guard is unconditional
