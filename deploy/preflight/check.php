@@ -133,6 +133,60 @@ function modelLoaderBoundary(array $config, string $manager = 'model-loader', st
     return $errors;
 }
 
+/**
+ * noevia#2226: a current Core with CODE_EGRESS_PORT set requires the native egress profile and stops at
+ * startup without it. Key names only in messages. Rolling back to an older image restores the check.php
+ * that shipped beside it, because that image still uses its in-process proxy.
+ */
+function nativeEgressProfile(array $config): array {
+    $web = $config['services']['web'] ?? null;
+    if (!is_array($web)) return [];
+    $we = serviceEnv($web);
+    $port = trim($we['CODE_EGRESS_PORT'] ?? '');
+    if ($port === '' || $port === '0') return [];
+    $errors = [];
+    $native = $config['services']['egress-rs'] ?? null;
+    if (!preg_match('/^[1-9][0-9]{0,4}$/', $port) || (int)$port > 65535) return ['CODE_EGRESS_PORT is not a valid port.'];
+    if (!is_array($native)) return ['CODE_EGRESS_PORT is set but the egress-rs service is missing (noevia#2226): see deploy/examples/code-egress-rust.override.yml.'];
+    $ne = serviceEnv($native);
+    // As Core reads them: an empty value takes the default, then the value is trimmed.
+    $read = static fn(string $key, string $default): string => trim(($we[$key] ?? '') === '' ? $default : $we[$key]);
+    $impl = $read('CODE_EGRESS_IMPL', 'rust');
+    $host = $read('CODE_EGRESS_RUST_HOST', 'egress-rs-code');
+    if ($impl !== 'rust') $errors[] = 'CODE_EGRESS_IMPL must be rust.';
+    if (($ne['CODE_EGRESS_PORT'] ?? '') !== $port) $errors[] = 'web and egress-rs CODE_EGRESS_PORT differ.';
+    $bind = $ne['CODE_EGRESS_BIND'] ?? '';
+    if ($bind === '' || $host !== $bind) $errors[] = 'CODE_EGRESS_RUST_HOST does not name the egress-rs CODE_EGRESS_BIND.';
+    $aliases = $native['networks']['code']['aliases'] ?? [];
+    if ($bind !== '' && !in_array($bind, is_array($aliases) ? $aliases : [], true)) $errors[] = 'egress-rs CODE_EGRESS_BIND is not its alias on the code network.';
+    if (!array_key_exists('code', (array)($web['networks'] ?? []))) $errors[] = 'web must be on the code network to reach egress-rs.';
+    if (!empty($native['ports'])) $errors[] = 'egress-rs must not publish ports.';
+    foreach (['CODE_EGRESS_KEY_UID', 'CODE_EGRESS_KEY_GID'] as $key) {
+        if (!preg_match('/^(0|[1-9][0-9]{0,9})$/', $we[$key] ?? '')) $errors[] = "$key must be set on web.";
+    }
+    if (($we['CODE_EGRESS_KEY_GID'] ?? '') === '0') $errors[] = 'CODE_EGRESS_KEY_GID must not be 0.';
+    foreach (['CODE_EGRESS_KEY_UID', 'CODE_EGRESS_KEY_GID'] as $key) if ((int)($we[$key] ?? 0) >= 0xffffffff) $errors[] = "$key is out of range.";
+    if (!in_array($we['CODE_EGRESS_KEY_GID'] ?? '', array_map('strval', (array)($native['group_add'] ?? [])), true)) $errors[] = 'egress-rs group_add must include CODE_EGRESS_KEY_GID, or it cannot read the key.';
+    if (($we['CODE_EGRESS_KEY_UID'] ?? '') !== ($ne['CODE_EGRESS_CONTROL_KEY_UID'] ?? null) || ($we['CODE_EGRESS_KEY_GID'] ?? '') !== ($ne['CODE_EGRESS_CONTROL_KEY_GID'] ?? null)) $errors[] = 'web and egress-rs key owner settings differ.';
+    $file = $we['CODE_EGRESS_CONTROL_KEY_FILE'] ?? '';
+    if ($file === '' || $file !== ($ne['CODE_EGRESS_CONTROL_KEY_FILE'] ?? '')) { $errors[] = 'CODE_EGRESS_CONTROL_KEY_FILE must be set and equal on web and egress-rs.'; return $errors; }
+    $mount = static function (array $service) use ($file): ?array {
+        foreach ($service['volumes'] ?? [] as $v) if (is_array($v) && ($v['target'] ?? '') === dirname($file)) return $v;
+        return null;
+    };
+    $wm = $mount($web); $nm = $mount($native);
+    if (!$wm || !$nm || ($wm['type'] ?? '') !== 'bind' || ($nm['type'] ?? '') !== 'bind' || ($wm['source'] ?? '') === '' || ($wm['source'] ?? '') !== ($nm['source'] ?? '')) $errors[] = 'web and egress-rs must bind the same control key directory.';
+    elseif (!empty($wm['read_only']) || empty($nm['read_only'])) $errors[] = 'the control key directory must be writable on web and read-only on egress-rs.';
+    // Compose renders create_host_path: false as an empty bind block, so only an explicit true is refused.
+    elseif (($wm['bind']['create_host_path'] ?? false) === true || ($nm['bind']['create_host_path'] ?? false) === true) $errors[] = 'the control key directory must be prepared in advance (create_host_path: false).';
+    if ($wm) foreach ($config['services'] as $name => $service) {
+        if ($name === 'web' || $name === 'egress-rs' || !is_array($service)) continue;
+        foreach ($service['volumes'] ?? [] as $v) {
+            if (is_array($v) && (($v['source'] ?? '') === ($wm['source'] ?? null) || ($v['target'] ?? '') === dirname($file))) $errors[] = "the control key directory must not be mounted into $name.";
+        }
+    }
+    return $errors;
+}
 function preflightMain(array $arguments): int {
     try {
         if (count($arguments) < 2 || $arguments[0] !== '--config-json') throw new RuntimeException('Input required');
@@ -142,7 +196,7 @@ function preflightMain(array $arguments): int {
         $raw = @file_get_contents($arguments[1] === '-' ? 'php://stdin' : $arguments[1]);
         $config = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         if (!is_array($config) || empty($config['services']) || !is_array($config['services'])) throw new RuntimeException('No services');
-        $errors = array_merge(validateMounts($config), modelLoaderBoundary($config));
+        $errors = array_merge(validateMounts($config), modelLoaderBoundary($config), nativeEgressProfile($config));
         if ($errors) { foreach ($errors as $error) fwrite(STDERR, "BLOCKED: $error\n"); return 1; }
         echo "PASS: resolved writable mounts do not expose the protected boot directory/device.\n";
         if (isset($config['services']['model-loader'])) echo "PASS: model-loader is token-gated and unreachable from the Diary sidecar.\n";

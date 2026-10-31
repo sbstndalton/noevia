@@ -57,6 +57,26 @@ Filesystem ownership guards remain enforced. Inspect the actual candidate mounts
 than recursively changing permissions or weakening validation. Retain the exact timezone,
 trusted-set, startup, writer-lease, shutdown, and process-ownership requirements of the release.
 
+## Native egress is a release prerequisite (#2226)
+
+A current Core has no in-process egress proxy. With `CODE_EGRESS_PORT` set, web stops at startup unless the native
+egress profile is deployed beside it, so a release from an older image must add it in the same cutover:
+
+- Build `deploy/egress-proxy`, target `native-control`, from the release tree and tag it through `EGRESS_RS_VERSION`.
+- Prepare a new control key directory as `deploy/examples/code-egress-rust.override.yml` describes.
+- Add the `egress-rs` service and the web settings to the operator's Compose files. Publish no ports. Keep web's
+  `egress` alias on the code network: the model relay and the code-network refusal still use it.
+- Qualify with `CANDIDATE_EGRESS_IMAGE=<image> deploy/tools/candidate-boot.sh <sha>`. Also boot with the installation's
+  effective configuration, using synthetic state and secrets.
+
+The installed preflight refuses `CODE_EGRESS_PORT` without this profile. `CODE_EGRESS_PORT` unset or `0` boots but
+removes network access for Code and Browser tasks, so it is a decision, not a fix.
+
+Behaviour to plan for. Web's session with `egress-rs` does not recover by itself: after `egress-rs` restarts, Code and
+Browser network grants fail closed until web is recreated too. Restarting web alone is safe. Web also exits at startup
+if `egress-rs` is not reachable, and its restart policy retries. Rolling back to an image older than this requirement
+must restore that image's Compose files, environment file and preflight `check.php`, and remove `egress-rs`.
+
 ## Diary model settings gate (#2105)
 
 A Diary that runs the strict model selection refuses every answer when its configured chat or aux id is not

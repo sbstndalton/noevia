@@ -64,6 +64,44 @@ try {
     $listEnv = $good; $listEnv['services']['model-loader']['environment'] = ["MODEL_LOADER_TOKEN=$tok"];
     verify(modelLoaderBoundary($listEnv) === [], 'List-form token not understood');
 
+    // ---- native egress profile (noevia#2226) ----
+    $k = '/run/noevia-egress-control';
+    $egress = ['services'=>[
+        'web'=>['networks'=>['code'=>null],'environment'=>['CODE_EGRESS_PORT'=>'8040','CODE_EGRESS_RUST_HOST'=>'egress-rs-code','CODE_EGRESS_KEY_UID'=>'0','CODE_EGRESS_KEY_GID'=>'1006','CODE_EGRESS_CONTROL_KEY_FILE'=>"$k/current.key"],'volumes'=>[['type'=>'bind','source'=>'/keys','target'=>$k,'bind'=>['create_host_path'=>false]]]],
+        'egress-rs'=>['environment'=>['CODE_EGRESS_PORT'=>'8040','CODE_EGRESS_BIND'=>'egress-rs-code','CODE_EGRESS_CONTROL_KEY_UID'=>'0','CODE_EGRESS_CONTROL_KEY_GID'=>'1006','CODE_EGRESS_CONTROL_KEY_FILE'=>"$k/current.key"],'group_add'=>['1006'],'networks'=>['code'=>['aliases'=>['egress-rs-code']]],'volumes'=>[['type'=>'bind','source'=>'/keys','target'=>$k,'read_only'=>true,'bind'=>['create_host_path'=>false]]]]]];
+    verify(nativeEgressProfile($egress) === [], 'Complete native egress profile rejected');
+    verify(nativeEgressProfile(['services'=>['web'=>['environment'=>[]]]]) === [], 'Unset port rejected');
+    verify(nativeEgressProfile(['services'=>['web'=>['environment'=>['CODE_EGRESS_PORT'=>'0']]]]) === [], 'Disabled port rejected');
+    $badPort = $egress; $badPort['services']['web']['environment']['CODE_EGRESS_PORT'] = '70000'; $badPort['services']['egress-rs']['environment']['CODE_EGRESS_PORT'] = '70000';
+    verify(count(nativeEgressProfile($badPort)) > 0, 'Invalid port accepted');
+    $blank = $egress; $blank['services']['web']['environment']['CODE_EGRESS_IMPL'] = ''; $blank['services']['web']['environment']['CODE_EGRESS_RUST_HOST'] = '';
+    verify(nativeEgressProfile($blank) === [], 'Empty values Core defaults were rejected');
+    $space = $egress; $space['services']['web']['environment']['CODE_EGRESS_RUST_HOST'] = ' ';
+    verify(count(nativeEgressProfile($space)) > 0, 'A whitespace host that Core refuses was accepted');
+    $third = $egress; $third['services']['code-sandbox'] = ['volumes'=>[['type'=>'bind','source'=>'/keys','target'=>'/elsewhere','read_only'=>true]]];
+    verify(count(nativeEgressProfile($third)) > 0, 'Key directory mounted into a third service accepted');
+    $noService = $egress; unset($noService['services']['egress-rs']);
+    verify(count(nativeEgressProfile($noService)) > 0, 'Port set without egress-rs accepted');
+    foreach ([
+        fn($c)=>[$c['services']['web']['environment']['CODE_EGRESS_IMPL'] = 'node', $c][1],
+        fn($c)=>[$c['services']['egress-rs']['environment']['CODE_EGRESS_PORT'] = '8041', $c][1],
+        fn($c)=>[$c['services']['web']['environment']['CODE_EGRESS_RUST_HOST'] = 'egress', $c][1],
+        fn($c)=>[$c['services']['egress-rs']['networks']['code']['aliases'] = [], $c][1],
+        fn($c)=>[$c['services']['egress-rs']['ports'] = ['8040:8040'], $c][1],
+        function($c){ unset($c['services']['web']['environment']['CODE_EGRESS_KEY_UID']); return $c; },
+        fn($c)=>[$c['services']['web']['environment']['CODE_EGRESS_KEY_GID'] = '0', $c][1],
+        fn($c)=>[$c['services']['egress-rs']['environment']['CODE_EGRESS_CONTROL_KEY_GID'] = '7', $c][1],
+        function($c){ unset($c['services']['web']['environment']['CODE_EGRESS_CONTROL_KEY_FILE']); return $c; },
+        fn($c)=>[$c['services']['web']['volumes'] = [], $c][1],
+        fn($c)=>[$c['services']['egress-rs']['group_add'] = [], $c][1],
+        fn($c)=>[$c['services']['web']['networks'] = ['default'=>null], $c][1],
+        fn($c)=>[$c['services']['web']['environment']['CODE_EGRESS_KEY_UID'] = '4294967295', $c][1],
+        fn($c)=>[$c['services']['egress-rs']['volumes'][0]['bind']['create_host_path'] = true, $c][1],
+        fn($c)=>[$c['services']['egress-rs']['volumes'][0]['source'] = '/other', $c][1],
+        fn($c)=>[$c['services']['web']['volumes'][0]['read_only'] = true, $c][1],
+        fn($c)=>[$c['services']['egress-rs']['volumes'][0]['read_only'] = false, $c][1],
+    ] as $i => $breaks) verify(count(nativeEgressProfile($breaks($egress))) > 0, "Broken native egress profile $i accepted");
+
     echo "PASS: model-loader boundary; direct/parent paths, symlink aliases, missing descendants, loops, read-only and managed volumes; env-key drift.\n";
 } finally {
     foreach (['alias','relative','loop'] as $name) unlink("$root/$name");
