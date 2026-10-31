@@ -4,14 +4,11 @@ on:
   pull_request:
     paths:
       - 'experiments/deep-research/**'
-      # The server modules under test come from the noevia-core SHA pinned here (#952).
-      - 'release/versions.lock'
       - '.github/workflows/deep-research-harness.yml'
   push:
     branches: [main]
     paths:
       - 'experiments/deep-research/**'
-      - 'release/versions.lock'
       - '.github/workflows/deep-research-harness.yml'
 
 permissions:
@@ -30,7 +27,9 @@ jobs:
       - name: Lay out the pinned noevia-core at apps/web
         run: |
           set -euo pipefail
-          ref=$(sed -n 's/^NOEVIA_CORE_REF=//p' release/versions.lock); sum=$(sed -n 's/^NOEVIA_CORE_SHA256=//p' release/versions.lock)
+          # This harness tests Node modules that later Core releases moved to the Rust front, so it stays on
+          # the last Core that has them, not the release pin.
+          ref=eb8d82ff6fd5ab8ccb1578b5f56f948bd9d080e8; sum=863c04d682a84e06ee763a6f9b3f3e749f189fdfce10fe14a976cd974da357f4
           curl -fsSL --proto '=https' -o "$RUNNER_TEMP/core.tgz" "https://codeload.github.com/sbstndalton/noevia-core/tar.gz/$ref"
           echo "$sum  $RUNNER_TEMP/core.tgz" | sha256sum -c -
           mkdir -p apps/web && tar -xzf "$RUNNER_TEMP/core.tgz" --strip-components=1 -C apps/web

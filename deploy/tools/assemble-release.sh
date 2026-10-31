@@ -370,10 +370,26 @@ rs_serves_history_ops() {
 # Whether the pinned core writes transcripts only through the store ops (sbstndalton/noevia#1071
 # slice 4): the client has them, the interrupted-reply path and the import use them, and the
 # local writer projects.cjs writeHistory is gone.
+# Since #2191 round 4 the front owns the conversation import: Core has no conversation-import.cjs and
+# refuses the route, so that import cannot write a transcript from Node.
+core_refuses_conversation_import() {
+  local refusal="if (require('./rust-conversation-import.cjs').refuseOwned(req, res" helper index refuse_at route_at
+  helper="$tree/core/server/rust-conversation-import.cjs"; index="$tree/core/server/index.cjs"
+  [ ! -e "$tree/core/server/conversation-import.cjs" ] && [ -f "$helper" ] && [ -f "$index" ] || return 1
+  code_lines "$helper" | grep -qF "'POST /api/import/conversations'" || return 1
+  code_lines "$helper" | grep -qE '^function refuseOwned\(' || return 1
+  # The route must not write a transcript itself, and the refusal must run before it.
+  ! code_lines "$tree/core/server/routes/import.cjs" | grep -qE 'transcripts\.|writeHistory' || return 1
+  refuse_at="$(code_lines "$index" | grep -nF "$refusal" | head -1 | cut -d: -f1)"
+  route_at="$(code_lines "$index" | grep -n 'await importRoutes(' | head -1 | cut -d: -f1)"
+  [ -n "$refuse_at" ] || return 1
+  [ -z "$route_at" ] || [ "$refuse_at" -lt "$route_at" ]
+}
 core_writes_history_via_store() {
   grep -q 'historyAppendIfLast' "$tree/core/server/project-store-client.cjs" 2>/dev/null \
     && grep -q 'transcripts.appendIfLast(' "$tree/core/server/chat-interrupted-turn.cjs" 2>/dev/null \
-    && grep -q 'ctx.transcripts.write(' "$tree/core/server/conversation-import.cjs" 2>/dev/null \
+    && { grep -q 'ctx.transcripts.write(' "$tree/core/server/conversation-import.cjs" 2>/dev/null \
+      || core_refuses_conversation_import; } \
     && ! grep -q 'function writeHistory' "$tree/core/server/projects.cjs" 2>/dev/null
 }
 # Whether the pinned core calls the transcript ops at all (then the front must serve them).
