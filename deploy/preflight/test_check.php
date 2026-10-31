@@ -89,7 +89,7 @@ try {
         fn($c)=>[$c['services']['web']['volumes'] = [], $c][1],
         fn($c)=>[$c['services']['egress-rs']['group_add'] = [], $c][1],
         fn($c)=>[$c['services']['web']['environment']['CODE_EGRESS_KEY_UID'] = '4294967295', $c][1],
-        function($c){ unset($c['services']['egress-rs']['volumes'][0]['bind']); return $c; },
+        fn($c)=>[$c['services']['egress-rs']['volumes'][0]['bind']['create_host_path'] = true, $c][1],
         fn($c)=>[$c['services']['egress-rs']['volumes'][0]['source'] = '/other', $c][1],
         fn($c)=>[$c['services']['web']['volumes'][0]['read_only'] = true, $c][1],
         fn($c)=>[$c['services']['egress-rs']['volumes'][0]['read_only'] = false, $c][1],
