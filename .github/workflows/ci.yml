@@ -197,14 +197,21 @@ jobs:
           cat /tmp/egress.out
           [ "$code" = 2 ] && grep -q "no grants" /tmp/egress.out
 
-      # Exact companion source inputs qualify the native profile independently of the still
-      # selected release pins. The complete paired packet must be published in dependency order.
+      # The native profile is qualified at the release pins, which the guard above requires on each
+      # repo's main; qualify-egress-native-image.sh refuses checkouts at anything else.
+      - name: Native egress qualification refs from the lock
+        if: env.RUN_JOB == 'true'
+        id: egress_refs
+        run: |
+          set -euo pipefail
+          echo "rs=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)" >> "$GITHUB_OUTPUT"
+          echo "core=$(sed -n 's/^NOEVIA_CORE_REF=//p' release/versions.lock)" >> "$GITHUB_OUTPUT"
       - name: Reviewed native egress source
         if: env.RUN_JOB == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-rs
-          ref: e4c9f1eb5cf3d58fd55cee737bcebeaa223d4fe3
+          ref: ${{ steps.egress_refs.outputs.rs }}
           path: .native-egress/rs
           persist-credentials: false
       - name: Reviewed native egress Core client
@@ -212,7 +219,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-core
-          ref: dfa2bd3a9f1c6240a518191ab38723d06ba0935a
+          ref: ${{ steps.egress_refs.outputs.core }}
           path: .native-egress/core
           persist-credentials: false
       - name: Required isolated native image and mounted Core control qualification

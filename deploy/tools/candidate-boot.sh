@@ -124,7 +124,8 @@ egress_ready=1
 if [ "$ready" = 1 ] && [ -n "$egress_image" ]; then
   egress_ready=0
   while :; do
-    if docker logs "$name" 2>&1 | grep -q '"event":"egress.control_ready"'; then egress_ready=1; break; fi
+    logs="$(docker logs "$name" 2>&1 || true)"
+    if grep -qF '"event":"egress.control_ready"' <<<"$logs"; then egress_ready=1; break; fi
     if [ "$(date +%s)" -ge "$deadline" ]; then break; fi
     sleep 2
   done

@@ -59,8 +59,8 @@ trusted-set, startup, writer-lease, shutdown, and process-ownership requirements
 
 ## Native egress is a release prerequisite (#2226)
 
-A current Core has no in-process egress proxy. With `CODE_EGRESS_PORT` set, web stops at startup unless the native
-egress profile is deployed beside it, so a release from an older image must add it in the same cutover:
+A current Core has no in-process egress proxy. With `CODE_EGRESS_PORT` set, the native egress profile must be deployed
+beside it. Preflight refuses an installation without the profile, so a release from an older image must add it in the same cutover:
 
 - Build `deploy/egress-proxy`, target `native-control`, from the release tree and tag it through `EGRESS_RS_VERSION`.
 - Prepare a new control key directory as `deploy/examples/code-egress-rust.override.yml` describes.
@@ -76,8 +76,14 @@ Behaviour to plan for. Web and `egress-rs` can start in either order and either 
 new Code and Browser network grants are refused, the Code and Browser panels report no network and web logs
 `egress.control_unavailable`. Web retries with a backoff of at most 15 s, then logs `egress.control_ready` with
 `recovered: true`. A task that was running keeps its old token, which no new session accepts: it stays without network
-until it ends. A wrong egress profile (key directory, ids, port) is a configuration error and still stops web at
-startup. Rolling back to an image older than this requirement
+until it ends. If `egress-rs` holds a session web cannot name (a Ready whose reply was lost), web logs
+`egress.control_conflict`, and after 25 s of signed refusals it writes a new key over its own and logs
+`egress.control_rekeyed`. `egress.control_rekey_refused` or `egress.key_superseded` means the key file holds another
+web's key: web stays without network grants until it is restarted.
+
+Web itself stops at startup only for bad syntax (port, host, ids, implementation) or a key directory or file that fails
+the ownership checks. A valid but wrong port or host, or a missing service, boots into the outage above, so read the log
+after a change. Rolling back to an image older than this requirement
 must restore that image's Compose files, environment file and preflight `check.php`, and remove `egress-rs`.
 
 ## Diary model settings gate (#2105)
