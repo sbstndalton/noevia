@@ -74,8 +74,10 @@ try {
     verify(nativeEgressProfile(['services'=>['web'=>['environment'=>['CODE_EGRESS_PORT'=>'0']]]]) === [], 'Disabled port rejected');
     $badPort = $egress; $badPort['services']['web']['environment']['CODE_EGRESS_PORT'] = '70000'; $badPort['services']['egress-rs']['environment']['CODE_EGRESS_PORT'] = '70000';
     verify(count(nativeEgressProfile($badPort)) > 0, 'Invalid port accepted');
-    $blank = $egress; $blank['services']['web']['environment']['CODE_EGRESS_IMPL'] = ''; $blank['services']['web']['environment']['CODE_EGRESS_RUST_HOST'] = ' ';
-    verify(nativeEgressProfile($blank) === [], 'Blank values Core defaults were rejected');
+    $blank = $egress; $blank['services']['web']['environment']['CODE_EGRESS_IMPL'] = ''; $blank['services']['web']['environment']['CODE_EGRESS_RUST_HOST'] = '';
+    verify(nativeEgressProfile($blank) === [], 'Empty values Core defaults were rejected');
+    $space = $egress; $space['services']['web']['environment']['CODE_EGRESS_RUST_HOST'] = ' ';
+    verify(count(nativeEgressProfile($space)) > 0, 'A whitespace host that Core refuses was accepted');
     $noService = $egress; unset($noService['services']['egress-rs']);
     verify(count(nativeEgressProfile($noService)) > 0, 'Port set without egress-rs accepted');
     foreach ([

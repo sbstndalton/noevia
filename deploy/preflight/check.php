@@ -149,9 +149,10 @@ function nativeEgressProfile(array $config): array {
     if (!preg_match('/^[1-9][0-9]{0,4}$/', $port) || (int)$port > 65535) return ['CODE_EGRESS_PORT is not a valid port.'];
     if (!is_array($native)) return ['CODE_EGRESS_PORT is set but the egress-rs service is missing (noevia#2226): see deploy/examples/code-egress-rust.override.yml.'];
     $ne = serviceEnv($native);
-    // As Core reads them: trimmed, with empty meaning the default.
-    $impl = trim($we['CODE_EGRESS_IMPL'] ?? '') ?: 'rust';
-    $host = trim($we['CODE_EGRESS_RUST_HOST'] ?? '') ?: 'egress-rs-code';
+    // As Core reads them: an empty value takes the default, then the value is trimmed.
+    $read = static fn(string $key, string $default): string => trim(($we[$key] ?? '') === '' ? $default : $we[$key]);
+    $impl = $read('CODE_EGRESS_IMPL', 'rust');
+    $host = $read('CODE_EGRESS_RUST_HOST', 'egress-rs-code');
     if ($impl !== 'rust') $errors[] = 'CODE_EGRESS_IMPL must be rust.';
     if (($ne['CODE_EGRESS_PORT'] ?? '') !== $port) $errors[] = 'web and egress-rs CODE_EGRESS_PORT differ.';
     $bind = $ne['CODE_EGRESS_BIND'] ?? '';
