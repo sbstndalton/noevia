@@ -736,8 +736,8 @@ fi
 # A project's configuration, its instruction skills and a published skill's install (sbstndalton/noevia#2191
 # round 9) move as one owner: Core's rust-project-config.cjs refusal and the front's rust-project-config
 # capability, with exactly the methods Node answered Rust's in routes.toml (POST config; GET and PUT
-# instruction-skills; GET manifests and a manifest's content; POST install). The browser and code routes
-# and GET /api/code/active are chat-bound and must stay Node's. Core must refuse exactly those six, keep no
+# instruction-skills; GET manifests and a manifest's content; POST install). Who owns the Code and Browser
+# reads is the task read pairing's to check, below. Core must refuse exactly those six, keep no
 # project route mount (server/routes/projects.cjs is gone), and publish every toolbox it knows for the front's
 # manifests. Historic old/old pins remain valid rollback pairs; either mixed generation is refused.
 pc_core_owner=""
@@ -759,7 +759,6 @@ if [ "$pc_rs_owner" = rust ]; then
       if (path == "/api/projects/{project}/skills/install") return "POST"
       return ""
     }
-    $1 == "/api/projects/{projectId}/browser" || $1 == "/api/projects/{projectId}/code" || $1 == "/api/code/active" { if ($2 != "node") exit 1 }
     want($1) != "" {
       if ($2 != "rust" || $3 != "-" || $4 == "-") exit 1
       w = want($1)
@@ -768,7 +767,7 @@ if [ "$pc_rs_owner" = rust ]; then
       for (i = 1; i <= n; i++) if (m[i] != "") { if (!(m[i] in ok) || (m[i] in seen)) exit 1; seen[m[i]] = 1; k++ }
       if (k != ne) exit 1
       print $1
-    }')" || die "project configuration ownership pairing: exactly the methods Node answered must belong to Rust, and the browser and code routes must stay Node's"
+    }')" || die "project configuration ownership pairing: exactly the methods Node answered must belong to Rust"
   pc_routes="$(printf '%s\n' "$pc_routes" | sort | tr '\n' ' ')"
   pc_expected="$(printf '%s\n' /api/projects/{project}/skills/install /api/projects/{projectId}/config /api/projects/{projectId}/instruction-skills /api/projects/{projectId}/instruction-skills/manifests '/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content' | sort | tr '\n' ' ')"
   [ "$pc_routes" = "$pc_expected" ] || die "project configuration ownership pairing: incomplete route ownership"

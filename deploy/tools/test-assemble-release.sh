@@ -1559,7 +1559,7 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-project-files.cjs" "$w/server/rust-project-storage.cjs"
 rm -f "$w/server/rust-project-lifecycle.cjs"
 # Project configuration owner release matrix (sbstndalton/noevia#2191 round 9): POST config, GET and PUT
-# instruction-skills, GET manifests and a manifest's content, POST install; the browser, code and research routes stay Node's.
+# instruction-skills, GET manifests and a manifest's content, POST install. Moved browser rows alone are the task read pairing's to refuse.
 pc_try() {
   try_routes "$1" <<TOML
 [[route]]
@@ -1628,7 +1628,7 @@ pc_try project-config-extra-method
 check "an instruction-skills route with a method Node never answered is refused" 'refused "project configuration ownership pairing"'
 pc_skills_methods='methods = ["GET", "PUT"]'; pc_browser_owner=rust
 pc_try project-config-browser-moved
-check "the chat-bound browser route must stay Node's" 'refused "project configuration ownership pairing"'
+check "a browser row moved without the task read pair is refused" 'refused "task read ownership pairing"'
 pc_browser_owner=node
 mv "$w/server/rust-project-config.cjs" "$work/rust-project-config.saved"
 printf 'module.exports = {};\n' > "$w/server/rust-project-config.cjs"
@@ -1800,6 +1800,32 @@ check "a rust-task-reads front cannot pair with an old Core" 'refused "task read
 tr_core
 tr_try tasks-pair
 check "the matching task read pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# #2264: both moves together, as the real mains have them: the project configuration pairing must not hold the reads back.
+printf '%s\n' "  if (require('./rust-project-config.cjs').refuseOwned(req, res, {})) return;" "    known: allToolboxes().map((b) => b.id)," >> "$w/server/index.cjs"
+sed -i.bak 's/"rust-task-reads"/"rust-task-reads", "rust-project-config"/' "$rz/bins/noevia-server/src/lib.rs"; rm -f "$rz/bins/noevia-server/src/lib.rs.bak"
+pc_config_methods='methods = ["POST"]'; pc_skills_methods='methods = ["GET", "PUT"]'
+pc_saved_refuser="$(cat "$w/server/rust-project-config.cjs" 2>/dev/null || true)"
+cat > "$w/server/rust-project-config.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set([
+  'POST /api/projects/{projectId}/config',
+  'GET /api/projects/{projectId}/instruction-skills',
+  'PUT /api/projects/{projectId}/instruction-skills',
+  'GET /api/projects/{projectId}/instruction-skills/manifests',
+  'GET /api/projects/{projectId}/instruction-skills/manifests/{skillId}/content',
+  'POST /api/projects/{project}/skills/install',
+]));
+module.exports = { OWNED_ROUTES };
+JS
+try_routes tasks-and-config-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'
+  printf '[[route]]\npath = "/api/projects/{projectId}/config"\nowner = "rust"\n%s\n' "$pc_config_methods"
+  printf '[[route]]\npath = "/api/projects/{projectId}/instruction-skills"\nowner = "rust"\n%s\n' "$pc_skills_methods"
+  printf '[[route]]\npath = "/api/projects/{projectId}/instruction-skills/manifests"\nowner = "rust"\nmethods = ["GET"]\n'
+  printf '[[route]]\npath = "/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content"\nowner = "rust"\nmethods = ["GET"]\n'
+  printf '[[route]]\npath = "/api/projects/{project}/skills/install"\nowner = "rust"\nmethods = ["POST"]\n'
+  tr_project_rows)
+check "the project configuration and task read pairs assemble together" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+if [ -n "$pc_saved_refuser" ]; then printf '%s\n' "$pc_saved_refuser" > "$w/server/rust-project-config.cjs"; else rm -f "$w/server/rust-project-config.cjs"; fi
+tr_core; tr_front
 tr_methods='methods = ["GET", "POST"]'
 tr_try tasks-post-too
 check "a task POST given to the front is refused (supervision stays Node's)" 'refused "task read ownership pairing"'
