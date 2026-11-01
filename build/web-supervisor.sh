@@ -269,6 +269,7 @@ rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
 rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
+rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker
 rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
 rust-connectors.cjs rust-connectors connectors
 rust-project-config.cjs rust-project-config project configuration
