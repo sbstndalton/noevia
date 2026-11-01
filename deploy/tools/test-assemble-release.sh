@@ -1916,6 +1916,16 @@ check "approval pending bridge must be mounted" 'refused "missing bridge mount"'
 sed "s/secret: FRONT_SECRET/secret: ''/" "$work/ta-index.saved" > "$w/server/index.cjs"
 ta_try approvals-no-secret
 check "approval pending bridge requires captured front secret" 'refused "missing captured front secret"'
+cp "$work/ta-index.saved" "$w/server/index.cjs"
+rm -f "$w/server/rust-tool-approval-bridge.cjs"
+ta_try approvals-no-bridge
+check "approval pending state bridge must exist" 'refused "missing pending state bridge"'
+touch "$w/server/rust-tool-approval-bridge.cjs"
+cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refusal.saved"
+printf '%s\n' 'module.exports = {};' > "$w/server/rust-tool-approvals.cjs"
+ta_try approvals-no-owned-route
+check "approval refusal must list the exact POST" 'refused "Core must refuse exactly the approval POST"'
+cp "$work/ta-refusal.saved" "$w/server/rust-tool-approvals.cjs"
 cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 ta_owner=node
 ta_try approvals-old-pair
