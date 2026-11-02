@@ -926,6 +926,41 @@ if [ "$tp_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
 fi
+# #2293: autotune dismissal policy is native, with only facts and the conditional state writer in Core.
+ac_core_owner=""; ac_rs_owner=""
+grep -qF "require('./rust-autotune-clear.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ac_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-clear features; then ac_rs_owner=rust; fi
+[ "$ac_core_owner" = "$ac_rs_owner" ] || die "autotune dismissal ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  ac_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ac_table=""
+  ac_rows="$(printf '%s\n' "$ac_table" | awk -F'\t' -v want="$ac_rs_owner" '
+    $1 == "/api/models/autotune/clear" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "autotune dismissal ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$ac_rs_owner" = rust ]; then
+  [ "${ac_rows:-}" = /api/models/autotune/clear ] || die "autotune dismissal ownership pairing: incomplete route ownership"
+  ac_refused="$( { project_routes_core "$tree/core/server/rust-autotune-clear.cjs" || true; } | tr '\n' ' ')"
+  [ "$ac_refused" = 'ALL /api/models/autotune/clear ' ] || die "autotune dismissal ownership pairing: Core must refuse exactly the dismissal path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/clear' \
+    || die "autotune dismissal ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function clear()' \
+    || die "autotune dismissal ownership pairing: Core still carries the public dismissal policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'clearFacts: autotuner.clearFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndClear: autotuner.compareAndClear' \
+    || die "autotune dismissal ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-autotune-clear-bridge.cjs" ] || die "autotune dismissal ownership pairing: missing state bridge"
+  ac_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneClearBridge(req, res)' <<<"$ac_index" || die "autotune dismissal ownership pairing: missing state bridge mount"
+  ac_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ac_index" | head -1)"
+  [ -n "$ac_secret" ] && awk -v c="$ac_secret" '
+    /createAutotuneClearBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$ac_index" || die "autotune dismissal ownership pairing: state bridge needs the front captured secret"
+fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
 # routes.toml. Core must have no way left to delete an account: no deleteUser in auth.cjs, and the single-writer
