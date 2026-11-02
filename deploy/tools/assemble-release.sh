@@ -1085,7 +1085,7 @@ if [ "$atrm_rs_owner" = rust ]; then
   [ "$atrm_refused" = 'ALL /api/models/autotune/resume ' ] || die "auto-tune resume ownership pairing: Core must refuse exactly the dismissal path"
   ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/resume' \
     || die "auto-tune resume ownership pairing: Core still carries the public handler"
-  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function resume(' \
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^[:alnum:]_$])function[[:space:]]+resume[[:space:]]*[(]' \
     || die "auto-tune resume ownership pairing: Core still carries the public resume policy"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'resumeFacts: autotuner.resumeFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'prepareResume: autotuner.prepareResume' \
