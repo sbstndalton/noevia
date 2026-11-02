@@ -1613,7 +1613,9 @@ grep -qF "require('./rust-model-evidence-recheck.cjs')" "$tree/core/server/index
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-evidence-recheck features; then er_rs_owner=rust; fi
 [ "$er_core_owner" = "$er_rs_owner" ] || die "evidence recheck ownership pairing: Core and Rust must move together"
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
-  er_rows="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$er_rs_owner" '
+  # The common contract parser below reports malformed TOML; preserve its old-pair diagnostic.
+  er_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || er_table=""
+  er_rows="$(printf '%s\n' "$er_table" | awk -F'\t' -v want="$er_rs_owner" '
     $1 == "/api/models/evidence/recheck" {
       if(want=="rust") {
         if($2!="rust" || $3!="-") exit 1
