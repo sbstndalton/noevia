@@ -2272,6 +2272,112 @@ cc_owner=node; cc_try cc-old-pair
 check "old calibration cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
 if [ -f "$work/cc-manager.saved" ]; then cp "$work/cc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# #2303: start/status policy moves independently of the live calibration worker.
+cr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${cr_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/calibration"\nowner = "%s"\n' "$cr_owner"; [ -z "${cr_methods:-}" ] || printf '%s\n' "$cr_methods"; fi)
+}
+cat > "$w/server/rust-calibration-routes.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-calibration-routes-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/cr-manager.saved"
+printf '%s\n' 'stateFacts: calibrator.stateFacts, listingFacts: calibrator.listingFacts, preparationFacts: calibrator.preparationFacts, compareAndLaunch: calibrator.compareAndLaunch,' > "$w/server/llamacpp-manager.cjs"
+cr_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const calibrationRoutesBridge = require('./rust-calibration-routes-bridge.cjs').createCalibrationRoutesBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-routes.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationRoutesBridge(req, res)) return;
+JS
+}
+cr_front() { sed 's/"start-id"/"start-id", "rust-calibration-routes"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+[ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cr-original-actor.saved"
+printf 'function statusFacts() {}\nasync function startFacts() {}\n' > "$w/server/llamacpp-calibration.cjs"
+cr_owner=rust; cr_core
+cr_try cr-core-only
+check "calibration start/read refusal cannot pair with an old front" 'refused "calibration start/read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cr_front
+cr_try cr-front-only
+check "calibration start/read capability cannot pair with an old Core" 'refused "calibration start/read ownership pairing"'
+cr_core; cr_try cr-pair
+check "matching calibration start/read pair assembles" '[ $rc -eq 0 ]'
+# Both public operations compose with the same retained calibration worker/controller.
+cp "$w/server/index.cjs" "$work/cr-pair-index.saved"
+cp "$w/server/llamacpp-manager.cjs" "$work/cr-pair-manager.saved"
+cat > "$w/server/rust-calibration-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration/cancel']));
+JS
+touch "$w/server/rust-calibration-cancel-bridge.cjs"
+printf '%s\n' 'cancellationFacts: calibrator.cancellationFacts, compareAndAbort: calibrator.compareAndAbort,' >> "$w/server/llamacpp-manager.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const calibrationCancelBridge = require('./rust-calibration-cancel-bridge.cjs').createCalibrationCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationCancelBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-calibration-routes", "rust-calibration-cancel"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+try_routes cr-with-cancellation < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n[[route]]\npath = "/api/models/calibration"\nowner = "rust"\n[[route]]\npath = "/api/models/calibration/cancel"\nowner = "rust"\n')
+check "calibration start/read and cancellation pair share one worker" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
+cp "$work/cr-pair-index.saved" "$w/server/index.cjs"; cp "$work/cr-pair-manager.saved" "$w/server/llamacpp-manager.cjs"; cr_front
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-calibration-routes", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes cr-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/calibration"\nowner = "rust"\n')
+check "calibration start/read and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; cr_core; cr_front
+cr_owner=node; cr_try cr-node-rows
+check "native calibration pair rejects Node ownership" 'refused "calibration start/read ownership pairing"'
+cr_owner=rust; cr_skip=yes; cr_try cr-missing-row
+check "native calibration pair requires its route row" 'refused "incomplete route ownership"'
+unset cr_skip; cr_methods='methods = ["POST"]'; cr_try cr-partial-row
+check "native calibration pair owns other-method refusals as well as POST" 'refused "calibration start/read ownership pairing"'
+unset cr_methods
+cp "$w/server/rust-calibration-routes.cjs" "$work/cr-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-calibration-routes.cjs"; cr_try cr-refuser
+check "native calibration pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/cr-refuser.saved" "$w/server/rust-calibration-routes.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/cr-models.saved"
+printf "if (p === '/api/models/calibration') send();\n" >> "$w/server/routes/models.cjs"; cr_try cr-old-handler
+check "native calibration pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/cr-models.saved" ]; then cp "$work/cr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cr-actor.saved"
+printf 'async function start() {}\nfunction status() {}\n' >> "$w/server/llamacpp-calibration.cjs"; cr_try cr-old-policy
+check "native calibration pair rejects retained Node start/status policy" 'refused "Core still carries the public start/status policy"'
+if [ -f "$work/cr-actor.saved" ]; then cp "$work/cr-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/cr-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; cr_try cr-no-primitives
+check "native calibration pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/cr-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-calibration-routes-bridge.cjs" "$work/cr-bridge.saved"; cr_try cr-no-bridge
+check "native calibration pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/cr-bridge.saved" "$w/server/rust-calibration-routes-bridge.cjs"
+cp "$w/server/index.cjs" "$work/cr-index.saved"
+sed '/await calibrationRoutesBridge(req, res)/d' "$work/cr-index.saved" > "$w/server/index.cjs"; cr_try cr-no-mount
+check "native calibration pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/cr-index.saved" > "$w/server/index.cjs"; cr_try cr-no-secret
+check "native calibration pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cr_try cr-old-rust-rows
+check "old calibration pair rejects Rust ownership" 'refused "calibration start/read ownership pairing"'
+cr_owner=node; cr_try cr-old-pair
+check "old calibration start/read pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-routes.cjs" "$w/server/rust-calibration-routes-bridge.cjs"
+if [ -f "$work/cr-manager.saved" ]; then cp "$work/cr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+if [ -f "$work/cr-original-actor.saved" ]; then cp "$work/cr-original-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
 # #2287: settings policy moves independently of the live tune state writer.
 ats_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
