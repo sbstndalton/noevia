@@ -269,6 +269,7 @@ rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
 rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
+rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker
 rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
 rust-connectors.cjs rust-connectors connectors
 rust-project-config.cjs rust-project-config project configuration
@@ -276,6 +277,7 @@ rust-admin-users.cjs rust-admin-users account deletion
 rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
 rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
+rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET

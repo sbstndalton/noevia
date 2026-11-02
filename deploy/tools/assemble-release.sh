@@ -929,6 +929,72 @@ if [ "$ats_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$ats_index" || die "auto-tune settings ownership pairing: state bridge needs the front captured secret"
 fi
+# Approval decisions (#2282): Rust owns public policy; Core keeps only the trusted pending-Promise bridge.
+ta_core_owner=""
+ta_rs_owner=""
+grep -qF "require('./rust-tool-approvals.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ta_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-tool-approvals features; then ta_rs_owner=rust; fi
+[ "$ta_core_owner" = "$ta_rs_owner" ] || die "tool approval ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  ta_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ta_table=""
+  ta_rows="$(printf '%s\n' "$ta_table" | awk -F'\t' -v want="$ta_rs_owner" '
+    $1 == "/api/tool-approvals/{approvalId}" {
+      if (want == "rust") {
+        if ($2 != "rust" || $3 != "-") exit 1
+        n=split($4,m,/[^A-Z]+/); k=0
+        for(i=1;i<=n;i++) if(m[i]!="") { if(m[i]!="POST") exit 1; k++ }
+        if(k!=1) exit 1
+      } else if ($2 != "node") exit 1
+      print $1
+    }')" || die "tool approval ownership pairing: POST alone must be Rust's with the new pair and Node's with the old"
+  if [ "$ta_rs_owner" = rust ]; then
+    [ "$(printf '%s\n' "$ta_rows" | wc -w | tr -d ' ')" = 1 ] || die "tool approval ownership pairing: missing route"
+    ta_refused="$( { project_routes_core "$tree/core/server/rust-tool-approvals.cjs" || true; } | sort | tr '\n' ' ')"
+    [ "$ta_refused" = 'POST /api/tool-approvals/{} ' ] || die "tool approval ownership pairing: Core must refuse exactly the approval POST"
+    [ ! -f "$tree/core/server/routes/approvals.cjs" ] || die "tool approval ownership pairing: Core still carries the public handler"
+    [ -f "$tree/core/server/rust-tool-approval-bridge.cjs" ] || die "tool approval ownership pairing: missing pending state bridge"
+    ta_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'toolApprovalBridge\(req, res\)' <<<"$ta_index" || die "tool approval ownership pairing: missing bridge mount"
+    ta_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ta_index" | head -1)"
+    [ -n "$ta_secret" ] && awk -v c="$ta_secret" '
+      /createToolApprovalBridge\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$ta_index" || die "tool approval ownership pairing: missing captured front secret"
+  fi
+fi
+# #2281: the toolbox picker moves as one owner, with only raw discovery/prefill facts in Core.
+tp_core_owner=""; tp_rs_owner=""
+grep -qF "require('./rust-toolbox-picker.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && tp_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-toolbox-picker features; then tp_rs_owner=rust; fi
+[ "$tp_core_owner" = "$tp_rs_owner" ] || die "toolbox picker ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  tp_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || tp_table=""
+  tp_rows="$(printf '%s\n' "$tp_table" | awk -F'\t' -v want="$tp_rs_owner" '
+    $1 == "/api/toolboxes" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "toolbox picker ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$tp_rs_owner" = rust ]; then
+  [ "${tp_rows:-}" = /api/toolboxes ] || die "toolbox picker ownership pairing: incomplete route ownership"
+  tp_refused="$( { project_routes_core "$tree/core/server/rust-toolbox-picker.cjs" || true; } | tr '\n' ' ')"
+  [ "$tp_refused" = 'ALL /api/toolboxes ' ] || die "toolbox picker ownership pairing: Core must refuse exactly the picker"
+  [ ! -f "$tree/core/server/routes/toolboxes.cjs" ] && [ ! -f "$tree/core/server/mcp-status.cjs" ] \
+    || die "toolbox picker ownership pairing: Core still carries the public handler or status composition"
+  ! code_has "$tree/core/server/toolboxes.cjs" 'function toolboxSummaries' \
+    || die "toolbox picker ownership pairing: Core still carries picker summary composition"
+  [ -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] || die "toolbox picker ownership pairing: missing raw facts bridge"
+  tp_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'toolboxPickerFacts(req, res)' <<<"$tp_index" || die "toolbox picker ownership pairing: missing facts mount"
+  tp_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tp_index" | head -1)"
+  [ -n "$tp_secret" ] && awk -v c="$tp_secret" '
+    /createToolboxPickerFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
+fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
 # routes.toml. Core must have no way left to delete an account: no deleteUser in auth.cjs, and the single-writer
