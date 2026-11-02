@@ -1868,6 +1868,73 @@ tr_try tasks-old-with-rust-rows
 check "an old pair whose table gives the reads to Rust is refused" 'refused "task read ownership pairing"'
 rm -f "$w/server/rust-task-reads.cjs" "$w/server/rust-task-facts.cjs"
 rm -f "$w/server/rust-research.cjs" "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
+# #2282 tool approval public-policy/bridge pairing.
+ta_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/tool-approvals/{approvalId}"\nowner = "%s"\n' "$ta_owner"; [ "$ta_owner" != rust ] || printf '%s\n' "${ta_methods:-methods = [\"POST\"]}")
+}
+cat > "$w/server/rust-tool-approvals.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/tool-approvals/{approvalId}']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-tool-approval-bridge.cjs"
+ta_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const toolApprovalBridge = require('./rust-tool-approval-bridge.cjs').createToolApprovalBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-tool-approvals.cjs').refuseOwned(req, res, {})) return;
+if (await toolApprovalBridge(req, res)) return;
+JS
+}
+ta_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ta_owner=rust; ta_core
+ta_try approvals-core-only
+check "approval Core requires the native front" 'refused "tool approval ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ta_front
+ta_try approvals-front-only
+check "native approval front requires its Core refusal" 'refused "tool approval ownership pairing"'
+ta_core
+ta_try approvals-pair
+check "approval paired public policy and pending state bridge assemble" '[ $rc -eq 0 ]'
+ta_methods='methods = ["POST", "GET"]'
+ta_try approvals-extra-method
+check "approval migration owns POST alone" 'refused "tool approval ownership pairing"'
+ta_methods=""; ta_owner=node
+ta_try approvals-node-row
+check "approval native pair cannot retain a Node-owned row" 'refused "tool approval ownership pairing"'
+ta_owner=rust
+mkdir -p "$w/server/routes"; touch "$w/server/routes/approvals.cjs"
+ta_try approvals-old-handler
+check "approval native pair deletes the public Node handler" 'refused "still carries the public handler"'
+rm -f "$w/server/routes/approvals.cjs"
+cp "$w/server/index.cjs" "$work/ta-index.saved"
+sed '/toolApprovalBridge(req, res)/d' "$work/ta-index.saved" > "$w/server/index.cjs"
+ta_try approvals-no-mount
+check "approval pending bridge must be mounted" 'refused "missing bridge mount"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/ta-index.saved" > "$w/server/index.cjs"
+ta_try approvals-no-secret
+check "approval pending bridge requires captured front secret" 'refused "missing captured front secret"'
+cp "$work/ta-index.saved" "$w/server/index.cjs"
+rm -f "$w/server/rust-tool-approval-bridge.cjs"
+ta_try approvals-no-bridge
+check "approval pending state bridge must exist" 'refused "missing pending state bridge"'
+touch "$w/server/rust-tool-approval-bridge.cjs"
+cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refusal.saved"
+printf '%s\n' 'module.exports = {};' > "$w/server/rust-tool-approvals.cjs"
+ta_try approvals-no-owned-route
+check "approval refusal must list the exact POST" 'refused "Core must refuse exactly the approval POST"'
+cp "$work/ta-refusal.saved" "$w/server/rust-tool-approvals.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ta_owner=node
+ta_try approvals-old-pair
+check "historic approval old/old rollback pair assembles" '[ $rc -eq 0 ]'
+ta_owner=rust
+ta_try approvals-old-rust-row
+check "historic pair cannot assign approvals to Rust" 'refused "tool approval ownership pairing"'
+cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refuser.paired"
+rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
 # #2281 toolbox picker owner pair and the narrow facts bridge.
 tp_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -1928,6 +1995,42 @@ tp_try picker-old-rust-rows
 check "old picker pair rejects Rust rows" 'refused "toolbox picker ownership pairing"'
 tp_owner=node; tp_try picker-old-pair
 check "old toolbox picker pair remains a valid rollback" '[ $rc -eq 0 ]'
+# Exercise both moves in one candidate and independently during rollback.
+cp "$work/ta-refuser.paired" "$w/server/rust-tool-approvals.cjs"
+touch "$w/server/rust-tool-approval-bridge.cjs"
+ports_try() {
+  try_routes "$1" <<TOML
+[[route]]
+path = "/api/chats/{conversationId}/move"
+owner = "rust"
+methods = ["POST"]
+[[route]]
+path = "/api/toolboxes"
+owner = "$tp_owner"
+[[route]]
+path = "/api/tool-approvals/{approvalId}"
+owner = "$ta_owner"
+methods = ["POST"]
+TOML
+}
+ta_core
+# Both bridges use the same captured front secret.
+sed -n '/^const toolboxPickerFacts = /,$p' "$work/tp-index.saved" >> "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-toolbox-picker"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ta_owner=rust; tp_owner=rust
+ports_try combined-ports
+check "approval and toolbox native pairs assemble together" '[ $rc -eq 0 ]'
+ta_core; ta_front; tp_owner=node
+ports_try approval-native-picker-old
+check "approval native pair permits toolbox rollback" '[ $rc -eq 0 ]'
+tp_core; tp_front; tp_owner=rust; ta_owner=node
+ports_try picker-native-approval-old
+check "toolbox native pair permits approval rollback" '[ $rc -eq 0 ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ta_owner=node; tp_owner=node
+ports_try combined-old-pair
+check "both port pairs permit historic rollback together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
 rm -f "$w/server/rust-toolbox-picker.cjs" "$w/server/rust-toolbox-picker-facts.cjs"
 # GET inference-budget and GET installed (sbstndalton/noevia#2262): the pair, its rows and what Core must have done.
 ms_rows() {
@@ -2003,6 +2106,255 @@ ms_owner=rust
 ms_try model-state-old-with-rust-rows
 check "an old pair whose table gives the model state reads to Rust is refused" 'refused "model state read ownership pairing"'
 rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
+# #2293: dismissal policy moves independently of the live autotune worker.
+ac_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${ac_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/autotune/clear"\nowner = "%s"\n' "$ac_owner"; [ -z "${ac_methods:-}" ] || printf '%s\n' "$ac_methods"; fi)
+}
+cat > "$w/server/rust-autotune-clear.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/clear']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-autotune-clear-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/ac-manager.saved"
+printf '%s\n' 'clearFacts: autotuner.clearFacts, compareAndClear: autotuner.compareAndClear,' > "$w/server/llamacpp-manager.cjs"
+ac_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const autotuneClearBridge = require('./rust-autotune-clear-bridge.cjs').createAutotuneClearBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-autotune-clear.cjs').refuseOwned(req, res, {})) return;
+if (await autotuneClearBridge(req, res)) return;
+JS
+}
+ac_front() { sed 's/"start-id"/"start-id", "rust-autotune-clear"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ac_owner=rust; ac_core
+ac_try ac-core-only
+check "autotune dismissal refusal cannot pair with an old front" 'refused "autotune dismissal ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ac_front
+ac_try ac-front-only
+check "autotune dismissal capability cannot pair with an old Core" 'refused "autotune dismissal ownership pairing"'
+ac_core; ac_try ac-pair
+check "matching autotune dismissal pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-autotune-clear", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes ac-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/autotune/clear"\nowner = "rust"\n')
+check "autotune dismissal and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; ac_core; ac_front
+ac_owner=node; ac_try ac-node-rows
+check "native dismissal pair rejects Node ownership" 'refused "autotune dismissal ownership pairing"'
+ac_owner=rust; ac_skip=yes; ac_try ac-missing-row
+check "native dismissal pair requires its route row" 'refused "incomplete route ownership"'
+unset ac_skip; ac_methods='methods = ["POST"]'; ac_try ac-partial-row
+check "native dismissal pair owns other-method refusals as well as POST" 'refused "autotune dismissal ownership pairing"'
+unset ac_methods
+cp "$w/server/rust-autotune-clear.cjs" "$work/ac-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-autotune-clear.cjs"; ac_try ac-refuser
+check "native dismissal pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/ac-refuser.saved" "$w/server/rust-autotune-clear.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/ac-models.saved"
+printf "if (p === '/api/models/autotune/clear') send();\n" >> "$w/server/routes/models.cjs"; ac_try ac-old-handler
+check "native dismissal pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/ac-models.saved" ]; then cp "$work/ac-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-full-autotune.cjs" ] || cp "$w/server/llamacpp-full-autotune.cjs" "$work/ac-actor.saved"
+printf 'function clear() {}\n' >> "$w/server/llamacpp-full-autotune.cjs"; ac_try ac-old-policy
+check "native dismissal pair rejects retained Node dismissal policy" 'refused "Core still carries the public dismissal policy"'
+if [ -f "$work/ac-actor.saved" ]; then cp "$work/ac-actor.saved" "$w/server/llamacpp-full-autotune.cjs"; else rm -f "$w/server/llamacpp-full-autotune.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/ac-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; ac_try ac-no-primitives
+check "native dismissal pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/ac-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-autotune-clear-bridge.cjs" "$work/ac-bridge.saved"; ac_try ac-no-bridge
+check "native dismissal pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/ac-bridge.saved" "$w/server/rust-autotune-clear-bridge.cjs"
+cp "$w/server/index.cjs" "$work/ac-index.saved"
+sed '/await autotuneClearBridge(req, res)/d' "$work/ac-index.saved" > "$w/server/index.cjs"; ac_try ac-no-mount
+check "native dismissal pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/ac-index.saved" > "$w/server/index.cjs"; ac_try ac-no-secret
+check "native dismissal pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ac_try ac-old-rust-rows
+check "old dismissal pair rejects Rust ownership" 'refused "autotune dismissal ownership pairing"'
+ac_owner=node; ac_try ac-old-pair
+check "old autotune dismissal pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-autotune-clear.cjs" "$w/server/rust-autotune-clear-bridge.cjs"
+if [ -f "$work/ac-manager.saved" ]; then cp "$work/ac-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# #2292: cancellation policy moves independently of the live calibration worker.
+cc_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${cc_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/calibration/cancel"\nowner = "%s"\n' "$cc_owner"; [ -z "${cc_methods:-}" ] || printf '%s\n' "$cc_methods"; fi)
+}
+cat > "$w/server/rust-calibration-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration/cancel']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-calibration-cancel-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/cc-manager.saved"
+printf '%s\n' 'cancellationFacts: calibrator.cancellationFacts, compareAndAbort: calibrator.compareAndAbort,' > "$w/server/llamacpp-manager.cjs"
+cc_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const calibrationCancelBridge = require('./rust-calibration-cancel-bridge.cjs').createCalibrationCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationCancelBridge(req, res)) return;
+JS
+}
+cc_front() { sed 's/"start-id"/"start-id", "rust-calibration-cancel"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cc_owner=rust; cc_core
+cc_try cc-core-only
+check "calibration cancellation refusal cannot pair with an old front" 'refused "calibration cancellation ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cc_front
+cc_try cc-front-only
+check "calibration cancellation capability cannot pair with an old Core" 'refused "calibration cancellation ownership pairing"'
+cc_core; cc_try cc-pair
+check "matching calibration cancellation pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-calibration-cancel", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes cc-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/calibration/cancel"\nowner = "rust"\n')
+check "calibration cancellation and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; cc_core; cc_front
+cc_owner=node; cc_try cc-node-rows
+check "native cancellation pair rejects Node ownership" 'refused "calibration cancellation ownership pairing"'
+cc_owner=rust; cc_skip=yes; cc_try cc-missing-row
+check "native cancellation pair requires its route row" 'refused "incomplete route ownership"'
+unset cc_skip; cc_methods='methods = ["POST"]'; cc_try cc-partial-row
+check "native cancellation pair owns other-method refusals as well as POST" 'refused "calibration cancellation ownership pairing"'
+unset cc_methods
+cp "$w/server/rust-calibration-cancel.cjs" "$work/cc-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-calibration-cancel.cjs"; cc_try cc-refuser
+check "native cancellation pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/cc-refuser.saved" "$w/server/rust-calibration-cancel.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/cc-models.saved"
+printf "if (p === '/api/models/calibration/cancel') send();\n" >> "$w/server/routes/models.cjs"; cc_try cc-old-handler
+check "native cancellation pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/cc-models.saved" ]; then cp "$work/cc-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cc-actor.saved"
+printf 'function cancel() {}\n' >> "$w/server/llamacpp-calibration.cjs"; cc_try cc-old-policy
+check "native cancellation pair rejects retained Node cancellation policy" 'refused "Core still carries the public cancellation policy"'
+if [ -f "$work/cc-actor.saved" ]; then cp "$work/cc-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/cc-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; cc_try cc-no-primitives
+check "native cancellation pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/cc-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-calibration-cancel-bridge.cjs" "$work/cc-bridge.saved"; cc_try cc-no-bridge
+check "native cancellation pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/cc-bridge.saved" "$w/server/rust-calibration-cancel-bridge.cjs"
+cp "$w/server/index.cjs" "$work/cc-index.saved"
+sed '/await calibrationCancelBridge(req, res)/d' "$work/cc-index.saved" > "$w/server/index.cjs"; cc_try cc-no-mount
+check "native cancellation pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/cc-index.saved" > "$w/server/index.cjs"; cc_try cc-no-secret
+check "native cancellation pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cc_try cc-old-rust-rows
+check "old cancellation pair rejects Rust ownership" 'refused "calibration cancellation ownership pairing"'
+cc_owner=node; cc_try cc-old-pair
+check "old calibration cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
+if [ -f "$work/cc-manager.saved" ]; then cp "$work/cc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# #2287: settings policy moves independently of the live tune state writer.
+ats_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${ats_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/autotune/settings"\nowner = "%s"\n' "$ats_owner"; [ -z "${ats_methods:-}" ] || printf '%s\n' "$ats_methods"; fi)
+}
+cat > "$w/server/rust-autotune-settings.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/settings']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-autotune-settings-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/ats-manager.saved"
+printf '%s\n' 'settingsFacts: autotuner.settingsFacts, commitSettings: autotuner.commitSettings,' > "$w/server/llamacpp-manager.cjs"
+ats_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const autotuneSettingsBridge = require('./rust-autotune-settings-bridge.cjs').createAutotuneSettingsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-autotune-settings.cjs').refuseOwned(req, res, {})) return;
+if (await autotuneSettingsBridge(req, res)) return;
+JS
+}
+ats_front() { sed 's/"start-id"/"start-id", "rust-autotune-settings"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ats_owner=rust; ats_core
+ats_try ats-core-only
+check "auto-tune settings refusal cannot pair with an old front" 'refused "auto-tune settings ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ats_front
+ats_try ats-front-only
+check "auto-tune settings capability cannot pair with an old Core" 'refused "auto-tune settings ownership pairing"'
+ats_core; ats_try ats-pair
+check "matching auto-tune settings pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-autotune-settings", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes ats-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/autotune/settings"\nowner = "rust"\n')
+check "auto-tune settings and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; ats_core; ats_front
+ats_owner=node; ats_try ats-node-rows
+check "native settings pair rejects Node ownership" 'refused "auto-tune settings ownership pairing"'
+ats_owner=rust; ats_skip=yes; ats_try ats-missing-row
+check "native settings pair requires its route row" 'refused "incomplete route ownership"'
+unset ats_skip; ats_methods='methods = ["POST"]'; ats_try ats-partial-row
+check "native settings pair owns other-method refusals as well as POST" 'refused "auto-tune settings ownership pairing"'
+unset ats_methods
+cp "$w/server/rust-autotune-settings.cjs" "$work/ats-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-autotune-settings.cjs"; ats_try ats-refuser
+check "native settings pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/ats-refuser.saved" "$w/server/rust-autotune-settings.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/ats-models.saved"
+printf "if (p === '/api/models/autotune/settings') send();\n" >> "$w/server/routes/models.cjs"; ats_try ats-old-handler
+check "native settings pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/ats-models.saved" ]; then cp "$work/ats-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-full-autotune.cjs" ] || cp "$w/server/llamacpp-full-autotune.cjs" "$work/ats-actor.saved"
+printf 'function setSettings() {}\n' >> "$w/server/llamacpp-full-autotune.cjs"; ats_try ats-old-policy
+check "native settings pair rejects retained Node settings policy" 'refused "Core still carries the public settings policy"'
+if [ -f "$work/ats-actor.saved" ]; then cp "$work/ats-actor.saved" "$w/server/llamacpp-full-autotune.cjs"; else rm -f "$w/server/llamacpp-full-autotune.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/ats-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; ats_try ats-no-primitives
+check "native settings pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/ats-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-autotune-settings-bridge.cjs" "$work/ats-bridge.saved"; ats_try ats-no-bridge
+check "native settings pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/ats-bridge.saved" "$w/server/rust-autotune-settings-bridge.cjs"
+cp "$w/server/index.cjs" "$work/ats-index.saved"
+sed '/await autotuneSettingsBridge(req, res)/d' "$work/ats-index.saved" > "$w/server/index.cjs"; ats_try ats-no-mount
+check "native settings pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/ats-index.saved" > "$w/server/index.cjs"; ats_try ats-no-secret
+check "native settings pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ats_try ats-old-rust-rows
+check "old settings pair rejects Rust ownership" 'refused "auto-tune settings ownership pairing"'
+ats_owner=node; ats_try ats-old-pair
+check "old auto-tune settings pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-autotune-settings.cjs" "$w/server/rust-autotune-settings-bridge.cjs"
+if [ -f "$work/ats-manager.saved" ]; then cp "$work/ats-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # #2294: cancellation policy moves independently of the live auto-tune worker.
 atc_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
