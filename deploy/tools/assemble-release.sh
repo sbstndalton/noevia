@@ -1050,7 +1050,7 @@ if [ "$ac_rs_owner" = rust ]; then
   [ "$ac_refused" = 'ALL /api/models/autotune/clear ' ] || die "autotune dismissal ownership pairing: Core must refuse exactly the dismissal path"
   ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/clear' \
     || die "autotune dismissal ownership pairing: Core still carries the public handler"
-  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function clear()' \
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^A-Za-z0-9_$])function[[:space:]]+clear[[:space:]]*\(' \
     || die "autotune dismissal ownership pairing: Core still carries the public dismissal policy"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'clearFacts: autotuner.clearFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndClear: autotuner.compareAndClear' \
