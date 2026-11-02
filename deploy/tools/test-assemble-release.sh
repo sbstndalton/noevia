@@ -1942,6 +1942,89 @@ ms_owner=rust
 ms_try model-state-old-with-rust-rows
 check "an old pair whose table gives the model state reads to Rust is refused" 'refused "model state read ownership pairing"'
 rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
+# #2287: settings policy moves independently of the live tune state writer.
+ats_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${ats_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/autotune/settings"\nowner = "%s"\n' "$ats_owner"; [ -z "${ats_methods:-}" ] || printf '%s\n' "$ats_methods"; fi)
+}
+cat > "$w/server/rust-autotune-settings.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/settings']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-autotune-settings-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/ats-manager.saved"
+printf '%s\n' 'settingsFacts: autotuner.settingsFacts, commitSettings: autotuner.commitSettings,' > "$w/server/llamacpp-manager.cjs"
+ats_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const autotuneSettingsBridge = require('./rust-autotune-settings-bridge.cjs').createAutotuneSettingsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-autotune-settings.cjs').refuseOwned(req, res, {})) return;
+if (await autotuneSettingsBridge(req, res)) return;
+JS
+}
+ats_front() { sed 's/"start-id"/"start-id", "rust-autotune-settings"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ats_owner=rust; ats_core
+ats_try ats-core-only
+check "auto-tune settings refusal cannot pair with an old front" 'refused "auto-tune settings ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ats_front
+ats_try ats-front-only
+check "auto-tune settings capability cannot pair with an old Core" 'refused "auto-tune settings ownership pairing"'
+ats_core; ats_try ats-pair
+check "matching auto-tune settings pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-autotune-settings", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes ats-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/autotune/settings"\nowner = "rust"\n')
+check "auto-tune settings and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; ats_core; ats_front
+ats_owner=node; ats_try ats-node-rows
+check "native settings pair rejects Node ownership" 'refused "auto-tune settings ownership pairing"'
+ats_owner=rust; ats_skip=yes; ats_try ats-missing-row
+check "native settings pair requires its route row" 'refused "incomplete route ownership"'
+unset ats_skip; ats_methods='methods = ["POST"]'; ats_try ats-partial-row
+check "native settings pair owns other-method refusals as well as POST" 'refused "auto-tune settings ownership pairing"'
+unset ats_methods
+cp "$w/server/rust-autotune-settings.cjs" "$work/ats-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-autotune-settings.cjs"; ats_try ats-refuser
+check "native settings pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/ats-refuser.saved" "$w/server/rust-autotune-settings.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/ats-models.saved"
+printf "if (p === '/api/models/autotune/settings') send();\n" >> "$w/server/routes/models.cjs"; ats_try ats-old-handler
+check "native settings pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/ats-models.saved" ]; then cp "$work/ats-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-full-autotune.cjs" ] || cp "$w/server/llamacpp-full-autotune.cjs" "$work/ats-actor.saved"
+printf 'function setSettings() {}\n' >> "$w/server/llamacpp-full-autotune.cjs"; ats_try ats-old-policy
+check "native settings pair rejects retained Node settings policy" 'refused "Core still carries the public settings policy"'
+if [ -f "$work/ats-actor.saved" ]; then cp "$work/ats-actor.saved" "$w/server/llamacpp-full-autotune.cjs"; else rm -f "$w/server/llamacpp-full-autotune.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/ats-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; ats_try ats-no-primitives
+check "native settings pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/ats-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-autotune-settings-bridge.cjs" "$work/ats-bridge.saved"; ats_try ats-no-bridge
+check "native settings pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/ats-bridge.saved" "$w/server/rust-autotune-settings-bridge.cjs"
+cp "$w/server/index.cjs" "$work/ats-index.saved"
+sed '/await autotuneSettingsBridge(req, res)/d' "$work/ats-index.saved" > "$w/server/index.cjs"; ats_try ats-no-mount
+check "native settings pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/ats-index.saved" > "$w/server/index.cjs"; ats_try ats-no-secret
+check "native settings pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ats_try ats-old-rust-rows
+check "old settings pair rejects Rust ownership" 'refused "auto-tune settings ownership pairing"'
+ats_owner=node; ats_try ats-old-pair
+check "old auto-tune settings pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-autotune-settings.cjs" "$w/server/rust-autotune-settings-bridge.cjs"
+if [ -f "$work/ats-manager.saved" ]; then cp "$work/ats-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.
 au_try() {
