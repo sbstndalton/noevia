@@ -1942,6 +1942,89 @@ ms_owner=rust
 ms_try model-state-old-with-rust-rows
 check "an old pair whose table gives the model state reads to Rust is refused" 'refused "model state read ownership pairing"'
 rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
+# #2292: cancellation policy moves independently of the live calibration worker.
+cc_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${cc_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/calibration/cancel"\nowner = "%s"\n' "$cc_owner"; [ -z "${cc_methods:-}" ] || printf '%s\n' "$cc_methods"; fi)
+}
+cat > "$w/server/rust-calibration-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration/cancel']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-calibration-cancel-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/cc-manager.saved"
+printf '%s\n' 'cancellationFacts: calibrator.cancellationFacts, compareAndAbort: calibrator.compareAndAbort,' > "$w/server/llamacpp-manager.cjs"
+cc_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const calibrationCancelBridge = require('./rust-calibration-cancel-bridge.cjs').createCalibrationCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationCancelBridge(req, res)) return;
+JS
+}
+cc_front() { sed 's/"start-id"/"start-id", "rust-calibration-cancel"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cc_owner=rust; cc_core
+cc_try cc-core-only
+check "calibration cancellation refusal cannot pair with an old front" 'refused "calibration cancellation ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cc_front
+cc_try cc-front-only
+check "calibration cancellation capability cannot pair with an old Core" 'refused "calibration cancellation ownership pairing"'
+cc_core; cc_try cc-pair
+check "matching calibration cancellation pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-calibration-cancel", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes cc-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/calibration/cancel"\nowner = "rust"\n')
+check "calibration cancellation and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; cc_core; cc_front
+cc_owner=node; cc_try cc-node-rows
+check "native cancellation pair rejects Node ownership" 'refused "calibration cancellation ownership pairing"'
+cc_owner=rust; cc_skip=yes; cc_try cc-missing-row
+check "native cancellation pair requires its route row" 'refused "incomplete route ownership"'
+unset cc_skip; cc_methods='methods = ["POST"]'; cc_try cc-partial-row
+check "native cancellation pair owns other-method refusals as well as POST" 'refused "calibration cancellation ownership pairing"'
+unset cc_methods
+cp "$w/server/rust-calibration-cancel.cjs" "$work/cc-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-calibration-cancel.cjs"; cc_try cc-refuser
+check "native cancellation pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/cc-refuser.saved" "$w/server/rust-calibration-cancel.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/cc-models.saved"
+printf "if (p === '/api/models/calibration/cancel') send();\n" >> "$w/server/routes/models.cjs"; cc_try cc-old-handler
+check "native cancellation pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/cc-models.saved" ]; then cp "$work/cc-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cc-actor.saved"
+printf 'function cancel() {}\n' >> "$w/server/llamacpp-calibration.cjs"; cc_try cc-old-policy
+check "native cancellation pair rejects retained Node cancellation policy" 'refused "Core still carries the public cancellation policy"'
+if [ -f "$work/cc-actor.saved" ]; then cp "$work/cc-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/cc-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; cc_try cc-no-primitives
+check "native cancellation pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/cc-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-calibration-cancel-bridge.cjs" "$work/cc-bridge.saved"; cc_try cc-no-bridge
+check "native cancellation pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/cc-bridge.saved" "$w/server/rust-calibration-cancel-bridge.cjs"
+cp "$w/server/index.cjs" "$work/cc-index.saved"
+sed '/await calibrationCancelBridge(req, res)/d' "$work/cc-index.saved" > "$w/server/index.cjs"; cc_try cc-no-mount
+check "native cancellation pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/cc-index.saved" > "$w/server/index.cjs"; cc_try cc-no-secret
+check "native cancellation pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cc_try cc-old-rust-rows
+check "old cancellation pair rejects Rust ownership" 'refused "calibration cancellation ownership pairing"'
+cc_owner=node; cc_try cc-old-pair
+check "old calibration cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
+if [ -f "$work/cc-manager.saved" ]; then cp "$work/cc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.
 au_try() {

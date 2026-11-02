@@ -894,6 +894,41 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "task read ownership pairing: Core does not hand its task facts bridge the front's captured secret"
   fi
 fi
+# #2292: calibration cancellation policy is native, with only facts and the conditional state writer in Core.
+cc_core_owner=""; cc_rs_owner=""
+grep -qF "require('./rust-calibration-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && cc_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-cancel features; then cc_rs_owner=rust; fi
+[ "$cc_core_owner" = "$cc_rs_owner" ] || die "calibration cancellation ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  cc_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || cc_table=""
+  cc_rows="$(printf '%s\n' "$cc_table" | awk -F'\t' -v want="$cc_rs_owner" '
+    $1 == "/api/models/calibration/cancel" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "calibration cancellation ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$cc_rs_owner" = rust ]; then
+  [ "${cc_rows:-}" = /api/models/calibration/cancel ] || die "calibration cancellation ownership pairing: incomplete route ownership"
+  cc_refused="$( { project_routes_core "$tree/core/server/rust-calibration-cancel.cjs" || true; } | tr '\n' ' ')"
+  [ "$cc_refused" = 'ALL /api/models/calibration/cancel ' ] || die "calibration cancellation ownership pairing: Core must refuse exactly the cancellation path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/calibration/cancel' \
+    || die "calibration cancellation ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-calibration.cjs" 'function cancel()' \
+    || die "calibration cancellation ownership pairing: Core still carries the public cancellation policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'cancellationFacts: calibrator.cancellationFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndAbort: calibrator.compareAndAbort' \
+    || die "calibration cancellation ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-calibration-cancel-bridge.cjs" ] || die "calibration cancellation ownership pairing: missing state bridge"
+  cc_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'calibrationCancelBridge(req, res)' <<<"$cc_index" || die "calibration cancellation ownership pairing: missing state bridge mount"
+  cc_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$cc_index" | head -1)"
+  [ -n "$cc_secret" ] && awk -v c="$cc_secret" '
+    /createCalibrationCancelBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$cc_index" || die "calibration cancellation ownership pairing: state bridge needs the front captured secret"
+fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
 # routes.toml. Core must have no way left to delete an account: no deleteUser in auth.cjs, and the single-writer
