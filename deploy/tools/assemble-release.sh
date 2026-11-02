@@ -1577,7 +1577,7 @@ fi
 # The model maintenance routes (sbstndalton/noevia#2210) move as one owner: Core's rust-model-maintenance.cjs
 # refusal and the front's rust-model-maintenance capability, with exactly POST /api/models/presets/reload,
 # GET /api/models/evidence and POST /api/models/evidence/import Rust's in routes.toml (Node keeps every other
-# method and the recheck). The front is the single writer of the reload guard state file and the evidence
+# method; recheck moves separately in #2286). The front is the single writer of the reload guard state file and the evidence
 # store; a mixed pair would have two writers or none. Historic old/old pins remain valid rollback pairs.
 maint_core_owner=""
 maint_rs_owner=""
@@ -1600,9 +1600,44 @@ if [ "$maint_rs_owner" = rust ]; then
     }' | sort)" || die "model maintenance ownership pairing: exactly the one method of each route must belong to Rust"
   maint_expected="$(printf '%s\n' /api/models/presets/reload /api/models/evidence /api/models/evidence/import | sort)"
   [ "$maint_routes" = "$maint_expected" ] || die "model maintenance ownership pairing: incomplete route ownership"
-  # The recheck loads a model after Node's admission check: it must not be Rust's.
-  if routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/evidence/recheck" && $2 == "rust" { f = 1 } END { exit !f }'; then
+  # Recheck needs its own native probe/admission pairing, beyond this earlier maintenance group.
+  if ! move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-evidence-recheck features && routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/evidence/recheck" && $2 == "rust" { f = 1 } END { exit !f }'; then
     die "model maintenance ownership pairing: the recheck stays Node's"
+  fi
+fi
+
+# #2286: the 1x1 recheck probe and evidence filing are native; Node keeps live admission only.
+er_core_owner=""
+er_rs_owner=""
+grep -qF "require('./rust-model-evidence-recheck.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && er_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-evidence-recheck features; then er_rs_owner=rust; fi
+[ "$er_core_owner" = "$er_rs_owner" ] || die "evidence recheck ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  er_rows="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$er_rs_owner" '
+    $1 == "/api/models/evidence/recheck" {
+      if(want=="rust") {
+        if($2!="rust" || $3!="-") exit 1
+        n=split($4,m,/[^A-Z]+/); k=0
+        for(i=1;i<=n;i++) if(m[i]!="") {if(m[i]!="POST") exit 1;k++}
+        if(k!=1) exit 1
+      } else if($2!="node") exit 1
+      print $1
+    }')" || die "evidence recheck ownership pairing: POST alone must be native with the new pair and Node's with the old"
+  if [ "$er_rs_owner" = rust ]; then
+    [ "$maint_rs_owner" = rust ] || die "evidence recheck ownership pairing: native evidence store required"
+    [ "$(printf '%s\n' "$er_rows" | wc -w | tr -d ' ')" = 1 ] || die "evidence recheck ownership pairing: missing route"
+    er_refused="$( { project_routes_core "$tree/core/server/rust-model-evidence-recheck.cjs" || true; } | sort | tr '\n' ' ')"
+    [ "$er_refused" = 'POST /api/models/evidence/recheck ' ] || die "evidence recheck ownership pairing: exact POST refusal required"
+    ! grep -qE 'createVisionProbe|source:[[:space:]]*.recheck.' "$tree/core/server/routes/models.cjs" 2>/dev/null || die "evidence recheck ownership pairing: public Node probe still present"
+    [ -f "$tree/core/server/inference-admission-lease.cjs" ] || die "evidence recheck ownership pairing: live inference admission required"
+    er_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'inferenceAdmission\.handle\(req, res\)' <<<"$er_index" || die "evidence recheck ownership pairing: inference admission must be mounted"
+    er_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$er_index" | head -1)"
+    [ -n "$er_secret" ] && awk -v c="$er_secret" '
+      /createAdmissionRoutes\(\{/ {bridge=NR}
+      index($0,"secret: " c) && bridge && NR-bridge<=3 {ok=1}
+      END {exit !ok}
+    ' <<<"$er_index" || die "evidence recheck ownership pairing: captured inference admission secret required"
   fi
 fi
 
