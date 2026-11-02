@@ -926,6 +926,45 @@ if [ "$tp_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
 fi
+# #2295: untuned discovery policy is native, with only facts and the conditional state writer in Core.
+au_scan_core_owner=""; au_scan_rs_owner=""
+grep -qF "require('./rust-autotune-untuned.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && au_scan_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-untuned features; then au_scan_rs_owner=rust; fi
+[ "$au_scan_core_owner" = "$au_scan_rs_owner" ] || die "untuned discovery ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  au_scan_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || au_scan_table=""
+  au_scan_rows="$(printf '%s\n' "$au_scan_table" | awk -F'\t' -v want="$au_scan_rs_owner" '
+    $1 == "/api/models/autotune/untuned" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "untuned discovery ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$au_scan_rs_owner" = rust ]; then
+  [ "${au_scan_rows:-}" = /api/models/autotune/untuned ] || die "untuned discovery ownership pairing: incomplete route ownership"
+  au_scan_refused="$( { project_routes_core "$tree/core/server/rust-autotune-untuned.cjs" || true; } | tr '\n' ' ')"
+  [ "$au_scan_refused" = 'ALL /api/models/autotune/untuned ' ] || die "untuned discovery ownership pairing: Core must refuse exactly the discovery path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/untuned' \
+    || die "untuned discovery ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'async function untuned()' \
+    || die "untuned discovery ownership pairing: Core still carries the public discovery policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'scanFacts: autotuner.scanFacts' \
+    && code_has "$tree/core/server/llamacpp-full-autotune.cjs" '.autotuneScan(' \
+    && code_has "$tree/core/server/dav-parse-wasm.cjs" '.autotune_scan(' \
+    && code_has "$tree/rs/bins/dav-parse-wasm/src/lib.rs" 'fn autotune_scan()' \
+    || die "untuned discovery ownership pairing: shared Rust/WASM policy and raw owner facts required"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'latest?.version === VERSION' \
+    || die "untuned discovery ownership pairing: Core still carries candidate selection policy"
+  [ -f "$tree/core/server/rust-autotune-untuned-facts.cjs" ] || die "untuned discovery ownership pairing: missing state bridge"
+  au_scan_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneUntunedFacts(req, res)' <<<"$au_scan_index" || die "untuned discovery ownership pairing: missing state bridge mount"
+  au_scan_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$au_scan_index" | head -1)"
+  [ -n "$au_scan_secret" ] && awk -v c="$au_scan_secret" '
+    /createAutotuneUntunedFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$au_scan_index" || die "untuned discovery ownership pairing: state bridge needs the front captured secret"
+fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
 # routes.toml. Core must have no way left to delete an account: no deleteUser in auth.cjs, and the single-writer

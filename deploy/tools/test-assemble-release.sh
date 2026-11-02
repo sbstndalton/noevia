@@ -2003,6 +2003,102 @@ ms_owner=rust
 ms_try model-state-old-with-rust-rows
 check "an old pair whose table gives the model state reads to Rust is refused" 'refused "model state read ownership pairing"'
 rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
+# #2295: discovery policy moves independently of the live autotune worker.
+au_scan_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${au_scan_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/autotune/untuned"\nowner = "%s"\n' "$au_scan_owner"; [ -z "${au_scan_methods:-}" ] || printf '%s\n' "$au_scan_methods"; fi)
+}
+cat > "$w/server/rust-autotune-untuned.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/untuned']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-autotune-untuned-facts.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/aus-manager.saved"
+printf '%s\n' 'scanFacts: autotuner.scanFacts,' > "$w/server/llamacpp-manager.cjs"
+au_scan_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const autotuneUntunedFacts = require('./rust-autotune-untuned-facts.cjs').createAutotuneUntunedFacts({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-autotune-untuned.cjs').refuseOwned(req, res, {})) return;
+if (await autotuneUntunedFacts(req, res)) return;
+JS
+}
+au_scan_front() { sed 's/"start-id"/"start-id", "rust-autotune-untuned"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+# The candidate scanner must have the same native and WASM primitive, not a Node decision copy.
+for pair in "server/llamacpp-full-autotune.cjs aus-original-actor" "server/dav-parse-wasm.cjs aus-original-wasm"; do
+  set -- $pair; [ ! -f "$w/$1" ] || cp "$w/$1" "$work/$2"
+done
+[ ! -f "$rz/bins/dav-parse-wasm/src/lib.rs" ] || cp "$rz/bins/dav-parse-wasm/src/lib.rs" "$work/aus-original-rust-wasm"
+mkdir -p "$rz/bins/dav-parse-wasm/src"
+printf 'const scan = r => wasm.autotuneScan(r);\n' > "$w/server/llamacpp-full-autotune.cjs"
+printf 'const call = e => e.autotune_scan();\n' > "$w/server/dav-parse-wasm.cjs"
+printf 'pub extern "C" fn autotune_scan() -> u32 { 0 }\n' > "$rz/bins/dav-parse-wasm/src/lib.rs"
+au_scan_owner=rust; au_scan_core
+au_scan_try aus-core-only
+check "untuned discovery refusal cannot pair with an old front" 'refused "untuned discovery ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; au_scan_front
+au_scan_try aus-front-only
+check "untuned discovery capability cannot pair with an old Core" 'refused "untuned discovery ownership pairing"'
+au_scan_core; au_scan_try aus-pair
+check "matching untuned discovery pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-autotune-untuned", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes aus-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/autotune/untuned"\nowner = "rust"\n')
+check "untuned discovery and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; au_scan_core; au_scan_front
+au_scan_owner=node; au_scan_try aus-node-rows
+check "native discovery pair rejects Node ownership" 'refused "untuned discovery ownership pairing"'
+au_scan_owner=rust; au_scan_skip=yes; au_scan_try aus-missing-row
+check "native discovery pair requires its route row" 'refused "incomplete route ownership"'
+unset au_scan_skip; au_scan_methods='methods = ["POST"]'; au_scan_try aus-partial-row
+check "native discovery pair owns other-method refusals as well as POST" 'refused "untuned discovery ownership pairing"'
+unset au_scan_methods
+cp "$w/server/rust-autotune-untuned.cjs" "$work/aus-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-autotune-untuned.cjs"; au_scan_try aus-refuser
+check "native discovery pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/aus-refuser.saved" "$w/server/rust-autotune-untuned.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/aus-models.saved"
+printf "if (p === '/api/models/autotune/untuned') send();\n" >> "$w/server/routes/models.cjs"; au_scan_try aus-old-handler
+check "native discovery pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/aus-models.saved" ]; then cp "$work/aus-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-full-autotune.cjs" ] || cp "$w/server/llamacpp-full-autotune.cjs" "$work/aus-actor.saved"
+printf 'async function untuned() {}\n' >> "$w/server/llamacpp-full-autotune.cjs"; au_scan_try aus-old-policy
+check "native discovery pair rejects retained Node discovery policy" 'refused "Core still carries the public discovery policy"'
+if [ -f "$work/aus-actor.saved" ]; then cp "$work/aus-actor.saved" "$w/server/llamacpp-full-autotune.cjs"; else rm -f "$w/server/llamacpp-full-autotune.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/aus-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; au_scan_try aus-no-primitives
+check "native discovery pair requires the live single-writer primitives" 'refused "shared Rust/WASM policy and raw owner facts required"'
+cp "$work/aus-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-autotune-untuned-facts.cjs" "$work/aus-bridge.saved"; au_scan_try aus-no-bridge
+check "native discovery pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/aus-bridge.saved" "$w/server/rust-autotune-untuned-facts.cjs"
+cp "$w/server/index.cjs" "$work/aus-index.saved"
+sed '/await autotuneUntunedFacts(req, res)/d' "$work/aus-index.saved" > "$w/server/index.cjs"; au_scan_try aus-no-mount
+check "native discovery pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/aus-index.saved" > "$w/server/index.cjs"; au_scan_try aus-no-secret
+check "native discovery pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+au_scan_try aus-old-rust-rows
+check "old discovery pair rejects Rust ownership" 'refused "untuned discovery ownership pairing"'
+au_scan_owner=node; au_scan_try aus-old-pair
+check "old untuned discovery pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-autotune-untuned.cjs" "$w/server/rust-autotune-untuned-facts.cjs"
+if [ -f "$work/aus-manager.saved" ]; then cp "$work/aus-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+for pair in "server/llamacpp-full-autotune.cjs aus-original-actor" "server/dav-parse-wasm.cjs aus-original-wasm"; do
+  set -- $pair; if [ -f "$work/$2" ]; then cp "$work/$2" "$w/$1"; else rm -f "$w/$1"; fi
+done
+if [ -f "$work/aus-original-rust-wasm" ]; then cp "$work/aus-original-rust-wasm" "$rz/bins/dav-parse-wasm/src/lib.rs"; else rm -f "$rz/bins/dav-parse-wasm/src/lib.rs"; fi
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.
 au_try() {
