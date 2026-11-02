@@ -914,7 +914,7 @@ if [ "$cc_rs_owner" = rust ]; then
   [ "$cc_refused" = 'ALL /api/models/calibration/cancel ' ] || die "calibration cancellation ownership pairing: Core must refuse exactly the cancellation path"
   ! code_has "$tree/core/server/routes/models.cjs" '/api/models/calibration/cancel' \
     || die "calibration cancellation ownership pairing: Core still carries the public handler"
-  ! code_has "$tree/core/server/llamacpp-calibration.cjs" 'function cancel()' \
+  ! code_has "$tree/core/server/llamacpp-calibration.cjs" '(^|[^A-Za-z0-9_$])function[[:space:]]+cancel[[:space:]]*\(' \
     || die "calibration cancellation ownership pairing: Core still carries the public cancellation policy"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'cancellationFacts: calibrator.cancellationFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndAbort: calibrator.compareAndAbort' \

@@ -2221,6 +2221,11 @@ cc_try cc-front-only
 check "calibration cancellation capability cannot pair with an old Core" 'refused "calibration cancellation ownership pairing"'
 cc_core; cc_try cc-pair
 check "matching calibration cancellation pair assembles" '[ $rc -eq 0 ]'
+[ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cc-actor-facts.saved"
+printf 'function cancellationFacts() { return {}; }\n' >> "$w/server/llamacpp-calibration.cjs"
+cc_try cc-live-actor-facts
+check "native cancellation pair accepts its retained actor facts primitive" '[ $rc -eq 0 ]'
+if [ -f "$work/cc-actor-facts.saved" ]; then cp "$work/cc-actor-facts.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
 # Both model namespaces together: the older read pairing must not keep settings policy in Core.
 cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
 cat >> "$w/server/index.cjs" <<'JS'
