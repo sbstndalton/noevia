@@ -951,10 +951,10 @@ if [ "$cr_rs_owner" = rust ]; then
     || die "calibration start/read ownership pairing: Core still carries the public handler"
   ! code_has "$tree/core/server/llamacpp-calibration.cjs" '(async[[:space:]]+)?function[[:space:]]+(start|status)[[:space:]]*\(' \
     || die "calibration start/read ownership pairing: Core still carries the public start/status policy"
-  code_has "$tree/core/server/llamacpp-manager.cjs" 'stateFacts: calibrator[.]stateFacts' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'listingFacts: calibrator[.]listingFacts' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'preparationFacts: calibrator[.]preparationFacts' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndLaunch: calibrator[.]compareAndLaunch' \
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'stateFacts:[[:space:]]*calibrator[.]stateFacts[[:space:]]*[,}]' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'listingFacts:[[:space:]]*calibrator[.]listingFacts[[:space:]]*[,}]' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'preparationFacts:[[:space:]]*calibrator[.]preparationFacts[[:space:]]*[,}]' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndLaunch:[[:space:]]*calibrator[.]compareAndLaunch[[:space:]]*[,}]' \
     || die "calibration start/read ownership pairing: Core does not expose the live actor primitives"
   [ -f "$tree/core/server/rust-calibration-routes-bridge.cjs" ] || die "calibration start/read ownership pairing: missing state bridge"
   cr_index="$(code_lines "$tree/core/server/index.cjs")"

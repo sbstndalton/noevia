@@ -2356,9 +2356,12 @@ printf "if (p === '/api/models/calibration') send();\n" >> "$w/server/routes/mod
 check "native calibration pair rejects retained public handler" 'refused "Core still carries the public handler"'
 if [ -f "$work/cr-models.saved" ]; then cp "$work/cr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
 [ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cr-actor.saved"
-printf 'async function start() {}\nfunction status() {}\n' >> "$w/server/llamacpp-calibration.cjs"; cr_try cr-old-policy
-check "native calibration pair rejects retained Node start/status policy" 'refused "Core still carries the public start/status policy"'
-if [ -f "$work/cr-actor.saved" ]; then cp "$work/cr-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
+for cr_legacy in start status; do
+  printf 'async function %s() {}\n' "$cr_legacy" >> "$w/server/llamacpp-calibration.cjs"
+  cr_try "cr-old-policy-$cr_legacy"
+  check "native calibration pair rejects retained Node $cr_legacy policy" 'refused "Core still carries the public start/status policy"'
+  if [ -f "$work/cr-actor.saved" ]; then cp "$work/cr-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
+done
 cp "$w/server/llamacpp-manager.cjs" "$work/cr-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; cr_try cr-no-primitives
 check "native calibration pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
 cp "$work/cr-live-manager.saved" "$w/server/llamacpp-manager.cjs"
