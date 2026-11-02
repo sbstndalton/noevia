@@ -1868,6 +1868,67 @@ tr_try tasks-old-with-rust-rows
 check "an old pair whose table gives the reads to Rust is refused" 'refused "task read ownership pairing"'
 rm -f "$w/server/rust-task-reads.cjs" "$w/server/rust-task-facts.cjs"
 rm -f "$w/server/rust-research.cjs" "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
+# #2281 toolbox picker owner pair and the narrow facts bridge.
+tp_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${tp_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/toolboxes"\nowner = "%s"\n' "$tp_owner"; [ -z "${tp_methods:-}" ] || printf '%s\n' "$tp_methods"; fi)
+}
+cat > "$w/server/rust-toolbox-picker.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/toolboxes']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-toolbox-picker-facts.cjs"
+tp_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const toolboxPickerFacts = require('./rust-toolbox-picker-facts.cjs').createToolboxPickerFacts({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-toolbox-picker.cjs').refuseOwned(req, res, {})) return;
+if (await toolboxPickerFacts(req, res)) return;
+JS
+}
+tp_front() { sed 's/"start-id"/"start-id", "rust-toolbox-picker"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+tp_owner=rust; tp_core
+tp_try picker-core-only
+check "picker Core refusal cannot pair with an old front" 'refused "toolbox picker ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; tp_front
+tp_try picker-front-only
+check "picker capability cannot pair with an old Core" 'refused "toolbox picker ownership pairing"'
+tp_core; tp_try picker-pair
+check "matching toolbox picker pair assembles" '[ $rc -eq 0 ]'
+tp_owner=node; tp_try picker-node-rows
+check "picker native pair rejects Node rows" 'refused "toolbox picker ownership pairing"'
+tp_owner=rust; tp_skip=yes; tp_try picker-missing-row
+check "picker native pair rejects missing rows" 'refused "incomplete route ownership"'
+unset tp_skip; tp_methods='methods = ["GET"]'; tp_try picker-partial-row
+check "picker native pair owns 405s as well as GET" 'refused "toolbox picker ownership pairing"'
+unset tp_methods
+cp "$w/server/rust-toolbox-picker.cjs" "$work/tp-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-toolbox-picker.cjs"
+tp_try picker-refuser
+check "picker pair rejects incomplete Core refusal" 'refused "Core must refuse exactly the picker"'
+cp "$work/tp-refuser.saved" "$w/server/rust-toolbox-picker.cjs"
+touch "$w/server/routes/toolboxes.cjs"; tp_try picker-dead-handler
+check "picker pair rejects retained public Node handler" 'refused "Core still carries the public handler"'
+rm -f "$w/server/routes/toolboxes.cjs"
+mv "$w/server/rust-toolbox-picker-facts.cjs" "$work/tp-facts.saved"; tp_try picker-missing-facts
+check "picker pair requires facts bridge" 'refused "missing raw facts bridge"'
+mv "$work/tp-facts.saved" "$w/server/rust-toolbox-picker-facts.cjs"
+cp "$w/server/index.cjs" "$work/tp-index.saved"
+sed '/await toolboxPickerFacts(req, res)/d' "$work/tp-index.saved" > "$w/server/index.cjs"
+tp_try picker-no-mount
+check "picker pair requires bridge mount" 'refused "missing facts mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/tp-index.saved" > "$w/server/index.cjs"
+tp_try picker-no-secret
+check "picker pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+tp_try picker-old-rust-rows
+check "old picker pair rejects Rust rows" 'refused "toolbox picker ownership pairing"'
+tp_owner=node; tp_try picker-old-pair
+check "old toolbox picker pair remains a valid rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-toolbox-picker.cjs" "$w/server/rust-toolbox-picker-facts.cjs"
 # GET inference-budget and GET installed (sbstndalton/noevia#2262): the pair, its rows and what Core must have done.
 ms_rows() {
   for path in inference-budget installed; do
