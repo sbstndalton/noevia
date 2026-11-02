@@ -275,6 +275,7 @@ rust-project-config.cjs rust-project-config project configuration
 rust-admin-users.cjs rust-admin-users account deletion
 rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
+rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET

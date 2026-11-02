@@ -1868,6 +1868,72 @@ tr_try tasks-old-with-rust-rows
 check "an old pair whose table gives the reads to Rust is refused" 'refused "task read ownership pairing"'
 rm -f "$w/server/rust-task-reads.cjs" "$w/server/rust-task-facts.cjs"
 rm -f "$w/server/rust-research.cjs" "$w/server/inference-admission-lease.cjs" "$w/server/rust-research-bridge.cjs"
+# #2282 tool approval public-policy/bridge pairing.
+ta_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/tool-approvals/{approvalId}"\nowner = "%s"\n' "$ta_owner"; [ "$ta_owner" != rust ] || printf '%s\n' "${ta_methods:-methods = [\"POST\"]}")
+}
+cat > "$w/server/rust-tool-approvals.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/tool-approvals/{approvalId}']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-tool-approval-bridge.cjs"
+ta_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const toolApprovalBridge = require('./rust-tool-approval-bridge.cjs').createToolApprovalBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-tool-approvals.cjs').refuseOwned(req, res, {})) return;
+if (await toolApprovalBridge(req, res)) return;
+JS
+}
+ta_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ta_owner=rust; ta_core
+ta_try approvals-core-only
+check "approval Core requires the native front" 'refused "tool approval ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ta_front
+ta_try approvals-front-only
+check "native approval front requires its Core refusal" 'refused "tool approval ownership pairing"'
+ta_core
+ta_try approvals-pair
+check "approval paired public policy and pending state bridge assemble" '[ $rc -eq 0 ]'
+ta_methods='methods = ["POST", "GET"]'
+ta_try approvals-extra-method
+check "approval migration owns POST alone" 'refused "tool approval ownership pairing"'
+ta_methods=""; ta_owner=node
+ta_try approvals-node-row
+check "approval native pair cannot retain a Node-owned row" 'refused "tool approval ownership pairing"'
+ta_owner=rust
+mkdir -p "$w/server/routes"; touch "$w/server/routes/approvals.cjs"
+ta_try approvals-old-handler
+check "approval native pair deletes the public Node handler" 'refused "still carries the public handler"'
+rm -f "$w/server/routes/approvals.cjs"
+cp "$w/server/index.cjs" "$work/ta-index.saved"
+sed '/toolApprovalBridge(req, res)/d' "$work/ta-index.saved" > "$w/server/index.cjs"
+ta_try approvals-no-mount
+check "approval pending bridge must be mounted" 'refused "missing bridge mount"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/ta-index.saved" > "$w/server/index.cjs"
+ta_try approvals-no-secret
+check "approval pending bridge requires captured front secret" 'refused "missing captured front secret"'
+cp "$work/ta-index.saved" "$w/server/index.cjs"
+rm -f "$w/server/rust-tool-approval-bridge.cjs"
+ta_try approvals-no-bridge
+check "approval pending state bridge must exist" 'refused "missing pending state bridge"'
+touch "$w/server/rust-tool-approval-bridge.cjs"
+cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refusal.saved"
+printf '%s\n' 'module.exports = {};' > "$w/server/rust-tool-approvals.cjs"
+ta_try approvals-no-owned-route
+check "approval refusal must list the exact POST" 'refused "Core must refuse exactly the approval POST"'
+cp "$work/ta-refusal.saved" "$w/server/rust-tool-approvals.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ta_owner=node
+ta_try approvals-old-pair
+check "historic approval old/old rollback pair assembles" '[ $rc -eq 0 ]'
+ta_owner=rust
+ta_try approvals-old-rust-row
+check "historic pair cannot assign approvals to Rust" 'refused "tool approval ownership pairing"'
+rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
 # GET inference-budget and GET installed (sbstndalton/noevia#2262): the pair, its rows and what Core must have done.
 ms_rows() {
   for path in inference-budget installed; do
