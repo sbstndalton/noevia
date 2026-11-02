@@ -1085,12 +1085,12 @@ if [ "$au_scan_rs_owner" = rust ]; then
   [ "$au_scan_refused" = 'ALL /api/models/autotune/untuned ' ] || die "untuned discovery ownership pairing: Core must refuse exactly the discovery path"
   ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/untuned' \
     || die "untuned discovery ownership pairing: Core still carries the public handler"
-  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'async function untuned()' \
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'async[[:space:]]+function[[:space:]]+untuned[[:space:]]*\(' \
     || die "untuned discovery ownership pairing: Core still carries the public discovery policy"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'scanFacts: autotuner.scanFacts' \
-    && code_has "$tree/core/server/llamacpp-full-autotune.cjs" '.autotuneScan(' \
-    && code_has "$tree/core/server/dav-parse-wasm.cjs" '.autotune_scan(' \
-    && code_has "$tree/rs/bins/dav-parse-wasm/src/lib.rs" 'fn autotune_scan()' \
+    && code_has "$tree/core/server/llamacpp-full-autotune.cjs" '[.]autotuneScan[[:space:]]*\(' \
+    && code_has "$tree/core/server/dav-parse-wasm.cjs" '[.]autotune_scan[[:space:]]*\(' \
+    && code_has "$tree/rs/bins/dav-parse-wasm/src/lib.rs" 'fn[[:space:]]+autotune_scan[[:space:]]*\(' \
     || die "untuned discovery ownership pairing: shared Rust/WASM policy and raw owner facts required"
   ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'latest?.version === VERSION' \
     || die "untuned discovery ownership pairing: Core still carries candidate selection policy"

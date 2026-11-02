@@ -2385,7 +2385,7 @@ for pair in "server/llamacpp-full-autotune.cjs aus-original-actor" "server/dav-p
 done
 [ ! -f "$rz/bins/dav-parse-wasm/src/lib.rs" ] || cp "$rz/bins/dav-parse-wasm/src/lib.rs" "$work/aus-original-rust-wasm"
 mkdir -p "$rz/bins/dav-parse-wasm/src"
-printf 'const scan = r => wasm.autotuneScan(r);\n' > "$w/server/llamacpp-full-autotune.cjs"
+printf 'async function untunedFacts() {}\nconst scan = r => wasm.autotuneScan(r);\n' > "$w/server/llamacpp-full-autotune.cjs"
 printf 'const call = e => e.autotune_scan();\n' > "$w/server/dav-parse-wasm.cjs"
 printf 'pub extern "C" fn autotune_scan() -> u32 { 0 }\n' > "$rz/bins/dav-parse-wasm/src/lib.rs"
 au_scan_owner=rust; au_scan_core
@@ -2396,6 +2396,19 @@ au_scan_try aus-front-only
 check "untuned discovery capability cannot pair with an old Core" 'refused "untuned discovery ownership pairing"'
 au_scan_core; au_scan_try aus-pair
 check "matching untuned discovery pair assembles" '[ $rc -eq 0 ]'
+# Each shared-policy link must be actual code; comments cannot satisfy it.
+for aus_link in actor adapter rust; do
+  case "$aus_link" in
+    actor) aus_path="$w/server/llamacpp-full-autotune.cjs";;
+    adapter) aus_path="$w/server/dav-parse-wasm.cjs";;
+    rust) aus_path="$rz/bins/dav-parse-wasm/src/lib.rs";;
+  esac
+  cp "$aus_path" "$work/aus-policy-link.saved"
+  sed 's/^/\/\/ /' "$work/aus-policy-link.saved" > "$aus_path"
+  au_scan_try "aus-comment-only-$aus_link"
+  check "native discovery pair rejects comment-only shared policy $aus_link" 'refused "shared Rust/WASM policy and raw owner facts required"'
+  cp "$work/aus-policy-link.saved" "$aus_path"
+done
 # Both model namespaces together: the older read pairing must not keep settings policy in Core.
 cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
 cat >> "$w/server/index.cjs" <<'JS'
