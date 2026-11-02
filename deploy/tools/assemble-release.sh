@@ -894,6 +894,41 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "task read ownership pairing: Core does not hand its task facts bridge the front's captured secret"
   fi
 fi
+# #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
+ats_core_owner=""; ats_rs_owner=""
+grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-settings features; then ats_rs_owner=rust; fi
+[ "$ats_core_owner" = "$ats_rs_owner" ] || die "auto-tune settings ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  ats_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ats_table=""
+  ats_rows="$(printf '%s\n' "$ats_table" | awk -F'\t' -v want="$ats_rs_owner" '
+    $1 == "/api/models/autotune/settings" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "auto-tune settings ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$ats_rs_owner" = rust ]; then
+  [ "${ats_rows:-}" = /api/models/autotune/settings ] || die "auto-tune settings ownership pairing: incomplete route ownership"
+  ats_refused="$( { project_routes_core "$tree/core/server/rust-autotune-settings.cjs" || true; } | tr '\n' ' ')"
+  [ "$ats_refused" = 'ALL /api/models/autotune/settings ' ] || die "auto-tune settings ownership pairing: Core must refuse exactly the settings path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/settings' \
+    || die "auto-tune settings ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function setSettings' \
+    || die "auto-tune settings ownership pairing: Core still carries the public settings policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'settingsFacts: autotuner.settingsFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'commitSettings: autotuner.commitSettings' \
+    || die "auto-tune settings ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-autotune-settings-bridge.cjs" ] || die "auto-tune settings ownership pairing: missing state bridge"
+  ats_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneSettingsBridge(req, res)' <<<"$ats_index" || die "auto-tune settings ownership pairing: missing state bridge mount"
+  ats_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ats_index" | head -1)"
+  [ -n "$ats_secret" ] && awk -v c="$ats_secret" '
+    /createAutotuneSettingsBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$ats_index" || die "auto-tune settings ownership pairing: state bridge needs the front captured secret"
+fi
 # Approval decisions (#2282): Rust owns public policy; Core keeps only the trusted pending-Promise bridge.
 ta_core_owner=""
 ta_rs_owner=""

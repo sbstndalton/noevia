@@ -276,6 +276,7 @@ rust-project-config.cjs rust-project-config project configuration
 rust-admin-users.cjs rust-admin-users account deletion
 rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
+rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS
