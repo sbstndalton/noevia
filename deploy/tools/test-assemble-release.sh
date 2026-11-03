@@ -2183,6 +2183,47 @@ check "old full-Node autotune pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-autotune-read.cjs" "$w/server/rust-autotune-read-bridge.cjs"
 if [ -f "$work/atr-manager.saved" ]; then cp "$work/atr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 if [ -f "$work/atr-models.saved" ]; then cp "$work/atr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+# #1863: only the idle unload GET moves.
+iur_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/idle-unload"\nowner = "%s"\n' "$iur_owner"; [ -z "${iur_methods:-}" ] || printf '%s\n' "$iur_methods")
+}
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/idle-unload']));" > "$w/server/rust-idle-unload-read.cjs"
+touch "$w/server/rust-idle-unload-read-facts.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/iur-models.saved"
+printf '%s\n' 'idleUnload.save(body, actor);' > "$w/server/routes/models.cjs"
+printf '%s\n' 'async function effectiveSeconds() {}' > "$w/server/idle-unload-setting.cjs"
+iur_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const idleUnloadFacts = require('./rust-idle-unload-read-facts.cjs').createIdleUnloadFacts({
+  secret: FRONT_SECRET, json,
+});
+if (require('./rust-idle-unload-read.cjs').refuseOwned(req, res, {})) return;
+if (await idleUnloadFacts(req, res)) return;
+JS
+}
+iur_owner=rust; iur_methods='methods = ["GET"]'; iur_core
+iur_try iur-core-only
+check "idle unload GET Core refusal requires native capability" 'refused "idle unload read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-idle-unload-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+iur_try iur-front-only
+check "native idle unload GET requires its paired Core" 'refused "idle unload read ownership pairing"'
+iur_core; iur_try iur-pair
+check "matching idle unload GET pair assembles" '[ $rc -eq 0 ]'
+iur_methods='methods = ["PUT"]'; iur_try iur-put
+check "idle unload GET pair cannot claim the write" 'refused "GET only; PUT and other methods stay Node"'
+iur_methods='methods = ["GET"]'
+printf '%s\n' 'idleUnload.get();' >> "$w/server/routes/models.cjs"
+iur_try iur-retained-get
+check "idle unload GET pair rejects a retained Node handler" 'refused "public GET handler"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+iur_owner=node; unset iur_methods; iur_try iur-old-pair
+check "old idle unload pair remains available for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-idle-unload-read.cjs" "$w/server/rust-idle-unload-read-facts.cjs" "$w/server/idle-unload-setting.cjs"
+if [ -f "$work/iur-models.saved" ]; then cp "$work/iur-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
 # Preset GET and its shared snapshot owner. Exercise the literal used by the real refuser.
 pr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
