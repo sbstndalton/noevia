@@ -2213,6 +2213,14 @@ check "matching model assignments GET pair assembles" '[ $rc -eq 0 ]'
 mas_methods='methods = ["PUT"]'; mas_try mas-put
 check "model assignments GET pair cannot claim the write" 'refused "GET only; other methods stay Node"'
 mas_methods='methods = ["GET"]'
+cp "$w/server/rust-model-assignments.cjs" "$work/mas-refuser.saved"
+{ printf '/*\n'; cat "$work/mas-refuser.saved"; printf '*/\n'; } > "$w/server/rust-model-assignments.cjs"
+mas_try mas-comment-only
+check "model assignments marker inside a comment is refused" 'refused "Core must refuse exactly GET model assignments"'
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/assignments', ...extra]));" > "$w/server/rust-model-assignments.cjs"
+mas_try mas-dynamic
+check "model assignments marker cannot include dynamic methods" 'refused "Core must refuse exactly GET model assignments"'
+cp "$work/mas-refuser.saved" "$w/server/rust-model-assignments.cjs"
 touch "$w/server/model-assignments.cjs"
 mas_try mas-retained-get
 check "model assignments GET pair rejects a retained Node formatter" 'refused "public GET formatter"'

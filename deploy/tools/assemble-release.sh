@@ -1130,8 +1130,17 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
 fi
 if [ "$mas_rs_owner" = rust ]; then
   [ "${mas_rows:-}" = /api/models/assignments ] || die "model assignments read ownership pairing: incomplete route ownership"
-  mas_refused="$( { project_routes_core "$tree/core/server/rust-model-assignments.cjs" || true; } | tr '\n' ' ')"
-  [ "$mas_refused" = 'GET /api/models/assignments ' ] || die "model assignments read ownership pairing: Core must refuse exactly GET model assignments"
+  awk -v quote="'" '
+    block { if (index($0, "*/")) block = 0; next }
+    /^[[:space:]]*\/\// { next }
+    /^[[:space:]]*\/\*/ { if (!index($0, "*/")) block = 1; next }
+    /^const OWNED_ROUTES = / {
+      markers++
+      exact = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET /api/models/assignments" quote "]));")
+    }
+    END { exit !(markers == 1 && exact) }
+  ' "$tree/core/server/rust-model-assignments.cjs" \
+    || die "model assignments read ownership pairing: Core must refuse exactly GET model assignments"
   [ ! -f "$tree/core/server/model-assignments.cjs" ] \
     || die "model assignments read ownership pairing: Core still carries the public GET formatter"
   [ -f "$tree/core/server/rust-model-assignments-facts.cjs" ] || die "model assignments read ownership pairing: missing facts bridge"
