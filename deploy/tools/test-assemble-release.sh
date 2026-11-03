@@ -2252,6 +2252,89 @@ mm_scan_owner=node; mm_scan_try mm-scan-old-pair
 check "old scan pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-model-manager-scan.cjs" "$w/server/rust-model-manager-scan-cache.cjs"
 if [ -f "$work/mm-scan-service.saved" ]; then cp "$work/mm-scan-service.saved" "$w/server/models.cjs"; else rm -f "$w/server/models.cjs"; fi
+# #2301: resume policy moves independently of the live autotune worker.
+atrm_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${atrm_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/autotune/resume"\nowner = "%s"\n' "$atrm_owner"; [ -z "${atrm_methods:-}" ] || printf '%s\n' "$atrm_methods"; fi)
+}
+cat > "$w/server/rust-autotune-resume.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/resume']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-autotune-resume-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atrm-manager.saved"
+printf '%s\n' 'resumeFacts: autotuner.resumeFacts, prepareResume: autotuner.prepareResume, compareAndResume: autotuner.compareAndResume,' > "$w/server/llamacpp-manager.cjs"
+atrm_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const autotuneResumeBridge = require('./rust-autotune-resume-bridge.cjs').createAutotuneResumeBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-autotune-resume.cjs').refuseOwned(req, res, {})) return;
+if (await autotuneResumeBridge(req, res)) return;
+JS
+}
+atrm_front() { sed 's/"start-id"/"start-id", "rust-autotune-resume"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+atrm_owner=rust; atrm_core
+atrm_try atrm-core-only
+check "auto-tune resume refusal cannot pair with an old front" 'refused "auto-tune resume ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; atrm_front
+atrm_try atrm-front-only
+check "auto-tune resume capability cannot pair with an old Core" 'refused "auto-tune resume ownership pairing"'
+atrm_core; atrm_try atrm-pair
+check "matching auto-tune resume pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-autotune-resume", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes atrm-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/autotune/resume"\nowner = "rust"\n')
+check "auto-tune resume and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; atrm_core; atrm_front
+atrm_owner=node; atrm_try atrm-node-rows
+check "native resume pair rejects Node ownership" 'refused "auto-tune resume ownership pairing"'
+atrm_owner=rust; atrm_skip=yes; atrm_try atrm-missing-row
+check "native resume pair requires its route row" 'refused "incomplete route ownership"'
+unset atrm_skip; atrm_methods='methods = ["POST"]'; atrm_try atrm-partial-row
+check "native resume pair owns other-method refusals as well as POST" 'refused "auto-tune resume ownership pairing"'
+unset atrm_methods
+cp "$w/server/rust-autotune-resume.cjs" "$work/atrm-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-autotune-resume.cjs"; atrm_try atrm-refuser
+check "native resume pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/atrm-refuser.saved" "$w/server/rust-autotune-resume.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/atrm-models.saved"
+printf "if (p === '/api/models/autotune/resume') send();\n" >> "$w/server/routes/models.cjs"; atrm_try atrm-old-handler
+check "native resume pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/atrm-models.saved" ]; then cp "$work/atrm-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-full-autotune.cjs" ] || cp "$w/server/llamacpp-full-autotune.cjs" "$work/atrm-actor.saved"
+printf 'async function resume() {}\n' >> "$w/server/llamacpp-full-autotune.cjs"; atrm_try atrm-old-policy
+check "native resume pair rejects retained Node resume policy" 'refused "Core still carries the public resume policy"'
+if [ -f "$work/atrm-actor.saved" ]; then cp "$work/atrm-actor.saved" "$w/server/llamacpp-full-autotune.cjs"; else rm -f "$w/server/llamacpp-full-autotune.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/atrm-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; atrm_try atrm-no-primitives
+check "native resume pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/atrm-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-autotune-resume-bridge.cjs" "$work/atrm-bridge.saved"; atrm_try atrm-no-bridge
+check "native resume pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/atrm-bridge.saved" "$w/server/rust-autotune-resume-bridge.cjs"
+cp "$w/server/index.cjs" "$work/atrm-index.saved"
+sed '/await autotuneResumeBridge(req, res)/d' "$work/atrm-index.saved" > "$w/server/index.cjs"; atrm_try atrm-no-mount
+check "native resume pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/atrm-index.saved" > "$w/server/index.cjs"; atrm_try atrm-no-secret
+check "native resume pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+atrm_try atrm-old-rust-rows
+check "old resume pair rejects Rust ownership" 'refused "auto-tune resume ownership pairing"'
+atrm_owner=node; atrm_try atrm-old-pair
+check "old auto-tune resume pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-autotune-resume.cjs" "$w/server/rust-autotune-resume-bridge.cjs"
+if [ -f "$work/atrm-manager.saved" ]; then cp "$work/atrm-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # #2292: cancellation policy moves independently of the live calibration worker.
 cc_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
