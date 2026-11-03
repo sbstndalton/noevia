@@ -2442,6 +2442,89 @@ ats_owner=node; ats_try ats-old-pair
 check "old auto-tune settings pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-autotune-settings.cjs" "$w/server/rust-autotune-settings-bridge.cjs"
 if [ -f "$work/ats-manager.saved" ]; then cp "$work/ats-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# #2294: cancellation policy moves independently of the live auto-tune worker.
+atc_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${atc_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/autotune/cancel"\nowner = "%s"\n' "$atc_owner"; [ -z "${atc_methods:-}" ] || printf '%s\n' "$atc_methods"; fi)
+}
+cat > "$w/server/rust-autotune-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/cancel']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-autotune-cancel-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atc-manager.saved"
+printf '%s\n' 'cancellationFacts: autotuner.cancellationFacts, compareAndAbort: autotuner.compareAndAbort,' > "$w/server/llamacpp-manager.cjs"
+atc_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const autotuneCancelBridge = require('./rust-autotune-cancel-bridge.cjs').createAutotuneCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-autotune-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await autotuneCancelBridge(req, res)) return;
+JS
+}
+atc_front() { sed 's/"start-id"/"start-id", "rust-autotune-cancel"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+atc_owner=rust; atc_core
+atc_try atc-core-only
+check "auto-tune cancellation refusal cannot pair with an old front" 'refused "auto-tune cancellation ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; atc_front
+atc_try atc-front-only
+check "auto-tune cancellation capability cannot pair with an old Core" 'refused "auto-tune cancellation ownership pairing"'
+atc_core; atc_try atc-pair
+check "matching auto-tune cancellation pair assembles" '[ $rc -eq 0 ]'
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-autotune-cancel", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes atc-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/autotune/cancel"\nowner = "rust"\n')
+check "auto-tune cancellation and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; atc_core; atc_front
+atc_owner=node; atc_try atc-node-rows
+check "native cancellation pair rejects Node ownership" 'refused "auto-tune cancellation ownership pairing"'
+atc_owner=rust; atc_skip=yes; atc_try atc-missing-row
+check "native cancellation pair requires its route row" 'refused "incomplete route ownership"'
+unset atc_skip; atc_methods='methods = ["POST"]'; atc_try atc-partial-row
+check "native cancellation pair owns other-method refusals as well as POST" 'refused "auto-tune cancellation ownership pairing"'
+unset atc_methods
+cp "$w/server/rust-autotune-cancel.cjs" "$work/atc-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-autotune-cancel.cjs"; atc_try atc-refuser
+check "native cancellation pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/atc-refuser.saved" "$w/server/rust-autotune-cancel.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/atc-models.saved"
+printf "if (p === '/api/models/autotune/cancel') send();\n" >> "$w/server/routes/models.cjs"; atc_try atc-old-handler
+check "native cancellation pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/atc-models.saved" ]; then cp "$work/atc-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-full-autotune.cjs" ] || cp "$w/server/llamacpp-full-autotune.cjs" "$work/atc-actor.saved"
+printf 'function cancel() {}\n' >> "$w/server/llamacpp-full-autotune.cjs"; atc_try atc-old-policy
+check "native cancellation pair rejects retained Node cancellation policy" 'refused "Core still carries the public cancellation policy"'
+if [ -f "$work/atc-actor.saved" ]; then cp "$work/atc-actor.saved" "$w/server/llamacpp-full-autotune.cjs"; else rm -f "$w/server/llamacpp-full-autotune.cjs"; fi
+cp "$w/server/llamacpp-manager.cjs" "$work/atc-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; atc_try atc-no-primitives
+check "native cancellation pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/atc-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-autotune-cancel-bridge.cjs" "$work/atc-bridge.saved"; atc_try atc-no-bridge
+check "native cancellation pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/atc-bridge.saved" "$w/server/rust-autotune-cancel-bridge.cjs"
+cp "$w/server/index.cjs" "$work/atc-index.saved"
+sed '/await autotuneCancelBridge(req, res)/d' "$work/atc-index.saved" > "$w/server/index.cjs"; atc_try atc-no-mount
+check "native cancellation pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/atc-index.saved" > "$w/server/index.cjs"; atc_try atc-no-secret
+check "native cancellation pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+atc_try atc-old-rust-rows
+check "old cancellation pair rejects Rust ownership" 'refused "auto-tune cancellation ownership pairing"'
+atc_owner=node; atc_try atc-old-pair
+check "old auto-tune cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-autotune-cancel.cjs" "$w/server/rust-autotune-cancel-bridge.cjs"
+if [ -f "$work/atc-manager.saved" ]; then cp "$work/atc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # Account deletion owner release matrix (sbstndalton/noevia#2190, #2191 round 9): DELETE /api/admin/users/{id} only,
 # and a Core with no way left to delete an account.
 au_try() {
