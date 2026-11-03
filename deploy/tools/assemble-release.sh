@@ -1101,6 +1101,41 @@ if [ "$atrm_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
 fi
+# #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
+atc_core_owner=""; atc_rs_owner=""
+grep -qF "require('./rust-autotune-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atc_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-cancel features; then atc_rs_owner=rust; fi
+[ "$atc_core_owner" = "$atc_rs_owner" ] || die "auto-tune cancellation ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  atc_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || atc_table=""
+  atc_rows="$(printf '%s\n' "$atc_table" | awk -F'\t' -v want="$atc_rs_owner" '
+    $1 == "/api/models/autotune/cancel" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "auto-tune cancellation ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$atc_rs_owner" = rust ]; then
+  [ "${atc_rows:-}" = /api/models/autotune/cancel ] || die "auto-tune cancellation ownership pairing: incomplete route ownership"
+  atc_refused="$( { project_routes_core "$tree/core/server/rust-autotune-cancel.cjs" || true; } | tr '\n' ' ')"
+  [ "$atc_refused" = 'ALL /api/models/autotune/cancel ' ] || die "auto-tune cancellation ownership pairing: Core must refuse exactly the cancellation path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/cancel' \
+    || die "auto-tune cancellation ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function cancel()' \
+    || die "auto-tune cancellation ownership pairing: Core still carries the public cancellation policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'cancellationFacts: autotuner.cancellationFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndAbort: autotuner.compareAndAbort' \
+    || die "auto-tune cancellation ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-autotune-cancel-bridge.cjs" ] || die "auto-tune cancellation ownership pairing: missing state bridge"
+  atc_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneCancelBridge(req, res)' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: missing state bridge mount"
+  atc_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atc_index" | head -1)"
+  [ -n "$atc_secret" ] && awk -v c="$atc_secret" '
+    /createAutotuneCancelBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: state bridge needs the front captured secret"
+fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
 # routes.toml. Core must have no way left to delete an account: no deleteUser in auth.cjs, and the single-writer
