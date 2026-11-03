@@ -4122,7 +4122,7 @@ check "an all-method model sizing route is refused (Node keeps the other methods
 sizing_limit='methods = ["GET", "POST"]'
 sizing_try sizing-get-post
 check "a model sizing route with more than GET is refused" 'refused "model sizing ownership pairing"'
-sizing_limit='methods = ["GET"]'; sizing_last="/api/models/preset"
+sizing_limit='methods = ["GET"]'; sizing_last="/api/models/preset/suggestx"
 sizing_try sizing-incomplete
 check "an incomplete model sizing route set is refused" 'refused "model sizing ownership pairing"'
 sizing_last="/api/models/preset/suggest"
