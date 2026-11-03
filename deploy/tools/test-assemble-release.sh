@@ -2318,7 +2318,8 @@ mm_scan_try() {
     if [ "${mm_scan_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/model-manager/models"\nowner = "%s"\nmethods = [%s]\n' "$mm_scan_owner" "${mm_scan_methods:-\"GET\"}"; fi)
 }
 cat > "$w/server/rust-model-manager-scan.cjs" <<'JS'
-const OWNED_ROUTES = Object.freeze(new Set(['GET /api/model-manager/models']));
+const PATH = '/api/model-manager/models';
+const OWNED_ROUTES = Object.freeze(new Set(['GET '+PATH]));
 JS
 touch "$w/server/rust-model-manager-scan-cache.cjs"
 [ ! -f "$w/server/models.cjs" ] || cp "$w/server/models.cjs" "$work/mm-scan-service.saved"
@@ -2349,8 +2350,21 @@ unset mm_scan_skip; mm_scan_methods='"GET", "HEAD"'; mm_scan_try mm-scan-head-ro
 check "native scan GET cannot take HEAD policy" 'refused "only GET belongs"'
 unset mm_scan_methods
 cp "$w/server/rust-model-manager-scan.cjs" "$work/mm-scan-refuser.saved"
-printf 'const OWNED_ROUTES = Object.freeze(new Set(["ALL /api/model-manager/models"]));\n' > "$w/server/rust-model-manager-scan.cjs"; mm_scan_try mm-scan-all-refuser
+sed "s/'GET '+PATH/'GET \/api\/model-manager\/models'/" "$work/mm-scan-refuser.saved" > "$w/server/rust-model-manager-scan.cjs"; mm_scan_try mm-scan-literal
+check "literal model scan GET marker still assembles" '[ $rc -eq 0 ]'
+sed "s/'GET '+PATH/'ALL '+PATH/" "$work/mm-scan-refuser.saved" > "$w/server/rust-model-manager-scan.cjs"; mm_scan_try mm-scan-all-refuser
 check "native scan Core cannot refuse other methods" 'refused "Core must refuse exactly"'
+sed "s@models';@models/delete';@" "$work/mm-scan-refuser.saved" > "$w/server/rust-model-manager-scan.cjs"; mm_scan_try mm-scan-wrong-path
+check "native scan Core must refuse the exact path" 'refused "Core must refuse exactly"'
+sed "s/'GET '+PATH/'GET '+PATH, 'HEAD '+PATH/" "$work/mm-scan-refuser.saved" > "$w/server/rust-model-manager-scan.cjs"; mm_scan_try mm-scan-extra-method
+check "native scan Core cannot also refuse HEAD" 'refused "Core must refuse exactly"'
+{
+  printf '/*\n'
+  cat "$work/mm-scan-refuser.saved"
+  printf '*/\n'
+} > "$w/server/rust-model-manager-scan.cjs"
+mm_scan_try mm-scan-comment-only
+check "commented scan declarations cannot establish ownership" 'refused "Core must refuse exactly"'
 cp "$work/mm-scan-refuser.saved" "$w/server/rust-model-manager-scan.cjs"
 cp "$w/server/models.cjs" "$work/mm-scan-live-service.saved"; printf 'module.exports = {};\n' > "$w/server/models.cjs"; mm_scan_try mm-scan-no-owner
 check "native scan needs the existing shared cache owner" 'refused "existing shared cache primitives"'
