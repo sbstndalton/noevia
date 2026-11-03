@@ -910,8 +910,21 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
 fi
 if [ "$mm_scan_rs" = rust ]; then
   [ "${mm_scan_rows:-}" = /api/model-manager/models ] || die "model scan read ownership pairing: incomplete route ownership"
-  mm_scan_refused="$( { project_routes_core "$tree/core/server/rust-model-manager-scan.cjs" || true; } | tr '\n' ' ')"
-  [ "$mm_scan_refused" = 'GET /api/model-manager/models ' ] || die "model scan read ownership pairing: Core must refuse exactly this GET"
+  # The pinned Core declares its scan route as 'GET ' plus a file-local PATH.
+  # Match that declaration as a whole so extra methods cannot pass as a GET-only marker.
+  awk -v quote="'" -v path=/api/model-manager/models '
+    /^const PATH = / {
+      paths++
+      correct_path = ($0 == "const PATH = " quote path quote ";")
+    }
+    /^const OWNED_ROUTES = / {
+      markers++
+      literal = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET " path quote "]));")
+      from_path = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET " quote "+PATH]));")
+    }
+    END { exit !(markers == 1 && (literal || (from_path && paths == 1 && correct_path))) }
+  ' "$tree/core/server/rust-model-manager-scan.cjs" \
+    || die "model scan read ownership pairing: Core must refuse exactly this GET"
   ! code_has "$tree/core/server/routes/models.cjs" 'X-Model-Scan|scanGeneration' || die "model scan read ownership pairing: Core still carries the public cache policy"
   for primitive in 'modelScanCache[.]snapshot\(\)' 'modelScanCache[.]publish\(body,token\)' 'modelScanCache[.]refresh\(token\)'; do
     code_has "$tree/core/server/models.cjs" "$primitive" || die "model scan read ownership pairing: existing shared cache primitives required"
