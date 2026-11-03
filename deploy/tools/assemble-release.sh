@@ -903,7 +903,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   mm_scan_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mm_scan_table=""
   mm_scan_rows="$(printf '%s\n' "$mm_scan_table" | awk -F'\t' -v want="$mm_scan_rs" '
     $1 == "/api/model-manager/models" {
-      if (want == "rust" && ($2 != "rust" || $3 != "GET" || $4 != "-")) exit 1
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
       if (want != "rust" && $2 != "node") exit 1
       print $1
     }')" || die "model scan read ownership pairing: only GET belongs to the paired owner"
