@@ -2183,6 +2183,43 @@ check "old full-Node autotune pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-autotune-read.cjs" "$w/server/rust-autotune-read-bridge.cjs"
 if [ -f "$work/atr-manager.saved" ]; then cp "$work/atr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 if [ -f "$work/atr-models.saved" ]; then cp "$work/atr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+# #2238: only the model assignments GET moves.
+mas_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/assignments"\nowner = "%s"\n' "$mas_owner"; [ -z "${mas_methods:-}" ] || printf '%s\n' "$mas_methods")
+}
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/assignments']));" > "$w/server/rust-model-assignments.cjs"
+touch "$w/server/rust-model-assignments-facts.cjs"
+mas_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const modelAssignmentsFacts = require('./rust-model-assignments-facts.cjs').createModelAssignmentsFacts({
+  secret: FRONT_SECRET, json,
+});
+if (require('./rust-model-assignments.cjs').refuseOwned(req, res, {})) return;
+if (await modelAssignmentsFacts(req, res)) return;
+JS
+}
+mas_owner=rust; mas_methods='methods = ["GET"]'; mas_core
+mas_try mas-core-only
+check "model assignments GET Core refusal requires native capability" 'refused "model assignments read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-model-assignments"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mas_try mas-front-only
+check "native model assignments GET requires its paired Core" 'refused "model assignments read ownership pairing"'
+mas_core; mas_try mas-pair
+check "matching model assignments GET pair assembles" '[ $rc -eq 0 ]'
+mas_methods='methods = ["PUT"]'; mas_try mas-put
+check "model assignments GET pair cannot claim the write" 'refused "GET only; other methods stay Node"'
+mas_methods='methods = ["GET"]'
+touch "$w/server/model-assignments.cjs"
+mas_try mas-retained-get
+check "model assignments GET pair rejects a retained Node formatter" 'refused "public GET formatter"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+mas_owner=node; unset mas_methods; mas_try mas-old-pair
+check "old model assignments pair remains available for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-assignments.cjs" "$w/server/rust-model-assignments-facts.cjs" "$w/server/model-assignments.cjs"
 # #2293: dismissal policy moves independently of the live autotune worker.
 ac_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
