@@ -1101,6 +1101,42 @@ if [ "$ac_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$ac_index" || die "autotune dismissal ownership pairing: state bridge needs the front captured secret"
 fi
+# #2301: resume policy is native; Core retains staged metadata/reload preparation and conditional launch.
+atrm_core_owner=""; atrm_rs_owner=""
+grep -qF "require('./rust-autotune-resume.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atrm_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-resume features; then atrm_rs_owner=rust; fi
+[ "$atrm_core_owner" = "$atrm_rs_owner" ] || die "auto-tune resume ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  atrm_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || atrm_table=""
+  atrm_rows="$(printf '%s\n' "$atrm_table" | awk -F'\t' -v want="$atrm_rs_owner" '
+    $1 == "/api/models/autotune/resume" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "auto-tune resume ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$atrm_rs_owner" = rust ]; then
+  [ "${atrm_rows:-}" = /api/models/autotune/resume ] || die "auto-tune resume ownership pairing: incomplete route ownership"
+  atrm_refused="$( { project_routes_core "$tree/core/server/rust-autotune-resume.cjs" || true; } | tr '\n' ' ')"
+  [ "$atrm_refused" = 'ALL /api/models/autotune/resume ' ] || die "auto-tune resume ownership pairing: Core must refuse exactly the dismissal path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/resume' \
+    || die "auto-tune resume ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^[:alnum:]_$])function[[:space:]]+resume[[:space:]]*[(]' \
+    || die "auto-tune resume ownership pairing: Core still carries the public resume policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'resumeFacts: autotuner.resumeFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'prepareResume: autotuner.prepareResume' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndResume: autotuner.compareAndResume' \
+    || die "auto-tune resume ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-autotune-resume-bridge.cjs" ] || die "auto-tune resume ownership pairing: missing state bridge"
+  atrm_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneResumeBridge(req, res)' <<<"$atrm_index" || die "auto-tune resume ownership pairing: missing state bridge mount"
+  atrm_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atrm_index" | head -1)"
+  [ -n "$atrm_secret" ] && awk -v c="$atrm_secret" '
+    /createAutotuneResumeBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
+fi
 # #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
 atc_core_owner=""; atc_rs_owner=""
 grep -qF "require('./rust-autotune-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atc_core_owner=rust
