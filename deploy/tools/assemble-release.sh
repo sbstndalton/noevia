@@ -1114,6 +1114,40 @@ if [ "$atr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$atr_index" || die "auto-tune read ownership pairing: facts bridge needs the front captured secret"
 fi
+# #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
+iur_core_owner=""; iur_rs_owner=""
+grep -qF "require('./rust-idle-unload-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && iur_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-idle-unload-read features; then iur_rs_owner=rust; fi
+[ "$iur_core_owner" = "$iur_rs_owner" ] || die "idle unload read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  iur_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || iur_table=""
+  iur_rows="$(printf '%s\n' "$iur_table" | awk -F'\t' -v want="$iur_rs_owner" '
+    $1 == "/api/models/idle-unload" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "idle unload read ownership pairing: GET only; PUT and other methods stay Node"
+fi
+if [ "$iur_rs_owner" = rust ]; then
+  [ "${iur_rows:-}" = /api/models/idle-unload ] || die "idle unload read ownership pairing: incomplete route ownership"
+  iur_refused="$( { project_routes_core "$tree/core/server/rust-idle-unload-read.cjs" || true; } | tr '\n' ' ')"
+  [ "$iur_refused" = 'GET /api/models/idle-unload ' ] || die "idle unload read ownership pairing: Core must refuse exactly GET idle unload"
+  ! code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]get[[:space:]]*[(]' \
+    || die "idle unload read ownership pairing: Core still carries the public GET handler"
+  code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]save[[:space:]]*[(]' \
+    || die "idle unload read ownership pairing: PUT must stay Node-owned"
+  code_has "$tree/core/server/idle-unload-setting.cjs" 'function effectiveSeconds[[:space:]]*[(]' \
+    || die "idle unload read ownership pairing: Core does not expose the live timer fact"
+  [ -f "$tree/core/server/rust-idle-unload-read-facts.cjs" ] || die "idle unload read ownership pairing: missing facts bridge"
+  iur_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'idleUnloadFacts(req, res)' <<<"$iur_index" || die "idle unload read ownership pairing: missing facts bridge mount"
+  iur_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$iur_index" | head -1)"
+  [ -n "$iur_secret" ] && awk -v c="$iur_secret" '
+    /createIdleUnloadFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
+fi
 # #2238: only the assignments GET moves. Core retains its shared installed/probe owners.
 mas_core_owner=""; mas_rs_owner=""
 grep -qF "require('./rust-model-assignments.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mas_core_owner=rust
