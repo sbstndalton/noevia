@@ -894,6 +894,54 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "task read ownership pairing: Core does not hand its task facts bridge the front's captured secret"
   fi
 fi
+# #2304: only the exact GET child moves; all other manager operations remain Node's.
+mm_scan_core=""; mm_scan_rs=""
+grep -qF "require('./rust-model-manager-scan.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mm_scan_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-manager-scan features; then mm_scan_rs=rust; fi
+[ "$mm_scan_core" = "$mm_scan_rs" ] || die "model scan read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mm_scan_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mm_scan_table=""
+  mm_scan_rows="$(printf '%s\n' "$mm_scan_table" | awk -F'\t' -v want="$mm_scan_rs" '
+    $1 == "/api/model-manager/models" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model scan read ownership pairing: only GET belongs to the paired owner"
+fi
+if [ "$mm_scan_rs" = rust ]; then
+  [ "${mm_scan_rows:-}" = /api/model-manager/models ] || die "model scan read ownership pairing: incomplete route ownership"
+  # The pinned Core declares its scan route as 'GET ' plus a file-local PATH.
+  # Match that declaration as a whole so extra methods cannot pass as a GET-only marker.
+  awk -v quote="'" -v path=/api/model-manager/models '
+    block { if (index($0, "*/")) block = 0; next }
+    /^[[:space:]]*\/\// { next }
+    /^[[:space:]]*\/\*/ { if (!index($0, "*/")) block = 1; next }
+    /^const PATH = / {
+      paths++
+      correct_path = ($0 == "const PATH = " quote path quote ";")
+    }
+    /^const OWNED_ROUTES = / {
+      markers++
+      literal = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET " path quote "]));")
+      from_path = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET " quote "+PATH]));")
+    }
+    END { exit !(markers == 1 && (literal || (from_path && paths == 1 && correct_path))) }
+  ' "$tree/core/server/rust-model-manager-scan.cjs" \
+    || die "model scan read ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/models.cjs" 'X-Model-Scan|scanGeneration' || die "model scan read ownership pairing: Core still carries the public cache policy"
+  for primitive in 'modelScanCache[.]snapshot\(\)' 'modelScanCache[.]publish\(body,token\)' 'modelScanCache[.]refresh\(token\)'; do
+    code_has "$tree/core/server/models.cjs" "$primitive" || die "model scan read ownership pairing: existing shared cache primitives required"
+  done
+  [ -f "$tree/core/server/rust-model-manager-scan-cache.cjs" ] || die "model scan read ownership pairing: missing cache bridge"
+  mm_scan_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelManagerScanCache(req, res)' <<<"$mm_scan_index" || die "model scan read ownership pairing: missing cache bridge mount"
+  mm_scan_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mm_scan_index" | head -1)"
+  [ -n "$mm_scan_secret" ] && awk -v c="$mm_scan_secret" '
+    /createModelManagerScanCache\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mm_scan_index" || die "model scan read ownership pairing: cache bridge needs the front captured secret"
+fi
 # #2292: calibration cancellation policy is native, with only facts and the conditional state writer in Core.
 cc_core_owner=""; cc_rs_owner=""
 grep -qF "require('./rust-calibration-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && cc_core_owner=rust
@@ -914,7 +962,7 @@ if [ "$cc_rs_owner" = rust ]; then
   [ "$cc_refused" = 'ALL /api/models/calibration/cancel ' ] || die "calibration cancellation ownership pairing: Core must refuse exactly the cancellation path"
   ! code_has "$tree/core/server/routes/models.cjs" '/api/models/calibration/cancel' \
     || die "calibration cancellation ownership pairing: Core still carries the public handler"
-  ! code_has "$tree/core/server/llamacpp-calibration.cjs" 'function cancel()' \
+  ! code_has "$tree/core/server/llamacpp-calibration.cjs" '(^|[^A-Za-z0-9_$])function[[:space:]]+cancel[[:space:]]*\(' \
     || die "calibration cancellation ownership pairing: Core still carries the public cancellation policy"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'cancellationFacts: calibrator.cancellationFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndAbort: calibrator.compareAndAbort' \
@@ -1030,6 +1078,76 @@ if [ "$tp_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
 fi
+# #2306: only GET status moves; POST start and all other verbs remain Node-owned.
+atr_core_owner=""; atr_rs_owner=""
+grep -qF "require('./rust-autotune-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-read features; then atr_rs_owner=rust; fi
+[ "$atr_core_owner" = "$atr_rs_owner" ] || die "auto-tune read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  atr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || atr_table=""
+  atr_rows="$(printf '%s\n' "$atr_table" | awk -F'\t' -v want="$atr_rs_owner" '
+    $1 == "/api/models/autotune" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "auto-tune read ownership pairing: GET only; POST start and other methods stay Node"
+fi
+if [ "$atr_rs_owner" = rust ]; then
+  [ "${atr_rows:-}" = /api/models/autotune ] || die "auto-tune read ownership pairing: incomplete route ownership"
+  atr_refused="$( { project_routes_core "$tree/core/server/rust-autotune-read.cjs" || true; } | tr '\n' ' ')"
+  [ "$atr_refused" = 'GET /api/models/autotune ' ] || die "auto-tune read ownership pairing: Core must refuse exactly GET status"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^[:alnum:]_$])const[[:space:]]+status[[:space:]]*=[[:space:]]*(model|[(][[:space:]]*model[[:space:]]*[)])[[:space:]]*=>' \
+    || die "auto-tune read ownership pairing: Core still carries the public status formatter"
+  ! code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]autotune[.]status[[:space:]]*[(]' \
+    || die "auto-tune read ownership pairing: Core still carries the public GET handler"
+  code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]autotune[.]start[[:space:]]*[(]' \
+    || die "auto-tune read ownership pairing: POST start must stay Node-owned"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'statusFacts: autotuner.statusFacts' \
+    || die "auto-tune read ownership pairing: Core does not expose raw status facts"
+  [ -f "$tree/core/server/rust-autotune-read-bridge.cjs" ] || die "auto-tune read ownership pairing: missing facts bridge"
+  atr_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneReadBridge(req, res)' <<<"$atr_index" || die "auto-tune read ownership pairing: missing facts bridge mount"
+  atr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atr_index" | head -1)"
+  [ -n "$atr_secret" ] && awk -v c="$atr_secret" '
+    /createAutotuneReadBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$atr_index" || die "auto-tune read ownership pairing: facts bridge needs the front captured secret"
+fi
+# #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
+iur_core_owner=""; iur_rs_owner=""
+grep -qF "require('./rust-idle-unload-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && iur_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-idle-unload-read features; then iur_rs_owner=rust; fi
+[ "$iur_core_owner" = "$iur_rs_owner" ] || die "idle unload read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  iur_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || iur_table=""
+  iur_rows="$(printf '%s\n' "$iur_table" | awk -F'\t' -v want="$iur_rs_owner" '
+    $1 == "/api/models/idle-unload" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "idle unload read ownership pairing: GET only; PUT and other methods stay Node"
+fi
+if [ "$iur_rs_owner" = rust ]; then
+  [ "${iur_rows:-}" = /api/models/idle-unload ] || die "idle unload read ownership pairing: incomplete route ownership"
+  iur_refused="$( { project_routes_core "$tree/core/server/rust-idle-unload-read.cjs" || true; } | tr '\n' ' ')"
+  [ "$iur_refused" = 'GET /api/models/idle-unload ' ] || die "idle unload read ownership pairing: Core must refuse exactly GET idle unload"
+  ! code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]get[[:space:]]*[(]' \
+    || die "idle unload read ownership pairing: Core still carries the public GET handler"
+  code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]save[[:space:]]*[(]' \
+    || die "idle unload read ownership pairing: PUT must stay Node-owned"
+  code_has "$tree/core/server/idle-unload-setting.cjs" 'function effectiveSeconds[[:space:]]*[(]' \
+    || die "idle unload read ownership pairing: Core does not expose the live timer fact"
+  [ -f "$tree/core/server/rust-idle-unload-read-facts.cjs" ] || die "idle unload read ownership pairing: missing facts bridge"
+  iur_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'idleUnloadFacts(req, res)' <<<"$iur_index" || die "idle unload read ownership pairing: missing facts bridge mount"
+  iur_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$iur_index" | head -1)"
+  [ -n "$iur_secret" ] && awk -v c="$iur_secret" '
+    /createIdleUnloadFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
+fi
 # #2293: autotune dismissal policy is native, with only facts and the conditional state writer in Core.
 ac_core_owner=""; ac_rs_owner=""
 grep -qF "require('./rust-autotune-clear.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ac_core_owner=rust
@@ -1050,7 +1168,7 @@ if [ "$ac_rs_owner" = rust ]; then
   [ "$ac_refused" = 'ALL /api/models/autotune/clear ' ] || die "autotune dismissal ownership pairing: Core must refuse exactly the dismissal path"
   ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/clear' \
     || die "autotune dismissal ownership pairing: Core still carries the public handler"
-  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function clear()' \
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^A-Za-z0-9_$])function[[:space:]]+clear[[:space:]]*\(' \
     || die "autotune dismissal ownership pairing: Core still carries the public dismissal policy"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'clearFacts: autotuner.clearFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndClear: autotuner.compareAndClear' \
@@ -1064,6 +1182,77 @@ if [ "$ac_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$ac_index" || die "autotune dismissal ownership pairing: state bridge needs the front captured secret"
+fi
+# #2301: resume policy is native; Core retains staged metadata/reload preparation and conditional launch.
+atrm_core_owner=""; atrm_rs_owner=""
+grep -qF "require('./rust-autotune-resume.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atrm_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-resume features; then atrm_rs_owner=rust; fi
+[ "$atrm_core_owner" = "$atrm_rs_owner" ] || die "auto-tune resume ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  atrm_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || atrm_table=""
+  atrm_rows="$(printf '%s\n' "$atrm_table" | awk -F'\t' -v want="$atrm_rs_owner" '
+    $1 == "/api/models/autotune/resume" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "auto-tune resume ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$atrm_rs_owner" = rust ]; then
+  [ "${atrm_rows:-}" = /api/models/autotune/resume ] || die "auto-tune resume ownership pairing: incomplete route ownership"
+  atrm_refused="$( { project_routes_core "$tree/core/server/rust-autotune-resume.cjs" || true; } | tr '\n' ' ')"
+  [ "$atrm_refused" = 'ALL /api/models/autotune/resume ' ] || die "auto-tune resume ownership pairing: Core must refuse exactly the dismissal path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/resume' \
+    || die "auto-tune resume ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^[:alnum:]_$])function[[:space:]]+resume[[:space:]]*[(]' \
+    || die "auto-tune resume ownership pairing: Core still carries the public resume policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'resumeFacts: autotuner.resumeFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'prepareResume: autotuner.prepareResume' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndResume: autotuner.compareAndResume' \
+    || die "auto-tune resume ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-autotune-resume-bridge.cjs" ] || die "auto-tune resume ownership pairing: missing state bridge"
+  atrm_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneResumeBridge(req, res)' <<<"$atrm_index" || die "auto-tune resume ownership pairing: missing state bridge mount"
+  atrm_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atrm_index" | head -1)"
+  [ -n "$atrm_secret" ] && awk -v c="$atrm_secret" '
+    /createAutotuneResumeBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
+fi
+# #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
+atc_core_owner=""; atc_rs_owner=""
+grep -qF "require('./rust-autotune-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atc_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-cancel features; then atc_rs_owner=rust; fi
+[ "$atc_core_owner" = "$atc_rs_owner" ] || die "auto-tune cancellation ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  atc_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || atc_table=""
+  atc_rows="$(printf '%s\n' "$atc_table" | awk -F'\t' -v want="$atc_rs_owner" '
+    $1 == "/api/models/autotune/cancel" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "auto-tune cancellation ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$atc_rs_owner" = rust ]; then
+  [ "${atc_rows:-}" = /api/models/autotune/cancel ] || die "auto-tune cancellation ownership pairing: incomplete route ownership"
+  atc_refused="$( { project_routes_core "$tree/core/server/rust-autotune-cancel.cjs" || true; } | tr '\n' ' ')"
+  [ "$atc_refused" = 'ALL /api/models/autotune/cancel ' ] || die "auto-tune cancellation ownership pairing: Core must refuse exactly the cancellation path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/cancel' \
+    || die "auto-tune cancellation ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function cancel()' \
+    || die "auto-tune cancellation ownership pairing: Core still carries the public cancellation policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'cancellationFacts: autotuner.cancellationFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndAbort: autotuner.compareAndAbort' \
+    || die "auto-tune cancellation ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-autotune-cancel-bridge.cjs" ] || die "auto-tune cancellation ownership pairing: missing state bridge"
+  atc_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneCancelBridge(req, res)' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: missing state bridge mount"
+  atc_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atc_index" | head -1)"
+  [ -n "$atc_secret" ] && awk -v c="$atc_secret" '
+    /createAutotuneCancelBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: state bridge needs the front captured secret"
 fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
