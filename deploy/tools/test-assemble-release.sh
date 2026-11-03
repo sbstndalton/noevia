@@ -2194,6 +2194,64 @@ ac_owner=node; ac_try ac-old-pair
 check "old autotune dismissal pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-autotune-clear.cjs" "$w/server/rust-autotune-clear-bridge.cjs"
 if [ -f "$work/ac-manager.saved" ]; then cp "$work/ac-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# #2304: exact GET folder scan paired with the one shared cache owner.
+mm_scan_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${mm_scan_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/model-manager/models"\nowner = "%s"\nmethods = [%s]\n' "$mm_scan_owner" "${mm_scan_methods:-\"GET\"}"; fi)
+}
+cat > "$w/server/rust-model-manager-scan.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['GET /api/model-manager/models']));
+JS
+touch "$w/server/rust-model-manager-scan-cache.cjs"
+[ ! -f "$w/server/models.cjs" ] || cp "$w/server/models.cjs" "$work/mm-scan-service.saved"
+printf '%s\n' 'modelScanSnapshot: () => modelScanCache.snapshot(),' 'publishModelScan: (body,token) => modelScanCache.publish(body,token),' 'requestModelScanRefresh: token => modelScanCache.refresh(token),' > "$w/server/models.cjs"
+mm_scan_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const modelManagerScanCache = require('./rust-model-manager-scan-cache.cjs').createModelManagerScanCache({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-manager-scan.cjs').refuseOwned(req, res, {})) return;
+if (await modelManagerScanCache(req, res)) return;
+JS
+}
+mm_scan_front() { sed 's/"start-id"/"start-id", "rust-model-manager-scan"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+mm_scan_owner=rust; mm_scan_core; mm_scan_try mm-scan-core-only
+check "model scan refusal rejects old front" 'refused "model scan read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; mm_scan_front; mm_scan_try mm-scan-front-only
+check "model scan front rejects old Core" 'refused "model scan read ownership pairing"'
+mm_scan_core; mm_scan_try mm-scan-pair
+check "matching model scan GET pair assembles" '[ $rc -eq 0 ]'
+mm_scan_owner=node; mm_scan_try mm-scan-node-row
+check "native scan GET rejects Node row" 'refused "model scan read ownership pairing"'
+mm_scan_owner=rust; mm_scan_skip=yes; mm_scan_try mm-scan-no-row
+check "native scan GET requires exact child row" 'refused "incomplete route ownership"'
+unset mm_scan_skip; mm_scan_methods='"GET", "HEAD"'; mm_scan_try mm-scan-head-row
+check "native scan GET cannot take HEAD policy" 'refused "only GET belongs"'
+unset mm_scan_methods
+cp "$w/server/rust-model-manager-scan.cjs" "$work/mm-scan-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set(["ALL /api/model-manager/models"]));\n' > "$w/server/rust-model-manager-scan.cjs"; mm_scan_try mm-scan-all-refuser
+check "native scan Core cannot refuse other methods" 'refused "Core must refuse exactly"'
+cp "$work/mm-scan-refuser.saved" "$w/server/rust-model-manager-scan.cjs"
+cp "$w/server/models.cjs" "$work/mm-scan-live-service.saved"; printf 'module.exports = {};\n' > "$w/server/models.cjs"; mm_scan_try mm-scan-no-owner
+check "native scan needs the existing shared cache owner" 'refused "existing shared cache primitives"'
+cp "$work/mm-scan-live-service.saved" "$w/server/models.cjs"
+mv "$w/server/rust-model-manager-scan-cache.cjs" "$work/mm-scan-bridge.saved"; mm_scan_try mm-scan-no-bridge
+check "native scan needs cache bridge" 'refused "missing cache bridge"'
+mv "$work/mm-scan-bridge.saved" "$w/server/rust-model-manager-scan-cache.cjs"
+cp "$w/server/index.cjs" "$work/mm-scan-index.saved"
+sed '/await modelManagerScanCache(req, res)/d' "$work/mm-scan-index.saved" > "$w/server/index.cjs"; mm_scan_try mm-scan-no-mount
+check "native scan needs cache bridge mount" 'refused "missing cache bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/mm-scan-index.saved" > "$w/server/index.cjs"; mm_scan_try mm-scan-no-secret
+check "native scan cache bridge needs captured secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+mm_scan_try mm-scan-old-rust-row
+check "old scan pair rejects native child row" 'refused "model scan read ownership pairing"'
+mm_scan_owner=node; mm_scan_try mm-scan-old-pair
+check "old scan pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-manager-scan.cjs" "$w/server/rust-model-manager-scan-cache.cjs"
+if [ -f "$work/mm-scan-service.saved" ]; then cp "$work/mm-scan-service.saved" "$w/server/models.cjs"; else rm -f "$w/server/models.cjs"; fi
 # #2301: resume policy moves independently of the live autotune worker.
 atrm_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
