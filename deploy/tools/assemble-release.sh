@@ -913,6 +913,9 @@ if [ "$mm_scan_rs" = rust ]; then
   # The pinned Core declares its scan route as 'GET ' plus a file-local PATH.
   # Match that declaration as a whole so extra methods cannot pass as a GET-only marker.
   awk -v quote="'" -v path=/api/model-manager/models '
+    block { if (index($0, "*/")) block = 0; next }
+    /^[[:space:]]*\/\// { next }
+    /^[[:space:]]*\/\*/ { if (!index($0, "*/")) block = 1; next }
     /^const PATH = / {
       paths++
       correct_path = ($0 == "const PATH = " quote path quote ";")

@@ -2317,6 +2317,13 @@ sed "s@models';@models/delete';@" "$work/mm-scan-refuser.saved" > "$w/server/rus
 check "native scan Core must refuse the exact path" 'refused "Core must refuse exactly"'
 sed "s/'GET '+PATH/'GET '+PATH, 'HEAD '+PATH/" "$work/mm-scan-refuser.saved" > "$w/server/rust-model-manager-scan.cjs"; mm_scan_try mm-scan-extra-method
 check "native scan Core cannot also refuse HEAD" 'refused "Core must refuse exactly"'
+{
+  printf '/*\n'
+  cat "$work/mm-scan-refuser.saved"
+  printf '*/\n'
+} > "$w/server/rust-model-manager-scan.cjs"
+mm_scan_try mm-scan-comment-only
+check "commented scan declarations cannot establish ownership" 'refused "Core must refuse exactly"'
 cp "$work/mm-scan-refuser.saved" "$w/server/rust-model-manager-scan.cjs"
 cp "$w/server/models.cjs" "$work/mm-scan-live-service.saved"; printf 'module.exports = {};\n' > "$w/server/models.cjs"; mm_scan_try mm-scan-no-owner
 check "native scan needs the existing shared cache owner" 'refused "existing shared cache primitives"'
