@@ -1114,8 +1114,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
 fi
 if [ "$pr_rs" = rust ]; then
   [ "${pr_rows:-}" = /api/models/preset ] || die "preset read ownership pairing: incomplete route ownership"
-  pr_marker="$(code_lines "$tree/core/server/rust-preset-read.cjs" | grep -E '^const[[:space:]]+OWNED_ROUTES[[:space:]]*=' || true)"
-  [ "$pr_marker" = "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));" ] \
+  code_has "$tree/core/server/rust-preset-read.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/models/preset'[]][)][)];$" \
     || die "preset read ownership pairing: Core must refuse exactly this GET"
   ! code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]getPreset[[:space:]]*[(]' \
     || die "preset read ownership pairing: Core still carries the public GET handler"

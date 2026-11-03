@@ -2220,6 +2220,13 @@ pr_methods='methods = ["GET"]'
 printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
 pr_try pr-all-refuser
 check "preset refuser cannot claim other methods" 'refused "Core must refuse exactly this GET"'
+cat > "$w/server/rust-preset-read.cjs" <<'JS'
+/*
+const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));
+*/
+JS
+pr_try pr-comment-marker
+check "preset marker must be executable code" 'refused "Core must refuse exactly this GET"'
 printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
 printf '%s\n' 'modelManager.getPreset(model);' >> "$w/server/routes/models.cjs"
 pr_try pr-old-get
