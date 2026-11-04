@@ -45,7 +45,7 @@ echo "\$name AUTH=\${NOEVIA_RUST_AUTH-unset}" >> "$work/log"
 echo "\$name LCLAIM=\${NOEVIA_LEGACY_CLAIM_BIN:-}" >> "$work/log"
 echo "\$name START=\${NOEVIA_START_ID-unset}" >> "$work/log"
 echo "\$name KCONF=\${NOEVIA_FRONT_CLIENT_IP:-}" >> "$work/log"
-trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
+trap 'echo "\$name TERM" >> "$work/log"; if [ "\$name" = front ] && [ "\${STUB_FRONT_DRAIN:-}" = 1 ]; then sleep 0.15; echo "front JOINED" >> "$work/log"; fi; exit 0' TERM
 # The supervisor TERMs the survivor as soon as one child exits. A front told to die at once would
 # race Node's startup logging (Node killed mid-write, its later lines lost: #1822), so a dying
 # front waits (bounded) until Node's last startup line is in the log.
@@ -622,12 +622,14 @@ for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
 check "Node dying stops the front, non-zero exit" 'grep -q "^front TERM" "$work/log" && [ "$(cat "$work/rc")" = 3 ]'
 
 reset
-(cd "$work" && exec env NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 COWORK_DAV_PORT=8040 bash "$sup" >/dev/null 2>"$work/err") &
+(cd "$work" && exec env NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 COWORK_DAV_PORT=8040 STUB_FRONT_DRAIN=1 bash "$sup" >/dev/null 2>"$work/err") &
 pid=$!
 wait_log "^front" && wait_log "^node"
 check "with DAV on, Node keeps UI_HOST (default 0.0.0.0) and says so" 'grep -q "^node UI_HOST=0.0.0.0 UI_PORT=9021 " "$work/log" && grep -q "not loopback only" "$work/err"'
 kill -TERM "$pid"; wait "$pid"; rc=$?
 check "docker stop (SIGTERM) stops both and exits 0" '[ $rc -eq 0 ] && grep -q "^node TERM" "$work/log" && grep -q "^front TERM" "$work/log"'
+
+check "rollback drains and joins the front before stopping Core" 'awk "/^front JOINED$/ { joined=1 } /^node TERM$/ { if (!joined) exit 1; node=1 } END { if (!node || !joined) exit 1 }" "$work/log"'
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]

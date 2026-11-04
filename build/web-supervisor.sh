@@ -486,12 +486,17 @@ if ! flock -n 9; then
   exit 2
 fi
 
-node_pid="" front_pid="" signalled=0
+node_pid="" front_pid="" signalled=0 stopping=0
 stop() {
-  local p
-  for p in "$node_pid" "$front_pid"; do
-    [ -n "$p" ] && kill -TERM "$p" 2>/dev/null
-  done
+  [ "$stopping" = 1 ] && return 0
+  stopping=1
+  # Required rollback order: stop/join the native owner before stopping Core.
+  # Revoking the proof cannot retract a previously admitted native batch.
+  if [ -n "$front_pid" ]; then
+    kill -TERM "$front_pid" 2>/dev/null || true
+    while kill -0 "$front_pid" 2>/dev/null; do wait "$front_pid" 2>/dev/null || true; done
+  fi
+  [ -n "$node_pid" ] && kill -TERM "$node_pid" 2>/dev/null
   return 0
 }
 trap 'signalled=1; stop' TERM INT
