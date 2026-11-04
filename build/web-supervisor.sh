@@ -278,6 +278,8 @@ rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
 rust-autotune-read.cjs rust-autotune-read auto-tune status GET
 rust-idle-unload-read.cjs rust-idle-unload-read idle unload read
+rust-model-assignments.cjs rust-model-assignments model assignments read
+rust-model-downloads-read.cjs rust-model-downloads-read model download GET
 rust-preset-read.cjs rust-preset-read preset GET
 rust-autotune-resume.cjs rust-autotune-resume auto-tune resume
 rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation
