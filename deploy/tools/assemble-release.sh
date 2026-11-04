@@ -439,6 +439,8 @@ core_deletes_via_store() {
 }
 # True when the file has a line of CODE matching the extended regex: comment-only lines (`//` ones and
 # `/* ... */` blocks) never count, so a marker or an op name that only a comment mentions is not one.
+# Status 1 means only "read and scanned, no match" (or no such file); a failed scan is status 2, so a
+# caller that needs a definite "absent" can reject anything other than 1.
 # (The text is captured first: `grep -q` closing the pipe early would fail the pipeline under pipefail.)
 code_has() {
   [ -f "$1" ] || return 1
@@ -449,7 +451,7 @@ code_has() {
     line ~ /^\/\// { next }
     line ~ /^\/\*/ { if (!index(line, "*/")) block = 1; next }
     { print }
-  ' "$1")" || return 1
+  ' "$1")" || return 2
   grep -qE -e "$2" <<<"$code"
 }
 # Slice7: exact canonical declarations + actual shorthand exports, never comment literals.
@@ -572,12 +574,37 @@ if [ "$diary_rs_owner" = rust ]; then
   diary_expected="$(printf '%s\n' /api/diary/source /api/diary/today /api/diary/storage-import /api/diary/workspace-export /api/diary/workspace-import | sort)"
   [ "$diary_routes" = "$diary_expected" ] || die "Diary ownership pairing: incomplete route ownership"
 fi
+# The Diary local exchange moves as one owner: Core's rust-diary-local-exchange.cjs refusal (with the
+# admission lease's diaryExchange ask, through which the front holds Node's model throttle and inference
+# gate) and the front's rust-diary-local-exchange capability, with every method of the route Rust's in
+# routes.toml. Without the pair the route stays Node's. Historic old/old pins remain valid rollback pairs.
+lx_core_owner=""
+lx_rs_owner=""
+grep -qF "require('./rust-diary-local-exchange.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && lx_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary-local-exchange features; then
+  lx_rs_owner=rust
+fi
+[ "$lx_core_owner" = "$lx_rs_owner" ] \
+  || die "Diary local exchange ownership pairing: Core and Rust must move together"
+lx_owner=node
+if [ "$lx_rs_owner" = rust ]; then
+  lx_owner=rust
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary local exchange ownership pairing: missing route contract"
+  lx_route="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/diary/local-exchange" { if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1; print $1 }')" \
+    || die "Diary local exchange ownership pairing: every method must belong to Rust"
+  [ "$lx_route" = "/api/diary/local-exchange" ] || die "Diary local exchange ownership pairing: missing route ownership"
+  grep -qF "diaryExchange" "$tree/core/server/inference-admission-lease.cjs" 2>/dev/null \
+    || die "Diary local exchange ownership pairing: Core's admission lease does not take the exchange"
+  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause.
+  code_lines "$tree/core/server/index.cjs" | grep -qF "diaryExchange: { rateLimited:" \
+    || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
+fi
 # The rest of the Diary routes the web client names (sbstndalton/noevia#2206) move as one owner: Core's
 # rust-diary-routes.cjs refusal and the front's rust-diary-routes capability, with the methods Node
 # answered Rust's in routes.toml: every method of /api/diary, /api/diary-connector and the storage
 # status; GET and POST of the context, the exchanges and the connector credentials; DELETE of one
-# credential. POST /api/diary/local-exchange stays Node's (the model throttle and the inference
-# gate), so it must not be Rust's here. Core must refuse exactly those paths and be the one that keeps
+# credential. /api/diary/local-exchange is Rust's only with its own pair above (lx_owner). Core must refuse exactly those paths and be the one that keeps
 # the diary_connectors table out of Node's hands. Historic old/old pins remain valid rollback pairs.
 dr_core_owner=""
 dr_rs_owner=""
@@ -589,14 +616,14 @@ fi
   || die "Diary route ownership pairing: Core and Rust must move together"
 if [ "$dr_rs_owner" = rust ]; then
   [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary route ownership pairing: missing route contract"
-  dr_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+  dr_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v lx="$lx_owner" '
     function want(path) {
       if (path == "/api/diary" || path == "/api/diary-connector" || path == "/api/diary/storage-status") return "ALL"
       if (path == "/api/diary/context" || path == "/api/diary/exchanges" || path == "/api/profile/diary-connectors") return "GET,POST"
       if (path == "/api/profile/diary-connectors/{*}") return "DELETE"
       return ""
     }
-    $1 == "/api/diary/local-exchange" { if ($2 != "node") exit 1 }
+    $1 == "/api/diary/local-exchange" { if ($2 != lx) exit 1 }
     want($1) != "" {
       if ($2 != "rust" || $3 != "-") exit 1
       w = want($1)
@@ -606,7 +633,7 @@ if [ "$dr_rs_owner" = rust ]; then
       for (i = 1; i <= n; i++) if (m[i] != "") { if (!(m[i] in ok) || (m[i] in seen)) exit 1; seen[m[i]] = 1; k++ }
       if (k != ne) exit 1
       print $1
-    }')" || die "Diary route ownership pairing: exactly the methods Node answered must belong to Rust, and the local exchange must stay Node's"
+    }')" || die "Diary route ownership pairing: exactly the methods Node answered must belong to Rust, and the local exchange only with its own pair"
   dr_routes="$(printf '%s\n' "$dr_routes" | sort | tr '\n' ' ')"
   [ "$dr_routes" = "/api/diary /api/diary-connector /api/diary/context /api/diary/exchanges /api/diary/storage-status /api/profile/diary-connectors /api/profile/diary-connectors/{*} " ] \
     || die "Diary route ownership pairing: incomplete route ownership"
@@ -1185,6 +1212,75 @@ if [ "$iur_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
 fi
+# #2238: only the assignments GET moves. Core retains its shared installed/probe owners.
+mas_core_owner=""; mas_rs_owner=""
+grep -qF "require('./rust-model-assignments.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mas_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-assignments features; then mas_rs_owner=rust; fi
+[ "$mas_core_owner" = "$mas_rs_owner" ] || die "model assignments read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mas_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mas_table=""
+  mas_rows="$(printf '%s\n' "$mas_table" | awk -F'\t' -v want="$mas_rs_owner" '
+    $1 == "/api/models/assignments" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model assignments read ownership pairing: GET only; other methods stay Node"
+fi
+if [ "$mas_rs_owner" = rust ]; then
+  [ "${mas_rows:-}" = /api/models/assignments ] || die "model assignments read ownership pairing: incomplete route ownership"
+  awk -v quote="'" '
+    block { if (index($0, "*/")) block = 0; next }
+    /^[[:space:]]*\/\// { next }
+    /^[[:space:]]*\/\*/ { if (!index($0, "*/")) block = 1; next }
+    /^const OWNED_ROUTES = / {
+      markers++
+      exact = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET /api/models/assignments" quote "]));")
+    }
+    END { exit !(markers == 1 && exact) }
+  ' "$tree/core/server/rust-model-assignments.cjs" \
+    || die "model assignments read ownership pairing: Core must refuse exactly GET model assignments"
+  [ ! -f "$tree/core/server/model-assignments.cjs" ] \
+    || die "model assignments read ownership pairing: Core still carries the public GET formatter"
+  [ -f "$tree/core/server/rust-model-assignments-facts.cjs" ] || die "model assignments read ownership pairing: missing facts bridge"
+  mas_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelAssignmentsFacts(req, res)' <<<"$mas_index" || die "model assignments read ownership pairing: missing facts bridge mount"
+  mas_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mas_index" | head -1)"
+  [ -n "$mas_secret" ] && awk -v c="$mas_secret" '
+    /createModelAssignmentsFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mas_index" || die "model assignments read ownership pairing: facts bridge needs the front captured secret"
+fi
+# Download GET moves as a pair; Core retains the tracker and every other method.
+mdr_core=""; mdr_rs=""
+grep -qF "require('./rust-model-downloads-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mdr_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-downloads-read features; then mdr_rs=rust; fi
+[ "$mdr_core" = "$mdr_rs" ] || die "model downloads read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mdr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mdr_table=""
+  mdr_rows="$(printf '%s\n' "$mdr_table" | awk -F'\t' -v want="$mdr_rs" '
+    $1 == "/api/models/downloads" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model downloads read ownership pairing: GET only; other methods stay Node"
+fi
+if [ "$mdr_rs" = rust ]; then
+  [ "${mdr_rows:-}" = /api/models/downloads ] || die "model downloads read ownership pairing: incomplete route ownership"
+  code_has "$tree/core/server/rust-model-downloads-read.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/models/downloads'[]][)][)];$" \
+    || die "model downloads read ownership pairing: Core must refuse exactly this GET"
+  code_has "$tree/core/server/routes/models.cjs" "^[[:space:]]*if [(]p === '/api/models/downloads' && req[.]method !== 'GET'[)] [{]$" \
+    || die "model downloads read ownership pairing: Core must retain only the legacy methods"
+  [ -f "$tree/core/server/rust-model-downloads-read-facts.cjs" ] || die "model downloads read ownership pairing: missing facts bridge"
+  mdr_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelDownloadsFacts(req, res)' <<<"$mdr_index" || die "model downloads read ownership pairing: missing facts bridge mount"
+  mdr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mdr_index" | head -1)"
+  [ -n "$mdr_secret" ] && awk -v c="$mdr_secret" '
+    /createModelDownloadsFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mdr_index" || die "model downloads read ownership pairing: facts bridge needs the front captured secret"
+fi
 # Preset GET moves as a pair. PUT keeps the same snapshot owner and conditional writer.
 pr_core=""; pr_rs=""
 grep -qF "require('./rust-preset-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pr_core=rust
@@ -1290,6 +1386,27 @@ if [ "$atrm_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
 fi
+# Retention PUT and the hourly sweep share one native writer. Refuse mixed generations.
+retention_core_put=""
+if grep -qF "  [/^\\/api\\/account\\/retention$/, ['GET', 'PUT']]," "$tree/core/server/rust-auth.cjs" 2>/dev/null; then
+  retention_core_put='PUT /api/account/retention'
+fi
+retention_rs_put=""
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  retention_rs_put="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/account/retention" && $2 == "rust" && ($4 == "-" || $4 ~ /(^|,)[ \t]*PUT([ \t]*,|[ \t]*$)/) {print "PUT /api/account/retention"}')"
+fi
+[ "$retention_core_put" = "$retention_rs_put" ] || die "retention PUT ownership pairing: Core and Rust must move together"
+if [ -n "$retention_core_put" ]; then
+  code_has "$tree/core/server/routes/account.cjs" "Retention settings are owned by the Rust front." \
+    || die "retention PUT ownership pairing: Core must refuse the moved writer"
+  if code_has "$tree/core/server/routes/account.cjs" 'retention\.write\('; then
+    die "retention PUT ownership pairing: Core still writes retention settings"
+  else
+    retention_match_status=$?
+    [ "$retention_match_status" -eq 1 ] || die "retention PUT ownership pairing: writer matcher failed"
+  fi
+fi
 # #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
 atc_core_owner=""; atc_rs_owner=""
 grep -qF "require('./rust-autotune-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atc_core_owner=rust
@@ -1324,6 +1441,45 @@ if [ "$atc_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: state bridge needs the front captured secret"
+fi
+# #2295: untuned discovery policy is native, with only facts and the conditional state writer in Core.
+au_scan_core_owner=""; au_scan_rs_owner=""
+grep -qF "require('./rust-autotune-untuned.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && au_scan_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-untuned features; then au_scan_rs_owner=rust; fi
+[ "$au_scan_core_owner" = "$au_scan_rs_owner" ] || die "untuned discovery ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  au_scan_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || au_scan_table=""
+  au_scan_rows="$(printf '%s\n' "$au_scan_table" | awk -F'\t' -v want="$au_scan_rs_owner" '
+    $1 == "/api/models/autotune/untuned" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "untuned discovery ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$au_scan_rs_owner" = rust ]; then
+  [ "${au_scan_rows:-}" = /api/models/autotune/untuned ] || die "untuned discovery ownership pairing: incomplete route ownership"
+  au_scan_refused="$( { project_routes_core "$tree/core/server/rust-autotune-untuned.cjs" || true; } | tr '\n' ' ')"
+  [ "$au_scan_refused" = 'ALL /api/models/autotune/untuned ' ] || die "untuned discovery ownership pairing: Core must refuse exactly the discovery path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/untuned' \
+    || die "untuned discovery ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'async[[:space:]]+function[[:space:]]+untuned[[:space:]]*\(' \
+    || die "untuned discovery ownership pairing: Core still carries the public discovery policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'scanFacts: autotuner.scanFacts' \
+    && code_has "$tree/core/server/llamacpp-full-autotune.cjs" '[.]autotuneScan[[:space:]]*\(' \
+    && code_has "$tree/core/server/dav-parse-wasm.cjs" '[.]autotune_scan[[:space:]]*\(' \
+    && code_has "$tree/rs/bins/dav-parse-wasm/src/lib.rs" 'fn[[:space:]]+autotune_scan[[:space:]]*\(' \
+    || die "untuned discovery ownership pairing: shared Rust/WASM policy and raw owner facts required"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'latest?.version === VERSION' \
+    || die "untuned discovery ownership pairing: Core still carries candidate selection policy"
+  [ -f "$tree/core/server/rust-autotune-untuned-facts.cjs" ] || die "untuned discovery ownership pairing: missing state bridge"
+  au_scan_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneUntunedFacts(req, res)' <<<"$au_scan_index" || die "untuned discovery ownership pairing: missing state bridge mount"
+  au_scan_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$au_scan_index" | head -1)"
+  [ -n "$au_scan_secret" ] && awk -v c="$au_scan_secret" '
+    /createAutotuneUntunedFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$au_scan_index" || die "untuned discovery ownership pairing: state bridge needs the front captured secret"
 fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
@@ -1508,6 +1664,23 @@ get_only_pair() {
 get_only_pair rust-health.cjs rust-health "health check" /api/health
 get_only_pair rust-auto-roles.cjs rust-auto-roles "auto-roles read" /api/auto-roles
 get_only_pair rust-workspace.cjs rust-workspace "workspace list" /api/workspace
+# The chat search (#1450) and one chat's Markdown download (#1471), each its own pair of Core refusal
+# (server/rust-chat-search.cjs, rust-chat-export.cjs) and front capability, exactly the GET Rust's. A paired
+# Core no longer carries the handler in routes/chat-lists.cjs and refuses exactly that GET.
+get_only_pair rust-chat-search.cjs rust-chat-search "chat search" /api/chats/search
+get_only_pair rust-chat-export.cjs rust-chat-export "chat download" "/api/chats/{chatId}/export"
+if grep -qF "require('./rust-chat-search.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  code_has "$tree/core/server/rust-chat-search.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/chats/search'[]][)][)];$" \
+    || die "chat search ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/chat-lists.cjs" "p === '/api/chats/search'" \
+    || die "chat search ownership pairing: Core still carries the public search handler"
+fi
+if grep -qF "require('./rust-chat-export.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  code_has "$tree/core/server/rust-chat-export.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/chats/[{]chatId[}]/export'[]][)][)];$" \
+    || die "chat download ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/chat-lists.cjs" 'chatMarkdown[(]' \
+    || die "chat download ownership pairing: Core still carries the public download handler"
+fi
 # The decision settings (sbstndalton/noevia#2190): Core's rust-decision-settings.cjs refusal and the
 # front's rust-decision-settings capability (Rust the single writer of decision:configuration), every
 # method of both routes Rust's in routes.toml.
@@ -2008,7 +2181,7 @@ fi
 # The model maintenance routes (sbstndalton/noevia#2210) move as one owner: Core's rust-model-maintenance.cjs
 # refusal and the front's rust-model-maintenance capability, with exactly POST /api/models/presets/reload,
 # GET /api/models/evidence and POST /api/models/evidence/import Rust's in routes.toml (Node keeps every other
-# method and the recheck). The front is the single writer of the reload guard state file and the evidence
+# method; recheck moves separately in #2286). The front is the single writer of the reload guard state file and the evidence
 # store; a mixed pair would have two writers or none. Historic old/old pins remain valid rollback pairs.
 maint_core_owner=""
 maint_rs_owner=""
@@ -2031,9 +2204,46 @@ if [ "$maint_rs_owner" = rust ]; then
     }' | sort)" || die "model maintenance ownership pairing: exactly the one method of each route must belong to Rust"
   maint_expected="$(printf '%s\n' /api/models/presets/reload /api/models/evidence /api/models/evidence/import | sort)"
   [ "$maint_routes" = "$maint_expected" ] || die "model maintenance ownership pairing: incomplete route ownership"
-  # The recheck loads a model after Node's admission check: it must not be Rust's.
-  if routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/evidence/recheck" && $2 == "rust" { f = 1 } END { exit !f }'; then
+  # Recheck needs its own native probe/admission pairing, beyond this earlier maintenance group.
+  if ! move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-evidence-recheck features && routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/evidence/recheck" && $2 == "rust" { f = 1 } END { exit !f }'; then
     die "model maintenance ownership pairing: the recheck stays Node's"
+  fi
+fi
+
+# #2286: the 1x1 recheck probe and evidence filing are native; Node keeps live admission only.
+er_core_owner=""
+er_rs_owner=""
+grep -qF "require('./rust-model-evidence-recheck.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && er_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-evidence-recheck features; then er_rs_owner=rust; fi
+[ "$er_core_owner" = "$er_rs_owner" ] || die "evidence recheck ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # The common contract parser below reports malformed TOML; preserve its old-pair diagnostic.
+  er_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || er_table=""
+  er_rows="$(printf '%s\n' "$er_table" | awk -F'\t' -v want="$er_rs_owner" '
+    $1 == "/api/models/evidence/recheck" {
+      if(want=="rust") {
+        if($2!="rust" || $3!="-") exit 1
+        n=split($4,m,/[^A-Z]+/); k=0
+        for(i=1;i<=n;i++) if(m[i]!="") {if(m[i]!="POST") exit 1;k++}
+        if(k!=1) exit 1
+      } else if($2!="node") exit 1
+      print $1
+    }')" || die "evidence recheck ownership pairing: POST alone must be native with the new pair and Node's with the old"
+  if [ "$er_rs_owner" = rust ]; then
+    [ "$maint_rs_owner" = rust ] || die "evidence recheck ownership pairing: native evidence store required"
+    [ "$(printf '%s\n' "$er_rows" | wc -w | tr -d ' ')" = 1 ] || die "evidence recheck ownership pairing: missing route"
+    er_refused="$( { project_routes_core "$tree/core/server/rust-model-evidence-recheck.cjs" || true; } | sort | tr '\n' ' ')"
+    [ "$er_refused" = 'POST /api/models/evidence/recheck ' ] || die "evidence recheck ownership pairing: exact POST refusal required"
+    ! grep -qE 'createVisionProbe|source:[[:space:]]*.recheck.' "$tree/core/server/routes/models.cjs" 2>/dev/null || die "evidence recheck ownership pairing: public Node probe still present"
+    [ -f "$tree/core/server/inference-admission-lease.cjs" ] || die "evidence recheck ownership pairing: live inference admission required"
+    er_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'inferenceAdmission\.handle\(req, res\)' <<<"$er_index" || die "evidence recheck ownership pairing: inference admission must be mounted"
+    er_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$er_index" | head -1)"
+    [ -n "$er_secret" ] && awk -v c="$er_secret" '
+      /createAdmissionRoutes\(\{/ {bridge=NR}
+      index($0,"secret: " c) && bridge && NR-bridge<=3 {ok=1}
+      END {exit !ok}
+    ' <<<"$er_index" || die "evidence recheck ownership pairing: captured inference admission secret required"
   fi
 fi
 
