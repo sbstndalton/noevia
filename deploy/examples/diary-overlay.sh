@@ -160,7 +160,13 @@ crates/diary-corpus-parse:diary-corpus-parse:diary-corpus-parse
 crates/diary-score-gap:diary-score-gap:diary-score-gap
 crates/diary-temporal-focus:diary-temporal-focus:diary-temporal-cli
 crates/diary-workspace-export:diary-workspace-export:diary-workspace-export
-crates/diary-workspace-import-apply:diary-workspace-import-apply:diary-workspace-import-apply"
+crates/diary-workspace-import-apply:diary-workspace-import-apply:diary-workspace-import-apply
+crates/diary-entity-focus:diary-entity-focus:diary-entity-focus
+crates/diary-index-transform:diary-index-transform:diary-index-transform
+crates/diary-storage-backoff:diary-storage-backoff:diary-storage-backoff
+crates/diary-workspace-rules:diary-workspace-rules:diary-workspace-rules
+crates/diary-backup-format:diary-backup-format:diary-backup-format
+crates/diary-backup-run:diary-backup-run:diary-backup-run"
 leaf_smoke=scripts/smoke_diary_leaves.py
 # The RUN continuation lines that build each declared leaf into /out/ (nothing when the release has no smoke).
 rust_leaf_lines() {
