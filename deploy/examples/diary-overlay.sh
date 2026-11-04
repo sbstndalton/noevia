@@ -122,6 +122,10 @@ tmp=$(mktemp -d); ctx=$tmp/ctx; mkdir "$ctx"
 # is the next step, because from then on rollback() owns the Diary container. Any earlier exit
 # starts Diary again on the image .env still names (the old one), so a failed run never leaves it down.
 diary_stopped=0
+# Set once `docker build` of the candidate starts, and once the overlay completes. Any other exit after the build
+# removes cowork-diary:$V-candidate (P3-1: every refused or rolled-back run would otherwise leave one behind,
+# and Docker resources are never pruned), unless cowork-diary:$V exists, which then names the same image.
+candidate_built=0; overlay_complete=0
 # Brings Diary back on the image .env names. If up.sh cannot run at all (#1597: an incomplete preflight
 # install), the container is still the stopped, unchanged one: start it directly, but only while it is
 # still the old image, so a half-recreated new container is never started by accident.
@@ -135,6 +139,9 @@ recover_diary() {
 }
 on_exit() {
   rm -rf "$tmp"
+  if [ "$candidate_built" = 1 ] && [ "$overlay_complete" != 1 ] && ! docker image inspect cowork-diary:$V >/dev/null 2>&1; then
+    docker image rm cowork-diary:$V-candidate >/dev/null 2>&1 || true
+  fi
   if [ "$diary_stopped" = 1 ]; then
     echo "restarting cowork-diary-1 on its previous image after an interrupted run" >&2
     recover_diary || echo "cowork-diary-1 did not restart; start it by hand (docker start cowork-diary-1)" >&2
@@ -186,7 +193,7 @@ else
   [[ $rs_ref =~ ^[0-9a-f]{40}$ && $rs_sum =~ ^[0-9a-f]{64}$ ]] || { echo "release Diary Dockerfile noevia-rs pin is not a 40-hex ref and 64-hex sha256" >&2; exit 1; }
   cat > "$ctx/Dockerfile" <<DOCKERFILE
 FROM rust:1.99-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS tenant-assertion
-ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never
+ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never CARGO_BUILD_JOBS=2
 WORKDIR /src
 ADD https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$rs_ref /tmp/noevia-rs.tar.gz
 RUN echo "$rs_sum  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\
@@ -198,7 +205,8 @@ RUN echo "$rs_sum  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\
  && if [ -d bins/workspace-restore-verify ]; then \\
       cargo build --release --locked -p workspace-restore-verify-cli \\
       && ./target/release/workspace-restore-verify self-test | grep -qx ok \\
-      && cp target/release/workspace-restore-verify /out/; fi$(rust_leaf_lines)
+      && cp target/release/workspace-restore-verify /out/; fi$(rust_leaf_lines) \\
+ && rm -rf /src/target /usr/local/cargo/registry
 FROM cowork-diary:rollback-before-diary-overlay
 COPY --from=tenant-assertion /out/ /usr/local/bin/
 $(overlay_copy_lines)
@@ -208,6 +216,7 @@ DOCKERFILE
   if [ "$rs_leaves" = 1 ]; then echo "Diary Rust leaves from noevia-rs $rs_ref (selectors stay python)"; fi
 fi
 # END rs-stage
+candidate_built=1
 docker build -q -t cowork-diary:$V-candidate "$ctx" >/dev/null
 docker run --rm --entrypoint python cowork-diary:$V-candidate -c "import agent.app, agent.workspace_files as w, agent.workspace_ops as o; assert hasattr(w,'_modified'); print('candidate imports ok')"
 # BEGIN dirs-exact (#1624, #2112: deploy/tests/test_overlay_scripts.py runs this through the whole script)
@@ -289,4 +298,5 @@ bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-de
 docker exec cowork-web-1 node -e "fetch('http://diary:8010/api/health',{headers:{Authorization:'Bearer '+process.env.DIARY_AUTH_TOKEN}}).then(r=>{console.log('diary health via web',r.status);process.exit(r.ok?0:1)})" || rollback
 docker inspect cowork-diary-1 --format 'diary {{.Config.Image}} {{.State.Health.Status}} restarts={{.RestartCount}} image={{.Image}}'
 docker image rm cowork-diary:$V-candidate >/dev/null
+overlay_complete=1
 echo DIARY_OVERLAY_COMPLETE

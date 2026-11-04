@@ -221,7 +221,11 @@ class ScopedDiaryOverlay(unittest.TestCase):
     DOCKER_STUB = r"""
 printf 'docker %s\n' "$*" >> "$CALL_LOG"
 case "$*" in
-  "image inspect cowork-diary:@NEW@") exit 1 ;;
+  "image inspect cowork-diary:@NEW@") [ -e "$CALL_LOG.tagged" ] || exit 1 ;;
+  "tag @OLD_ID@ "*) ;;
+  "tag cowork-diary:@NEW@-candidate cowork-diary:@NEW@") : > "$CALL_LOG.tagged" ;;
+  "image rm cowork-diary:@NEW@") rm -f "$CALL_LOG.tagged" ;;
+  "image rm cowork-diary:@NEW@-candidate") [ -z "${FAIL_CANDIDATE_RM:-}" ] || exit 1 ;;
   "image inspect cowork-diary:@OLD@ --format {{.Id}}") echo "@OLD_ID@" ;;
   "inspect cowork-diary-1 --format {{.Image}}")
     if [ -n "${LATER_IMAGE:-}" ] && [ -e "$CALL_LOG.inspected" ]; then echo "$LATER_IMAGE"; else : > "$CALL_LOG.inspected"; echo "@OLD_ID@"; fi ;;
@@ -230,7 +234,7 @@ case "$*" in
   "run --rm "*"--entrypoint sh cowork-diary:@OLD@ -c"*)
     # The running image's /app/requirements.txt (#2112): the overlay installs no dependencies.
     [ -f "$RUNNING_APP/requirements.txt" ] && sha256sum "$RUNNING_APP/requirements.txt" ;;
-  "run --rm --entrypoint python"*) echo "candidate imports ok" ;;
+  "run --rm --entrypoint python"*) [ -z "${FAIL_CANDIDATE_IMPORT:-}" ] || exit 1; echo "candidate imports ok" ;;
   "build -q -t cowork-diary:@NEW@-candidate "*)
     # Emulate the build of the generated overlay Dockerfile on top of the running image's /app (#2112): `RUN rm -rf`
     # removes, `COPY <dir>/ ./<dir>/` copies from the build context. Anything else is the running image's.
@@ -400,6 +404,41 @@ exec "@REAL_SED@" "$@"
         self.assertIn('config/.env', names)
         self.assertIn('state/diary/users/u1/managed-diary.db', names)
         self.assertFalse([n for n in names if n.startswith('state/web')], names)
+
+    CANDIDATE_RM = f'docker image rm cowork-diary:{NEW}-candidate'
+
+    def test_a_failed_candidate_check_removes_the_candidate(self):
+        # P3-1: a refused candidate is never left behind (Docker resources are never pruned).
+        result = self.overlay(env={'FAIL_CANDIDATE_IMPORT': '1'})
+        self.assertNotEqual(result.returncode, 0)
+        calls = self.calls()
+        self.assertEqual(calls.count(self.CANDIDATE_RM), 1, calls)
+        self.assertFalse([c for c in calls if c.startswith('docker stop')], calls)
+
+    def test_a_rolled_back_overlay_removes_the_candidate(self):
+        result = self.overlay(env={'FAIL_UP': '1'})
+        self.assertNotEqual(result.returncode, 0)
+        calls = self.calls()
+        self.assertIn(f'docker image rm cowork-diary:{self.NEW}', calls)
+        self.assertEqual(calls.count(self.CANDIDATE_RM), 1, calls)
+        self.assertLess(calls.index(f'docker image rm cowork-diary:{self.NEW}'), calls.index(self.CANDIDATE_RM))
+
+    def test_a_completed_overlay_removes_the_candidate_once(self):
+        result = self.overlay()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls().count(self.CANDIDATE_RM), 1)
+
+    def test_a_failure_before_the_build_removes_no_image(self):
+        result = self.overlay(backups=self.temp / 'missing-backups')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse([c for c in self.calls() if c.startswith('docker image rm')], self.calls())
+
+    def test_the_candidate_is_kept_while_the_new_tag_names_it(self):
+        # A failure after cowork-diary:<V> was tagged and kept: that tag names the same image, so nothing is removed again.
+        result = self.overlay(env={'FAIL_CANDIDATE_RM': '1'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('DIARY_OVERLAY_COMPLETE', result.stdout)
+        self.assertEqual(self.calls().count(self.CANDIDATE_RM), 1, self.calls())
 
     def test_a_stale_agent_file_in_the_candidate_stops_before_anything_is_stopped_or_tagged(self):
         # #1624: COPY never deletes, so an old static/ file would survive; the overlay must refuse it.
@@ -724,6 +763,9 @@ class RsStage(unittest.TestCase):
         self.assertRegex(df, r'(?m)^FROM rust:1\.99-slim-bookworm@sha256:[0-9a-f]{64} AS tenant-assertion$')
         self.assertNotRegex(df, r'(?m)^FROM rust:[^@\n]* AS')
         self.assertIn('COPY --from=tenant-assertion /out/ /usr/local/bin/', df)
+        # P3-2: two cargo jobs on DaServer, and no build tree or registry left in the builder layer.
+        self.assertIn('ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never CARGO_BUILD_JOBS=2\n', df)
+        self.assertTrue(self.rust_run(df).rstrip().endswith('&& rm -rf /src/target /usr/local/cargo/registry'), df)
         # noevia#982: workspace-restore-verify is built and self-tested only when the pinned
         # noevia-rs has the crate, so an older release still overlays.
         self.assertIn('if [ -d bins/workspace-restore-verify ]; then', df)
@@ -762,7 +804,9 @@ class RsStage(unittest.TestCase):
                 self.assertIn(f'&& if [ -d {directory} ]; then cargo build --release --locked -p {package}'
                               f' && cp target/release/{binary} /out/; fi', run)
         # One RUN instruction, valid shell, ending with the last leaf; only the /out/ bundle reaches the image.
-        self.assertTrue(run.rstrip().endswith('/out/; fi'), run[-200:])
+        last = self.LEAVES[-1]
+        self.assertTrue(' '.join(run.split()).endswith(f'cp target/release/{last[2]} /out/; fi && rm -rf /src/target /usr/local/cargo/registry'),
+                        run[-200:])
         checked = subprocess.run(['sh', '-n', '-c', run], capture_output=True, text=True, timeout=30)
         self.assertEqual(checked.returncode, 0, checked.stderr)
         self.assertEqual([l for l in df.splitlines() if l.startswith('COPY --from=')],
@@ -777,7 +821,8 @@ class RsStage(unittest.TestCase):
         self.assertIn('STAGE 1 LEAVES 0', result.stdout)
         for _, package, binary in self.LEAVES:
             self.assertNotIn(binary, df)
-        self.assertTrue(self.rust_run(df).rstrip().endswith('cp target/release/workspace-restore-verify /out/; fi'))
+        self.assertTrue(' '.join(self.rust_run(df).split()).endswith(
+            'cp target/release/workspace-restore-verify /out/; fi && rm -rf /src/target /usr/local/cargo/registry'))
 
     def test_the_declared_leaves_are_exactly_the_adapters_binaries(self):
         script = self.block('rust-leaves') + '\nfor spec in $rust_leaves; do echo "$spec"; done'
