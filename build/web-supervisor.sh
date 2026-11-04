@@ -230,7 +230,9 @@ fi
 # (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
 # list (server/rust-workspace.cjs beside rust-workspace), the rest of the Diary routes
 # (server/rust-diary-routes.cjs beside rust-diary-routes, sbstndalton/noevia#2206; Rust owns the connector
-# credentials table and reads the running-exchange set Node publishes), since #2202 round 2 the admin MCP directory
+# credentials table and reads the running-exchange set Node publishes), the Diary local exchange
+# (server/rust-diary-local-exchange.cjs beside rust-diary-local-exchange: the front relays it and holds Node's model
+# throttle and inference gate through the admission lease's diaryExchange ask, which only that Core grants), since #2202 round 2 the admin MCP directory
 # (server/rust-mcp-directory.cjs beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the
 # only writer of directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs
 # beside rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last
@@ -267,7 +269,10 @@ rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 rust-health.cjs rust-health health check
 rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
+rust-chat-search.cjs rust-chat-search chat search
+rust-chat-export.cjs rust-chat-export chat download
 rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
+rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
 rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker
 rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
@@ -278,15 +283,19 @@ rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
 rust-autotune-read.cjs rust-autotune-read auto-tune status GET
 rust-idle-unload-read.cjs rust-idle-unload-read idle unload read
+rust-model-assignments.cjs rust-model-assignments model assignments read
+rust-model-downloads-read.cjs rust-model-downloads-read model download GET
 rust-preset-read.cjs rust-preset-read preset GET
 rust-autotune-resume.cjs rust-autotune-resume auto-tune resume
 rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation
 rust-autotune-clear.cjs rust-autotune-clear autotune dismissal
 rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read
 rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation
+rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery
 rust-calibration-routes.cjs rust-calibration-routes calibration start/read
 rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
+rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
 rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
 PAIRS
@@ -318,6 +327,31 @@ if [ "$maintenance_core_owner" != "$maintenance_front_owner" ]; then
   exit 2
 fi
 
+# A new front beside old Core stays idle (proof 404). A new Core must have the
+# native owner capability before either process is launched.
+embedding_core_owner="$(node -e "try { const m = require('./server/rust-embedding-background.cjs'); if (m.RUST_EMBEDDING_OWNED === 'rust-embedding-background-v1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if grep -qF "require('./rust-embedding-background.cjs')" "$PWD/server/index.cjs" 2>/dev/null && [ "$embedding_core_owner" != rust ]; then
+  echo "web-supervisor: invalid embedding background ownership marker" >&2
+  exit 2
+fi
+if [ "$embedding_core_owner" = rust ] && ! grep -qx 'rust-embedding-background-v1' <<<"$rust_features"; then
+  echo "web-supervisor: embedding background requires rust-embedding-background-v1; update the paired image" >&2
+  exit 2
+fi
+
+# The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
+# (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
+# front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own
+# guard when the front's internal listener does not answer, but a mismatched pair is refused here so
+# a manually mixed install never runs that way; a rust-preset-baseline front beside an older Core is
+# shared mode (the older Core writes the same file under the same lock) and starts.
+preset_baseline_core=""
+grep -qF "'noevia-preset-baseline-bridge/1'" "$PWD/server/preset-reload.cjs" 2>/dev/null && preset_baseline_core=bridge
+if [ "$preset_baseline_core" = bridge ] && ! grep -qx 'rust-preset-baseline' <<<"$rust_features"; then
+  echo "web-supervisor: this noevia-core asks the front for the preset reload baseline, but this noevia-server has no rust-preset-baseline; update the paired image" >&2
+  exit 2
+fi
+
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
 # protect a manually mixed installed pair. Neither result comes from an inherited environment.
@@ -334,6 +368,42 @@ grep -qx 'rust-web-address-write' <<<"$rust_features" && web_write_front_owner=r
 web_write_core_owner="$(node -e "try { const m = require('./server/rust-web-address.cjs'); if (m.WEB_ADDRESS_WRITE_OWNER === 'noevia-web-address-write-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
 if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
   echo "web-supervisor: web-address POST ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# Diary backup ownership is compiled into the paired artifacts, never inherited from the environment.
+diary_backup_front_owner=""
+grep -qx 'rust-diary-backup-worker' <<<"$rust_features" && diary_backup_front_owner=rust
+diary_backup_core_owner="$(node -e "try { const m = require('./server/rust-diary.cjs'); if (m.DIARY_BACKUP_WORKER_OWNER === 'noevia-diary-backup-worker-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$diary_backup_front_owner" != "$diary_backup_core_owner" ]; then
+  echo "web-supervisor: diary backup worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
+# The inference budget watch moves with paired exported/compiled markers. Refuse mixed owners.
+# Root accepts legacy rollback ignoring leftover fences: like a legacy Node restart it loses
+# the in-memory quarantine. Old releases ignore the directory; its files never gate rollback.
+budget_watch_front_owner=""
+grep -qx 'rust-budget-watch' <<<"$rust_features" && budget_watch_front_owner=v1
+grep -qx 'rust-budget-watch-v2' <<<"$rust_features" && budget_watch_front_owner=v2
+grep -qx 'rust-budget-watch-v3' <<<"$rust_features" && budget_watch_front_owner=v3
+budget_watch_core_owner="$(node -e "try { const m = require('./server/rust-budget-watch.cjs'); if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/1') process.stdout.write('v1'); else if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/2') process.stdout.write('v2'); else if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/3') process.stdout.write('v3'); } catch {}" 2>/dev/null || true)"
+if [ "$budget_watch_front_owner" != "$budget_watch_core_owner" ]; then
+  echo "web-supervisor: budget watch ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
+# The calibration job itself (sbstndalton/noevia#2303: its state file, boot recovery and maintenance hold) is
+# the front's when it lists the worker and Core exports CALIBRATION_WORKER_OWNER (Core then builds no public
+# calibrator and does not recover the job at boot). A mixed pair would recover one state file twice at a joint
+# restart, or never. Generation 2 (rust-calibration-worker-v2, noevia-calibration-worker-rust/2) has every load
+# the job asks for decided by Core first, so a generation pairs only with itself. Neither result comes from an
+# inherited environment.
+calibration_worker_front_owner=""
+grep -qx 'rust-calibration-worker' <<<"$rust_features" && calibration_worker_front_owner=v1
+grep -qx 'rust-calibration-worker-v2' <<<"$rust_features" && calibration_worker_front_owner=v2
+calibration_worker_core_owner="$(node -e "try { const m = require('./server/rust-calibration-routes.cjs'); if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/1') process.stdout.write('v1'); else if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/2') process.stdout.write('v2'); } catch {}" 2>/dev/null || true)"
+if [ "$calibration_worker_front_owner" != "$calibration_worker_core_owner" ]; then
+  echo "web-supervisor: calibration worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
 # Source job journals are a paired internal-store capability: this Node client has no local
@@ -464,12 +534,39 @@ if [ -n "${COWORK_DAV_PORT:-}" ] && [ "${COWORK_DAV_PORT}" != 0 ]; then
   echo "web-supervisor: COWORK_DAV_PORT is set; Node's legacy port $legacy listens on $node_host, not loopback only" >&2
 fi
 
-node_pid="" front_pid="" signalled=0
+# Serialize coherent pair lifetimes, including rollback to an older Core. Keep
+# the fd inherited by both children: a replacement cannot start before both exit.
+# Never unlink this inode, including after an unclean shutdown.
+pair_data="${UI_DATA_DIR:-$PWD/server/ui-data}"
+mkdir -p "$pair_data" || exit 2
+exec 9>"$pair_data/embedding-pair.lock" || exit 2
+if ! flock -n 9; then
+  echo "web-supervisor: previous Core/front pair is not quiescent" >&2
+  exit 2
+fi
+
+node_pid="" front_pid="" signalled=0 stopping=0
 stop() {
-  local p
-  for p in "$node_pid" "$front_pid"; do
-    [ -n "$p" ] && kill -TERM "$p" 2>/dev/null
-  done
+  [ "$stopping" = 1 ] && return 0
+  stopping=1
+  # Required rollback order: stop/join the native owner before stopping Core.
+  # Revoking the proof cannot retract a previously admitted native batch.
+  if [ -n "$front_pid" ]; then
+    kill -TERM "$front_pid" 2>/dev/null || true
+    # Reserve Core's 3s shutdown-hook budget inside Docker's default 10s stop.
+    # Force a stuck front to exit before signalling Core; never overlap owners.
+    local front_deadline=$((SECONDS + 5))
+    while kill -0 "$front_pid" 2>/dev/null; do
+      if [ "$SECONDS" -ge "$front_deadline" ]; then
+        echo "web-supervisor: front stop deadline reached; killing the front before stopping Core" >&2
+        kill -KILL "$front_pid" 2>/dev/null || true
+        break
+      fi
+      sleep 0.05
+    done
+    wait "$front_pid" 2>/dev/null || true
+  fi
+  [ -n "$node_pid" ] && kill -TERM "$node_pid" 2>/dev/null
   return 0
 }
 trap 'signalled=1; stop' TERM INT
