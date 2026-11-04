@@ -1,7 +1,8 @@
 #!/bin/bash
 # Diary image overlay: FROM the running image, replace exactly the directories the Diary Dockerfile copies into
 # /app (agent/, config/ and scripts/; #2112) and, when the release pins noevia-rs, add the tenant-assertion and
-# workspace-restore-verify binaries built from that pin. Rolls back on any failure.
+# workspace-restore-verify binaries built from that pin, plus the Diary Rust leaves (rust_leaves below) when the
+# release ships the smoke that proves them (noevia#1071 P0). Rolls back on any failure.
 # Usage (on DaServer, as root): bash diary-overlay.sh <SRC_SHA>. SRC_SHA is an unpacked release
 # under releases/ whose services/diary/{agent,config,scripts} are shipped; it also becomes the new Diary tag
 # (cowork-diary:<SRC_SHA>) and DIARY_VERSION in .env. COWORK_VERSION and the web image are untouched.
@@ -121,6 +122,10 @@ tmp=$(mktemp -d); ctx=$tmp/ctx; mkdir "$ctx"
 # is the next step, because from then on rollback() owns the Diary container. Any earlier exit
 # starts Diary again on the image .env still names (the old one), so a failed run never leaves it down.
 diary_stopped=0
+# Set once `docker build` of the candidate starts, and once the overlay completes. Any other exit after the build
+# removes cowork-diary:$V-candidate (P3-1: every refused or rolled-back run would otherwise leave one behind,
+# and Docker resources are never pruned), unless cowork-diary:$V exists, which then names the same image.
+candidate_built=0; overlay_complete=0
 # Brings Diary back on the image .env names. If up.sh cannot run at all (#1597: an incomplete preflight
 # install), the container is still the stopped, unchanged one: start it directly, but only while it is
 # still the old image, so a half-recreated new container is never started by accident.
@@ -134,6 +139,9 @@ recover_diary() {
 }
 on_exit() {
   rm -rf "$tmp"
+  if [ "$candidate_built" = 1 ] && [ "$overlay_complete" != 1 ] && ! docker image inspect cowork-diary:$V >/dev/null 2>&1; then
+    docker image rm cowork-diary:$V-candidate >/dev/null 2>&1 || true
+  fi
   if [ "$diary_stopped" = 1 ]; then
     echo "restarting cowork-diary-1 on its previous image after an interrupted run" >&2
     recover_diary || echo "cowork-diary-1 did not restart; start it by hand (docker start cowork-diary-1)" >&2
@@ -142,6 +150,34 @@ on_exit() {
 trap on_exit EXIT
 docker tag "$OLD_ID" cowork-diary:rollback-before-diary-overlay
 for d in $overlay_dirs; do cp -r "$base/releases/$V/services/diary/$d" "$ctx/$d"; done
+# BEGIN rust-leaves (deploy/tests/test_overlay_scripts.py runs this block with rs-stage and leaf-smoke)
+# noevia#1071 P0: the Diary Rust leaves whose Python adapters already exist, one per line as
+# <source directory in noevia-rs>:<cargo package>:<binary installed in /usr/local/bin>. Each is built only when
+# the pinned noevia-rs has its directory, and only for a release that ships scripts/smoke_diary_leaves.py, which
+# the candidate then runs on every leaf it has. The image ships them; every selector stays python.
+rust_leaves="bins/diary-corpus-write:diary-corpus-write-cli:diary-corpus-write-cli
+crates/diary-corpus-parse:diary-corpus-parse:diary-corpus-parse
+crates/diary-score-gap:diary-score-gap:diary-score-gap
+crates/diary-temporal-focus:diary-temporal-focus:diary-temporal-cli
+crates/diary-workspace-export:diary-workspace-export:diary-workspace-export
+crates/diary-workspace-import-apply:diary-workspace-import-apply:diary-workspace-import-apply
+crates/diary-entity-focus:diary-entity-focus:diary-entity-focus
+crates/diary-index-transform:diary-index-transform:diary-index-transform
+crates/diary-storage-backoff:diary-storage-backoff:diary-storage-backoff
+crates/diary-workspace-rules:diary-workspace-rules:diary-workspace-rules
+crates/diary-backup-format:diary-backup-format:diary-backup-format
+crates/diary-backup-run:diary-backup-run:diary-backup-run"
+leaf_smoke=scripts/smoke_diary_leaves.py
+# The RUN continuation lines that build each declared leaf into /out/ (nothing when the release has no smoke).
+rust_leaf_lines() {
+  local spec dir rest pkg bin
+  [ "$rs_leaves" = 1 ] || return 0
+  for spec in $rust_leaves; do
+    dir=${spec%%:*}; rest=${spec#*:}; pkg=${rest%%:*}; bin=${rest#*:}
+    printf ' \\\n && if [ -d %s ]; then cargo build --release --locked -p %s && cp target/release/%s /out/; fi' "$dir" "$pkg" "$bin"
+  done
+}
+# END rust-leaves
 # BEGIN rs-stage (deploy/tests/test_overlay_scripts.py runs this block on synthetic Dockerfiles)
 # TENANT_ASSERTION_IMPL=rust needs the tenant-assertion binary, WORKSPACE_RESTORE_VERIFY_IMPL=rust
 # the workspace-restore-verify binary (noevia#982; built only when the pinned noevia-rs has it, so
@@ -151,6 +187,8 @@ for d in $overlay_dirs; do cp -r "$base/releases/$V/services/diary/$d" "$ctx/$d"
 # stay the running image's. Only the two validated hex pins are taken from the release's
 # Dockerfile, never any of its text.
 diary_df=$base/releases/$V/services/diary/Dockerfile
+rs_leaves=0
+if [ -f "$base/releases/$V/services/diary/$leaf_smoke" ]; then rs_leaves=1; fi
 rs_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$diary_df" 2>/dev/null | head -1 || true)
 rs_sum=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$diary_df" 2>/dev/null | head -1 || true)
 if [ -z "$rs_ref$rs_sum" ]; then
@@ -161,7 +199,7 @@ else
   [[ $rs_ref =~ ^[0-9a-f]{40}$ && $rs_sum =~ ^[0-9a-f]{64}$ ]] || { echo "release Diary Dockerfile noevia-rs pin is not a 40-hex ref and 64-hex sha256" >&2; exit 1; }
   cat > "$ctx/Dockerfile" <<DOCKERFILE
 FROM rust:1.99-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS tenant-assertion
-ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never
+ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never CARGO_BUILD_JOBS=2
 WORKDIR /src
 ADD https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$rs_ref /tmp/noevia-rs.tar.gz
 RUN echo "$rs_sum  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\
@@ -173,15 +211,18 @@ RUN echo "$rs_sum  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\
  && if [ -d bins/workspace-restore-verify ]; then \\
       cargo build --release --locked -p workspace-restore-verify-cli \\
       && ./target/release/workspace-restore-verify self-test | grep -qx ok \\
-      && cp target/release/workspace-restore-verify /out/; fi
+      && cp target/release/workspace-restore-verify /out/; fi$(rust_leaf_lines) \\
+ && rm -rf /src/target /usr/local/cargo/registry
 FROM cowork-diary:rollback-before-diary-overlay
 COPY --from=tenant-assertion /out/ /usr/local/bin/
 $(overlay_copy_lines)
 DOCKERFILE
   rs_stage=1
   echo "tenant-assertion from noevia-rs $rs_ref"
+  if [ "$rs_leaves" = 1 ]; then echo "Diary Rust leaves from noevia-rs $rs_ref (selectors stay python)"; fi
 fi
 # END rs-stage
+candidate_built=1
 docker build -q -t cowork-diary:$V-candidate "$ctx" >/dev/null
 docker run --rm --entrypoint python cowork-diary:$V-candidate -c "import agent.app, agent.workspace_files as w, agent.workspace_ops as o; assert hasattr(w,'_modified'); print('candidate imports ok')"
 # BEGIN dirs-exact (#1624, #2112: deploy/tests/test_overlay_scripts.py runs this through the whole script)
@@ -213,6 +254,29 @@ if [ "$rs_stage" = 1 ]; then
     echo "candidate has no workspace-restore-verify (pinned noevia-rs predates it): WORKSPACE_RESTORE_VERIFY_IMPL must stay python"
   fi
 fi
+# BEGIN leaf-smoke (deploy/tests/test_overlay_scripts.py runs this block with a stub docker)
+# noevia#1071 P0: the leaves have no self-test command. The release's own smoke (in scripts/, already proven equal
+# to the release above) runs each leaf the candidate has through its real adapter on synthetic data and compares
+# it with Python, selecting Rust only inside that process. Any leaf that fails stops the overlay.
+if [ "$rs_stage" = 1 ] && [ "$rs_leaves" = 1 ]; then
+  leaf_names=""
+  for spec in $rust_leaves; do leaf_names="$leaf_names ${spec##*:}"; done
+  leaves_present=$(docker run --rm --network none --entrypoint sh cowork-diary:$V-candidate -c \
+    "cd /usr/local/bin && for b in$leaf_names; do if [ -f \"\$b\" ] && [ -x \"\$b\" ]; then echo \"\$b\"; fi; done") \
+    || { echo "could not list the Diary Rust leaves in the candidate; not deploying" >&2; exit 1; }
+  leaves_present=$(printf '%s\n' $leaves_present)
+  for b in $leaves_present; do
+    case " $leaf_names " in *" $b "*) ;; *) echo "unexpected leaf name from the candidate listing; not deploying" >&2; exit 1 ;; esac
+  done
+  if [ -n "$leaves_present" ]; then
+    docker run --rm --network none --entrypoint python cowork-diary:$V-candidate $leaf_smoke $leaves_present \
+      || { echo "candidate Diary Rust leaf smoke failed; not deploying" >&2; exit 1; }
+    echo "candidate Diary Rust leaves ok:" $leaves_present
+  else
+    echo "candidate has none of the Diary Rust leaves (pinned noevia-rs predates them): their selectors must stay python"
+  fi
+fi
+# END leaf-smoke
 cp -p "$config" "$config.bak.before-diary-$V"
 # BEGIN diary-backup (deploy/tests/test_overlay_scripts.py runs this block through the whole script, with stub docker, gzip and php)
 # Scoped backup (#1487): the Diary state directory and .env only, in a new folder that the Appdata Backup
@@ -240,4 +304,5 @@ bash "$base/tools/preflight/up.sh" --env-file "$config" -- -d --no-build --no-de
 docker exec cowork-web-1 node -e "fetch('http://diary:8010/api/health',{headers:{Authorization:'Bearer '+process.env.DIARY_AUTH_TOKEN}}).then(r=>{console.log('diary health via web',r.status);process.exit(r.ok?0:1)})" || rollback
 docker inspect cowork-diary-1 --format 'diary {{.Config.Image}} {{.State.Health.Status}} restarts={{.RestartCount}} image={{.Image}}'
 docker image rm cowork-diary:$V-candidate >/dev/null
+overlay_complete=1
 echo DIARY_OVERLAY_COMPLETE

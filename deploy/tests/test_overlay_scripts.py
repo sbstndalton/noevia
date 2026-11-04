@@ -221,7 +221,11 @@ class ScopedDiaryOverlay(unittest.TestCase):
     DOCKER_STUB = r"""
 printf 'docker %s\n' "$*" >> "$CALL_LOG"
 case "$*" in
-  "image inspect cowork-diary:@NEW@") exit 1 ;;
+  "image inspect cowork-diary:@NEW@") [ -e "$CALL_LOG.tagged" ] || exit 1 ;;
+  "tag @OLD_ID@ "*) ;;
+  "tag cowork-diary:@NEW@-candidate cowork-diary:@NEW@") : > "$CALL_LOG.tagged" ;;
+  "image rm cowork-diary:@NEW@") rm -f "$CALL_LOG.tagged" ;;
+  "image rm cowork-diary:@NEW@-candidate") [ -z "${FAIL_CANDIDATE_RM:-}" ] || exit 1 ;;
   "image inspect cowork-diary:@OLD@ --format {{.Id}}") echo "@OLD_ID@" ;;
   "inspect cowork-diary-1 --format {{.Image}}")
     if [ -n "${LATER_IMAGE:-}" ] && [ -e "$CALL_LOG.inspected" ]; then echo "$LATER_IMAGE"; else : > "$CALL_LOG.inspected"; echo "@OLD_ID@"; fi ;;
@@ -230,7 +234,7 @@ case "$*" in
   "run --rm "*"--entrypoint sh cowork-diary:@OLD@ -c"*)
     # The running image's /app/requirements.txt (#2112): the overlay installs no dependencies.
     [ -f "$RUNNING_APP/requirements.txt" ] && sha256sum "$RUNNING_APP/requirements.txt" ;;
-  "run --rm --entrypoint python"*) echo "candidate imports ok" ;;
+  "run --rm --entrypoint python"*) [ -z "${FAIL_CANDIDATE_IMPORT:-}" ] || exit 1; echo "candidate imports ok" ;;
   "build -q -t cowork-diary:@NEW@-candidate "*)
     # Emulate the build of the generated overlay Dockerfile on top of the running image's /app (#2112): `RUN rm -rf`
     # removes, `COPY <dir>/ ./<dir>/` copies from the build context. Anything else is the running image's.
@@ -400,6 +404,41 @@ exec "@REAL_SED@" "$@"
         self.assertIn('config/.env', names)
         self.assertIn('state/diary/users/u1/managed-diary.db', names)
         self.assertFalse([n for n in names if n.startswith('state/web')], names)
+
+    CANDIDATE_RM = f'docker image rm cowork-diary:{NEW}-candidate'
+
+    def test_a_failed_candidate_check_removes_the_candidate(self):
+        # P3-1: a refused candidate is never left behind (Docker resources are never pruned).
+        result = self.overlay(env={'FAIL_CANDIDATE_IMPORT': '1'})
+        self.assertNotEqual(result.returncode, 0)
+        calls = self.calls()
+        self.assertEqual(calls.count(self.CANDIDATE_RM), 1, calls)
+        self.assertFalse([c for c in calls if c.startswith('docker stop')], calls)
+
+    def test_a_rolled_back_overlay_removes_the_candidate(self):
+        result = self.overlay(env={'FAIL_UP': '1'})
+        self.assertNotEqual(result.returncode, 0)
+        calls = self.calls()
+        self.assertIn(f'docker image rm cowork-diary:{self.NEW}', calls)
+        self.assertEqual(calls.count(self.CANDIDATE_RM), 1, calls)
+        self.assertLess(calls.index(f'docker image rm cowork-diary:{self.NEW}'), calls.index(self.CANDIDATE_RM))
+
+    def test_a_completed_overlay_removes_the_candidate_once(self):
+        result = self.overlay()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls().count(self.CANDIDATE_RM), 1)
+
+    def test_a_failure_before_the_build_removes_no_image(self):
+        result = self.overlay(backups=self.temp / 'missing-backups')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse([c for c in self.calls() if c.startswith('docker image rm')], self.calls())
+
+    def test_the_candidate_is_kept_while_the_new_tag_names_it(self):
+        # A failure after cowork-diary:<V> was tagged and kept: that tag names the same image, so nothing is removed again.
+        result = self.overlay(env={'FAIL_CANDIDATE_RM': '1'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('DIARY_OVERLAY_COMPLETE', result.stdout)
+        self.assertEqual(self.calls().count(self.CANDIDATE_RM), 1, self.calls())
 
     def test_a_stale_agent_file_in_the_candidate_stops_before_anything_is_stopped_or_tagged(self):
         # #1624: COPY never deletes, so an old static/ file would survive; the overlay must refuse it.
@@ -697,14 +736,18 @@ class RsStage(unittest.TestCase):
         end = next(i for i, l in enumerate(lines) if l.startswith(f'# END {name}'))
         return '\n'.join(lines[start + 1:end])
 
-    def stage(self, dockerfile):
+    def stage(self, dockerfile, smoke=False):
         with tempfile.TemporaryDirectory(prefix='noevia-rs-stage-') as directory:
             temp = pathlib.Path(directory)
             (temp / 'releases/abc1234/services/diary').mkdir(parents=True)
             if dockerfile is not None:
                 (temp / 'releases/abc1234/services/diary/Dockerfile').write_text(dockerfile)
+            if smoke:
+                (temp / 'releases/abc1234/services/diary/scripts').mkdir()
+                (temp / 'releases/abc1234/services/diary/scripts/smoke_diary_leaves.py').write_text('# synthetic\n')
             (temp / 'ctx').mkdir()
-            script = 'set -euo pipefail\nbase=$1; V=abc1234; ctx=$1/ctx\n' + self.block('overlay-dirs') + '\n' + self.block() + '\necho "STAGE $rs_stage"'
+            script = ('set -euo pipefail\nbase=$1; V=abc1234; ctx=$1/ctx\n' + self.block('overlay-dirs') + '\n'
+                      + self.block('rust-leaves') + '\n' + self.block() + '\necho "STAGE $rs_stage LEAVES $rs_leaves"')
             result = subprocess.run(['bash', '-c', script, 'x', str(temp)], capture_output=True, text=True, timeout=30)
             out = (temp / 'ctx/Dockerfile').read_text() if (temp / 'ctx/Dockerfile').exists() else None
             return result, out
@@ -720,6 +763,9 @@ class RsStage(unittest.TestCase):
         self.assertRegex(df, r'(?m)^FROM rust:1\.99-slim-bookworm@sha256:[0-9a-f]{64} AS tenant-assertion$')
         self.assertNotRegex(df, r'(?m)^FROM rust:[^@\n]* AS')
         self.assertIn('COPY --from=tenant-assertion /out/ /usr/local/bin/', df)
+        # P3-2: two cargo jobs on DaServer, and no build tree or registry left in the builder layer.
+        self.assertIn('ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never CARGO_BUILD_JOBS=2\n', df)
+        self.assertTrue(self.rust_run(df).rstrip().endswith('&& rm -rf /src/target /usr/local/cargo/registry'), df)
         # noevia#982: workspace-restore-verify is built and self-tested only when the pinned
         # noevia-rs has the crate, so an older release still overlays.
         self.assertIn('if [ -d bins/workspace-restore-verify ]; then', df)
@@ -731,10 +777,69 @@ class RsStage(unittest.TestCase):
         self.assertNotIn('pip', df)
         self.assertEqual(df.count('FROM cowork-diary:rollback-before-diary-overlay'), 1)
 
+    PINNED = f'ARG NOEVIA_RS_REF={REF}\nARG NOEVIA_RS_SHA256={SUM}\n'
+    # noevia#1071 P0: (source directory, cargo package, installed binary) for every leaf a Python adapter calls.
+    LEAVES = [('bins/diary-corpus-write', 'diary-corpus-write-cli', 'diary-corpus-write-cli'),
+              ('crates/diary-corpus-parse', 'diary-corpus-parse', 'diary-corpus-parse'),
+              ('crates/diary-score-gap', 'diary-score-gap', 'diary-score-gap'),
+              ('crates/diary-temporal-focus', 'diary-temporal-focus', 'diary-temporal-cli'),
+              ('crates/diary-workspace-export', 'diary-workspace-export', 'diary-workspace-export'),
+              ('crates/diary-workspace-import-apply', 'diary-workspace-import-apply', 'diary-workspace-import-apply'),
+              ('crates/diary-entity-focus', 'diary-entity-focus', 'diary-entity-focus'),
+              ('crates/diary-index-transform', 'diary-index-transform', 'diary-index-transform'),
+              ('crates/diary-storage-backoff', 'diary-storage-backoff', 'diary-storage-backoff'),
+              ('crates/diary-workspace-rules', 'diary-workspace-rules', 'diary-workspace-rules'),
+              ('crates/diary-backup-format', 'diary-backup-format', 'diary-backup-format'),
+              ('crates/diary-backup-run', 'diary-backup-run', 'diary-backup-run')]
+
+    @staticmethod
+    def rust_run(df):
+        """The Rust stage's single RUN instruction, continuation lines joined as Docker joins them."""
+        stage = df.split('\nFROM cowork-diary:rollback-before-diary-overlay\n')[0]
+        run = stage[stage.index('\nRUN ') + 5:]
+        return run.replace('\\\n', ' ')
+
+    def test_a_release_with_the_leaf_smoke_builds_every_declared_leaf_into_the_bundle(self):
+        result, df = self.stage(self.PINNED, smoke=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('STAGE 1 LEAVES 1', result.stdout)
+        run = self.rust_run(df)
+        for directory, package, binary in self.LEAVES:
+            with self.subTest(binary=binary):
+                # Guarded like workspace-restore-verify: a pin without the crate still overlays.
+                self.assertIn(f'&& if [ -d {directory} ]; then cargo build --release --locked -p {package}'
+                              f' && cp target/release/{binary} /out/; fi', run)
+        # One RUN instruction, valid shell, ending with the last leaf; only the /out/ bundle reaches the image.
+        last = self.LEAVES[-1]
+        self.assertTrue(' '.join(run.split()).endswith(f'cp target/release/{last[2]} /out/; fi && rm -rf /src/target /usr/local/cargo/registry'),
+                        run[-200:])
+        checked = subprocess.run(['sh', '-n', '-c', run], capture_output=True, text=True, timeout=30)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertEqual([l for l in df.splitlines() if l.startswith('COPY --from=')],
+                         ['COPY --from=tenant-assertion /out/ /usr/local/bin/'])
+        self.assertEqual(df.count('\nRUN '), 2, df)  # the Rust stage RUN and the overlay's rm -rf
+        self.assertTrue(df.rstrip().endswith(OVERLAY_TAIL.rstrip()), df)
+        self.assertNotIn('pip', df)
+
+    def test_a_release_without_the_leaf_smoke_builds_only_the_two_self_tested_binaries(self):
+        result, df = self.stage(self.PINNED)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('STAGE 1 LEAVES 0', result.stdout)
+        for _, package, binary in self.LEAVES:
+            self.assertNotIn(binary, df)
+        self.assertTrue(' '.join(self.rust_run(df).split()).endswith(
+            'cp target/release/workspace-restore-verify /out/; fi && rm -rf /src/target /usr/local/cargo/registry'))
+
+    def test_the_declared_leaves_are_exactly_the_adapters_binaries(self):
+        script = self.block('rust-leaves') + '\nfor spec in $rust_leaves; do echo "$spec"; done'
+        result = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [':'.join(leaf) for leaf in self.LEAVES])
+
     def test_an_unpinned_release_overlays_only_the_directories_copied_into_app(self):
         for dockerfile in ('FROM python:3.12-slim\nCOPY agent/ ./agent/\n', None):
             with self.subTest(dockerfile=dockerfile):
-                result, df = self.stage(dockerfile)
+                result, df = self.stage(dockerfile, smoke=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('STAGE 0', result.stdout)
                 self.assertEqual(df, 'FROM cowork-diary:rollback-before-diary-overlay\n' + OVERLAY_TAIL)
@@ -747,6 +852,86 @@ class RsStage(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('not a 40-hex ref', result.stderr)
                 self.assertIsNone(df)
+
+
+class DiaryLeafSmoke(unittest.TestCase):
+    """noevia#1071 P0: run the `leaf-smoke` block of diary-overlay.sh with a recording docker stub."""
+
+    ALL = [binary for _, _, binary in RsStage.LEAVES]
+    DOCKER = r"""#!/bin/bash
+printf '%s\n' "$*" >> "$CALL_LOG"
+case "$*" in
+  "run --rm --network none --entrypoint sh cowork-diary:abc1234-candidate -c"*)
+    [ -z "${LIST_FAIL:-}" ] || exit 1
+    printf '%s\n' $LEAVES_PRESENT ;;
+  "run --rm --network none --entrypoint python cowork-diary:abc1234-candidate scripts/smoke_diary_leaves.py"*)
+    [ -z "${SMOKE_FAIL:-}" ] || { echo "diary-score-gap: FAILED" >&2; exit 1; } ;;
+  *) echo "unexpected docker call: $*" >&2; exit 99 ;;
+esac
+"""
+
+    def run_block(self, present, rs_stage=1, rs_leaves=1, **env):
+        with tempfile.TemporaryDirectory(prefix='noevia-leaf-smoke-') as directory:
+            temp = pathlib.Path(directory)
+            (temp / 'docker').write_text(self.DOCKER)
+            (temp / 'docker').chmod(0o755)
+            log = temp / 'calls.log'
+            blocks = RsStage()
+            script = (f'set -euo pipefail\nV=abc1234; rs_stage={rs_stage}; rs_leaves={rs_leaves}\n'
+                      + blocks.block('rust-leaves') + '\n' + blocks.block('leaf-smoke') + '\necho SMOKED')
+            result = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=30,
+                                    env=dict(os.environ, PATH=f'{temp}:{os.environ["PATH"]}', CALL_LOG=str(log),
+                                             LEAVES_PRESENT=' '.join(present), **env))
+            calls = log.read_text().splitlines() if log.exists() else []
+            return result, calls
+
+    def test_every_leaf_the_candidate_has_is_smoked_through_the_release_script(self):
+        result, calls = self.run_block(self.ALL)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('SMOKED', result.stdout)
+        self.assertEqual(len(calls), 2, calls)
+        self.assertTrue(calls[0].startswith('run --rm --network none --entrypoint sh cowork-diary:abc1234-candidate -c'))
+        for binary in self.ALL:
+            self.assertIn(binary, calls[0])
+        self.assertEqual(calls[1], 'run --rm --network none --entrypoint python cowork-diary:abc1234-candidate '
+                         'scripts/smoke_diary_leaves.py ' + ' '.join(self.ALL))
+
+    def test_only_the_leaves_present_are_smoked(self):
+        result, calls = self.run_block(['diary-score-gap', 'diary-temporal-cli'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(calls[1].endswith('scripts/smoke_diary_leaves.py diary-score-gap diary-temporal-cli'), calls)
+
+    def test_a_candidate_without_leaves_is_reported_and_not_smoked(self):
+        result, calls = self.run_block([])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn('selectors must stay python', result.stdout)
+
+    def test_a_failing_leaf_stops_the_overlay(self):
+        result, _ = self.run_block(self.ALL, SMOKE_FAIL='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('SMOKED', result.stdout)
+        self.assertIn('leaf smoke failed; not deploying', result.stderr)
+
+    def test_an_unlistable_candidate_or_an_unknown_name_stops_the_overlay(self):
+        for present, env in (([], {'LIST_FAIL': '1'}), (['diary-score-gap', 'evil;id'], {})):
+            with self.subTest(present=present):
+                result, calls = self.run_block(present, **env)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('SMOKED', result.stdout)
+                self.assertEqual(len(calls), 1, calls)
+
+    def test_nothing_runs_without_a_rust_stage_or_a_release_smoke(self):
+        for rs_stage, rs_leaves in ((0, 1), (1, 0), (0, 0)):
+            with self.subTest(rs_stage=rs_stage, rs_leaves=rs_leaves):
+                result, calls = self.run_block(self.ALL, rs_stage=rs_stage, rs_leaves=rs_leaves)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls, [])
+
+    def test_the_smoke_runs_after_the_candidate_matches_the_release_and_before_anything_is_stopped(self):
+        text = DIARY.read_text()
+        self.assertLess(text.index('# END dirs-exact'), text.index('# BEGIN leaf-smoke'))
+        self.assertLess(text.index('# END leaf-smoke'), text.index('docker stop'))
 
 
 class DiaryCopyContract(unittest.TestCase):
@@ -826,12 +1011,16 @@ class DiaryCopyContract(unittest.TestCase):
         text = (pathlib.Path(os.environ['NOEVIA_SERVICES_DIR']) / 'diary/Dockerfile').read_text()
         self.accepted(text)
         # Independently alter the real artifact, rather than replacing it with a
-        # synthetic generated Dockerfile that teaches the same assumption twice.
-        for name in ('tenant-assertion', 'workspace-restore-verify'):
-            original = f'COPY --from=tenant-assertion /src/target/release/{name} /usr/local/bin/{name}'
-            self.assertIn(original, text)
-            altered = text.replace(original, original.replace('/src/target/release/', '/elsewhere/'))
-            with self.subTest(binary=name):
+        # synthetic generated Dockerfile that teaches the same assumption twice. The release copies either the
+        # /out/ bundle (noevia#1071 P0) or the two individual binaries; every binary copy it has is altered.
+        originals = [line for line in (
+            'COPY --from=tenant-assertion /out/ /usr/local/bin/',
+            *(f'COPY --from=tenant-assertion /src/target/release/{name} /usr/local/bin/{name}'
+              for name in ('tenant-assertion', 'workspace-restore-verify'))) if line in text]
+        self.assertTrue(originals, 'the release Diary Dockerfile copies no Rust binary')
+        for original in originals:
+            altered = text.replace(original, original.replace('--from=tenant-assertion /', '--from=tenant-assertion /elsewhere/'))
+            with self.subTest(binary=original):
                 self.assertNotEqual(self.check(altered).returncode, 0)
                 with self.assertRaises(ValueError):
                     OverlayDirsInSync.dockerfile_dirs(altered)
@@ -959,6 +1148,15 @@ class OverlayDirsInSync(unittest.TestCase):
         line = re.search(r'(?m)^Diary overlay directories: (.+)$', docs)
         self.assertIsNotNone(line, 'docs/deployment.md has no "Diary overlay directories:" line')
         self.assertEqual(set(re.findall(r'`([a-z_]+)/`', line.group(1))), self.script_dirs())
+
+    @unittest.skipUnless(os.environ.get('NOEVIA_SERVICES_DIR'), 'set NOEVIA_SERVICES_DIR to a noevia-services checkout')
+    def test_the_overlay_leaves_match_the_services_leaf_smoke(self):
+        # noevia#1071 P0: the overlay builds exactly the leaves the release's smoke knows how to check.
+        smoke = pathlib.Path(os.environ['NOEVIA_SERVICES_DIR']) / 'diary/scripts/smoke_diary_leaves.py'
+        if not smoke.is_file():
+            self.skipTest('the pinned noevia-services predates the Diary leaf smoke')
+        body = smoke.read_text().split('LEAVES = {', 1)[1].split('}', 1)[0]
+        self.assertEqual(re.findall(r"(?m)^    '([a-z-]+)':", body), [binary for _, _, binary in RsStage.LEAVES])
 
     @unittest.skipUnless(os.environ.get('NOEVIA_SERVICES_DIR'), 'set NOEVIA_SERVICES_DIR to a noevia-services checkout to compare with its real Dockerfile')
     def test_the_list_matches_the_services_diary_dockerfile(self):
