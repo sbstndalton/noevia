@@ -336,12 +336,15 @@ if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
   exit 2
 fi
 # The calibration job itself (sbstndalton/noevia#2303: its state file, boot recovery and maintenance hold) is
-# the front's when it lists rust-calibration-worker and Core exports CALIBRATION_WORKER_OWNER (Core then
-# builds no public calibrator and does not recover the job at boot). A mixed pair would recover one state
-# file twice at a joint restart, or never. Neither result comes from an inherited environment.
+# the front's when it lists the worker and Core exports CALIBRATION_WORKER_OWNER (Core then builds no public
+# calibrator and does not recover the job at boot). A mixed pair would recover one state file twice at a joint
+# restart, or never. Generation 2 (rust-calibration-worker-v2, noevia-calibration-worker-rust/2) has every load
+# the job asks for decided by Core first, so a generation pairs only with itself. Neither result comes from an
+# inherited environment.
 calibration_worker_front_owner=""
-grep -qx 'rust-calibration-worker' <<<"$rust_features" && calibration_worker_front_owner=rust
-calibration_worker_core_owner="$(node -e "try { const m = require('./server/rust-calibration-routes.cjs'); if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+grep -qx 'rust-calibration-worker' <<<"$rust_features" && calibration_worker_front_owner=v1
+grep -qx 'rust-calibration-worker-v2' <<<"$rust_features" && calibration_worker_front_owner=v2
+calibration_worker_core_owner="$(node -e "try { const m = require('./server/rust-calibration-routes.cjs'); if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/1') process.stdout.write('v1'); else if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/2') process.stdout.write('v2'); } catch {}" 2>/dev/null || true)"
 if [ "$calibration_worker_front_owner" != "$calibration_worker_core_owner" ]; then
   echo "web-supervisor: calibration worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2

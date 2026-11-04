@@ -1016,20 +1016,28 @@ if [ "$cr_rs_owner" = rust ]; then
 fi
 # #2303 (worker): the calibration job itself (its state file, boot recovery and hold) moves with explicit
 # markers, never source shapes: Core exports CALIBRATION_WORKER_OWNER from rust-calibration-routes.cjs, the
-# front lists rust-calibration-worker in --features. A mixed pair recovers one state file twice at a joint
-# restart (new front, old Core) or never (old front, new Core), so either half alone is refused. That a marked
-# Core builds no public calibrator and recovers nothing at boot is Core CI's to prove, by booting index.cjs
-# (noevia-core server/native-calibration-boot-2303.test.cjs), not this script's to guess from source text.
-cw_core_owner=""; cw_rs_owner=""
-move_capability "$tree/core/server/rust-calibration-routes.cjs" CALIBRATION_WORKER_OWNER noevia-calibration-worker-rust/1 js && cw_core_owner=rust
-move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-worker features && cw_rs_owner=rust
-[ "$cw_core_owner" = "$cw_rs_owner" ] \
-  || die "calibration worker pairing: Core (noevia-calibration-worker-rust/1) and Rust (rust-calibration-worker) must move the calibration job together"
-if [ "$cw_rs_owner" = rust ]; then
+# front lists the worker in --features. A mixed pair recovers one state file twice at a joint restart (new
+# front, old Core) or never (old front, new Core), so either half alone is refused. That a marked Core builds
+# no public calibrator, recovers nothing at boot and hands the front its load decision is Core CI's to prove,
+# by booting index.cjs (noevia-core server/native-calibration-boot-2303.test.cjs), not this script's to guess
+# from source text. Generation 2 (noevia-calibration-worker-rust/2, rust-calibration-worker-v2): every load the
+# job asks for is first decided by Core's overBudget() (POST /internal/model-maintenance/load-refusal).
+# Generations pair only with themselves, and generation 1 (no load decision: quarantined or over-budget
+# profiles reached the engine) is refused outright; no release ever shipped it.
+cw_core_gen=""; cw_rs_gen=""
+move_capability "$tree/core/server/rust-calibration-routes.cjs" CALIBRATION_WORKER_OWNER noevia-calibration-worker-rust/1 js && cw_core_gen=1
+move_capability "$tree/core/server/rust-calibration-routes.cjs" CALIBRATION_WORKER_OWNER noevia-calibration-worker-rust/2 js && cw_core_gen=2
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-worker features && cw_rs_gen=1
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-worker-v2 features && cw_rs_gen=2
+[ "$cw_core_gen" = "$cw_rs_gen" ] \
+  || die "calibration worker pairing: Core (generation ${cw_core_gen:-none}) and Rust (generation ${cw_rs_gen:-none}) must move the calibration job together, at one generation"
+[ "$cw_rs_gen" != 1 ] \
+  || die "calibration worker pairing: generation 1 sends calibration loads without Core's load decision; pair noevia-calibration-worker-rust/2 with rust-calibration-worker-v2"
+if [ -n "$cw_rs_gen" ]; then
   [ "$cr_rs_owner" = rust ] && [ "$cc_rs_owner" = rust ] \
     || die "calibration worker pairing: the native worker needs the native start/read and cancellation routes"
-  grep -qF 'CALIBRATION_WORKER_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
-    && grep -qF 'rust-calibration-worker' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+  grep -qF 'noevia-calibration-worker-rust/2' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    && grep -qF 'rust-calibration-worker-v2' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
     || die "calibration worker pairing: web supervisor lacks a prelaunch capability comparison"
 fi
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
