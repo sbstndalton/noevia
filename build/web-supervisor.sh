@@ -267,6 +267,8 @@ rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 rust-health.cjs rust-health health check
 rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
+rust-chat-search.cjs rust-chat-search chat search
+rust-chat-export.cjs rust-chat-export chat download
 rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
 rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker
