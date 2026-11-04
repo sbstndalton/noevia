@@ -230,7 +230,9 @@ fi
 # (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
 # list (server/rust-workspace.cjs beside rust-workspace), the rest of the Diary routes
 # (server/rust-diary-routes.cjs beside rust-diary-routes, sbstndalton/noevia#2206; Rust owns the connector
-# credentials table and reads the running-exchange set Node publishes), since #2202 round 2 the admin MCP directory
+# credentials table and reads the running-exchange set Node publishes), the Diary local exchange
+# (server/rust-diary-local-exchange.cjs beside rust-diary-local-exchange: the front relays it and holds Node's model
+# throttle and inference gate through the admission lease's diaryExchange ask, which only that Core grants), since #2202 round 2 the admin MCP directory
 # (server/rust-mcp-directory.cjs beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the
 # only writer of directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs
 # beside rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last
@@ -270,6 +272,7 @@ rust-workspace.cjs rust-workspace workspace list
 rust-chat-search.cjs rust-chat-search chat search
 rust-chat-export.cjs rust-chat-export chat download
 rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
+rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
 rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker
 rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
