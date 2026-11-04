@@ -1304,8 +1304,11 @@ fi
 if [ -n "$retention_core_put" ]; then
   code_has "$tree/core/server/routes/account.cjs" "Retention settings are owned by the Rust front." \
     || die "retention PUT ownership pairing: Core must refuse the moved writer"
-  if code_has "$tree/core/server/routes/account.cjs" 'retention.write('; then
+  if code_has "$tree/core/server/routes/account.cjs" 'retention\.write\('; then
     die "retention PUT ownership pairing: Core still writes retention settings"
+  else
+    retention_match_status=$?
+    [ "$retention_match_status" -eq 1 ] || die "retention PUT ownership pairing: writer matcher failed"
   fi
 fi
 # #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
