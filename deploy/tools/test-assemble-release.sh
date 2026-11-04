@@ -726,6 +726,51 @@ try_routes() {
 }
 refused() { [ $rc -ne 0 ] && grep -q "$1" "$work/err" && [ ! -f "$out/noevia-release-$tsha.tar.gz" ]; }
 
+# Diary native packaging (D4-D5): services that forward to the Rust Diary server (agent/rust_forward.py) are
+# paired with a noevia-rs that has the three sources and a Dockerfile that builds and bundles noevia-diary.
+diary_native_try() { try_routes "$1" </dev/null; }
+diary_df_ok='RUN cargo build --release --locked -p tenant-assertion-cli \
+      -p diary-workspace-export \
+      -p noevia-diary \
+ && cd target/release \
+ && cp tenant-assertion diary-workspace-export noevia-diary /out/'
+diary_native_try dn-baseline
+check "Diary native: without the forwarder nothing about noevia-diary is required" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mkdir -p "$repo/services/diary/agent"
+echo '# synthetic forwarder' > "$repo/services/diary/agent/rust_forward.py"
+printf '%s\n' "$diary_df_ok" > "$repo/services/diary/Dockerfile"
+diary_native_try dn-no-rs-bins
+check "Diary native: the forwarder over a noevia-rs without noevia-diary is refused" 'refused "Diary native packaging: services/diary forwards to the Rust Diary server but noevia-rs.*bins/noevia-diary"'
+mkdir -p "$rz/bins/noevia-diary" "$rz/bins/tenant-assertion" "$rz/crates/diary-workspace-export"
+echo synthetic > "$rz/bins/noevia-diary/Cargo.toml"; echo synthetic > "$rz/bins/tenant-assertion/Cargo.toml"
+diary_native_try dn-no-export
+check "Diary native: a noevia-rs without the workspace exporter crate is refused" 'refused "Diary native packaging.*crates/diary-workspace-export"'
+echo synthetic > "$rz/crates/diary-workspace-export/Cargo.toml"
+rm -f "$rz/bins/tenant-assertion/Cargo.toml"
+diary_native_try dn-no-assertion
+check "Diary native: a noevia-rs without tenant-assertion is refused" 'refused "Diary native packaging.*bins/tenant-assertion"'
+echo synthetic > "$rz/bins/tenant-assertion/Cargo.toml"
+diary_native_try dn-paired
+check "Diary native: the forwarder, all three sources and a building Dockerfile assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+printf '%s\n' 'RUN cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export && cp tenant-assertion diary-workspace-export /out/' > "$repo/services/diary/Dockerfile"
+diary_native_try dn-df-no-build
+check "Diary native: a Dockerfile that does not build noevia-diary is refused" 'refused "does not build noevia-diary"'
+printf '%s\n' '# -p noevia-diary' 'RUN cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export && cp tenant-assertion diary-workspace-export noevia-diary /out/' > "$repo/services/diary/Dockerfile"
+diary_native_try dn-df-commented
+check "Diary native: a commented-out build of noevia-diary does not count" 'refused "does not build noevia-diary"'
+printf '%s\n' 'RUN cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export -p noevia-diary && cp tenant-assertion diary-workspace-export /out/' > "$repo/services/diary/Dockerfile"
+diary_native_try dn-df-no-copy
+check "Diary native: a Dockerfile that builds but does not bundle noevia-diary is refused" 'refused "does not copy noevia-diary into /out/"'
+printf '%s\n' 'RUN cargo build --release --locked -p noevia-diary-extra && cp noevia-diary-extra /out/' > "$repo/services/diary/Dockerfile"
+diary_native_try dn-df-lookalike
+check "Diary native: a package that only starts with the name does not count" 'refused "does not build noevia-diary"'
+printf '%s\n' "$diary_df_ok" > "$repo/services/diary/Dockerfile"
+# Leave the fixture as it was for the checks below: no forwarder, the synthetic Dockerfile, no Diary sources.
+g rm -q -f services/diary/agent/rust_forward.py
+echo "synthetic diary" > "$repo/services/diary/Dockerfile"
+rm -rf "$rz/bins/noevia-diary" "$rz/bins/tenant-assertion" "$rz/crates"
+g add -A && g commit -qm dn-restore
+
 # #1071 web-address GET read pairing: either side alone fails; exact three pair, other
 # methods remain with Node. The synthetic core guard mirrors its exported source contract.
 cat > "$w/server/rust-web-address.cjs" <<'JS'

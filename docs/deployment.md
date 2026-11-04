@@ -137,6 +137,20 @@ script builds) needs a rebuild, not this overlay. A test
 fixture `Dockerfile` the same; with `NOEVIA_SERVICES_DIR` set to a noevia-services checkout it compares the
 real `diary/Dockerfile` too.
 
+Native Diary binaries. When the release's Diary `Dockerfile` pins noevia-rs and the release ships
+`scripts/smoke_diary_leaves.py`, the overlay also builds the Diary Rust leaves and the Rust Diary server
+`noevia-diary` (D4–D5) from that pin into `/usr/local/bin/` and runs the smoke in the candidate. A release
+that ships the server forwarder (`agent/rust_forward.py`) must have `noevia-diary`, `tenant-assertion` and
+`diary-workspace-export` executable in the candidate (the paths `DIARY_RUST_SERVER_BIN`, `TENANT_ASSERTION_BIN`
+and `DIARY_WORKSPACE_EXPORT_BIN` default to); otherwise the overlay stops before anything is stopped. The
+assembler refuses the same pairing earlier: a services Diary with the forwarder over a noevia-rs pin without
+`bins/noevia-diary`, `bins/tenant-assertion` or `crates/diary-workspace-export`, or a Diary `Dockerfile` that
+does not build and bundle `noevia-diary`. Shipping the binary changes no behaviour: the server is started only
+when `DIARY_RUST_ROUTES` names a route or `DIARY_RUST_WRITES` a tenant, both empty by default and set by the
+owner in the Diary `.env`, never by the overlay. Moving the noevia-rs pin for Diary means bumping
+`NOEVIA_RS_REF` and `NOEVIA_RS_SHA256` together in `release/versions.lock`, `deploy/egress-proxy/Dockerfile` and
+every noevia-services Dockerfile (`bin/repin-services.sh` does the services side); CI fails if one differs.
+
 ### Document extraction app-only overlay
 
 Use this flow only when the document extraction service's Python app files changed and its native binary, dependency locks and downloaded models did not. The overlay starts from the document extraction image that is currently running and replaces exactly the app files that the production image copies into `/app/`. The whole overlay is these two lines:

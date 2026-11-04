@@ -167,6 +167,26 @@ if [ -n "$rs_sum" ]; then
   rs_sha="$rs_ref"
 fi
 
+# Diary native packaging (D4-D5): a services Diary that forwards to the Rust Diary server (agent/rust_forward.py)
+# runs the noevia-diary binary, the tenant-assertion leaf and the workspace exporter from the one /out/ bundle its
+# Dockerfile builds at the pinned noevia-rs. A services pin ahead of the noevia-rs pin would build an image (or
+# overlay) that cannot start the server, so the pairing is refused here, before anything is built:
+# the pinned rs must carry all three, and the Diary Dockerfile must build noevia-diary and copy it into /out/.
+# DIARY_RUST_ROUTES and DIARY_RUST_WRITES stay empty by default (the Dockerfile sets neither), so a paired
+# release changes no behaviour until the owner enables them.
+if [ -f "$tree/services/diary/agent/rust_forward.py" ]; then
+  for diary_native in bins/noevia-diary bins/tenant-assertion crates/diary-workspace-export; do
+    [ -f "$tree/rs/$diary_native/Cargo.toml" ] \
+      || die "Diary native packaging: services/diary forwards to the Rust Diary server but noevia-rs (NOEVIA_RS_REF in versions.lock at $sha) has no $diary_native"
+  done
+  diary_dockerfile="$(code_lines "$tree/services/diary/Dockerfile" \
+    | awk '{ if (sub(/\\[ \t]*$/, "")) { buf = buf $0 " "; next } print buf $0; buf = "" } END { if (buf != "") print buf }')"
+  printf '%s\n' "$diary_dockerfile" | grep -Eq '(^|[[:space:]])-p noevia-diary([[:space:]]|$)' \
+    || die "Diary native packaging: services/diary/Dockerfile does not build noevia-diary (-p noevia-diary)"
+  printf '%s\n' "$diary_dockerfile" | grep -Eq 'cp ([^&;|]* )?noevia-diary( [^&;|]*)? /out/' \
+    || die "Diary native packaging: services/diary/Dockerfile does not copy noevia-diary into /out/"
+fi
+
 # Full-Rust migration M4: the Rust front and Node share projects.json. Every project route the
 # front owns (rs/contracts/http/routes.toml, owner "rust", no switch since sbstndalton/noevia#1071:
 # a project, free-chat-list or chat-context path) must be one this release's core knows the front

@@ -790,7 +790,9 @@ class RsStage(unittest.TestCase):
               ('crates/diary-storage-backoff', 'diary-storage-backoff', 'diary-storage-backoff'),
               ('crates/diary-workspace-rules', 'diary-workspace-rules', 'diary-workspace-rules'),
               ('crates/diary-backup-format', 'diary-backup-format', 'diary-backup-format'),
-              ('crates/diary-backup-run', 'diary-backup-run', 'diary-backup-run')]
+              ('crates/diary-backup-run', 'diary-backup-run', 'diary-backup-run'),
+              # D4-D5: the Rust Diary server process (Python starts it only when DIARY_RUST_ROUTES/WRITES is set).
+              ('bins/noevia-diary', 'noevia-diary', 'noevia-diary')]
 
     @staticmethod
     def rust_run(df):
@@ -932,6 +934,111 @@ esac
         text = DIARY.read_text()
         self.assertLess(text.index('# END dirs-exact'), text.index('# BEGIN leaf-smoke'))
         self.assertLess(text.index('# END leaf-smoke'), text.index('docker stop'))
+
+
+class DiaryNativeRequired(unittest.TestCase):
+    """D4-D5: run the `native-required` block of diary-overlay.sh with a recording docker stub."""
+
+    NATIVE = ['noevia-diary', 'tenant-assertion', 'diary-workspace-export']
+    DOCKER = r"""#!/bin/bash
+printf '%s\n' "$*" >> "$CALL_LOG"
+case "$*" in
+  "run --rm --network none --entrypoint sh cowork-diary:abc1234-candidate -c"*)
+    [ -z "${CHECK_FAIL:-}" ] || exit 1
+    printf '%s\n' $MISSING ;;
+  *) echo "unexpected docker call: $*" >&2; exit 99 ;;
+esac
+"""
+
+    def run_block(self, forwarder=True, rs_stage=1, rs_leaves=1, missing=(), **env):
+        with tempfile.TemporaryDirectory(prefix='noevia-native-required-') as directory:
+            temp = pathlib.Path(directory)
+            (temp / 'docker').write_text(self.DOCKER)
+            (temp / 'docker').chmod(0o755)
+            agent = temp / 'releases/abc1234/services/diary/agent'
+            agent.mkdir(parents=True)
+            if forwarder:
+                (agent / 'rust_forward.py').write_text('# synthetic\n')
+            log = temp / 'calls.log'
+            blocks = RsStage()
+            script = (f'set -euo pipefail\nbase=$1; V=abc1234; rs_stage={rs_stage}; rs_leaves={rs_leaves}\n'
+                      + blocks.block('rust-leaves') + '\n' + blocks.block('native-required') + '\necho CHECKED')
+            result = subprocess.run(['bash', '-c', script, 'x', str(temp)], capture_output=True, text=True, timeout=30,
+                                    env=dict(os.environ, PATH=f'{temp}:{os.environ["PATH"]}', CALL_LOG=str(log),
+                                             MISSING=' '.join(missing), **env))
+            calls = log.read_text().splitlines() if log.exists() else []
+            return result, calls
+
+    def test_a_candidate_with_the_three_executables_passes_and_they_are_checked_at_the_fixed_paths(self):
+        result, calls = self.run_block()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('CHECKED', result.stdout)
+        self.assertIn('candidate native Diary binaries present: ' + ' '.join(self.NATIVE), result.stdout)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn('for b in ' + ' '.join(self.NATIVE) + ';', calls[0])
+        self.assertIn('/usr/local/bin/$b', calls[0])
+        self.assertIn('-f', calls[0])
+        self.assertIn('-x', calls[0])
+
+    def test_each_missing_binary_stops_the_overlay_naming_it(self):
+        for name in self.NATIVE:
+            with self.subTest(name=name):
+                result, _ = self.run_block(missing=[name])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('CHECKED', result.stdout)
+                self.assertIn(name, result.stderr)
+                self.assertIn('not deploying', result.stderr)
+
+    def test_all_three_missing_are_all_named(self):
+        result, _ = self.run_block(missing=self.NATIVE)
+        self.assertNotEqual(result.returncode, 0)
+        for name in self.NATIVE:
+            self.assertIn(name, result.stderr)
+
+    def test_an_unreadable_candidate_stops_the_overlay(self):
+        result, _ = self.run_block(CHECK_FAIL='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('could not check the native Diary binaries', result.stderr)
+
+    def test_a_release_with_the_forwarder_but_no_rust_stage_or_no_leaf_smoke_stops_without_asking_docker(self):
+        for rs_stage, rs_leaves in ((0, 1), (1, 0), (0, 0)):
+            with self.subTest(rs_stage=rs_stage, rs_leaves=rs_leaves):
+                result, calls = self.run_block(rs_stage=rs_stage, rs_leaves=rs_leaves)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('CHECKED', result.stdout)
+                self.assertEqual(calls, [])
+                self.assertIn('not deploying', result.stderr)
+
+    def test_a_release_without_the_forwarder_is_not_checked(self):
+        for rs_stage, rs_leaves in ((1, 1), (0, 0)):
+            with self.subTest(rs_stage=rs_stage, rs_leaves=rs_leaves):
+                result, calls = self.run_block(forwarder=False, rs_stage=rs_stage, rs_leaves=rs_leaves,
+                                               missing=self.NATIVE)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('CHECKED', result.stdout)
+                self.assertEqual(calls, [])
+
+    def test_the_overlay_does_not_touch_the_native_switches(self):
+        text = DIARY.read_text()
+        for name in ('DIARY_RUST_ROUTES', 'DIARY_RUST_WRITES'):
+            code = [l for l in text.splitlines() if name in l and not l.lstrip().startswith('#')]
+            self.assertEqual(code, [], name)
+
+    def test_the_check_runs_after_the_smoke_and_before_anything_is_stopped(self):
+        text = DIARY.read_text()
+        self.assertLess(text.index('# END leaf-smoke'), text.index('# BEGIN native-required'))
+        self.assertLess(text.index('# END native-required'), text.index('docker stop'))
+
+    def test_noevia_diary_is_built_into_the_bundle_like_the_other_leaves(self):
+        self.assertIn(('bins/noevia-diary', 'noevia-diary', 'noevia-diary'), RsStage.LEAVES)
+        result, df = RsStage().stage(RsStage.PINNED, smoke=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('&& if [ -d bins/noevia-diary ]; then cargo build --release --locked -p noevia-diary'
+                      ' && cp target/release/noevia-diary /out/; fi', RsStage.rust_run(df))
+        # A pin from before noevia-diary still builds (guarded by the directory), and a release without the smoke
+        # builds no leaf at all.
+        _, plain = RsStage().stage(RsStage.PINNED)
+        self.assertNotIn('noevia-diary', plain)
 
 
 class DiaryCopyContract(unittest.TestCase):
@@ -1156,7 +1263,8 @@ class OverlayDirsInSync(unittest.TestCase):
         if not smoke.is_file():
             self.skipTest('the pinned noevia-services predates the Diary leaf smoke')
         body = smoke.read_text().split('LEAVES = {', 1)[1].split('}', 1)[0]
-        self.assertEqual(re.findall(r"(?m)^    '([a-z-]+)':", body), [binary for _, _, binary in RsStage.LEAVES])
+        # The same set, whatever the order the smoke lists them in.
+        self.assertEqual(sorted(re.findall(r"(?m)^    '([a-z-]+)':", body)), sorted(binary for _, _, binary in RsStage.LEAVES))
 
     @unittest.skipUnless(os.environ.get('NOEVIA_SERVICES_DIR'), 'set NOEVIA_SERVICES_DIR to a noevia-services checkout to compare with its real Dockerfile')
     def test_the_list_matches_the_services_diary_dockerfile(self):

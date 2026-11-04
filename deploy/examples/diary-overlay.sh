@@ -2,7 +2,8 @@
 # Diary image overlay: FROM the running image, replace exactly the directories the Diary Dockerfile copies into
 # /app (agent/, config/ and scripts/; #2112) and, when the release pins noevia-rs, add the tenant-assertion and
 # workspace-restore-verify binaries built from that pin, plus the Diary Rust leaves (rust_leaves below) when the
-# release ships the smoke that proves them (noevia#1071 P0). Rolls back on any failure.
+# release ships the smoke that proves them (noevia#1071 P0), and the Rust Diary server noevia-diary (D4-D5).
+# Rolls back on any failure.
 # Usage (on DaServer, as root): bash diary-overlay.sh <SRC_SHA>. SRC_SHA is an unpacked release
 # under releases/ whose services/diary/{agent,config,scripts} are shipped; it also becomes the new Diary tag
 # (cowork-diary:<SRC_SHA>) and DIARY_VERSION in .env. COWORK_VERSION and the web image are untouched.
@@ -151,7 +152,8 @@ trap on_exit EXIT
 docker tag "$OLD_ID" cowork-diary:rollback-before-diary-overlay
 for d in $overlay_dirs; do cp -r "$base/releases/$V/services/diary/$d" "$ctx/$d"; done
 # BEGIN rust-leaves (deploy/tests/test_overlay_scripts.py runs this block with rs-stage and leaf-smoke)
-# noevia#1071 P0: the Diary Rust leaves whose Python adapters already exist, one per line as
+# noevia#1071 P0: the Diary Rust leaves whose Python adapters already exist (and, last, the D4-D5 server process
+# noevia-diary, which Python starts only when DIARY_RUST_ROUTES/DIARY_RUST_WRITES is set), one per line as
 # <source directory in noevia-rs>:<cargo package>:<binary installed in /usr/local/bin>. Each is built only when
 # the pinned noevia-rs has its directory, and only for a release that ships scripts/smoke_diary_leaves.py, which
 # the candidate then runs on every leaf it has. The image ships them; every selector stays python.
@@ -166,7 +168,8 @@ crates/diary-index-transform:diary-index-transform:diary-index-transform
 crates/diary-storage-backoff:diary-storage-backoff:diary-storage-backoff
 crates/diary-workspace-rules:diary-workspace-rules:diary-workspace-rules
 crates/diary-backup-format:diary-backup-format:diary-backup-format
-crates/diary-backup-run:diary-backup-run:diary-backup-run"
+crates/diary-backup-run:diary-backup-run:diary-backup-run
+bins/noevia-diary:noevia-diary:noevia-diary"
 leaf_smoke=scripts/smoke_diary_leaves.py
 # The RUN continuation lines that build each declared leaf into /out/ (nothing when the release has no smoke).
 rust_leaf_lines() {
@@ -277,6 +280,26 @@ if [ "$rs_stage" = 1 ] && [ "$rs_leaves" = 1 ]; then
   fi
 fi
 # END leaf-smoke
+# BEGIN native-required (deploy/tests/test_overlay_scripts.py runs this block with a stub docker)
+# D4-D5: a release that ships the forwarder (agent/rust_forward.py) starts noevia-diary, verifies tenants with
+# tenant-assertion and exports with diary-workspace-export. Its candidate must carry all three, executable at the
+# fixed paths the code defaults to (DIARY_RUST_SERVER_BIN, TENANT_ASSERTION_BIN and DIARY_WORKSPACE_EXPORT_BIN
+# are those same paths); otherwise the overlay would ship a server nothing can start, so it stops before anything
+# is stopped. DIARY_RUST_ROUTES and DIARY_RUST_WRITES are the owner's to set in .env and are not touched here.
+if [ -f "$base/releases/$V/services/diary/agent/rust_forward.py" ]; then
+  native_bins="noevia-diary tenant-assertion diary-workspace-export"
+  [ "$rs_stage" = 1 ] && [ "$rs_leaves" = 1 ] \
+    || { echo "this release ships the Rust Diary server forwarder but its Diary Dockerfile pins no noevia-rs, or the release has no $leaf_smoke; not deploying" >&2; exit 1; }
+  native_missing=$(docker run --rm --network none --entrypoint sh cowork-diary:$V-candidate -c \
+    "for b in $native_bins; do if [ ! -f \"/usr/local/bin/\$b\" ] || [ ! -x \"/usr/local/bin/\$b\" ]; then echo \"\$b\"; fi; done") \
+    || { echo "could not check the native Diary binaries in the candidate; not deploying" >&2; exit 1; }
+  if [ -n "$native_missing" ]; then
+    echo "this release ships the Rust Diary server forwarder but the candidate lacks (or cannot execute): $(printf '%s ' $native_missing) (the pinned noevia-rs predates them); not deploying" >&2
+    exit 1
+  fi
+  echo "candidate native Diary binaries present: $native_bins"
+fi
+# END native-required
 cp -p "$config" "$config.bak.before-diary-$V"
 # BEGIN diary-backup (deploy/tests/test_overlay_scripts.py runs this block through the whole script, with stub docker, gzip and php)
 # Scoped backup (#1487): the Diary state directory and .env only, in a new folder that the Appdata Backup
