@@ -141,30 +141,50 @@ rm -f "$work/server/rust-web-address.cjs"
 
 # The budget watchdog moves as one owner.
 reset
-run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" >/dev/null 2>"$work/err"; rc=$?
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
 check "budget watch: native front over a Core that still runs the job is refused before launch" '[ $rc -eq 2 ] && grep -q "budget watch ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
-printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/2' };" > "$work/server/rust-budget-watch.cjs"
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/3' };" > "$work/server/rust-budget-watch.cjs"
 reset
 run >/dev/null 2>"$work/err"; rc=$?
 check "budget watch: Core that stopped running the job over an old front is refused before launch" '[ $rc -eq 2 ] && grep -q "budget watch ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 reset; touch "$work/die-front"
-run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" >/dev/null 2>"$work/err"; rc=$?
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
 check "budget watch: matching exported Core and compiled front start together" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
 reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: v2 front over v3 Core is refused" '[ $rc -eq 2 ]'
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/2' };" > "$work/server/rust-budget-watch.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: v3 front over v2 Core is refused" '[ $rc -eq 2 ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: matched native v2 remains a rollback pair" '[ $rc -eq 3 ]'
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/3' };" > "$work/server/rust-budget-watch.cjs"
+reset
 run STUB_FEATURES="$BASE_FEATURES rust-budget-watch" >/dev/null 2>"$work/err"; rc=$?
-check "budget watch: unfenced v1 front over v2 Core is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+check "budget watch: unfenced v1 front over v3 Core is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
 printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/1' };" > "$work/server/rust-budget-watch.cjs"
 reset
-run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" >/dev/null 2>"$work/err"; rc=$?
-check "budget watch: v2 front over unfenced v1 Core is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: v3 front over unfenced v1 Core is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
 reset; touch "$work/die-front"
 run STUB_FEATURES="$BASE_FEATURES rust-budget-watch" >/dev/null 2>"$work/err"; rc=$?
 check "budget watch: matched native v1 pair remains a rollback pair" '[ $rc -eq 3 ]'
 printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'wrong' };" > "$work/server/rust-budget-watch.cjs"
 reset
-run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" BUDGET_WATCH_OWNER=noevia-budget-watch-rust/2 >/dev/null 2>"$work/err"; rc=$?
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" BUDGET_WATCH_OWNER=noevia-budget-watch-rust/3 >/dev/null 2>"$work/err"; rc=$?
 check "budget watch: inherited owner value cannot spoof a wrong Core" '[ $rc -eq 2 ] && grep -q "budget watch ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm -f "$work/server/rust-budget-watch.cjs"
+
+# Leftover native pending, recorded and damaged fences do not gate legacy rollback.
+mkdir -p "$work/data/budget-watch-synthetic"
+printf '%s\n' '{"model":"pending","recorded":false}' > "$work/data/budget-watch-synthetic/pending.json"
+printf '%s\n' '{"model":"recorded","recorded":true}' > "$work/data/budget-watch-synthetic/recorded.json"
+printf '%s\n' 'damaged' > "$work/data/budget-watch-synthetic/unknown.json.damaged-1"
+reset; touch "$work/die-front"
+run UI_DATA_DIR="$work/data" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: legacy rollback starts with leftover fence files present" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log" && [ -f "$work/data/budget-watch-synthetic/pending.json" ] && [ -f "$work/data/budget-watch-synthetic/recorded.json" ]'
 
 reset
 run UI_PORT=65000 >/dev/null 2>&1; rc=$?

@@ -1018,8 +1018,10 @@ fi
 bw_core_owner=""; bw_rs_owner=""
 move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/1 js && bw_core_owner=v1
 move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/2 js && bw_core_owner=v2
+move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/3 js && bw_core_owner=v3
 move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-budget-watch features && bw_rs_owner=v1
 move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-budget-watch-v2 features && bw_rs_owner=v2
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-budget-watch-v3 features && bw_rs_owner=v3
 [ "$bw_core_owner" = "$bw_rs_owner" ] \
   || die "budget watch pairing: Core and Rust must move the watchdog together"
 if [ -n "$bw_rs_owner" ]; then
