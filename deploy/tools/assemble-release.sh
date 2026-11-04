@@ -1156,6 +1156,31 @@ if [ "$ct_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$ct_index" || die "chat turn ownership pairing: missing captured front secret"
 fi
+# Chat port S6: the chat edge. The front answers routes/chat.cjs's checks before the loop and owns the `llm:` budget
+# that the turn and the Diary local exchange share (capability rust-chat-edge); Core (server/rust-chat-edge.cjs)
+# keeps no llm: limiter, accepts the front's Cowork start as a relayed turn and marks its gate refusals so the front
+# gives the call back. The edge rides on the S5 relay. Old/old stays valid for rollback; mixed pairs are refused (Core
+# without its limiter beside an old front would leave the budget to nobody; an edge front beside a limiting Core would
+# charge each call twice).
+ce_core_owner=""; ce_rs_owner=""
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-chat-edge\\.cjs'\\)" && ce_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-edge features; then ce_rs_owner=rust; fi
+[ "$ce_core_owner" = "$ce_rs_owner" ] || die "chat edge ownership pairing: Core and Rust must move together"
+if [ -f "$tree/core/server/index.cjs" ]; then
+  ce_index="$(code_lines "$tree/core/server/index.cjs")"
+  ce_limiter=""; grep -qE "llmRateLimited|llmRateLimiter" <<<"$ce_index" && ce_limiter=node
+  if [ "$ce_rs_owner" = rust ]; then
+    [ "$ct_rs_owner" = rust ] || die "chat edge ownership pairing: the edge needs the chat turn relay"
+    [ -z "$ce_limiter" ] || die "chat edge ownership pairing: Core must not keep its own llm: limiter"
+    code_has "$tree/core/server/rust-chat-edge.cjs" "^const FRONT_CAPABILITY = 'rust-chat-edge';$" \
+      || die "chat edge ownership pairing: Core's marker must name the front capability"
+    code_has "$tree/core/server/rust-chat-edge.cjs" "^const COWORK_PATH = '/internal/chat/cowork';$" \
+      && code_has "$tree/core/server/rust-chat-turn.cjs" "pathname !== edge[.]COWORK_PATH" \
+      || die "chat edge ownership pairing: Core must accept the front's Cowork start"
+    grep -qF "chatEdge.markGateRefused(res,relay,pathname);" <<<"$ce_index" \
+      || die "chat edge ownership pairing: Core must mark the gate refusals the front counted"
+  fi
+fi
 # #2281: the toolbox picker moves as one owner, with only raw discovery/prefill facts in Core.
 tp_core_owner=""; tp_rs_owner=""
 grep -qF "require('./rust-toolbox-picker.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && tp_core_owner=rust
