@@ -4477,6 +4477,85 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try maint-old-pair
 check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# #2286 recheck moves independently, after the native evidence-store group.
+cat > "$w/server/rust-model-evidence-recheck.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/models/evidence/recheck']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/inference-admission-lease.cjs"
+mkdir -p "$w/server/routes"
+cp "$w/server/routes/models.cjs" "$work/er-model-routes.saved" 2>/dev/null || true
+printf '%s\n' '// Other model routes, no public image probe.' > "$w/server/routes/models.cjs"
+er_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+if (require('./rust-model-maintenance.cjs').refuseOwned(req, res, {})) return;
+if (require('./rust-model-evidence-recheck.cjs').refuseOwned(req, res, {})) return;
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const inferenceAdmission = require('./inference-admission-lease.cjs').createAdmissionRoutes({
+  secret: FRONT_SECRET,
+});
+if (await inferenceAdmission.handle(req, res)) return;
+JS
+}
+er_front() { sed 's/"start-id"/"start-id", "rust-model-maintenance", "rust-model-evidence-recheck"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+maint_recheck='[[route]]
+path = "/api/models/evidence/recheck"
+owner = "rust"
+methods = ["POST"]'
+er_core
+sed 's/"start-id"/"start-id", "rust-model-maintenance"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+maint_try recheck-core-only
+check "native recheck Core requires the front capability" 'refused "model maintenance ownership pairing: the recheck stays Node"'
+er_front
+sed '/rust-model-evidence-recheck.cjs/d' "$w/server/index.cjs" > "$work/er-core-old"; cp "$work/er-core-old" "$w/server/index.cjs"
+maint_try recheck-front-only
+check "native recheck front requires the Core refusal" 'refused "evidence recheck ownership pairing"'
+er_core
+maint_try recheck-pair
+check "native recheck plus native evidence store assemble" '[ $rc -eq 0 ]'
+maint_recheck='[[route]]
+path = "/api/models/evidence/recheck"
+owner = "rust"
+methods = ["POST", "GET"]'
+maint_try recheck-extra-method
+check "native recheck owns POST alone" 'refused "evidence recheck ownership pairing"'
+maint_recheck='[[route]]
+path = "/api/models/evidence/recheck"
+owner = "node"'
+maint_try recheck-node-row
+check "native recheck cannot retain a Node-owned row" 'refused "evidence recheck ownership pairing"'
+maint_recheck='[[route]]
+path = "/api/models/evidence/recheck"
+owner = "rust"
+methods = ["POST"]'
+printf '%s\n' 'createVisionProbe()(base, headers, model);' >> "$w/server/routes/models.cjs"
+maint_try recheck-old-probe
+check "native recheck deletes the public Node image probe" 'refused "public Node probe still present"'
+printf '%s\n' '// Other model routes.' > "$w/server/routes/models.cjs"
+cp "$w/server/index.cjs" "$work/er-index.saved"
+sed '/inferenceAdmission.handle(req, res)/d' "$work/er-index.saved" > "$w/server/index.cjs"
+maint_try recheck-no-admission-mount
+check "native recheck requires mounted live admission" 'refused "inference admission must be mounted"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/er-index.saved" > "$w/server/index.cjs"
+maint_try recheck-no-admission-secret
+check "native recheck requires the captured admission secret" 'refused "captured inference admission secret required"'
+cp "$work/er-index.saved" "$w/server/index.cjs"
+rm -f "$w/server/inference-admission-lease.cjs"
+maint_try recheck-no-admission
+check "native recheck requires live admission implementation" 'refused "live inference admission required"'
+touch "$w/server/inference-admission-lease.cjs"
+sed '/rust-model-evidence-recheck.cjs/d' "$work/er-index.saved" > "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-model-maintenance"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+maint_recheck='[[route]]
+path = "/api/models/evidence/recheck"
+owner = "node"'
+maint_try recheck-old-pair
+check "historic recheck old/old remains compatible with native evidence storage" '[ $rc -eq 0 ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-model-evidence-recheck.cjs" "$w/server/inference-admission-lease.cjs"
+if [ -f "$work/er-model-routes.saved" ]; then cp "$work/er-model-routes.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"
