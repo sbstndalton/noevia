@@ -1014,6 +1014,17 @@ if [ "$cr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
 fi
+# The memory watchdog moves as one owner; mixed pairs double-run it or leave no watch.
+bw_core_owner=""; bw_rs_owner=""
+move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/1 js && bw_core_owner=rust
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-budget-watch features && bw_rs_owner=rust
+[ "$bw_core_owner" = "$bw_rs_owner" ] \
+  || die "budget watch pairing: Core and Rust must move the watchdog together"
+if [ "$bw_rs_owner" = rust ]; then
+  grep -qF 'BUDGET_WATCH_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    && grep -qF 'rust-budget-watch' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    || die "budget watch pairing: web supervisor lacks a prelaunch capability comparison"
+fi
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
 grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust

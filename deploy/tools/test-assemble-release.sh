@@ -4380,6 +4380,27 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try maint-old-pair
 check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Watchdog ownership matrix, using the same explicit capability parser as route moves.
+mkdir -p "$repo/build"
+cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cat > "$w/server/rust-budget-watch.cjs" <<'JS'
+const BUDGET_WATCH_OWNER = 'noevia-budget-watch-rust/1';
+module.exports = { BUDGET_WATCH_OWNER };
+JS
+try_routes bw-core-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: new Core and old front refused" 'refused "budget watch pairing"'
+sed 's/"start-id"/"start-id", "rust-budget-watch"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+try_routes bw-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+[ "$rc" -eq 0 ] || cat "$work/err" >&2
+check "budget watch: new paired owners assemble" '[ $rc -eq 0 ]'
+rm "$w/server/rust-budget-watch.cjs"
+try_routes bw-front-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: old Core and new front refused" 'refused "budget watch pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+try_routes bw-old-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: old paired owners assemble for rollback" '[ $rc -eq 0 ]'
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"
