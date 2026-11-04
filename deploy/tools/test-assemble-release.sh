@@ -4385,15 +4385,24 @@ mkdir -p "$repo/build"
 cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 cat > "$w/server/rust-budget-watch.cjs" <<'JS'
-const BUDGET_WATCH_OWNER = 'noevia-budget-watch-rust/1';
+const BUDGET_WATCH_OWNER = 'noevia-budget-watch-rust/2';
 module.exports = { BUDGET_WATCH_OWNER };
 JS
 try_routes bw-core-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
 check "budget watch: new Core and old front refused" 'refused "budget watch pairing"'
-sed 's/"start-id"/"start-id", "rust-budget-watch"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+sed 's/"start-id"/"start-id", "rust-budget-watch-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
 try_routes bw-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
 [ "$rc" -eq 0 ] || cat "$work/err" >&2
 check "budget watch: new paired owners assemble" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v1-front-v2-core
+check "budget watch: v1 front and v2 Core refused" 'refused "budget watch pairing"'
+sed -i.bak 's@noevia-budget-watch-rust/2@noevia-budget-watch-rust/1@' "$w/server/rust-budget-watch.cjs"
+move_try bw-v1-pair
+check "budget watch: matched native v1 pair assembles for rollback" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v2-front-v1-core
+check "budget watch: v2 front and v1 Core refused" 'refused "budget watch pairing"'
 rm "$w/server/rust-budget-watch.cjs"
 try_routes bw-front-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
 check "budget watch: old Core and new front refused" 'refused "budget watch pairing"'

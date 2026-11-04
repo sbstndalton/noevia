@@ -337,8 +337,9 @@ if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
 fi
 # The inference budget watch moves with paired exported/compiled markers. Refuse mixed owners.
 budget_watch_front_owner=""
-grep -qx 'rust-budget-watch' <<<"$rust_features" && budget_watch_front_owner=rust
-budget_watch_core_owner="$(node -e "try { const m = require('./server/rust-budget-watch.cjs'); if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+grep -qx 'rust-budget-watch' <<<"$rust_features" && budget_watch_front_owner=v1
+grep -qx 'rust-budget-watch-v2' <<<"$rust_features" && budget_watch_front_owner=v2
+budget_watch_core_owner="$(node -e "try { const m = require('./server/rust-budget-watch.cjs'); if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/1') process.stdout.write('v1'); else if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/2') process.stdout.write('v2'); } catch {}" 2>/dev/null || true)"
 if [ "$budget_watch_front_owner" != "$budget_watch_core_owner" ]; then
   echo "web-supervisor: budget watch ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
