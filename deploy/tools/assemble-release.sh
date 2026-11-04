@@ -1185,6 +1185,36 @@ if [ "$iur_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
 fi
+# Download GET moves as a pair; Core retains the tracker and every other method.
+mdr_core=""; mdr_rs=""
+grep -qF "require('./rust-model-downloads-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mdr_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-downloads-read features; then mdr_rs=rust; fi
+[ "$mdr_core" = "$mdr_rs" ] || die "model downloads read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mdr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mdr_table=""
+  mdr_rows="$(printf '%s\n' "$mdr_table" | awk -F'\t' -v want="$mdr_rs" '
+    $1 == "/api/models/downloads" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model downloads read ownership pairing: GET only; other methods stay Node"
+fi
+if [ "$mdr_rs" = rust ]; then
+  [ "${mdr_rows:-}" = /api/models/downloads ] || die "model downloads read ownership pairing: incomplete route ownership"
+  code_has "$tree/core/server/rust-model-downloads-read.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/models/downloads'[]][)][)];$" \
+    || die "model downloads read ownership pairing: Core must refuse exactly this GET"
+  code_has "$tree/core/server/routes/models.cjs" "^[[:space:]]*if [(]p === '/api/models/downloads' && req[.]method !== 'GET'[)] [{]$" \
+    || die "model downloads read ownership pairing: Core must retain only the legacy methods"
+  [ -f "$tree/core/server/rust-model-downloads-read-facts.cjs" ] || die "model downloads read ownership pairing: missing facts bridge"
+  mdr_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelDownloadsFacts(req, res)' <<<"$mdr_index" || die "model downloads read ownership pairing: missing facts bridge mount"
+  mdr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mdr_index" | head -1)"
+  [ -n "$mdr_secret" ] && awk -v c="$mdr_secret" '
+    /createModelDownloadsFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mdr_index" || die "model downloads read ownership pairing: facts bridge needs the front captured secret"
+fi
 # Preset GET moves as a pair. PUT keeps the same snapshot owner and conditional writer.
 pr_core=""; pr_rs=""
 grep -qF "require('./rust-preset-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pr_core=rust
