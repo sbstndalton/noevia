@@ -572,6 +572,20 @@ reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model maintenance pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
+# The preset reload baseline (noevia-rs model_maint/reload.rs): a bridge Core needs rust-preset-baseline;
+# a rust-preset-baseline front beside an older Core is shared mode and starts.
+printf '%s\n' "const PRESET_BASELINE_BRIDGE = 'noevia-preset-baseline-bridge/1';" > "$work/server/preset-reload.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "a preset-baseline bridge Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "has no rust-preset-baseline" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-preset-baseline" >/dev/null 2>"$work/err"; rc=$?
+check "a preset-baseline bridge Core with a rust-preset-baseline front starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/preset-reload.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-preset-baseline" >/dev/null 2>"$work/err"; rc=$?
+check "a rust-preset-baseline front beside an older Core (shared mode) starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+
 # Round 5 (#2190): the ChatGPT sign-in pair beside the provider test pair, and alone.
 printf '%s\n' "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
 reset; touch "$work/die-front"

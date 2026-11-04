@@ -317,6 +317,19 @@ if [ "$maintenance_core_owner" != "$maintenance_front_owner" ]; then
   exit 2
 fi
 
+# The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
+# (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
+# front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own
+# guard when the front's internal listener does not answer, but a mismatched pair is refused here so
+# a manually mixed install never runs that way; a rust-preset-baseline front beside an older Core is
+# shared mode (the older Core writes the same file under the same lock) and starts.
+preset_baseline_core=""
+grep -qF "'noevia-preset-baseline-bridge/1'" "$PWD/server/preset-reload.cjs" 2>/dev/null && preset_baseline_core=bridge
+if [ "$preset_baseline_core" = bridge ] && ! grep -qx 'rust-preset-baseline' <<<"$rust_features"; then
+  echo "web-supervisor: this noevia-core asks the front for the preset reload baseline, but this noevia-server has no rust-preset-baseline; update the paired image" >&2
+  exit 2
+fi
+
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
 # protect a manually mixed installed pair. Neither result comes from an inherited environment.
