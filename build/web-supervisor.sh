@@ -230,7 +230,9 @@ fi
 # (server/rust-auto-roles.cjs beside rust-auto-roles, which publishes auto-roles-snapshot.json) and the workspace
 # list (server/rust-workspace.cjs beside rust-workspace), the rest of the Diary routes
 # (server/rust-diary-routes.cjs beside rust-diary-routes, sbstndalton/noevia#2206; Rust owns the connector
-# credentials table and reads the running-exchange set Node publishes), since #2202 round 2 the admin MCP directory
+# credentials table and reads the running-exchange set Node publishes), the Diary local exchange
+# (server/rust-diary-local-exchange.cjs beside rust-diary-local-exchange: the front relays it and holds Node's model
+# throttle and inference gate through the admission lease's diaryExchange ask, which only that Core grants), since #2202 round 2 the admin MCP directory
 # (server/rust-mcp-directory.cjs beside rust-mcp-directory; Rust lists a candidate server's tools itself and is the
 # only writer of directory_mcp_servers, Node re-reads it), the permitted-tools view (server/rust-toolboxes-permitted.cjs
 # beside rust-toolboxes-permitted) and the connectors list (server/rust-connectors.cjs beside rust-connectors), the last
@@ -267,7 +269,10 @@ rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 rust-health.cjs rust-health health check
 rust-auto-roles.cjs rust-auto-roles auto-roles read
 rust-workspace.cjs rust-workspace workspace list
+rust-chat-search.cjs rust-chat-search chat search
+rust-chat-export.cjs rust-chat-export chat download
 rust-diary-routes.cjs rust-diary-routes Diary connector and recovery
+rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange
 rust-mcp-directory.cjs rust-mcp-directory MCP directory
 rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker
 rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools
@@ -278,15 +283,19 @@ rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
 rust-autotune-read.cjs rust-autotune-read auto-tune status GET
 rust-idle-unload-read.cjs rust-idle-unload-read idle unload read
+rust-model-assignments.cjs rust-model-assignments model assignments read
+rust-model-downloads-read.cjs rust-model-downloads-read model download GET
 rust-preset-read.cjs rust-preset-read preset GET
 rust-autotune-resume.cjs rust-autotune-resume auto-tune resume
 rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation
 rust-autotune-clear.cjs rust-autotune-clear autotune dismissal
 rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read
 rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation
+rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery
 rust-calibration-routes.cjs rust-calibration-routes calibration start/read
 rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
+rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
@@ -314,6 +323,19 @@ grep -qF "require('./rust-model-maintenance.cjs')" "$PWD/server/index.cjs" 2>/de
 grep -qx 'rust-model-maintenance' <<<"$rust_features" && maintenance_front_owner=rust
 if [ "$maintenance_core_owner" != "$maintenance_front_owner" ]; then
   echo "web-supervisor: model maintenance route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
+# The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
+# (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
+# front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own
+# guard when the front's internal listener does not answer, but a mismatched pair is refused here so
+# a manually mixed install never runs that way; a rust-preset-baseline front beside an older Core is
+# shared mode (the older Core writes the same file under the same lock) and starts.
+preset_baseline_core=""
+grep -qF "'noevia-preset-baseline-bridge/1'" "$PWD/server/preset-reload.cjs" 2>/dev/null && preset_baseline_core=bridge
+if [ "$preset_baseline_core" = bridge ] && ! grep -qx 'rust-preset-baseline' <<<"$rust_features"; then
+  echo "web-supervisor: this noevia-core asks the front for the preset reload baseline, but this noevia-server has no rust-preset-baseline; update the paired image" >&2
   exit 2
 fi
 
