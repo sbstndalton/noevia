@@ -1393,7 +1393,11 @@ if grep -qF "  [/^\\/api\\/account\\/retention$/, ['GET', 'PUT']]," "$tree/core/
 fi
 retention_rs_put=""
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
-  retention_rs_put="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+  # An unreadable table is refused further down with its own #2096 error; read it tolerantly here
+  # (as the auto-tune cancellation block does) so that error, not this one, is what is reported.
+  # With Core moved and the table unreadable, the pairing below still refuses.
+  retention_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || retention_table=""
+  retention_rs_put="$(printf '%s\n' "$retention_table" | awk -F'\t' '
     $1 == "/api/account/retention" && $2 == "rust" && ($4 == "-" || $4 ~ /(^|,)[ \t]*PUT([ \t]*,|[ \t]*$)/) {print "PUT /api/account/retention"}')"
 fi
 [ "$retention_core_put" = "$retention_rs_put" ] || die "retention PUT ownership pairing: Core and Rust must move together"
