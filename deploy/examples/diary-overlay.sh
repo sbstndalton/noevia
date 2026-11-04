@@ -3,7 +3,8 @@
 # /app (agent/, config/ and scripts/; #2112) and, when the release pins noevia-rs, add the tenant-assertion and
 # workspace-restore-verify binaries built from that pin, plus the Diary Rust leaves (rust_leaves below) when the
 # release ships the smoke that proves them (noevia#1071 P0), and the Rust Diary server noevia-diary (D4-D5).
-# Rolls back on any failure.
+# With a pin, every native binary inherited from the running image is removed first, so the candidate holds only
+# binaries built from the selected pin. Rolls back on any failure.
 # Usage (on DaServer, as root): bash diary-overlay.sh <SRC_SHA>. SRC_SHA is an unpacked release
 # under releases/ whose services/diary/{agent,config,scripts} are shipped; it also becomes the new Diary tag
 # (cowork-diary:<SRC_SHA>) and DIARY_VERSION in .env. COWORK_VERSION and the web image are untouched.
@@ -180,6 +181,22 @@ rust_leaf_lines() {
     printf ' \\\n && if [ -d %s ]; then cargo build --release --locked -p %s && cp target/release/%s /out/; fi' "$dir" "$pkg" "$bin"
   done
 }
+# Every native binary this overlay installs under /usr/local/bin (the two self-tested ones and every leaf above).
+# The final stage starts FROM the running image and COPY only adds and replaces, so a binary an earlier release
+# installed would otherwise survive when the selected noevia-rs pin no longer has its crate (the build skips an
+# absent directory) and could pass the smoke and native-required as if it came from this pin. When the release
+# pins noevia-rs the Dockerfile removes all of them first: whatever native binary the candidate has was built
+# from exactly that pin.
+native_bin_names() {
+  local spec
+  echo tenant-assertion; echo workspace-restore-verify
+  for spec in $rust_leaves; do echo "${spec##*:}"; done
+}
+stale_native_bins_line() {
+  local name
+  printf 'RUN cd /usr/local/bin && rm -f --'
+  for name in $(native_bin_names); do printf ' %s' "$name"; done
+}
 # END rust-leaves
 # BEGIN rs-stage (deploy/tests/test_overlay_scripts.py runs this block on synthetic Dockerfiles)
 # TENANT_ASSERTION_IMPL=rust needs the tenant-assertion binary, WORKSPACE_RESTORE_VERIFY_IMPL=rust
@@ -217,6 +234,7 @@ RUN echo "$rs_sum  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\
       && cp target/release/workspace-restore-verify /out/; fi$(rust_leaf_lines) \\
  && rm -rf /src/target /usr/local/cargo/registry
 FROM cowork-diary:rollback-before-diary-overlay
+$(stale_native_bins_line)
 COPY --from=tenant-assertion /out/ /usr/local/bin/
 $(overlay_copy_lines)
 DOCKERFILE

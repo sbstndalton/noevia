@@ -147,7 +147,7 @@ assembler refuses the same pairing earlier: a services Diary with the forwarder 
 `bins/noevia-diary`, `bins/tenant-assertion` or `crates/diary-workspace-export`, or a Diary `Dockerfile` that
 does not build and bundle `noevia-diary`. Shipping the binary changes no behaviour: the server is started only
 when `DIARY_RUST_ROUTES` names a route or `DIARY_RUST_WRITES` a tenant, both empty by default and set by the
-owner in the Diary `.env`, never by the overlay. Moving the noevia-rs pin for Diary means bumping
+owner in the Diary `.env`, never by the overlay. When the release pins noevia-rs, the overlay first removes every native Diary binary the running image already has (`tenant-assertion`, `workspace-restore-verify`, every leaf and `noevia-diary`) and then installs the bundle built from that pin, so a binary from an earlier release is never kept: a pin that lacks a crate leaves its binary absent, and its selector must stay `python`. The assembler also requires the services Diary `Dockerfile` to carry the lock's `NOEVIA_RS_REF` and `NOEVIA_RS_SHA256` and to really `RUN cargo build --release -p noevia-diary`, `cp` the binary into `/out/` and `COPY --from=<stage> /out/ /usr/local/bin/` (it parses instructions; comments, `echo`, quoted strings, heredocs, conditions and other commands are not evidence). Moving the noevia-rs pin for Diary means bumping
 `NOEVIA_RS_REF` and `NOEVIA_RS_SHA256` together in `release/versions.lock`, `deploy/egress-proxy/Dockerfile` and
 every noevia-services Dockerfile (`bin/repin-services.sh` does the services side); CI fails if one differs.
 

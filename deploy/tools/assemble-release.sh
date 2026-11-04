@@ -49,6 +49,136 @@ die() { echo "assemble-release: $*" >&2; exit 1; }
 # sentence that mentions the thing (nor end the script silently when a file or a match is absent).
 code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 
+# dockerfile_packages <cargo-package> <binary> <Dockerfile>: prints ok when a build stage RUNs a plain
+# `cargo build --release ... -p <package>`, later RUNs `cp [-opts] <binary> /out/` (from target/release) and a
+# later stage installs that stage with `COPY --from=<stage> /out/ /usr/local/bin/`; otherwise nobuild, nobundle or
+# noinstall. It reads Dockerfile instructions: whole-line comments, line continuations and heredoc bodies are
+# resolved first, and each RUN is split into shell commands with quotes honoured, so a build or copy that is
+# only commented out (`# ...`, an inline `#`), echoed, quoted (`sh -c '...'`), in a heredoc, in a subshell, behind
+# a condition or spelled as another command (`fakecp`) is not evidence. Unsupported forms are refused, not guessed.
+dockerfile_packages() {
+  [ -f "$3" ] || { echo nobuild; return 0; }
+  awk -v pkg="$1" -v bin="$2" '
+# Variables: pkg (cargo package), bin (binary name).
+function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+function endword(   ) {
+  if (inword) { nw++; w[nw] = word; wq[nw] = wordq }
+  word = ""; wordq = 0; inword = 0
+}
+function endcmd(   ) {
+  endword()
+  if (nw > 0) evaluate()
+  split("", w); split("", wq); nw = 0; complex = 0
+}
+function evaluate(   i, j, c, p, positional, np, src, ok, opt) {
+  if (complex) { if (w[1] == "cd") cwd = "?"; return }
+  if (w[1] == "cd") { c = w[2]; sub(/\/+$/, "", c); cwd = (nw == 2 && (c == "target/release" || c == "/src/target/release")) ? "release" : "?"; return }
+  if (w[1] == "cargo" && w[2] == "build") {
+    rel = 0; hit = 0
+    for (i = 3; i <= nw; i++) {
+      if (w[i] == "--release") rel = 1
+      if ((w[i] == "-p" || w[i] == "--package") && w[i + 1] == pkg) hit = 1
+      if (w[i] == "--package=" pkg) hit = 1
+    }
+    if (rel && hit) built[stage] = 1
+    return
+  }
+  if (w[1] == "cp" && built[stage]) {
+    np = 0
+    for (i = 2; i <= nw; i++) if (substr(w[i], 1, 1) != "-") { np++; positional[np] = w[i] }
+    if (np < 2 || (positional[np] != "/out/" && positional[np] != "/out")) return
+    for (i = 1; i < np; i++) {
+      src = positional[i]
+      if ((src == bin && cwd == "release") || src == "target/release/" bin || src == "./target/release/" bin || src == "/src/target/release/" bin) bundled[stage] = 1
+    }
+  }
+}
+function shell(text,   i, n, ch, nx, q) {
+  nw = 0; word = ""; wordq = 0; inword = 0; complex = 0; cwd = "base"
+  n = length(text); q = ""
+  for (i = 1; i <= n; i++) {
+    ch = substr(text, i, 1); nx = substr(text, i + 1, 1)
+    if (q == "\047") { if (ch == "\047") q = ""; else word = word ch; continue }
+    if (q == "\"") {
+      if (ch == "\\" && i < n) { i++; word = word substr(text, i, 1); continue }
+      if (ch == "\"") { q = ""; continue }
+      if (ch == "$" || ch == "`") complex = 1
+      word = word ch; continue
+    }
+    if (ch == "\047" || ch == "\"") { q = ch; inword = 1; wordq = 1; continue }
+    if (ch == "#" && !inword) break
+    if (ch == " " || ch == "\t") { endword(); continue }
+    if (ch == "&" && nx == "&") { endcmd(); i++; continue }
+    if (ch == "|" && nx == "|") { endcmd(); i++; continue }
+    if (ch == ";" || ch == "|" || ch == "&") { endcmd(); continue }
+    if (ch == "(" || ch == ")" || ch == "`" || ch == "{" || ch == "}") { complex = 1; endword(); continue }
+    if (ch == "$" || ch == "\\") complex = 1
+    if (ch == "<" || ch == ">") complex = 1
+    word = word ch; inword = 1
+  }
+  if (q != "") complex = 1
+  endcmd()
+}
+function instruction(line,   rest, kw, parts, k, words, nn, i, name, from, flagsdone, a, b) {
+  line = trim(line)
+  if (line == "") return
+  kw = line; sub(/[ \t].*$/, "", kw); kw = toupper(kw)
+  rest = trim(substr(line, length(kw) + 1))
+  if (heredoc) return
+  if (kw == "FROM") {
+    nn = split(rest, words, /[ \t]+/); name = ""
+    for (i = 1; i <= nn; i++) if (toupper(words[i]) == "AS" && i < nn) name = words[i + 1]
+    stage = (name != "") ? name : "#" stages
+    stages++
+    return
+  }
+  if (kw == "RUN") {
+    while (rest ~ /^--[A-Za-z]/) { sub(/^--[^ \t]+[ \t]*/, "", rest) }
+    if (substr(rest, 1, 1) == "[") return
+    shell(rest)
+    return
+  }
+  if (kw == "COPY") {
+    nn = split(rest, words, /[ \t]+/); from = ""; k = 0
+    for (i = 1; i <= nn; i++) {
+      if (words[i] ~ /^--from=/) from = substr(words[i], 8)
+      else if (words[i] ~ /^--/) continue
+      else { k++; parts[k] = words[i] }
+    }
+    if (from != "" && k == 2 && parts[1] == "/out/" && parts[2] == "/usr/local/bin/") installed[from] = 1
+  }
+}
+BEGIN { stages = 0; stage = "#-1" }
+{
+  sub(/\r$/, "")
+  if (heredoc) {
+    t = $0; if (hdash) sub(/^[\t]+/, "", t)
+    if (t == hterm) heredoc = 0
+    next
+  }
+  if ($0 ~ /^[ \t]*#/) next
+  if (trim($0) == "") next
+  if ($0 ~ /\\[ \t]*$/) { sub(/\\[ \t]*$/, ""); acc = acc $0 " "; next }
+  full = acc $0; acc = ""
+  if (match(full, /<<-?[ \t]*["\047]?[A-Za-z_][A-Za-z_0-9]*/)) {
+    h = substr(full, RSTART, RLENGTH); hdash = (substr(h, 3, 1) == "-"); sub(/^<<-?[ \t]*["\047]?/, "", h)
+    hterm = h; kw0 = toupper(trim(full)); sub(/[ \t].*$/, "", kw0)
+    if (kw0 == "RUN" || kw0 == "COPY" || kw0 == "ADD") { heredoc = 1; next }
+  }
+  instruction(full)
+}
+END {
+  if (acc != "") instruction(acc)
+  b = 0; k = 0; s = 0
+  for (st in built) if (built[st]) b = 1
+  for (st in bundled) if (bundled[st] && built[st]) k = 1
+  for (st in bundled) if (bundled[st] && built[st] && installed[st]) s = 1
+  if (!b) print "nobuild"; else if (!k) print "nobundle"; else if (!s) print "noinstall"; else print "ok"
+}
+
+  ' "$3"
+}
+
 lock_file=""
 if [ "${1:-}" = --lock ]; then
   lock_file="${2:-}"; shift 2 || true
@@ -171,7 +301,9 @@ fi
 # runs the noevia-diary binary, the tenant-assertion leaf and the workspace exporter from the one /out/ bundle its
 # Dockerfile builds at the pinned noevia-rs. A services pin ahead of the noevia-rs pin would build an image (or
 # overlay) that cannot start the server, so the pairing is refused here, before anything is built:
-# the pinned rs must carry all three, and the Diary Dockerfile must build noevia-diary and copy it into /out/.
+# the pinned rs must carry all three, the Diary Dockerfile must carry that same rs pin, and it must really RUN
+# `cargo build --release -p noevia-diary`, `cp` the binary into /out/ and install that stage's /out/ (parsed as
+# Dockerfile instructions by dockerfile_packages, not grepped).
 # DIARY_RUST_ROUTES and DIARY_RUST_WRITES stay empty by default (the Dockerfile sets neither), so a paired
 # release changes no behaviour until the owner enables them.
 if [ -f "$tree/services/diary/agent/rust_forward.py" ]; then
@@ -179,12 +311,18 @@ if [ -f "$tree/services/diary/agent/rust_forward.py" ]; then
     [ -f "$tree/rs/$diary_native/Cargo.toml" ] \
       || die "Diary native packaging: services/diary forwards to the Rust Diary server but noevia-rs (NOEVIA_RS_REF in versions.lock at $sha) has no $diary_native"
   done
-  diary_dockerfile="$(code_lines "$tree/services/diary/Dockerfile" \
-    | awk '{ if (sub(/\\[ \t]*$/, "")) { buf = buf $0 " "; next } print buf $0; buf = "" } END { if (buf != "") print buf }')"
-  printf '%s\n' "$diary_dockerfile" | grep -Eq '(^|[[:space:]])-p noevia-diary([[:space:]]|$)' \
-    || die "Diary native packaging: services/diary/Dockerfile does not build noevia-diary (-p noevia-diary)"
-  printf '%s\n' "$diary_dockerfile" | grep -Eq 'cp ([^&;|]* )?noevia-diary( [^&;|]*)? /out/' \
-    || die "Diary native packaging: services/diary/Dockerfile does not copy noevia-diary into /out/"
+  # The image (and the overlay, which reads these two ARGs) builds the Rust tree it will be paired with: the
+  # Dockerfile's pin is the lock's pin, so the sources checked above are the ones that get built.
+  for diary_arg in NOEVIA_RS_REF:"$rs_ref" NOEVIA_RS_SHA256:"$rs_sum"; do
+    [ "$(sed -n "s/^ARG ${diary_arg%%:*}=//p" "$tree/services/diary/Dockerfile" | head -1)" = "${diary_arg#*:}" ] \
+      || die "Diary native packaging: services/diary/Dockerfile ${diary_arg%%:*} differs from release/versions.lock at $sha"
+  done
+  case "$(dockerfile_packages noevia-diary noevia-diary "$tree/services/diary/Dockerfile")" in
+    ok) ;;
+    nobuild) die "Diary native packaging: services/diary/Dockerfile has no RUN cargo build --release -p noevia-diary (comments, echo, quoted strings, heredocs and conditions do not count)" ;;
+    nobundle) die "Diary native packaging: services/diary/Dockerfile does not cp noevia-diary into /out/ after building it" ;;
+    *) die "Diary native packaging: services/diary/Dockerfile does not install that stage's /out/ with COPY --from=<stage> /out/ /usr/local/bin/" ;;
+  esac
 fi
 
 # Full-Rust migration M4: the Rust front and Node share projects.json. Every project route the

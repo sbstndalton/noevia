@@ -819,7 +819,7 @@ class RsStage(unittest.TestCase):
         self.assertEqual(checked.returncode, 0, checked.stderr)
         self.assertEqual([l for l in df.splitlines() if l.startswith('COPY --from=')],
                          ['COPY --from=tenant-assertion /out/ /usr/local/bin/'])
-        self.assertEqual(df.count('\nRUN '), 2, df)  # the Rust stage RUN and the overlay's rm -rf
+        self.assertEqual(df.count('\nRUN '), 3, df)  # the Rust stage RUN, the stale-binary rm and the overlay's rm -rf
         self.assertTrue(df.rstrip().endswith(OVERLAY_TAIL.rstrip()), df)
         self.assertNotIn('pip', df)
 
@@ -828,9 +828,56 @@ class RsStage(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('STAGE 1 LEAVES 0', result.stdout)
         for _, package, binary in self.LEAVES:
-            self.assertNotIn(binary, df)
+            self.assertNotIn(binary, self.rust_run(df))  # none is built (the stale-binary removal still names them)
         self.assertTrue(' '.join(self.rust_run(df).split()).endswith(
             'cp target/release/workspace-restore-verify /out/; fi && rm -rf /src/target /usr/local/cargo/registry'))
+
+    def stale_line(self, df):
+        lines = [l for l in df.splitlines() if l.startswith('RUN cd /usr/local/bin && rm -f --')]
+        self.assertEqual(len(lines), 1, df)
+        return lines[0]
+
+    def test_inherited_native_binaries_are_removed_before_the_pinned_bundle_is_installed(self):
+        for smoke in (True, False):
+            with self.subTest(smoke=smoke):
+                result, df = self.stage(self.PINNED, smoke=smoke)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                line = self.stale_line(df)
+                lines = df.splitlines()
+                self.assertEqual(lines[lines.index('FROM cowork-diary:rollback-before-diary-overlay') + 1], line)
+                self.assertLess(df.index(line), df.index('COPY --from=tenant-assertion /out/ /usr/local/bin/'))
+                # Every binary this overlay can install, so none is left from an earlier release.
+                self.assertEqual(set(line.split(' -- ')[1].split()),
+                                 {'tenant-assertion', 'workspace-restore-verify'} | {b for _, _, b in self.LEAVES})
+
+    def test_a_leaf_built_from_an_older_pin_is_never_left_behind(self):
+        # Run the generated removal against a /usr/local/bin that holds every native binary of the running image,
+        # then install a bundle from a pin that predates most crates (only tenant-assertion): the old
+        # noevia-diary, exporter and leaves must be gone, so native-required cannot be satisfied by them.
+        result, df = self.stage(self.PINNED, smoke=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        line = self.stale_line(df)
+        names = [b for _, _, b in self.LEAVES] + ['tenant-assertion', 'workspace-restore-verify']
+        with tempfile.TemporaryDirectory(prefix='noevia-stale-bins-') as directory:
+            root = pathlib.Path(directory)
+            (root / 'bin').mkdir()
+            (root / 'out').mkdir()
+            for name in names + ['python3-keep']:
+                (root / 'bin' / name).write_text('#!/bin/sh\n# from the running image\n')
+            (root / 'out' / 'tenant-assertion').write_text('#!/bin/sh\n# from the selected pin\n')
+            removal = line[len('RUN '):].replace('/usr/local/bin', str(root / 'bin'))
+            done = subprocess.run(['sh', '-c', removal], capture_output=True, text=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            for entry in (root / 'out').iterdir():  # COPY --from=tenant-assertion /out/ /usr/local/bin/
+                (root / 'bin' / entry.name).write_text(entry.read_text())
+            left = sorted(p.name for p in (root / 'bin').iterdir())
+            self.assertEqual(left, ['python3-keep', 'tenant-assertion'])
+            self.assertIn('selected pin', (root / 'bin' / 'tenant-assertion').read_text())
+
+    def test_an_unpinned_release_removes_nothing(self):
+        result, df = self.stage('FROM python:3.12-slim\n', smoke=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('rm -f --', df)
 
     def test_the_declared_leaves_are_exactly_the_adapters_binaries(self):
         script = self.block('rust-leaves') + '\nfor spec in $rust_leaves; do echo "$spec"; done'
@@ -1038,7 +1085,7 @@ esac
         # A pin from before noevia-diary still builds (guarded by the directory), and a release without the smoke
         # builds no leaf at all.
         _, plain = RsStage().stage(RsStage.PINNED)
-        self.assertNotIn('noevia-diary', plain)
+        self.assertNotIn('noevia-diary', RsStage.rust_run(plain))
 
 
 class DiaryCopyContract(unittest.TestCase):
