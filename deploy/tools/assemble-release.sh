@@ -1177,10 +1177,13 @@ if [ -f "$tree/core/server/index.cjs" ]; then
     code_has "$tree/core/server/rust-chat-edge.cjs" "^const COWORK_PATH = '/internal/chat/cowork';$" \
       && code_has "$tree/core/server/rust-chat-turn.cjs" "pathname !== edge[.]COWORK_PATH" \
       || die "chat edge ownership pairing: Core must accept the front's Cowork start"
-    grep -qF "return chatEdge.leases.hold(res,ask.route,leave);" <<<"$ce_index" \
-      || die "chat edge ownership pairing: Core must hold its gate for the front's call"
-    grep -qF "if(adopted)leave=adopted;else if(inference)leave=await" <<<"$ce_index" \
-      || die "chat edge ownership pairing: the front's call must adopt the gate hold"
+    # Chat port S8 replaces the S6 hold with the front's admission lease (checked below); before it, the hold.
+    if ! code_has "$tree/core/server/index.cjs" "require\\('\\./rust-chat-admission\\.cjs'\\)"; then
+      grep -qF "return chatEdge.leases.hold(res,ask.route,leave);" <<<"$ce_index" \
+        || die "chat edge ownership pairing: Core must hold its gate for the front's call"
+      grep -qF "if(adopted)leave=adopted;else if(inference)leave=await" <<<"$ce_index" \
+        || die "chat edge ownership pairing: the front's call must adopt the gate hold"
+    fi
   fi
 fi
 # Chat port S7: the chat turn's event stream. The front writes it (capability rust-chat-wire): it asks the relayed
@@ -1206,6 +1209,35 @@ if [ "$cw_rs_owner" = rust ]; then
     || die "chat wire ownership pairing: chat.cjs must write the turn through the wire"
   if code_has "$tree/core/server/chat.cjs" "text/event-stream'|: keep-alive"; then
     die "chat wire ownership pairing: chat.cjs must not write an event stream of its own"
+  fi
+fi
+# Chat port S8: chat admission. The front takes Core's inference gate for a chat turn, a Cowork start and the Diary
+# local exchange itself, with an admission lease (capability rust-chat-admission, crates/engine-admission), answers the
+# gate's 503 and its `[chat] 503` line, and sends the lease with the call; Core (server/rust-chat-admission.cjs) grants
+# gate leases on POST /internal/inference-admission/lease {gate} and skips its own gate entry for a call its live
+# lease covers, so each call has one gate count (titles read it). The S6 gate hold is gone. Admission rides on the S7
+# wire. Old/old stays valid for rollback; mixed pairs are refused (an admission front beside an old Core gets 400 for
+# its gate ask and answers every turn 502; an admission Core beside an old front has no gate probe or hold, so the old
+# front's calls would each be refused).
+ca_core_owner=""; ca_rs_owner=""
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-chat-admission\\.cjs'\\)" && ca_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-admission features; then ca_rs_owner=rust; fi
+[ "$ca_core_owner" = "$ca_rs_owner" ] || die "chat admission ownership pairing: Core and Rust must move together"
+if [ "$ca_rs_owner" = rust ]; then
+  [ "$cw_rs_owner" = rust ] || die "chat admission ownership pairing: admission needs the chat wire"
+  code_has "$tree/core/server/rust-chat-admission.cjs" "^const FRONT_CAPABILITY = 'rust-chat-admission';$" \
+    || die "chat admission ownership pairing: Core's marker must name the front capability"
+  code_has "$tree/core/server/rust-chat-admission.cjs" "^const LEASE_HEADER = 'x-noevia-admission-lease';$" \
+    && code_has "$tree/rs/bins/noevia-server/src/chat_admission.rs" '^pub const LEASE_HEADER: &str = "x-noevia-admission-lease";$' \
+    || die "chat admission ownership pairing: Core and the front must name the same lease header"
+  code_has "$tree/core/server/inference-admission-lease.cjs" "return holdGate[(]ask[.]gate, signal[)];" \
+    || die "chat admission ownership pairing: Core must grant the front's gate lease"
+  ca_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF "const frontAdmitted=inference&&inferenceAdmission.covers(req," <<<"$ca_index" \
+    && grep -qF "if(inference&&!frontAdmitted)leave=await chatAdmission.enterChatInference(" <<<"$ca_index" \
+    || die "chat admission ownership pairing: Core must skip its own gate entry for the front's lease"
+  if grep -qF "chatEdge.leases." <<<"$ca_index"; then
+    die "chat admission ownership pairing: Core must not keep the S6 gate hold"
   fi
 fi
 # #2281: the toolbox picker moves as one owner, with only raw discovery/prefill facts in Core.

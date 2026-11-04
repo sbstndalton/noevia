@@ -2191,6 +2191,68 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.save
 ct_owner=node; ct_methods=""
 ct_try wire-old-pair
 check "chat wire old/old rollback pair assembles" '[ $rc -eq 0 ]'
+# Chat port S8: chat admission on top of the S7 wire: Core's marker and lease header, the gate lease granted, the
+# covered call skipping its own gate entry, and no S6 hold left.
+ca_files() {
+  printf '%s\n' "const FRONT_CAPABILITY = '${1:-rust-chat-admission}';" "const LEASE_HEADER = '${2:-x-noevia-admission-lease}';" "module.exports = { FRONT_CAPABILITY, LEASE_HEADER };" > "$w/server/rust-chat-admission.cjs"
+  printf '%s\n' "      return holdGate(ask.gate, signal);" > "$w/server/inference-admission-lease.cjs"
+  printf '%s\n' "pub const LEASE_HEADER: &str = \"${3:-x-noevia-admission-lease}\";" > "$rz/bins/noevia-server/src/chat_admission.rs"
+}
+ca_lines() {
+  cat >> "$w/server/index.cjs" <<'JS'
+const chatEdge = require('./rust-chat-edge.cjs');
+  const frontAdmitted=inference&&inferenceAdmission.covers(req,require('./rust-chat-admission.cjs').gateRoute(relay,pathname));
+  try {if(inference&&!frontAdmitted)leave=await chatAdmission.enterChatInference(modelManager,{signal:aborted.signal});}
+JS
+}
+ca_core() { ct_core; ca_lines; printf '%s\n' "const chatWire = require('./rust-chat-wire.cjs');" >> "$w/server/index.cjs"; }
+ca_front() { sed 's/"start-id"/"start-id", "rust-chat-turn", "rust-chat-edge", "rust-chat-wire", "rust-chat-admission"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ct_owner=rust; ct_methods='methods = ["POST"]'
+cw_files; ca_files
+ca_core; cw_front
+ct_try admission-core-only
+check "chat admission Core requires the native front" 'refused "chat admission ownership pairing: Core and Rust must move together"'
+cw_core; ca_front
+ct_try admission-front-only
+check "native chat admission front requires its Core" 'refused "chat admission ownership pairing: Core and Rust must move together"'
+ca_core
+ct_try admission-pair
+check "chat admission pair on the chat wire assembles (no S6 hold needed)" '[ $rc -eq 0 ]'
+cp "$w/server/index.cjs" "$work/ca-index.saved"
+ca_files rust-chat-admissions
+ct_try admission-wrong-capability
+check "chat admission: Core's marker names the front capability" 'refused "chat admission ownership pairing: Core'"'"'s marker must name the front capability"'
+ca_files rust-chat-admission x-noevia-gate-lease
+ct_try admission-core-other-header
+check "chat admission: Core's lease header must be the front's" 'refused "Core and the front must name the same lease header"'
+ca_files rust-chat-admission x-noevia-admission-lease x-noevia-gate-lease
+ct_try admission-front-other-header
+check "chat admission: the front's lease header must be Core's" 'refused "Core and the front must name the same lease header"'
+ca_files
+printf '%s\n' "      // return holdGate(ask.gate, signal);" > "$w/server/inference-admission-lease.cjs"
+ct_try admission-no-gate-lease
+check "chat admission: Core grants the front's gate lease (a comment is not code)" 'refused "Core must grant the front'"'"'s gate lease"'
+ca_files
+sed 's/if(inference&&!frontAdmitted)leave=await/if(inference)leave=await/' "$work/ca-index.saved" > "$w/server/index.cjs"
+ct_try admission-double-count
+check "chat admission: Core skips its own gate entry for the front's lease (no double count)" 'refused "skip its own gate entry for the front'"'"'s lease"'
+{ cat "$work/ca-index.saved"; printf '%s\n' "  if(relay==='gate'){const ask=gateAsk(req);if(ask&&ask.hold)return chatEdge.leases.hold(res,ask.route,leave);}"; } > "$w/server/index.cjs"
+ct_try admission-keeps-s6-hold
+check "chat admission: Core keeps no S6 gate hold beside the lease" 'refused "Core must not keep the S6 gate hold"'
+# Admission without the S7 wire: the edge paired, admission native on both sides.
+ct_core; ca_lines
+sed 's/"start-id"/"start-id", "rust-chat-turn", "rust-chat-edge", "rust-chat-admission"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ct_try admission-without-wire
+check "chat admission needs the chat wire" 'refused "chat admission ownership pairing: admission needs the chat wire"'
+# An S7 pair (the S6 hold) still assembles beside an old admission pair; old/old stays valid.
+cw_core; cw_front
+ct_try admission-s7-pair
+check "an S7 pair without admission still assembles" '[ $rc -eq 0 ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ct_owner=node; ct_methods=""
+ct_try admission-old-pair
+check "chat admission old/old rollback pair assembles" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-chat-admission.cjs" "$w/server/inference-admission-lease.cjs" "$rz/bins/noevia-server/src/chat_admission.rs"
 cp "$work/cw-chat.saved" "$w/server/chat.cjs"
 rm -f "$w/server/rust-chat-wire.cjs" "$rz/bins/noevia-server/src/chat_wire.rs"
 rm -f "$w/server/rust-chat-edge.cjs"

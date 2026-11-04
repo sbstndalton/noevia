@@ -292,6 +292,7 @@ rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
 rust-chat-turn.cjs rust-chat-turn chat turn
 rust-chat-edge.cjs rust-chat-edge chat edge
 rust-chat-wire.cjs rust-chat-wire chat wire
+rust-chat-admission.cjs rust-chat-admission chat admission
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
