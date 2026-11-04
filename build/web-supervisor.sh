@@ -280,15 +280,19 @@ rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
 rust-autotune-read.cjs rust-autotune-read auto-tune status GET
 rust-idle-unload-read.cjs rust-idle-unload-read idle unload read
+rust-model-assignments.cjs rust-model-assignments model assignments read
+rust-model-downloads-read.cjs rust-model-downloads-read model download GET
 rust-preset-read.cjs rust-preset-read preset GET
 rust-autotune-resume.cjs rust-autotune-resume auto-tune resume
 rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation
 rust-autotune-clear.cjs rust-autotune-clear autotune dismissal
 rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read
 rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation
+rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery
 rust-calibration-routes.cjs rust-calibration-routes calibration start/read
 rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
+rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
