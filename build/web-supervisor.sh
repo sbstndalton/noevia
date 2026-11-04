@@ -240,7 +240,7 @@ fi
 # (server/rust-project-config.cjs beside rust-project-config, sbstndalton/noevia#2191 round 9) and an account's
 # deletion (server/rust-admin-users.cjs beside rust-admin-users, #2190: Rust deletes the rows, the folder and every
 # credential, and Core can no longer delete an account), deep research (server/rust-research.cjs beside rust-research,
-# #2218: the jobs run on the front, Node keeps only their admission lease and tool bridge), the Code and Browser task reads (server/rust-task-reads.cjs beside rust-task-reads, #2257: Node keeps the writes and the facts bridge), the inference budget and installed reads (server/rust-model-state-reads.cjs beside rust-model-state-reads, #2262: Node keeps the PUT and the facts bridge): each group moves as one owner. Old/old images
+# #2218: the jobs run on the front, Node keeps only their admission lease and tool bridge), the Code and Browser task reads (server/rust-task-reads.cjs beside rust-task-reads, #2257: Node keeps the writes and the facts bridge), the inference budget and installed reads (server/rust-model-state-reads.cjs beside rust-model-state-reads, #2262: Node keeps the PUT and the facts bridge), the chat approval registry (server/rust-approval-registry.cjs beside rust-approval-registry, port contract S9: the front holds the pending approvals and chat grants, Node waits through the store): each group moves as one owner. Old/old images
 # remain usable for rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -295,6 +295,7 @@ rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery
 rust-calibration-routes.cjs rust-calibration-routes calibration start/read
 rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
+rust-approval-registry.cjs rust-approval-registry approval registry
 rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS

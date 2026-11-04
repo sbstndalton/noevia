@@ -1080,6 +1080,27 @@ ta_rs_owner=""
 grep -qF "require('./rust-tool-approvals.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ta_core_owner=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-tool-approvals features; then ta_rs_owner=rust; fi
 [ "$ta_core_owner" = "$ta_rs_owner" ] || die "tool approval ownership pairing: Core and Rust must move together"
+# The approval registry (port contract 2026-11-04 S9): the pending approvals, routing questions and
+# chat grants move into the front (rust-approval-registry), and Core asks it through the store
+# (server/rust-approval-registry.cjs) instead of keeping them behind the #2282 bridge. Either side
+# alone loses every pending question, so the two move together, on top of the decision route's pair.
+# Historic pairs (no registry on either side) remain valid rollbacks.
+ar_core_owner=""
+ar_rs_owner=""
+grep -qF "require('./rust-approval-registry.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ar_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-approval-registry features; then ar_rs_owner=rust; fi
+[ "$ar_core_owner" = "$ar_rs_owner" ] || die "approval registry ownership pairing: Core and Rust must move together"
+if [ "$ar_rs_owner" = rust ]; then
+  [ "$ta_rs_owner" = rust ] || die "approval registry ownership pairing: the registry needs the native decision route"
+  [ -f "$tree/core/server/rust-approval-registry.cjs" ] || die "approval registry ownership pairing: missing Core registry client"
+  [ ! -f "$tree/core/server/rust-tool-approval-bridge.cjs" ] || die "approval registry ownership pairing: Core still carries the pending state bridge"
+  ar_index="$(code_lines "$tree/core/server/index.cjs")"
+  ! grep -qE 'toolApprovalBridge\(req, res\)|/internal/tool-approvals|createApprovals\(' <<<"$ar_index" \
+    || die "approval registry ownership pairing: Core still keeps approvals in memory"
+  grep -qF "PROJECT_STORE.approvals(" <<<"$ar_index" || die "approval registry ownership pairing: Core does not ask the store"
+  grep -qF "openApproval" "$tree/core/server/chat.cjs" 2>/dev/null \
+    || die "approval registry ownership pairing: Core's turn does not open its questions at the front"
+fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   ta_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ta_table=""
   ta_rows="$(printf '%s\n' "$ta_table" | awk -F'\t' -v want="$ta_rs_owner" '
@@ -1097,6 +1118,9 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
     ta_refused="$( { project_routes_core "$tree/core/server/rust-tool-approvals.cjs" || true; } | sort | tr '\n' ' ')"
     [ "$ta_refused" = 'POST /api/tool-approvals/{} ' ] || die "tool approval ownership pairing: Core must refuse exactly the approval POST"
     [ ! -f "$tree/core/server/routes/approvals.cjs" ] || die "tool approval ownership pairing: Core still carries the public handler"
+  fi
+  # Without the registry pair, Core's pending-state bridge answers the front's decision route.
+  if [ "$ta_rs_owner" = rust ] && [ "$ar_rs_owner" != rust ]; then
     [ -f "$tree/core/server/rust-tool-approval-bridge.cjs" ] || die "tool approval ownership pairing: missing pending state bridge"
     ta_index="$(code_lines "$tree/core/server/index.cjs")"
     grep -qE 'toolApprovalBridge\(req, res\)' <<<"$ta_index" || die "tool approval ownership pairing: missing bridge mount"

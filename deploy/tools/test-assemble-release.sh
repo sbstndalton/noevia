@@ -1966,6 +1966,61 @@ check "historic approval old/old rollback pair assembles" '[ $rc -eq 0 ]'
 ta_owner=rust
 ta_try approvals-old-rust-row
 check "historic pair cannot assign approvals to Rust" 'refused "tool approval ownership pairing"'
+# Port contract 2026-11-04 S9: the approval registry moves as one owner, on top of the decision
+# route's pair: Core's rust-approval-registry.cjs client (and no pending-state bridge) beside the
+# front's rust-approval-registry capability.
+cp "$w/server/chat.cjs" "$work/ar-chat.saved"
+ar_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const { openApproval } = require('./rust-approval-registry.cjs').createApprovalRegistry({
+  approvals: (op, payload, options) => PROJECT_STORE.approvals(op, payload, options),
+});
+if (require('./rust-tool-approvals.cjs').refuseOwned(req, res, {})) return;
+JS
+  printf '%s\n' 'module.exports = { createApprovalRegistry() {} };' > "$w/server/rust-approval-registry.cjs"
+  cp "$work/ar-chat.saved" "$w/server/chat.cjs"
+  printf '%s\n' '  chatWideApproved, awaitApproval, openApproval = async () => true,' >> "$w/server/chat.cjs"
+  rm -f "$w/server/rust-tool-approval-bridge.cjs"
+}
+ar_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ta_owner=rust
+ar_core; ar_front
+ta_try registry-pair
+check "the approval registry pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ta_front
+ta_try registry-core-only
+check "a Core that asks the registry refuses a front without it" 'refused "approval registry ownership pairing: Core and Rust must move together"'
+ta_core; touch "$w/server/rust-tool-approval-bridge.cjs"; ar_front
+ta_try registry-front-only
+check "a registry front refuses a Core that still keeps the pending approvals" 'refused "approval registry ownership pairing: Core and Rust must move together"'
+ar_core; ar_front; touch "$w/server/rust-tool-approval-bridge.cjs"
+ta_try registry-bridge-left
+check "the registry pair deletes Core's pending state bridge" 'refused "still carries the pending state bridge"'
+ar_core; printf '%s\n' "const gate = require('./approvals.cjs').createApprovals();" >> "$w/server/index.cjs"
+ta_try registry-memory-left
+check "the registry pair keeps no approvals in Node's memory" 'refused "still keeps approvals in memory"'
+ar_core; sed 's/PROJECT_STORE.approvals(/PROJECT_STORE.other(/' "$w/server/index.cjs" > "$work/ar-index.tmp" && mv "$work/ar-index.tmp" "$w/server/index.cjs"
+ta_try registry-no-store
+check "the registry pair's Core asks the store" 'refused "does not ask the store"'
+ar_core; cp "$work/ar-chat.saved" "$w/server/chat.cjs"
+ta_try registry-no-open
+check "the registry pair's turn opens its questions at the front" 'refused "does not open its questions at the front"'
+ar_core; rm -f "$w/server/rust-approval-registry.cjs"
+ta_try registry-no-client
+check "the registry pair needs Core's registry client" 'refused "approval registry ownership pairing"'
+# A registry pair without the decision route's pair (the route still Node's).
+ar_core; sed '/rust-tool-approvals.cjs/d' "$w/server/index.cjs" > "$work/ar-index.tmp" && mv "$work/ar-index.tmp" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-approval-registry"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ta_owner=node
+ta_try registry-without-route
+check "the registry needs the native decision route" 'refused "the registry needs the native decision route"'
+# Rollback: the #2282 pair with Core's bridge (no registry on either side) still assembles.
+ta_owner=rust; ta_core; ta_front; touch "$w/server/rust-tool-approval-bridge.cjs"
+ta_try registry-rollback
+check "the decision route's pair without the registry remains a valid rollback" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-approval-registry.cjs"; cp "$work/ar-chat.saved" "$w/server/chat.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refuser.paired"
 rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
 # #2281 toolbox picker owner pair and the narrow facts bridge.
