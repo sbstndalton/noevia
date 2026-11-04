@@ -464,6 +464,21 @@ for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration
   run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
   check "$p_label: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 done
+# Chat port S4: the framing suggestion pair, in both directions (its own loop, beside the list above).
+for pair in "rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion"; do
+  read -r p_marker p_cap p_label <<<"$pair"
+  printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+  reset
+  run >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+  reset; touch "$work/die-front"
+  run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: matching native pair starts both processes (the other group old/old)" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+  rm "$work/server/index.cjs"
+  reset
+  run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+done
 printf '%s\n' "  if (require('./rust-public-pages.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
 reset; touch "$work/die-front"
 run STUB_FEATURES="$BASE_FEATURES rust-public-pages rust-plugin-directory" >/dev/null 2>"$work/err"; rc=$?
