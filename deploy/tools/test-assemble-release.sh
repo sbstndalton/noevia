@@ -2730,6 +2730,86 @@ cr_try cr-old-rust-rows
 check "old calibration pair rejects Rust ownership" 'refused "calibration start/read ownership pairing"'
 cr_owner=node; cr_try cr-old-pair
 check "old calibration start/read pair stays valid for rollback" '[ $rc -eq 0 ]'
+# #2303 (worker): the calibration job's owner pairs by explicit markers, both ways, beside the route pairs.
+cw_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/calibration"\nowner = "%s"\n' "${cw_routes_owner:-rust}"
+    printf '[[route]]\npath = "/api/models/calibration/cancel"\nowner = "%s"\n' "${cw_routes_owner:-rust}")
+}
+cp "$w/server/rust-calibration-routes.cjs" "$work/cw-routes.saved"; cp "$w/server/llamacpp-manager.cjs" "$work/cw-manager.saved"
+cat > "$w/server/rust-calibration-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration/cancel']));
+JS
+touch "$w/server/rust-calibration-cancel-bridge.cjs"
+cw_marker() {
+  cat > "$w/server/rust-calibration-routes.cjs" <<'JS'
+const CALIBRATION_WORKER_OWNER = 'noevia-calibration-worker-rust/1';
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration']));
+module.exports = { CALIBRATION_WORKER_OWNER, OWNED_ROUTES };
+JS
+}
+cw_unmarked() { cp "$work/cw-routes.saved" "$w/server/rust-calibration-routes.cjs"; }
+# Core's live primitives, and its public calibrator built only when a caller asks for it.
+cw_primitives() {
+  { cat "$work/cw-manager.saved"
+    printf '%s\n' 'cancellationFacts: calibrator.cancellationFacts, compareAndAbort: calibrator.compareAndAbort,'
+    printf '%s\n' "$1"
+  } > "$w/server/llamacpp-manager.cjs"
+}
+cw_manager() { cw_primitives "  const calibrator=presets&&publicCalibrator?require('./llamacpp-calibration.cjs').createCalibrator({}):null;"; }
+cw_ungated() { cw_primitives "  const calibrator=presets?require('./llamacpp-calibration.cjs').createCalibrator({}):null;"; }
+cw_core() {
+  cr_core
+  cat >> "$w/server/index.cjs" <<'JS'
+const calibrationCancelBridge = require('./rust-calibration-cancel-bridge.cjs').createCalibrationCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationCancelBridge(req, res)) return;
+JS
+}
+cw_front() { sed "s/\"start-id\"/\"start-id\", \"rust-calibration-routes\", \"rust-calibration-cancel\"${1:+, \"$1\"}/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+mkdir -p "$repo/build"; cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+cw_marker; cw_manager; cw_core; cw_front
+cw_try cw-core-only
+check "calibration worker marker cannot pair with a front that lacks the worker" 'refused "calibration worker pairing"'
+cw_unmarked; cw_ungated; cw_front rust-calibration-worker
+cw_try cw-front-only
+check "native calibration worker cannot pair with a Core that still runs the job" 'refused "calibration worker pairing"'
+cw_marker; cw_manager
+cw_try cw-pair
+check "matching calibration worker pair assembles" '[ $rc -eq 0 ]'
+cp "$w/server/index.cjs" "$work/cw-index.saved"
+printf '%s\n' '    modelManager.calibration?.recover().catch(() => undefined);' >> "$w/server/index.cjs"; cw_try cw-boot-recover
+check "native calibration worker rejects a Core that recovers the job at boot" 'refused "Core still recovers the calibration job at boot"'
+printf '%s\n' "const modelManager = createModelManager({ publicCalibrator: true });" >> "$work/cw-index.saved"
+cp "$work/cw-index.saved" "$w/server/index.cjs"; cw_try cw-production-public
+check "native calibration worker rejects production wiring that asks for the public calibrator" 'refused "production wiring asks for the public calibrator"'
+sed '$d' "$work/cw-index.saved" > "$w/server/index.cjs"
+cw_ungated
+cw_try cw-ungated
+check "native calibration worker rejects an ungated public calibrator" 'refused "Core still builds the public calibrator"'
+cw_manager
+cp "$repo/build/web-supervisor.sh" "$work/cw-supervisor.saved"; grep -v 'CALIBRATION_WORKER_OWNER\|rust-calibration-worker' "$work/cw-supervisor.saved" > "$repo/build/web-supervisor.sh"
+cw_try cw-no-supervisor
+check "native calibration worker needs the supervisor's prelaunch comparison" 'refused "web supervisor lacks a prelaunch capability comparison"'
+cp "$work/cw-supervisor.saved" "$repo/build/web-supervisor.sh"
+sed 's/^const CALIBRATION_WORKER_OWNER/\/\/ const CALIBRATION_WORKER_OWNER/' "$w/server/rust-calibration-routes.cjs" > "$work/cw-comment.cjs"; cp "$work/cw-comment.cjs" "$w/server/rust-calibration-routes.cjs"
+cw_try cw-comment-marker
+check "a calibration worker marker in a comment is no marker" 'refused "calibration worker pairing"'
+cw_marker
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cw_front rust-calibration-worker
+sed 's/"rust-calibration-routes", "rust-calibration-cancel", //' "$rz/bins/noevia-server/src/lib.rs" > "$work/cw-lib"; cp "$work/cw-lib" "$rz/bins/noevia-server/src/lib.rs"
+cw_routes_owner=node cw_try cw-no-routes
+check "native calibration worker needs the native calibration routes" 'refused "needs the native start/read and cancellation routes"'
+cw_unmarked; cw_manager; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cw_routes_owner=node cw_try cw-gated-unmarked
+check "a Core that gates its public calibrator must export the worker marker" 'refused "does not export the worker marker"'
+cp "$work/cw-manager.saved" "$w/server/llamacpp-manager.cjs"
+cw_routes_owner=node cw_try cw-old-old
+check "old calibration worker pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs" "$repo/build/web-supervisor.sh"
+cw_unmarked; cp "$work/cw-manager.saved" "$w/server/llamacpp-manager.cjs"
 rm -f "$w/server/rust-calibration-routes.cjs" "$w/server/rust-calibration-routes-bridge.cjs"
 if [ -f "$work/cr-manager.saved" ]; then cp "$work/cr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 if [ -f "$work/cr-original-actor.saved" ]; then cp "$work/cr-original-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi

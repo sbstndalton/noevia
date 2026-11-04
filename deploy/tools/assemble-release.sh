@@ -1014,6 +1014,30 @@ if [ "$cr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
 fi
+# #2303 (worker): the calibration job itself (its state file, boot recovery and hold) moves with explicit
+# markers, never source shapes: Core exports CALIBRATION_WORKER_OWNER from rust-calibration-routes.cjs, the
+# front lists rust-calibration-worker in --features. A mixed pair recovers one state file twice at a joint
+# restart (new front, old Core) or never (old front, new Core), so either half alone is refused.
+cw_core_owner=""; cw_rs_owner=""
+move_capability "$tree/core/server/rust-calibration-routes.cjs" CALIBRATION_WORKER_OWNER noevia-calibration-worker-rust/1 js && cw_core_owner=rust
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-worker features && cw_rs_owner=rust
+[ "$cw_core_owner" = "$cw_rs_owner" ] \
+  || die "calibration worker pairing: Core (noevia-calibration-worker-rust/1) and Rust (rust-calibration-worker) must move the calibration job together"
+if [ "$cw_rs_owner" = rust ]; then
+  [ "$cr_rs_owner" = rust ] && [ "$cc_rs_owner" = rust ] \
+    || die "calibration worker pairing: the native worker needs the native start/read and cancellation routes"
+  ! code_has "$tree/core/server/index.cjs" 'calibration[[:space:]]*[?]?[.][[:space:]]*recover[[:space:]]*[(]' \
+    || die "calibration worker pairing: Core still recovers the calibration job at boot"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'const[[:space:]]+calibrator[[:space:]]*=[[:space:]]*presets[[:space:]]*&&[[:space:]]*publicCalibrator[[:space:]]*[?]' \
+    || die "calibration worker pairing: Core still builds the public calibrator (createCalibrator must be gated on publicCalibrator)"
+  ! code_has "$tree/core/server/index.cjs" 'publicCalibrator' \
+    || die "calibration worker pairing: Core's production wiring asks for the public calibrator"
+  grep -qF 'CALIBRATION_WORKER_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    && grep -qF 'rust-calibration-worker' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    || die "calibration worker pairing: web supervisor lacks a prelaunch capability comparison"
+elif code_has "$tree/core/server/llamacpp-manager.cjs" 'publicCalibrator'; then
+  die "calibration worker pairing: Core gates its public calibrator but does not export the worker marker"
+fi
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
 grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust

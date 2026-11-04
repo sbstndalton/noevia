@@ -138,6 +138,22 @@ reset
 run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" WEB_ADDRESS_READ_OWNER=noevia-web-address-read-rust/1 >/dev/null 2>"$work/err"; rc=$?
 check "web-address: inherited owner value cannot spoof a wrong core" '[ $rc -eq 2 ] && grep -q "web-address GET ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm -f "$work/server/rust-web-address.cjs"
+# sbstndalton/noevia#2303: the calibration job (state file, boot recovery, hold) moves as one owner.
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker" >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: native front over a Core that still runs the job is refused before launch" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { CALIBRATION_WORKER_OWNER: 'noevia-calibration-worker-rust/1' };" > "$work/server/rust-calibration-routes.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: Core that stopped running the job over an old front is refused before launch" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker" >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: matching exported Core and compiled front start together" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+printf "%s\n" "module.exports = { CALIBRATION_WORKER_OWNER: 'wrong' };" > "$work/server/rust-calibration-routes.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker" CALIBRATION_WORKER_OWNER=noevia-calibration-worker-rust/1 >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: inherited owner value cannot spoof a wrong Core" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm -f "$work/server/rust-calibration-routes.cjs"
 
 reset
 run UI_PORT=65000 >/dev/null 2>&1; rc=$?
