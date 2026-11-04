@@ -4081,7 +4081,10 @@ owner = "$close_owner"
 $close_methods
 TOML
 }
-for close_entry in "rust-health.cjs|rust-health|/api/health|health check" "rust-auto-roles.cjs|rust-auto-roles|/api/auto-roles|auto-roles read" "rust-workspace.cjs|rust-workspace|/api/workspace|workspace list"; do
+# The chat search and download refusers, as the real ones declare them (checked only once index.cjs requires them).
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/chats/search']));" > "$w/server/rust-chat-search.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/chats/{chatId}/export']));" > "$w/server/rust-chat-export.cjs"
+for close_entry in "rust-health.cjs|rust-health|/api/health|health check" "rust-auto-roles.cjs|rust-auto-roles|/api/auto-roles|auto-roles read" "rust-workspace.cjs|rust-workspace|/api/workspace|workspace list" "rust-chat-search.cjs|rust-chat-search|/api/chats/search|chat search" "rust-chat-export.cjs|rust-chat-export|/api/chats/{chatId}/export|chat download"; do
   IFS='|' read -r close_marker close_cap close_path close_label <<<"$close_entry"
   close_methods='methods = ["GET"]'; close_owner=rust
   cp "$work/feature-index.saved" "$w/server/index.cjs"
@@ -4111,6 +4114,36 @@ for close_entry in "rust-health.cjs|rust-health|/api/health|health check" "rust-
   move_try "close-$close_cap-old-pair"
   check "$close_label: the historic old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 done
+# The chat pairs' Core side: exactly the GET refused, in code, and the old handler gone from routes/chat-lists.cjs.
+[ ! -f "$w/server/routes/chat-lists.cjs" ] || cp "$w/server/routes/chat-lists.cjs" "$work/chat-lists.saved"
+mkdir -p "$w/server/routes"
+for cl_entry in "rust-chat-search.cjs|rust-chat-search|/api/chats/search|chat search|GET /api/chats/search|if (p === '/api/chats/search' && req.method === 'GET') {" "rust-chat-export.cjs|rust-chat-export|/api/chats/{chatId}/export|chat download|GET /api/chats/{chatId}/export|const text = chatMarkdown(chat, store.readHistory(spaceId));"; do
+  IFS='|' read -r close_marker close_cap close_path close_label cl_owned cl_handler <<<"$cl_entry"
+  close_methods='methods = ["GET"]'; close_owner=rust
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./$close_marker').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  sed "s/\"start-id\"/\"start-id\", \"$close_cap\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+  printf '%s\n' "module.exports = {};" > "$w/server/routes/chat-lists.cjs"
+  close_try "cl-$close_cap-pair"
+  check "$close_label: the pair assembles once Node's handler is gone" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+  printf '%s\n' "    $cl_handler" >> "$w/server/routes/chat-lists.cjs"
+  close_try "cl-$close_cap-old-handler"
+  check "$close_label: a paired Core that still carries the handler is refused" 'refused "Core still carries the public"'
+  printf '%s\n' "module.exports = {};" "// $cl_handler" > "$w/server/routes/chat-lists.cjs"
+  close_try "cl-$close_cap-commented-handler"
+  check "$close_label: a commented-out handler is not the handler" '[ $rc -eq 0 ]'
+  printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL ${close_path}']));" > "$w/server/$close_marker"
+  close_try "cl-$close_cap-all-refuser"
+  check "$close_label: a refuser of every method is refused" 'refused "Core must refuse exactly this GET"'
+  printf '%s\n' "/*" "const OWNED_ROUTES = Object.freeze(new Set(['${cl_owned}']));" "*/" > "$w/server/$close_marker"
+  close_try "cl-$close_cap-comment-marker"
+  check "$close_label: the refusal must be executable code" 'refused "Core must refuse exactly this GET"'
+  printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['${cl_owned}']));" > "$w/server/$close_marker"
+done
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+if [ -f "$work/chat-lists.saved" ]; then cp "$work/chat-lists.saved" "$w/server/routes/chat-lists.cjs"; else rm -f "$w/server/routes/chat-lists.cjs"; fi
+rm -f "$w/server/rust-chat-search.cjs" "$w/server/rust-chat-export.cjs"
 # Round 7 (#2190): Google Drive's token authority, exactly the connector writes' methods Rust's.
 gdrv_try() {
   try_routes "$1" <<TOML

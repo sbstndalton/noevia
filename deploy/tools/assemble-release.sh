@@ -1508,6 +1508,23 @@ get_only_pair() {
 get_only_pair rust-health.cjs rust-health "health check" /api/health
 get_only_pair rust-auto-roles.cjs rust-auto-roles "auto-roles read" /api/auto-roles
 get_only_pair rust-workspace.cjs rust-workspace "workspace list" /api/workspace
+# The chat search (#1450) and one chat's Markdown download (#1471), each its own pair of Core refusal
+# (server/rust-chat-search.cjs, rust-chat-export.cjs) and front capability, exactly the GET Rust's. A paired
+# Core no longer carries the handler in routes/chat-lists.cjs and refuses exactly that GET.
+get_only_pair rust-chat-search.cjs rust-chat-search "chat search" /api/chats/search
+get_only_pair rust-chat-export.cjs rust-chat-export "chat download" "/api/chats/{chatId}/export"
+if grep -qF "require('./rust-chat-search.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  code_has "$tree/core/server/rust-chat-search.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/chats/search'[]][)][)];$" \
+    || die "chat search ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/chat-lists.cjs" "p === '/api/chats/search'" \
+    || die "chat search ownership pairing: Core still carries the public search handler"
+fi
+if grep -qF "require('./rust-chat-export.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  code_has "$tree/core/server/rust-chat-export.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/chats/[{]chatId[}]/export'[]][)][)];$" \
+    || die "chat download ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/chat-lists.cjs" 'chatMarkdown[(]' \
+    || die "chat download ownership pairing: Core still carries the public download handler"
+fi
 # The decision settings (sbstndalton/noevia#2190): Core's rust-decision-settings.cjs refusal and the
 # front's rust-decision-settings capability (Rust the single writer of decision:configuration), every
 # method of both routes Rust's in routes.toml.
