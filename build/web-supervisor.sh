@@ -290,6 +290,7 @@ rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-state-reads.cjs rust-model-state-reads model state read
 rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
 rust-chat-turn.cjs rust-chat-turn chat turn
+rust-chat-edge.cjs rust-chat-edge chat edge
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
