@@ -1,7 +1,8 @@
 #!/bin/bash
 # Diary image overlay: FROM the running image, replace exactly the directories the Diary Dockerfile copies into
 # /app (agent/, config/ and scripts/; #2112) and, when the release pins noevia-rs, add the tenant-assertion and
-# workspace-restore-verify binaries built from that pin. Rolls back on any failure.
+# workspace-restore-verify binaries built from that pin, plus the Diary Rust leaves (rust_leaves below) when the
+# release ships the smoke that proves them (noevia#1071 P0). Rolls back on any failure.
 # Usage (on DaServer, as root): bash diary-overlay.sh <SRC_SHA>. SRC_SHA is an unpacked release
 # under releases/ whose services/diary/{agent,config,scripts} are shipped; it also becomes the new Diary tag
 # (cowork-diary:<SRC_SHA>) and DIARY_VERSION in .env. COWORK_VERSION and the web image are untouched.
@@ -142,6 +143,28 @@ on_exit() {
 trap on_exit EXIT
 docker tag "$OLD_ID" cowork-diary:rollback-before-diary-overlay
 for d in $overlay_dirs; do cp -r "$base/releases/$V/services/diary/$d" "$ctx/$d"; done
+# BEGIN rust-leaves (deploy/tests/test_overlay_scripts.py runs this block with rs-stage and leaf-smoke)
+# noevia#1071 P0: the Diary Rust leaves whose Python adapters already exist, one per line as
+# <source directory in noevia-rs>:<cargo package>:<binary installed in /usr/local/bin>. Each is built only when
+# the pinned noevia-rs has its directory, and only for a release that ships scripts/smoke_diary_leaves.py, which
+# the candidate then runs on every leaf it has. The image ships them; every selector stays python.
+rust_leaves="bins/diary-corpus-write:diary-corpus-write-cli:diary-corpus-write-cli
+crates/diary-corpus-parse:diary-corpus-parse:diary-corpus-parse
+crates/diary-score-gap:diary-score-gap:diary-score-gap
+crates/diary-temporal-focus:diary-temporal-focus:diary-temporal-cli
+crates/diary-workspace-export:diary-workspace-export:diary-workspace-export
+crates/diary-workspace-import-apply:diary-workspace-import-apply:diary-workspace-import-apply"
+leaf_smoke=scripts/smoke_diary_leaves.py
+# The RUN continuation lines that build each declared leaf into /out/ (nothing when the release has no smoke).
+rust_leaf_lines() {
+  local spec dir rest pkg bin
+  [ "$rs_leaves" = 1 ] || return 0
+  for spec in $rust_leaves; do
+    dir=${spec%%:*}; rest=${spec#*:}; pkg=${rest%%:*}; bin=${rest#*:}
+    printf ' \\\n && if [ -d %s ]; then cargo build --release --locked -p %s && cp target/release/%s /out/; fi' "$dir" "$pkg" "$bin"
+  done
+}
+# END rust-leaves
 # BEGIN rs-stage (deploy/tests/test_overlay_scripts.py runs this block on synthetic Dockerfiles)
 # TENANT_ASSERTION_IMPL=rust needs the tenant-assertion binary, WORKSPACE_RESTORE_VERIFY_IMPL=rust
 # the workspace-restore-verify binary (noevia#982; built only when the pinned noevia-rs has it, so
@@ -151,6 +174,8 @@ for d in $overlay_dirs; do cp -r "$base/releases/$V/services/diary/$d" "$ctx/$d"
 # stay the running image's. Only the two validated hex pins are taken from the release's
 # Dockerfile, never any of its text.
 diary_df=$base/releases/$V/services/diary/Dockerfile
+rs_leaves=0
+if [ -f "$base/releases/$V/services/diary/$leaf_smoke" ]; then rs_leaves=1; fi
 rs_ref=$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$diary_df" 2>/dev/null | head -1 || true)
 rs_sum=$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$diary_df" 2>/dev/null | head -1 || true)
 if [ -z "$rs_ref$rs_sum" ]; then
@@ -173,13 +198,14 @@ RUN echo "$rs_sum  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\
  && if [ -d bins/workspace-restore-verify ]; then \\
       cargo build --release --locked -p workspace-restore-verify-cli \\
       && ./target/release/workspace-restore-verify self-test | grep -qx ok \\
-      && cp target/release/workspace-restore-verify /out/; fi
+      && cp target/release/workspace-restore-verify /out/; fi$(rust_leaf_lines)
 FROM cowork-diary:rollback-before-diary-overlay
 COPY --from=tenant-assertion /out/ /usr/local/bin/
 $(overlay_copy_lines)
 DOCKERFILE
   rs_stage=1
   echo "tenant-assertion from noevia-rs $rs_ref"
+  if [ "$rs_leaves" = 1 ]; then echo "Diary Rust leaves from noevia-rs $rs_ref (selectors stay python)"; fi
 fi
 # END rs-stage
 docker build -q -t cowork-diary:$V-candidate "$ctx" >/dev/null
@@ -213,6 +239,29 @@ if [ "$rs_stage" = 1 ]; then
     echo "candidate has no workspace-restore-verify (pinned noevia-rs predates it): WORKSPACE_RESTORE_VERIFY_IMPL must stay python"
   fi
 fi
+# BEGIN leaf-smoke (deploy/tests/test_overlay_scripts.py runs this block with a stub docker)
+# noevia#1071 P0: the leaves have no self-test command. The release's own smoke (in scripts/, already proven equal
+# to the release above) runs each leaf the candidate has through its real adapter on synthetic data and compares
+# it with Python, selecting Rust only inside that process. Any leaf that fails stops the overlay.
+if [ "$rs_stage" = 1 ] && [ "$rs_leaves" = 1 ]; then
+  leaf_names=""
+  for spec in $rust_leaves; do leaf_names="$leaf_names ${spec##*:}"; done
+  leaves_present=$(docker run --rm --network none --entrypoint sh cowork-diary:$V-candidate -c \
+    "cd /usr/local/bin && for b in$leaf_names; do if [ -f \"\$b\" ] && [ -x \"\$b\" ]; then echo \"\$b\"; fi; done") \
+    || { echo "could not list the Diary Rust leaves in the candidate; not deploying" >&2; exit 1; }
+  leaves_present=$(printf '%s\n' $leaves_present)
+  for b in $leaves_present; do
+    case " $leaf_names " in *" $b "*) ;; *) echo "unexpected leaf name from the candidate listing; not deploying" >&2; exit 1 ;; esac
+  done
+  if [ -n "$leaves_present" ]; then
+    docker run --rm --network none --entrypoint python cowork-diary:$V-candidate $leaf_smoke $leaves_present \
+      || { echo "candidate Diary Rust leaf smoke failed; not deploying" >&2; exit 1; }
+    echo "candidate Diary Rust leaves ok:" $leaves_present
+  else
+    echo "candidate has none of the Diary Rust leaves (pinned noevia-rs predates them): their selectors must stay python"
+  fi
+fi
+# END leaf-smoke
 cp -p "$config" "$config.bak.before-diary-$V"
 # BEGIN diary-backup (deploy/tests/test_overlay_scripts.py runs this block through the whole script, with stub docker, gzip and php)
 # Scoped backup (#1487): the Diary state directory and .env only, in a new folder that the Appdata Backup
