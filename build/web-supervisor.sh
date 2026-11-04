@@ -494,7 +494,18 @@ stop() {
   # Revoking the proof cannot retract a previously admitted native batch.
   if [ -n "$front_pid" ]; then
     kill -TERM "$front_pid" 2>/dev/null || true
-    while kill -0 "$front_pid" 2>/dev/null; do wait "$front_pid" 2>/dev/null || true; done
+    # Reserve Core's 3s shutdown-hook budget inside Docker's default 10s stop.
+    # Force a stuck front to exit before signalling Core; never overlap owners.
+    local front_deadline=$((SECONDS + 5))
+    while kill -0 "$front_pid" 2>/dev/null; do
+      if [ "$SECONDS" -ge "$front_deadline" ]; then
+        echo "web-supervisor: front stop deadline reached; killing the front before stopping Core" >&2
+        kill -KILL "$front_pid" 2>/dev/null || true
+        break
+      fi
+      sleep 0.05
+    done
+    wait "$front_pid" 2>/dev/null || true
   fi
   [ -n "$node_pid" ] && kill -TERM "$node_pid" 2>/dev/null
   return 0

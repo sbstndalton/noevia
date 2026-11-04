@@ -43,9 +43,10 @@ echo "\$name WCONF=\${NOEVIA_RUST_PROJECT_WRITES_CONFIRMED:-} WRITES=\${NOEVIA_R
 echo "\$name SSTORE=\${NOEVIA_RUST_PROJECT_STORE_CONFIRMED:-} SPORT=\${NOEVIA_PROJECT_STORE_PORT:-} STOKLEN=\${#NOEVIA_PROJECT_STORE_TOKEN}" >> "$work/log"
 echo "\$name AUTH=\${NOEVIA_RUST_AUTH-unset}" >> "$work/log"
 echo "\$name LCLAIM=\${NOEVIA_LEGACY_CLAIM_BIN:-}" >> "$work/log"
+echo "\$name PID=\$\$" >> "$work/log"
 echo "\$name START=\${NOEVIA_START_ID-unset}" >> "$work/log"
 echo "\$name KCONF=\${NOEVIA_FRONT_CLIENT_IP:-}" >> "$work/log"
-trap 'echo "\$name TERM" >> "$work/log"; if [ "\$name" = front ] && [ "\${STUB_FRONT_DRAIN:-}" = 1 ]; then sleep 0.15; echo "front JOINED" >> "$work/log"; fi; exit 0' TERM
+trap 'echo "\$name TERM" >> "$work/log"; if [ "\$name" = front ] && [ "\${STUB_FRONT_STUCK:-}" = 1 ]; then while :; do sleep 0.05; done; fi; if [ "\$name" = front ] && [ "\${STUB_FRONT_DRAIN:-}" = 1 ]; then sleep 0.15; echo "front JOINED" >> "$work/log"; fi; if [ "\$name" = node ] && [ "\${STUB_NODE_DRAIN:-}" = 1 ]; then sleep 3; echo "node HOOKS-DONE" >> "$work/log"; fi; exit 0' TERM
 # The supervisor TERMs the survivor as soon as one child exits. A front told to die at once would
 # race Node's startup logging (Node killed mid-write, its later lines lost: #1822), so a dying
 # front waits (bounded) until Node's last startup line is in the log.
@@ -630,6 +631,17 @@ kill -TERM "$pid"; wait "$pid"; rc=$?
 check "docker stop (SIGTERM) stops both and exits 0" '[ $rc -eq 0 ] && grep -q "^node TERM" "$work/log" && grep -q "^front TERM" "$work/log"'
 
 check "rollback drains and joins the front before stopping Core" 'awk "/^front JOINED$/ { joined=1 } /^node TERM$/ { if (!joined) exit 1; node=1 } END { if (!node || !joined) exit 1 }" "$work/log"'
+
+reset
+(cd "$work" && exec env NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 STUB_FRONT_STUCK=1 STUB_NODE_DRAIN=1 bash "$sup" >/dev/null 2>"$work/err") &
+pid=$!
+wait_log "^front KCONF=" && wait_log "^node KCONF="
+front_child="$(sed -n 's/^front PID=//p' "$work/log")"
+stop_started=$SECONDS
+kill -TERM "$pid"; wait "$pid"; rc=$?
+stop_elapsed=$((SECONDS - stop_started))
+check "stuck front is killed and joined before Core shutdown" '[ $rc -eq 0 ] && grep -q "front stop deadline reached" "$work/err" && ! kill -0 "$front_child" 2>/dev/null && awk "/^front TERM$/ { front=1 } /^node TERM$/ { if (!front) exit 1; node=1 } END { if (!node) exit 1 }" "$work/log"'
+check "Core shutdown hooks finish inside the default Docker stop budget" '[ "$stop_elapsed" -lt 10 ] && grep -q "^node HOOKS-DONE$" "$work/log"'
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]
