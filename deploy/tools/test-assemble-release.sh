@@ -2126,6 +2126,69 @@ check "chat edge needs the chat turn relay" 'refused "chat edge ownership pairin
 cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 ct_try edge-old-pair
 check "chat edge old/old rollback pair assembles" '[ $rc -eq 0 ]'
+# Chat port S7: the chat turn's event stream on top of the S6 edge: Core's marker and wire, the relay reading the
+# front's wire, chat.cjs writing the turn through it and no event stream of its own.
+cp "$w/server/chat.cjs" "$work/cw-chat.saved"
+cw_files() {
+  printf '%s\n' "const FRONT_CAPABILITY = '${1:-rust-chat-wire}';" "const WIRE = '${2:-ndjson/1}';" "module.exports = { FRONT_CAPABILITY, WIRE };" > "$w/server/rust-chat-wire.cjs"
+  printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));" "    if (pathname !== TURN_PATH && pathname !== GATE_PATH && pathname !== edge.COWORK_PATH) return null;" "    const kind = wire.wireOf(req.headers[wire.WIRE_HEADER]);" > "$w/server/rust-chat-turn.cjs"
+  { cat "$work/cw-chat.saved"; printf '%s\n' "    const eventWire = require('./rust-chat-wire.cjs').createWire(res, require('./rust-chat-turn.cjs').relayedWire(req));"; } > "$w/server/chat.cjs"
+  printf '%s\n' "pub const WIRE: &str = \"${3:-ndjson/1}\";" > "$rz/bins/noevia-server/src/chat_wire.rs"
+}
+cw_core() { ce_core; printf '%s\n' "const chatWire = require('./rust-chat-wire.cjs');" >> "$w/server/index.cjs"; }
+cw_front() { sed 's/"start-id"/"start-id", "rust-chat-turn", "rust-chat-edge", "rust-chat-wire"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ct_owner=rust; ct_methods='methods = ["POST"]'
+cw_files
+cw_core; ce_front
+ct_try wire-core-only
+check "chat wire Core requires the native front" 'refused "chat wire ownership pairing: Core and Rust must move together"'
+ce_core; cw_front
+ct_try wire-front-only
+check "native chat wire front requires its Core" 'refused "chat wire ownership pairing: Core and Rust must move together"'
+cw_core
+ct_try wire-pair
+check "chat wire pair on the chat edge assembles" '[ $rc -eq 0 ]'
+cw_files rust-chat-wiry
+ct_try wire-wrong-capability
+check "chat wire: Core's marker names the front capability" 'refused "chat wire ownership pairing: Core'"'"'s marker must name the front capability"'
+cw_files rust-chat-wire ndjson/2
+ct_try wire-core-other-wire
+check "chat wire: Core's wire must be the front's" 'refused "Core and the front must name the same wire"'
+cw_files rust-chat-wire ndjson/1 ndjson/2
+ct_try wire-front-other-wire
+check "chat wire: the front's wire must be Core's" 'refused "Core and the front must name the same wire"'
+cw_files
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));" "    if (pathname !== TURN_PATH && pathname !== GATE_PATH && pathname !== edge.COWORK_PATH) return null;" "    // const kind = wire.wireOf(req.headers[wire.WIRE_HEADER]);" > "$w/server/rust-chat-turn.cjs"
+ct_try wire-relay-ignores-wire
+check "chat wire: Core reads the front's wire on the relay (a comment is not code)" 'refused "Core must read the front'"'"'s wire on the relay"'
+cw_files
+cp "$work/cw-chat.saved" "$w/server/chat.cjs"
+ct_try wire-chat-not-through-wire
+check "chat wire: chat.cjs writes the turn through the wire" 'refused "chat.cjs must write the turn through the wire"'
+cw_files
+printf '%s\n' "    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform' });" >> "$w/server/chat.cjs"
+ct_try wire-chat-own-headers
+check "chat wire: chat.cjs keeps no event stream headers of its own" 'refused "chat.cjs must not write an event stream of its own"'
+cw_files
+printf '%s\n' "    const beat=setInterval(()=>{if(!res.destroyed)res.write(': keep-alive\n\n');},5000);" >> "$w/server/chat.cjs"
+ct_try wire-chat-own-heartbeat
+check "chat wire: chat.cjs keeps no heartbeat of its own" 'refused "chat.cjs must not write an event stream of its own"'
+cw_files
+printf '%s\n' "    // the ': keep-alive' comment and the text/event-stream' headers are the front's now" >> "$w/server/chat.cjs"
+ct_try wire-chat-comment
+check "chat wire: a comment naming the old heartbeat is not one" '[ $rc -eq 0 ]'
+# The wire without the S6 edge: the turn relay paired, the wire native on both sides.
+cw_files
+ct_core; printf '%s\n' "const chatWire = require('./rust-chat-wire.cjs');" >> "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-chat-turn", "rust-chat-wire"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ct_try wire-without-edge
+check "chat wire needs the chat edge" 'refused "chat wire ownership pairing: the wire needs the chat edge"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ct_owner=node; ct_methods=""
+ct_try wire-old-pair
+check "chat wire old/old rollback pair assembles" '[ $rc -eq 0 ]'
+cp "$work/cw-chat.saved" "$w/server/chat.cjs"
+rm -f "$w/server/rust-chat-wire.cjs" "$rz/bins/noevia-server/src/chat_wire.rs"
 rm -f "$w/server/rust-chat-edge.cjs"
 rm -f "$w/server/rust-chat-turn.cjs"
 # #2281 toolbox picker owner pair and the narrow facts bridge.

@@ -464,9 +464,9 @@ for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration
   run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
   check "$p_label: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 done
-# Chat ports S4, S5 and S6: the framing suggestion, chat turn and chat edge pairs, in both directions (their own loop,
+# Chat ports S4 to S7: the framing suggestion, chat turn, chat edge and chat wire pairs, in both directions (their own loop,
 # beside the list above).
-for pair in "rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion" "rust-chat-turn.cjs rust-chat-turn chat turn" "rust-chat-edge.cjs rust-chat-edge chat edge"; do
+for pair in "rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion" "rust-chat-turn.cjs rust-chat-turn chat turn" "rust-chat-edge.cjs rust-chat-edge chat edge" "rust-chat-wire.cjs rust-chat-wire chat wire"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset

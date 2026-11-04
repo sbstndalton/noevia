@@ -1181,6 +1181,31 @@ if [ -f "$tree/core/server/index.cjs" ]; then
       || die "chat edge ownership pairing: Core must mark the gate refusals the front counted"
   fi
 fi
+# Chat port S7: the chat turn's event stream. The front writes it (capability rust-chat-wire): it asks the relayed
+# turn for NDJSON and writes the headers, the frames, the 5 s keep-alive and the end itself. Core
+# (server/rust-chat-wire.cjs) answers a relayed turn that asks as NDJSON, reads the front's wire on the relay, and
+# chat.cjs writes the turn only through that wire. The wire rides on the S6 edge. Old/old stays valid for rollback;
+# mixed pairs are refused (a wire front beside an old Core is answered with Core's own event stream and refuses
+# every turn; a wire Core beside an old front would mark a pairing that is not there).
+cw_core_owner=""; cw_rs_owner=""
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-chat-wire\\.cjs'\\)" && cw_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-wire features; then cw_rs_owner=rust; fi
+[ "$cw_core_owner" = "$cw_rs_owner" ] || die "chat wire ownership pairing: Core and Rust must move together"
+if [ "$cw_rs_owner" = rust ]; then
+  [ "$ce_rs_owner" = rust ] || die "chat wire ownership pairing: the wire needs the chat edge"
+  code_has "$tree/core/server/rust-chat-wire.cjs" "^const FRONT_CAPABILITY = 'rust-chat-wire';$" \
+    || die "chat wire ownership pairing: Core's marker must name the front capability"
+  code_has "$tree/core/server/rust-chat-wire.cjs" "^const WIRE = 'ndjson/1';$" \
+    && code_has "$tree/rs/bins/noevia-server/src/chat_wire.rs" '^pub const WIRE: &str = "ndjson/1";$' \
+    || die "chat wire ownership pairing: Core and the front must name the same wire"
+  code_has "$tree/core/server/rust-chat-turn.cjs" "wire[.]wireOf[(]req[.]headers[[]wire[.]WIRE_HEADER[]][)]" \
+    || die "chat wire ownership pairing: Core must read the front's wire on the relay"
+  code_has "$tree/core/server/chat.cjs" "const eventWire = require[(]'[.]/rust-chat-wire[.]cjs'[)][.]createWire[(]res, require[(]'[.]/rust-chat-turn[.]cjs'[)][.]relayedWire[(]req[)][)];" \
+    || die "chat wire ownership pairing: chat.cjs must write the turn through the wire"
+  if code_has "$tree/core/server/chat.cjs" "text/event-stream'|: keep-alive"; then
+    die "chat wire ownership pairing: chat.cjs must not write an event stream of its own"
+  fi
+fi
 # #2281: the toolbox picker moves as one owner, with only raw discovery/prefill facts in Core.
 tp_core_owner=""; tp_rs_owner=""
 grep -qF "require('./rust-toolbox-picker.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && tp_core_owner=rust
