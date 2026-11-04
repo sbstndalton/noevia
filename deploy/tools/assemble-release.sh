@@ -1290,6 +1290,24 @@ if [ "$atrm_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
 fi
+# Retention PUT and the hourly sweep share one native writer. Refuse mixed generations.
+retention_core_put=""
+if grep -qF "  [/^\\/api\\/account\\/retention$/, ['GET', 'PUT']]," "$tree/core/server/rust-auth.cjs" 2>/dev/null; then
+  retention_core_put='PUT /api/account/retention'
+fi
+retention_rs_put=""
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  retention_rs_put="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/account/retention" && $2 == "rust" && ($4 == "-" || $4 ~ /(^|,)[ \t]*PUT([ \t]*,|[ \t]*$)/) {print "PUT /api/account/retention"}')"
+fi
+[ "$retention_core_put" = "$retention_rs_put" ] || die "retention PUT ownership pairing: Core and Rust must move together"
+if [ -n "$retention_core_put" ]; then
+  code_has "$tree/core/server/routes/account.cjs" "Retention settings are owned by the Rust front." \
+    || die "retention PUT ownership pairing: Core must refuse the moved writer"
+  if code_has "$tree/core/server/routes/account.cjs" 'retention.write('; then
+    die "retention PUT ownership pairing: Core still writes retention settings"
+  fi
+fi
 # #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
 atc_core_owner=""; atc_rs_owner=""
 grep -qF "require('./rust-autotune-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atc_core_owner=rust
