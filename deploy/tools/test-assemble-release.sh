@@ -2779,17 +2779,13 @@ check "native calibration worker cannot pair with a Core that still runs the job
 cw_marker; cw_manager
 cw_try cw-pair
 check "matching calibration worker pair assembles" '[ $rc -eq 0 ]'
+# Core's source shape is not this script's to judge (Core CI boots index.cjs for that): a marked Core whose
+# manager reads differently, or whose index.cjs mentions recover() in a comment, still pairs by its marker.
 cp "$w/server/index.cjs" "$work/cw-index.saved"
-printf '%s\n' '    modelManager.calibration?.recover().catch(() => undefined);' >> "$w/server/index.cjs"; cw_try cw-boot-recover
-check "native calibration worker rejects a Core that recovers the job at boot" 'refused "Core still recovers the calibration job at boot"'
-printf '%s\n' "const modelManager = createModelManager({ publicCalibrator: true });" >> "$work/cw-index.saved"
-cp "$work/cw-index.saved" "$w/server/index.cjs"; cw_try cw-production-public
-check "native calibration worker rejects production wiring that asks for the public calibrator" 'refused "production wiring asks for the public calibrator"'
-sed '$d' "$work/cw-index.saved" > "$w/server/index.cjs"
-cw_ungated
-cw_try cw-ungated
-check "native calibration worker rejects an ungated public calibrator" 'refused "Core still builds the public calibrator"'
-cw_manager
+printf '%s\n' '/* boot */ // modelManager.calibration?.recover()' >> "$w/server/index.cjs"; cw_ungated
+cw_try cw-shape-free
+check "a marked calibration worker pair is decided by its markers, not Core's source shapes" '[ $rc -eq 0 ]'
+cp "$work/cw-index.saved" "$w/server/index.cjs"; cw_manager
 cp "$repo/build/web-supervisor.sh" "$work/cw-supervisor.saved"; grep -v 'CALIBRATION_WORKER_OWNER\|rust-calibration-worker' "$work/cw-supervisor.saved" > "$repo/build/web-supervisor.sh"
 cw_try cw-no-supervisor
 check "native calibration worker needs the supervisor's prelaunch comparison" 'refused "web supervisor lacks a prelaunch capability comparison"'
@@ -2802,9 +2798,7 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"; cw_front rust-calibration-
 sed 's/"rust-calibration-routes", "rust-calibration-cancel", //' "$rz/bins/noevia-server/src/lib.rs" > "$work/cw-lib"; cp "$work/cw-lib" "$rz/bins/noevia-server/src/lib.rs"
 cw_routes_owner=node cw_try cw-no-routes
 check "native calibration worker needs the native calibration routes" 'refused "needs the native start/read and cancellation routes"'
-cw_unmarked; cw_manager; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
-cw_routes_owner=node cw_try cw-gated-unmarked
-check "a Core that gates its public calibrator must export the worker marker" 'refused "does not export the worker marker"'
+cw_unmarked; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 cp "$work/cw-manager.saved" "$w/server/llamacpp-manager.cjs"
 cw_routes_owner=node cw_try cw-old-old
 check "old calibration worker pair stays valid for rollback" '[ $rc -eq 0 ]'
