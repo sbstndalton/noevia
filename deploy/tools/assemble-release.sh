@@ -1185,6 +1185,45 @@ if [ "$iur_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
 fi
+# #2238: only the assignments GET moves. Core retains its shared installed/probe owners.
+mas_core_owner=""; mas_rs_owner=""
+grep -qF "require('./rust-model-assignments.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mas_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-assignments features; then mas_rs_owner=rust; fi
+[ "$mas_core_owner" = "$mas_rs_owner" ] || die "model assignments read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mas_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mas_table=""
+  mas_rows="$(printf '%s\n' "$mas_table" | awk -F'\t' -v want="$mas_rs_owner" '
+    $1 == "/api/models/assignments" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model assignments read ownership pairing: GET only; other methods stay Node"
+fi
+if [ "$mas_rs_owner" = rust ]; then
+  [ "${mas_rows:-}" = /api/models/assignments ] || die "model assignments read ownership pairing: incomplete route ownership"
+  awk -v quote="'" '
+    block { if (index($0, "*/")) block = 0; next }
+    /^[[:space:]]*\/\// { next }
+    /^[[:space:]]*\/\*/ { if (!index($0, "*/")) block = 1; next }
+    /^const OWNED_ROUTES = / {
+      markers++
+      exact = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET /api/models/assignments" quote "]));")
+    }
+    END { exit !(markers == 1 && exact) }
+  ' "$tree/core/server/rust-model-assignments.cjs" \
+    || die "model assignments read ownership pairing: Core must refuse exactly GET model assignments"
+  [ ! -f "$tree/core/server/model-assignments.cjs" ] \
+    || die "model assignments read ownership pairing: Core still carries the public GET formatter"
+  [ -f "$tree/core/server/rust-model-assignments-facts.cjs" ] || die "model assignments read ownership pairing: missing facts bridge"
+  mas_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelAssignmentsFacts(req, res)' <<<"$mas_index" || die "model assignments read ownership pairing: missing facts bridge mount"
+  mas_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mas_index" | head -1)"
+  [ -n "$mas_secret" ] && awk -v c="$mas_secret" '
+    /createModelAssignmentsFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mas_index" || die "model assignments read ownership pairing: facts bridge needs the front captured secret"
+fi
 # Download GET moves as a pair; Core retains the tracker and every other method.
 mdr_core=""; mdr_rs=""
 grep -qF "require('./rust-model-downloads-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mdr_core=rust

@@ -2224,6 +2224,51 @@ iur_owner=node; unset iur_methods; iur_try iur-old-pair
 check "old idle unload pair remains available for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-idle-unload-read.cjs" "$w/server/rust-idle-unload-read-facts.cjs" "$w/server/idle-unload-setting.cjs"
 if [ -f "$work/iur-models.saved" ]; then cp "$work/iur-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+# #2238: only the model assignments GET moves.
+mas_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/assignments"\nowner = "%s"\n' "$mas_owner"; [ -z "${mas_methods:-}" ] || printf '%s\n' "$mas_methods")
+}
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/assignments']));" > "$w/server/rust-model-assignments.cjs"
+touch "$w/server/rust-model-assignments-facts.cjs"
+mas_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const modelAssignmentsFacts = require('./rust-model-assignments-facts.cjs').createModelAssignmentsFacts({
+  secret: FRONT_SECRET, json,
+});
+if (require('./rust-model-assignments.cjs').refuseOwned(req, res, {})) return;
+if (await modelAssignmentsFacts(req, res)) return;
+JS
+}
+mas_owner=rust; mas_methods='methods = ["GET"]'; mas_core
+mas_try mas-core-only
+check "model assignments GET Core refusal requires native capability" 'refused "model assignments read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-model-assignments"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mas_try mas-front-only
+check "native model assignments GET requires its paired Core" 'refused "model assignments read ownership pairing"'
+mas_core; mas_try mas-pair
+check "matching model assignments GET pair assembles" '[ $rc -eq 0 ]'
+mas_methods='methods = ["PUT"]'; mas_try mas-put
+check "model assignments GET pair cannot claim the write" 'refused "GET only; other methods stay Node"'
+mas_methods='methods = ["GET"]'
+cp "$w/server/rust-model-assignments.cjs" "$work/mas-refuser.saved"
+{ printf '/*\n'; cat "$work/mas-refuser.saved"; printf '*/\n'; } > "$w/server/rust-model-assignments.cjs"
+mas_try mas-comment-only
+check "model assignments marker inside a comment is refused" 'refused "Core must refuse exactly GET model assignments"'
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/assignments', ...extra]));" > "$w/server/rust-model-assignments.cjs"
+mas_try mas-dynamic
+check "model assignments marker cannot include dynamic methods" 'refused "Core must refuse exactly GET model assignments"'
+cp "$work/mas-refuser.saved" "$w/server/rust-model-assignments.cjs"
+touch "$w/server/model-assignments.cjs"
+mas_try mas-retained-get
+check "model assignments GET pair rejects a retained Node formatter" 'refused "public GET formatter"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+mas_owner=node; unset mas_methods; mas_try mas-old-pair
+check "old model assignments pair remains available for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-assignments.cjs" "$w/server/rust-model-assignments-facts.cjs" "$w/server/model-assignments.cjs"
 # Download GET pairs the exact refuser with its bounded facts owner.
 mdr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
