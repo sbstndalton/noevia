@@ -573,6 +573,19 @@ reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model maintenance pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
+# Outbox ownership is bidirectional: half-pairs must never start either writer.
+printf '%s\n' "module.exports = { RUST_INDEX_OUTBOX_OWNED: 'rust-index-outbox-v1' };" > "$work/server/rust-index-outbox.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "new outbox Core with old front refuses" '[ $rc -eq 2 ] && grep -q "index outbox requires paired" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-index-outbox-v1" >/dev/null 2>"$work/err"; rc=$?
+check "paired outbox starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/rust-index-outbox.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-index-outbox-v1" >/dev/null 2>"$work/err"; rc=$?
+check "new outbox front with old Core refuses" '[ $rc -eq 2 ] && grep -q "index outbox requires paired" "$work/err" && [ ! -s "$work/log" ]'
+
 # Embedding background: one-way guard; old Core never authorizes native work.
 printf '%s\n' "module.exports = { RUST_EMBEDDING_OWNED: 'rust-embedding-background-v1' };" > "$work/server/rust-embedding-background.cjs"
 reset

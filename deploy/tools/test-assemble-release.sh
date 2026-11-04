@@ -1442,6 +1442,18 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-reads-old-pair
 check "historic project source read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-reads.cjs"
+# RAG outbox pairing rejects both half-pairs before producing an archive.
+printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v1';" > "$w/server/rust-index-outbox.cjs"
+move_try outbox-core-only
+check "outbox Core requires native owner" 'refused "index outbox ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-index-outbox-v1"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try outbox-pair
+check "matching outbox owner pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm "$w/server/rust-index-outbox.cjs"
+move_try outbox-front-only
+check "outbox front refuses old Core" 'refused "index outbox ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+
 # Project create/delete owner release matrix (sbstndalton/noevia#2191 round 2): POST /api/projects and
 # DELETE /api/projects/{projectId}, nothing else.
 project_lifecycle_try() {
