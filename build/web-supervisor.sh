@@ -335,6 +335,14 @@ if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
   echo "web-supervisor: web-address POST ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# Diary backup ownership is compiled into the paired artifacts, never inherited from the environment.
+diary_backup_front_owner=""
+grep -qx 'rust-diary-backup-worker' <<<"$rust_features" && diary_backup_front_owner=rust
+diary_backup_core_owner="$(node -e "try { const m = require('./server/rust-diary.cjs'); if (m.DIARY_BACKUP_WORKER_OWNER === 'noevia-diary-backup-worker-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$diary_backup_front_owner" != "$diary_backup_core_owner" ]; then
+  echo "web-supervisor: diary backup worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # Source job journals are a paired internal-store capability: this Node client has no local
 # source journal fallback. Probe the installed client export and the actual front binary before
 # either process starts. The release assembler also checks their canonical source declarations.

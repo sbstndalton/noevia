@@ -1014,6 +1014,15 @@ if [ "$cr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
 fi
+# Diary backup must move as a pair: new front + old Core would run two loops.
+db_core_owner=""; db_rs_owner=""
+move_capability "$tree/core/server/rust-diary.cjs" DIARY_BACKUP_WORKER_OWNER noevia-diary-backup-worker-rust/1 js && db_core_owner=rust
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary-backup-worker features && db_rs_owner=rust
+[ "$db_core_owner" = "$db_rs_owner" ] || die "diary backup worker pairing: Core and Rust must move together"
+if [ "$db_rs_owner" = rust ]; then
+  ! code_has "$tree/core/server/index.cjs" 'startDiaryBackupWorker' || die "diary backup worker pairing: Core still starts the worker"
+  grep -qF 'DIARY_BACKUP_WORKER_OWNER' "$tree/noevia/build/web-supervisor.sh" && grep -qF 'rust-diary-backup-worker' "$tree/noevia/build/web-supervisor.sh" || die "diary backup worker pairing: supervisor guard missing"
+fi
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
 grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust

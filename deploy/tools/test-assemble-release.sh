@@ -4380,6 +4380,28 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try maint-old-pair
 check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Diary worker capability pair beside the unchanged route fixture.
+cp "$w/server/index.cjs" "$work/db-index.saved"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/db-lib.saved"
+[ ! -f "$w/server/rust-diary.cjs" ] || cp "$w/server/rust-diary.cjs" "$work/db-module.saved"
+mkdir -p "$repo/build"; cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+db_try() { move_try "$1"; }
+printf "%s\n" "const DIARY_BACKUP_WORKER_OWNER = 'noevia-diary-backup-worker-rust/1';" "module.exports = { DIARY_BACKUP_WORKER_OWNER };" > "$w/server/rust-diary.cjs"
+db_try diary-core-only
+check "diary worker new Core old front refused" 'refused "diary backup worker pairing"'
+sed 's/"start-id"/"start-id", "rust-diary-backup-worker"/' "$work/db-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+db_try diary-pair
+check "diary worker matched pair assembles" '[ $rc -eq 0 ]'
+printf "%s\n" "require('./diary-backup-worker.cjs').startDiaryBackupWorker({});" >> "$w/server/index.cjs"
+db_try diary-double
+check "diary worker retained Node startup refused" 'refused "Core still starts the worker"'
+cp "$work/db-index.saved" "$w/server/index.cjs"
+printf 'module.exports = {};\n' > "$w/server/rust-diary.cjs"
+db_try diary-front-only
+check "diary worker new front old Core refused" 'refused "diary backup worker pairing"'
+cp "$work/db-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+if [ -f "$work/db-module.saved" ]; then cp "$work/db-module.saved" "$w/server/rust-diary.cjs"; else rm -f "$w/server/rust-diary.cjs"; fi
+
 # Restore unrelated final archive-failure fixture, retaining all evidence in this test log.
 rm -f "$w/server/project-store-client.cjs" "$w/server/chat.cjs" "$w/server/chat-change-journal.cjs" "$w/server/routes/chat-lists.cjs"
 rm -f "$rz/crates/server-projects/src/chat_move.rs" "$rz/crates/server-projects/src/journal.rs" "$rz/bins/noevia-server/src/lib.rs" "$rz/bins/noevia-server/src/main.rs"

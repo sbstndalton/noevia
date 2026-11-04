@@ -143,6 +143,23 @@ reset
 run UI_PORT=65000 >/dev/null 2>&1; rc=$?
 check "a UI_PORT with no room for +1000 is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
 
+# Compiled/exported ownership, both directions and at restart; env cannot forge an export.
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-diary-backup-worker" >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: new front over old Core refused before launch" '[ $rc -eq 2 ] && grep -q "diary backup worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { DIARY_BACKUP_WORKER_OWNER: 'noevia-diary-backup-worker-rust/1' };" > "$work/server/rust-diary.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: new Core over old front refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-diary-backup-worker" >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: paired worker starts" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+printf "%s\n" "module.exports = { DIARY_BACKUP_WORKER_OWNER: 'wrong' };" > "$work/server/rust-diary.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-diary-backup-worker" DIARY_BACKUP_WORKER_OWNER=noevia-diary-backup-worker-rust/1 >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: env owner cannot spoof installed Core on restart" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+rm -f "$work/server/rust-diary.cjs"
+
 # Source-journal pairing probes the actual installed Node export and Rust binary --features.
 mkdir -p "$work/server"
 cat > "$work/server/project-store-client.cjs" <<'JS'
