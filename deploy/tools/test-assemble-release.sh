@@ -1255,7 +1255,7 @@ dr_routes() {
   printf '[[route]]\npath = "/api/diary/exchanges"\nowner = "rust"\nmethods = %s\n\n' "${dr_exchanges:-[\"GET\", \"POST\"]}"
   printf '[[route]]\npath = "/api/profile/diary-connectors"\nowner = "rust"\nmethods = %s\n\n' "${dr_connectors:-[\"GET\", \"POST\"]}"
   printf '[[route]]\npath = "%s"\nowner = "rust"\nmethods = %s\n\n' "${dr_one:-/api/profile/diary-connectors/{*\}}" "${dr_delete:-[\"DELETE\"]}"
-  printf '[[route]]\npath = "/api/diary/local-exchange"\nowner = "%s"\n\n' "${dr_local:-node}"
+  printf '[[route]]\npath = "/api/diary/local-exchange"\nowner = "%s"\n%s\n' "${dr_local:-node}" "${dr_local_methods:-}"
 }
 dr_try() { dr_routes > "$work/dr-routes"; try_routes "$1" < "$work/dr-routes"; }
 dr_refusal() {
@@ -1295,7 +1295,40 @@ dr_one="/api/profile/diary-connectors/{id}"; dr_try dr-one-renamed
 check "an incomplete Diary route set is refused" 'refused "Diary route ownership pairing"'
 dr_one='/api/profile/diary-connectors/{*}'
 dr_local=rust; dr_try dr-local-exchange-moved
-check "the local exchange moving to Rust is refused (Node still answers it)" 'refused "Diary route ownership pairing"'
+check "the local exchange moving to Rust without its own pair is refused (Node still answers it)" 'refused "Diary route ownership pairing"'
+# The Diary local exchange: Core's rust-diary-local-exchange.cjs refusal and its admission lease's
+# diaryExchange ask beside the front's rust-diary-local-exchange capability, every method Rust's.
+cp "$w/server/index.cjs" "$work/lx-index.saved"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/lx-lib.saved"
+printf '%s\n' "  if (require('./rust-diary-local-exchange.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+cp "$w/server/index.cjs" "$work/lx-index-wired.saved"
+printf '%s\n' "  diaryExchange: { rateLimited: (userId) => llmRateLimited(userId), foreground: () => rag.foreground() }," >> "$w/server/index.cjs"
+printf '%s\n' "  if (ask && typeof ask === 'object' && 'diaryExchange' in ask) {" > "$w/server/inference-admission-lease.cjs"
+dr_try lx-core-only
+check "a Core that refuses the local exchange requires the native capability" 'refused "Diary local exchange ownership pairing: Core and Rust must move together"'
+sed 's/"rust-diary-routes"/"rust-diary-routes", "rust-diary-local-exchange"/' "$work/lx-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+dr_try lx-pair
+check "a matching local exchange pair, every method Rust's, assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+dr_local_methods='methods = ["POST"]'; dr_try lx-post-only
+check "a local exchange that is Rust's for only some methods is refused" 'refused "Diary local exchange ownership pairing: every method must belong to Rust"'
+dr_local_methods=""
+dr_local=node; dr_try lx-route-still-node
+check "a local exchange pair whose route table still gives Node the route is refused" 'refused "Diary local exchange ownership pairing"'
+dr_local=rust
+printf '%s\n' "// no exchange ask" > "$w/server/inference-admission-lease.cjs"
+dr_try lx-no-lease
+check "a Core whose admission lease cannot take the exchange is refused" 'refused "admission lease does not take the exchange"'
+printf '%s\n' "  if (ask && typeof ask === 'object' && 'diaryExchange' in ask) {" > "$w/server/inference-admission-lease.cjs"
+cp "$w/server/index.cjs" "$work/lx-index-full.saved"
+cp "$work/lx-index-wired.saved" "$w/server/index.cjs"
+dr_try lx-no-throttle
+check "a Core that does not give the lease chat's throttle is refused" 'refused "is not given the chat throttle"'
+cp "$work/lx-index-full.saved" "$w/server/index.cjs"
+cp "$work/lx-index.saved" "$w/server/index.cjs"
+dr_try lx-front-only
+check "a rust-diary-local-exchange front cannot pair with a Core that still answers the exchange" 'refused "Diary local exchange ownership pairing: Core and Rust must move together"'
+cp "$work/lx-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/inference-admission-lease.cjs"
 dr_local=node
 dr_skip="/api/diary/exchanges"; dr_refusal; dr_try dr-core-not-refusing
 check "a Core that does not refuse a Diary path the front answers is refused" 'refused "Core does not refuse /api/diary/exchanges"'

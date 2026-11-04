@@ -572,12 +572,37 @@ if [ "$diary_rs_owner" = rust ]; then
   diary_expected="$(printf '%s\n' /api/diary/source /api/diary/today /api/diary/storage-import /api/diary/workspace-export /api/diary/workspace-import | sort)"
   [ "$diary_routes" = "$diary_expected" ] || die "Diary ownership pairing: incomplete route ownership"
 fi
+# The Diary local exchange moves as one owner: Core's rust-diary-local-exchange.cjs refusal (with the
+# admission lease's diaryExchange ask, through which the front holds Node's model throttle and inference
+# gate) and the front's rust-diary-local-exchange capability, with every method of the route Rust's in
+# routes.toml. Without the pair the route stays Node's. Historic old/old pins remain valid rollback pairs.
+lx_core_owner=""
+lx_rs_owner=""
+grep -qF "require('./rust-diary-local-exchange.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && lx_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary-local-exchange features; then
+  lx_rs_owner=rust
+fi
+[ "$lx_core_owner" = "$lx_rs_owner" ] \
+  || die "Diary local exchange ownership pairing: Core and Rust must move together"
+lx_owner=node
+if [ "$lx_rs_owner" = rust ]; then
+  lx_owner=rust
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary local exchange ownership pairing: missing route contract"
+  lx_route="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/diary/local-exchange" { if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1; print $1 }')" \
+    || die "Diary local exchange ownership pairing: every method must belong to Rust"
+  [ "$lx_route" = "/api/diary/local-exchange" ] || die "Diary local exchange ownership pairing: missing route ownership"
+  grep -qF "diaryExchange" "$tree/core/server/inference-admission-lease.cjs" 2>/dev/null \
+    || die "Diary local exchange ownership pairing: Core's admission lease does not take the exchange"
+  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause.
+  code_lines "$tree/core/server/index.cjs" | grep -qF "diaryExchange: { rateLimited:" \
+    || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
+fi
 # The rest of the Diary routes the web client names (sbstndalton/noevia#2206) move as one owner: Core's
 # rust-diary-routes.cjs refusal and the front's rust-diary-routes capability, with the methods Node
 # answered Rust's in routes.toml: every method of /api/diary, /api/diary-connector and the storage
 # status; GET and POST of the context, the exchanges and the connector credentials; DELETE of one
-# credential. POST /api/diary/local-exchange stays Node's (the model throttle and the inference
-# gate), so it must not be Rust's here. Core must refuse exactly those paths and be the one that keeps
+# credential. /api/diary/local-exchange is Rust's only with its own pair above (lx_owner). Core must refuse exactly those paths and be the one that keeps
 # the diary_connectors table out of Node's hands. Historic old/old pins remain valid rollback pairs.
 dr_core_owner=""
 dr_rs_owner=""
@@ -589,14 +614,14 @@ fi
   || die "Diary route ownership pairing: Core and Rust must move together"
 if [ "$dr_rs_owner" = rust ]; then
   [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary route ownership pairing: missing route contract"
-  dr_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+  dr_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v lx="$lx_owner" '
     function want(path) {
       if (path == "/api/diary" || path == "/api/diary-connector" || path == "/api/diary/storage-status") return "ALL"
       if (path == "/api/diary/context" || path == "/api/diary/exchanges" || path == "/api/profile/diary-connectors") return "GET,POST"
       if (path == "/api/profile/diary-connectors/{*}") return "DELETE"
       return ""
     }
-    $1 == "/api/diary/local-exchange" { if ($2 != "node") exit 1 }
+    $1 == "/api/diary/local-exchange" { if ($2 != lx) exit 1 }
     want($1) != "" {
       if ($2 != "rust" || $3 != "-") exit 1
       w = want($1)
@@ -606,7 +631,7 @@ if [ "$dr_rs_owner" = rust ]; then
       for (i = 1; i <= n; i++) if (m[i] != "") { if (!(m[i] in ok) || (m[i] in seen)) exit 1; seen[m[i]] = 1; k++ }
       if (k != ne) exit 1
       print $1
-    }')" || die "Diary route ownership pairing: exactly the methods Node answered must belong to Rust, and the local exchange must stay Node's"
+    }')" || die "Diary route ownership pairing: exactly the methods Node answered must belong to Rust, and the local exchange only with its own pair"
   dr_routes="$(printf '%s\n' "$dr_routes" | sort | tr '\n' ' ')"
   [ "$dr_routes" = "/api/diary /api/diary-connector /api/diary/context /api/diary/exchanges /api/diary/storage-status /api/profile/diary-connectors /api/profile/diary-connectors/{*} " ] \
     || die "Diary route ownership pairing: incomplete route ownership"
