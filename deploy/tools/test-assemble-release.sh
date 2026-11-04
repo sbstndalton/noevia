@@ -2138,6 +2138,25 @@ check "the old model state pair with Node's rows stays a valid rollback" '[ $rc 
 ms_owner=rust
 ms_try model-state-old-with-rust-rows
 check "an old pair whose table gives the model state reads to Rust is refused" 'refused "model state read ownership pairing"'
+# G1 authority: both mixed directions refuse before GET ownership checks.
+ms_owner=rust; ms_core; ms_front
+printf "const MODEL_FACTS_OWNER = 'rust-model-facts-v1';\n" > "$w/server/rust-model-facts.cjs"
+ms_try model-facts-core-only
+check "native model facts Core needs a native authority" 'refused "model facts authority pairing"'
+ms_front
+sed -i 's/"start-id"/"start-id", "rust-model-facts-v1"/' "$rz/bins/noevia-server/src/lib.rs"
+printf 'module.exports = {};\n' > "$w/server/rust-model-facts.cjs"
+ms_try model-facts-front-only
+check "native authority refuses a legacy model facts Core" 'refused "model facts authority pairing"'
+printf "const MODEL_FACTS_OWNER = 'rust-model-facts-v1';\n" > "$w/server/rust-model-facts.cjs"
+sed -i '/modelFactsBridge/d; /secret: FRONT_SECRET/d; /^});/d' "$w/server/index.cjs"
+printf "const inferenceBudget = require('./rust-model-facts.cjs').createNativeFacts({});\n" >> "$w/server/index.cjs"
+ms_try model-facts-native-pair
+check "native model facts pair assembles" '[ $rc -eq 0 ]'
+printf "const oldBudget = createInferenceBudget({});\n" >> "$w/server/index.cjs"
+ms_try model-facts-double-authority
+check "native model facts rejects a second budget authority" 'refused "duplicate Node authority"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
 # #2306: GET-only status ownership; POST start stays in the same Node route module.
 atr_try() {

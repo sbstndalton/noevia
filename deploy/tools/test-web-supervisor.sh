@@ -622,5 +622,14 @@ check "with DAV on, Node keeps UI_HOST (default 0.0.0.0) and says so" 'grep -q "
 kill -TERM "$pid"; wait "$pid"; rc=$?
 check "docker stop (SIGTERM) stops both and exits 0" '[ $rc -eq 0 ] && grep -q "^node TERM" "$work/log" && grep -q "^front TERM" "$work/log"'
 
+# G1's facts marker is a protocol constant rather than a public-route refusal.
+mkdir -p "$work/server"
+printf "const MODEL_FACTS_OWNER = 'rust-model-facts-v1';\n" > "$work/server/rust-model-facts.cjs"
+run STUB_FEATURES="$BASE_FEATURES" > /dev/null 2>"$work/err"; rc=$?
+check "native model facts Core refuses a legacy front" '[ $rc -eq 2 ] && grep -q "model facts authority ownership mismatch" "$work/err"'
+rm -f "$work/server/rust-model-facts.cjs"
+run STUB_FEATURES="$BASE_FEATURES rust-model-facts-v1" > /dev/null 2>"$work/err"; rc=$?
+check "native model facts front refuses a legacy Core" '[ $rc -eq 2 ] && grep -q "model facts authority ownership mismatch" "$work/err"'
+
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]

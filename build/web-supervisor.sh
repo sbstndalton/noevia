@@ -242,6 +242,13 @@ fi
 # credential, and Core can no longer delete an account), deep research (server/rust-research.cjs beside rust-research,
 # #2218: the jobs run on the front, Node keeps only their admission lease and tool bridge), the Code and Browser task reads (server/rust-task-reads.cjs beside rust-task-reads, #2257: Node keeps the writes and the facts bridge), the inference budget and installed reads (server/rust-model-state-reads.cjs beside rust-model-state-reads, #2262: Node keeps the PUT and the facts bridge): each group moves as one owner. Old/old images
 # remain usable for rollback; mixed owners do not.
+mf_core=""; mf_front=""
+grep -qF "const MODEL_FACTS_OWNER = 'rust-model-facts-v1';" "$PWD/server/rust-model-facts.cjs" 2>/dev/null && mf_core=rust
+grep -qx 'rust-model-facts-v1' <<<"$rust_features" && mf_front=rust
+if [ "$mf_core" != "$mf_front" ]; then
+  echo "web-supervisor: model facts authority ownership mismatch; update the paired image" >&2
+  exit 2
+fi
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
   pair_front_owner=""

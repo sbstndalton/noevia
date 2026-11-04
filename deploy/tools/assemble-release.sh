@@ -2108,6 +2108,15 @@ if [ "$sizing_rs_owner" = rust ]; then
   [ "$sizing_routes" = "$sizing_expected" ] || die "model sizing ownership pairing: incomplete route ownership"
 fi
 
+# G1: derived facts authority is a paired move, independent of the older GET ownership.
+mf_core=""; mf_rs=""
+code_has "$tree/core/server/rust-model-facts.cjs" "^const MODEL_FACTS_OWNER = 'rust-model-facts-v1';$" && mf_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-facts-v1 features; then mf_rs=rust; fi
+[ "$mf_core" = "$mf_rs" ] || die "model facts authority pairing: Core and Rust must move together"
+if [ "$mf_rs" = rust ]; then
+  code_has "$tree/core/server/index.cjs" "createNativeFacts" || die "model facts authority pairing: missing native consumer"
+  ! code_has "$tree/core/server/index.cjs" "createInferenceBudget|modelFactsBridge" || die "model facts authority pairing: duplicate Node authority"
+fi
 # GET inference-budget and GET installed (sbstndalton/noevia#2262) move as one owner: Core's rust-model-state-reads.cjs
 # refusal and the front's rust-model-state-reads capability, with exactly GET of both Rust's in routes.toml (the budget's
 # PUT stays Node's). Core must have dropped the handlers and hand the front its facts on the loopback check, with the
@@ -2142,6 +2151,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "model state read ownership pairing: Core still carries the read handlers"
     [ -f "$tree/core/server/rust-model-facts.cjs" ] \
       || die "model state read ownership pairing: Core does not offer the front its model facts"
+    if [ "$mf_rs" != rust ]; then
     ms_index="$(code_lines "$tree/core/server/index.cjs")"
     grep -qE 'modelFactsBridge\(req, res\)' <<<"$ms_index" \
       || die "model state read ownership pairing: Core does not mount the model facts bridge"
@@ -2152,6 +2162,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       END { exit !ok }
     ' <<<"$ms_index" \
       || die "model state read ownership pairing: Core does not hand its model facts bridge the front's captured secret"
+    fi
   fi
 fi
 
