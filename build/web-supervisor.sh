@@ -317,6 +317,18 @@ if [ "$maintenance_core_owner" != "$maintenance_front_owner" ]; then
   exit 2
 fi
 
+# A new front beside old Core stays idle (proof 404). A new Core must have the
+# native owner capability before either process is launched.
+embedding_core_owner="$(node -e "try { const m = require('./server/rust-embedding-background.cjs'); if (m.RUST_EMBEDDING_OWNED === 'rust-embedding-background-v1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if grep -qF "require('./rust-embedding-background.cjs')" "$PWD/server/index.cjs" 2>/dev/null && [ "$embedding_core_owner" != rust ]; then
+  echo "web-supervisor: invalid embedding background ownership marker" >&2
+  exit 2
+fi
+if [ "$embedding_core_owner" = rust ] && ! grep -qx 'rust-embedding-background-v1' <<<"$rust_features"; then
+  echo "web-supervisor: embedding background requires rust-embedding-background-v1; update the paired image" >&2
+  exit 2
+fi
+
 # The three web-address GETs are a paired owner change. The front's compiled capability
 # and core's exported marker must agree before either process starts; source pins alone cannot
 # protect a manually mixed installed pair. Neither result comes from an inherited environment.
@@ -461,6 +473,17 @@ node_host="127.0.0.1"
 if [ -n "${COWORK_DAV_PORT:-}" ] && [ "${COWORK_DAV_PORT}" != 0 ]; then
   node_host="${UI_HOST:-0.0.0.0}"
   echo "web-supervisor: COWORK_DAV_PORT is set; Node's legacy port $legacy listens on $node_host, not loopback only" >&2
+fi
+
+# Serialize coherent pair lifetimes, including rollback to an older Core. Keep
+# the fd inherited by both children: a replacement cannot start before both exit.
+# Never unlink this inode, including after an unclean shutdown.
+pair_data="${UI_DATA_DIR:-$PWD/server/ui-data}"
+mkdir -p "$pair_data" || exit 2
+exec 9>"$pair_data/embedding-pair.lock" || exit 2
+if ! flock -n 9; then
+  echo "web-supervisor: previous Core/front pair is not quiescent" >&2
+  exit 2
 fi
 
 node_pid="" front_pid="" signalled=0

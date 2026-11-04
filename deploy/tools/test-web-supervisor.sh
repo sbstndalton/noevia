@@ -572,6 +572,27 @@ reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model maintenance pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
+# Embedding background: one-way guard; old Core never authorizes native work.
+printf '%s\n' "module.exports = { RUST_EMBEDDING_OWNED: 'rust-embedding-background-v1' };" > "$work/server/rust-embedding-background.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "embedding Core with old front refuses before launch" '[ $rc -eq 2 ] && grep -q "requires rust-embedding-background-v1" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-embedding-background-v1" >/dev/null 2>"$work/err"; rc=$?
+check "paired embedding Core/front starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/rust-embedding-background.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-embedding-background-v1" >/dev/null 2>"$work/err"; rc=$?
+check "new embedding front with old Core starts for proof-gated legacy mode" '[ $rc -eq 3 ] && grep -q "^node " "$work/log"'
+reset
+mkdir -p "$work/server/ui-data"
+(exec 8>"$work/server/ui-data/embedding-pair.lock"; flock -x 8; touch "$work/pair-held"; while [ -f "$work/pair-held" ]; do sleep 0.05; done) &
+pair_holder=$!
+for _ in $(seq 1 100); do [ -f "$work/pair-held" ] && break; sleep 0.05; done
+run >/dev/null 2>"$work/err"; rc=$?
+check "replacement pair refuses until previous pair is quiescent" '[ $rc -eq 2 ] && grep -q "not quiescent" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/pair-held"; wait "$pair_holder"
+
 # Round 5 (#2190): the ChatGPT sign-in pair beside the provider test pair, and alone.
 printf '%s\n' "  if (require('./rust-provider-test.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
 reset; touch "$work/die-front"
