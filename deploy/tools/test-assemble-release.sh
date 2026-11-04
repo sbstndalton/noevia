@@ -2072,7 +2072,7 @@ ct_owner=rust; ct_methods='methods = ["POST"]'
 ct_try turn-old-rust-row
 check "an old pair cannot give the chat turn to Rust" 'refused "chat turn ownership pairing: an old pair cannot give the chat turn to Rust"'
 # Chat port S6: the chat edge's owner pair on top of the S5 relay, Core without its llm: limiter, the Cowork start
-# accepted as a relayed turn, and the gate refusals marked for the front.
+# accepted as a relayed turn, and the gate held for the front's call and adopted by it.
 cat > "$w/server/rust-chat-turn.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));
     if (pathname !== TURN_PATH && pathname !== GATE_PATH && pathname !== edge.COWORK_PATH) return null;
@@ -2083,7 +2083,8 @@ ce_marker
 ce_lines() {
   cat >> "$w/server/index.cjs" <<'JS'
 const chatEdge = require('./rust-chat-edge.cjs');
-    chatEdge.markGateRefused(res,relay,pathname);
+  try {if(adopted)leave=adopted;else if(inference)leave=await chatAdmission.enterChatInference(modelManager,{signal:aborted.signal});}
+  if(relay==='gate'){const ask=gateAsk(req);if(ask&&ask.hold)return chatEdge.leases.hold(res,ask.route,leave);}
 JS
 }
 ce_core() { ct_core; ce_lines; }
@@ -2105,9 +2106,12 @@ check "chat edge: Core must not keep its own llm: limiter" 'refused "Core must n
 cp "$work/ce-index.saved" "$w/server/index.cjs"; printf '%s\n' "// the llmRateLimited budget moved to the front" >> "$w/server/index.cjs"
 ct_try edge-limiter-comment
 check "chat edge: a comment naming the old limiter is not a limiter" '[ $rc -eq 0 ]'
-sed '/chatEdge.markGateRefused/d' "$work/ce-index.saved" > "$w/server/index.cjs"
-ct_try edge-no-mark
-check "chat edge: Core marks the gate refusals the front counted" 'refused "mark the gate refusals the front counted"'
+sed '/chatEdge.leases.hold/d' "$work/ce-index.saved" > "$w/server/index.cjs"
+ct_try edge-no-hold
+check "chat edge: Core holds its gate for the front's call" 'refused "hold its gate for the front'"'"'s call"'
+sed 's/if(adopted)leave=adopted;else //' "$work/ce-index.saved" > "$w/server/index.cjs"
+ct_try edge-no-adopt
+check "chat edge: the front's call adopts the gate hold" 'refused "must adopt the gate hold"'
 cp "$work/ce-index.saved" "$w/server/index.cjs"
 ce_marker rust-chat-edgy
 ct_try edge-wrong-capability
