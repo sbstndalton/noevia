@@ -2269,6 +2269,58 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.save
 mas_owner=node; unset mas_methods; mas_try mas-old-pair
 check "old model assignments pair remains available for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-model-assignments.cjs" "$w/server/rust-model-assignments-facts.cjs" "$w/server/model-assignments.cjs"
+# Download GET pairs the exact refuser with its bounded facts owner.
+mdr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${mdr_owner:-}" ]; then
+      printf '[[route]]\npath = "/api/models/downloads"\nowner = "%s"\n%s\n' "$mdr_owner" "${mdr_methods:-}"
+    fi)
+}
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/mdr-models.saved"
+printf "%s\n" "    if (p === '/api/models/downloads' && req.method !== 'GET') {" > "$w/server/routes/models.cjs"
+touch "$w/server/rust-model-downloads-read-facts.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/downloads']));" > "$w/server/rust-model-downloads-read.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const modelDownloadsFacts = require('./rust-model-downloads-read-facts.cjs').createModelDownloadsFacts({
+  secret: FRONT_SECRET, json,
+});
+if (require('./rust-model-downloads-read.cjs').refuseOwned(req, res, {})) return;
+if (await modelDownloadsFacts(req, res)) return;
+JS
+cp "$w/server/index.cjs" "$work/mdr-index.saved"
+mdr_owner=rust; mdr_methods='methods = ["GET"]'; mdr_try mdr-core-only
+check "download GET refuser rejects old front" 'refused "model downloads read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-model-downloads-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mdr_try mdr-front-only
+check "download GET capability rejects old Core" 'refused "model downloads read ownership pairing"'
+cp "$work/mdr-index.saved" "$w/server/index.cjs"
+mdr_try mdr-pair
+check "matching download GET pair assembles" '[ $rc -eq 0 ]'
+mdr_methods='methods = ["GET", "HEAD"]'; mdr_try mdr-wrong-methods
+check "download GET cannot claim HEAD" 'refused "other methods stay Node"'
+mdr_methods='methods = ["GET"]'
+cat > "$w/server/rust-model-downloads-read.cjs" <<'JS'
+/*
+const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/downloads']));
+*/
+JS
+mdr_try mdr-comment-marker
+check "download GET marker must be executable code" 'refused "Core must refuse exactly this GET"'
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/downloads']));" > "$w/server/rust-model-downloads-read.cjs"
+printf "%s\n" "    if (p === '/api/models/downloads') {" > "$w/server/routes/models.cjs"
+mdr_try mdr-old-branch
+check "paired download read rejects legacy GET handler" 'refused "Core must retain only the legacy methods"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+mdr_try mdr-old-rust-row
+check "old download pair rejects Rust ownership" 'refused "model downloads read ownership pairing"'
+unset mdr_owner mdr_methods; mdr_try mdr-old-pair
+check "old download pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-downloads-read.cjs" "$w/server/rust-model-downloads-read-facts.cjs"
+if [ -f "$work/mdr-models.saved" ]; then cp "$work/mdr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
 # Preset GET and its shared snapshot owner. Exercise the literal used by the real refuser.
 pr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
