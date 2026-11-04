@@ -439,6 +439,8 @@ core_deletes_via_store() {
 }
 # True when the file has a line of CODE matching the extended regex: comment-only lines (`//` ones and
 # `/* ... */` blocks) never count, so a marker or an op name that only a comment mentions is not one.
+# Status 1 means only "read and scanned, no match" (or no such file); a failed scan is status 2, so a
+# caller that needs a definite "absent" can reject anything other than 1.
 # (The text is captured first: `grep -q` closing the pipe early would fail the pipeline under pipefail.)
 code_has() {
   [ -f "$1" ] || return 1
@@ -449,7 +451,7 @@ code_has() {
     line ~ /^\/\// { next }
     line ~ /^\/\*/ { if (!index(line, "*/")) block = 1; next }
     { print }
-  ' "$1")" || return 1
+  ' "$1")" || return 2
   grep -qE -e "$2" <<<"$code"
 }
 # Slice7: exact canonical declarations + actual shorthand exports, never comment literals.

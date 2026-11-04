@@ -35,3 +35,13 @@ with tempfile.TemporaryDirectory(dir=repo) as tmp:
     result = subprocess.run(['bash', '-c', 'set -euo pipefail\n' + helpers + '\n' + broken_grep + '\ntree=' + repr(str(tree)) + '\n' + guard], capture_output=True, text=True)
     assert result.returncode != 0 and 'writer matcher failed' in result.stderr, result.stderr
     print('PASS matcher error fails closed')
+    # Inject an operational awk failure on the second scan of account.cjs (the writer check), with the
+    # retained writer still present: the guard must reject rather than read the failure as "no writer".
+    counter = tree / 'awk-calls'
+    broken_awk = (r"""awk() { case "${!#}" in */account.cjs) n=$(( $(cat """ + repr(str(counter)) +
+                  r""" 2>/dev/null || echo 0) + 1 )); echo "$n" > """ + repr(str(counter)) +
+                  r"""; if [ "$n" -ge 2 ]; then return 2; fi;; esac; command awk "$@"; };""")
+    result = subprocess.run(['bash', '-c', 'set -euo pipefail\n' + helpers + '\n' + broken_awk + '\ntree=' + repr(str(tree)) + '\n' + guard], capture_output=True, text=True)
+    assert counter.read_text().strip() == '2', counter.read_text()
+    assert result.returncode != 0 and 'writer matcher failed' in result.stderr, (result.returncode, result.stderr)
+    print('PASS awk scan error fails closed')
