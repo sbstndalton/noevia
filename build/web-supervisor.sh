@@ -278,12 +278,14 @@ rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
 rust-autotune-read.cjs rust-autotune-read auto-tune status GET
 rust-idle-unload-read.cjs rust-idle-unload-read idle unload read
+rust-preset-read.cjs rust-preset-read preset GET
 rust-autotune-resume.cjs rust-autotune-resume auto-tune resume
 rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation
 rust-autotune-clear.cjs rust-autotune-clear autotune dismissal
 rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read
 rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation
 rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery
+rust-calibration-routes.cjs rust-calibration-routes calibration start/read
 rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-state-reads.cjs rust-model-state-reads model state read

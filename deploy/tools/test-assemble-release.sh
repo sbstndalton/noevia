@@ -2224,6 +2224,75 @@ iur_owner=node; unset iur_methods; iur_try iur-old-pair
 check "old idle unload pair remains available for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-idle-unload-read.cjs" "$w/server/rust-idle-unload-read-facts.cjs" "$w/server/idle-unload-setting.cjs"
 if [ -f "$work/iur-models.saved" ]; then cp "$work/iur-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+# Preset GET and its shared snapshot owner. Exercise the literal used by the real refuser.
+pr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/preset"\nowner = "%s"\n%s\n' "$pr_owner" "${pr_methods:-}")
+}
+for pr_file in llamacpp-manager.cjs routes/models.cjs; do
+  [ ! -f "$w/server/$pr_file" ] || cp "$w/server/$pr_file" "$work/pr-${pr_file##*/}.saved"
+done
+printf '%s\n' 'presetFacts: model => presets?.get(model) ?? null,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'const result = await modelManager.applyPreset(await readJson(req));' > "$w/server/routes/models.cjs"
+touch "$w/server/rust-preset-read-bridge.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const presetReadBridge = require('./rust-preset-read-bridge.cjs').createPresetReadBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-preset-read.cjs').refuseOwned(req, res, {})) return;
+if (await presetReadBridge(req, res)) return;
+JS
+cp "$w/server/index.cjs" "$work/pr-index.saved"
+pr_owner=rust; pr_methods='methods = ["GET"]'; pr_try pr-core-only
+check "preset GET refuser rejects old front" 'refused "preset read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-preset-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+pr_try pr-front-only
+check "preset GET capability rejects old Core" 'refused "preset read ownership pairing"'
+cp "$work/pr-index.saved" "$w/server/index.cjs"
+pr_try pr-pair
+check "matching preset GET pair assembles" '[ $rc -eq 0 ]'
+pr_methods='methods = ["GET", "PUT"]'; pr_try pr-wrong-methods
+check "preset GET cannot claim PUT" 'refused "PUT and other methods stay Node"'
+pr_methods='methods = ["GET"]'
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
+pr_try pr-all-refuser
+check "preset refuser cannot claim other methods" 'refused "Core must refuse exactly this GET"'
+cat > "$w/server/rust-preset-read.cjs" <<'JS'
+/*
+const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));
+*/
+JS
+pr_try pr-comment-marker
+check "preset marker must be executable code" 'refused "Core must refuse exactly this GET"'
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
+printf '%s\n' 'modelManager.getPreset(model);' >> "$w/server/routes/models.cjs"
+pr_try pr-old-get
+check "paired preset read rejects old public GET" 'refused "still carries the public GET handler"'
+printf '%s\n' 'module.exports = {};' > "$w/server/routes/models.cjs"
+pr_try pr-no-writer
+check "paired preset read requires Node PUT" 'refused "PUT must stay Node-owned"'
+printf '%s\n' 'const result = await modelManager.applyPreset(await readJson(req));' > "$w/server/routes/models.cjs"
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/pr-index.saved" > "$w/server/index.cjs"
+pr_try pr-no-secret
+check "preset facts need the captured front secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+pr_try pr-old-rust-row
+check "old preset pair rejects Rust ownership" 'refused "preset read ownership pairing"'
+pr_owner=node; unset pr_methods; pr_try pr-old-pair
+check "old preset pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-preset-read.cjs" "$w/server/rust-preset-read-bridge.cjs"
+for pr_file in llamacpp-manager.cjs routes/models.cjs; do
+  if [ -f "$work/pr-${pr_file##*/}.saved" ]; then
+    cp "$work/pr-${pr_file##*/}.saved" "$w/server/$pr_file"
+  else
+    rm -f "$w/server/$pr_file"
+  fi
+done
 # #2293: dismissal policy moves independently of the live autotune worker.
 ac_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -2555,6 +2624,115 @@ cc_owner=node; cc_try cc-old-pair
 check "old calibration cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
 if [ -f "$work/cc-manager.saved" ]; then cp "$work/cc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# #2303: start/status policy moves independently of the live calibration worker.
+cr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${cr_skip:-}" != yes ]; then printf '[[route]]\npath = "/api/models/calibration"\nowner = "%s"\n' "$cr_owner"; [ -z "${cr_methods:-}" ] || printf '%s\n' "$cr_methods"; fi)
+}
+cat > "$w/server/rust-calibration-routes.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration']));
+module.exports = { OWNED_ROUTES };
+JS
+touch "$w/server/rust-calibration-routes-bridge.cjs"
+[ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/cr-manager.saved"
+printf '%s\n' 'stateFacts: calibrator.stateFacts, listingFacts: calibrator.listingFacts, preparationFacts: calibrator.preparationFacts, compareAndLaunch: calibrator.compareAndLaunch,' > "$w/server/llamacpp-manager.cjs"
+cr_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const calibrationRoutesBridge = require('./rust-calibration-routes-bridge.cjs').createCalibrationRoutesBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-routes.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationRoutesBridge(req, res)) return;
+JS
+}
+cr_front() { sed 's/"start-id"/"start-id", "rust-calibration-routes"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+[ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cr-original-actor.saved"
+printf 'function statusFacts() {}\nasync function startFacts() {}\n' > "$w/server/llamacpp-calibration.cjs"
+cr_owner=rust; cr_core
+cr_try cr-core-only
+check "calibration start/read refusal cannot pair with an old front" 'refused "calibration start/read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cr_front
+cr_try cr-front-only
+check "calibration start/read capability cannot pair with an old Core" 'refused "calibration start/read ownership pairing"'
+cr_core; cr_try cr-pair
+check "matching calibration start/read pair assembles" '[ $rc -eq 0 ]'
+# Both public operations compose with the same retained calibration worker/controller.
+cp "$w/server/index.cjs" "$work/cr-pair-index.saved"
+cp "$w/server/llamacpp-manager.cjs" "$work/cr-pair-manager.saved"
+cat > "$w/server/rust-calibration-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration/cancel']));
+JS
+touch "$w/server/rust-calibration-cancel-bridge.cjs"
+printf '%s\n' 'cancellationFacts: calibrator.cancellationFacts, compareAndAbort: calibrator.compareAndAbort,' >> "$w/server/llamacpp-manager.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const calibrationCancelBridge = require('./rust-calibration-cancel-bridge.cjs').createCalibrationCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationCancelBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-calibration-routes", "rust-calibration-cancel"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+try_routes cr-with-cancellation < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n[[route]]\npath = "/api/models/calibration"\nowner = "rust"\n[[route]]\npath = "/api/models/calibration/cancel"\nowner = "rust"\n')
+check "calibration start/read and cancellation pair share one worker" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
+cp "$work/cr-pair-index.saved" "$w/server/index.cjs"; cp "$work/cr-pair-manager.saved" "$w/server/llamacpp-manager.cjs"; cr_front
+# Both model namespaces together: the older read pairing must not keep settings policy in Core.
+cp "$work/ms-reads.saved" "$w/server/rust-model-state-reads.cjs"; touch "$w/server/rust-model-facts.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const modelFactsBridge = require('./rust-model-facts.cjs').createModelFactsBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, {})) return;
+if (await modelFactsBridge(req, res)) return;
+JS
+sed 's/"start-id"/"start-id", "rust-calibration-routes", "rust-model-state-reads"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ms_owner=rust
+try_routes cr-with-model-reads < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; ms_rows; printf '[[route]]\npath = "/api/models/calibration"\nowner = "rust"\n')
+check "calibration start/read and existing model read pairs assemble together" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"; cr_core; cr_front
+cr_owner=node; cr_try cr-node-rows
+check "native calibration pair rejects Node ownership" 'refused "calibration start/read ownership pairing"'
+cr_owner=rust; cr_skip=yes; cr_try cr-missing-row
+check "native calibration pair requires its route row" 'refused "incomplete route ownership"'
+unset cr_skip; cr_methods='methods = ["POST"]'; cr_try cr-partial-row
+check "native calibration pair owns other-method refusals as well as POST" 'refused "calibration start/read ownership pairing"'
+unset cr_methods
+cp "$w/server/rust-calibration-routes.cjs" "$work/cr-refuser.saved"
+printf 'const OWNED_ROUTES = Object.freeze(new Set([]));\n' > "$w/server/rust-calibration-routes.cjs"; cr_try cr-refuser
+check "native calibration pair requires exact Core refusal" 'refused "Core must refuse exactly"'
+cp "$work/cr-refuser.saved" "$w/server/rust-calibration-routes.cjs"
+[ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/cr-models.saved"
+printf "if (p === '/api/models/calibration') send();\n" >> "$w/server/routes/models.cjs"; cr_try cr-old-handler
+check "native calibration pair rejects retained public handler" 'refused "Core still carries the public handler"'
+if [ -f "$work/cr-models.saved" ]; then cp "$work/cr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+[ ! -f "$w/server/llamacpp-calibration.cjs" ] || cp "$w/server/llamacpp-calibration.cjs" "$work/cr-actor.saved"
+for cr_legacy in start status; do
+  printf 'async function %s() {}\n' "$cr_legacy" >> "$w/server/llamacpp-calibration.cjs"
+  cr_try "cr-old-policy-$cr_legacy"
+  check "native calibration pair rejects retained Node $cr_legacy policy" 'refused "Core still carries the public start/status policy"'
+  if [ -f "$work/cr-actor.saved" ]; then cp "$work/cr-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
+done
+cp "$w/server/llamacpp-manager.cjs" "$work/cr-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; cr_try cr-no-primitives
+check "native calibration pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
+cp "$work/cr-live-manager.saved" "$w/server/llamacpp-manager.cjs"
+mv "$w/server/rust-calibration-routes-bridge.cjs" "$work/cr-bridge.saved"; cr_try cr-no-bridge
+check "native calibration pair requires actor state bridge" 'refused "missing state bridge"'
+mv "$work/cr-bridge.saved" "$w/server/rust-calibration-routes-bridge.cjs"
+cp "$w/server/index.cjs" "$work/cr-index.saved"
+sed '/await calibrationRoutesBridge(req, res)/d' "$work/cr-index.saved" > "$w/server/index.cjs"; cr_try cr-no-mount
+check "native calibration pair requires bridge mount" 'refused "missing state bridge mount"'
+sed 's/secret: FRONT_SECRET/secret: null/' "$work/cr-index.saved" > "$w/server/index.cjs"; cr_try cr-no-secret
+check "native calibration pair requires captured bridge secret" 'refused "front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cr_try cr-old-rust-rows
+check "old calibration pair rejects Rust ownership" 'refused "calibration start/read ownership pairing"'
+cr_owner=node; cr_try cr-old-pair
+check "old calibration start/read pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-routes.cjs" "$w/server/rust-calibration-routes-bridge.cjs"
+if [ -f "$work/cr-manager.saved" ]; then cp "$work/cr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+if [ -f "$work/cr-original-actor.saved" ]; then cp "$work/cr-original-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
 # #2287: settings policy moves independently of the live tune state writer.
 ats_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -4203,7 +4381,7 @@ check "an all-method model sizing route is refused (Node keeps the other methods
 sizing_limit='methods = ["GET", "POST"]'
 sizing_try sizing-get-post
 check "a model sizing route with more than GET is refused" 'refused "model sizing ownership pairing"'
-sizing_limit='methods = ["GET"]'; sizing_last="/api/models/preset"
+sizing_limit='methods = ["GET"]'; sizing_last="/api/models/preset/suggestx"
 sizing_try sizing-incomplete
 check "an incomplete model sizing route set is refused" 'refused "model sizing ownership pairing"'
 sizing_last="/api/models/preset/suggest"

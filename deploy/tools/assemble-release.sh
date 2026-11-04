@@ -977,6 +977,43 @@ if [ "$cc_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cc_index" || die "calibration cancellation ownership pairing: state bridge needs the front captured secret"
 fi
+# #2303: calibration start/read policy is native, with only facts and the conditional state writer in Core.
+cr_core_owner=""; cr_rs_owner=""
+grep -qF "require('./rust-calibration-routes.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && cr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-routes features; then cr_rs_owner=rust; fi
+[ "$cr_core_owner" = "$cr_rs_owner" ] || die "calibration start/read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  cr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || cr_table=""
+  cr_rows="$(printf '%s\n' "$cr_table" | awk -F'\t' -v want="$cr_rs_owner" '
+    $1 == "/api/models/calibration" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "calibration start/read ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$cr_rs_owner" = rust ]; then
+  [ "${cr_rows:-}" = /api/models/calibration ] || die "calibration start/read ownership pairing: incomplete route ownership"
+  cr_refused="$( { project_routes_core "$tree/core/server/rust-calibration-routes.cjs" || true; } | tr '\n' ' ')"
+  [ "$cr_refused" = 'ALL /api/models/calibration ' ] || die "calibration start/read ownership pairing: Core must refuse exactly the calibration path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/calibration' \
+    || die "calibration start/read ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-calibration.cjs" '(async[[:space:]]+)?function[[:space:]]+(start|status)[[:space:]]*\(' \
+    || die "calibration start/read ownership pairing: Core still carries the public start/status policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'stateFacts:[[:space:]]*calibrator[.]stateFacts[[:space:]]*[,}]' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'listingFacts:[[:space:]]*calibrator[.]listingFacts[[:space:]]*[,}]' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'preparationFacts:[[:space:]]*calibrator[.]preparationFacts[[:space:]]*[,}]' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndLaunch:[[:space:]]*calibrator[.]compareAndLaunch[[:space:]]*[,}]' \
+    || die "calibration start/read ownership pairing: Core does not expose the live actor primitives"
+  [ -f "$tree/core/server/rust-calibration-routes-bridge.cjs" ] || die "calibration start/read ownership pairing: missing state bridge"
+  cr_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'calibrationRoutesBridge(req, res)' <<<"$cr_index" || die "calibration start/read ownership pairing: missing state bridge mount"
+  cr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$cr_index" | head -1)"
+  [ -n "$cr_secret" ] && awk -v c="$cr_secret" '
+    /createCalibrationRoutesBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
+fi
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
 grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust
@@ -1147,6 +1184,40 @@ if [ "$iur_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
+fi
+# Preset GET moves as a pair. PUT keeps the same snapshot owner and conditional writer.
+pr_core=""; pr_rs=""
+grep -qF "require('./rust-preset-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pr_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-preset-read features; then pr_rs=rust; fi
+[ "$pr_core" = "$pr_rs" ] || die "preset read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  pr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || pr_table=""
+  pr_rows="$(printf '%s\n' "$pr_table" | awk -F'\t' -v want="$pr_rs" '
+    $1 == "/api/models/preset" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "preset read ownership pairing: GET only; PUT and other methods stay Node"
+fi
+if [ "$pr_rs" = rust ]; then
+  [ "${pr_rows:-}" = /api/models/preset ] || die "preset read ownership pairing: incomplete route ownership"
+  code_has "$tree/core/server/rust-preset-read.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/models/preset'[]][)][)];$" \
+    || die "preset read ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]getPreset[[:space:]]*[(]' \
+    || die "preset read ownership pairing: Core still carries the public GET handler"
+  code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]applyPreset[[:space:]]*[(]' \
+    || die "preset read ownership pairing: PUT must stay Node-owned"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'presetFacts:.*presets[?][.]get[(]' \
+    || die "preset read ownership pairing: missing shared preset snapshot"
+  [ -f "$tree/core/server/rust-preset-read-bridge.cjs" ] || die "preset read ownership pairing: missing facts bridge"
+  pr_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'presetReadBridge(req, res)' <<<"$pr_index" || die "preset read ownership pairing: missing facts bridge mount"
+  pr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$pr_index" | head -1)"
+  [ -n "$pr_secret" ] && awk -v c="$pr_secret" '
+    /createPresetReadBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$pr_index" || die "preset read ownership pairing: facts bridge needs the front captured secret"
 fi
 # #2293: autotune dismissal policy is native, with only facts and the conditional state writer in Core.
 ac_core_owner=""; ac_rs_owner=""
