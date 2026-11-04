@@ -119,6 +119,9 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'
+      # The settings-writer pairing guards (retention PUT, #2384 routing default PUT) on synthetic generations.
+      - run: python3 deploy/tools/test-retention-ownership.py && python3 deploy/tools/test-routing-default-ownership.py
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
         if: env.RUN_JOB == 'true'
       # #1318 step 1c: the trusted-sets seed (stub docker; needs jq, installed above).

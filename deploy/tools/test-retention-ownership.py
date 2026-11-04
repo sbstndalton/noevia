@@ -9,7 +9,7 @@ def function(name):
     start = source.index(name + '() {')
     return source[start:source.index('\n}', start) + 2]
 helpers = 'die() { echo "$*" >&2; exit 1; };\n' + function('code_has') + '\n' + function('routes_toml')
-guard = source[source.index('# Retention PUT and'):source.index('# #2294:')]
+guard = source[source.index('# Retention PUT and'):source.index('# #2384: the routing default')]
 with tempfile.TemporaryDirectory(dir=repo) as tmp:
     tree = Path(tmp)
     (tree / 'core/server/routes').mkdir(parents=True)

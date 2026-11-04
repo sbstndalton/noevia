@@ -2257,6 +2257,64 @@ iur_owner=node; unset iur_methods; iur_try iur-old-pair
 check "old idle unload pair remains available for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-idle-unload-read.cjs" "$w/server/rust-idle-unload-read-facts.cjs" "$w/server/idle-unload-setting.cjs"
 if [ -f "$work/iur-models.saved" ]; then cp "$work/iur-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+# #2384: GET /api/reasoning-settings joins the PUT; Core keeps only the provider-dependent mode (a facts bridge).
+rr_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/reasoning-settings"\nowner = "rust"\n'; [ -z "${rr_methods:-}" ] || printf '%s\n' "$rr_methods")
+}
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/reasoning-settings']));" > "$w/server/rust-reasoning-read.cjs"
+touch "$w/server/rust-reasoning-read-facts.cjs"
+printf '%s\n' 'function modeFor(provider, model, effort) {}' > "$w/server/reasoning-effort.cjs"
+[ ! -f "$w/server/routes/reasoning-settings.cjs" ] || cp "$w/server/routes/reasoning-settings.cjs" "$work/rr-route.saved"
+printf '%s\n' "const PUT_REFUSAL = { error: 'Reasoning settings are owned by the Rust front.' };" > "$w/server/routes/reasoning-settings.cjs"
+rr_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const reasoningReadFacts = require('./rust-reasoning-read-facts.cjs').createReasoningReadFacts({
+  secret: FRONT_SECRET, json,
+});
+if (require('./rust-reasoning-read.cjs').refuseOwned(req, res, {})) return;
+if (await reasoningReadFacts(req, res)) return;
+JS
+}
+rr_methods='methods = ["GET", "PUT"]'; rr_core
+rr_try rr-core-only
+check "reasoning settings GET Core refusal requires native capability" 'refused "reasoning settings read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-reasoning-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+rr_try rr-front-only
+check "native reasoning settings GET requires its paired Core" 'refused "reasoning settings read ownership pairing"'
+rr_core; rr_try rr-pair
+check "matching reasoning settings GET pair assembles" '[ $rc -eq 0 ]'
+rr_methods='methods = ["PUT"]'; rr_try rr-put-only
+check "a reasoning settings GET pair whose table still gives Node the GET is refused" 'refused "GET and PUT only"'
+rr_methods='methods = ["GET", "PUT", "DELETE"]'; rr_try rr-delete
+check "a reasoning settings GET pair cannot claim other methods" 'refused "GET and PUT only"'
+rr_methods='methods = ["GET", "PUT"]'
+printf '%s\n' 'resolveEffort(project, global);' >> "$w/server/routes/reasoning-settings.cjs"
+rr_try rr-retained-get
+check "a reasoning settings GET pair rejects a retained Node handler" 'refused "public GET handler"'
+printf '%s\n' "const PUT_REFUSAL = { error: 'Reasoning settings are owned by the Rust front.' };" > "$w/server/routes/reasoning-settings.cjs"
+printf '%s\n' '// no mode fact' > "$w/server/reasoning-effort.cjs"
+rr_try rr-no-mode
+check "a reasoning settings GET pair whose Core lost the mode fact is refused" 'refused "live mode fact"'
+printf '%s\n' 'function modeFor(provider, model, effort) {}' > "$w/server/reasoning-effort.cjs"
+rm -f "$w/server/rust-reasoning-read-facts.cjs"; rr_try rr-no-facts
+check "a reasoning settings GET pair without its facts bridge is refused" 'refused "missing facts bridge"'
+touch "$w/server/rust-reasoning-read-facts.cjs"
+grep -v 'reasoningReadFacts(req, res)' "$w/server/index.cjs" > "$work/rr-index.nomount"; cp "$work/rr-index.nomount" "$w/server/index.cjs"
+rr_try rr-no-mount
+check "a reasoning settings GET pair whose bridge is not mounted is refused" 'refused "missing facts bridge mount"'
+rr_core
+sed 's/secret: FRONT_SECRET, json,$/secret: "", json,/' "$w/server/index.cjs" > "$work/rr-index.nosecret"; cp "$work/rr-index.nosecret" "$w/server/index.cjs"
+rr_try rr-no-secret
+check "a reasoning settings GET bridge without the front captured secret is refused" 'refused "facts bridge needs the front captured secret"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rr_methods='methods = ["PUT"]'; rr_try rr-old-pair
+check "old reasoning settings pair (PUT only, Core without the bridge) remains available for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-reasoning-read.cjs" "$w/server/rust-reasoning-read-facts.cjs" "$w/server/reasoning-effort.cjs"
+if [ -f "$work/rr-route.saved" ]; then cp "$work/rr-route.saved" "$w/server/routes/reasoning-settings.cjs"; else rm -f "$w/server/routes/reasoning-settings.cjs"; fi
 # #2238: only the model assignments GET moves.
 mas_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';

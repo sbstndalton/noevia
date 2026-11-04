@@ -1411,6 +1411,68 @@ if [ -n "$retention_core_put" ]; then
     [ "$retention_match_status" -eq 1 ] || die "retention PUT ownership pairing: writer matcher failed"
   fi
 fi
+# #2384: the routing default's PUT is native (preferences.json and the account's projects), and Core's workspace has no
+# preferences writer. Refuse mixed generations.
+rd_core_put=""
+if grep -qF "  [/^\\/api\\/routing-default$/, ['PUT']]," "$tree/core/server/rust-auth.cjs" 2>/dev/null; then
+  rd_core_put='PUT /api/routing-default'
+fi
+rd_rs_put=""
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # Read tolerantly, as the retention block does: an unreadable table is refused further down with its own error.
+  rd_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || rd_table=""
+  rd_rs_put="$(printf '%s\n' "$rd_table" | awk -F'\t' '
+    $1 == "/api/routing-default" && $2 == "rust" && ($4 == "-" || $4 ~ /(^|,)[ \t]*PUT([ \t]*,|[ \t]*$)/) {print "PUT /api/routing-default"}')"
+fi
+[ "$rd_core_put" = "$rd_rs_put" ] || die "routing default PUT ownership pairing: Core and Rust must move together"
+if [ -n "$rd_core_put" ]; then
+  code_has "$tree/core/server/routes/models.cjs" "Routing default is owned by the Rust front." \
+    || die "routing default PUT ownership pairing: Core must refuse the moved writer"
+  for rd_writer in "$tree/core/server/routes/models.cjs:savePreferences[[:space:]]*[(]" \
+      "$tree/core/server/workspace.cjs:savePreferences[[:space:]]*[(]" \
+      "$tree/core/server/workspace.cjs:atomicJson[(].*preferences[.]json"; do
+    if code_has "${rd_writer%%:*}" "${rd_writer#*:}"; then
+      die "routing default PUT ownership pairing: Core still writes the preferences"
+    else
+      rd_match_status=$?
+      [ "$rd_match_status" -eq 1 ] || die "routing default PUT ownership pairing: writer matcher failed"
+    fi
+  done
+fi
+# #2384: only GET /api/reasoning-settings joins the PUT. Core keeps how the provider will be asked (a facts bridge
+# over its live rejection set), the front does the rest.
+rr_core_owner=""; rr_rs_owner=""
+grep -qF "require('./rust-reasoning-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && rr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-reasoning-read features; then rr_rs_owner=rust; fi
+[ "$rr_core_owner" = "$rr_rs_owner" ] || die "reasoning settings read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  rr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || rr_table=""
+  rr_rows="$(printf '%s\n' "$rr_table" | awk -F'\t' -v want="$rr_rs_owner" '
+    $1 == "/api/reasoning-settings" {
+      m = $4; gsub(/[ \t]/, "", m)
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || (m != "GET,PUT" && m != "PUT,GET"))) exit 1
+      if (want != "rust" && $2 != "rust") exit 1
+      print $1
+    }')" || die "reasoning settings read ownership pairing: GET and PUT only; every other method stays Node"
+fi
+if [ "$rr_rs_owner" = rust ]; then
+  [ "${rr_rows:-}" = /api/reasoning-settings ] || die "reasoning settings read ownership pairing: incomplete route ownership"
+  rr_refused="$( { project_routes_core "$tree/core/server/rust-reasoning-read.cjs" || true; } | tr '\n' ' ')"
+  [ "$rr_refused" = 'GET /api/reasoning-settings ' ] || die "reasoning settings read ownership pairing: Core must refuse exactly GET reasoning settings"
+  ! code_has "$tree/core/server/routes/reasoning-settings.cjs" '(^|[^[:alnum:]_$])(resolveEffort|modeFor|getProject)[[:space:]]*[(]' \
+    || die "reasoning settings read ownership pairing: Core still carries the public GET handler"
+  code_has "$tree/core/server/reasoning-effort.cjs" 'function modeFor[[:space:]]*[(]' \
+    || die "reasoning settings read ownership pairing: Core does not expose the live mode fact"
+  [ -f "$tree/core/server/rust-reasoning-read-facts.cjs" ] || die "reasoning settings read ownership pairing: missing facts bridge"
+  rr_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'reasoningReadFacts(req, res)' <<<"$rr_index" || die "reasoning settings read ownership pairing: missing facts bridge mount"
+  rr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$rr_index" | head -1)"
+  [ -n "$rr_secret" ] && awk -v c="$rr_secret" '
+    /createReasoningReadFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$rr_index" || die "reasoning settings read ownership pairing: facts bridge needs the front captured secret"
+fi
 # #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
 atc_core_owner=""; atc_rs_owner=""
 grep -qF "require('./rust-autotune-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atc_core_owner=rust
