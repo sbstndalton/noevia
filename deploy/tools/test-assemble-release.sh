@@ -1515,7 +1515,7 @@ outbox_case inline-block-rust-v3-core-none - '\n    "rust-index-outbox-v3", \/* 
 outbox_case inline-block-rust-v3-core-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '\n    "rust-index-outbox-v3", \/* ownership *\/' ok
 outbox_case template-hides-core-marker "$(printf '%s\n' 'const note = `' '"`; /*' "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '*/')" '"rust-index-outbox-v3"' refuse
 outbox_case core-load-never-returns "while (true) {}" - refuse
-outbox_case rust-compat-comment-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3",\n    \/\/ Compatibility marker: "rust-index-outbox-v2"' ok
+outbox_case rust-compat-comment-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '\n    \/\/ Compatibility marker: "rust-index-outbox-v2"\n    "rust-index-outbox-v3"' ok
 outbox_case rust-nested-comment-entry-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3",\n    \/* old \/* nested *\/ "rust-index-outbox-v2", *\/' ok
 rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
