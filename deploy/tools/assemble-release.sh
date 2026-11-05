@@ -746,8 +746,8 @@ outbox_rs_version() {
       }
     }
     END {
-      if (decl != 1 || bad || distinct > 1) { print "invalid"; exit }
-      if (!distinct) { print "none"; exit }
+      if (decl > 1 || bad || distinct > 1) { print "invalid"; exit }
+      if (!decl || !distinct) { print "none"; exit }
       if (seen[last] != 1 || last !~ /^v[123]$/) { print "invalid"; exit }
       print last
     }
