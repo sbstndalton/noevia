@@ -1402,8 +1402,7 @@ mutations_rs_version() {
         if (gated || !strs[+lit[1]].v.includes("noevia-model-mutations")) out("invalid");
         outbox.push(strs[+lit[1]].v); continue;
       }
-      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
-
+      // Producers advertise ordinary literals: named constants or expressions could hide a marker.
       out("invalid");
     }
     if (!outbox.length) out("invalid");

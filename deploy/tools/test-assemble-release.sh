@@ -4794,6 +4794,7 @@ check "failing final tar leaves no .partial and no tarball" '[ -z "$(ls -A "$fou
 # Pull/delete pairing uses the actual version readers, including declaration scope checks.
 eval "$(sed -n '/^mutations_core_version() {/,/^mutations_core_owner=/p' "$here/assemble-release.sh" | sed '$d')"
 mm_core="$work/mm-core.cjs"; mm_rs="$work/mm-lib.rs"
+check "model mutations exact pinned Rust archive capability is accepted" '[ "$(mutations_rs_version "$here/fixtures/model-mutations-pinned-lib.rs")" = v1 ]'
 printf "module.exports = { MODEL_MUTATIONS_CLIENT_MARKER: 'noevia-model-mutations-client/1' };\n" > "$mm_core"
 printf 'pub const FEATURES: &[&str] = &["noevia-model-mutations/1"];\n' > "$mm_rs"
 check "model mutations matching pair has version v1" '[ "$(mutations_core_version "$mm_core")" = v1 ] && [ "$(mutations_rs_version "$mm_rs")" = v1 ]'
