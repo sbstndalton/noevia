@@ -1046,6 +1046,179 @@ fi
 # client and keeps only the effects and facts the front cannot have (rust-autotune-actor-bridge.cjs). Explicit
 # markers in code lines (never a comment, never a source shape) pair the two; the five public auto-tune routes
 # below all depend on it. $1 prefixes the refusal, $2 names the bridge in the messages.
+at_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /noevia-autotune-state-client\//.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.AUTOTUNE_STATE_CLIENT_MARKER;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^noevia-autotune-state-(client)\/(1)$/.exec(value);
+    process.stdout.write(m ? "v" + m[2] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+at_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    let src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    if (process.argv[2] === "module") src = src.replace(/pub\s+mod\s+autotune_state\s*;/g, `pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";`);
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    code = code.replace(/\bFEATURES\b/g, "OTHER_FEATURES");
+    code = code.replace(/pub\s+const\s+AUTOTUNE_STATE_STORE_MARKER\s*:\s*&\s*str\s*=\s*([^;]*);/g,
+      (_, value) => "pub const FEATURES: &[&str] = &[" + value + "]; ");
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = []; // lease authority entries
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("noevia-autotune-state-store"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("noevia-autotune-state-store")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^noevia-autotune-state-store\/(1)$/.exec(outbox[0]);
+    out(m ? "v" + m[1] : "invalid");
+  ' "$1" "${2:-marker}" 2>/dev/null || echo invalid
+}
+at_store_version() {
+  local marker module crate
+  marker="$(at_rs_version "$tree/rs/crates/server-projects/src/autotune_state.rs")"
+  [ "$marker" = none ] && { echo none; return; }
+  module="$(at_rs_version "$tree/rs/crates/server-projects/src/lib.rs" module)"
+  crate="$(at_rs_version "$tree/rs/bins/noevia-server/src/lib.rs" module)"
+  [ "$marker" = v1 ] && [ "$module" = v1 ] && [ "$crate" = v1 ] && { echo v1; return; }
+  echo invalid
+}
 autotune_state_pairing() {
   local prefix=$1 noun=$2 index secret
   code_has "$tree/core/server/llamacpp-manager.cjs" 'abort: autotuner[.]abort' \
@@ -1054,9 +1227,9 @@ autotune_state_pairing() {
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'listingFacts: autotuner[.]listingFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'identityFacts: autotuner[.]identityFacts' \
     || die "$prefix: Core does not expose the live actor primitives"
-  code_has "$tree/core/server/autotune-state-client.cjs" "'noevia-autotune-state-client/1'" \
+  [ "$(at_core_version "$tree/core/server/autotune-state-client.cjs")" = v1 ] \
     || die "$prefix: Core does not carry the auto-tune state client marker"
-  code_has "$tree/rs/crates/server-projects/src/autotune_state.rs" '"noevia-autotune-state-store/1"' \
+  [ "$(at_store_version)" = v1 ] \
     || die "$prefix: Rust does not serve the auto-tune state store"
   [ -f "$tree/core/server/rust-autotune-actor-bridge.cjs" ] || die "$prefix: missing $noun bridge"
   index="$(code_lines "$tree/core/server/index.cjs")"
@@ -1068,10 +1241,9 @@ autotune_state_pairing() {
     END { exit !ok }
   ' <<<"$index" || die "$prefix: $noun bridge needs the front captured secret"
 }
-at_state_core=""; at_state_rs=""
-code_has "$tree/core/server/autotune-state-client.cjs" "'noevia-autotune-state-client/1'" && at_state_core=present
-code_has "$tree/rs/crates/server-projects/src/autotune_state.rs" '"noevia-autotune-state-store/1"' && at_state_rs=present
-[ "$at_state_core" = "$at_state_rs" ] || die "auto-tune state ownership pairing: Core and Rust must move together (Core client: ${at_state_core:-absent}; Rust store: ${at_state_rs:-absent})"
+at_state_core="$(at_core_version "$tree/core/server/autotune-state-client.cjs")"
+at_state_rs="$(at_store_version)"
+[ "$at_state_core" != invalid ] && [ "$at_state_rs" != invalid ] && [ "$at_state_core" = "$at_state_rs" ] || die "auto-tune state ownership pairing: Core and Rust must move together (ambiguous or mismatched capability)"
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
 grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust

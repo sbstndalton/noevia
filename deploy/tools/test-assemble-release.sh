@@ -2142,9 +2142,10 @@ rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
 # Auto-tune state ownership (noevia-core autotune-state-client.cjs / noevia-rs crates/server-projects
 # autotune_state.rs): the front holds the tune state, Core's actor is its client. The five auto-tune route
 # pairs below need both markers and the actor bridge; the marker tests follow the cancellation pair.
-at_marker_core() { printf '%s\n' "const AUTOTUNE_STATE_CLIENT_MARKER = 'noevia-autotune-state-client/1';" > "$w/server/autotune-state-client.cjs"; }
-at_marker_rs() { mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' > "$rz/crates/server-projects/src/autotune_state.rs"; }
+at_marker_core() { printf '%s\n' "module.exports.AUTOTUNE_STATE_CLIENT_MARKER = 'noevia-autotune-state-client/1';" > "$w/server/autotune-state-client.cjs"; }
+at_marker_rs() { sed '/pub mod autotune_state;/d' "$rz/bins/noevia-server/src/lib.rs" > "$rz/bins/noevia-server/src/lib.rs.at"; mv "$rz/bins/noevia-server/src/lib.rs.at" "$rz/bins/noevia-server/src/lib.rs"; printf '%s\n' 'pub mod autotune_state;' >> "$rz/bins/noevia-server/src/lib.rs"; mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub mod autotune_state;' > "$rz/crates/server-projects/src/lib.rs"; mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' > "$rz/crates/server-projects/src/autotune_state.rs"; }
 at_marker_core; at_marker_rs
+printf '%s\n' 'pub mod autotune_state;' >> "$work/feature-lib.saved"
 # #2306: GET-only status ownership; POST start stays in the same Node route module.
 atr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -3056,6 +3057,17 @@ at_marker_rs; printf '%s\n' "// 'noevia-autotune-state-client/1'" > "$w/server/a
 check "a client marker only a comment mentions is not a marker" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
 at_marker_core; atm_try atm-restored
 check "restoring both markers assembles again" '[ $rc -eq 0 ]'
+for scope in declaration nested crate; do
+  at_marker_rs
+  case "$scope" in
+    declaration) printf '%s\n' '#[cfg(any())]' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' > "$rz/crates/server-projects/src/autotune_state.rs";;
+    nested) printf '%s\n' '#[cfg(any())] mod hidden {' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' '}' > "$rz/crates/server-projects/src/autotune_state.rs";;
+    crate) printf '%s\n' '#![cfg(any())]' 'pub mod autotune_state;' > "$rz/crates/server-projects/src/lib.rs";;
+  esac
+  atm_try "atm-cfg-$scope"
+  check "cfg-disabled auto-tune $scope refuses pairing" 'refused "auto-tune state ownership pairing"'
+done
+at_marker_rs
 # #2295: discovery policy moves independently of the live autotune worker.
 au_scan_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
