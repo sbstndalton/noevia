@@ -865,6 +865,31 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "deep research ownership pairing: Core does not hand its admission lease and research bridge the front's secret (captured before clientFromEnv, never read from process.env after it)"
   fi
 fi
+# The MCP tool executor (sbstndalton/noevia#2218) moves as one owner: the front's rust-mcp-exec capability (the executor and its
+# `POST /v1/mcp/call` store route) and Core's thin client (project-store-client.cjs exports the marker). A Core that asks and a
+# front that does not answer would refuse every chat tool call; a front that answers beside a Core that still executes would
+# leave two executors with two 429 waits. Either mixed generation is refused; old/old stays a valid rollback pair. With the new
+# pair Core must have dropped the executor, its 429 wait and the research tool bridge, and hand the client to its MCP wiring.
+mx_core_owner=""
+mx_rs_owner=""
+grep -qF "'noevia-mcp-exec-client/1'" "$tree/core/server/project-store-client.cjs" 2>/dev/null && mx_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-mcp-exec features; then mx_rs_owner=rust; fi
+[ "$mx_core_owner" = "$mx_rs_owner" ] \
+  || die "MCP tool executor ownership pairing: Core and Rust must move together"
+if [ "$mx_rs_owner" = rust ]; then
+  grep -rqsF --include='*.rs' -e '"/v1/mcp/call"' "$tree/rs/bins/noevia-server/src" \
+    || die "MCP tool executor ownership pairing: the front does not serve the executor route"
+  [ ! -f "$tree/core/server/tool-rate-limit.cjs" ] \
+    || die "MCP tool executor ownership pairing: Core still carries its own 429 wait"
+  for mx_gone in executeOperatorToolCall operatorServerFor mcpAuthHeaders oauthSessionFor routeMcpTool; do
+    ! code_has "$tree/core/server/mcp-wiring.cjs" "$mx_gone" \
+      || die "MCP tool executor ownership pairing: Core still carries the executor ($mx_gone)"
+  done
+  ! code_has "$tree/core/server/rust-research-bridge.cjs" 'executeOperatorToolCall' \
+    || die "MCP tool executor ownership pairing: Core still offers the research tool bridge"
+  grep -qF 'PROJECT_STORE.mcpCall(' <<<"$(code_lines "$tree/core/server/index.cjs")" \
+    || die "MCP tool executor ownership pairing: Core does not hand its MCP wiring the front's executor"
+fi
 # The Code and Browser task reads (sbstndalton/noevia#2257) move as one owner: Core's rust-task-reads.cjs refusal and
 # the front's rust-task-reads capability, with the active list Rust's for every method and the four project reads
 # for GET only (the POSTs and supervision stay Node's). Core must have dropped the read branches and hand the front

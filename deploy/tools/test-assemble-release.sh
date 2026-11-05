@@ -1786,6 +1786,60 @@ rr_owner=rust; rr_try research-old-core-rust-rows
 check "old pair whose route table gives research to Rust is refused" 'refused "deep research ownership pairing"'
 move_try research-old-pair
 check "historic deep research old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# The MCP tool executor (sbstndalton/noevia#2218): Core's thin client marker pairs with the front's rust-mcp-exec capability.
+cp "$w/server/project-store-client.cjs" "$work/mx-client.saved"
+cp "$w/server/index.cjs" "$work/mx-index.saved"
+# Files the later tests expect as they are now (or absent): kept aside, put back by mx_clean.
+mx_files="server/mcp-wiring.cjs server/rust-research-bridge.cjs server/tool-rate-limit.cjs"
+mx_rs_files="bins/noevia-server/src/project_store.rs"
+mkdir -p "$work/mx-saved"
+for f in $mx_files; do if [ -f "$w/$f" ]; then cp "$w/$f" "$work/mx-saved/$(basename "$f")"; else rm -f "$work/mx-saved/$(basename "$f")"; fi; done
+for f in $mx_rs_files; do if [ -f "$rz/$f" ]; then cp "$rz/$f" "$work/mx-saved/$(basename "$f")"; else rm -f "$work/mx-saved/$(basename "$f")"; fi; done
+mx_core() {
+  { cat "$work/mx-client.saved"; printf "const MCP_EXEC_CLIENT_MARKER = 'noevia-mcp-exec-client/1';\n"; } > "$w/server/project-store-client.cjs"
+  printf 'function createMcpWiring() {}\nmodule.exports = { createMcpWiring };\n' > "$w/server/mcp-wiring.cjs"
+  printf 'module.exports = {};\n' > "$w/server/rust-research-bridge.cjs"
+  cp "$work/mx-index.saved" "$w/server/index.cjs"
+  printf 'const wiring = { mcpExec: (request, opts) => PROJECT_STORE.mcpCall(request, opts) };\n' >> "$w/server/index.cjs"
+}
+mx_front() {
+  sed 's/"start-id"/"start-id", "rust-mcp-exec"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+  printf 'pub fn routes() { let _ = "/v1/mcp/call"; }\n' > "$rz/bins/noevia-server/src/project_store.rs"
+}
+mx_clean() {
+  cp "$work/mx-client.saved" "$w/server/project-store-client.cjs"; cp "$work/mx-index.saved" "$w/server/index.cjs"
+  cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+  for f in $mx_files; do rm -f "$w/$f"; [ ! -f "$work/mx-saved/$(basename "$f")" ] || cp "$work/mx-saved/$(basename "$f")" "$w/$f"; done
+  for f in $mx_rs_files; do rm -f "$rz/$f"; [ ! -f "$work/mx-saved/$(basename "$f")" ] || cp "$work/mx-saved/$(basename "$f")" "$rz/$f"; done
+}
+mx_core; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+move_try mcp-exec-core-only
+check "an MCP executor client without the front's capability is refused" 'refused "MCP tool executor ownership pairing: Core and Rust must move together"'
+mx_clean; mx_front
+move_try mcp-exec-front-only
+check "a rust-mcp-exec front with a Core that still executes is refused" 'refused "MCP tool executor ownership pairing: Core and Rust must move together"'
+mx_core; mx_front; rm -f "$rz/bins/noevia-server/src/project_store.rs"
+move_try mcp-exec-no-route
+check "a pair whose front does not serve /v1/mcp/call is refused" 'refused "does not serve the executor route"'
+mx_front; touch "$w/server/tool-rate-limit.cjs"
+move_try mcp-exec-old-rate-limit
+check "a Core that still carries its own 429 wait is refused" 'refused "still carries its own 429 wait"'
+rm -f "$w/server/tool-rate-limit.cjs"
+printf 'async function executeOperatorToolCall() {}\nmodule.exports = {};\n' > "$w/server/mcp-wiring.cjs"
+move_try mcp-exec-old-executor
+check "a Core that still carries the Node executor is refused" 'refused "still carries the executor (executeOperatorToolCall)"'
+mx_core; printf "const researchBridge = { executeOperatorToolCall: async () => 1 };\nmodule.exports = {};\n" > "$w/server/rust-research-bridge.cjs"
+move_try mcp-exec-old-bridge
+check "a Core that still offers the research tool bridge is refused" 'refused "still offers the research tool bridge"'
+mx_core; cp "$work/mx-index.saved" "$w/server/index.cjs"
+move_try mcp-exec-unwired
+check "a Core that does not hand its wiring the front's executor is refused" 'refused "does not hand its MCP wiring the front.s executor"'
+mx_core
+move_try mcp-exec-pair
+check "the matching MCP executor pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mx_clean
+move_try mcp-exec-old-pair
+check "historic MCP executor old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 # The Code and Browser task reads (sbstndalton/noevia#2257): the pair, its rows and what Core must have done.
 tr_project_rows() {
   for path in code 'code/{task}' browser 'browser/{task}'; do
