@@ -1212,6 +1212,171 @@ if [ "$iur_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
 fi
+# Registry persistence and the remote measurement runner transfer together.
+machines_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /noevia-inference-machines-client\//.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.MACHINES_CLIENT_MARKER;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^noevia-inference-machines-(client)\/(1)$/.exec(value);
+    process.stdout.write(m ? "v" + m[2] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+machines_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    if (!strs.some(s => s.v.includes("rust-inference-machines"))) out("none");
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid");
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    const lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = []; // lease authority entries
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-inference-machines"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-inference-machines")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^(rust-inference-machines)$/.exec(outbox[0]);
+    out(m ? "v1" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+check_machines_pair() {
+  local core rs
+  core="$(machines_core_version "$1")"; rs="$(machines_rs_version "$2")"
+  [ "$core" != invalid ] && [ "$rs" != invalid ] && [ "$core" = "$rs" ]
+}
+
+check_machines_pair "$tree/core/server/rust-inference-machines.cjs" "$tree/rs/bins/noevia-server/src/lib.rs" \
+  || die "inference machines ownership pairing: Core and Rust must move together"
+if [ "$(machines_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")" = v1 ]; then
+  machines_row="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/machines" { if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1; print $1 }')" \
+    || die "inference machines ownership pairing: all methods must be native"
+  [ "$machines_row" = /api/models/machines ] || die "inference machines ownership pairing: missing route"
+  code_has "$tree/core/server/inference-machines.cjs" "native-machines-client[.]cjs" \
+    && code_has "$tree/core/server/machine-tune.cjs" "native-machines-client[.]cjs" \
+    || die "inference machines ownership pairing: missing native owner clients"
+  ! code_has "$tree/core/server/inference-machines.cjs" 'function readState|function save' \
+    && ! code_has "$tree/core/server/machine-tune.cjs" 'async function script|function save' \
+    || die "inference machines ownership pairing: obsolete Node executors remain"
+fi
 # #2238: only the assignments GET moves. Core retains its shared installed/probe owners.
 mas_core_owner=""; mas_rs_owner=""
 grep -qF "require('./rust-model-assignments.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mas_core_owner=rust
