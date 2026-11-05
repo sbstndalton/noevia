@@ -121,6 +121,9 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
         if: env.RUN_JOB == 'true'
+      # noevia#2387: the Rust front reads models.ini itself, so web must mount it where the path says.
+      - run: bash deploy/tools/test-preset-mount.sh
+        if: env.RUN_JOB == 'true'
       # #1318 step 1c: the trusted-sets seed (stub docker; needs jq, installed above).
       - run: bash deploy/tools/test-seed-search-trusted.sh
         if: env.RUN_JOB == 'true'
