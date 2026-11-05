@@ -268,6 +268,7 @@ rust-offsite-backup.cjs rust-offsite-backup off-site backup
 rust-mcp-credentials.cjs rust-mcp-credentials MCP credential
 rust-health.cjs rust-health health check
 rust-auto-roles.cjs rust-auto-roles auto-roles read
+rust-auto-roles-write.cjs rust-auto-roles-write auto-roles write
 rust-workspace.cjs rust-workspace workspace list
 rust-chat-search.cjs rust-chat-search chat search
 rust-chat-export.cjs rust-chat-export chat download

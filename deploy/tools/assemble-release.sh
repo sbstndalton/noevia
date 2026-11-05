@@ -1637,6 +1637,19 @@ if [ "$directory_rs_owner" = rust ]; then
     }')" || die "plugin directory ownership pairing: all methods must belong to Rust"
   [ "$directory_routes" = /api/plugins/directory ] || die "plugin directory ownership pairing: incomplete route ownership"
 fi
+# F1: persistence, cleanup and the private boot proof move as one paired writer.
+auto_roles_write_owner=""; auto_roles_write_front=""
+grep -qF "require('./rust-auto-roles-write.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && auto_roles_write_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-auto-roles-write features; then auto_roles_write_front=rust; fi
+[ "$auto_roles_write_owner" = "$auto_roles_write_front" ] || die "auto-roles write ownership pairing: Core and Rust must move together"
+if [ "$auto_roles_write_owner" = rust ]; then
+  [ -f "$tree/core/server/rust-auto-roles-write.cjs" ] || die "auto-roles write ownership pairing: missing Core bridge"
+  code_has "$tree/core/server/index.cjs" 'PROJECT_STORE\.autoRolesReady\(\)' || die "auto-roles write ownership pairing: missing boot proof"
+  code_has "$tree/core/server/index.cjs" 'autoRolesWriteBridge\(req, res\)' || die "auto-roles write ownership pairing: missing bridge mount"
+  if code_has "$tree/core/server/models.cjs" 'saveAutoRoles[(]' || code_has "$tree/core/server/workspace.cjs" 'saveAutoRoles[(]'; then
+    die "auto-roles write ownership pairing: Core still carries a roles writer"
+  fi
+fi
 # The close-out routes: GET /api/health and GET /api/auto-roles (sbstndalton/noevia#2190) and GET
 # /api/workspace (#2191). Each is Core's refusal (server/rust-health.cjs, rust-auto-roles.cjs,
 # rust-workspace.cjs, which also publish rag-status.json and auto-roles-snapshot.json for the front) beside
@@ -1654,12 +1667,15 @@ get_only_pair() {
     || die "$label ownership pairing: Core and Rust must move together"
   if [ "$rs_owner" = rust ]; then
     [ -f "$tree/rs/contracts/http/routes.toml" ] || die "$label ownership pairing: missing route contract"
-    owned="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$route" '
+    owned="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$route" -v put="${auto_roles_write_owner:-}" '
       $1 == want {
         if ($2 != "rust" || $3 != "-") exit 1
         n = split($4, m, /[^A-Z]+/); k = 0; g = 0
         for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] == "GET") g++; k++ }
-        if (k != 1 || g != 1) exit 1
+        if (want == "/api/auto-roles" && put == "rust") {
+          p = 0; for (i = 1; i <= n; i++) if (m[i] == "PUT") p++
+          if (k != 2 || g != 1 || p != 1) exit 1
+        } else if (k != 1 || g != 1) exit 1
         print $1
       }')" || die "$label ownership pairing: exactly GET of $route must belong to Rust"
     [ "$owned" = "$route" ] || die "$label ownership pairing: incomplete route ownership"

@@ -4353,6 +4353,24 @@ for close_entry in "rust-health.cjs|rust-health|/api/health|health check" "rust-
   move_try "close-$close_cap-old-pair"
   check "$close_label: the historic old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 done
+# F1 writer pairing, retaining the read pair and its exact GET|PUT contract.
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "require('./rust-auto-roles.cjs');" "require('./rust-auto-roles-write.cjs');" "PROJECT_STORE.autoRolesReady();" "autoRolesWriteBridge(req, res);" >> "$w/server/index.cjs"
+printf '%s\n' "module.exports = {};" > "$w/server/rust-auto-roles-write.cjs"
+close_path=/api/auto-roles; close_owner=rust; close_methods='methods = ["GET", "PUT"]'
+close_try roles-write-core-only
+check "auto-roles write: Core refuses an older front" 'refused "auto-roles write ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-auto-roles", "rust-auto-roles-write"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+close_try roles-write-paired
+check "auto-roles write: coherent GET and PUT pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+close_methods='methods = ["GET"]'
+close_try roles-write-missing-put
+check "auto-roles write: a capability without PUT is refused" 'refused "auto-roles read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+close_try roles-write-front-only
+check "auto-roles write: a native front refuses the old writer" 'refused "auto-roles write ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-auto-roles-write.cjs"
 # The chat pairs' Core side: exactly the GET refused, in code, and the old handler gone from routes/chat-lists.cjs.
 [ ! -f "$w/server/routes/chat-lists.cjs" ] || cp "$w/server/routes/chat-lists.cjs" "$work/chat-lists.saved"
 mkdir -p "$w/server/routes"
