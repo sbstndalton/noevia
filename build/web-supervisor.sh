@@ -339,10 +339,10 @@ if [ "$embedding_core_owner" = rust ] && ! grep -qx 'rust-embedding-background-v
 fi
 
 # Both halves must agree: an old Core still drains the same durable jobs.
-outbox_core_owner="$(node -e "try { const m = require('./server/rust-index-outbox.cjs'); if (m.RUST_INDEX_OUTBOX_OWNED === 'rust-index-outbox-v2') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
-outbox_front_owner="$(grep -x 'rust-index-outbox-v2' <<<"$rust_features" || true)"
+outbox_core_owner="$(node -e "try { const m = require('./server/rust-index-outbox.cjs'); if (m.RUST_INDEX_OUTBOX_OWNED === 'rust-index-outbox-v3') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+outbox_front_owner="$(grep -x 'rust-index-outbox-v3' <<<"$rust_features" || true)"
 if { [ "$outbox_core_owner" = rust ] && [ -z "$outbox_front_owner" ]; } || { [ "$outbox_core_owner" != rust ] && [ -n "$outbox_front_owner" ]; }; then
-  echo "web-supervisor: index outbox requires paired rust-index-outbox-v2 ownership" >&2
+  echo "web-supervisor: index outbox requires paired rust-index-outbox-v3 ownership" >&2
   exit 2
 fi
 

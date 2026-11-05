@@ -1443,17 +1443,17 @@ move_try project-reads-old-pair
 check "historic project source read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-reads.cjs"
 # RAG outbox pairing rejects both half-pairs before producing an archive.
-printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2';" > "$w/server/rust-index-outbox.cjs"
+printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" > "$w/server/rust-index-outbox.cjs"
 move_try outbox-core-only
 check "outbox Core requires native owner" 'refused "index outbox ownership pairing"'
-sed 's/"start-id"/"start-id", "rust-index-outbox-v1"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
-move_try outbox-v2-core-v1-front
-check "media notification Core refuses v1 outbox front" 'refused "index outbox ownership pairing"'
 sed 's/"start-id"/"start-id", "rust-index-outbox-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
-printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v1';" > "$w/server/rust-index-outbox.cjs"
-move_try outbox-v1-core-v2-front
-check "media notification front refuses v1 outbox Core" 'refused "index outbox ownership pairing"'
+move_try outbox-v3-core-v2-front
+check "media notification Core refuses v2 outbox front" 'refused "index outbox ownership pairing"'
+sed 's/"start-id"/"start-id", "rust-index-outbox-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
 printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2';" > "$w/server/rust-index-outbox.cjs"
+move_try outbox-v2-core-v3-front
+check "media notification front refuses v2 outbox Core" 'refused "index outbox ownership pairing"'
+printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" > "$w/server/rust-index-outbox.cjs"
 move_try outbox-pair
 check "matching outbox owner pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm "$w/server/rust-index-outbox.cjs"
