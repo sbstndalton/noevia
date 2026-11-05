@@ -594,6 +594,26 @@ reset
 run STUB_FEATURES="$BASE_FEATURES rust-index-outbox-v3" >/dev/null 2>"$work/err"; rc=$?
 check "new outbox front with old Core refuses" '[ $rc -eq 2 ] && grep -q "index outbox requires paired" "$work/err" && [ ! -s "$work/log" ]'
 
+# Keep the entire version matrix: a new capability must not erase older half-pair refusals.
+for outbox_core_version in none v1 v2 v3; do
+  for outbox_front_version in none v1 v2 v3; do
+    rm -f "$work/server/rust-index-outbox.cjs"
+    if [ "$outbox_core_version" != none ]; then
+      printf '%s\n' "module.exports = { RUST_INDEX_OUTBOX_OWNED: 'rust-index-outbox-$outbox_core_version' };" > "$work/server/rust-index-outbox.cjs"
+    fi
+    outbox_features="$BASE_FEATURES"
+    [ "$outbox_front_version" = none ] || outbox_features="$outbox_features rust-index-outbox-$outbox_front_version"
+    reset; touch "$work/die-front"
+    run STUB_FEATURES="$outbox_features" >/dev/null 2>"$work/err"; rc=$?
+    if [ "$outbox_core_version" = "$outbox_front_version" ]; then
+      check "outbox $outbox_core_version/$outbox_front_version coherent pair starts for current or rollback use" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+    else
+      check "outbox $outbox_core_version/$outbox_front_version mismatch refuses before launch" '[ $rc -eq 2 ] && grep -q "index outbox requires paired" "$work/err" && [ ! -s "$work/log" ]'
+    fi
+  done
+done
+rm -f "$work/server/rust-index-outbox.cjs"
+
 # Embedding background: one-way guard; old Core never authorizes native work.
 printf '%s\n' "module.exports = { RUST_EMBEDDING_OWNED: 'rust-embedding-background-v1' };" > "$work/server/rust-embedding-background.cjs"
 reset

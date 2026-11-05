@@ -1461,6 +1461,28 @@ move_try outbox-front-only
 check "outbox front refuses old Core" 'refused "index outbox ownership pairing"'
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
+# Retain all prior generation refusals alongside the v3 cases above.
+for outbox_core_version in none v1 v2 v3; do
+  for outbox_rs_version in none v1 v2 v3; do
+    rm -f "$w/server/rust-index-outbox.cjs"
+    if [ "$outbox_core_version" != none ]; then
+      printf '%s\n' "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-$outbox_core_version';" > "$w/server/rust-index-outbox.cjs"
+    fi
+    cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+    if [ "$outbox_rs_version" != none ]; then
+      sed "s/\"start-id\"/\"start-id\", \"rust-index-outbox-$outbox_rs_version\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+    fi
+    move_try "outbox-matrix-$outbox_core_version-$outbox_rs_version"
+    if [ "$outbox_core_version" = "$outbox_rs_version" ]; then
+      check "outbox $outbox_core_version/$outbox_rs_version coherent current or rollback pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+    else
+      check "outbox $outbox_core_version/$outbox_rs_version mismatch refuses assembly" 'refused "index outbox ownership pairing"'
+    fi
+  done
+done
+rm -f "$w/server/rust-index-outbox.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+
 # Project create/delete owner release matrix (sbstndalton/noevia#2191 round 2): POST /api/projects and
 # DELETE /api/projects/{projectId}, nothing else.
 project_lifecycle_try() {

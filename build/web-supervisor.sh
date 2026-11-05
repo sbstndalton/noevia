@@ -338,11 +338,12 @@ if [ "$embedding_core_owner" = rust ] && ! grep -qx 'rust-embedding-background-v
   exit 2
 fi
 
-# Both halves must agree: an old Core still drains the same durable jobs.
-outbox_core_owner="$(node -e "try { const m = require('./server/rust-index-outbox.cjs'); if (m.RUST_INDEX_OUTBOX_OWNED === 'rust-index-outbox-v3') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
-outbox_front_owner="$(grep -x 'rust-index-outbox-v3' <<<"$rust_features" || true)"
-if { [ "$outbox_core_owner" = rust ] && [ -z "$outbox_front_owner" ]; } || { [ "$outbox_core_owner" != rust ] && [ -n "$outbox_front_owner" ]; }; then
-  echo "web-supervisor: index outbox requires paired rust-index-outbox-v3 ownership" >&2
+# Compare versions, not just the newest marker: legacy mixed owners are unsafe too.
+# Equal legacy pairs remain usable for rollback.
+outbox_core_owner="$(node -e "try { const m = require('./server/rust-index-outbox.cjs'); if (/^rust-index-outbox-v[0-9]+$/.test(m.RUST_INDEX_OUTBOX_OWNED)) process.stdout.write(m.RUST_INDEX_OUTBOX_OWNED); } catch {}" 2>/dev/null || true)"
+outbox_front_owner="$(grep -E '^rust-index-outbox-v[0-9]+$' <<<"$rust_features" | sort -u || true)"
+if [ "$outbox_core_owner" != "$outbox_front_owner" ]; then
+  echo "web-supervisor: index outbox requires paired capability versions; update the paired image" >&2
   exit 2
 fi
 

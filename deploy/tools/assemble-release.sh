@@ -695,14 +695,18 @@ if [ "$project_reads_rs_owner" = rust ]; then
   project_read_expected="$(printf '%s\n' '/api/projects/{id}/sources/text' '/api/projects/{id}/documents/original' '/api/projects/{id}/{*}/original' | sort)"
   [ "$project_read_routes" = "$project_read_expected" ] || die "project source read ownership pairing: incomplete route ownership"
 fi
-# Native index outbox execution moves as a coherent pair.
+# Compare every supported outbox generation; equal legacy pairs remain rollback candidates.
 outbox_core_owner=""
 outbox_rs_owner=""
-grep -qF "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3'" "$tree/core/server/rust-index-outbox.cjs" 2>/dev/null && outbox_core_owner=rust
-if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-index-outbox-v3 features; then
-  outbox_rs_owner=rust
-fi
-[ "$outbox_core_owner" = "$outbox_rs_owner" ] || die "index outbox ownership pairing: Core and Rust must move together"
+for outbox_version in v1 v2 v3; do
+  if grep -qF "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-$outbox_version';" "$tree/core/server/rust-index-outbox.cjs" 2>/dev/null; then
+    outbox_core_owner="$outbox_core_owner $outbox_version"
+  fi
+  if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES "rust-index-outbox-$outbox_version" features; then
+    outbox_rs_owner="$outbox_rs_owner $outbox_version"
+  fi
+done
+[ "$outbox_core_owner" = "$outbox_rs_owner" ] || die "index outbox ownership pairing: Core and Rust capability versions must match"
 
 # A project's create and delete (sbstndalton/noevia#2191 round 2) move as one owner: Core's
 # rust-project-lifecycle.cjs refusal and the front's rust-project-lifecycle capability, with exactly POST
