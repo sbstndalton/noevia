@@ -6,7 +6,7 @@ here="$(cd -- "$(dirname -- "$0")" && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/assemble-release-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 fails=0; passes=0
-check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; fi; }
+check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; [ ! -f "$work/err" ] || sed -n "1,8p" "$work/err" >&2; fi; }
 g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
@@ -4750,6 +4750,8 @@ g commit -qam selfagain; ssha="$(g rev-parse --short HEAD)"; fout="$work/failout
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ssha" "$fout" >/dev/null 2>"$work/err"; rc=$?
 check "failing final tar exits non-zero" '[ $rc -ne 0 ]'
 check "failing final tar leaves no .partial and no tarball" '[ -z "$(ls -A "$fout")" ]'
+
+check "native media ownership adversarial pairings" 'node "$here/test-media-pairing.cjs"'
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]
