@@ -358,6 +358,24 @@ if [ "$source_startup_core" = invalid ] || [ "$source_startup_core" != "$source_
   exit 2
 fi
 
+dav_listener_core=none
+if [ -f "$PWD/server/rust-dav-listener.cjs" ]; then
+  dav_listener_core="$(timeout -k 2 10 node -e '
+    const fs=require("node:fs"),vm=require("node:vm");
+    try {
+      const src=fs.readFileSync(process.argv[1],"utf8");
+      const value=vm.runInNewContext("const module={exports:{}};"+src+"\nmodule.exports.RUST_DAV_LISTENER_OWNED",{}, {timeout:2000});
+      process.stdout.write(value === "rust-dav-listener-v1" ? "v1" : "invalid");
+    } catch { process.stdout.write("invalid"); }
+  ' "$PWD/server/rust-dav-listener.cjs" 2>/dev/null)" || dav_listener_core=invalid
+fi
+dav_listener_front=none
+grep -qx 'rust-dav-listener-v1' <<<"$rust_features" && dav_listener_front=v1
+if [ "$dav_listener_core" = invalid ] || [ "$dav_listener_core" != "$dav_listener_front" ]; then
+  echo "web-supervisor: DAV listener ownership mismatch; update the paired image" >&2
+  exit 2
+fi
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
 # (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
 # front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own

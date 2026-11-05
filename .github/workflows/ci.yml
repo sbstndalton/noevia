@@ -118,6 +118,7 @@ jobs:
       - run: bash deploy/tools/test-diary-image-guard.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-source-startup-pairing.sh
+      - run: bash deploy/tools/test-dav-listener-pairing.sh
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
