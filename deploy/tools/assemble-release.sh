@@ -401,9 +401,16 @@ core_uses_history_ops() {
 rs_serves_change_journal() {
   grep -rqs --include='*.rs' -e '/v1/changes/read' "$tree/rs/bins"
 }
-# Whether the pinned core tails that journal (server/chat-change-journal.cjs carries its marker).
-core_tails_change_journal() {
+# Whether the pinned core's own Node reader tails that journal (server/chat-change-journal.cjs carries its marker).
+core_tails_change_journal_legacy() {
   grep -q "'noevia-chat-change-journal-reader/1'" "$tree/core/server/chat-change-journal.cjs" 2>/dev/null
+}
+# Whether the release has a journal consumer: that legacy reader, or the paired front's own
+# (rust-chat-mirror-v1: the front tails the journal in process and the core keeps only the executors).
+# chat_mirror_paired is set below, once, from the exact declarations of both sides, and starts empty.
+chat_mirror_paired=""
+core_tails_change_journal() {
+  core_tails_change_journal_legacy || [ "$chat_mirror_paired" = rust ]
 }
 # Whether the pinned core builds a chat's brain only for journal entries with origin "history"
 # (sbstndalton/noevia#2153: then it no longer nudges the brain itself while the front journals).
@@ -499,7 +506,9 @@ rs_move_start() { move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATU
 rs_move_journal() { move_capability "$tree/rs/crates/server-projects/src/journal.rs" CHAT_MOVE_JOURNAL_MARKER noevia-chat-move-journal/1 rust; }
 core_move_client() { move_capability "$tree/core/server/project-store-client.cjs" CHAT_MOVE_CLIENT_MARKER noevia-chat-move-client/1 js; }
 core_move_enforcement() { move_capability "$tree/core/server/chat.cjs" CHAT_MOVE_ENFORCEMENT_MARKER noevia-chat-move-enforcement/1 js; }
-core_move_reader() { move_capability "$tree/core/server/chat-change-journal.cjs" CHAT_MOVE_READER_MARKER noevia-chat-move-reader/1 js; }
+core_move_reader_legacy() { move_capability "$tree/core/server/chat-change-journal.cjs" CHAT_MOVE_READER_MARKER noevia-chat-move-reader/1 js; }
+# The move events are read by that legacy reader or, paired, by the front's consumer (live/recovery delivery, event identity).
+core_move_reader() { core_move_reader_legacy || [ "$chat_mirror_paired" = rust ]; }
 core_move_owner() { move_capability "$tree/core/server/rust-projects.cjs" CHAT_MOVE_PUBLIC_OWNER "$1" js; }
 core_move_handler() { move_capability "$tree/core/server/routes/chat-lists.cjs" chatMoveRoute - function; }
 # Source jobs retain the Node executor while Rust alone owns their persisted journals. A
@@ -1754,6 +1763,34 @@ if [ "$mirror_rs_owner" = rust ]; then
   [ "$mirror_routes" = /api/chat-vault-mirror/preferences ] || die "vault mirror preference ownership pairing: incomplete route ownership"
 fi
 
+# The chat journal tail and the mirror and brain schedules (rust-chat-mirror-v1): the front tails each
+# active account's change journal in process and owns the debounce, backoff, idle timers and queue
+# (noevia-rs crates/chat-mirror-sched); the core keeps their two work executors (rust-chat-mirror.cjs) and
+# nudges the front. Both sides declare it exactly (compiled FEATURES entry; exported RUST_CHAT_MIRROR_OWNED),
+# never in a comment. A front without the core's half leaves the journal unread (no mirror or brain follows a
+# save); a core without the front's half would run a second schedule beside it. The Node reader must be gone.
+chat_mirror_core_owner=""
+chat_mirror_rs_owner=""
+if grep -qF "require('./rust-chat-mirror.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  move_capability "$tree/core/server/rust-chat-mirror.cjs" RUST_CHAT_MIRROR_OWNED rust-chat-mirror-v1 js \
+    || die "chat mirror ownership pairing: index.cjs requires rust-chat-mirror.cjs, but it does not export RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1'"
+  chat_mirror_core_owner=rust
+fi
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-mirror-v1 features; then
+  chat_mirror_rs_owner=rust
+fi
+[ "$chat_mirror_core_owner" = "$chat_mirror_rs_owner" ] \
+  || die "chat mirror schedule ownership pairing: Core and Rust must move together (rust-chat-mirror-v1)"
+if [ "$chat_mirror_rs_owner" = rust ]; then
+  [ ! -e "$tree/core/server/chat-change-journal.cjs" ] \
+    || die "chat mirror schedule ownership pairing: the core still carries the Node journal reader (server/chat-change-journal.cjs) beside the front's schedule"
+  grep -qxF 'pub mod chat_mirror;' "$tree/rs/bins/noevia-server/src/lib.rs" 2>/dev/null \
+    && move_capability "$tree/rs/crates/chat-mirror-sched/src/lib.rs" MARKER noevia-chat-mirror-scheduler/1 rust \
+    && code_lines "$tree/rs/bins/noevia-server/src/main.rs" 2>/dev/null | grep -qF 'ChatMirror::start(' \
+    || die "chat mirror schedule ownership pairing: the front declares rust-chat-mirror-v1 but does not carry and start the schedule (chat_mirror.rs, crate chat-mirror-sched)"
+  chat_mirror_paired=rust
+fi
+
 # The storage connection save (#2190, round 4): Core's rust-storage-connection.cjs refusal (PUT on the
 # exact path; Core's guard then refuses every Node write of storage_connections, and its legacy WebDAV
 # setup asks the front's internal store) and the front's rust-storage-connection capability, with
@@ -2513,7 +2550,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # #1071 slice7: an internal move capability is unsafe beside old Node grants too.
   # Refuse partial security/provenance stacks even before switching public ownership.
   if rust_owns_chat_move "$routes_file" || core_refuses_chat_move || rs_move_foundation || rs_move_journal \
-     || core_move_client || core_move_enforcement || core_move_reader; then
+     || core_move_client || core_move_enforcement || core_move_reader_legacy; then
     move_other_methods="$( { project_routes_rs "$routes_file"; project_routes_core "$tree/core/server/rust-projects.cjs" || true; } | awk '$2=="/api/chats/{}/move" && $1!="POST"')"
     [ -z "$move_other_methods" ] || die "chat move POST ownership pairing: non-POST move ownership/refusal would remove its existing fallback"
     rs_move_foundation && rs_move_journal && rs_move_start \
