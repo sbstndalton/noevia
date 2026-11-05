@@ -716,30 +716,33 @@ outbox_awk_strip='
     return out
   }
 '
+# Core: the value the module actually exports, read the way the supervisor does, but with
+# every require() stubbed so nothing outside the file runs. A marker literal present in the
+# file without a matching export (commented out, inside a string, unparsable) is invalid.
 outbox_core_version() {
   [ -f "$1" ] || { echo none; return; }
-  awk -v q="'" -v quotes="\"'\`" "$outbox_awk_strip"'
-    {
-      line=strip($0)
-      if (line == "") next
-      if (line ~ /RUST_INDEX_OUTBOX_OWNED[ \t]*=/ || index(line, "rust-index-outbox-v")) {
-        if (match(line, "^const RUST_INDEX_OUTBOX_OWNED[ \t]*=[ \t]*" q "rust-index-outbox-v[0-9]+" q "[ \t]*;?$")) {
-          v=line; sub("^const RUST_INDEX_OUTBOX_OWNED[ \t]*=[ \t]*" q "rust-index-outbox-", "", v); sub(q ".*$", "", v)
-          found++; version=v
-        } else other++
-      }
-    }
-    END {
-      if (block || other || found > 1) { print "invalid"; exit }
-      if (!found) { print "none"; exit }
-      print (version ~ /^v[123]$/) ? version : "invalid"
-    }
-  ' "$1"
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-index-outbox-v/.test(src);
+    let value;
+    try {
+      const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });
+      const mod = { exports: {} };
+      vm.runInNewContext("(function (require, module, exports) {" + src + "\n})", {}, { timeout: 2000 })(() => stub, mod, mod.exports);
+      value = mod.exports.RUST_INDEX_OUTBOX_OWNED;
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-index-outbox-(v[123])$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
 }
 outbox_rs_version() {
   [ -f "$1" ] || { echo none; return; }
   awk -v dq='"' -v quotes='"' "$outbox_awk_strip"'
     function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    { raw += gsub(/"rust-index-outbox-/, "&") }
     {
       line=strip($0)
       if (line == "") next
@@ -759,7 +762,8 @@ outbox_rs_version() {
       } else if (index(line, "rust-index-outbox-")) bad++
     }
     END {
-      if (block || decl > 1 || bad || distinct > 1) { print "invalid"; exit }
+      total = 0; for (k in seen) total += seen[k]
+      if (block || decl > 1 || bad || distinct > 1 || raw != total) { print "invalid"; exit }
       if (!decl || !distinct) { print "none"; exit }
       if (seen[last] != 1 || last !~ /^v[123]$/) { print "invalid"; exit }
       print last

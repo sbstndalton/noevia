@@ -1443,17 +1443,17 @@ move_try project-reads-old-pair
 check "historic project source read old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-reads.cjs"
 # RAG outbox pairing rejects both half-pairs before producing an archive.
-printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" > "$w/server/rust-index-outbox.cjs"
+printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" "module.exports = { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
 move_try outbox-core-only
 check "outbox Core requires native owner" 'refused "index outbox ownership pairing"'
 sed 's/"start-id"/"start-id", "rust-index-outbox-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
 move_try outbox-v3-core-v2-front
 check "media notification Core refuses v2 outbox front" 'refused "index outbox ownership pairing"'
 sed 's/"start-id"/"start-id", "rust-index-outbox-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
-printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2';" > "$w/server/rust-index-outbox.cjs"
+printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2';" "module.exports = { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
 move_try outbox-v2-core-v3-front
 check "media notification front refuses v2 outbox Core" 'refused "index outbox ownership pairing"'
-printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" > "$w/server/rust-index-outbox.cjs"
+printf "%s\n" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" "module.exports = { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
 move_try outbox-pair
 check "matching outbox owner pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm "$w/server/rust-index-outbox.cjs"
@@ -1466,7 +1466,7 @@ for outbox_core_version in none v1 v2 v3; do
   for outbox_rs_version in none v1 v2 v3; do
     rm -f "$w/server/rust-index-outbox.cjs"
     if [ "$outbox_core_version" != none ]; then
-      printf '%s\n' "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-$outbox_core_version';" > "$w/server/rust-index-outbox.cjs"
+      printf '%s\n' "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-$outbox_core_version';" "module.exports = { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
     fi
     cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
     if [ "$outbox_rs_version" != none ]; then
@@ -1486,7 +1486,7 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 # Adversarial outbox marker detection: absence is distinct from ambiguous or unrecognized markers.
 outbox_case() { # name core-file-content (or -) rust-feature-insert (or -) expect(ok|refuse)
   rm -f "$w/server/rust-index-outbox.cjs"
-  [ "$2" = - ] || printf '%s\n' "$2" > "$w/server/rust-index-outbox.cjs"
+  [ "$2" = - ] || printf '%s\n' "$2" "module.exports = { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
   cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
   [ "$3" = - ] || sed "s/\"start-id\"/\"start-id\", $3/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
   move_try "outbox-adv-$1"
@@ -1511,6 +1511,7 @@ outbox_case code-after-block-close-v2-none "$(printf '%s\n' '/* note' "end */ co
 outbox_case unclosed-block-core "/* const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3"' refuse
 outbox_case inline-block-rust-v3-core-none - '\n    "rust-index-outbox-v3", \/* ownership *\/' refuse
 outbox_case inline-block-rust-v3-core-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '\n    "rust-index-outbox-v3", \/* ownership *\/' ok
+outbox_case template-hides-core-marker "$(printf '%s\n' 'const note = `' '"`; /*' "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '*/')" '"rust-index-outbox-v3"' refuse
 rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
