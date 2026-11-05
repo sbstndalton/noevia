@@ -2354,6 +2354,45 @@ unset mdr_owner mdr_methods; mdr_try mdr-old-pair
 check "old download pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-model-downloads-read.cjs" "$w/server/rust-model-downloads-read-facts.cjs"
 if [ -f "$work/mdr-models.saved" ]; then cp "$work/mdr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+
+# Pull/delete must move together, with executable refusals and no Node executor.
+mm_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    for mm_path in pull delete; do printf '[[route]]\npath = "/api/models/%s"\nowner = "%s"\nmethods = ["%s"]\n' "$mm_path" "${mm_owner:-node}" "${mm_method:-POST}"; done)
+}
+for mm_file in llamacpp-manager.cjs routes/models.cjs; do
+  if [ -f "$w/server/$mm_file" ]; then cp "$w/server/$mm_file" "$work/mm-$(basename "$mm_file").saved"; fi
+done
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/models/pull', 'POST /api/models/delete']));" "module.exports = { MODEL_MUTATIONS_CLIENT_MARKER: 'noevia-model-mutations-client/1' };" > "$w/server/rust-model-mutations.cjs"
+touch "$w/server/rust-model-mutations-bridge.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "if (require('./rust-model-mutations.cjs').refuseOwned(req, res, {})) return;" 'if (await modelMutationsBridge(req, res)) return;' >> "$w/server/index.cjs"
+: > "$w/server/llamacpp-manager.cjs"; : > "$w/server/routes/models.cjs"
+mm_owner=rust; mm_try mm-core-only
+check "model mutations Core-only pair refuses assembly" 'refused "model mutations pairing"'
+sed 's/"start-id"/"start-id", "noevia-model-mutations\/1"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mm_try mm-complete
+check "model mutations complete POST pair assembles" '[ $rc -eq 0 ]'
+mm_method=GET; mm_try mm-wrong-method
+check "model mutations native pair cannot claim GET" 'refused "model mutations pairing"'
+unset mm_method
+printf '%s\n' '    pull: () => true,' > "$w/server/llamacpp-manager.cjs"
+mm_try mm-old-engine
+check "model mutations pair refuses retained Node engine executor" 'refused "retained Node engine executor"'
+: > "$w/server/llamacpp-manager.cjs"
+rm "$w/server/rust-model-mutations.cjs"; mm_try mm-rust-only
+check "model mutations Rust-only pair refuses assembly" 'refused "model mutations pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+mm_owner=rust; mm_try mm-stripped-marker
+check "model mutations stripped capability cannot retain native routes" 'refused "native routes lack capability"'
+mm_owner=node; mm_try mm-legacy
+check "model mutations legacy pair remains a valid rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-model-mutations-bridge.cjs"
+for mm_file in llamacpp-manager.cjs routes/models.cjs; do
+  if [ -f "$work/mm-$(basename "$mm_file").saved" ]; then cp "$work/mm-$(basename "$mm_file").saved" "$w/server/$mm_file"; else rm -f "$w/server/$mm_file"; fi
+done
+unset mm_owner
+
 # Preset GET and its shared snapshot owner. Exercise the literal used by the real refuser.
 pr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -4750,6 +4789,41 @@ g commit -qam selfagain; ssha="$(g rev-parse --short HEAD)"; fout="$work/failout
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ssha" "$fout" >/dev/null 2>"$work/err"; rc=$?
 check "failing final tar exits non-zero" '[ $rc -ne 0 ]'
 check "failing final tar leaves no .partial and no tarball" '[ -z "$(ls -A "$fout")" ]'
+
+
+# Pull/delete pairing uses the actual version readers, including declaration scope checks.
+eval "$(sed -n '/^mutations_core_version() {/,/^mutations_core_owner=/p' "$here/assemble-release.sh" | sed '$d')"
+mm_core="$work/mm-core.cjs"; mm_rs="$work/mm-lib.rs"
+printf "module.exports = { MODEL_MUTATIONS_CLIENT_MARKER: 'noevia-model-mutations-client/1' };\n" > "$mm_core"
+printf 'pub const FEATURES: &[&str] = &["noevia-model-mutations/1"];\n' > "$mm_rs"
+check "model mutations matching pair has version v1" '[ "$(mutations_core_version "$mm_core")" = v1 ] && [ "$(mutations_rs_version "$mm_rs")" = v1 ]'
+rm "$mm_core"
+check "model mutations Rust-only half pair differs" '[ "$(mutations_core_version "$mm_core")" != "$(mutations_rs_version "$mm_rs")" ]'
+printf "module.exports = { MODEL_MUTATIONS_CLIENT_MARKER: 'noevia-model-mutations-client/1' };\n" > "$mm_core"
+printf 'pub const FEATURES: &[&str] = &["legacy"];\n' > "$mm_rs"
+check "model mutations Core-only half pair differs" '[ "$(mutations_core_version "$mm_core")" != "$(mutations_rs_version "$mm_rs")" ]'
+rm "$mm_core"
+check "model mutations legacy pair remains compatible" '[ "$(mutations_core_version "$mm_core")" = none ] && [ "$(mutations_rs_version "$mm_rs")" = none ]'
+for src in \
+  'pub const FEATURES: &[&str] = &["noevia-model-mutations/1", "noevia-model-mutations/1"];' \
+  'pub const FEATURES: &[&str] = &["noevia-model-mutations/1", "noevia-model-mutations\x2f1"];' \
+  '#[cfg(any())] pub const FEATURES: &[&str] = &["noevia-model-mutations/1"];' \
+  '#[cfg(any())] mod hidden { pub const FEATURES: &[&str] = &["noevia-model-mutations/1"]; }' \
+  'pub const FEATURES: &[&str] = &[#[cfg(any())] "noevia-model-mutations/1"];' \
+  'pub const FEATURES: &[&str] = &[r"noevia-model-mutations/1"];' \
+  'pub const FEATURES: &[&str] = &[b"noevia-model-mutations/1"];' \
+  'pub const FEATURES: &[&str] = &[concat!("noevia-model-mutations/", "1")];' \
+  'pub const FEATURES: &[&str] = &["noevia-model-mutations/1", OTHER];'; do
+  printf '%s\n' "$src" > "$mm_rs"
+  check "model mutations adversarial Rust capability is refused: $src" '[ "$(mutations_rs_version "$mm_rs")" = invalid ]'
+done
+for src in \
+  "const MODEL_MUTATIONS_CLIENT_MARKER = 'noevia-model-mutations-client/1'; module.exports = {};" \
+  "module.exports = { MODEL_MUTATIONS_CLIENT_MARKER: 'noevia-model-mutations-client/2' };" \
+  "module.exports = { get MODEL_MUTATIONS_CLIENT_MARKER() { while(true){} } };"; do
+  printf '%s\n' "$src" > "$mm_core"
+  check "model mutations ambiguous Core export is refused" '[ "$(mutations_core_version "$mm_core")" = invalid ]'
+done
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]
