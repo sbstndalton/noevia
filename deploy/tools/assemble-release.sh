@@ -759,7 +759,20 @@ outbox_rs_version() {
       }
       if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
         i += c === "b" ? 2 : 1; let v = "";
-        while (i < n && src[i] !== "\"") { if (src[i] === "\\") { v += src[i] + (src[i + 1] || ""); i += 2; } else v += src[i++]; }
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && /^[0-7][0-9A-Fa-f]$/.test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
         if (i >= n) out("invalid");
         i++; strs.push(v); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
       }
@@ -774,10 +787,28 @@ outbox_rs_version() {
     if (decls.length > 1) out("invalid");
     if (!decls.length) out("none");
     const body = code.slice(decls[0].index + decls[0][0].length);
-    const end = body.indexOf("]");
-    if (end < 0) out("invalid");
-    const entries = [...body.slice(0, end).matchAll(/\u0000(\d+)\u0000/g)].map(m => strs[+m[1]]);
-    const outbox = entries.filter(v => v.startsWith("rust-index-outbox-"));
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = [];
+    for (const raw of elements) {
+      const literals = [...raw.matchAll(/\u0000(\d+)\u0000/g)].map(m => strs[+m[1]]);
+      if (!literals.some(v => v.includes("rust-index-outbox"))) continue;
+      // Only a plain, unconditional string literal is an outbox capability entry; attributes or
+      // expressions around one are unsupported and refuse.
+      const single = /^\s*\u0000(\d+)\u0000\s*$/.exec(raw);
+      if (!single) out("invalid");
+      outbox.push(strs[+single[1]]);
+    }
     if (!outbox.length) out("none");
     if (outbox.length > 1) out("invalid");
     const m = /^rust-index-outbox-(v[123])$/.exec(outbox[0]);

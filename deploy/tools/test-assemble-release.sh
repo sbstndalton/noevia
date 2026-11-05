@@ -1517,6 +1517,12 @@ outbox_case template-hides-core-marker "$(printf '%s\n' 'const note = `' '"`; /*
 outbox_case core-load-never-returns "while (true) {}" - refuse
 outbox_case rust-compat-comment-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '\n    \/\/ Compatibility marker: "rust-index-outbox-v2"\n    "rust-index-outbox-v3"' ok
 outbox_case rust-nested-comment-entry-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3",\n    \/* old \/* nested *\/ "rust-index-outbox-v2", *\/' ok
+outbox_case rust-duplicate-after-attribute "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3", #[cfg(feature = "x")] "x", "rust-index-outbox-v2"' refuse
+outbox_case rust-cfg-gated-entry "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '#[cfg(feature = "x")] "rust-index-outbox-v3"' refuse
+outbox_case rust-concat-expression "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" 'concat!("rust-index-outbox-v3", "0")' refuse
+outbox_case rust-escaped-marker-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v\\x33"' ok
+outbox_case rust-escaped-marker-v3-core-none - '"\\x72ust-index-outbox-v3"' refuse
+outbox_case rust-escaped-duplicate "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3", "rust-index-outbox-\\u{76}3"' refuse
 rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
