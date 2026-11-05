@@ -779,18 +779,18 @@ class RsStage(unittest.TestCase):
 
     PINNED = f'ARG NOEVIA_RS_REF={REF}\nARG NOEVIA_RS_SHA256={SUM}\n'
     # noevia#1071 P0: (source directory, cargo package, installed binary) for every leaf a Python adapter calls.
-    LEAVES = [('bins/diary-corpus-write', 'diary-corpus-write-cli', 'diary-corpus-write-cli'),
-              ('crates/diary-corpus-parse', 'diary-corpus-parse', 'diary-corpus-parse'),
-              ('crates/diary-score-gap', 'diary-score-gap', 'diary-score-gap'),
-              ('crates/diary-temporal-focus', 'diary-temporal-focus', 'diary-temporal-cli'),
-              ('crates/diary-workspace-export', 'diary-workspace-export', 'diary-workspace-export'),
-              ('crates/diary-workspace-import-apply', 'diary-workspace-import-apply', 'diary-workspace-import-apply'),
+    LEAVES = [('crates/diary-backup-run', 'diary-backup-run', 'diary-backup-run'),
               ('crates/diary-entity-focus', 'diary-entity-focus', 'diary-entity-focus'),
               ('crates/diary-index-transform', 'diary-index-transform', 'diary-index-transform'),
               ('crates/diary-storage-backoff', 'diary-storage-backoff', 'diary-storage-backoff'),
               ('crates/diary-workspace-rules', 'diary-workspace-rules', 'diary-workspace-rules'),
               ('crates/diary-backup-format', 'diary-backup-format', 'diary-backup-format'),
-              ('crates/diary-backup-run', 'diary-backup-run', 'diary-backup-run'),
+              ('bins/diary-corpus-write', 'diary-corpus-write-cli', 'diary-corpus-write-cli'),
+              ('crates/diary-corpus-parse', 'diary-corpus-parse', 'diary-corpus-parse'),
+              ('crates/diary-score-gap', 'diary-score-gap', 'diary-score-gap'),
+              ('crates/diary-temporal-focus', 'diary-temporal-focus', 'diary-temporal-cli'),
+              ('crates/diary-workspace-export', 'diary-workspace-export', 'diary-workspace-export'),
+              ('crates/diary-workspace-import-apply', 'diary-workspace-import-apply', 'diary-workspace-import-apply'),
               # D4-D5: the Rust Diary server process (Python starts it only when DIARY_RUST_ROUTES/WRITES is set).
               ('bins/noevia-diary', 'noevia-diary', 'noevia-diary')]
 
