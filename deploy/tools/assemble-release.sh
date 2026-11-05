@@ -2376,13 +2376,14 @@ fi
 # style): Core's value is what server/rust-model-load.cjs exports as LOAD_MARKER (node:vm,
 # hard time limit, requires stubbed), Rust's the single unconditional ordinary literal
 # "noevia-model-load-authority/<n>" in lib.rs's one FEATURES array at depth 0. Invalid refuses.
-model_load_core_version() {
+paired_core_version() {
   [ -f "$1" ] || { echo none; return; }
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
   timeout -k 2 10 node -e '
     const fs = require("node:fs"), vm = require("node:vm");
     const src = fs.readFileSync(process.argv[1], "utf8");
-    const literal = /noevia-model-load-owner\//.test(src);
+    const prefix = process.argv[3];
+    const literal = src.includes(prefix + "/");
     let value;
     try {
       // Invocation and export access both run inside the timed evaluation.
@@ -2391,25 +2392,26 @@ model_load_core_version() {
         "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
         "  const module = { exports: {} };" +
         "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
-        "  const v = module.exports.LOAD_MARKER;" +
+        "  const v = module.exports[" + JSON.stringify(process.argv[2]) + "];" +
         "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
         "})()", {}, { timeout: 2000 });
     } catch { process.stdout.write("invalid"); process.exit(0); }
     if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
-    const m = typeof value === "string" && /^noevia-model-load-(owner)\/(1)$/.exec(value);
-    process.stdout.write(m ? "v" + m[2] : "invalid");
-  ' "$1" 2>/dev/null || echo invalid
+    const m = typeof value === "string" && new RegExp("^" + prefix + "/(1)$").exec(value);
+    process.stdout.write(m ? "v" + m[1] : "invalid");
+  ' "$1" "$2" "${3:-}" 2>/dev/null || echo invalid
 }
 # Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
 # literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
 # optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
 # raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
 # several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
-model_load_rs_version() {
+paired_rs_version() {
   [ -f "$1" ] || { echo none; return; }
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
   timeout -k 2 10 node -e '
     const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const marker = process.argv[2];
     const strs = []; let code = ""; let i = 0; const n = src.length;
     const ident = c => /[A-Za-z0-9_]/.test(c || "");
     const out = r => { process.stdout.write(r); process.exit(0); };
@@ -2504,10 +2506,10 @@ model_load_rs_version() {
         gated = true; rest = rest.slice(j + 1).trim();
       }
       const lit = /^\u0000(\d+)\u0000$/.exec(rest);
-      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("noevia-model-load-authority"));
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes(marker));
       if (lit && strs[+lit[1]].kind === "str") {
         if (!marked) continue;
-        if (gated || !strs[+lit[1]].v.includes("noevia-model-load-authority")) out("invalid");
+        if (gated || !strs[+lit[1]].v.includes(marker)) out("invalid");
         outbox.push(strs[+lit[1]].v); continue;
       }
       // A plain path (a named constant) is allowed only when no outbox text appears in the element.
@@ -2516,16 +2518,24 @@ model_load_rs_version() {
     }
     if (!outbox.length) out("none");
     if (outbox.length > 1) out("invalid");
-    const m = /^noevia-model-load-authority\/(1)$/.exec(outbox[0]);
+    const m = new RegExp("^" + marker + "/(1)$").exec(outbox[0]);
     out(m ? "v" + m[1] : "invalid");
-  ' "$1" 2>/dev/null || echo invalid
+  ' "$1" "$2" 2>/dev/null || echo invalid
 }
+model_load_core_version() { paired_core_version "$1" LOAD_MARKER noevia-model-load-owner; }
+model_load_rs_version() { paired_rs_version "$1" noevia-model-load-authority; }
 model_load_core_owner="$(model_load_core_version "$tree/core/server/rust-model-load.cjs")"
 model_load_rs_owner="$(model_load_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
 [ "$model_load_core_owner" != invalid ] && [ "$model_load_rs_owner" != invalid ] \
   || die "model load pairing: ambiguous or unrecognized load marker (core=$model_load_core_owner rust=$model_load_rs_owner)"
 [ "$model_load_core_owner" = "$model_load_rs_owner" ] \
   || die "model load pairing: Core's load refusal and the front's load authority must move together (core=$model_load_core_owner rust=$model_load_rs_owner)"
+manager_read_core_owner="$(paired_core_version "$tree/core/server/rust-model-manager-read.cjs" MANAGER_READ_MARKER noevia-model-manager-read-owner)"
+manager_read_rs_owner="$(paired_rs_version "$tree/rs/bins/noevia-server/src/lib.rs" noevia-model-manager-read-authority)"
+[ "$manager_read_core_owner" != invalid ] && [ "$manager_read_rs_owner" != invalid ] \
+  || die "model manager read pairing: invalid marker"
+[ "$manager_read_core_owner" = "$manager_read_rs_owner" ] \
+  || die "model manager read pairing: Core refusal and Rust read ownership must move together"
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.

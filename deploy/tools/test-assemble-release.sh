@@ -1144,6 +1144,24 @@ mld_no mld-crate-cfg "a crate-level cfg attribute is refused"
 mld_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; mld_ok mld-doc-commented-declaration "a doc-commented unconditional declaration assembles"
 mld_clear
 
+# Row C ordinary manager reads use the same export/tokenizer and cfg-scope proof as A.
+mmr_core() { printf '%s\n' "const MANAGER_READ_MARKER = 'noevia-model-manager-read-owner/1';" 'module.exports = { MANAGER_READ_MARKER };' > "$w/server/rust-model-manager-read.cjs"; }
+mmr_rs() { mld_rs_el "$1"; }
+mmr_clear() { rm -f "$w/server/rust-model-manager-read.cjs"; mld_clear; }
+mmr_no() { source_try "$1"; check "$2" 'refused "model manager read pairing" || refused "model load pairing"'; }
+mmr_clear; mld_ok mmr-legacy "legacy manager read pair assembles"
+mmr_core; mmr_rs '"noevia-model-manager-read-authority/1"'; mld_ok mmr-paired "native manager read pair assembles"
+mmr_clear; mmr_core; mmr_no mmr-core-only "manager read Core half pair refuses"
+mmr_clear; mmr_rs '"noevia-model-manager-read-authority/1"'; mmr_no mmr-rs-only "manager read Rust half pair refuses"
+mmr_core
+for el in '#[cfg(any())] "noevia-model-manager-read-authority/1"' '"noevia-model-manager-read-authority/1", "noevia-model-manager-read-authority\x2f1"' 'b"noevia-model-manager-read-authority/1"' 'r#"noevia-model-manager-read-authority/1"#' 'concat!("noevia-model-manager-read-", "authority/1")'; do
+  mmr_rs "$el"; mmr_no mmr-invalid "manager read malformed/conditional marker refuses"
+done
+mmr_rs '"noevia-model-manager-read-authority/1"'
+perl -0pi -e 's/^(pub const FEATURES:)/#[cfg(any())] $1/m' "$rz/bins/noevia-server/src/lib.rs"
+mmr_no mmr-cfg-declaration "manager read cfg declaration refuses"
+mmr_clear
+
 
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
