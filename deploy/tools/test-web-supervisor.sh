@@ -614,6 +614,15 @@ for outbox_core_version in none v1 v2 v3; do
 done
 rm -f "$work/server/rust-index-outbox.cjs"
 
+# A Core module whose export getter never returns is bounded and refused, not a hung boot.
+printf '%s\n' "module.exports = { get RUST_INDEX_OUTBOX_OWNED() { for (;;) {} } };" > "$work/server/rust-index-outbox.cjs"
+reset
+started=$(date +%s)
+run STUB_FEATURES="$BASE_FEATURES rust-index-outbox-v3" >/dev/null 2>"$work/err"; rc=$?
+elapsed=$(( $(date +%s) - started ))
+check "outbox Core whose export never returns refuses within the bound" '[ $rc -eq 2 ] && grep -q "index outbox requires paired" "$work/err" && [ ! -s "$work/log" ] && [ $elapsed -lt 30 ]'
+rm -f "$work/server/rust-index-outbox.cjs"
+
 # Embedding background: one-way guard; old Core never authorizes native work.
 printf '%s\n' "module.exports = { RUST_EMBEDDING_OWNED: 'rust-embedding-background-v1' };" > "$work/server/rust-embedding-background.cjs"
 reset
