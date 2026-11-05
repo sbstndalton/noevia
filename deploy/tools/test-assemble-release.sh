@@ -1089,6 +1089,62 @@ cp "$work/source-move-client.saved" "$w/server/project-store-client.cjs"
 cp "$work/source-move-features.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$rz/crates/server-projects/src/source_jobs.rs" "$rz/crates/server-projects/src/lib.rs" "$rz/bins/noevia-server/src/project_store.rs"
 
+# Port contract row A: Core's load refusal and the front's load authority move together
+# (f57a4e3-style detectors: Core's real export under node:vm, Rust's FEATURES tokenizer).
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/mld-features.saved"
+mld_core_js() { printf '%s\n' "$@" > "$w/server/rust-model-load.cjs"; }
+mld_core() { mld_core_js "const LOAD_MARKER = 'noevia-model-load-owner/1';" 'module.exports = { LOAD_MARKER };'; }
+# mld_rs_el TEXT: lib.rs's FEATURES with TEXT as its first element(s).
+mld_rs_el() { MLD_EL="$1" perl -pe 's/pub const FEATURES: &\[&str\] = &\[/$&$ENV{MLD_EL}, /' "$work/mld-features.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+mld_rs() { mld_rs_el '"noevia-model-load-authority/1"'; }
+mld_clear() { rm -f "$w/server/rust-model-load.cjs"; cp "$work/mld-features.saved" "$rz/bins/noevia-server/src/lib.rs"; }
+mld_ok() { source_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'; }
+mld_no() { source_try "$1"; check "$2" 'refused "model load pairing"'; }
+mld_clear; mld_ok mld-legacy-legacy "legacy core with legacy Rust load owner assembles"
+mld_core; mld_rs; mld_ok mld-paired "native load refusal with native load authority assembles"
+mld_core_js "const LOAD_MARKER = ['noevia-model-load-', 'owner/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports = { LOAD_MARKER, x };'
+mld_ok mld-computed-core-export "a computed core export with stubbed requires is read by its value"
+mld_clear; mld_core; mld_no mld-core-only "native load refusal with a legacy front is refused"
+mld_clear; mld_rs; mld_no mld-rs-only "native load authority with a legacy core is refused"
+# Adversarial Core markers (front paired at v1).
+mld_rs
+mld_core_js "// const LOAD_MARKER = 'noevia-model-load-owner/1';" 'module.exports = {};'
+mld_no mld-comment-only-core "comment-only core load marker is refused"
+mld_core_js "const LOAD_MARKER = 'noevia-model-load-owner/1';" 'module.exports = {};'
+mld_no mld-unexported-core "unexported core load marker is refused"
+mld_core_js "const LOAD_MARKER = 'noevia-model-load-owner/2';" 'module.exports = { LOAD_MARKER };'
+mld_no mld-unknown-core-version "unknown core load marker version is refused"
+mld_core_js "module.exports = { LOAD_MARKER: { toString: () => 'noevia-model-load-owner/1' } };"
+mld_no mld-object-core-export "a non-string core load export is refused"
+mld_core_js "const LOAD_MARKER = 'noevia-model-load-owner/1';" 'for (;;) {}' 'module.exports = { LOAD_MARKER };'
+mld_no mld-hanging-core "a core load module that never finishes evaluating is refused"
+# Adversarial Rust markers (core paired at v1).
+mld_core
+mld_rs_el '#[cfg(feature = "mld")] "noevia-model-load-authority/1"'; mld_no mld-cfg-rust "cfg-gated Rust load marker is refused"
+mld_rs_el '"noevia-model-load-authority/1", "noevia-model-load-authority/1"'; mld_no mld-duplicate-rust "duplicate Rust load markers are refused"
+mld_rs_el '"noevia-model-load-authority/1", "noevia-model-load-authority\x2f1"'; mld_no mld-escaped-duplicate-rust "escaped duplicate Rust load markers are refused"
+mld_rs_el 'b"noevia-model-load-authority/1"'; mld_no mld-byte-rust "byte-string Rust load marker is refused"
+mld_rs_el 'r#"noevia-model-load-authority/1"#'; mld_no mld-raw-rust "raw-string Rust load marker is refused"
+mld_rs_el 'concat!("noevia-model-load-", "authority/1")'; mld_no mld-concat-rust "concat! Rust load marker is refused"
+mld_rs_el '"noevia-model-load-authority/2"'; mld_no mld-unknown-rust-version "unknown Rust load marker version is refused"
+mld_rs_el '/* "noevia-model-load-authority/1", */ "start-id-x"'; mld_no mld-comment-only-rust "comment-only Rust load marker is refused"
+mld_rs; printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-model-load-authority/1"];' >> "$rz/bins/noevia-server/src/lib.rs"
+mld_no mld-two-features-rust "a second FEATURES array is refused"
+mld_rs_el '"noevia-model-load-\u{61}uthority/1"'; mld_ok mld-escaped-single-rust "one escaped Rust lease literal is read by its value"
+# Review P2: the declaration's own scope. mld_rs_wrap BEFORE AFTER wraps lib.rs's FEATURES line.
+mld_rs_wrap() { mld_rs; LB="$1" LA="$2" perl -0pi -e 's/^(pub const FEATURES: &\[&str\] = &\[.*?\];)$/$ENV{LB}$1$ENV{LA}/m' "$rz/bins/noevia-server/src/lib.rs"; }
+mld_rs_wrap '#[cfg(any())] ' ''; mld_no mld-cfg-declaration "cfg on the FEATURES declaration is refused"
+mld_rs_wrap '#[cfg(feature = "mld")]'$'\n' ''; mld_no mld-cfg-declaration-line "cfg on its own line above the declaration is refused"
+mld_rs_wrap '#[cfg(any())] mod disabled { ' ' }'; mld_no mld-cfg-module "a declaration inside a cfg-disabled module is refused"
+mld_rs_wrap 'mod inner { ' ' }'; mld_no mld-nested-module "a declaration inside a nested module is refused"
+mld_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; mld_no mld-macro-rules "a declaration inside macro_rules! is refused"
+mld_rs_wrap 'cfg_if::cfg_if! { if #[cfg(any())] { ' ' } }'; mld_no mld-macro-wrapped "a macro-wrapped declaration is refused"
+mld_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/mld-crate-cfg" && cp "$work/mld-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
+mld_no mld-crate-cfg "a crate-level cfg attribute is refused"
+mld_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; mld_ok mld-doc-commented-declaration "a doc-commented unconditional declaration assembles"
+mld_clear
+
+
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
  "core:chat.cjs:CHAT_MOVE_ENFORCEMENT_MARKER" "core:chat-change-journal.cjs:CHAT_MOVE_READER_MARKER" \
