@@ -1298,7 +1298,7 @@ machines_rs_version() {
     const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
     const decls = [...code.matchAll(head)];
     if (decls.length > 1) out("invalid");
-    if (!decls.length) out("none");
+    if (!decls.length) out("invalid");
     // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
     // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
     // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
