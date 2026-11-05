@@ -698,8 +698,8 @@ fi
 # Native index outbox execution moves as a coherent pair.
 outbox_core_owner=""
 outbox_rs_owner=""
-grep -qF "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v1'" "$tree/core/server/rust-index-outbox.cjs" 2>/dev/null && outbox_core_owner=rust
-if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-index-outbox-v1 features; then
+grep -qF "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2'" "$tree/core/server/rust-index-outbox.cjs" 2>/dev/null && outbox_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-index-outbox-v2 features; then
   outbox_rs_owner=rust
 fi
 [ "$outbox_core_owner" = "$outbox_rs_owner" ] || die "index outbox ownership pairing: Core and Rust must move together"
