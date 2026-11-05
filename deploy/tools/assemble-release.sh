@@ -2214,6 +2214,170 @@ if [ "$maint_rs_owner" = rust ]; then
   fi
 fi
 
+# The models folder sync (Core's model-folder-sync.cjs, moved to noevia-rs src/model_folder_sync) is one owner:
+# Core's rust-model-folder-sync.cjs marker (required exactly once by index.cjs, whose Node worker is gone) and the
+# front's rust-model-folder-sync-v1 capability. A mixed pair would run two workers (a double registration) or none.
+# Both detectors fail closed. Core: the value the marker module really exports, evaluated with every require
+# stubbed under a time limit, in a file whose index.cjs requires it once and which leaves no old worker file. Rust:
+# the FEATURES declaration is read from a comment-, string-, raw- and byte-string-aware token stream; the
+# declaration must sit at the top level of lib.rs with no attribute of its own (no #[cfg], #[cfg_attr] ...) and no
+# inner #![cfg], so the compiled list is the file's list, and the entry must be one unconditional ordinary
+# literal, once. A cfg-gated, duplicated, escaped-duplicate, raw, byte, concat!/macro or path-hidden entry, or a
+# scope that cannot be proven, is invalid. None on both sides is the historic pair and stays valid.
+folder_sync_core_version() {
+  local dir="$1"
+  if [ ! -f "$dir/server/rust-model-folder-sync.cjs" ]; then
+    # No marker module: the historic Core (its own worker). A require of a module that is not there is not.
+    if grep -qF "rust-model-folder-sync.cjs" "$dir/server/index.cjs" 2>/dev/null; then echo invalid; else echo none; fi
+    return
+  fi
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm"), path = require("node:path");
+    const dir = process.argv[1];
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    const marker = path.join(dir, "server", "rust-model-folder-sync.cjs");
+    const worker = path.join(dir, "server", "model-folder-sync.cjs");
+    const index = (() => { try { return fs.readFileSync(path.join(dir, "server", "index.cjs"), "utf8"); } catch { return ""; } })();
+    // Comment-only lines never count (code_has in this script does the same for single lines).
+    const code = index.split("\n").filter(l => !/^\s*\/\//.test(l)).join("\n");
+    const requires = code.split("require(\x27./rust-model-folder-sync.cjs\x27)").length - 1;
+    const src = fs.readFileSync(marker, "utf8");
+    const literal = /rust-model-folder-sync-v/.test(src);
+    let value;
+    try {
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_MODEL_FOLDER_SYNC_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { out("invalid"); }
+    if (value === undefined) out("invalid");
+    if (typeof value !== "string" || !/^rust-model-folder-sync-(v1)$/.test(value)) out("invalid");
+    // The marker only means something when index.cjs names it once and the old worker is gone.
+    if (requires !== 1 || fs.existsSync(worker) || !literal) out("invalid");
+    if (/createFolderSync|\bfolderSync\b/.test(code)) out("invalid");
+    out(/^rust-model-folder-sync-(v1)$/.exec(value)[1]);
+  ' "$dir" 2>/dev/null || echo invalid
+}
+folder_sync_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const STEM = "rust-model-folder-sync";
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out(strs.some(s => s.v.includes(STEM)) ? "invalid" : "none");
+    // Scope: the declaration is the file own top-level item. Any enclosing block (a module that may be
+    // cfg-gated, a macro body, a function) or an attribute on the declaration, and any inner cfg, cannot be proven.
+    const before = code.slice(0, decls[0].index);
+    let level = 0;
+    for (const ch of before) { if (ch === "{") level++; else if (ch === "}") level--; if (level < 0) out("invalid"); }
+    if (level !== 0) out("invalid");
+    if (/#\s*!\s*\[[^\]]*cfg/.test(before)) out("invalid");
+    const stmt = Math.max(before.lastIndexOf(";"), before.lastIndexOf("}"), before.lastIndexOf("{"));
+    const own = before.slice(stmt + 1);
+    if (/#\s*\[[^\]]*cfg/.test(own)) out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const found = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue;
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes(STEM));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes(STEM)) out("invalid");
+        found.push(strs[+lit[1]].v); continue;
+      }
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!found.length) out("none");
+    if (found.length > 1) out("invalid");
+    const m = /^rust-model-folder-sync-(v1)$/.exec(found[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+folder_sync_core_owner="$(folder_sync_core_version "$tree/core")"
+folder_sync_rs_owner="$(folder_sync_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$folder_sync_core_owner" != invalid ] && [ "$folder_sync_rs_owner" != invalid ] \
+  || die "model folder sync ownership pairing: ambiguous or unrecognized capability marker (core=$folder_sync_core_owner rust=$folder_sync_rs_owner)"
+[ "$folder_sync_core_owner" = "$folder_sync_rs_owner" ] || die "model folder sync ownership pairing: Core and Rust must move together"
+
 # #2286: the 1x1 recheck probe and evidence filing are native; Node keeps live admission only.
 er_core_owner=""
 er_rs_owner=""

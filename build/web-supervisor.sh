@@ -326,6 +326,26 @@ if [ "$maintenance_core_owner" != "$maintenance_front_owner" ]; then
   exit 2
 fi
 
+# The models folder sync (noevia-rs src/model_folder_sync, capability rust-model-folder-sync-v1) moves as one owner
+# with Core's rust-model-folder-sync.cjs marker (required by index.cjs, whose Node worker is gone): a Core that
+# requires it needs a front that scans, registers and reloads, and a front with the capability needs that Core, or
+# two workers would register the same files (or none would). The capability is read from the compiled front, the
+# marker from what the module really exports. Old/old images remain usable for rollback; mixed owners do not.
+folder_sync_core_owner=""
+folder_sync_front_owner=""
+if grep -qF "require('./rust-model-folder-sync.cjs')" "$PWD/server/index.cjs" 2>/dev/null; then
+  folder_sync_core_owner="$(node -e "try { const m = require('./server/rust-model-folder-sync.cjs'); if (m.RUST_MODEL_FOLDER_SYNC_OWNED === 'rust-model-folder-sync-v1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+  if [ "$folder_sync_core_owner" != rust ]; then
+    echo "web-supervisor: invalid model folder sync ownership marker" >&2
+    exit 2
+  fi
+fi
+grep -qx 'rust-model-folder-sync-v1' <<<"$rust_features" && folder_sync_front_owner=rust
+if [ "$folder_sync_core_owner" != "$folder_sync_front_owner" ]; then
+  echo "web-supervisor: model folder sync ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
 # A new front beside old Core stays idle (proof 404). A new Core must have the
 # native owner capability before either process is launched.
 embedding_core_owner="$(node -e "try { const m = require('./server/rust-embedding-background.cjs'); if (m.RUST_EMBEDDING_OWNED === 'rust-embedding-background-v1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"

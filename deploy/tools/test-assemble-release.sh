@@ -4652,6 +4652,91 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try maint-old-pair
 check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# Models folder sync owner release matrix: Core's rust-model-folder-sync.cjs marker (required once by index.cjs,
+# the old worker file gone) and the front's rust-model-folder-sync-v1 capability. Fixtures: paired, both
+# half-pairs, legacy/legacy, adversarial Core markers and adversarial FEATURES declarations (every scope or
+# element form the detector must refuse rather than guess at).
+fs_core_marker() { printf '%s\n' "'use strict';" "const RUST_MODEL_FOLDER_SYNC_OWNED = '$1';" "module.exports = Object.freeze({ RUST_MODEL_FOLDER_SYNC_OWNED });" > "$w/server/rust-model-folder-sync.cjs"; }
+fs_core_index() { cp "$work/feature-index.saved" "$w/server/index.cjs"; printf '%s\n' "$@" >> "$w/server/index.cjs"; }
+fs_core_clean() { rm -f "$w/server/rust-model-folder-sync.cjs" "$w/server/model-folder-sync.cjs"; cp "$work/feature-index.saved" "$w/server/index.cjs"; }
+fs_front() { sed "s/\"start-id\"/\"start-id\", $1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+fs_lib() { printf '%s\n' "$@" > "$rz/bins/noevia-server/src/lib.rs"; }
+fs_try() { move_try "$1"; }
+fs_core_clean
+fs_core_marker rust-model-folder-sync-v1; fs_core_index "const folderSyncOwner = require('./rust-model-folder-sync.cjs');"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+fs_try fs-core-only
+check "a folder-sync Core with an old front is refused" 'refused "model folder sync ownership pairing: Core and Rust must move together"'
+fs_front '"rust-model-folder-sync-v1"'
+fs_try fs-pair
+check "a matching folder-sync Core/front pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+fs_core_clean
+fs_try fs-front-only
+check "a folder-sync front with the old Core worker is refused" 'refused "model folder sync ownership pairing: Core and Rust must move together"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+fs_try fs-legacy
+check "legacy/legacy folder-sync pair still assembles for rollback" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Adversarial Core.
+fs_core_marker rust-model-folder-sync-v2; fs_core_index "require('./rust-model-folder-sync.cjs');"; fs_front '"rust-model-folder-sync-v1"'
+fs_try fs-core-v2
+check "a Core marker that is not v1 is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+printf '%s\n' "module.exports = { RUST_MODEL_FOLDER_SYNC_OWNED: 42 };" > "$w/server/rust-model-folder-sync.cjs"
+fs_try fs-core-nonstring
+check "a non-string Core marker is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+printf '%s\n' "while (true) {}" > "$w/server/rust-model-folder-sync.cjs"
+fs_try fs-core-hangs
+check "a Core marker module that never returns is invalid within the time limit" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+fs_core_marker rust-model-folder-sync-v1; fs_core_index "require('./rust-model-folder-sync.cjs');" "require('./rust-model-folder-sync.cjs');"
+fs_try fs-core-twice
+check "a Core that requires the marker twice is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+fs_core_index "// require('./rust-model-folder-sync.cjs');"
+fs_try fs-core-comment-require
+check "a Core that only mentions the marker in a comment is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+fs_core_index "require('./rust-model-folder-sync.cjs');"; printf '%s\n' "module.exports = {};" > "$w/server/model-folder-sync.cjs"
+fs_try fs-core-worker-left
+check "a Core that still carries the old worker file is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+rm -f "$w/server/model-folder-sync.cjs"
+fs_core_clean; fs_core_index "require('./rust-model-folder-sync.cjs');"
+fs_try fs-core-require-without-module
+check "a Core that requires a marker module that is not there is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+# Adversarial FEATURES (against a pairing-valid Core).
+fs_core_marker rust-model-folder-sync-v1; fs_core_index "require('./rust-model-folder-sync.cjs');"
+fs_bad() { fs_lib "$@"; fs_try "$FS_NAME"; }
+FS_NAME=fs-rs-cfg-element; fs_bad 'pub const FEATURES: &[&str] = &[' '    "start-id",' '    #[cfg(feature = "x")]' '    "rust-model-folder-sync-v1",' '];'
+check "a cfg-gated capability element is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-dup; fs_bad 'pub const FEATURES: &[&str] = &[' '    "rust-model-folder-sync-v1", "rust-model-folder-sync-v1",' '];'
+check "a duplicated capability element is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-escaped-dup; fs_bad 'pub const FEATURES: &[&str] = &[' '    "rust-model-folder-sync-v1", "rust-model-folder-sync-\x76\x31",' '];'
+check "an escaped duplicate of the capability is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-raw; fs_bad 'pub const FEATURES: &[&str] = &[' '    r"rust-model-folder-sync-v1",' '];'
+check "a raw-string capability element is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-byte; fs_bad 'pub const FEATURES: &[&str] = &[' '    b"rust-model-folder-sync-v1",' '];'
+check "a byte-string capability element is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-concat; fs_bad 'pub const FEATURES: &[&str] = &[' '    concat!("rust-model-folder-", "sync-v1"),' '];'
+check "a concat! capability element is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-v2; fs_bad 'pub const FEATURES: &[&str] = &[' '    "rust-model-folder-sync-v2",' '];'
+check "an unknown capability version is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-mod-scope; fs_bad '#[cfg(test)]' 'mod gated {' '    pub const FEATURES: &[&str] = &["rust-model-folder-sync-v1"];' '}'
+check "a FEATURES declaration inside a (possibly cfg-gated) module is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-own-cfg; fs_bad '#[cfg(feature = "x")]' 'pub const FEATURES: &[&str] = &["rust-model-folder-sync-v1"];'
+check "a FEATURES declaration with its own cfg attribute is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-cfg-attr; fs_bad '#[cfg_attr(test, allow(dead_code))]' 'pub const FEATURES: &[&str] = &["rust-model-folder-sync-v1"];'
+check "a FEATURES declaration with a cfg_attr is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-inner-cfg; fs_bad '#![cfg(unix)]' 'pub const FEATURES: &[&str] = &["rust-model-folder-sync-v1"];'
+check "an inner cfg on the file is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-two-decls; fs_bad 'pub const FEATURES: &[&str] = &["rust-model-folder-sync-v1"];' 'pub const FEATURES: &[&str] = &["rust-model-folder-sync-v1"];'
+check "two FEATURES declarations are invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-macro-scope; fs_bad 'macro_rules! m { () => { pub const FEATURES: &[&str] = &["rust-model-folder-sync-v1"]; } }'
+check "a FEATURES declaration inside a macro body is invalid" 'refused "model folder sync ownership pairing: ambiguous or unrecognized capability marker"'
+FS_NAME=fs-rs-comment-only; fs_bad 'pub const FEATURES: &[&str] = &[' '    "start-id", // "rust-model-folder-sync-v1"' '    /* "rust-model-folder-sync-v1", */' '];'
+check "a capability named only in comments is absence (and so unpaired with the Core marker)" 'refused "model folder sync ownership pairing: Core and Rust must move together"'
+FS_NAME=fs-rs-other-const; fs_bad 'pub const OTHER: &[&str] = &["rust-model-folder-sync-v1"];' 'pub const FEATURES: &[&str] = &["start-id"];'
+check "the capability in another constant is absence (and so unpaired)" 'refused "model folder sync ownership pairing: Core and Rust must move together"'
+FS_NAME=fs-rs-allowed-attr; fs_bad '#[allow(clippy::all)]' 'pub const FEATURES: &[&str] = &["start-id", "rust-model-folder-sync-v1"];'
+check "a non-cfg attribute on the declaration does not hide a valid capability" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+fs_core_clean
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+
 # #2286 recheck moves independently, after the native evidence-store group.
 cat > "$w/server/rust-model-evidence-recheck.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set(['POST /api/models/evidence/recheck']));

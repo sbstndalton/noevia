@@ -573,6 +573,30 @@ reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model maintenance pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
+# Models folder sync ownership: Core's marker (required by index.cjs, Node worker gone) and the front's
+# rust-model-folder-sync-v1 must agree in both directions before launch; a marker the module does not export is refused.
+printf '%s\n' "module.exports = { RUST_MODEL_FOLDER_SYNC_OWNED: 'rust-model-folder-sync-v1' };" > "$work/server/rust-model-folder-sync.cjs"
+printf '%s\n' "require('./rust-model-folder-sync.cjs');" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "folder-sync Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "model folder sync ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-folder-sync-v1" >/dev/null 2>"$work/err"; rc=$?
+check "paired folder-sync Core/front starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-folder-sync-v1" >/dev/null 2>"$work/err"; rc=$?
+check "folder-sync front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "model folder sync ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "module.exports = { RUST_MODEL_FOLDER_SYNC_OWNED: 'rust-model-folder-sync-v2' };" > "$work/server/rust-model-folder-sync.cjs"
+printf '%s\n' "require('./rust-model-folder-sync.cjs');" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-model-folder-sync-v1" >/dev/null 2>"$work/err"; rc=$?
+check "a folder-sync marker the module does not carry as v1 is refused" '[ $rc -eq 2 ] && grep -q "invalid model folder sync ownership marker" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/index.cjs" "$work/server/rust-model-folder-sync.cjs"
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "old folder-sync pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+
 # Embedding background: one-way guard; old Core never authorizes native work.
 printf '%s\n' "module.exports = { RUST_EMBEDDING_OWNED: 'rust-embedding-background-v1' };" > "$work/server/rust-embedding-background.cjs"
 reset
