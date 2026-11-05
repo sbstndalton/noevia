@@ -302,7 +302,9 @@ PAIRS
 auto_roles_core_owner() {
   [ -f "$1" ] || { echo none; return; }
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  timeout -k 2 10 node -e '
+  local auto_roles_bound="timeout -k 2 10"
+  command -v timeout >/dev/null 2>&1 || { echo invalid; return; }
+  $auto_roles_bound node -e '
     const fs = require("node:fs"), vm = require("node:vm");
     const src = fs.readFileSync(process.argv[1], "utf8");
     let value;

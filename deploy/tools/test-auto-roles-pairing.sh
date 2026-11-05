@@ -21,7 +21,9 @@ for script in "$here/assemble-release.sh" "$here/../../build/web-supervisor.sh";
     check "$(basename "$script") $mode is bounded and refused" invalid bash "$work/core.sh" "$work/module.cjs"
   done
 done
-sed -n '/^auto_roles_rs_owner() {/,/^}/p' "$here/assemble-release.sh" > "$work/rs.sh"
+# The reviewed pre-tokenizer guard needs its awk prelude too, for valid before evidence.
+sed -n "/^auto_roles_awk_strip='/,/^'/p" "$here/assemble-release.sh" > "$work/rs.sh"
+sed -n '/^auto_roles_rs_owner() {/,/^}/p' "$here/assemble-release.sh" >> "$work/rs.sh"
 printf '\nauto_roles_rs_owner "$1"\n' >> "$work/rs.sh"
 for mode in raw nested-comment outside-string duplicate unknown; do
   case "$mode" in
