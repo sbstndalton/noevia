@@ -49,180 +49,133 @@ die() { echo "assemble-release: $*" >&2; exit 1; }
 # sentence that mentions the thing (nor end the script silently when a file or a match is absent).
 code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 
-# dockerfile_packages <cargo-package> <binary> <Dockerfile>: prints two lines. The first is ok when a build stage RUNs a
-# plain `cargo build --release ... -p <package>`, later RUNs `cp [-opts] <binary> /out/` (from target/release) and the
-# FINAL stage (the last FROM, or a stage it inherits from by FROM <earlier stage>) installs that build stage with
-# `COPY --from=<stage> /out/ /usr/local/bin/`; otherwise nobuild, nobundle or noinstall. The second is pindup when
-# NOEVIA_RS_REF or NOEVIA_RS_SHA256 is declared more than once (any stage) or set by ENV, else pinok.
-# It reads Dockerfile instructions and refuses what it cannot prove instead of modelling the shell: comments,
-# continuations and heredocs are resolved first; a RUN counts only as a plain `a && b && c` chain, so any `||`, `;`,
-# `&`, subshell, braces, `if`/`case`/loop or quoted program anywhere in it, a pipe next to the command, or any
-# `RUN --mount` (a tmpfs on /out would discard the bundle) gives no evidence. Echo, fakecp and commented lines never
-# count. Unsupported forms are refused, not guessed.
-dockerfile_packages() {
-  [ -f "$3" ] || { echo nobuild; echo pinok; return 0; }
-  awk -v pkg="$1" -v bin="$2" '
-# Variables: pkg (cargo package), bin (binary name). Prints two lines: the packaging verdict (ok, nobuild, nobundle or
-# noinstall) and the pin verdict (pinok, or pindup when NOEVIA_RS_REF/NOEVIA_RS_SHA256 is declared more than once or
-# overridden by ENV).
-function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-function endword(   ) {
-  if (inword) { nw++; w[nw] = word }
-  word = ""; inword = 0
-}
-function endcmd(   ) {
-  endword()
-  if (nw > 0) evaluate()
-  split("", w); nw = 0; complex = carry; carry = 0
-}
-# Only a plain && chain counts, so the first word of a command may not open a compound command or a condition.
-function keyword(s) {
-  return s ~ /^(if|then|else|elif|fi|case|esac|while|until|for|do|done|select|function|time|coproc|!)$/
-}
-function evaluate(   i, c, np, positional, src) {
-  if (keyword(w[1])) reject = 1
-  if (complex) { if (w[1] == "cd") cwd = "?"; return }
-  if (w[1] == "cd") { c = w[2]; sub(/\/+$/, "", c); cwd = (nw == 2 && (c == "target/release" || c == "/src/target/release")) ? "release" : "?"; return }
-  if (w[1] == "cargo" && w[2] == "build") {
-    rel = 0; hit = 0
-    for (i = 3; i <= nw; i++) {
-      if (w[i] == "--release") rel = 1
-      if ((w[i] == "-p" || w[i] == "--package") && w[i + 1] == pkg) hit = 1
-      if (w[i] == "--package=" pkg) hit = 1
-    }
-    if (rel && hit) runbuilt = 1
-    return
-  }
-  if (w[1] == "cp" && (built[stage] || runbuilt)) {
-    np = 0
-    for (i = 2; i <= nw; i++) if (substr(w[i], 1, 1) != "-") { np++; positional[np] = w[i] }
-    if (np < 2 || (positional[np] != "/out/" && positional[np] != "/out")) return
-    for (i = 1; i < np; i++) {
-      src = positional[i]
-      if ((src == bin && cwd == "release") || src == "target/release/" bin || src == "./target/release/" bin || src == "/src/target/release/" bin) runbundled = 1
-    }
-  }
-}
-# One RUN. Anything but a plain `a && b && c` chain (||, ;, &, a subshell, braces, a condition or loop) gives no
-# evidence at all, wherever it is in the instruction. A pipe makes both of its commands unusable as evidence.
-function shell(text,   i, n, ch, nx, q) {
-  nw = 0; word = ""; inword = 0; complex = 0; carry = 0; cwd = "base"; reject = 0; runbuilt = 0; runbundled = 0
-  n = length(text); q = ""
-  for (i = 1; i <= n; i++) {
-    ch = substr(text, i, 1); nx = substr(text, i + 1, 1)
-    if (q == "\047") { if (ch == "\047") q = ""; else word = word ch; continue }
+# BEGIN diary-df-check (deploy/tools/test-assemble-release.sh sources this block)
+# diary_dockerfile_check <template> <rs-ref> <rs-sha256> <Dockerfile>: prints "ok" or "bad: <reason>". An ALLOW-list, not
+# a parser of shell: the Diary Dockerfile build stage, its final FROM and its install line must equal the template
+# (deploy/tools/diary-dockerfile.template, read from the released noevia tree) instruction for instruction, after only
+# comments, line continuations and whitespace runs are normalized away. @NOEVIA_RS_REF@ and @NOEVIA_RS_SHA256@ are
+# the template only placeholders and are replaced by the lock values. In the final stage only ENV (never the pin, a
+# *_IMPL selector or DIARY_RUST_ROUTES/WRITES, names compared after Docker-style unquoting), LABEL, USER, WORKDIR,
+# EXPOSE, HEALTHCHECK, CMD, ENTRYPOINT and the exact RUN/COPY lines of the template may follow; anything else
+# (ONBUILD, ADD, an extra COPY, rm, ARG, SHELL, a heredoc, a parser directive, a third stage) fails closed. Changing
+# the Diary Dockerfile therefore means changing the template in the same release.
+diary_df_awk=
+read -r -d '' diary_df_awk <<'DIARYDFAWK' || true
+# diary_dockerfile_check: reads the template (first file) and a Diary Dockerfile (second file) and prints "ok" or
+# "bad: <reason>". With mode=dump it prints the normalized instructions, one per line, instead.
+# Variables: ref, sum (the lock NOEVIA_RS_REF / NOEVIA_RS_SHA256; they replace @NOEVIA_RS_REF@ / @NOEVIA_RS_SHA256@),
+# mode.
+function trim(s) { sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
+function norm(s) { gsub(/[ \t]+/, " ", s); return trim(s) }
+function bad(why) { if (!failed) { failed = 1; reason = why } }
+function first(s) { sub(/ .*$/, "", s); return s }
+# Docker-style unquoting of the words of an ENV instruction into envname[]/envval[] (count envn): quotes and
+# backslashes are removed, unquoted whitespace separates words, and a word is NAME=value (the first = of the unquoted
+# word) or, for the legacy `ENV name value`, a lone first word followed by its value.
+function parse_env(text,   i, n, ch, q, tok, words, nwd, w, p, rest) {
+  envn = 0; split("", envname); split("", envval); split("", words)
+  n = length(text); q = ""; tok = ""; nwd = 0
+  for (i = 1; i <= n + 1; i++) {
+    ch = (i <= n) ? substr(text, i, 1) : " "
+    if (q == "\047") { if (ch == "\047") q = ""; else tok = tok ch; continue }
     if (q == "\"") {
-      if (ch == "\\" && i < n) { i++; word = word substr(text, i, 1); continue }
       if (ch == "\"") { q = ""; continue }
-      if (ch == "$" || ch == "`") complex = 1
-      word = word ch; continue
+      if (ch == "\\" && i < n) { i++; ch = substr(text, i, 1); if (ch != "\"" && ch != "\\" && ch != "$") tok = tok "\\"; tok = tok ch; continue }
+      tok = tok ch; continue
     }
-    if (ch == "\047" || ch == "\"") { q = ch; inword = 1; continue }
-    if (ch == "#" && !inword) break
-    if (ch == " " || ch == "\t") { endword(); continue }
-    if (ch == "&" && nx == "&") { endcmd(); i++; continue }
-    if (ch == "|" && nx == "|") { reject = 1; endcmd(); i++; continue }
-    if (ch == "|") { complex = 1; carry = 1; endcmd(); continue }
-    if (ch == ";" || ch == "&") { reject = 1; endcmd(); continue }
-    if (ch == "(" || ch == ")" || ch == "{" || ch == "}") { reject = 1; endword(); continue }
-    if (ch == "`") { complex = 1; endword(); continue }
-    if (ch == "$" || ch == "\\" || ch == "<" || ch == ">") complex = 1
-    word = word ch; inword = 1
-  }
-  if (q != "") reject = 1
-  endcmd()
-  if (!reject) { if (runbuilt) built[stage] = 1; if (runbundled) bundled[stage] = 1 }
-}
-function declared(s,   n, parts, i, name) {
-  n = split(s, parts, /[ \t]+/)
-  for (i = 1; i <= n; i++) {
-    name = parts[i]; sub(/=.*$/, "", name)
-    if (name == "NOEVIA_RS_REF" || name == "NOEVIA_RS_SHA256") return name
-  }
-  return ""
-}
-function instruction(line,   rest, kw, k, words, parts, nn, i, name, from, image, nm, mount) {
-  line = trim(line)
-  if (line == "") return
-  kw = line; sub(/[ \t].*$/, "", kw); kw = toupper(kw)
-  rest = trim(substr(line, length(kw) + 1))
-  if (kw == "FROM") {
-    nn = split(rest, words, /[ \t]+/); name = ""; image = ""
-    for (i = 1; i <= nn; i++) {
-      if (words[i] ~ /^--/) continue
-      if (image == "") image = words[i]
-      if (toupper(words[i]) == "AS" && i < nn) name = words[i + 1]
+    if (ch == "\047" || ch == "\"") { q = ch; wordseen = 1; continue }
+    if (ch == "\\" && i < n) { i++; tok = tok substr(text, i, 1); wordseen = 1; continue }
+    if (ch == " ") {
+      if (tok != "" || wordseen) {
+        nwd++; words[nwd] = tok; wend[nwd] = i
+      }
+      tok = ""; wordseen = 0
+      if (nwd == 1 && index(words[1], "=") == 0) {  # legacy `ENV name value`
+        envn = 1; envname[1] = words[1]; envval[1] = trim(substr(text, i)); return
+      }
+      continue
     }
-    stage = (name != "") ? name : "#" stages
-    stages++
-    final = stage
-    parent[stage] = (image in known) ? image : ""
-    known[stage] = 1
-    return
+    tok = tok ch; wordseen = 1
   }
-  if (kw == "ARG" || kw == "ENV") {
-    nm = declared(rest)
-    if (nm != "") { if (kw == "ENV") envset = 1; else argn[nm]++ }
-    return
-  }
-  if (kw == "RUN") {
-    mount = 0
-    while (rest ~ /^--[A-Za-z]/) {
-      if (rest ~ /^--mount/) mount = 1
-      sub(/^--[^ \t]+[ \t]*/, "", rest)
-    }
-    if (mount || substr(rest, 1, 1) == "[") return
-    shell(rest)
-    return
-  }
-  if (kw == "COPY") {
-    nn = split(rest, words, /[ \t]+/); from = ""; k = 0
-    for (i = 1; i <= nn; i++) {
-      if (words[i] ~ /^--from=/) from = substr(words[i], 8)
-      else if (words[i] ~ /^--/) continue
-      else { k++; parts[k] = words[i] }
-    }
-    if (from != "" && k == 2 && parts[1] == "/out/" && parts[2] == "/usr/local/bin/") installed[stage, from] = 1
+  if (q != "") bad("an unterminated quote in ENV")
+  for (w = 1; w <= nwd; w++) {
+    p = index(words[w], "=")
+    envn++
+    if (p == 0) { envname[envn] = words[w]; envval[envn] = "" }
+    else { envname[envn] = substr(words[w], 1, p - 1); envval[envn] = substr(words[w], p + 1) }
   }
 }
-BEGIN { stages = 0; stage = "#-1"; final = "" }
+function check_env(text,   i, nm) {
+  parse_env(text)
+  if (envn == 0) bad("an ENV with no name")
+  for (i = 1; i <= envn; i++) {
+    nm = envname[i]
+    if (nm ~ /[$`]/) { bad("an ENV name that is not literal: " nm); continue }
+    if (nm == "NOEVIA_RS_REF" || nm == "NOEVIA_RS_SHA256") bad("an ENV that sets " nm)
+    else if (nm == "DIARY_RUST_ROUTES" || nm == "DIARY_RUST_WRITES" || nm ~ /_IMPL$/) bad("an ENV that sets the switch " nm)
+    else if (nm in envfixed) { if (envval[i] != envfixed[nm]) bad("an ENV that moves " nm) }
+  }
+}
+FNR == NR {
+  line = $0; sub(/\r$/, "", line)
+  if (line ~ /^[ \t]*(#|$)/) next
+  if (line ~ /^\[[a-z-]+\]$/) { section = substr(line, 2, length(line) - 2); next }
+  gsub(/@NOEVIA_RS_REF@/, ref, line); gsub(/@NOEVIA_RS_SHA256@/, sum, line)
+  if (section == "build-stage") { nb++; build[nb] = line }
+  else if (section == "final-from") finalfrom = line
+  else if (section == "install") install = line
+  else if (section == "env-fixed") { eqp = index(line, "="); envfixed[substr(line, 1, eqp - 1)] = substr(line, eqp + 1) }
+  else if (section == "final-allowed") {
+    mark = substr(line, 1, 2); body = substr(line, 3)
+    allowed[body] = 1; if (mark == "+ ") required[body] = 1
+  }
+  next
+}
+# ---- the Dockerfile: instructions (comments, continuations and blank lines resolved)
 {
   sub(/\r$/, "")
-  if (heredoc) {
-    t = $0; if (hdash) sub(/^[\t]+/, "", t)
-    if (t == hterm) heredoc = 0
+  if ($0 ~ /^[ \t]*#/) {
+    if (nins == 0 && acc == "" && $0 ~ /^[ \t]*#[ \t]*(syntax|escape|check)[ \t]*=/) bad("a parser directive (# syntax= / # escape= / # check=)")
     next
   }
-  if ($0 ~ /^[ \t]*#/) next
   if (trim($0) == "") next
   if ($0 ~ /\\[ \t]*$/) { sub(/\\[ \t]*$/, ""); acc = acc $0 " "; next }
-  full = acc $0; acc = ""
-  if (match(full, /<<-?[ \t]*["\047]?[A-Za-z_][A-Za-z_0-9]*/)) {
-    h = substr(full, RSTART, RLENGTH); hdash = (substr(h, 3, 1) == "-"); sub(/^<<-?[ \t]*["\047]?/, "", h)
-    hterm = h; kw0 = toupper(trim(full)); sub(/[ \t].*$/, "", kw0)
-    if (kw0 == "RUN" || kw0 == "COPY" || kw0 == "ADD") { heredoc = 1; next }
-  }
-  instruction(full)
+  full = norm(acc $0); acc = ""
+  if (full ~ /<</) bad("a heredoc or here-string")
+  nins++; ins[nins] = full
 }
 END {
-  if (acc != "") instruction(acc)
-  b = 0; k = 0; s = 0
-  for (st in built) if (built[st]) b = 1
-  for (st in bundled) if (bundled[st] && built[st]) k = 1
-  # The install must be in the FINAL stage, or in a stage it inherits from (FROM <earlier stage>).
-  cur = final; hops = 0
-  while (cur != "" && hops < 100) {
-    for (key in installed) {
-      split(key, kp, SUBSEP)
-      if (kp[1] == cur && built[kp[2]] && bundled[kp[2]]) s = 1
+  if (acc != "") { nins++; ins[nins] = norm(acc) }
+  if (mode == "dump") { for (i = 1; i <= nins; i++) print ins[i]; exit }
+  if (nb == 0 || finalfrom == "" || install == "") bad("the template is incomplete")
+  nf = 0
+  for (i = 1; i <= nins; i++) if (toupper(first(ins[i])) == "FROM") { nf++; fromat[nf] = i }
+  if (nf != 2) bad("expected exactly two stages (two FROM lines), found " nf)
+  else {
+    if (fromat[1] != 1) bad("an instruction before the first FROM")
+    if (fromat[2] - 1 != nb) bad("the build stage has " (fromat[2] - 1) " instructions, the template has " nb)
+    for (i = 1; i <= nb && i < fromat[2]; i++) if (ins[i] != build[i]) { bad("build stage instruction " i " differs from the template: " substr(ins[i], 1, 80)); break }
+    if (ins[fromat[2]] != finalfrom) bad("the final FROM differs from the template: " ins[fromat[2]])
+    installs = 0
+    for (i = fromat[2] + 1; i <= nins; i++) {
+      t = ins[i]; kw = toupper(first(t))
+      if (t == install) { installs++; continue }
+      if (t in allowed) { seen[t]++; continue }
+      if (kw == "ENV") { check_env(trim(substr(t, 4))); continue }
+      if (kw == "LABEL" || kw == "USER" || kw == "WORKDIR" || kw == "EXPOSE" || kw == "HEALTHCHECK" || kw == "CMD" || kw == "ENTRYPOINT") continue
+      bad("an instruction the final stage does not allow: " substr(t, 1, 80))
     }
-    cur = parent[cur]; hops++
+    if (installs != 1) bad("the final stage must install the build stage exactly once (found " installs ")")
+    for (t in required) if (!seen[t]) bad("a required final-stage line is missing: " substr(t, 1, 80))
   }
-  if (!b) print "nobuild"; else if (!k) print "nobundle"; else if (!s) print "noinstall"; else print "ok"
-  if (envset || argn["NOEVIA_RS_REF"] > 1 || argn["NOEVIA_RS_SHA256"] > 1) print "pindup"; else print "pinok"
+  print failed ? "bad: " reason : "ok"
 }
-  ' "$3"
+DIARYDFAWK
+diary_dockerfile_check() {
+  [ -f "$1" ] && [ -f "$4" ] || { echo "bad: the template or the Dockerfile is missing"; return 0; }
+  awk -v ref="$2" -v sum="$3" "$diary_df_awk" "$1" "$4"
 }
+# END diary-df-check
 
 lock_file=""
 if [ "${1:-}" = --lock ]; then
@@ -346,9 +299,8 @@ fi
 # runs the noevia-diary binary, the tenant-assertion leaf and the workspace exporter from the one /out/ bundle its
 # Dockerfile builds at the pinned noevia-rs. A services pin ahead of the noevia-rs pin would build an image (or
 # overlay) that cannot start the server, so the pairing is refused here, before anything is built:
-# the pinned rs must carry all three, the Diary Dockerfile must carry that same rs pin, and it must really RUN
-# `cargo build --release -p noevia-diary`, `cp` the binary into /out/ and install that stage's /out/ (parsed as
-# Dockerfile instructions by dockerfile_packages, not grepped).
+# the pinned rs must carry all three, and the Diary Dockerfile must carry that same rs pin and match the reviewed
+# deploy/tools/diary-dockerfile.template (an allow-list of its build stage and install, diary_dockerfile_check).
 # DIARY_RUST_ROUTES and DIARY_RUST_WRITES stay empty by default (the Dockerfile sets neither), so a paired
 # release changes no behaviour until the owner enables them.
 if [ -f "$tree/services/diary/agent/rust_forward.py" ]; then
@@ -356,21 +308,16 @@ if [ -f "$tree/services/diary/agent/rust_forward.py" ]; then
     [ -f "$tree/rs/$diary_native/Cargo.toml" ] \
       || die "Diary native packaging: services/diary forwards to the Rust Diary server but noevia-rs (NOEVIA_RS_REF in versions.lock at $sha) has no $diary_native"
   done
-  diary_pkg="$(dockerfile_packages noevia-diary noevia-diary "$tree/services/diary/Dockerfile")"
   # The image (and the overlay, which reads these two ARGs) builds the Rust tree it will be paired with: the
-  # Dockerfile's pin is the lock's pin, and it is declared once (a later ARG or an ENV could change what ADD fetches).
-  [ "$(printf '%s\n' "$diary_pkg" | sed -n 2p)" = pinok ] \
-    || die "Diary native packaging: services/diary/Dockerfile declares NOEVIA_RS_REF or NOEVIA_RS_SHA256 more than once or overrides it with ENV"
+  # Dockerfile pin is the lock pin.
   for diary_arg in NOEVIA_RS_REF:"$rs_ref" NOEVIA_RS_SHA256:"$rs_sum"; do
     [ "$(sed -n "s/^ARG ${diary_arg%%:*}=//p" "$tree/services/diary/Dockerfile" | head -1)" = "${diary_arg#*:}" ] \
       || die "Diary native packaging: services/diary/Dockerfile ${diary_arg%%:*} differs from release/versions.lock at $sha"
   done
-  case "$(printf '%s\n' "$diary_pkg" | sed -n 1p)" in
-    ok) ;;
-    nobuild) die "Diary native packaging: services/diary/Dockerfile has no plain RUN cargo build --release -p noevia-diary in an && chain (comments, echo, quoted strings, heredocs, conditions, ||, ;, &, subshells and RUN --mount do not count)" ;;
-    nobundle) die "Diary native packaging: services/diary/Dockerfile does not cp noevia-diary into /out/ after building it" ;;
-    *) die "Diary native packaging: services/diary/Dockerfile's final stage does not install the build stage's /out/ with COPY --from=<stage> /out/ /usr/local/bin/" ;;
-  esac
+  # And the whole build and install shape is the reviewed template (an allow-list, see diary_dockerfile_check).
+  diary_verdict="$(diary_dockerfile_check "$tree/noevia/deploy/tools/diary-dockerfile.template" "$rs_ref" "$rs_sum" "$tree/services/diary/Dockerfile")"
+  [ "$diary_verdict" = ok ] \
+    || die "Diary native packaging: services/diary/Dockerfile deviates from deploy/tools/diary-dockerfile.template: ${diary_verdict#bad: }"
 fi
 
 # Full-Rust migration M4: the Rust front and Node share projects.json. Every project route the

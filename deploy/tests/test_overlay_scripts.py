@@ -1088,6 +1088,67 @@ esac
         self.assertNotIn('noevia-diary', RsStage.rust_run(plain))
 
 
+class DiaryNativeProvenance(unittest.TestCase):
+    """D4-D5: run the `native-provenance` block of diary-overlay.sh with a stub check script."""
+
+    REF = 'c' * 40
+
+    def run_block(self, forwarder=True, script=True, fail=False):
+        with tempfile.TemporaryDirectory(prefix='noevia-native-provenance-') as directory:
+            temp = pathlib.Path(directory)
+            release = temp / 'releases/abc1234'
+            (release / 'services/diary/agent').mkdir(parents=True)
+            if forwarder:
+                (release / 'services/diary/agent/rust_forward.py').write_text('# synthetic\n')
+            tools = release / 'noevia/deploy/tools'
+            tools.mkdir(parents=True)
+            log = temp / 'calls.log'
+            if script:
+                (tools / 'check-diary-image-native.sh').write_text(
+                    '#!/bin/bash\nprintf "%s|%s\\n" "$1" "$2" >> "$CALL_LOG"\n[ -z "${CHECK_FAIL:-}" ] || exit 1\n')
+            blocks = RsStage()
+            script_text = (f'set -euo pipefail\nbase=$1; V=abc1234; rs_ref={self.REF}\n'
+                           + blocks.block('native-provenance') + '\necho CHECKED')
+            result = subprocess.run(['bash', '-c', script_text, 'x', str(temp)], capture_output=True, text=True, timeout=30,
+                                    env=dict(os.environ, CALL_LOG=str(log), **({'CHECK_FAIL': '1'} if fail else {})))
+            return result, (log.read_text().splitlines() if log.exists() else [])
+
+    def test_the_candidate_is_checked_against_the_pinned_ref(self):
+        result, calls = self.run_block()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('CHECKED', result.stdout)
+        self.assertEqual(calls, [f'cowork-diary:abc1234-candidate|{self.REF}'])
+
+    def test_a_failing_check_stops_the_overlay(self):
+        result, calls = self.run_block(fail=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('CHECKED', result.stdout)
+        self.assertIn('provenance check failed; not deploying', result.stderr)
+
+    def test_a_release_without_the_check_script_stops_the_overlay(self):
+        result, calls = self.run_block(script=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('check-diary-image-native.sh; not deploying', result.stderr)
+        self.assertEqual(calls, [])
+
+    def test_a_release_without_the_forwarder_is_not_checked(self):
+        result, calls = self.run_block(forwarder=False, script=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls, [])
+
+    def test_the_check_runs_after_native_required_and_before_anything_is_stopped(self):
+        text = DIARY.read_text()
+        self.assertLess(text.index('# END native-required'), text.index('# BEGIN native-provenance'))
+        self.assertLess(text.index('# END native-provenance'), text.index('docker stop'))
+
+    def test_the_builder_stage_passes_the_pinned_ref_to_cargo_as_an_arg(self):
+        result, df = RsStage().stage(RsStage.PINNED, smoke=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = df.splitlines()
+        self.assertEqual(lines[lines.index(f'ARG NOEVIA_RS_REF={RsStage.REF}') + 1], 'WORKDIR /src')
+        self.assertLess(df.index('ARG NOEVIA_RS_REF='), df.index('cargo build'))
+
+
 class DiaryCopyContract(unittest.TestCase):
     """Run the final-stage check and the CI parser on the same synthetic instructions."""
 

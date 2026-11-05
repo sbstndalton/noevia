@@ -116,6 +116,8 @@ jobs:
         if: env.RUN_JOB == 'true'
       # #1148: build/tag helpers refuse cowork-diary:* outside diary-overlay.sh (stub docker).
       - run: bash deploy/tools/test-diary-image-guard.sh
+      # noevia#2391: the image-level provenance check of the native Diary binaries (fake docker; no image is built).
+      - run: bash deploy/tools/test-check-diary-image-native.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'

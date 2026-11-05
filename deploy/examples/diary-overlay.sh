@@ -220,6 +220,7 @@ else
   cat > "$ctx/Dockerfile" <<DOCKERFILE
 FROM rust:1.99-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS tenant-assertion
 ENV RUSTUP_TOOLCHAIN=1.99.0 CARGO_TERM_COLOR=never CARGO_BUILD_JOBS=2
+ARG NOEVIA_RS_REF=$rs_ref
 WORKDIR /src
 ADD https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$rs_ref /tmp/noevia-rs.tar.gz
 RUN echo "$rs_sum  /tmp/noevia-rs.tar.gz" | sha256sum -c - \\
@@ -318,6 +319,20 @@ if [ -f "$base/releases/$V/services/diary/agent/rust_forward.py" ]; then
   echo "candidate native Diary binaries present: $native_bins"
 fi
 # END native-required
+# BEGIN native-provenance (deploy/tests/test_overlay_scripts.py runs this block with a stub check script)
+# D4-D5: image-level provenance of the candidate, the real assurance beside the static Dockerfile guard. The check
+# (deploy/tools/check-diary-image-native.sh, shipped in the release's noevia/ tree) runs the candidate with no network
+# and no data: every native binary present and executable, `noevia-diary --version` carrying exactly the pinned
+# noevia-rs ref (the builder stage above passes it to cargo as the NOEVIA_RS_REF ARG), and the self-tests answering ok.
+# A candidate that fails it, or a release without the script, is not deployed.
+if [ -f "$base/releases/$V/services/diary/agent/rust_forward.py" ]; then
+  provenance_check=$base/releases/$V/noevia/deploy/tools/check-diary-image-native.sh
+  [ -f "$provenance_check" ] \
+    || { echo "this release ships the Rust Diary server forwarder but not noevia/deploy/tools/check-diary-image-native.sh; not deploying" >&2; exit 1; }
+  bash "$provenance_check" cowork-diary:$V-candidate "$rs_ref" \
+    || { echo "candidate Diary image native provenance check failed; not deploying" >&2; exit 1; }
+fi
+# END native-provenance
 cp -p "$config" "$config.bak.before-diary-$V"
 # BEGIN diary-backup (deploy/tests/test_overlay_scripts.py runs this block through the whole script, with stub docker, gzip and php)
 # Scoped backup (#1487): the Diary state directory and .env only, in a new folder that the Appdata Backup

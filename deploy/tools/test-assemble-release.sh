@@ -11,6 +11,24 @@ g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
 cp "$here/assemble-release.sh" "$repo/deploy/tools/"
+# A small synthetic stand-in for deploy/tools/diary-dockerfile.template: the mechanism is what the fixtures below
+# test; the real template is exercised separately against its own rendering (and the real services Dockerfile).
+cat > "$repo/deploy/tools/diary-dockerfile.template" <<'TPL'
+[build-stage]
+FROM rust:1 AS tenant-assertion
+ARG NOEVIA_RS_REF=@NOEVIA_RS_REF@
+ARG NOEVIA_RS_SHA256=@NOEVIA_RS_SHA256@
+RUN cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export -p noevia-diary && mkdir /out && cd target/release && cp tenant-assertion diary-workspace-export noevia-diary /out/
+[final-from]
+FROM python:3.12-slim
+[install]
+COPY --from=tenant-assertion /out/ /usr/local/bin/
+[env-fixed]
+DIARY_RUST_SERVER_BIN=/usr/local/bin/noevia-diary
+[final-allowed]
+- RUN test -x /usr/local/bin/noevia-diary
+- COPY agent/ ./agent/
+TPL
 w="$repo/apps/web"
 mkdir -p "$w/src" "$w/public" "$w/scripts" "$w/contracts" "$w/tests/client" "$w/tests/server" "$w/tests/fixtures" "$w/qa" "$w/server"
 for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits.json tests/client/a.test.cjs \
@@ -727,25 +745,34 @@ try_routes() {
 }
 refused() { [ $rc -ne 0 ] && grep -q "$1" "$work/err" && [ ! -f "$out/noevia-release-$tsha.tar.gz" ]; }
 
-# Diary native packaging (D4-D5): services that forward to the Rust Diary server (agent/rust_forward.py) are
-# paired with a noevia-rs that has the three sources and a Dockerfile that builds and bundles noevia-diary.
-# A Dockerfile shaped like the real one: a pinned build stage that builds and bundles, a final stage that installs it.
-# try_hook runs after try_routes has written the lock, so the Dockerfile can carry the lock's pin ($rref, $rsum).
-diary_run=""; diary_pin_ref=""; diary_pin_sum=""
-diary_raw=""
+# Diary native packaging (D4-D5): services that forward to the Rust Diary server (agent/rust_forward.py) are paired
+# with a noevia-rs that has the three sources, and their Dockerfile must equal the reviewed template (an allow-list:
+# deploy/tools/diary-dockerfile.template) with the lock's pin.
+diary_native_try() { try_hook=diary_write_df; try_routes "$1" </dev/null; try_hook=; }
+diary_run=""; diary_raw=""; diary_pin_ref=""; diary_pin_sum=""
+# diary_raw is a Dockerfile text with __REF__/__SUM__ for the lock's pin; try_hook writes it after try_routes has
+# written the lock. Without diary_raw, diary_run is the build stage's RUN of a template-shaped Dockerfile.
 diary_write_df() {
   if [ -n "$diary_raw" ]; then
-    printf '%s\n' "$diary_raw" | sed -e "s/__REF__/$rref/g" -e "s/__SUM__/$rsum/g" > "$repo/services/diary/Dockerfile"
+    printf '%s\n' "$diary_raw" | sed -e "s/__REF__/${diary_pin_ref:-$rref}/g" -e "s/__SUM__/${diary_pin_sum:-$rsum}/g" > "$repo/services/diary/Dockerfile"
     return 0
   fi
   [ -n "$diary_run" ] || return 0
   printf 'FROM rust:1 AS tenant-assertion\nARG NOEVIA_RS_REF=%s\nARG NOEVIA_RS_SHA256=%s\n%s\nFROM python:3.12-slim\nCOPY --from=tenant-assertion /out/ /usr/local/bin/\n' \
     "${diary_pin_ref:-$rref}" "${diary_pin_sum:-$rsum}" "$diary_run" > "$repo/services/diary/Dockerfile"
 }
-diary_native_try() { try_hook=diary_write_df; try_routes "$1" </dev/null; try_hook=; }
-diary_good='RUN cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export -p noevia-diary \
- && mkdir /out && cd target/release \
- && cp tenant-assertion diary-workspace-export noevia-diary /out/'
+dn_build='cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export -p noevia-diary'
+dn_cp='cd target/release && cp tenant-assertion diary-workspace-export noevia-diary /out/'
+diary_good="RUN $dn_build && mkdir /out && $dn_cp"
+dn_head='FROM rust:1 AS tenant-assertion
+ARG NOEVIA_RS_REF=__REF__
+ARG NOEVIA_RS_SHA256=__SUM__'
+dn_tail='FROM python:3.12-slim
+COPY --from=tenant-assertion /out/ /usr/local/bin/'
+dn_raw() { diary_raw="$dn_head
+$2
+$dn_tail${3:-}"; diary_native_try "$1"; diary_raw=""; }
+dn_drift='refused "deviates from deploy/tools/diary-dockerfile.template"'
 diary_native_try dn-baseline
 check "Diary native: without the forwarder nothing about noevia-diary is required" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 mkdir -p "$repo/services/diary/agent"
@@ -763,11 +790,18 @@ diary_native_try dn-no-assertion
 check "Diary native: a noevia-rs without tenant-assertion is refused" 'refused "Diary native packaging.*bins/tenant-assertion"'
 echo synthetic > "$rz/bins/tenant-assertion/Cargo.toml"
 diary_native_try dn-paired
-check "Diary native: the forwarder, all three sources and a building, bundling, installing Dockerfile assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
-diary_run='RUN cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export -p noevia-diary \
- && cp target/release/tenant-assertion target/release/diary-workspace-export target/release/noevia-diary /out/'
-diary_native_try dn-paths
-check "Diary native: a full target/release/ source path bundles too" '[ $rc -eq 0 ]'
+check "Diary native: the forwarder, all three sources and a template-shaped Dockerfile assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+dn_raw dn-paired-extras "RUN $dn_build && mkdir /out && $dn_cp" '
+RUN test -x /usr/local/bin/noevia-diary
+COPY agent/ ./agent/
+ENV FOO=bar "BAZ"="a b"
+LABEL a=b
+USER nobody
+WORKDIR /app
+EXPOSE 8010
+HEALTHCHECK CMD ["true"]
+CMD ["true"]'
+check "Diary native: the template exact RUN/COPY lines and ENV/LABEL/USER/WORKDIR/EXPOSE/HEALTHCHECK/CMD may follow the install" '[ $rc -eq 0 ]'
 diary_pin_ref="$(printf 'd%.0s' $(seq 1 40))"
 diary_native_try dn-pin-ref
 check "Diary native: a Diary Dockerfile pinned to another noevia-rs ref than the lock is refused" 'refused "NOEVIA_RS_REF differs from release/versions.lock"'
@@ -775,142 +809,163 @@ diary_pin_ref=""; diary_pin_sum="$(printf 'e%.0s' $(seq 1 64))"
 diary_native_try dn-pin-sum
 check "Diary native: a Diary Dockerfile with another noevia-rs checksum than the lock is refused" 'refused "NOEVIA_RS_SHA256 differs from release/versions.lock"'
 diary_pin_sum=""
-# Evidence that is not a real build or bundle instruction. Each stage installs /out/ in the final image, so only
-# the RUN lines differ.
+# --- template drift: any change to the build stage or the install shape is refused, however harmless it looks
+dn_raw dn-drift-pkg "RUN ${dn_build} -p diary-corpus-parse && mkdir /out && $dn_cp"
+check "Diary native: template drift: an extra cargo package is refused" "$dn_drift"
+dn_raw dn-drift-flag "RUN ${dn_build/--locked/--locked --offline} && mkdir /out && $dn_cp"
+check "Diary native: template drift: an extra cargo flag is refused" "$dn_drift"
+dn_raw dn-drift-path "RUN $dn_build && mkdir /out && cp target/release/tenant-assertion target/release/diary-workspace-export target/release/noevia-diary /out/"
+check "Diary native: template drift: a different but equivalent copy form is refused" "$dn_drift"
+dn_raw dn-drift-pipe "RUN echo x | sha256sum -c - && $dn_build && mkdir /out && $dn_cp"
+check "Diary native: template drift: an extra pipe in the build RUN is refused" "$dn_drift"
+diary_raw="FROM rust:1 AS tenant-assertion
+ARG NOEVIA_RS_REF=__REF__
+ARG NOEVIA_RS_SHA256=__SUM__
+RUN $dn_build && mkdir /out && $dn_cp
+FROM python:3.12-slim AS final-base
+COPY --from=tenant-assertion /out/ /usr/local/bin/
+FROM final-base"
+diary_native_try dn-drift-stages; diary_raw=""
+check "Diary native: template drift: a third stage / a different final FROM is refused" "$dn_drift"
+diary_raw="$(printf '%s' "$dn_head
+RUN $dn_build && mkdir /out && $dn_cp
+$dn_tail" | sed 's/^FROM python:3.12-slim$/FROM python:3.13-slim/')"
+diary_native_try dn-drift-base; diary_raw=""
+check "Diary native: template drift: a changed base image is refused" "$dn_drift"
+# --- the old deny-list cases: all refused (they all deviate from the template)
 dn_case() { diary_run="$2"; diary_native_try "$1"; }
 dn_case dn-neg-nobuild 'RUN cargo build --release --locked -p tenant-assertion-cli -p diary-workspace-export && cp tenant-assertion diary-workspace-export noevia-diary /out/'
-check "Diary native: a Dockerfile that never builds noevia-diary is refused" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: a Dockerfile that never builds noevia-diary is refused" "$dn_drift"
 dn_case dn-neg-commented 'RUN cargo build --release -p tenant-assertion-cli
 # RUN cargo build --release -p noevia-diary
 # RUN cp target/release/noevia-diary /out/'
-check "Diary native: whole-line comments are not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: whole-line comments are not a build" "$dn_drift"
 dn_case dn-neg-inline 'RUN true # cargo build --release -p noevia-diary && cp noevia-diary /out/'
-check "Diary native: an inline comment is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: an inline comment is not a build" "$dn_drift"
 dn_case dn-neg-echo 'RUN echo cargo build --release -p noevia-diary && echo cp noevia-diary /out/'
-check "Diary native: echo is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: echo is not a build" "$dn_drift"
 dn_case dn-neg-quoted 'RUN "cargo build --release -p noevia-diary" && sh -c "cargo build --release -p noevia-diary && cp target/release/noevia-diary /out/"'
-check "Diary native: a quoted string or sh -c is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: a quoted string or sh -c is not a build" "$dn_drift"
 dn_case dn-neg-heredoc 'RUN <<EOF
 cargo build --release -p noevia-diary
 cp target/release/noevia-diary /out/
 EOF'
-check "Diary native: a heredoc body is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: a heredoc body is not a build" "$dn_drift"
 dn_case dn-neg-cond 'RUN if [ -d bins/noevia-diary ]; then cargo build --release -p noevia-diary && cp target/release/noevia-diary /out/; fi'
-check "Diary native: a build behind a condition is not unconditional" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: a build behind a condition is not unconditional" "$dn_drift"
 dn_case dn-neg-lookalike 'RUN cargo build --release -p noevia-diary-extra && cp target/release/noevia-diary-extra /out/'
-check "Diary native: a package that only starts with the name does not count" 'refused "no plain RUN cargo build --release -p noevia-diary"'
+check "Diary native: a package that only starts with the name does not count" "$dn_drift"
 dn_case dn-neg-debug 'RUN cargo build -p noevia-diary && cp target/release/noevia-diary /out/'
-check "Diary native: a build without --release does not feed target/release" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_case dn-neg-nocopy 'RUN cargo build --release -p noevia-diary && cp target/release/tenant-assertion /out/'
-check "Diary native: a Dockerfile that builds but does not bundle noevia-diary is refused" 'refused "does not cp noevia-diary into /out/"'
-dn_case dn-neg-fakecp 'RUN cargo build --release -p noevia-diary && fakecp noevia-diary /out/'
-check "Diary native: another command spelled like cp is not a bundle" 'refused "does not cp noevia-diary into /out/"'
-dn_case dn-neg-dest 'RUN cargo build --release -p noevia-diary && cp target/release/noevia-diary /out/not-the-binary'
-check "Diary native: a copy to another destination is not a bundle" 'refused "does not cp noevia-diary into /out/"'
-dn_case dn-neg-cd 'RUN cargo build --release -p noevia-diary && cd /tmp && cp noevia-diary /out/'
-check "Diary native: a bare copy from the wrong directory is not a bundle" 'refused "does not cp noevia-diary into /out/"'
-dn_case dn-neg-order 'RUN cp target/release/noevia-diary /out/ && cargo build --release -p noevia-diary'
-check "Diary native: a copy before the build is not a bundle" 'refused "does not cp noevia-diary into /out/"'
-dn_case dn-neg-echo-cp 'RUN cargo build --release -p noevia-diary && echo cp target/release/noevia-diary /out/'
-check "Diary native: an echoed copy is not a bundle" 'refused "does not cp noevia-diary into /out/"'
-dn_case dn-neg-inline-cp 'RUN cargo build --release -p noevia-diary # && cp target/release/noevia-diary /out/'
-check "Diary native: a copy behind an inline comment is not a bundle" 'refused "does not cp noevia-diary into /out/"'
-diary_run="$diary_good"
-# Re-review of b369b785 (P2-1..4): only a plain && chain counts, the install must be in the final stage, the rs pin is
-# declared once, and no RUN --mount can hide the bundle.
-dn_build='cargo build --release --locked -p noevia-diary'
-dn_cp='cp target/release/noevia-diary /out/'
-dn_head='FROM rust:1 AS tenant-assertion
-ARG NOEVIA_RS_REF=__REF__
-ARG NOEVIA_RS_SHA256=__SUM__'
-dn_tail='FROM python:3.12-slim
-COPY --from=tenant-assertion /out/ /usr/local/bin/'
-dn_raw() { diary_raw="$dn_head
-$2
-$dn_tail${3:-}"; diary_native_try "$1"; diary_raw=""; }
-dn_raw dn-chain-ok "RUN $dn_build && mkdir /out && $dn_cp"
-check "Diary native: a plain && chain still assembles" '[ $rc -eq 0 ]'
-dn_raw dn-chain-pipe-ok "RUN echo x | sha256sum -c - && $dn_build && mkdir /out && $dn_cp && ./target/release/noevia-diary --help | head -1"
-check "Diary native: pipes on neighbouring commands do not stop a plain && chain" '[ $rc -eq 0 ]'
-dn_raw dn-or "RUN true || $dn_build && mkdir /out && $dn_cp"
-check "Diary native: true || cargo build is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-if "RUN if false; then $dn_build; fi && mkdir /out && $dn_cp"
-check "Diary native: if false; then cargo build; fi is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-or-cp "RUN $dn_build && mkdir /out && false || $dn_cp"
-check "Diary native: a cp after || is not a bundle" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-semi "RUN $dn_build; mkdir /out; $dn_cp"
-check "Diary native: a ; list is not a chain" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-bg "RUN $dn_build & mkdir /out && $dn_cp"
-check "Diary native: a backgrounded build is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-subshell "RUN ($dn_build) && mkdir /out && $dn_cp"
-check "Diary native: a subshell is not a chain" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-braces "RUN { $dn_build; } && mkdir /out && $dn_cp"
-check "Diary native: a brace group is not a chain" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-case "RUN case x in x) $dn_build ;; esac && mkdir /out && $dn_cp"
-check "Diary native: a case statement is not a chain" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-while "RUN while false; do $dn_build; done && mkdir /out && $dn_cp"
-check "Diary native: a while loop is not a chain" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-pipe-build "RUN $dn_build | tee /tmp/build.log && mkdir /out && $dn_cp"
-check "Diary native: a build piped into another command (its status is lost) is not a build" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-unrelated-or "RUN false || true && $dn_build && mkdir /out && $dn_cp"
-check "Diary native: a || anywhere in the RUN gives no evidence" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-# P2-2: the install must be in the final stage.
+check "Diary native: a build without --release does not feed target/release" "$dn_drift"
+dn_case dn-neg-nocopy "RUN $dn_build && mkdir /out && cp target/release/tenant-assertion /out/"
+check "Diary native: a Dockerfile that builds but does not bundle noevia-diary is refused" "$dn_drift"
+dn_case dn-neg-fakecp "RUN $dn_build && mkdir /out && cd target/release && fakecp tenant-assertion diary-workspace-export noevia-diary /out/"
+check "Diary native: another command spelled like cp is not a bundle" "$dn_drift"
+dn_case dn-neg-dest "RUN $dn_build && mkdir /out && cd target/release && cp tenant-assertion diary-workspace-export noevia-diary /out/not-the-binary"
+check "Diary native: a copy to another destination is not a bundle" "$dn_drift"
+dn_case dn-neg-order "RUN mkdir /out && $dn_cp && $dn_build"
+check "Diary native: a copy before the build is not a bundle" "$dn_drift"
+dn_case dn-neg-echo-cp "RUN $dn_build && mkdir /out && echo $dn_cp"
+check "Diary native: an echoed copy is not a bundle" "$dn_drift"
+dn_case dn-neg-inline-cp "RUN $dn_build # && mkdir /out && $dn_cp"
+check "Diary native: a copy behind an inline comment is not a bundle" "$dn_drift"
+for dn_op in "true || $dn_build" "if false; then $dn_build; fi" "$dn_build; true" "$dn_build &" "($dn_build)" "{ $dn_build; }" "case x in x) $dn_build ;; esac" "while false; do $dn_build; done" "$dn_build | tee /tmp/build.log" "false || true && $dn_build" "exit 0 && $dn_build" "exec true && $dn_build"; do
+  dn_raw dn-chain "RUN $dn_op && mkdir /out && $dn_cp"
+  check "Diary native: the build behind \`$dn_op\` is refused" "$dn_drift"
+done
+diary_raw="$dn_head
+RUN exec true \\
+ && $dn_build \\
+ && mkdir /out && $dn_cp
+$dn_tail"
+diary_native_try dn-exec-continuation; diary_raw=""
+check "Diary native: exec across a line continuation is refused" "$dn_drift"
+dn_raw dn-mount-tmpfs "RUN --mount=type=tmpfs,target=/out $dn_build && $dn_cp"
+check "Diary native: a tmpfs mounted on /out is refused" "$dn_drift"
+dn_raw dn-mount-cache "RUN --mount=type=cache,target=/usr/local/cargo/registry $dn_build && mkdir /out && $dn_cp"
+check "Diary native: any RUN --mount is refused" "$dn_drift"
 dn_raw dn-trailing-from "RUN $dn_build && mkdir /out && $dn_cp" '
 FROM python:3.12-slim'
-check "Diary native: an install in a discarded stage followed by another FROM is refused" 'refused "final stage does not install"'
-dn_raw dn-inherit "RUN $dn_build && mkdir /out && $dn_cp" '
-FROM python:3.12-slim AS final-base
-FROM final-base'
-check "Diary native: a final stage that inherits from a stage without the install is refused" 'refused "final stage does not install"'
-diary_raw="$dn_head
-RUN $dn_build && mkdir /out && $dn_cp
-FROM python:3.12-slim AS base
-COPY --from=tenant-assertion /out/ /usr/local/bin/
-FROM base"
-diary_native_try dn-inherit-ok; diary_raw=""
-check "Diary native: a final stage that inherits the install from an earlier stage assembles" '[ $rc -eq 0 ]'
-# P2-3: the rs pin is declared once and never overridden.
+check "Diary native: an install in a discarded stage followed by another FROM is refused" "$dn_drift"
+# --- the pin: declared once, never set by ENV in any spelling
 diary_raw="FROM rust:1 AS tenant-assertion
 ARG NOEVIA_RS_REF=__REF__
 ARG NOEVIA_RS_SHA256=__SUM__
 ARG NOEVIA_RS_REF=$(printf 'f%.0s' $(seq 1 40))
-ADD https://example.invalid/x /tmp/x
 RUN $dn_build && mkdir /out && $dn_cp
 $dn_tail"
 diary_native_try dn-arg-dup2; diary_raw=""
-check "Diary native: a second NOEVIA_RS_REF declaration before ADD is refused" 'refused "declares NOEVIA_RS_REF or NOEVIA_RS_SHA256 more than once"'
+check "Diary native: a second NOEVIA_RS_REF declaration is refused" "$dn_drift"
+for dn_env in 'ENV NOEVIA_RS_REF=ffff' 'ENV "NOEVIA_RS_REF"=ffff' "ENV 'NOEVIA_RS_SHA256'=ffff" 'ENV NOEVIA_RS\_REF=ffff' 'ENV "NOEVIA_RS_REF" ffff' 'ENV A=1 "NOEVIA_RS_SHA256"=ffff' 'ENV DIARY_CORPUS_PARSE_IMPL=rust' 'ENV DIARY_RUST_ROUTES=/api/months' 'ENV DIARY_RUST_SERVER_BIN=/tmp/x'; do
+  dn_raw dn-env "RUN $dn_build && mkdir /out && $dn_cp" "
+$dn_env"
+  check "Diary native: final-stage \`$dn_env\` is refused" "$dn_drift"
+done
+# --- what may follow the install, and what may not (the delta review of 90cbea1c)
+for dn_after in 'COPY evil /usr/local/bin/noevia-diary' 'RUN rm -f /usr/local/bin/noevia-diary' 'RUN rm /usr/local/bin/noevia-diary' 'ONBUILD RUN rm /usr/local/bin/noevia-diary' 'ADD x /usr/local/bin/noevia-diary' 'COPY --chmod=0644 --from=tenant-assertion /out/ /usr/local/bin/' 'COPY --from=tenant-assertion /out/ /usr/local/bin/' 'ARG X=1' 'SHELL ["/bin/false"]' 'VOLUME /usr/local/bin'; do
+  dn_raw dn-after "RUN $dn_build && mkdir /out && $dn_cp" "
+$dn_after"
+  check "Diary native: after the install, \`$dn_after\` is refused" "$dn_drift"
+done
 diary_raw="$dn_head
 RUN $dn_build && mkdir /out && $dn_cp
-$dn_tail
-ARG NOEVIA_RS_SHA256=$(printf 'f%.0s' $(seq 1 64))"
-diary_native_try dn-sha-dup; diary_raw=""
-check "Diary native: a NOEVIA_RS_SHA256 redeclared in a later stage is refused" 'refused "declares NOEVIA_RS_REF or NOEVIA_RS_SHA256 more than once"'
-diary_raw="FROM rust:1 AS tenant-assertion
-ARG NOEVIA_RS_REF=__REF__
-ARG NOEVIA_RS_SHA256=__SUM__
-ENV NOEVIA_RS_REF=$(printf 'f%.0s' $(seq 1 40))
+FROM python:3.12-slim
+COPY --chmod=0644 --from=tenant-assertion /out/ /usr/local/bin/"
+diary_native_try dn-chmod; diary_raw=""
+check "Diary native: COPY --chmod making the installed binary non-executable is not the install" "$dn_drift"
+diary_raw="# syntax=evil/frontend
+$dn_head
 RUN $dn_build && mkdir /out && $dn_cp
 $dn_tail"
-diary_native_try dn-env; diary_raw=""
-check "Diary native: an ENV override of the rs pin is refused" 'refused "declares NOEVIA_RS_REF or NOEVIA_RS_SHA256 more than once"'
-# P2-4: a RUN --mount can hide the bundle.
-dn_raw dn-mount-tmpfs "RUN --mount=type=tmpfs,target=/out $dn_build && $dn_cp"
-check "Diary native: a tmpfs mounted on /out is refused" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-mount-cache "RUN --mount=type=cache,target=/usr/local/cargo/registry $dn_build && mkdir /out && $dn_cp"
-check "Diary native: any RUN --mount is refused (conservatively, even a cargo registry cache)" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-dn_raw dn-mount-release "RUN --mount=type=tmpfs,target=/src/target/release $dn_build && mkdir /out && $dn_cp"
-check "Diary native: a tmpfs on the build output directory is refused" 'refused "no plain RUN cargo build --release -p noevia-diary"'
-diary_run="$diary_good"
-diary_write_df() {
-  printf 'FROM rust:1 AS tenant-assertion\nARG NOEVIA_RS_REF=%s\nARG NOEVIA_RS_SHA256=%s\n%s\nFROM python:3.12-slim\n' "$rref" "$rsum" "$diary_run" > "$repo/services/diary/Dockerfile"
+diary_native_try dn-syntax; diary_raw=""
+check "Diary native: a parser directive is refused" "$dn_drift"
+# --- the REAL template: it renders a Dockerfile it accepts, and every drift of that rendering is refused
+dfsrc="$work/dfcheck.sh"; sed -n '/^# BEGIN diary-df-check/,/^# END diary-df-check/p' "$here/assemble-release.sh" > "$dfsrc"; . "$dfsrc"
+rtpl="$here/diary-dockerfile.template"; rref="$(printf '1%.0s' $(seq 1 40))"; rsum2="$(printf '2%.0s' $(seq 1 64))"
+awk '/^#/ || /^$/ {next} /^\[/ {s=$0; next}
+  s=="[build-stage]" {b[++nb]=$0} s=="[final-from]" {ff=$0} s=="[install]" {ins=$0} s=="[env-fixed]" {e[++ne]=$0} s=="[final-allowed]" {a[++na]=substr($0,3)}
+  END {for(i=1;i<=nb;i++)print b[i]; print ff; print ins; for(i=1;i<=ne;i++)print "ENV " e[i]; for(i=1;i<=na;i++)print a[i]}' "$rtpl" \
+  | sed -e "s/@NOEVIA_RS_REF@/$rref/g" -e "s/@NOEVIA_RS_SHA256@/$rsum2/g" > "$work/real.df"
+rcheck() { diary_dockerfile_check "$rtpl" "$rref" "$rsum2" "$1"; }
+rmut() { # rmut <name> <python-expression on t>: writes the mutated rendering to $work/mut.df
+  python3 - "$work/real.df" "$work/mut.df" "$2" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+exec(sys.argv[3])
+open(sys.argv[2], 'w').write(t)
+PY
 }
-diary_native_try dn-neg-noinstall
-check "Diary native: a Dockerfile whose final stage does not install the build stage's /out/ is refused" 'refused "final stage does not install"'
-diary_write_df() {
-  printf 'FROM rust:1 AS tenant-assertion\nARG NOEVIA_RS_REF=%s\nARG NOEVIA_RS_SHA256=%s\n%s\nFROM python:3.12-slim AS other\nCOPY --from=other /out/ /usr/local/bin/\n' "$rref" "$rsum" "$diary_run" > "$repo/services/diary/Dockerfile"
-}
-diary_native_try dn-neg-wrongstage
-check "Diary native: installing a different stage's /out/ is refused" 'refused "final stage does not install"'
+check "Diary native: the real template accepts the Dockerfile rendered from it" '[ "$(rcheck "$work/real.df")" = ok ]'
+check "Diary native: the real template has the pinned cargo build of noevia-diary, the bundle and the install" \
+  'grep -q -- "-p noevia-diary" "$rtpl" && grep -q "cp .* noevia-diary /out/" "$rtpl" && grep -qx "COPY --from=tenant-assertion /out/ /usr/local/bin/" "$rtpl"'
+for dn_m in \
+  't += "ENV \"NOEVIA_RS_REF\"=ffff\n"' \
+  't += "ENV NOEVIA_RS\\_SHA256=ffff\n"' \
+  't = t.replace(" && cargo build", " && exit 0 && cargo build", 1)' \
+  't = t.replace(" && cargo build", " && exec true \\\n && cargo build", 1)' \
+  't += "COPY evil /usr/local/bin/noevia-diary\n"' \
+  't += "RUN rm -f /usr/local/bin/noevia-diary\n"' \
+  't += "ONBUILD RUN rm /usr/local/bin/noevia-diary\n"' \
+  't = t.replace("COPY --from=tenant-assertion /out/", "COPY --chmod=0644 --from=tenant-assertion /out/", 1)' \
+  't += "ENV DIARY_RUST_ROUTES=/api/months\n"' \
+  't = t.replace("--locked", "--locked --offline", 1)' \
+  't = t.replace("python:3.12-slim", "python:3.13-slim", 1)' \
+  't = t.replace(" -p noevia-diary", "", 1)' \
+  't = t.replace("RUN python scripts/smoke_diary_leaves.py --all\n", "", 1)' \
+  't += "COPY --from=tenant-assertion /out/ /usr/local/bin/\n"' \
+  't += "FROM python:3.12-slim\n"'; do
+  rmut x "$dn_m"
+  check "Diary native: the real template refuses $dn_m" '[ "$(rcheck "$work/mut.df")" != ok ]'
+done
+rmut x 't += "ENV FOO=bar\nLABEL a=b\nUSER nobody\nWORKDIR /app\nEXPOSE 8010\n"'
+check "Diary native: the real template still accepts harmless ENV/LABEL/USER/WORKDIR/EXPOSE additions" '[ "$(rcheck "$work/mut.df")" = ok ]'
+rmut x 't = t.replace("'"$rref"'", "'"$(printf '3%.0s' $(seq 1 40))"'")'
+check "Diary native: the real template refuses a pin that is not the lock's" '[ "$(rcheck "$work/mut.df")" != ok ]'
+if [ -n "${NOEVIA_SERVICES_DIR:-}" ] && [ -f "$NOEVIA_SERVICES_DIR/diary/Dockerfile" ]; then
+  svc_ref="$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"; svc_sum="$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"
+  check "Diary native: the real template accepts the real services Diary Dockerfile (NOEVIA_SERVICES_DIR)" '[ "$(diary_dockerfile_check "$rtpl" "$svc_ref" "$svc_sum" "$NOEVIA_SERVICES_DIR/diary/Dockerfile")" = ok ]'
+fi
+diary_raw=""
 # Leave the fixture as it was for the checks below: no forwarder, the synthetic Dockerfile, no Diary sources.
 g rm -q -f services/diary/agent/rust_forward.py
 echo "synthetic diary" > "$repo/services/diary/Dockerfile"
