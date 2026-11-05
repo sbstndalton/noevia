@@ -48,4 +48,24 @@ printf 'pub const SOURCE_JOBS_STORE_MARKER: &str = "reranker-settings-v1";\n' > 
 check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" invalid-source
 printf "Object.defineProperty(module.exports,'RERANKER_SETTINGS_OWNER',{get(){while(true){}}});\n" > "$work/bad"
 check reranker_core_version "$work/bad" invalid
+# Exercise the production refusal block as well as the detectors.
+sed -n '/^reranker_core_owner=/,/^$/p' "$here/assemble-release.sh" > "$work/guard.sh"
+assert_pair() {
+  local expected=$1 core_file=$2 rs_file=$3 tree="$work/pair"
+  rm -rf "$tree"
+  mkdir -p "$tree/core/server" "$tree/rs/bins/noevia-server/src"
+  [ "$core_file" = none ] || cp "$core_file" "$tree/core/server/rerank-settings.cjs"
+  [ "$rs_file" = none ] || cp "$rs_file" "$tree/rs/bins/noevia-server/src/lib.rs"
+  if (die() { echo "$*" >&2; exit 1; }; source "$work/guard.sh") >"$work/guard.log" 2>&1; then
+    [ "$expected" = pass ] || { echo 'half-pair unexpectedly accepted'; exit 1; }
+  else
+    [ "$expected" = fail ] || { cat "$work/guard.log"; exit 1; }
+    grep -q 'reranker settings ownership pairing' "$work/guard.log"
+  fi
+}
+assert_pair pass "$work/core" "$work/rs"
+assert_pair fail "$work/core" none
+assert_pair fail none "$work/rs"
+assert_pair pass none none
+assert_pair fail "$work/bad" "$work/rs"
 echo 'reranker pairing fixtures passed'
