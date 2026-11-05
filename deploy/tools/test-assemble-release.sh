@@ -2754,6 +2754,43 @@ cc_owner=node; cc_try cc-old-pair
 check "old calibration cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
 if [ -f "$work/cc-manager.saved" ]; then cp "$work/cc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# Row V: the front is the only issuer of the egress proxy's control key and signed grants; Core is a
+# fail-closed client (marker 'noevia-code-egress-client/1', FEATURES "rust-code-egress-issuer"). Both
+# halves move together; a comment is not a marker; the Node issuer must be gone from a client Core.
+ce_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+}
+ce_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" > "$w/server/code-egress-client.cjs"
+  printf '%s\n' "const { createEgressClient } = require('./code-egress-client.cjs');" > "$w/server/code-egress.cjs"
+  rm -f "$w/server/code-egress-control.cjs"
+}
+ce_front() { sed 's/"start-id"/"start-id", "rust-code-egress-issuer"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; rm -f "$w/server/code-egress-client.cjs" "$w/server/code-egress.cjs" "$w/server/code-egress-control.cjs"
+printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"
+printf '%s\n' "const { publishWebKey } = require('./code-egress-control.cjs');" > "$w/server/code-egress.cjs"
+ce_try ce-legacy
+check "code egress: legacy Core with a legacy front assembles (rollback pair)" '[ $rc -eq 0 ]'
+ce_core; ce_try ce-core-only
+check "code egress: a client Core cannot pair with a front that has no issuer" 'refused "code egress issuer pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; ce_front
+printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"
+printf '%s\n' "const { publishWebKey } = require('./code-egress-control.cjs');" > "$w/server/code-egress.cjs"; rm -f "$w/server/code-egress-client.cjs"
+ce_try ce-front-only
+check "code egress: a front that issues cannot pair with a Core that still publishes the key" 'refused "code egress issuer pairing"'
+printf '%s\n' "// const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" > "$w/server/code-egress-client.cjs"; ce_try ce-comment-marker
+check "code egress: a commented marker is not the marker" 'refused "code egress issuer pairing"'
+ce_core; printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"; ce_try ce-node-issuer
+check "code egress: a client Core that still carries the Node issuer is refused" 'refused "still carries the Node issuer"'
+ce_core; printf '%s\n' "const { createEgressClient } = require('./code-egress-client.cjs'); publishWebKey({});" > "$w/server/code-egress.cjs"; ce_try ce-publishes
+check "code egress: a client Core whose setup still publishes keys is refused" 'refused "still publishes keys or signs grants"'
+ce_core; printf '%s\n' "module.exports = {};" > "$w/server/code-egress.cjs"; ce_try ce-no-client
+check "code egress: a client Core whose setup does not use the client is refused" 'refused "does not use the native client"'
+ce_core; ce_try ce-pair
+check "code egress: the matching client Core and issuer front assemble" '[ $rc -eq 0 ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/code-egress-client.cjs" "$w/server/code-egress.cjs" "$w/server/code-egress-control.cjs"
 # #2303: start/status policy moves independently of the live calibration worker.
 cr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
