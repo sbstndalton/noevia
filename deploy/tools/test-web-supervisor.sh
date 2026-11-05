@@ -455,8 +455,8 @@ for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration
   # The registry pair speaks its grant protocol on both sides (checked on its own below).
   p_extra=""
   if [ "$p_cap" = rust-approval-registry ]; then
-    p_extra=registry-redeem-v2
-    printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" > "$work/server/rust-approval-registry.cjs"
+    p_extra=registry-executor-v3
+    printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-executor-v3';" > "$work/server/rust-approval-registry.cjs"
   fi
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
@@ -473,25 +473,30 @@ for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration
 done
 # Re-review 689d17a P1-2: the registry's grant protocol, in both directions. Both sides keep the
 # registry; only the protocol differs.
-proto_try() { # core v2|old, front v2|old
+proto_try() { # core v3|v2|old, front v3|v2|old
   printf '%s\n' "  if (require('./rust-approval-registry.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
-  if [ "$1" = v2 ]; then printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" > "$work/server/rust-approval-registry.cjs"
+  if [ "$1" = v3 ]; then printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-executor-v3';" > "$work/server/rust-approval-registry.cjs"
+  elif [ "$1" = v2 ]; then printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" > "$work/server/rust-approval-registry.cjs"
   else printf '%s\n' "module.exports = {};" > "$work/server/rust-approval-registry.cjs"; fi
-  local extra=""; [ "$2" = v2 ] && extra=registry-redeem-v2
+  local extra=""; [ "$2" = v3 ] && extra=registry-executor-v3; [ "$2" = v2 ] && extra=registry-redeem-v2
   reset; touch "$work/die-front"
   run STUB_FEATURES="$BASE_FEATURES rust-approval-registry $extra" >/dev/null 2>"$work/err"; rc=$?
 }
-proto_try v2 old
+proto_try v3 old
 check "a ticket-redeeming Core with a front from before tickets refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
-proto_try old v2
+proto_try old v3
 check "a Core from before tickets with a ticketing front refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
 proto_try old old
 check "a native registry without the redeem protocol on either side refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
-proto_try v2 v2
+proto_try v3 v2
+check "executor-fenced Core rejects the time-fence front" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
+proto_try v2 v3
+check "executor-ack front rejects time-fence Core" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
+proto_try v3 v3
 check "the redeem protocol pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 rm -f "$work/server/index.cjs" "$work/server/rust-approval-registry.cjs"
 reset
-run STUB_FEATURES="$BASE_FEATURES registry-redeem-v2" >/dev/null 2>"$work/err"; rc=$?
+run STUB_FEATURES="$BASE_FEATURES registry-executor-v3" >/dev/null 2>"$work/err"; rc=$?
 check "a ticketing front with an old Core (no registry) refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
 printf '%s\n' "  if (require('./rust-public-pages.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
 reset; touch "$work/die-front"

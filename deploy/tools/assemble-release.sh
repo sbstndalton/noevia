@@ -1104,13 +1104,13 @@ fi
 # The registry's grant protocol (re-reviews 1ed3a14/689d17a): single-use tickets redeemed at dispatch
 # and fenced against every revocation. A Core from before tickets would read a ticketed grant as
 # plain approval, and a new Core cannot redeem at an old front: Core's REGISTRY_PROTOCOL line and the
-# front's registry-redeem-v2 capability move together, and a native registry needs them.
+# front's registry-executor-v3 capability move together, and a native registry needs them.
 ar_core_protocol=""
 ar_rs_protocol=""
-grep -qxF "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" "$tree/core/server/rust-approval-registry.cjs" 2>/dev/null && ar_core_protocol=v2
-if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES registry-redeem-v2 features; then ar_rs_protocol=v2; fi
-[ "$ar_core_protocol" = "$ar_rs_protocol" ] || die "approval registry protocol pairing: Core and Rust must both speak registry-redeem-v2"
-[ "$ar_rs_owner" != rust ] || [ "$ar_rs_protocol" = v2 ] || die "approval registry protocol pairing: the registry needs registry-redeem-v2"
+grep -qxF "const REGISTRY_PROTOCOL = 'registry-executor-v3';" "$tree/core/server/rust-approval-registry.cjs" 2>/dev/null && ar_core_protocol=v3
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES registry-executor-v3 features; then ar_rs_protocol=v3; fi
+[ "$ar_core_protocol" = "$ar_rs_protocol" ] || die "approval registry protocol pairing: Core and Rust must both speak registry-executor-v3"
+[ "$ar_rs_owner" != rust ] || [ "$ar_rs_protocol" = v3 ] || die "approval registry protocol pairing: the registry needs registry-executor-v3"
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   ta_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ta_table=""
   ta_rows="$(printf '%s\n' "$ta_table" | awk -F'\t' -v want="$ta_rs_owner" '

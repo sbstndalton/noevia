@@ -1978,12 +1978,12 @@ const { openApproval } = require('./rust-approval-registry.cjs').createApprovalR
 });
 if (require('./rust-tool-approvals.cjs').refuseOwned(req, res, {})) return;
 JS
-  printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" 'module.exports = { createApprovalRegistry() {} };' > "$w/server/rust-approval-registry.cjs"
+  printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-executor-v3';" 'module.exports = { createApprovalRegistry() {} };' > "$w/server/rust-approval-registry.cjs"
   cp "$work/ar-chat.saved" "$w/server/chat.cjs"
   printf '%s\n' '  chatWideApproved, awaitApproval, openApproval = async () => true,' >> "$w/server/chat.cjs"
   rm -f "$w/server/rust-tool-approval-bridge.cjs"
 }
-ar_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry", "registry-redeem-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ar_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry", "registry-executor-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
 ar_front_old() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
 ar_core_old() { ar_core; printf '%s\n' 'module.exports = { createApprovalRegistry() {} };' > "$w/server/rust-approval-registry.cjs"; }
 ta_owner=rust
@@ -1993,13 +1993,13 @@ check "the approval registry pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia
 # Re-review 689d17a P1-2: the grant protocol, both directions.
 ar_core; ar_front_old
 ta_try registry-v2-core-old-front
-check "a ticket-redeeming Core refuses a front from before tickets" 'refused "approval registry protocol pairing: Core and Rust must both speak registry-redeem-v2"'
+check "a ticket-redeeming Core refuses a front from before tickets" 'refused "approval registry protocol pairing: Core and Rust must both speak registry-executor-v3"'
 ar_core_old; ar_front
 ta_try registry-old-core-v2-front
-check "a ticketing front refuses a Core from before tickets" 'refused "approval registry protocol pairing: Core and Rust must both speak registry-redeem-v2"'
+check "a ticketing front refuses a Core from before tickets" 'refused "approval registry protocol pairing: Core and Rust must both speak registry-executor-v3"'
 ar_core_old; ar_front_old
 ta_try registry-without-protocol
-check "a registry pair without the redeem protocol is refused" 'refused "the registry needs registry-redeem-v2"'
+check "a registry pair without the redeem protocol is refused" 'refused "the registry needs registry-executor-v3"'
 ar_core; ar_front
 ta_front
 ta_try registry-core-only
@@ -2007,6 +2007,14 @@ check "a Core that asks the registry refuses a front without it" 'refused "appro
 ta_core; touch "$w/server/rust-tool-approval-bridge.cjs"; ar_front
 ta_try registry-front-only
 check "a registry front refuses a Core that still keeps the pending approvals" 'refused "approval registry ownership pairing: Core and Rust must move together"'
+ar_core; ar_front
+sed -i.bak 's/registry-executor-v3/registry-redeem-v2/g' "$rz/bins/noevia-server/src/lib.rs"
+ta_try registry-v3-v2
+check "executor-fenced Core rejects a time-fence front" 'refused "approval registry protocol pairing"'
+ar_core; ar_front
+sed -i.bak 's/registry-executor-v3/registry-redeem-v2/g' "$w/server/rust-approval-registry.cjs"
+ta_try registry-v2-v3
+check "executor-ack front rejects time-fence Core" 'refused "approval registry protocol pairing"'
 ar_core; ar_front; touch "$w/server/rust-tool-approval-bridge.cjs"
 ta_try registry-bridge-left
 check "the registry pair deletes Core's pending state bridge" 'refused "still carries the pending state bridge"'
