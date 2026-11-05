@@ -698,24 +698,39 @@ fi
 # Compare the single supported outbox generation on each side; equal legacy pairs remain rollback
 # candidates. Detection is comment-aware and distinguishes absence from an ambiguous or unrecognized
 # marker, which always refuses.
+# Shared awk prelude: strip(line) removes // and /* */ comments (tracking a block across
+# lines) while keeping code and quoted strings intact.
+outbox_awk_strip='
+  function strip(line,   out, i, c, n, q) {
+    out=""; n=length(line); q=""
+    for (i=1; i<=n; i++) {
+      c=substr(line,i,1)
+      if (block) { if (c=="*" && substr(line,i+1,1)=="/") { block=0; i++ } ; continue }
+      if (q!="") { out=out c; if (c=="\\") { out=out substr(line,i+1,1); i++ } else if (c==q) q=""; continue }
+      if (index(quotes, c)) { q=c; out=out c; continue }
+      if (c=="/" && substr(line,i+1,1)=="/") break
+      if (c=="/" && substr(line,i+1,1)=="*") { block=1; i++; continue }
+      out=out c
+    }
+    gsub(/^[ \t]+|[ \t]+$/, "", out)
+    return out
+  }
+'
 outbox_core_version() {
   [ -f "$1" ] || { echo none; return; }
-  awk -v q="'" '
-    function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+  awk -v q="'" -v quotes="\"'\`" "$outbox_awk_strip"'
     {
-      line=clean($0)
-      if (block) { if (index(line,"*/")) block=0; next }
-      if (line ~ /^\/\//) next
-      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
+      line=strip($0)
+      if (line == "") next
       if (line ~ /RUST_INDEX_OUTBOX_OWNED[ \t]*=/ || index(line, "rust-index-outbox-v")) {
-        if (match(line, "^const RUST_INDEX_OUTBOX_OWNED[ \t]*=[ \t]*" q "rust-index-outbox-v[0-9]+" q "[ \t]*;?[ \t]*(//.*)?$")) {
+        if (match(line, "^const RUST_INDEX_OUTBOX_OWNED[ \t]*=[ \t]*" q "rust-index-outbox-v[0-9]+" q "[ \t]*;?$")) {
           v=line; sub("^const RUST_INDEX_OUTBOX_OWNED[ \t]*=[ \t]*" q "rust-index-outbox-", "", v); sub(q ".*$", "", v)
           found++; version=v
         } else other++
       }
     }
     END {
-      if (other || found > 1) { print "invalid"; exit }
+      if (block || other || found > 1) { print "invalid"; exit }
       if (!found) { print "none"; exit }
       print (version ~ /^v[123]$/) ? version : "invalid"
     }
@@ -723,13 +738,11 @@ outbox_core_version() {
 }
 outbox_rs_version() {
   [ -f "$1" ] || { echo none; return; }
-  awk -v dq='"' '
+  awk -v dq='"' -v quotes='"' "$outbox_awk_strip"'
     function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
     {
-      line=clean($0)
-      if (block) { if (index(line,"*/")) block=0; next }
-      if (line ~ /^\/\//) next
-      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
+      line=strip($0)
+      if (line == "") next
       if (index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
       if (features) {
         fend=index(line,"];")
@@ -743,10 +756,10 @@ outbox_rs_version() {
           }
         }
         if (fend) features=0
-      }
+      } else if (index(line, "rust-index-outbox-")) bad++
     }
     END {
-      if (decl > 1 || bad || distinct > 1) { print "invalid"; exit }
+      if (block || decl > 1 || bad || distinct > 1) { print "invalid"; exit }
       if (!decl || !distinct) { print "none"; exit }
       if (seen[last] != 1 || last !~ /^v[123]$/) { print "invalid"; exit }
       print last

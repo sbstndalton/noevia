@@ -1504,6 +1504,13 @@ outbox_case unknown-core-v9 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-
 outbox_case stray-core-literal "const OTHER = 'rust-index-outbox-v3';" - refuse
 outbox_case dup-rust-v3-core-none - '"rust-index-outbox-v3", "rust-index-outbox-v3"' refuse
 outbox_case multi-rust-v2-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v2", "rust-index-outbox-v3"' refuse
+outbox_case inline-block-core-v3-none "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3'; /* ownership */" - refuse
+outbox_case inline-block-core-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3'; /* ownership */" '"rust-index-outbox-v3"' ok
+outbox_case block-in-line-comment-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3'; // /* note */" '"rust-index-outbox-v3"' ok
+outbox_case code-after-block-close-v2-none "$(printf '%s\n' '/* note' "end */ const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2';")" - refuse
+outbox_case unclosed-block-core "/* const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3"' refuse
+outbox_case inline-block-rust-v3-core-none - '"rust-index-outbox-v3", \/* ownership *\/' refuse
+outbox_case inline-block-rust-v3-core-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3", \/* ownership *\/' ok
 rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
