@@ -3816,7 +3816,7 @@ cm_restore() {
   rm -rf "$w/server/rust-chat-mirror.cjs" "$rz/crates/chat-mirror-sched"
 }
 cm_core() { # the paired core: the executor module, the require, no Node journal reader
-  printf '%s\n' "const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "module.exports = { RUST_CHAT_MIRROR_OWNED };" > "$w/server/rust-chat-mirror.cjs"
+  printf '%s\n' "const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "const SYNC_PATH = '/internal/chat-mirror/sync';" "module.exports = { RUST_CHAT_MIRROR_OWNED, SYNC_PATH };" > "$w/server/rust-chat-mirror.cjs"
   cp "$work/feature-index.saved" "$w/server/index.cjs"; printf '%s\n' "const chatMirror = require('./rust-chat-mirror.cjs');" >> "$w/server/index.cjs"
   rm -f "$w/server/chat-change-journal.cjs"
 }
@@ -3861,6 +3861,98 @@ check "a front whose scheduler crate lacks its marker is refused" 'refused "does
 cm_restore
 move_try chat-mirror-old-pair
 check "historic chat mirror old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# The chat mirror's work (rust-chat-mirror-exec-v1): on top of the schedule pair, the front runs the mirror pass and
+# the brain build; the core has no executor bridge and answers the engine seam. Both declare it exactly (an
+# unconditional, scope-proven FEATURES literal; the value the core module exports).
+for f in chat-vault-mirror.cjs chat-brain.cjs; do [ -f "$w/server/$f" ] && cp "$w/server/$f" "$cm_note/$f"; done
+cmx_restore() {
+  cm_restore; rm -rf "$rz/crates/chat-mirror-exec"
+  for f in chat-vault-mirror.cjs chat-brain.cjs; do if [ -f "$cm_note/$f" ]; then cp "$cm_note/$f" "$w/server/$f"; else rm -f "$w/server/$f"; fi; done
+}
+cmx_core() { # the paired schedule core, its executors gone, the engine seam wired
+  cm_core
+  printf '%s\n' "const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "const RUST_CHAT_MIRROR_EXEC_OWNED = 'rust-chat-mirror-exec-v1';" \
+    "const ENGINE_PATH = '/internal/chat-mirror/engine';" "module.exports = { RUST_CHAT_MIRROR_OWNED, RUST_CHAT_MIRROR_EXEC_OWNED, ENGINE_PATH };" > "$w/server/rust-chat-mirror.cjs"
+  printf '%s\n' "const chatMirrorEngine = require('./rust-chat-mirror.cjs').createEngineSeam({});" "async function h(req, res) {" "  if (await chatMirrorEngine(req, res)) return;" "}" >> "$w/server/index.cjs"
+  printf '%s\n' "function mirrorTrigger() { return null; }" "module.exports = { mirrorTrigger };" > "$w/server/chat-vault-mirror.cjs"
+  printf '%s\n' "function readBrain() { return null; }" "module.exports = { readBrain };" > "$w/server/chat-brain.cjs"
+}
+cmx_front() { # the paired schedule front plus the executors
+  cm_front
+  sed 's/"rust-chat-mirror-v1"/"rust-chat-mirror-v1", "rust-chat-mirror-exec-v1"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/cmx-lib.tmp"; cp "$work/cmx-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
+  printf '%s\n' 'pub mod chat_mirror_work;' >> "$rz/bins/noevia-server/src/lib.rs"
+  mkdir -p "$rz/crates/chat-mirror-exec/src"; echo 'pub const MARKER: &str = "noevia-chat-mirror-exec/1";' > "$rz/crates/chat-mirror-exec/src/lib.rs"
+}
+cmx_lib() { # apply a sed to the paired front's lib.rs
+  sed "$1" "$rz/bins/noevia-server/src/lib.rs" > "$work/cmx-lib.tmp"; cp "$work/cmx-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
+}
+cmx_restore; cmx_core; cmx_front
+move_try chat-mirror-exec-pair
+check "a paired chat mirror executor Core and front assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cmx_restore; cmx_core; cm_front
+move_try chat-mirror-exec-core-only
+check "an executor-less Core beside a schedule-only front (its bridge gone) is refused" 'refused "Core and Rust must move together (rust-chat-mirror-exec-v1)"'
+cmx_restore; cm_core; cmx_front
+move_try chat-mirror-exec-front-only
+check "an executor front beside a schedule-only Core is refused" 'refused "Core and Rust must move together (rust-chat-mirror-exec-v1)"'
+cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/#[cfg(test)] "rust-chat-mirror-exec-v1"/'
+move_try chat-mirror-exec-gated-entry
+check "a cfg-gated executor capability entry is refused" 'refused "not one unconditional FEATURES literal in a proven scope"'
+cmx_restore; cmx_core; cmx_front; cmx_lib 's/^pub const FEATURES/#[cfg(not(test))]\
+pub const FEATURES/'
+move_try chat-mirror-exec-gated-declaration
+check "a FEATURES declaration under its own cfg attribute is refused (scope not proven)" 'refused "not one unconditional FEATURES literal in a proven scope"'
+cmx_restore; cmx_core; cmx_front; { echo '#![cfg(feature = "front")]'; cat "$rz/bins/noevia-server/src/lib.rs"; } > "$work/cmx-lib.tmp"; cp "$work/cmx-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
+move_try chat-mirror-exec-crate-cfg
+check "an inner crate cfg attribute in lib.rs is refused (scope not proven)" 'refused "not one unconditional FEATURES literal in a proven scope"'
+cmx_restore; cmx_core; cmx_front; { echo 'mod inner {'; cat "$rz/bins/noevia-server/src/lib.rs"; echo '}'; } > "$work/cmx-lib.tmp"; cp "$work/cmx-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
+move_try chat-mirror-exec-nested-module
+check "a FEATURES declaration inside a module is refused (scope not proven)" 'refused "not one unconditional FEATURES literal in a proven scope"'
+cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/"rust-chat-mirror-exec-v1", "rust-chat-mirror-exec-v1"/'
+move_try chat-mirror-exec-duplicate
+check "a duplicated executor capability entry is refused" 'refused "not one unconditional FEATURES literal in a proven scope"'
+cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/concat!("rust-chat-mirror-", "exec-v1")/'
+move_try chat-mirror-exec-concat
+check "a concat! executor capability entry is refused" 'refused "not one unconditional FEATURES literal in a proven scope"'
+cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/r"rust-chat-mirror-exec-v1"/'
+move_try chat-mirror-exec-raw
+check "a raw-string executor capability entry is refused" 'refused "not one unconditional FEATURES literal in a proven scope"'
+cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/"x"/'; printf '%s\n' '// "rust-chat-mirror-exec-v1" is the capability' >> "$rz/bins/noevia-server/src/lib.rs"
+move_try chat-mirror-exec-comment-capability
+check "an executor capability named only in a comment is not the capability" 'refused "Core and Rust must move together (rust-chat-mirror-exec-v1)"'
+cmx_restore; cmx_core; cmx_front
+printf '%s\n' "// const RUST_CHAT_MIRROR_EXEC_OWNED = 'rust-chat-mirror-exec-v1';" "const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "module.exports = { RUST_CHAT_MIRROR_OWNED };" > "$w/server/rust-chat-mirror.cjs"
+move_try chat-mirror-exec-unexported
+check "a Core whose executor marker is only a literal, not the export, is refused" 'refused "is not the exported value"'
+cmx_restore; cmx_core; cmx_front
+printf '%s\n' "const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "module.exports = { RUST_CHAT_MIRROR_OWNED, RUST_CHAT_MIRROR_EXEC_OWNED: 'rust-chat-mirror-exec-v' + '1' };" > "$w/server/rust-chat-mirror.cjs"
+move_try chat-mirror-exec-computed-export
+check "the value the module exports is what counts (a computed export of the marker pairs)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cmx_restore; cmx_core; cmx_front
+printf '%s\n' "function createChatVaultMirror() {}" "module.exports = { createChatVaultMirror };" > "$w/server/chat-vault-mirror.cjs"
+move_try chat-mirror-exec-two-executors
+check "a pair whose Core still carries the Node mirror executor is refused" 'refused "still carries a Node mirror or brain executor"'
+cmx_restore; cmx_core; cmx_front
+printf '%s\n' "function createBrainRunner() {}" "module.exports = { createBrainRunner };" > "$w/server/chat-brain.cjs"
+move_try chat-mirror-exec-brain-runner
+check "a pair whose Core still carries the Node brain runner is refused" 'refused "still carries a Node mirror or brain executor"'
+cmx_restore; cmx_core; cmx_front; cp "$work/feature-index.saved" "$w/server/index.cjs"; printf '%s\n' "const chatMirror = require('./rust-chat-mirror.cjs');" >> "$w/server/index.cjs"
+move_try chat-mirror-exec-no-seam
+check "a Core that does not answer the engine seam is refused" 'refused "does not answer the engine seam"'
+cmx_restore; cmx_core; cmx_front; echo 'pub const MARKER: &str = "something-else/1";' > "$rz/crates/chat-mirror-exec/src/lib.rs"
+move_try chat-mirror-exec-wrong-crate
+check "a front whose executor crate lacks its marker is refused" 'refused "does not carry the executors"'
+cmx_restore; cmx_core; cmx_front; cmx_lib 's/^pub mod chat_mirror;$/pub mod chat_mirror_x;/'
+move_try chat-mirror-exec-without-schedule
+check "the executor capability without the schedule pairing is refused" 'refused "chat mirror"'
+cmx_restore; cm_core; cm_front; printf '%s\n' "const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "module.exports = { RUST_CHAT_MIRROR_OWNED };" > "$w/server/rust-chat-mirror.cjs"
+move_try chat-mirror-exec-bridge-gone
+check "a schedule-only pair whose Core lost its executor bridge is refused" 'refused "which this core no longer has"'
+cmx_restore; cm_core; cm_front
+move_try chat-mirror-exec-schedule-only-pair
+check "the schedule-only pair (executors still in Core) assembles for rollback" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cmx_restore
 
 # Round 4 (#2190): the storage connection save, exactly GET and PUT of the path Rust's.
 conn_try() {

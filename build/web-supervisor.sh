@@ -355,6 +355,21 @@ if [ "$chat_mirror_core_owner" != "$chat_mirror_front_owner" ]; then
   exit 2
 fi
 
+# The chat mirror's work (rust-chat-mirror-exec-v1): the front also runs the mirror pass and the brain build;
+# such a core has no executor bridge, only the engine seam. A front without it beside such a core would call a
+# bridge that is gone; a front with it beside an older core is a mismatched pair. Both or neither.
+chat_mirror_exec_core_owner="$(node -e "try { const m = require('./server/rust-chat-mirror.cjs'); if (m.RUST_CHAT_MIRROR_EXEC_OWNED === 'rust-chat-mirror-exec-v1') process.stdout.write('rust'); else if (m.RUST_CHAT_MIRROR_EXEC_OWNED !== undefined) process.stdout.write('invalid'); } catch {}" 2>/dev/null || true)"
+if [ "$chat_mirror_exec_core_owner" = invalid ] || { grep -qF 'RUST_CHAT_MIRROR_EXEC_OWNED' "$PWD/server/rust-chat-mirror.cjs" 2>/dev/null && [ "$chat_mirror_exec_core_owner" != rust ]; }; then
+  echo "web-supervisor: invalid chat mirror executor ownership marker" >&2
+  exit 2
+fi
+chat_mirror_exec_front_owner=""
+grep -qx 'rust-chat-mirror-exec-v1' <<<"$rust_features" && chat_mirror_exec_front_owner=rust
+if [ "$chat_mirror_exec_core_owner" != "$chat_mirror_exec_front_owner" ]; then
+  echo "web-supervisor: chat mirror executor ownership mismatch between noevia-server and noevia-core (rust-chat-mirror-exec-v1); update the paired image" >&2
+  exit 2
+fi
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
 # (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
 # front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own

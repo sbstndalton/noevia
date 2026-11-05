@@ -618,6 +618,35 @@ reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "the old chat mirror pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
+# The chat mirror's work (rust-chat-mirror-exec-v1): both sides together or neither, on top of the schedule pair.
+printf '%s\n' "module.exports = { RUST_CHAT_MIRROR_OWNED: 'rust-chat-mirror-v1', RUST_CHAT_MIRROR_EXEC_OWNED: 'rust-chat-mirror-exec-v1' };" > "$work/server/rust-chat-mirror.cjs"
+printf '%s\n' "const chatMirror = require('./rust-chat-mirror.cjs');" > "$work/server/index.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1 rust-chat-mirror-exec-v1" >/dev/null 2>"$work/err"; rc=$?
+check "a paired chat mirror executor Core and front start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "an executor-less Core beside a schedule-only front refuses before launch (its bridge is gone)" '[ $rc -eq 2 ] && grep -q "chat mirror executor ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1 rust-chat-mirror-exec-v1x" >/dev/null 2>"$work/err"; rc=$?
+check "a lookalike executor capability is not the capability" '[ $rc -eq 2 ] && grep -q "chat mirror executor ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "module.exports = { RUST_CHAT_MIRROR_OWNED: 'rust-chat-mirror-v1' };" > "$work/server/rust-chat-mirror.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1 rust-chat-mirror-exec-v1" >/dev/null 2>"$work/err"; rc=$?
+check "an executor front beside a schedule-only Core refuses before launch" '[ $rc -eq 2 ] && grep -q "chat mirror executor ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "the schedule-only pair (no executors moved) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "module.exports = { RUST_CHAT_MIRROR_OWNED: 'rust-chat-mirror-v1', RUST_CHAT_MIRROR_EXEC_OWNED: 'rust-chat-mirror-exec-v2' };" > "$work/server/rust-chat-mirror.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1 rust-chat-mirror-exec-v1" >/dev/null 2>"$work/err"; rc=$?
+check "an unknown executor marker value refuses before launch" '[ $rc -eq 2 ] && grep -q "invalid chat mirror executor ownership marker" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "// RUST_CHAT_MIRROR_EXEC_OWNED = 'rust-chat-mirror-exec-v1'" "module.exports = { RUST_CHAT_MIRROR_OWNED: 'rust-chat-mirror-v1' };" > "$work/server/rust-chat-mirror.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1 rust-chat-mirror-exec-v1" >/dev/null 2>"$work/err"; rc=$?
+check "an executor marker named only in a comment refuses before launch" '[ $rc -eq 2 ] && grep -q "invalid chat mirror executor ownership marker" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/rust-chat-mirror.cjs" "$work/server/index.cjs"
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a bridge Core needs rust-preset-baseline;
 # a rust-preset-baseline front beside an older Core is shared mode and starts.
 printf '%s\n' "const PRESET_BASELINE_BRIDGE = 'noevia-preset-baseline-bridge/1';" > "$work/server/preset-reload.cjs"

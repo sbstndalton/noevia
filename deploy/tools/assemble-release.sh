@@ -495,6 +495,147 @@ move_capability() {
     END { exit !(decl==1 && (kind=="rust" || ((kind=="features" || kind=="feature_ref") && observed==1) || (kind!="features" && exported==1))) }
   ' "$1"
 }
+# Core: the value a module actually exports under NAME, with every require() stubbed, evaluated in node:vm
+# with a hard time limit (sbstndalton/noevia f57a4e3e outbox_core_version, generalised). "on": exactly VALUE;
+# "none": no export and VALUE nowhere in the file; anything else (a literal without the export, another
+# value, a throw, a timeout) is "invalid".
+core_export_marker() { # file NAME VALUE
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const [file, name, want] = process.argv.slice(1);
+    const src = fs.readFileSync(file, "utf8");
+    const literal = src.includes(want);
+    let value;
+    try {
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports[" + JSON.stringify(name) + "];" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    process.stdout.write(value === want ? "on" : "invalid");
+  ' "$1" "$2" "$3" 2>/dev/null || echo invalid
+}
+# Rust: whether lib.rs's single FEATURES array carries CAPABILITY as one unconditional ordinary string
+# literal (the tokenizer of sbstndalton/noevia f57a4e3e outbox_rs_version: nested block comments, line
+# comments, escaped, raw and byte strings, char literals vs lifetimes; every element optional attributes plus
+# one ordinary literal or one plain path, anything else refuses), AND whether the FEATURES declaration's own
+# scope is proven unconditional (top level, no attributes, no inner crate attribute). "on", "none" (no array or
+# no entry) or "invalid" (duplicate, gated, concat!/macro/raw/byte, or an unprovable scope).
+rs_feature_scoped() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    // The declaration itself must be proven unconditional: at the top level of lib.rs (no enclosing
+    // module), with no attribute of its own (#[cfg], #[cfg_attr], #[doc] alike) and no inner crate
+    // attribute anywhere in the file. Anything else fails closed: its scope cannot be proven.
+    const before = code.slice(0, decls[0].index);
+    let bal = 0; for (const ch of before) { if (ch === "{") bal++; else if (ch === "}") bal--; }
+    if (bal !== 0) out("invalid");
+    if (/#\s*!\s*\[/.test(code)) out("invalid");
+    const lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1);
+    if (/#\s*\[/.test(lead)) out("invalid");
+    const cap = process.argv[2];
+    const found = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes(cap));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || strs[+lit[1]].v !== cap) out("invalid");
+        found.push(cap); continue;
+      }
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!found.length) out("none");
+    out(found.length === 1 ? "on" : "invalid");
+' "$1" "$2" 2>/dev/null || echo invalid
+}
 rust_owns_chat_move() {
   project_routes_rs "$1" | grep -qxF 'POST /api/chats/{}/move'
 }
@@ -1789,6 +1930,36 @@ if [ "$chat_mirror_rs_owner" = rust ]; then
     && code_lines "$tree/rs/bins/noevia-server/src/main.rs" 2>/dev/null | grep -qF 'ChatMirror::start(' \
     || die "chat mirror schedule ownership pairing: the front declares rust-chat-mirror-v1 but does not carry and start the schedule (chat_mirror.rs, crate chat-mirror-sched)"
   chat_mirror_paired=rust
+fi
+
+# The chat mirror's work (rust-chat-mirror-exec-v1): the front also does the mirror pass and the brain build
+# natively (noevia-rs crates/chat-mirror-exec, bins/noevia-server chat_mirror_work.rs); the core keeps no
+# executor bridge, only the engine seam (POST /internal/chat-mirror/engine). Both declare it exactly (an
+# unconditional FEATURES literal at the top level of lib.rs, cfg scope proven; RUST_CHAT_MIRROR_EXEC_OWNED as the
+# value core actually exports). A front without it beside such a core calls a bridge that is gone (every pass
+# fails); a front with it beside an older core would leave that core's executor half unused while its own
+# assumptions differ. It needs the schedule pairing above.
+chat_mirror_exec_core="$(core_export_marker "$tree/core/server/rust-chat-mirror.cjs" RUST_CHAT_MIRROR_EXEC_OWNED rust-chat-mirror-exec-v1)"
+chat_mirror_exec_rs="$(rs_feature_scoped "$tree/rs/bins/noevia-server/src/lib.rs" rust-chat-mirror-exec-v1)"
+[ "$chat_mirror_exec_core" != invalid ] || die "chat mirror executor ownership pairing: the core's RUST_CHAT_MIRROR_EXEC_OWNED is not the exported value 'rust-chat-mirror-exec-v1'"
+[ "$chat_mirror_exec_rs" != invalid ] || die "chat mirror executor ownership pairing: the front's rust-chat-mirror-exec-v1 entry is not one unconditional FEATURES literal in a proven scope"
+[ "$chat_mirror_exec_core" = "$chat_mirror_exec_rs" ] \
+  || die "chat mirror executor ownership pairing: Core and Rust must move together (rust-chat-mirror-exec-v1)"
+if [ "$chat_mirror_exec_rs" = on ]; then
+  [ "$chat_mirror_paired" = rust ] || die "chat mirror executor ownership pairing: rust-chat-mirror-exec-v1 needs the schedule pairing (rust-chat-mirror-v1)"
+  ! code_lines "$tree/core/server/rust-chat-mirror.cjs" | grep -qE "/internal/chat-mirror/(sync|brain)|createExecutorBridge" \
+    && ! code_lines "$tree/core/server/chat-vault-mirror.cjs" | grep -qF 'createChatVaultMirror' \
+    && ! code_lines "$tree/core/server/chat-brain.cjs" | grep -qE 'createBrainRunner|createBrainBuilder|writeBrain' \
+    || die "chat mirror executor ownership pairing: the core still carries a Node mirror or brain executor beside the front's"
+  code_lines "$tree/core/server/index.cjs" | grep -qF "require('./rust-chat-mirror.cjs').createEngineSeam(" \
+    && code_lines "$tree/core/server/index.cjs" | grep -qF 'if (await chatMirrorEngine(req, res)) return;' \
+    || die "chat mirror executor ownership pairing: the core does not answer the engine seam the front's brain build calls"
+  grep -qxF 'pub mod chat_mirror_work;' "$tree/rs/bins/noevia-server/src/lib.rs" 2>/dev/null \
+    && move_capability "$tree/rs/crates/chat-mirror-exec/src/lib.rs" MARKER noevia-chat-mirror-exec/1 rust \
+    || die "chat mirror executor ownership pairing: the front declares rust-chat-mirror-exec-v1 but does not carry the executors (chat_mirror_work.rs, crate chat-mirror-exec)"
+elif [ "$chat_mirror_paired" = rust ]; then
+  code_lines "$tree/core/server/rust-chat-mirror.cjs" | grep -qF "'/internal/chat-mirror/sync'" \
+    || die "chat mirror executor ownership pairing: the front's schedule calls the core's executor bridge, which this core no longer has"
 fi
 
 # The storage connection save (#2190, round 4): Core's rust-storage-connection.cjs refusal (PUT on the
