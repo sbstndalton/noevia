@@ -4407,7 +4407,11 @@ for malformed in unknown duplicate outside comment raw; do
     esac
     cp "$work/roles-lib" "$rz/bins/noevia-server/src/lib.rs"
     close_try "roles-rust-$malformed-$core"
-    check "auto-roles write: $malformed Rust marker refuses with $core Core" 'refused "auto-roles write ownership pairing"'
+    if [ "$core" = new ] && [[ "$malformed" =~ ^(outside|comment|raw)$ ]]; then
+      check "auto-roles write: tokenizer accepts $malformed with the matching Core" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+    else
+      check "auto-roles write: $malformed Rust marker refuses with $core Core" 'refused "auto-roles write ownership pairing"'
+    fi
   done
 done
 cp "$work/feature-index.saved" "$w/server/index.cjs"

@@ -302,17 +302,24 @@ PAIRS
 auto_roles_core_owner() {
   [ -f "$1" ] || { echo none; return; }
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  node -e '
+  timeout -k 2 10 node -e '
     const fs = require("node:fs"), vm = require("node:vm");
     const src = fs.readFileSync(process.argv[1], "utf8");
-    const markers = src.match(/["\x27]rust-auto-roles-write[^"\x27\r\n]*["\x27]/g) || [];
+    let value;
     try {
-      const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });
-      const mod = { exports: {} };
-      vm.runInNewContext("(function (require, module, exports) {" + src + "\n})(require, module, module.exports)", { require: () => stub, module: mod }, { timeout: 2000 });
-      const value = mod.exports.RUST_AUTO_ROLES_WRITE_OWNED;
-      process.stdout.write(value === "rust-auto-roles-write" && markers.length === 1 ? "rust" : "invalid");
-    } catch { process.stdout.write("invalid"); }
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_AUTO_ROLES_WRITE_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write("invalid"); process.exit(0); }
+    const markers = src.match(/["\x27]rust-auto-roles-write[^"\x27\r\n]*["\x27]/g) || [];
+    process.stdout.write(value === "rust-auto-roles-write" && markers.length === 1 ? "rust" : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }
 auto_roles_write_owner="$(auto_roles_core_owner "$PWD/server/rust-auto-roles-write.cjs")"
