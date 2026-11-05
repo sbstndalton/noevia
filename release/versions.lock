@@ -29,8 +29,8 @@
 # ARG NOEVIA_RS_SHA256 (CI checks): assemble-release.sh fetches noevia-rs into the release tree's
 # rs/, and build/web.Dockerfile builds the Rust front (bins/noevia-server, NOEVIA_FRONT=rust) from
 # it. A ref from before bins/noevia-server builds a web image without the front.
-NOEVIA_RS_REF=5c6f846716b7879b8d5e400b7acdbbdeb0fbcc25
-NOEVIA_RS_SHA256=4f4f97ecb5e1741ffea67641af414b1866d101196de8e2a405ae04af55709588
+NOEVIA_RS_REF=69b0eeb6cdfa0bb4ec7e18e9e6580240286c56a2
+NOEVIA_RS_SHA256=7cb23646272d8f99d369cf7772ccdf0bc667f2bfdd97ec617fddcdfecb1ad199
 NOEVIA_WEB_REF=90d470d7dfe1680d83749b5915836ea232bb426c
 NOEVIA_WEB_SHA256=130eda644235350708ec62b45cf5bd26d5b3c9c64213babaf601140ea73465d5
 NOEVIA_CORE_REF=c068b5f04e958c8c5712b4a1e02bd59f60979da0
