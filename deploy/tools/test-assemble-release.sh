@@ -23,6 +23,7 @@ for svc in code-sandbox diary docling laya model-manager ocr; do
   mkdir -p "$repo/services/$svc" && echo "synthetic $svc" > "$repo/services/$svc/Dockerfile"
 done
 printf 'NOEVIA_RS_REF=%040d\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\nNOEVIA_SERVICES_REF=self\n' 0 > "$repo/release/versions.lock"
+mkdir -p "$w/server/ui-data"; echo synthetic-runtime-key > "$w/server/ui-data/secrets.key"
 git init -q "$repo" && g add -A && g commit -qm one
 sha="$(g rev-parse --short=12 HEAD)"; full="$(g rev-parse HEAD)"
 
@@ -35,6 +36,7 @@ check "noevia/ is the whole repo" '[ -f "$x/noevia/release/versions.lock" ] && [
 check "web/ has the client parts" '[ -f "$x/web/src/main.tsx" ] && [ -f "$x/web/package-lock.json" ] && [ -f "$x/web/contracts/project-limits.json" ] && [ -f "$x/web/tests/client/a.test.cjs" ] && [ -f "$x/web/qa/q.cjs" ]'
 check "web/ has no server" '[ ! -e "$x/web/server" ] && [ ! -e "$x/web/tests/server" ] && [ ! -e "$x/web/Dockerfile" ]'
 check "core/ has server, contracts, server tests" '[ -f "$x/core/server/index.cjs" ] && [ -f "$x/core/contracts/project-limits.json" ] && [ -f "$x/core/tests/server/b.test.cjs" ] && [ -f "$x/core/tests/fixtures/f.json" ]'
+check "runtime state is excluded from the entire assembled tree" '[ -z "$(find "$x" -path "*/server/ui-data/secrets.key" -print)" ]'
 check "core/ has no client" '[ ! -e "$x/core/src" ] && [ ! -e "$x/core/tests/client" ]'
 check "web/ and core/ carry tests/hermetic-network.cjs, web/ its ignore files" \
   '[ -f "$x/web/tests/hermetic-network.cjs" ] && [ -f "$x/core/tests/hermetic-network.cjs" ] && [ -f "$x/web/.gitignore" ] && [ -f "$x/web/.dockerignore" ]'
@@ -4139,6 +4141,34 @@ rm -f "$w/server/mcp-discovery-snapshot.cjs"; touch "$w/server/toolbox-chat-fact
 printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" "const discovery = require('./mcp-native-discovery.cjs').createNativeDiscovery({ broker: PROJECT_STORE });" "const chatFacts = require('./toolbox-chat-facts.cjs').createChatFactsPublisher({ dataDir });" >> "$w/server/index.cjs"
 mcp2_try mcp2-native-pair
 check "the matching MCP directory, permitted tools and connectors pairs assemble over the front's own discovery" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/md-lib"
+for prefix in $'#[cfg(any())]\n' $'#[cfg(any())]\nmod disabled {\n'; do
+  python3 - "$work/md-lib" "$rz/bins/noevia-server/src/lib.rs" "$prefix" <<'MDPY'
+import sys
+s=open(sys.argv[1]).read(); s=s.replace('pub const FEATURES',sys.argv[3]+'pub const FEATURES')
+if 'mod disabled' in sys.argv[3]: s+='\n}'
+open(sys.argv[2],'w').write(s)
+MDPY
+  mcp2_try md-disabled-scope
+  check "native discovery refuses disabled FEATURES scope" 'refused "MCP discovery ownership pairing"'
+done
+for element in '#[cfg(any())] "rust-mcp-discovery"' '"rust-mcp-discovery", "rust-mcp-\x64iscovery"' 'b"rust-mcp-discovery"' 'r#"rust-mcp-discovery"#' 'concat!("rust-mcp-discovery")'; do
+  python3 - "$work/md-lib" "$rz/bins/noevia-server/src/lib.rs" "$element" <<'MDPY'
+import sys
+open(sys.argv[2],'w').write(open(sys.argv[1]).read().replace('"rust-mcp-discovery"',sys.argv[3]))
+MDPY
+  mcp2_try md-invalid-element
+  check "native discovery refuses gated duplicate or nonliteral marker" 'refused "MCP discovery ownership pairing"'
+done
+sed 's/, "rust-mcp-discovery"//' "$work/md-lib" > "$rz/bins/noevia-server/src/lib.rs"
+mcp2_try md-core-half
+check "native discovery refuses Core-only half" 'refused "MCP discovery ownership pairing"'
+cp "$work/md-lib" "$rz/bins/noevia-server/src/lib.rs"
+cp "$w/server/index.cjs" "$work/md-index"
+grep -v "mcp-native-discovery.cjs" "$work/md-index" > "$w/server/index.cjs"
+mcp2_try md-rust-half
+check "native discovery refuses Rust-only half" 'refused "MCP discovery ownership pairing"'
+cp "$work/md-index" "$w/server/index.cjs"
 grep -v "createChatFactsPublisher" "$w/server/index.cjs" > "$w/server/index.cjs.tmp" && mv "$w/server/index.cjs.tmp" "$w/server/index.cjs"; mcp2_try mcp2-native-no-facts
 check "a native discovery pair whose Core publishes no toolbox facts is refused" 'refused "must publish the chat process"'
 rm -f "$w/server/toolbox-chat-facts.cjs" "$w/server/mcp-native-discovery.cjs"
