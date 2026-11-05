@@ -695,17 +695,68 @@ if [ "$project_reads_rs_owner" = rust ]; then
   project_read_expected="$(printf '%s\n' '/api/projects/{id}/sources/text' '/api/projects/{id}/documents/original' '/api/projects/{id}/{*}/original' | sort)"
   [ "$project_read_routes" = "$project_read_expected" ] || die "project source read ownership pairing: incomplete route ownership"
 fi
-# Compare every supported outbox generation; equal legacy pairs remain rollback candidates.
-outbox_core_owner=""
-outbox_rs_owner=""
-for outbox_version in v1 v2 v3; do
-  if grep -qF "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-$outbox_version';" "$tree/core/server/rust-index-outbox.cjs" 2>/dev/null; then
-    outbox_core_owner="$outbox_core_owner $outbox_version"
-  fi
-  if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES "rust-index-outbox-$outbox_version" features; then
-    outbox_rs_owner="$outbox_rs_owner $outbox_version"
-  fi
-done
+# Compare the single supported outbox generation on each side; equal legacy pairs remain rollback
+# candidates. Detection is comment-aware and distinguishes absence from an ambiguous or unrecognized
+# marker, which always refuses.
+outbox_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  awk -v q="'" '
+    function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    {
+      line=clean($0)
+      if (block) { if (index(line,"*/")) block=0; next }
+      if (line ~ /^\/\//) next
+      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
+      if (line ~ /RUST_INDEX_OUTBOX_OWNED[ \t]*=/ || index(line, "rust-index-outbox-v")) {
+        if (match(line, "^const RUST_INDEX_OUTBOX_OWNED[ \t]*=[ \t]*" q "rust-index-outbox-v[0-9]+" q "[ \t]*;?[ \t]*(//.*)?$")) {
+          v=line; sub("^const RUST_INDEX_OUTBOX_OWNED[ \t]*=[ \t]*" q "rust-index-outbox-", "", v); sub(q ".*$", "", v)
+          found++; version=v
+        } else other++
+      }
+    }
+    END {
+      if (other || found > 1) { print "invalid"; exit }
+      if (!found) { print "none"; exit }
+      print (version ~ /^v[123]$/) ? version : "invalid"
+    }
+  ' "$1"
+}
+outbox_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  awk -v dq='"' '
+    function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    {
+      line=clean($0)
+      if (block) { if (index(line,"*/")) block=0; next }
+      if (line ~ /^\/\//) next
+      if (index(line,"/*")) { if (!index(line,"*/")) block=1; next }
+      if (index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
+      if (features) {
+        fend=index(line,"];")
+        if (fend) line=substr(line,1,fend-1)
+        n=split(line,fields,",")
+        for (i=1;i<=n;i++) {
+          f=clean(fields[i])
+          if (index(f, "rust-index-outbox-")) {
+            if (f ~ ("^" dq "rust-index-outbox-v[0-9]+" dq "$")) { v=substr(f, length("rust-index-outbox-")+2); v=substr(v,1,length(v)-1); seen[v]++; if (seen[v]==1) distinct++ ; last=v }
+            else bad++
+          }
+        }
+        if (fend) features=0
+      }
+    }
+    END {
+      if (decl != 1 || bad || distinct > 1) { print "invalid"; exit }
+      if (!distinct) { print "none"; exit }
+      if (seen[last] != 1 || last !~ /^v[123]$/) { print "invalid"; exit }
+      print last
+    }
+  ' "$1"
+}
+outbox_core_owner="$(outbox_core_version "$tree/core/server/rust-index-outbox.cjs")"
+outbox_rs_owner="$(outbox_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$outbox_core_owner" != invalid ] && [ "$outbox_rs_owner" != invalid ] \
+  || die "index outbox ownership pairing: ambiguous or unrecognized capability marker (core=$outbox_core_owner rust=$outbox_rs_owner)"
 [ "$outbox_core_owner" = "$outbox_rs_owner" ] || die "index outbox ownership pairing: Core and Rust capability versions must match"
 
 # A project's create and delete (sbstndalton/noevia#2191 round 2) move as one owner: Core's

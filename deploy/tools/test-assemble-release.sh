@@ -1483,6 +1483,30 @@ done
 rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
+# Adversarial outbox marker detection: absence is distinct from ambiguous or unrecognized markers.
+outbox_case() { # name core-file-content (or -) rust-feature-insert (or -) expect(ok|refuse)
+  rm -f "$w/server/rust-index-outbox.cjs"
+  [ "$2" = - ] || printf '%s\n' "$2" > "$w/server/rust-index-outbox.cjs"
+  cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+  [ "$3" = - ] || sed "s/\"start-id\"/\"start-id\", $3/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+  move_try "outbox-adv-$1"
+  if [ "$4" = ok ]; then
+    check "outbox adversarial $1 assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+  else
+    check "outbox adversarial $1 refuses assembly" 'refused "index outbox ownership pairing"'
+  fi
+}
+outbox_case nosemi-v3-none "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3'" - refuse
+outbox_case nosemi-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3'" '"rust-index-outbox-v3"' ok
+outbox_case commented-core-v3 "// const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3"' refuse
+outbox_case two-core-decls "$(printf '%s\n' "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v1';" "/* const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2'; */" "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v2';")" '"rust-index-outbox-v1", "rust-index-outbox-v2"' refuse
+outbox_case unknown-core-v9 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v9';" '"rust-index-outbox-v9"' refuse
+outbox_case stray-core-literal "const OTHER = 'rust-index-outbox-v3';" - refuse
+outbox_case dup-rust-v3-core-none - '"rust-index-outbox-v3", "rust-index-outbox-v3"' refuse
+outbox_case multi-rust-v2-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v2", "rust-index-outbox-v3"' refuse
+rm -f "$w/server/rust-index-outbox.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+
 # Project create/delete owner release matrix (sbstndalton/noevia#2191 round 2): POST /api/projects and
 # DELETE /api/projects/{projectId}, nothing else.
 project_lifecycle_try() {
