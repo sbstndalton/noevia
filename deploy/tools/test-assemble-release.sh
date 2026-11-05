@@ -2386,7 +2386,7 @@ cp "$work/pr-index.saved" "$w/server/index.cjs"
 pr_try pr-pair
 check "matching preset GET pair assembles" '[ $rc -eq 0 ]'
 pr_methods='methods = ["GET", "PUT"]'; pr_try pr-wrong-methods
-check "preset GET cannot claim PUT" 'refused "PUT and other methods stay Node"'
+check "preset GET cannot claim PUT without the editor pair" 'refused "other methods stay Node"'
 pr_methods='methods = ["GET"]'
 printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
 pr_try pr-all-refuser
@@ -2421,6 +2421,119 @@ for pr_file in llamacpp-manager.cjs routes/models.cjs; do
     cp "$work/pr-${pr_file##*/}.saved" "$w/server/$pr_file"
   else
     rm -f "$w/server/$pr_file"
+  fi
+done
+# D2: the preset editor (PUT) moves as a second pair on top of the preset read pair: the front's capability
+# and Core's refuser, with Core's editor gone and the cache-drop bridge mounted with the captured secret.
+pe_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/preset"\nowner = "%s"\n%s\n' "$pe_owner" "${pe_methods:-}")
+}
+for pe_file in llamacpp-manager.cjs routes/models.cjs; do
+  [ ! -f "$w/server/$pe_file" ] || cp "$w/server/$pe_file" "$work/pe-${pe_file##*/}.saved"
+done
+printf '%s\n' 'presetFacts: model => presets?.get(model) ?? null,' 'async function applyUnlocked(body) {}' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'module.exports = {};' > "$w/server/routes/models.cjs"
+touch "$w/server/rust-preset-read-bridge.cjs" "$w/server/rust-preset-write-effects.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['PUT /api/models/preset']));" > "$w/server/rust-preset-write.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const presetReadBridge = require('./rust-preset-read-bridge.cjs').createPresetReadBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+const presetWriteEffects = require('./rust-preset-write-effects.cjs').createPresetWriteEffects({
+  secret: FRONT_SECRET, json, service,
+});
+if (require('./rust-preset-read.cjs').refuseOwned(req, res, {})) return;
+if (await presetReadBridge(req, res)) return;
+if (require('./rust-preset-write.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+if (await presetWriteEffects(req, res)) return;
+JS
+cp "$w/server/index.cjs" "$work/pe-index.saved"
+sed 's/"start-id"/"start-id", "rust-preset-read"/' "$work/feature-lib.saved" > "$work/pe-lib-read.saved"
+sed 's/"start-id"/"start-id", "rust-preset-read", "rust-preset-editor-d2-v1"/' "$work/feature-lib.saved" > "$work/pe-lib-both.saved"
+pe_owner=rust; pe_methods='methods = ["GET", "PUT"]'
+cp "$work/pe-lib-read.saved" "$rz/bins/noevia-server/src/lib.rs"
+pe_try pe-core-only
+check "preset editor refuser rejects an old front" 'refused "preset editor ownership pairing: Core and Rust must move together"'
+cp "$work/pe-lib-both.saved" "$rz/bins/noevia-server/src/lib.rs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const presetReadBridge = require('./rust-preset-read-bridge.cjs').createPresetReadBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-preset-read.cjs').refuseOwned(req, res, {})) return;
+if (await presetReadBridge(req, res)) return;
+JS
+pe_try pe-front-only
+check "preset editor capability rejects an old Core" 'refused "preset editor ownership pairing: Core and Rust must move together"'
+cp "$work/pe-index.saved" "$w/server/index.cjs"
+pe_try pe-pair
+check "matching preset editor pair assembles" '[ $rc -eq 0 ]'
+pe_methods='methods = ["GET"]'; pe_try pe-get-only-row
+check "the editor pair needs GET and PUT in the route table" 'refused "other methods stay Node"'
+pe_methods='methods = ["GET", "PUT", "DELETE"]'; pe_try pe-too-many-methods
+check "the editor pair cannot claim other methods" 'refused "other methods stay Node"'
+pe_methods='methods = ["GET", "PUT"]'
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/preset']));" > "$w/server/rust-preset-write.cjs"
+pe_try pe-all-refuser
+check "the editor refuser cannot claim other methods" 'refused "Core must refuse exactly this PUT"'
+cat > "$w/server/rust-preset-write.cjs" <<'JS'
+/*
+const OWNED_ROUTES = Object.freeze(new Set(['PUT /api/models/preset']));
+*/
+JS
+pe_try pe-comment-marker
+check "the editor marker must be executable code" 'refused "Core must refuse exactly this PUT"'
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['PUT /api/models/preset']));" > "$w/server/rust-preset-write.cjs"
+printf '%s\n' 'const result = await modelManager.applyPreset(await readJson(req));' > "$w/server/routes/models.cjs"
+pe_try pe-old-put
+check "the editor pair rejects Core's public PUT handler" 'refused "still carries the public PUT handler"'
+printf '%s\n' 'module.exports = {};' > "$w/server/routes/models.cjs"
+printf '%s\n' 'presetFacts: model => presets?.get(model) ?? null,' 'async function applyUnlocked(body) {}' '  async function applyPreset(body) {}' > "$w/server/llamacpp-manager.cjs"
+pe_try pe-old-editor
+check "the editor pair rejects Core's editor" 'refused "still carries the preset editor"'
+printf '%s\n' 'presetFacts: model => presets?.get(model) ?? null,' 'async function applyUnlocked(body) {}' '// applyPreset was here' > "$w/server/llamacpp-manager.cjs"
+pe_try pe-comment-editor
+check "a comment about the old editor is not the editor" '[ $rc -eq 0 ]'
+printf '%s\n' 'presetFacts: model => presets?.get(model) ?? null,' > "$w/server/llamacpp-manager.cjs"
+pe_try pe-no-job-writer
+check "the editor pair keeps the job writer" 'refused "the calibration and auto-tune writer is missing"'
+printf '%s\n' 'presetFacts: model => presets?.get(model) ?? null,' 'async function applyUnlocked(body) {}' > "$w/server/llamacpp-manager.cjs"
+rm -f "$w/server/rust-preset-write-effects.cjs"
+pe_try pe-no-effects
+check "the editor pair needs the cache-drop bridge" 'refused "missing cache-drop bridge"'
+touch "$w/server/rust-preset-write-effects.cjs"
+grep -v 'presetWriteEffects(req, res)' "$work/pe-index.saved" > "$w/server/index.cjs"
+pe_try pe-no-mount
+check "the editor pair needs the cache-drop bridge mounted" 'refused "missing cache-drop bridge mount"'
+sed "s|require('./rust-preset-write.cjs').refuseOwned(req, res, { parseRequestUrl, json })|require('./rust-preset-write.cjs')|" "$work/pe-index.saved" > "$w/server/index.cjs"
+pe_try pe-no-refuser-mount
+check "the editor pair needs the refuser mounted" 'refused "missing refuser mount"'
+sed '/createPresetWriteEffects/,+1 s/secret: FRONT_SECRET/secret: null/' "$work/pe-index.saved" > "$w/server/index.cjs"
+pe_try pe-no-secret
+check "the cache-drop bridge needs the captured front secret" 'refused "cache-drop bridge needs the front captured secret"'
+cp "$work/pe-index.saved" "$w/server/index.cjs"
+# The editor without the read pair is no pair.
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+sed 's/"start-id"/"start-id", "rust-preset-editor-d2-v1"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+printf '%s\n' "if (require('./rust-preset-write.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+pe_owner=node; unset pe_methods; pe_try pe-no-read-pair
+check "the editor needs the preset read pair" 'refused "the editor needs the preset read pair"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+unset pe_methods; pe_owner=node; pe_try pe-old-pair
+check "the old pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-preset-read.cjs" "$w/server/rust-preset-write.cjs" "$w/server/rust-preset-write-effects.cjs" "$w/server/rust-preset-read-bridge.cjs"
+for pe_file in llamacpp-manager.cjs routes/models.cjs; do
+  if [ -f "$work/pe-${pe_file##*/}.saved" ]; then
+    cp "$work/pe-${pe_file##*/}.saved" "$w/server/$pe_file"
+  else
+    rm -f "$w/server/$pe_file"
   fi
 done
 # #2293: dismissal policy moves independently of the live autotune worker.

@@ -1281,19 +1281,27 @@ if [ "$mdr_rs" = rust ]; then
     END { exit !ok }
   ' <<<"$mdr_index" || die "model downloads read ownership pairing: facts bridge needs the front captured secret"
 fi
-# Preset GET moves as a pair. PUT keeps the same snapshot owner and conditional writer.
+# Preset GET moves as a pair. Without the editor pair below, PUT keeps the same snapshot owner and conditional writer.
 pr_core=""; pr_rs=""
 grep -qF "require('./rust-preset-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pr_core=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-preset-read features; then pr_rs=rust; fi
 [ "$pr_core" = "$pr_rs" ] || die "preset read ownership pairing: Core and Rust must move together"
+# D2: the preset editor (PUT) is a second pair on top of the read pair: the front's editor (capability
+# rust-preset-editor-d2-v1) and Core's refuser (rust-preset-write.cjs), with Core's editor gone.
+pe_core=""; pe_rs=""
+grep -qF "require('./rust-preset-write.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pe_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-preset-editor-d2-v1 features; then pe_rs=rust; fi
+[ "$pe_core" = "$pe_rs" ] || die "preset editor ownership pairing: Core and Rust must move together"
+[ "$pe_rs" != rust ] || [ "$pr_rs" = rust ] || die "preset editor ownership pairing: the editor needs the preset read pair"
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   pr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || pr_table=""
-  pr_rows="$(printf '%s\n' "$pr_table" | awk -F'\t' -v want="$pr_rs" '
+  pr_rows="$(printf '%s\n' "$pr_table" | awk -F'\t' -v want="$pr_rs" -v editor="$pe_rs" '
     $1 == "/api/models/preset" {
-      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want == "rust" && editor == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET, PUT")) exit 1
+      if (want == "rust" && editor != "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
       if (want != "rust" && $2 != "node") exit 1
       print $1
-    }')" || die "preset read ownership pairing: GET only; PUT and other methods stay Node"
+    }')" || die "preset read ownership pairing: GET only (GET and PUT with the editor); other methods stay Node"
 fi
 if [ "$pr_rs" = rust ]; then
   [ "${pr_rows:-}" = /api/models/preset ] || die "preset read ownership pairing: incomplete route ownership"
@@ -1301,8 +1309,10 @@ if [ "$pr_rs" = rust ]; then
     || die "preset read ownership pairing: Core must refuse exactly this GET"
   ! code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]getPreset[[:space:]]*[(]' \
     || die "preset read ownership pairing: Core still carries the public GET handler"
-  code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]applyPreset[[:space:]]*[(]' \
-    || die "preset read ownership pairing: PUT must stay Node-owned"
+  if [ "$pe_rs" != rust ]; then
+    code_has "$tree/core/server/routes/models.cjs" 'modelManager[.]applyPreset[[:space:]]*[(]' \
+      || die "preset read ownership pairing: PUT must stay Node-owned"
+  fi
   code_has "$tree/core/server/llamacpp-manager.cjs" 'presetFacts:.*presets[?][.]get[(]' \
     || die "preset read ownership pairing: missing shared preset snapshot"
   [ -f "$tree/core/server/rust-preset-read-bridge.cjs" ] || die "preset read ownership pairing: missing facts bridge"
@@ -1314,6 +1324,26 @@ if [ "$pr_rs" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$pr_index" || die "preset read ownership pairing: facts bridge needs the front captured secret"
+fi
+if [ "$pe_rs" = rust ]; then
+  code_has "$tree/core/server/rust-preset-write.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'PUT /api/models/preset'[]][)][)];$" \
+    || die "preset editor ownership pairing: Core must refuse exactly this PUT"
+  ! code_has "$tree/core/server/routes/models.cjs" '(^|[^A-Za-z0-9_])applyPreset([^A-Za-z0-9_]|$)' \
+    || die "preset editor ownership pairing: Core still carries the public PUT handler"
+  ! code_has "$tree/core/server/llamacpp-manager.cjs" '(^|[^A-Za-z0-9_])applyPreset([^A-Za-z0-9_]|$)' \
+    || die "preset editor ownership pairing: Core still carries the preset editor"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'async function applyUnlocked[(]' \
+    || die "preset editor ownership pairing: the calibration and auto-tune writer is missing"
+  [ -f "$tree/core/server/rust-preset-write-effects.cjs" ] || die "preset editor ownership pairing: missing cache-drop bridge"
+  pe_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'presetWriteEffects(req, res)' <<<"$pe_index" || die "preset editor ownership pairing: missing cache-drop bridge mount"
+  grep -qF "require('./rust-preset-write.cjs').refuseOwned(req, res" <<<"$pe_index" || die "preset editor ownership pairing: missing refuser mount"
+  pe_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$pe_index" | head -1)"
+  [ -n "$pe_secret" ] && awk -v c="$pe_secret" '
+    /createPresetWriteEffects\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$pe_index" || die "preset editor ownership pairing: cache-drop bridge needs the front captured secret"
 fi
 # #2293: autotune dismissal policy is native, with only facts and the conditional state writer in Core.
 ac_core_owner=""; ac_rs_owner=""
