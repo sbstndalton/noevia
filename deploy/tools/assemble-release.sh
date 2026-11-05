@@ -1294,7 +1294,7 @@ machines_rs_version() {
       }
       code += c; i++;
     }
-    if (!strs.some(s => s.v.includes("rust-inference-machines"))) out("none");
+    if (!strs.map(s => s.v).join("").includes("rust-inference-machines")) out("none");
     const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
     const decls = [...code.matchAll(head)];
     if (decls.length > 1) out("invalid");

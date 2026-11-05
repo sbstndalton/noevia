@@ -25,6 +25,10 @@ for decl in 'pub(crate) const FEATURES: &[&str] = &["rust-inference-machines"];'
   printf '%s\n' "$decl" > "$work/rs"
   if check_machines_pair "$work/legacy" "$work/rs"; then echo 'accepted unproven native declaration beside legacy Core'; exit 1; fi
 done
+for decl in 'pub const FEATURES: &[&str] = &[concat!("rust-inference-", "machines")];' 'const CAP: &str = concat!("rust-inference-", "machines"); pub const FEATURES: &[&str] = &[CAP];'; do
+  printf '%s\n' "$decl" > "$work/rs"
+  if check_machines_pair "$work/legacy" "$work/rs"; then echo 'accepted a fragmented native marker expression beside legacy Core'; exit 1; fi
+done
 printf '%s\n' "Object.defineProperty(module.exports,'MACHINES_CLIENT_MARKER',{get(){while(true){}}});" > "$work/core"
 [ "$(machines_core_version "$work/core")" = invalid ]
-echo 'machines pairing: 16 cases passed'
+echo 'machines pairing: 18 cases passed'
