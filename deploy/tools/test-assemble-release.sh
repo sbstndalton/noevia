@@ -4394,7 +4394,7 @@ for malformed in absent unknown duplicate comment template invalid; do
     check "auto-roles write: $malformed Core marker refuses with $front front" 'refused "auto-roles write ownership pairing"'
   done
 done
-for malformed in unknown duplicate outside comment raw; do
+for malformed in unknown duplicate outside comment raw bytes raw-bytes concat attribute escaped-duplicate escaped; do
   for core in old new; do
     roles_core_good; roles_rs_good
     if [ "$core" = old ]; then rm -f "$w/server/rust-auto-roles-write.cjs"; cp "$work/feature-index.saved" "$w/server/index.cjs"; fi
@@ -4404,10 +4404,16 @@ for malformed in unknown duplicate outside comment raw; do
       outside) cat "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib"; printf '%s\n' 'const OTHER: &str = "rust-auto-roles-write";' >> "$work/roles-lib" ;;
       comment) cat "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib"; printf '%s\n' '/* "rust-auto-roles-write" */' >> "$work/roles-lib" ;;
       raw) sed 's/"rust-auto-roles-write"/r#"rust-auto-roles-write"#/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      bytes) sed 's/"rust-auto-roles-write"/b"rust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      raw-bytes) sed 's/"rust-auto-roles-write"/br#"rust-auto-roles-write"#/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      concat) sed 's/"rust-auto-roles-write"/concat!("rust-auto-roles-write", "-v2")/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      attribute) sed 's/"rust-auto-roles-write"/#[cfg(feature = "rust-auto-roles-write")] "unrelated"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      escaped-duplicate) sed 's/"rust-auto-roles-write"/"rust-auto-roles-write", "\\x72ust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      escaped) sed 's/"rust-auto-roles-write"/"\\x72ust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
     esac
     cp "$work/roles-lib" "$rz/bins/noevia-server/src/lib.rs"
     close_try "roles-rust-$malformed-$core"
-    if [ "$core" = new ] && [[ "$malformed" =~ ^(outside|comment|raw)$ ]]; then
+    if [ "$core" = new ] && [[ "$malformed" =~ ^(outside|comment|escaped)$ ]]; then
       check "auto-roles write: tokenizer accepts $malformed with the matching Core" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
     else
       check "auto-roles write: $malformed Rust marker refuses with $core Core" 'refused "auto-roles write ownership pairing"'
