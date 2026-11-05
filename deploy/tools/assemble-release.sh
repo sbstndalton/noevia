@@ -439,6 +439,8 @@ core_deletes_via_store() {
 }
 # True when the file has a line of CODE matching the extended regex: comment-only lines (`//` ones and
 # `/* ... */` blocks) never count, so a marker or an op name that only a comment mentions is not one.
+# Status 1 means only "read and scanned, no match" (or no such file); a failed scan is status 2, so a
+# caller that needs a definite "absent" can reject anything other than 1.
 # (The text is captured first: `grep -q` closing the pipe early would fail the pipeline under pipefail.)
 code_has() {
   [ -f "$1" ] || return 1
@@ -449,7 +451,7 @@ code_has() {
     line ~ /^\/\// { next }
     line ~ /^\/\*/ { if (!index(line, "*/")) block = 1; next }
     { print }
-  ' "$1")" || return 1
+  ' "$1")" || return 2
   grep -qE -e "$2" <<<"$code"
 }
 # Slice7: exact canonical declarations + actual shorthand exports, never comment literals.
@@ -1383,6 +1385,31 @@ if [ "$atrm_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
+fi
+# Retention PUT and the hourly sweep share one native writer. Refuse mixed generations.
+retention_core_put=""
+if grep -qF "  [/^\\/api\\/account\\/retention$/, ['GET', 'PUT']]," "$tree/core/server/rust-auth.cjs" 2>/dev/null; then
+  retention_core_put='PUT /api/account/retention'
+fi
+retention_rs_put=""
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # An unreadable table is refused further down with its own #2096 error; read it tolerantly here
+  # (as the auto-tune cancellation block does) so that error, not this one, is what is reported.
+  # With Core moved and the table unreadable, the pairing below still refuses.
+  retention_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || retention_table=""
+  retention_rs_put="$(printf '%s\n' "$retention_table" | awk -F'\t' '
+    $1 == "/api/account/retention" && $2 == "rust" && ($4 == "-" || $4 ~ /(^|,)[ \t]*PUT([ \t]*,|[ \t]*$)/) {print "PUT /api/account/retention"}')"
+fi
+[ "$retention_core_put" = "$retention_rs_put" ] || die "retention PUT ownership pairing: Core and Rust must move together"
+if [ -n "$retention_core_put" ]; then
+  code_has "$tree/core/server/routes/account.cjs" "Retention settings are owned by the Rust front." \
+    || die "retention PUT ownership pairing: Core must refuse the moved writer"
+  if code_has "$tree/core/server/routes/account.cjs" 'retention\.write\('; then
+    die "retention PUT ownership pairing: Core still writes retention settings"
+  else
+    retention_match_status=$?
+    [ "$retention_match_status" -eq 1 ] || die "retention PUT ownership pairing: writer matcher failed"
+  fi
 fi
 # #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
 atc_core_owner=""; atc_rs_owner=""
