@@ -510,7 +510,7 @@ core_source_client() {
 }
 rs_source_store() {
   move_capability "$tree/rs/crates/server-projects/src/source_jobs.rs" SOURCE_JOBS_STORE_MARKER noevia-source-jobs-store/1 rust || return 1
-  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER feature_ref || return 1
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES noevia-source-jobs-store/1 features || return 1
   grep -qxF 'pub mod source_jobs;' "$tree/rs/crates/server-projects/src/lib.rs" || return 1
   grep -qF 'use server_projects::source_jobs as jobs;' "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
   local route
@@ -2575,7 +2575,7 @@ outbox_core_version() {
 }
 # Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
 # literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
-# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# optional attributes followed by one ordinary string literal; aliases, macros, expressions,
 # raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
 # several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
 outbox_rs_version() {
@@ -2699,8 +2699,6 @@ outbox_rs_version() {
         if (gated || !strs[+lit[1]].v.includes("rust-index-outbox")) out("invalid");
         outbox.push(strs[+lit[1]].v); continue;
       }
-      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
-      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
       out("invalid");
     }
     if (!outbox.length) out(strs.some(s => s.v.includes("rust-index-outbox-v")) ? "invalid" : "none");
@@ -2743,7 +2741,7 @@ media_core_version() {
 }
 # Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
 # literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
-# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# optional attributes followed by one ordinary string literal; aliases, macros, expressions,
 # raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
 # several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
 media_rs_version() {
@@ -2867,8 +2865,6 @@ media_rs_version() {
         if (gated || !strs[+lit[1]].v.includes("rust-media-background-v")) out("invalid");
         outbox.push(strs[+lit[1]].v); continue;
       }
-      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
-      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
       out("invalid");
     }
     if (!outbox.length) out(strs.some(s => s.v.includes("rust-media-background-v")) ? "invalid" : "none");
