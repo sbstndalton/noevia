@@ -2863,6 +2863,39 @@ check "old calibration start/read pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-calibration-routes.cjs" "$w/server/rust-calibration-routes-bridge.cjs"
 if [ -f "$work/cr-manager.saved" ]; then cp "$work/cr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 if [ -f "$work/cr-original-actor.saved" ]; then cp "$work/cr-original-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
+# Row T: MCP discovery is native, Core its fail-closed client; the two release together.
+md_try() { try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'); }
+md_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const discovery = require('./mcp-native-discovery.cjs').createNativeDiscovery({ broker: PROJECT_STORE });
+const chatFacts = require('./toolbox-chat-facts.cjs').createChatFactsPublisher({ dataDir: DATA_DIR });
+JS
+}
+md_front() { sed 's/"start-id"/"start-id", "rust-mcp-discovery"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+[ ! -f "$w/server/mcp-wiring.cjs" ] || cp "$w/server/mcp-wiring.cjs" "$work/md-wiring.saved"
+printf 'function createMcpWiring() {}\n' > "$w/server/mcp-wiring.cjs"
+touch "$w/server/mcp-native-discovery.cjs"
+md_core; md_try md-core-only
+check "MCP discovery client cannot pair with an old front" 'refused "MCP discovery ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; md_front
+md_try md-front-only
+check "MCP discovery capability cannot pair with an old Core" 'refused "MCP discovery ownership pairing"'
+md_core; md_try md-pair
+check "matching MCP discovery pair assembles" '[ $rc -eq 0 ]'
+printf 'async function discoverOneServer() {}\n' > "$w/server/mcp-wiring.cjs"; md_try md-core-discovers
+check "a Core that still discovers cannot pair with the native actor" 'refused "Core still discovers"'
+printf 'function createMcpWiring() {}\n' > "$w/server/mcp-wiring.cjs"
+echo "const mcpDiscoveryPublisher = require('./mcp-discovery-snapshot.cjs').createMcpDiscoveryPublisher({});" >> "$w/server/index.cjs"; md_try md-core-publishes
+check "a Core that still publishes a discovery catalogue cannot pair" 'refused "still publishes a discovery catalogue"'
+md_core; touch "$w/server/rust-toolbox-picker-facts.cjs"; md_try md-bridge
+check "the picker facts bridge cannot survive beside the native actor" 'refused "picker facts bridge is gone"'
+rm -f "$w/server/rust-toolbox-picker-facts.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+md_try md-old-pair
+check "an old Core and front still pair for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/mcp-native-discovery.cjs"
+if [ -f "$work/md-wiring.saved" ]; then cp "$work/md-wiring.saved" "$w/server/mcp-wiring.cjs"; else rm -f "$w/server/mcp-wiring.cjs"; fi
 # #2287: settings policy moves independently of the live tune state writer.
 ats_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -4099,6 +4132,18 @@ mcp2_files yes none yes
 printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
 mcp2_try mcp2-pair
 check "the matching MCP directory, permitted tools and connectors pairs assemble with the earlier pairs old/old" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Row T: the same three pairs over the front's own discovery and Core's published toolbox facts (no discovery snapshot).
+mcp2_files no none no
+sed 's/"start-id"/"start-id", "rust-mcp-directory", "rust-toolboxes-permitted", "rust-connectors", "rust-mcp-discovery"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; printf '%s\n' 'pub mod mcp_discovery;' >> "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/mcp-discovery-snapshot.cjs"; touch "$w/server/toolbox-chat-facts.cjs" "$w/server/mcp-native-discovery.cjs"
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" "const discovery = require('./mcp-native-discovery.cjs').createNativeDiscovery({ broker: PROJECT_STORE });" "const chatFacts = require('./toolbox-chat-facts.cjs').createChatFactsPublisher({ dataDir });" >> "$w/server/index.cjs"
+mcp2_try mcp2-native-pair
+check "the matching MCP directory, permitted tools and connectors pairs assemble over the front's own discovery" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+grep -v "createChatFactsPublisher" "$w/server/index.cjs" > "$w/server/index.cjs.tmp" && mv "$w/server/index.cjs.tmp" "$w/server/index.cjs"; mcp2_try mcp2-native-no-facts
+check "a native discovery pair whose Core publishes no toolbox facts is refused" 'refused "must publish the chat process"'
+rm -f "$w/server/toolbox-chat-facts.cjs" "$w/server/mcp-native-discovery.cjs"
+mcp2_files yes none yes
+printf '%s\n' "  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-connectors.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
 # Routes: exactly the front's.
 mcp2_dir="$(mcp2_route /api/admin/mcp-directory rust 'methods = ["GET"]'; for p in /api/admin/mcp-directory/custom /api/admin/mcp-directory/custom/preview '/api/admin/mcp-directory/{*}' '/api/admin/mcp-directory/{*}/keys' '/api/admin/mcp-directory/{id}/oauth-client'; do mcp2_route "$p" rust ''; done)"
 mcp2_try mcp2-dir-get-only

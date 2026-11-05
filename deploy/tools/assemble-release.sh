@@ -1041,6 +1041,22 @@ if [ "$cr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
 fi
+# Row T: MCP tool discovery is native; Core is its fail-closed client and publishes only the chat process's toolbox facts.
+md_core_owner=""; md_rs_owner=""
+grep -qF "require('./mcp-native-discovery.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && md_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-mcp-discovery features; then md_rs_owner=rust; fi
+[ "$md_core_owner" = "$md_rs_owner" ] || die "MCP discovery ownership pairing: Core and Rust must move together"
+if [ "$md_rs_owner" = rust ]; then
+  [ -f "$tree/core/server/mcp-native-discovery.cjs" ] || die "MCP discovery ownership pairing: missing the discovery client"
+  ! code_has "$tree/core/server/mcp-wiring.cjs" '(async[[:space:]]+)?function[[:space:]]+discoverOneServer' \
+    || die "MCP discovery ownership pairing: Core still discovers"
+  code_has "$tree/core/server/index.cjs" 'createChatFactsPublisher' \
+    || die "MCP discovery ownership pairing: Core must publish the chat process's toolbox facts"
+  ! code_has "$tree/core/server/index.cjs" 'createMcpDiscoveryPublisher' \
+    || die "MCP discovery ownership pairing: Core still publishes a discovery catalogue"
+  [ ! -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] \
+    || die "MCP discovery ownership pairing: the picker facts bridge is gone"
+fi
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
 grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust
@@ -1132,15 +1148,21 @@ if [ "$tp_rs_owner" = rust ]; then
     || die "toolbox picker ownership pairing: Core still carries the public handler or status composition"
   ! code_has "$tree/core/server/toolboxes.cjs" 'function toolboxSummaries' \
     || die "toolbox picker ownership pairing: Core still carries picker summary composition"
-  [ -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] || die "toolbox picker ownership pairing: missing raw facts bridge"
-  tp_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'toolboxPickerFacts(req, res)' <<<"$tp_index" || die "toolbox picker ownership pairing: missing facts mount"
-  tp_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tp_index" | head -1)"
-  [ -n "$tp_secret" ] && awk -v c="$tp_secret" '
-    /createToolboxPickerFacts\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
+  if [ "$md_rs_owner" = rust ]; then
+    # Row T: the picker's facts are the front's own discovery plus the chat process's published toolbox facts; the
+    # bridge is gone (the MCP discovery guard above refuses a Core that still carries it).
+    :
+  else
+    [ -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] || die "toolbox picker ownership pairing: missing raw facts bridge"
+    tp_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qF 'toolboxPickerFacts(req, res)' <<<"$tp_index" || die "toolbox picker ownership pairing: missing facts mount"
+    tp_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tp_index" | head -1)"
+    [ -n "$tp_secret" ] && awk -v c="$tp_secret" '
+      /createToolboxPickerFacts\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
+  fi
 fi
 # #2306: only GET status moves; POST start and all other verbs remain Node-owned.
 atr_core_owner=""; atr_rs_owner=""
@@ -1945,12 +1967,19 @@ fi
 # (rust-mcp-directory.cjs, rust-toolboxes-permitted.cjs, rust-connectors.cjs) paired with a front capability of the
 # same name, with exactly the methods the front answers Rust's in routes.toml. Together they make the front the
 # only writer of directory_mcp_servers (Node re-reads it: its directory-mcp.cjs must hold no write of it) and move
-# the last two views onto the discovery snapshot Node publishes (mcp-discovery.json): a pair without the Core half
-# that publishes it, or the front half that reads it, would answer from nothing.
+# the last two views onto the discovery snapshot Node publishes (mcp-discovery.json), or, since row T, onto the front's
+# own discovery and Node's toolbox-chat-facts.json: a pair without the Core half that publishes it, or the front half
+# that reads it, would answer from nothing.
 discovery_pair_ok() {
-  code_has "$tree/core/server/index.cjs" "createMcpDiscoveryPublisher[[:space:]]*\\(" \
-    && [ -f "$tree/core/server/mcp-discovery-snapshot.cjs" ] \
-    && code_has "$tree/rs/bins/noevia-server/src/lib.rs" "pub[[:space:]]+mod[[:space:]]+mcp_discovery"
+  code_has "$tree/rs/bins/noevia-server/src/lib.rs" "pub[[:space:]]+mod[[:space:]]+mcp_discovery" || return 1
+  if [ "$md_rs_owner" = rust ]; then
+    # Row T: the front discovers itself and reads the chat process's toolbox facts.
+    code_has "$tree/core/server/index.cjs" "createChatFactsPublisher[[:space:]]*\\(" \
+      && [ -f "$tree/core/server/toolbox-chat-facts.cjs" ]
+  else
+    code_has "$tree/core/server/index.cjs" "createMcpDiscoveryPublisher[[:space:]]*\\(" \
+      && [ -f "$tree/core/server/mcp-discovery-snapshot.cjs" ]
+  fi
 }
 mcpd_core_owner=""
 mcpd_rs_owner=""
