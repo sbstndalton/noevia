@@ -833,6 +833,8 @@ if [ "$dav_listener_core_owner" = v1 ]; then
     || die "DAV listener ownership pairing: live Node handlers remain"
   code_lines "$tree/rs/bins/noevia-server/src/main.rs" | grep -qF 'dav::start(' \
     || die "DAV listener ownership pairing: native startup hook absent"
+  code_lines "$tree/noevia/build/web-supervisor.sh" | grep -qF rust-dav-listener-v1 \
+    || die "DAV listener ownership pairing: supervisor comparison absent"
 fi
 
 feature_core_owner=""

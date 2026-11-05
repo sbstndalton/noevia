@@ -657,5 +657,18 @@ stop_elapsed=$((SECONDS - stop_started))
 check "stuck front is killed and joined before Core shutdown" '[ $rc -eq 0 ] && grep -q "front stop deadline reached" "$work/err" && ! kill -0 "$front_child" 2>/dev/null && awk "/^front TERM$/ { front=1 } /^node TERM$/ { if (!front) exit 1; node=1 } END { if (!node) exit 1 }" "$work/log"'
 check "Core shutdown hooks finish inside the default Docker stop budget" '[ "$stop_elapsed" -lt 10 ] && grep -q "^node HOOKS-DONE$" "$work/log"'
 
+# Dedicated sharing moves as an independently paired runtime owner.
+printf '%s\n' "const RUST_DAV_LISTENER_OWNED='rust-dav-listener-v1'; module.exports={RUST_DAV_LISTENER_OWNED};" > "$work/server/rust-dav-listener.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "native DAV Core refuses a front without the listener" '[ $rc -eq 2 ] && grep -q "DAV listener ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-dav-listener-v1" COWORK_DAV_PORT=8031 UI_HOST=192.0.2.7 >/dev/null 2>"$work/err"; rc=$?
+check "native DAV pair retains the front bind while keeping Node loopback-only" '[ $rc -eq 3 ] && grep -q "^node UI_HOST=127.0.0.1 UI_PORT=9021 " "$work/log" && grep -q "^front UI_HOST=192.0.2.7 UI_PORT=" "$work/log"'
+rm "$work/server/rust-dav-listener.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-dav-listener-v1" >/dev/null 2>"$work/err"; rc=$?
+check "native DAV front refuses an old Core listener" '[ $rc -eq 2 ] && grep -q "DAV listener ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]

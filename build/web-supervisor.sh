@@ -525,12 +525,11 @@ if ! [[ "$start_id" =~ ^[0-9a-f]{32}$ ]]; then
   exit 2
 fi
 
-# Node binds UI_HOST for the UI listener AND the Diary file-sharing (DAV) listener. With DAV off
-# the legacy port is loopback-only; with DAV on, Node keeps UI_HOST so DAV stays reachable, and
-# the legacy port is then reachable from the container's networks too (never published by
-# Compose; the same exposure Node's UI port has today) until core splits the two bind hosts.
+# A native sharing pair binds DAV in the front using the original environment.
+# Only rollback pairs with the old listener need Node on UI_HOST; the native
+# pair keeps the legacy listener loopback-only even with sharing configured.
 node_host="127.0.0.1"
-if [ -n "${COWORK_DAV_PORT:-}" ] && [ "${COWORK_DAV_PORT}" != 0 ]; then
+if [ "$dav_listener_core" != v1 ] && [ -n "${COWORK_DAV_PORT:-}" ] && [ "${COWORK_DAV_PORT}" != 0 ]; then
   node_host="${UI_HOST:-0.0.0.0}"
   echo "web-supervisor: COWORK_DAV_PORT is set; Node's legacy port $legacy listens on $node_host, not loopback only" >&2
 fi
