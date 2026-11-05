@@ -6,7 +6,7 @@ here="$(cd -- "$(dirname -- "$0")" && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/assemble-release-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 fails=0; passes=0
-check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; fi; }
+check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; { tail -n 2 "$work/err" 2>/dev/null || :; } | sed 's/^/    | /'; fi; }
 g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
@@ -2139,6 +2139,12 @@ ms_owner=rust
 ms_try model-state-old-with-rust-rows
 check "an old pair whose table gives the model state reads to Rust is refused" 'refused "model state read ownership pairing"'
 rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
+# Auto-tune state ownership (noevia-core autotune-state-client.cjs / noevia-rs crates/server-projects
+# autotune_state.rs): the front holds the tune state, Core's actor is its client. The five auto-tune route
+# pairs below need both markers and the actor bridge; the marker tests follow the cancellation pair.
+at_marker_core() { printf '%s\n' "const AUTOTUNE_STATE_CLIENT_MARKER = 'noevia-autotune-state-client/1';" > "$w/server/autotune-state-client.cjs"; }
+at_marker_rs() { mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' > "$rz/crates/server-projects/src/autotune_state.rs"; }
+at_marker_core; at_marker_rs
 # #2306: GET-only status ownership; POST start stays in the same Node route module.
 atr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -2148,20 +2154,20 @@ cat > "$w/server/rust-autotune-read.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/autotune']));
 module.exports = { OWNED_ROUTES };
 JS
-touch "$w/server/rust-autotune-read-bridge.cjs"
+touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atr-manager.saved"
 [ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/atr-models.saved"
-printf '%s\n' 'statusFacts: autotuner.statusFacts,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'statusFacts: autotuner.statusFacts, abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 printf '%s\n' "if (req.method === 'POST') modelManager.autotune.start(model, options);" > "$w/server/routes/models.cjs"
 atr_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
 const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
-const autotuneReadBridge = require('./rust-autotune-read-bridge.cjs').createAutotuneReadBridge({
+const autotuneActorBridge = require('./rust-autotune-actor-bridge.cjs').createAutotuneActorBridge({
   secret: FRONT_SECRET, json, readJson,
 });
 if (require('./rust-autotune-read.cjs').refuseOwned(req, res, {})) return;
-if (await autotuneReadBridge(req, res)) return;
+if (await autotuneActorBridge(req, res)) return;
 JS
 }
 atr_front() { sed 's/"start-id"/"start-id", "rust-autotune-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
@@ -2200,11 +2206,11 @@ cp "$work/atr-live-models.saved" "$w/server/routes/models.cjs"
 cp "$w/server/llamacpp-manager.cjs" "$work/atr-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; atr_try atr-no-facts
 check "native status pair needs the raw state getter" 'refused "raw status facts"'
 cp "$work/atr-live-manager.saved" "$w/server/llamacpp-manager.cjs"
-mv "$w/server/rust-autotune-read-bridge.cjs" "$work/atr-bridge.saved"; atr_try atr-no-bridge
+mv "$w/server/rust-autotune-actor-bridge.cjs" "$work/atr-bridge.saved"; atr_try atr-no-bridge
 check "native status pair needs its facts bridge" 'refused "missing facts bridge"'
-mv "$work/atr-bridge.saved" "$w/server/rust-autotune-read-bridge.cjs"
+mv "$work/atr-bridge.saved" "$w/server/rust-autotune-actor-bridge.cjs"
 cp "$w/server/index.cjs" "$work/atr-index.saved"
-sed '/await autotuneReadBridge(req, res)/d' "$work/atr-index.saved" > "$w/server/index.cjs"; atr_try atr-no-mount
+sed '/await autotuneActorBridge(req, res)/d' "$work/atr-index.saved" > "$w/server/index.cjs"; atr_try atr-no-mount
 check "native status pair needs a bridge mount" 'refused "missing facts bridge mount"'
 sed 's/secret: FRONT_SECRET/secret: null/' "$work/atr-index.saved" > "$w/server/index.cjs"; atr_try atr-no-secret
 check "native status facts need the captured front secret" 'refused "front captured secret"'
@@ -2213,7 +2219,7 @@ atr_try atr-old-rust-rows
 check "old status pair rejects a Rust-owned GET row" 'refused "auto-tune read ownership pairing"'
 atr_owner=node; unset atr_methods; atr_try atr-old-pair
 check "old full-Node autotune pair stays valid for rollback" '[ $rc -eq 0 ]'
-rm -f "$w/server/rust-autotune-read.cjs" "$w/server/rust-autotune-read-bridge.cjs"
+rm -f "$w/server/rust-autotune-read.cjs" "$w/server/rust-autotune-actor-bridge.cjs"
 if [ -f "$work/atr-manager.saved" ]; then cp "$work/atr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 if [ -f "$work/atr-models.saved" ]; then cp "$work/atr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
 # #1863: only the idle unload GET moves.
@@ -2432,18 +2438,18 @@ cat > "$w/server/rust-autotune-clear.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/clear']));
 module.exports = { OWNED_ROUTES };
 JS
-touch "$w/server/rust-autotune-clear-bridge.cjs"
+touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/ac-manager.saved"
-printf '%s\n' 'clearFacts: autotuner.clearFacts, compareAndClear: autotuner.compareAndClear,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 ac_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
 const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
-const autotuneClearBridge = require('./rust-autotune-clear-bridge.cjs').createAutotuneClearBridge({
+const autotuneActorBridge = require('./rust-autotune-actor-bridge.cjs').createAutotuneActorBridge({
   secret: FRONT_SECRET, json, readJson,
 });
 if (require('./rust-autotune-clear.cjs').refuseOwned(req, res, {})) return;
-if (await autotuneClearBridge(req, res)) return;
+if (await autotuneActorBridge(req, res)) return;
 JS
 }
 ac_front() { sed 's/"start-id"/"start-id", "rust-autotune-clear"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
@@ -2496,11 +2502,11 @@ if [ -f "$work/ac-actor.saved" ]; then cp "$work/ac-actor.saved" "$w/server/llam
 cp "$w/server/llamacpp-manager.cjs" "$work/ac-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; ac_try ac-no-primitives
 check "native dismissal pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
 cp "$work/ac-live-manager.saved" "$w/server/llamacpp-manager.cjs"
-mv "$w/server/rust-autotune-clear-bridge.cjs" "$work/ac-bridge.saved"; ac_try ac-no-bridge
+mv "$w/server/rust-autotune-actor-bridge.cjs" "$work/ac-bridge.saved"; ac_try ac-no-bridge
 check "native dismissal pair requires actor state bridge" 'refused "missing state bridge"'
-mv "$work/ac-bridge.saved" "$w/server/rust-autotune-clear-bridge.cjs"
+mv "$work/ac-bridge.saved" "$w/server/rust-autotune-actor-bridge.cjs"
 cp "$w/server/index.cjs" "$work/ac-index.saved"
-sed '/await autotuneClearBridge(req, res)/d' "$work/ac-index.saved" > "$w/server/index.cjs"; ac_try ac-no-mount
+sed '/await autotuneActorBridge(req, res)/d' "$work/ac-index.saved" > "$w/server/index.cjs"; ac_try ac-no-mount
 check "native dismissal pair requires bridge mount" 'refused "missing state bridge mount"'
 sed 's/secret: FRONT_SECRET/secret: null/' "$work/ac-index.saved" > "$w/server/index.cjs"; ac_try ac-no-secret
 check "native dismissal pair requires captured bridge secret" 'refused "front captured secret"'
@@ -2509,7 +2515,7 @@ ac_try ac-old-rust-rows
 check "old dismissal pair rejects Rust ownership" 'refused "autotune dismissal ownership pairing"'
 ac_owner=node; ac_try ac-old-pair
 check "old autotune dismissal pair stays valid for rollback" '[ $rc -eq 0 ]'
-rm -f "$w/server/rust-autotune-clear.cjs" "$w/server/rust-autotune-clear-bridge.cjs"
+rm -f "$w/server/rust-autotune-clear.cjs" "$w/server/rust-autotune-actor-bridge.cjs"
 if [ -f "$work/ac-manager.saved" ]; then cp "$work/ac-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # #2304: exact GET folder scan paired with the one shared cache owner.
 mm_scan_try() {
@@ -2592,18 +2598,18 @@ cat > "$w/server/rust-autotune-resume.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/resume']));
 module.exports = { OWNED_ROUTES };
 JS
-touch "$w/server/rust-autotune-resume-bridge.cjs"
+touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atrm-manager.saved"
-printf '%s\n' 'resumeFacts: autotuner.resumeFacts, prepareResume: autotuner.prepareResume, compareAndResume: autotuner.compareAndResume,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 atrm_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
 const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
-const autotuneResumeBridge = require('./rust-autotune-resume-bridge.cjs').createAutotuneResumeBridge({
+const autotuneActorBridge = require('./rust-autotune-actor-bridge.cjs').createAutotuneActorBridge({
   secret: FRONT_SECRET, json, readJson,
 });
 if (require('./rust-autotune-resume.cjs').refuseOwned(req, res, {})) return;
-if (await autotuneResumeBridge(req, res)) return;
+if (await autotuneActorBridge(req, res)) return;
 JS
 }
 atrm_front() { sed 's/"start-id"/"start-id", "rust-autotune-resume"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
@@ -2651,11 +2657,11 @@ if [ -f "$work/atrm-actor.saved" ]; then cp "$work/atrm-actor.saved" "$w/server/
 cp "$w/server/llamacpp-manager.cjs" "$work/atrm-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; atrm_try atrm-no-primitives
 check "native resume pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
 cp "$work/atrm-live-manager.saved" "$w/server/llamacpp-manager.cjs"
-mv "$w/server/rust-autotune-resume-bridge.cjs" "$work/atrm-bridge.saved"; atrm_try atrm-no-bridge
+mv "$w/server/rust-autotune-actor-bridge.cjs" "$work/atrm-bridge.saved"; atrm_try atrm-no-bridge
 check "native resume pair requires actor state bridge" 'refused "missing state bridge"'
-mv "$work/atrm-bridge.saved" "$w/server/rust-autotune-resume-bridge.cjs"
+mv "$work/atrm-bridge.saved" "$w/server/rust-autotune-actor-bridge.cjs"
 cp "$w/server/index.cjs" "$work/atrm-index.saved"
-sed '/await autotuneResumeBridge(req, res)/d' "$work/atrm-index.saved" > "$w/server/index.cjs"; atrm_try atrm-no-mount
+sed '/await autotuneActorBridge(req, res)/d' "$work/atrm-index.saved" > "$w/server/index.cjs"; atrm_try atrm-no-mount
 check "native resume pair requires bridge mount" 'refused "missing state bridge mount"'
 sed 's/secret: FRONT_SECRET/secret: null/' "$work/atrm-index.saved" > "$w/server/index.cjs"; atrm_try atrm-no-secret
 check "native resume pair requires captured bridge secret" 'refused "front captured secret"'
@@ -2664,7 +2670,7 @@ atrm_try atrm-old-rust-rows
 check "old resume pair rejects Rust ownership" 'refused "auto-tune resume ownership pairing"'
 atrm_owner=node; atrm_try atrm-old-pair
 check "old auto-tune resume pair stays valid for rollback" '[ $rc -eq 0 ]'
-rm -f "$w/server/rust-autotune-resume.cjs" "$w/server/rust-autotune-resume-bridge.cjs"
+rm -f "$w/server/rust-autotune-resume.cjs" "$w/server/rust-autotune-actor-bridge.cjs"
 if [ -f "$work/atrm-manager.saved" ]; then cp "$work/atrm-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # #2292: cancellation policy moves independently of the live calibration worker.
 cc_try() {
@@ -2872,18 +2878,18 @@ cat > "$w/server/rust-autotune-settings.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/settings']));
 module.exports = { OWNED_ROUTES };
 JS
-touch "$w/server/rust-autotune-settings-bridge.cjs"
+touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/ats-manager.saved"
-printf '%s\n' 'settingsFacts: autotuner.settingsFacts, commitSettings: autotuner.commitSettings,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 ats_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
 const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
-const autotuneSettingsBridge = require('./rust-autotune-settings-bridge.cjs').createAutotuneSettingsBridge({
+const autotuneActorBridge = require('./rust-autotune-actor-bridge.cjs').createAutotuneActorBridge({
   secret: FRONT_SECRET, json, readJson,
 });
 if (require('./rust-autotune-settings.cjs').refuseOwned(req, res, {})) return;
-if (await autotuneSettingsBridge(req, res)) return;
+if (await autotuneActorBridge(req, res)) return;
 JS
 }
 ats_front() { sed 's/"start-id"/"start-id", "rust-autotune-settings"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
@@ -2931,11 +2937,11 @@ if [ -f "$work/ats-actor.saved" ]; then cp "$work/ats-actor.saved" "$w/server/ll
 cp "$w/server/llamacpp-manager.cjs" "$work/ats-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; ats_try ats-no-primitives
 check "native settings pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
 cp "$work/ats-live-manager.saved" "$w/server/llamacpp-manager.cjs"
-mv "$w/server/rust-autotune-settings-bridge.cjs" "$work/ats-bridge.saved"; ats_try ats-no-bridge
+mv "$w/server/rust-autotune-actor-bridge.cjs" "$work/ats-bridge.saved"; ats_try ats-no-bridge
 check "native settings pair requires actor state bridge" 'refused "missing state bridge"'
-mv "$work/ats-bridge.saved" "$w/server/rust-autotune-settings-bridge.cjs"
+mv "$work/ats-bridge.saved" "$w/server/rust-autotune-actor-bridge.cjs"
 cp "$w/server/index.cjs" "$work/ats-index.saved"
-sed '/await autotuneSettingsBridge(req, res)/d' "$work/ats-index.saved" > "$w/server/index.cjs"; ats_try ats-no-mount
+sed '/await autotuneActorBridge(req, res)/d' "$work/ats-index.saved" > "$w/server/index.cjs"; ats_try ats-no-mount
 check "native settings pair requires bridge mount" 'refused "missing state bridge mount"'
 sed 's/secret: FRONT_SECRET/secret: null/' "$work/ats-index.saved" > "$w/server/index.cjs"; ats_try ats-no-secret
 check "native settings pair requires captured bridge secret" 'refused "front captured secret"'
@@ -2944,7 +2950,7 @@ ats_try ats-old-rust-rows
 check "old settings pair rejects Rust ownership" 'refused "auto-tune settings ownership pairing"'
 ats_owner=node; ats_try ats-old-pair
 check "old auto-tune settings pair stays valid for rollback" '[ $rc -eq 0 ]'
-rm -f "$w/server/rust-autotune-settings.cjs" "$w/server/rust-autotune-settings-bridge.cjs"
+rm -f "$w/server/rust-autotune-settings.cjs" "$w/server/rust-autotune-actor-bridge.cjs"
 if [ -f "$work/ats-manager.saved" ]; then cp "$work/ats-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 # #2294: cancellation policy moves independently of the live auto-tune worker.
 atc_try() {
@@ -2955,18 +2961,18 @@ cat > "$w/server/rust-autotune-cancel.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/autotune/cancel']));
 module.exports = { OWNED_ROUTES };
 JS
-touch "$w/server/rust-autotune-cancel-bridge.cjs"
+touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atc-manager.saved"
-printf '%s\n' 'cancellationFacts: autotuner.cancellationFacts, compareAndAbort: autotuner.compareAndAbort,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 atc_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
 const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
-const autotuneCancelBridge = require('./rust-autotune-cancel-bridge.cjs').createAutotuneCancelBridge({
+const autotuneActorBridge = require('./rust-autotune-actor-bridge.cjs').createAutotuneActorBridge({
   secret: FRONT_SECRET, json, readJson,
 });
 if (require('./rust-autotune-cancel.cjs').refuseOwned(req, res, {})) return;
-if (await autotuneCancelBridge(req, res)) return;
+if (await autotuneActorBridge(req, res)) return;
 JS
 }
 atc_front() { sed 's/"start-id"/"start-id", "rust-autotune-cancel"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
@@ -3014,11 +3020,11 @@ if [ -f "$work/atc-actor.saved" ]; then cp "$work/atc-actor.saved" "$w/server/ll
 cp "$w/server/llamacpp-manager.cjs" "$work/atc-live-manager.saved"; printf 'module.exports = {};\n' > "$w/server/llamacpp-manager.cjs"; atc_try atc-no-primitives
 check "native cancellation pair requires the live single-writer primitives" 'refused "Core does not expose the live actor primitives"'
 cp "$work/atc-live-manager.saved" "$w/server/llamacpp-manager.cjs"
-mv "$w/server/rust-autotune-cancel-bridge.cjs" "$work/atc-bridge.saved"; atc_try atc-no-bridge
+mv "$w/server/rust-autotune-actor-bridge.cjs" "$work/atc-bridge.saved"; atc_try atc-no-bridge
 check "native cancellation pair requires actor state bridge" 'refused "missing state bridge"'
-mv "$work/atc-bridge.saved" "$w/server/rust-autotune-cancel-bridge.cjs"
+mv "$work/atc-bridge.saved" "$w/server/rust-autotune-actor-bridge.cjs"
 cp "$w/server/index.cjs" "$work/atc-index.saved"
-sed '/await autotuneCancelBridge(req, res)/d' "$work/atc-index.saved" > "$w/server/index.cjs"; atc_try atc-no-mount
+sed '/await autotuneActorBridge(req, res)/d' "$work/atc-index.saved" > "$w/server/index.cjs"; atc_try atc-no-mount
 check "native cancellation pair requires bridge mount" 'refused "missing state bridge mount"'
 sed 's/secret: FRONT_SECRET/secret: null/' "$work/atc-index.saved" > "$w/server/index.cjs"; atc_try atc-no-secret
 check "native cancellation pair requires captured bridge secret" 'refused "front captured secret"'
@@ -3027,8 +3033,29 @@ atc_try atc-old-rust-rows
 check "old cancellation pair rejects Rust ownership" 'refused "auto-tune cancellation ownership pairing"'
 atc_owner=node; atc_try atc-old-pair
 check "old auto-tune cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
-rm -f "$w/server/rust-autotune-cancel.cjs" "$w/server/rust-autotune-cancel-bridge.cjs"
+rm -f "$w/server/rust-autotune-cancel.cjs" "$w/server/rust-autotune-actor-bridge.cjs"
 if [ -f "$work/atc-manager.saved" ]; then cp "$work/atc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# Auto-tune state markers: Core's client and the front's store pair exactly; a marker only a comment (or a
+# non-literal) mentions is not one; the old pair (neither side) stays valid for rollback.
+atm_try() { try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'); }
+atm_try atm-pair
+check "a Core whose actor is the front's state client assembles with the front that serves the store" '[ $rc -eq 0 ]'
+rm -f "$w/server/autotune-state-client.cjs"; atm_try atm-store-only
+check "a front that serves the auto-tune state store cannot pair with a Core that still owns the state" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
+at_marker_core; rm -f "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-client-only
+check "a Core whose actor is a state client cannot pair with a front that does not serve the store" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
+rm -f "$w/server/autotune-state-client.cjs"; atm_try atm-legacy
+check "legacy Core and legacy front (neither side) stay a valid rollback pair" '[ $rc -eq 0 ]'
+at_marker_core; printf '%s\n' '// pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' '/* "noevia-autotune-state-store/1" */' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-comment
+check "a store marker only a comment mentions is not a marker" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
+printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = concat!("noevia-autotune-state-", "store/1");' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-concat
+check "a store marker assembled by a macro is not a literal marker" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
+printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-version
+check "a store of another marker version does not pair" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
+at_marker_rs; printf '%s\n' "// 'noevia-autotune-state-client/1'" > "$w/server/autotune-state-client.cjs"; atm_try atm-core-comment
+check "a client marker only a comment mentions is not a marker" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
+at_marker_core; atm_try atm-restored
+check "restoring both markers assembles again" '[ $rc -eq 0 ]'
 # #2295: discovery policy moves independently of the live autotune worker.
 au_scan_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';

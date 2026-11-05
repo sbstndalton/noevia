@@ -1041,6 +1041,37 @@ if [ "$cr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
 fi
+# Auto-tune state ownership (noevia-rs crates/server-projects autotune_state.rs; noevia-core
+# autotune-state-client.cjs): the front is the only writer of the tune state file, Core's actor is its fenced
+# client and keeps only the effects and facts the front cannot have (rust-autotune-actor-bridge.cjs). Explicit
+# markers in code lines (never a comment, never a source shape) pair the two; the five public auto-tune routes
+# below all depend on it. $1 prefixes the refusal, $2 names the bridge in the messages.
+autotune_state_pairing() {
+  local prefix=$1 noun=$2 index secret
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'abort: autotuner[.]abort' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'launch: autotuner[.]launch' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'outsideFacts: autotuner[.]outsideFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'listingFacts: autotuner[.]listingFacts' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'identityFacts: autotuner[.]identityFacts' \
+    || die "$prefix: Core does not expose the live actor primitives"
+  code_has "$tree/core/server/autotune-state-client.cjs" "'noevia-autotune-state-client/1'" \
+    || die "$prefix: Core does not carry the auto-tune state client marker"
+  code_has "$tree/rs/crates/server-projects/src/autotune_state.rs" '"noevia-autotune-state-store/1"' \
+    || die "$prefix: Rust does not serve the auto-tune state store"
+  [ -f "$tree/core/server/rust-autotune-actor-bridge.cjs" ] || die "$prefix: missing $noun bridge"
+  index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneActorBridge(req, res)' <<<"$index" || die "$prefix: missing $noun bridge mount"
+  secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$index" | head -1)"
+  [ -n "$secret" ] && awk -v c="$secret" '
+    /createAutotuneActorBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$index" || die "$prefix: $noun bridge needs the front captured secret"
+}
+at_state_core=""; at_state_rs=""
+code_has "$tree/core/server/autotune-state-client.cjs" "'noevia-autotune-state-client/1'" && at_state_core=present
+code_has "$tree/rs/crates/server-projects/src/autotune_state.rs" '"noevia-autotune-state-store/1"' && at_state_rs=present
+[ "$at_state_core" = "$at_state_rs" ] || die "auto-tune state ownership pairing: Core and Rust must move together (Core client: ${at_state_core:-absent}; Rust store: ${at_state_rs:-absent})"
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
 grep -qF "require('./rust-autotune-settings.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ats_core_owner=rust
@@ -1063,18 +1094,7 @@ if [ "$ats_rs_owner" = rust ]; then
     || die "auto-tune settings ownership pairing: Core still carries the public handler"
   ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function setSettings' \
     || die "auto-tune settings ownership pairing: Core still carries the public settings policy"
-  code_has "$tree/core/server/llamacpp-manager.cjs" 'settingsFacts: autotuner.settingsFacts' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'commitSettings: autotuner.commitSettings' \
-    || die "auto-tune settings ownership pairing: Core does not expose the live actor primitives"
-  [ -f "$tree/core/server/rust-autotune-settings-bridge.cjs" ] || die "auto-tune settings ownership pairing: missing state bridge"
-  ats_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'autotuneSettingsBridge(req, res)' <<<"$ats_index" || die "auto-tune settings ownership pairing: missing state bridge mount"
-  ats_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ats_index" | head -1)"
-  [ -n "$ats_secret" ] && awk -v c="$ats_secret" '
-    /createAutotuneSettingsBridge\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$ats_index" || die "auto-tune settings ownership pairing: state bridge needs the front captured secret"
+  autotune_state_pairing "auto-tune settings ownership pairing" state
 fi
 # Approval decisions (#2282): Rust owns public policy; Core keeps only the trusted pending-Promise bridge.
 ta_core_owner=""
@@ -1168,15 +1188,7 @@ if [ "$atr_rs_owner" = rust ]; then
     || die "auto-tune read ownership pairing: POST start must stay Node-owned"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'statusFacts: autotuner.statusFacts' \
     || die "auto-tune read ownership pairing: Core does not expose raw status facts"
-  [ -f "$tree/core/server/rust-autotune-read-bridge.cjs" ] || die "auto-tune read ownership pairing: missing facts bridge"
-  atr_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'autotuneReadBridge(req, res)' <<<"$atr_index" || die "auto-tune read ownership pairing: missing facts bridge mount"
-  atr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atr_index" | head -1)"
-  [ -n "$atr_secret" ] && awk -v c="$atr_secret" '
-    /createAutotuneReadBridge\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$atr_index" || die "auto-tune read ownership pairing: facts bridge needs the front captured secret"
+  autotune_state_pairing "auto-tune read ownership pairing" facts
 fi
 # #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
 iur_core_owner=""; iur_rs_owner=""
@@ -1337,18 +1349,7 @@ if [ "$ac_rs_owner" = rust ]; then
     || die "autotune dismissal ownership pairing: Core still carries the public handler"
   ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^A-Za-z0-9_$])function[[:space:]]+clear[[:space:]]*\(' \
     || die "autotune dismissal ownership pairing: Core still carries the public dismissal policy"
-  code_has "$tree/core/server/llamacpp-manager.cjs" 'clearFacts: autotuner.clearFacts' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndClear: autotuner.compareAndClear' \
-    || die "autotune dismissal ownership pairing: Core does not expose the live actor primitives"
-  [ -f "$tree/core/server/rust-autotune-clear-bridge.cjs" ] || die "autotune dismissal ownership pairing: missing state bridge"
-  ac_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'autotuneClearBridge(req, res)' <<<"$ac_index" || die "autotune dismissal ownership pairing: missing state bridge mount"
-  ac_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ac_index" | head -1)"
-  [ -n "$ac_secret" ] && awk -v c="$ac_secret" '
-    /createAutotuneClearBridge\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$ac_index" || die "autotune dismissal ownership pairing: state bridge needs the front captured secret"
+  autotune_state_pairing "autotune dismissal ownership pairing" state
 fi
 # #2301: resume policy is native; Core retains staged metadata/reload preparation and conditional launch.
 atrm_core_owner=""; atrm_rs_owner=""
@@ -1372,19 +1373,7 @@ if [ "$atrm_rs_owner" = rust ]; then
     || die "auto-tune resume ownership pairing: Core still carries the public handler"
   ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" '(^|[^[:alnum:]_$])function[[:space:]]+resume[[:space:]]*[(]' \
     || die "auto-tune resume ownership pairing: Core still carries the public resume policy"
-  code_has "$tree/core/server/llamacpp-manager.cjs" 'resumeFacts: autotuner.resumeFacts' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'prepareResume: autotuner.prepareResume' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndResume: autotuner.compareAndResume' \
-    || die "auto-tune resume ownership pairing: Core does not expose the live actor primitives"
-  [ -f "$tree/core/server/rust-autotune-resume-bridge.cjs" ] || die "auto-tune resume ownership pairing: missing state bridge"
-  atrm_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'autotuneResumeBridge(req, res)' <<<"$atrm_index" || die "auto-tune resume ownership pairing: missing state bridge mount"
-  atrm_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atrm_index" | head -1)"
-  [ -n "$atrm_secret" ] && awk -v c="$atrm_secret" '
-    /createAutotuneResumeBridge\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
+  autotune_state_pairing "auto-tune resume ownership pairing" state
 fi
 # Retention PUT and the hourly sweep share one native writer. Refuse mixed generations.
 retention_core_put=""
@@ -1433,18 +1422,7 @@ if [ "$atc_rs_owner" = rust ]; then
     || die "auto-tune cancellation ownership pairing: Core still carries the public handler"
   ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'function cancel()' \
     || die "auto-tune cancellation ownership pairing: Core still carries the public cancellation policy"
-  code_has "$tree/core/server/llamacpp-manager.cjs" 'cancellationFacts: autotuner.cancellationFacts' \
-    && code_has "$tree/core/server/llamacpp-manager.cjs" 'compareAndAbort: autotuner.compareAndAbort' \
-    || die "auto-tune cancellation ownership pairing: Core does not expose the live actor primitives"
-  [ -f "$tree/core/server/rust-autotune-cancel-bridge.cjs" ] || die "auto-tune cancellation ownership pairing: missing state bridge"
-  atc_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'autotuneCancelBridge(req, res)' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: missing state bridge mount"
-  atc_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$atc_index" | head -1)"
-  [ -n "$atc_secret" ] && awk -v c="$atc_secret" '
-    /createAutotuneCancelBridge\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: state bridge needs the front captured secret"
+  autotune_state_pairing "auto-tune cancellation ownership pairing" state
 fi
 # #2295: untuned discovery policy is native, with only facts and the conditional state writer in Core.
 au_scan_core_owner=""; au_scan_rs_owner=""
