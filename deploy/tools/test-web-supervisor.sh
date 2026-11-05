@@ -452,18 +452,47 @@ check "host-lock front with an in-process-lock Core refuses before launch" '[ $r
 # both directions and independently of the other (one group may roll back alone).
 for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration-routes.cjs rust-calibration-routes calibration start/read" "rust-idle-unload-read.cjs rust-idle-unload-read idle unload read" "rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read" "rust-autotune-resume.cjs rust-autotune-resume auto-tune resume" "rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation" "rust-autotune-read.cjs rust-autotune-read auto-tune status GET" "rust-tool-approvals.cjs rust-tool-approvals tool approval decision" "rust-approval-registry.cjs rust-approval-registry approval registry" "rust-public-pages.cjs rust-public-pages public page" "rust-task-reads.cjs rust-task-reads task read" "rust-autotune-settings.cjs rust-autotune-settings auto-tune settings" "rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation" "rust-autotune-clear.cjs rust-autotune-clear autotune dismissal" "rust-model-state-reads.cjs rust-model-state-reads model state read" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list" "rust-providers.cjs rust-providers provider registry" "rust-providers-reseal.cjs rust-providers-reseal provider key reseal" "rust-google-drive.cjs rust-google-drive Google Drive" "rust-offsite-backup.cjs rust-offsite-backup off-site backup" "rust-mcp-credentials.cjs rust-mcp-credentials MCP credential" "rust-health.cjs rust-health health check" "rust-auto-roles.cjs rust-auto-roles auto-roles read" "rust-workspace.cjs rust-workspace workspace list" "rust-diary-routes.cjs rust-diary-routes Diary connector and recovery" "rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange" "rust-mcp-directory.cjs rust-mcp-directory MCP directory" "rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker" "rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools" "rust-connectors.cjs rust-connectors connectors" "rust-project-config.cjs rust-project-config project configuration" "rust-admin-users.cjs rust-admin-users account deletion" "rust-research.cjs rust-research deep research" "rust-chat-search.cjs rust-chat-search chat search" "rust-chat-export.cjs rust-chat-export chat download" "rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery" "rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck" "rust-model-assignments.cjs rust-model-assignments model assignments read" "rust-model-downloads-read.cjs rust-model-downloads-read model download GET"; do
   read -r p_marker p_cap p_label <<<"$pair"
+  # The registry pair speaks its grant protocol on both sides (checked on its own below).
+  p_extra=""
+  if [ "$p_cap" = rust-approval-registry ]; then
+    p_extra=registry-redeem-v2
+    printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" > "$work/server/rust-approval-registry.cjs"
+  fi
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
   run >/dev/null 2>"$work/err"; rc=$?
   check "$p_label: refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
   reset; touch "$work/die-front"
-  run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
+  run STUB_FEATURES="$BASE_FEATURES $p_cap $p_extra" >/dev/null 2>"$work/err"; rc=$?
   check "$p_label: matching native pair starts both processes (the other group old/old)" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
   rm "$work/server/index.cjs"
   reset
   run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
   check "$p_label: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+  rm -f "$work/server/rust-approval-registry.cjs"
 done
+# Re-review 689d17a P1-2: the registry's grant protocol, in both directions. Both sides keep the
+# registry; only the protocol differs.
+proto_try() { # core v2|old, front v2|old
+  printf '%s\n' "  if (require('./rust-approval-registry.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
+  if [ "$1" = v2 ]; then printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" > "$work/server/rust-approval-registry.cjs"
+  else printf '%s\n' "module.exports = {};" > "$work/server/rust-approval-registry.cjs"; fi
+  local extra=""; [ "$2" = v2 ] && extra=registry-redeem-v2
+  reset; touch "$work/die-front"
+  run STUB_FEATURES="$BASE_FEATURES rust-approval-registry $extra" >/dev/null 2>"$work/err"; rc=$?
+}
+proto_try v2 old
+check "a ticket-redeeming Core with a front from before tickets refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
+proto_try old v2
+check "a Core from before tickets with a ticketing front refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
+proto_try old old
+check "a native registry without the redeem protocol on either side refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
+proto_try v2 v2
+check "the redeem protocol pair starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm -f "$work/server/index.cjs" "$work/server/rust-approval-registry.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES registry-redeem-v2" >/dev/null 2>"$work/err"; rc=$?
+check "a ticketing front with an old Core (no registry) refuses before launch" '[ $rc -eq 2 ] && grep -q "approval registry protocol mismatch" "$work/err" && [ ! -s "$work/log" ]'
 printf '%s\n' "  if (require('./rust-public-pages.cjs').refuseOwned(req, res, {})) return;" "  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, {})) return;" > "$work/server/index.cjs"
 reset; touch "$work/die-front"
 run STUB_FEATURES="$BASE_FEATURES rust-public-pages rust-plugin-directory" >/dev/null 2>"$work/err"; rc=$?

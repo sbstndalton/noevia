@@ -299,6 +299,19 @@ rust-approval-registry.cjs rust-approval-registry approval registry
 rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS
+# The approval registry's grant protocol (re-reviews 1ed3a14/689d17a): single-use tickets redeemed at
+# dispatch, fenced against every revocation. Core names it in server/rust-approval-registry.cjs, the
+# front advertises registry-redeem-v2. A Core from before tickets would read a ticketed grant as plain
+# approval, and a new Core cannot redeem at an old front, so the two must agree, and a native registry
+# needs the protocol.
+proto_core=""
+proto_front=""
+grep -qxF "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" "$PWD/server/rust-approval-registry.cjs" 2>/dev/null && proto_core=v2
+grep -qx 'registry-redeem-v2' <<<"$rust_features" && proto_front=v2
+if [ "$proto_core" != "$proto_front" ] || { grep -qx 'rust-approval-registry' <<<"$rust_features" && [ "$proto_front" != v2 ]; }; then
+  echo "web-supervisor: approval registry protocol mismatch between noevia-server and noevia-core (both need registry-redeem-v2); update the paired image" >&2
+  exit 2
+fi
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
 # that answers them (rust-model-sizing), and a rust-model-sizing front needs that Core. Old/old images

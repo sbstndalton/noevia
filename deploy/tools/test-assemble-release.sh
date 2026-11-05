@@ -1978,16 +1978,29 @@ const { openApproval } = require('./rust-approval-registry.cjs').createApprovalR
 });
 if (require('./rust-tool-approvals.cjs').refuseOwned(req, res, {})) return;
 JS
-  printf '%s\n' 'module.exports = { createApprovalRegistry() {} };' > "$w/server/rust-approval-registry.cjs"
+  printf '%s\n' "const REGISTRY_PROTOCOL = 'registry-redeem-v2';" 'module.exports = { createApprovalRegistry() {} };' > "$w/server/rust-approval-registry.cjs"
   cp "$work/ar-chat.saved" "$w/server/chat.cjs"
   printf '%s\n' '  chatWideApproved, awaitApproval, openApproval = async () => true,' >> "$w/server/chat.cjs"
   rm -f "$w/server/rust-tool-approval-bridge.cjs"
 }
-ar_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ar_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry", "registry-redeem-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ar_front_old() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ar_core_old() { ar_core; printf '%s\n' 'module.exports = { createApprovalRegistry() {} };' > "$w/server/rust-approval-registry.cjs"; }
 ta_owner=rust
 ar_core; ar_front
 ta_try registry-pair
 check "the approval registry pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Re-review 689d17a P1-2: the grant protocol, both directions.
+ar_core; ar_front_old
+ta_try registry-v2-core-old-front
+check "a ticket-redeeming Core refuses a front from before tickets" 'refused "approval registry protocol pairing: Core and Rust must both speak registry-redeem-v2"'
+ar_core_old; ar_front
+ta_try registry-old-core-v2-front
+check "a ticketing front refuses a Core from before tickets" 'refused "approval registry protocol pairing: Core and Rust must both speak registry-redeem-v2"'
+ar_core_old; ar_front_old
+ta_try registry-without-protocol
+check "a registry pair without the redeem protocol is refused" 'refused "the registry needs registry-redeem-v2"'
+ar_core; ar_front
 ta_front
 ta_try registry-core-only
 check "a Core that asks the registry refuses a front without it" 'refused "approval registry ownership pairing: Core and Rust must move together"'
@@ -2016,7 +2029,7 @@ ta_owner=node
 ta_try registry-without-route
 check "the registry needs the native decision route" 'refused "the registry needs the native decision route"'
 # Rollback: the #2282 pair with Core's bridge (no registry on either side) still assembles.
-ta_owner=rust; ta_core; ta_front; touch "$w/server/rust-tool-approval-bridge.cjs"
+ta_owner=rust; ta_core; ta_front; touch "$w/server/rust-tool-approval-bridge.cjs"; rm -f "$w/server/rust-approval-registry.cjs"
 ta_try registry-rollback
 check "the decision route's pair without the registry remains a valid rollback" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-approval-registry.cjs"; cp "$work/ar-chat.saved" "$w/server/chat.cjs"
