@@ -2370,6 +2370,38 @@ elif [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
    || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
   core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
 fi
+# Port contract row J: the front is the one model-maintenance lease authority. Core's maintenance gate
+# takes every hold there (server/model-maintenance-lease.cjs LEASE_CLIENT_MARKER, exported) and fails
+# closed without it, so a native Core needs a front that declares AUTHORITY_MARKER in
+# model_maint/lease.rs, compiles it into FEATURES and merges the store routes. A native front with a
+# legacy Core would leave Core's own holds outside the table: they move together, legacy/legacy is
+# the rollback pair. Lease-client or authority code without its complete marker is ambiguous and refused.
+core_lease_client() {
+  move_capability "$tree/core/server/model-maintenance-lease.cjs" LEASE_CLIENT_MARKER noevia-maintenance-lease-client/1 js
+}
+rs_lease_authority() {
+  move_capability "$tree/rs/bins/noevia-server/src/model_maint/lease.rs" AUTHORITY_MARKER noevia-maintenance-lease-authority/1 rust || return 1
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES model_maint::lease::AUTHORITY_MARKER feature_ref || return 1
+  code_has "$tree/rs/bins/noevia-server/src/project_store.rs" 'router\.merge\(maintenance_lease_routes\(' || return 1
+}
+lease_core_owner=legacy
+if core_lease_client; then
+  lease_core_owner=native
+elif code_has "$tree/core/server/model-maintenance-lease.cjs" 'createNativeLeaseClient|LEASE_CLIENT_MARKER|/v1/maintenance-lease' \
+  || code_has "$tree/core/server/index.cjs" 'createNativeLeaseClient'; then
+  lease_core_owner=invalid
+fi
+lease_rs_owner=legacy
+if rs_lease_authority; then
+  lease_rs_owner=native
+elif code_has "$tree/rs/bins/noevia-server/src/model_maint/lease.rs" 'AUTHORITY_MARKER|maintenance-lease' \
+  || code_has "$tree/rs/bins/noevia-server/src/project_store.rs" 'maintenance_lease_routes'; then
+  lease_rs_owner=invalid
+fi
+[ "$lease_core_owner" != invalid ] && [ "$lease_rs_owner" != invalid ] \
+  || die "maintenance lease pairing: ambiguous or incomplete lease marker (core=$lease_core_owner rust=$lease_rs_owner)"
+[ "$lease_core_owner" = "$lease_rs_owner" ] \
+  || die "maintenance lease pairing: Core's lease client and the front's lease authority must move together (core=$lease_core_owner rust=$lease_rs_owner)"
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.
