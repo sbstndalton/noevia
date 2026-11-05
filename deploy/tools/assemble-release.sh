@@ -2467,7 +2467,7 @@ lease_rs_version() {
     // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
     // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
     // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
-    if (/#!\s*\[\s*cfg/.test(code)) out("invalid");
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
     const before = code.slice(0, decls[0].index);
     let scope = 0;
     for (const ch of before) {
@@ -2475,7 +2475,23 @@ lease_rs_version() {
       else if (ch === ")" || ch === "]" || ch === "}") scope--;
     }
     if (scope !== 0) out("invalid");
-    const lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
     if (lead !== "") out("invalid");
     const body = code.slice(decls[0].index + decls[0][0].length);
     // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested

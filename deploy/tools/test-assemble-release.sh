@@ -1141,6 +1141,13 @@ lease_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; lease_no lease-macro-rul
 lease_rs_wrap 'cfg_if::cfg_if! { if #[cfg(any())] { ' ' } }'; lease_no lease-macro-wrapped "a macro-wrapped declaration is refused"
 lease_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/lease-crate-cfg" && cp "$work/lease-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
 lease_no lease-crate-cfg "a crate-level cfg attribute is refused"
+# Delta review P3: a harmless crate inner attribute directly before the declaration still assembles;
+# crate cfg_attr and an outer attribute on the declaration are still refused.
+lease_rs_wrap '#![allow(dead_code)]'$'\n' ''; lease_ok lease-crate-allow "a crate inner attribute before the declaration assembles"
+lease_rs_wrap '#![allow(dead_code)] #![warn(missing_docs)]'$'\n' ''; lease_ok lease-crate-allow-two "two crate inner attributes before the declaration assemble"
+lease_rs_wrap '#![cfg_attr(any(), allow(dead_code))]'$'\n' ''; lease_no lease-crate-cfg-attr "a crate cfg_attr before the declaration is refused"
+lease_rs_wrap '#![allow(dead_code)]'$'\n''#[cfg(any())]'$'\n' ''; lease_no lease-crate-allow-then-cfg "an outer cfg after a crate attribute is refused"
+lease_rs_wrap '#![allow(dead_code)]'$'\n''#[doc(hidden)]'$'\n' ''; lease_no lease-crate-allow-then-outer "an outer attribute on the declaration is refused"
 lease_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; lease_ok lease-doc-commented-declaration "a doc-commented unconditional declaration assembles"
 lease_clear
 
