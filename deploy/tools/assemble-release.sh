@@ -2464,6 +2464,19 @@ lease_rs_version() {
     const decls = [...code.matchAll(head)];
     if (decls.length > 1) out("invalid");
     if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid");
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    const lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    if (lead !== "") out("invalid");
     const body = code.slice(decls[0].index + decls[0][0].length);
     // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
     // expressions stay inside their element.

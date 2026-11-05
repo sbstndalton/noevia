@@ -1131,6 +1131,17 @@ lease_rs_el '/* "noevia-maintenance-lease-authority/1", */ "start-id-x"'; lease_
 lease_rs; printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-maintenance-lease-authority/1"];' >> "$rz/bins/noevia-server/src/lib.rs"
 lease_no lease-two-features-rust "a second FEATURES array is refused"
 lease_rs_el '"noevia-maintenance-lease-\u{61}uthority/1"'; lease_ok lease-escaped-single-rust "one escaped Rust lease literal is read by its value"
+# Review P2: the declaration's own scope. lease_rs_wrap BEFORE AFTER wraps lib.rs's FEATURES line.
+lease_rs_wrap() { lease_rs; LB="$1" LA="$2" perl -0pi -e 's/^(pub const FEATURES: &\[&str\] = &\[.*?\];)$/$ENV{LB}$1$ENV{LA}/m' "$rz/bins/noevia-server/src/lib.rs"; }
+lease_rs_wrap '#[cfg(any())] ' ''; lease_no lease-cfg-declaration "cfg on the FEATURES declaration is refused"
+lease_rs_wrap '#[cfg(feature = "lease")]'$'\n' ''; lease_no lease-cfg-declaration-line "cfg on its own line above the declaration is refused"
+lease_rs_wrap '#[cfg(any())] mod disabled { ' ' }'; lease_no lease-cfg-module "a declaration inside a cfg-disabled module is refused"
+lease_rs_wrap 'mod inner { ' ' }'; lease_no lease-nested-module "a declaration inside a nested module is refused"
+lease_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; lease_no lease-macro-rules "a declaration inside macro_rules! is refused"
+lease_rs_wrap 'cfg_if::cfg_if! { if #[cfg(any())] { ' ' } }'; lease_no lease-macro-wrapped "a macro-wrapped declaration is refused"
+lease_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/lease-crate-cfg" && cp "$work/lease-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
+lease_no lease-crate-cfg "a crate-level cfg attribute is refused"
+lease_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; lease_ok lease-doc-commented-declaration "a doc-commented unconditional declaration assembles"
 lease_clear
 
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
