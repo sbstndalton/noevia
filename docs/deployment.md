@@ -119,21 +119,29 @@ it, and do not use an overlay to bypass required native binaries or changed depe
 ### Diary overlay
 
 `deploy/examples/diary-overlay.sh` starts from the Diary image that is currently running and replaces
-whole the directories that the Diary image's `Dockerfile` copies into `/app`, so a change to the system
-prompt, `config.yaml` or a helper script ships together with the agent code (#2112):
+only the `agent/` code (the companion-overlay rule: a Diary companion ships `agent/` from the running image).
+The system prompt, `config.yaml` and the helper scripts are never replaced:
 
-Diary overlay directories: `agent/`, `config/`, `scripts/`
+Diary overlay directories replaced: `agent/`
+
+Diary overlay directories preserved: `config/`, `scripts/`
 
 Before anything is built, stopped or changed the script reads the release's own Diary `Dockerfile` and
-refuses when its `COPY <dir>/ ./<dir>/` lines name a different set of directories (it names the one it
-would leave out). Every `COPY` and `ADD` of the final stage counts: besides `COPY requirements.txt .` and the
+refuses when its `COPY <dir>/ ./<dir>/` lines name a set of directories other than those two lists together (it
+names the one it would leave out). Every `COPY` and `ADD` of the final stage counts: besides `COPY requirements.txt .` and the
 binaries taken from the Rust stage, any other copying line (a file, `--chown`, a hyphenated directory, `ADD`,
 JSON form) stops the overlay, because it would put content in the image that the overlay does not ship. It also
-refuses when the release's `requirements.txt` differs from the one in the running image. After the build it compares each directory in the candidate with the release tree (file
-names and sha256) and refuses on any difference, so a file the release dropped does not survive. A change to
+refuses when the release's `requirements.txt`, `config/` or `scripts/` differ from the ones in the running image
+(file names and sha256, read without network access): a changed prompt, config or script needs an image rebuild, not
+this overlay, so new agent code never runs silently against the old files. The one exception is
+`scripts/smoke_diary_leaves.py`, the release's smoke for the native leaves: it is run from the release tree by a
+read-only bind mount over `/app/scripts/smoke_diary_leaves.py` in the smoke container only, and is never copied into the
+image. After the build the script compares `agent/` in the candidate with the release tree (file names and sha256) and
+refuses on any difference, so a file the release dropped does not survive, and it proves that the candidate's `config/`
+and `scripts/` are still exactly the running image's. A change to
 `requirements.txt` or to any other part of the `Dockerfile` (apart from the noevia-rs pin, whose binaries the
 script builds) needs a rebuild, not this overlay. A test
-(`OverlayDirsInSync` in `deploy/tests/test_overlay_scripts.py`) keeps this line, the script's list and the
+(`OverlayDirsInSync` in `deploy/tests/test_overlay_scripts.py`) keeps these lines, the script's lists and the
 fixture `Dockerfile` the same; with `NOEVIA_SERVICES_DIR` set to a noevia-services checkout it compares the
 real `diary/Dockerfile` too.
 

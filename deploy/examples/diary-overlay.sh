@@ -1,20 +1,24 @@
 #!/bin/bash
-# Diary image overlay: FROM the running image, replace exactly the directories the Diary Dockerfile copies into
-# /app (agent/, config/ and scripts/; #2112) and, when the release pins noevia-rs, add the tenant-assertion and
-# workspace-restore-verify binaries built from that pin, plus the Diary Rust leaves (rust_leaves below) when the
-# release ships the smoke that proves them (noevia#1071 P0), and the Rust Diary server noevia-diary (D4-D5).
+# Diary image overlay: FROM the running image, replace /app/agent ONLY (the companion rule: a Diary companion
+# overlay ships agent/ code from the running image; config/ and scripts/ stay the running image's, #2112 review)
+# and, when the release pins noevia-rs, add the tenant-assertion and workspace-restore-verify binaries built from
+# that pin, plus the Diary Rust leaves (rust_leaves below) when the release ships the smoke that proves them
+# (noevia#1071 P0), and the Rust Diary server noevia-diary (D4-D5).
 # With a pin, every native binary inherited from the running image is removed first, so the candidate holds only
 # binaries built from the selected pin. Rolls back on any failure.
 # Usage (on DaServer, as root): bash diary-overlay.sh <SRC_SHA>. SRC_SHA is an unpacked release
 # under releases/ whose services/diary/{agent,config,scripts} are shipped; it also becomes the new Diary tag
 # (cowork-diary:<SRC_SHA>) and DIARY_VERSION in .env. COWORK_VERSION and the web image are untouched.
-# Each directory is replaced whole: files the release no longer has are removed (#1624), and the candidate's
-# /app/<dir> must hold exactly the release's files (names and sha256) before anything is stopped. config/ carries
-# the system prompt and config.yaml, so a prompt or config change ships with the agent code that needs it.
-# The list below is checked against the release's own Diary Dockerfile: when its COPY lines into /app name a
-# different set of directories, the overlay refuses instead of silently leaving one out.
-# Use when only files under services/diary/{agent,config,scripts} changed since the running image (the overlay
-# refuses when requirements.txt differs from the running image's): no pip install runs, so no dependency can drift.
+# agent/ is replaced whole: files the release no longer has are removed (#1624), and the candidate's /app/agent
+# must hold exactly the release's files (names and sha256) before anything is stopped. config/ (the system prompt and
+# config.yaml) and scripts/ are never replaced: the release's own config/ and scripts/ must already equal the running
+# image's (names and sha256; scripts/smoke_diary_leaves.py aside, below) or the overlay refuses and the image must be
+# rebuilt, and the candidate's are proven equal to the running image's. The one release asset the overlay needs,
+# scripts/smoke_diary_leaves.py, is run from the release by a read-only bind mount and is not installed in the image.
+# The directory lists below are checked against the release's own Diary Dockerfile: when its COPY lines into /app name
+# a different set of directories, the overlay refuses instead of silently leaving one out.
+# Use when only files under services/diary/agent changed since the running image (the overlay refuses when
+# requirements.txt, config/ or scripts/ differ from the running image's): no pip install runs, so no dependency can drift.
 # Keeps cowork-diary:rollback-before-diary-overlay and config/.env.bak.before-diary-<SRC_SHA>.
 # Backup (#1487): the Diary state and .env are archived into a new diary_<SRC_SHA>_<UTC> folder under
 # /mnt/disk3/noevia-backups. The Appdata Backup plugin is NOT run: it stops whichever containers its own
@@ -46,9 +50,17 @@ OLD=$(sed -n 's/^DIARY_VERSION=//p' "$config")
 [ -n "$OLD" ] || { echo "DIARY_VERSION is not set in $config; see docs/deployment.md 'Migrating an existing .env'"; exit 1; }
 [ "$OLD" != "$V" ] || { echo "DIARY_VERSION is already $V"; exit 1; }
 # BEGIN overlay-dirs (deploy/tests/test_overlay_scripts.py runs this block)
-# #2112: the directories the Diary Dockerfile copies into /app (COPY agent/ ./agent/, COPY config/ ./config/,
-# COPY scripts/ ./scripts/). Everything else in the image (the dependencies, the Rust binaries) is the running image's.
-overlay_dirs="agent config scripts"
+# The directories the Diary Dockerfile copies into /app (COPY agent/ ./agent/, COPY config/ ./config/,
+# COPY scripts/ ./scripts/). Only overlay_dirs are replaced; preserved_dirs (and everything else in the image: the
+# dependencies, the Rust binaries) stay the running image's. The Dockerfile must copy exactly the two lists together.
+overlay_dirs="agent"
+preserved_dirs="config scripts"
+# The release asset the candidate's smoke needs from scripts/ (run from the release, never installed).
+smoke_asset=smoke_diary_leaves.py
+# Names and sha256 of one directory's files, run inside the directory.
+dir_listing='find . -type f ! -path "*/__pycache__/*" -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum'
+# The comparison listing of a preserved directory: scripts/ without the smoke asset.
+preserved_filter() { if [ "$1" = scripts ]; then grep -v -x "[0-9a-f]\{64\}  \./$smoke_asset" || true; else cat; fi; }
 # The Dockerfile tail that replaces each directory whole: delete first (COPY only adds and replaces), then copy.
 overlay_copy_lines() {
   local d rm_list=""
@@ -57,7 +69,7 @@ overlay_copy_lines() {
   for d in $overlay_dirs; do printf 'COPY %s/ ./%s/\n' "$d" "$d"; done
 }
 # END overlay-dirs
-for d in $overlay_dirs; do
+for d in $overlay_dirs $preserved_dirs; do
   [ -d "$base/releases/$V/services/diary/$d" ] || { echo "no releases/$V/services/diary/$d"; exit 1; }
 done
 # #2112: keep the list in step with the release's Diary Dockerfile. A directory it copies that is not listed here
@@ -93,12 +105,12 @@ if [ -n "$df_unknown" ]; then
   exit 1
 fi
 df_dirs=$(printf '%s' "$df_dirs" | LC_ALL=C sort -u)
-my_dirs=$(printf '%s\n' $overlay_dirs | LC_ALL=C sort -u)
+my_dirs=$(printf '%s\n' $overlay_dirs $preserved_dirs | LC_ALL=C sort -u)
 if [ "$df_dirs" != "$my_dirs" ]; then
-  echo "the release Diary Dockerfile copies these directories into /app: ${df_dirs//$'\n'/ }; this overlay ships: ${my_dirs//$'\n'/ }." >&2
+  echo "the release Diary Dockerfile copies these directories into /app: ${df_dirs//$'\n'/ }; this overlay handles: ${my_dirs//$'\n'/ }." >&2
   for d in $df_dirs; do case " ${my_dirs//$'\n'/ } " in *" $d "*) ;; *) echo "  the Dockerfile copies $d/ but this overlay would leave it out" >&2 ;; esac; done
-  for d in $my_dirs; do case " ${df_dirs//$'\n'/ } " in *" $d "*) ;; *) echo "  this overlay ships $d/ but the Dockerfile does not copy it" >&2 ;; esac; done
-  echo "update overlay_dirs in diary-overlay.sh (and its test) before overlaying this release; not deploying" >&2
+  for d in $my_dirs; do case " ${df_dirs//$'\n'/ } " in *" $d "*) ;; *) echo "  this overlay handles $d/ but the Dockerfile does not copy it" >&2 ;; esac; done
+  echo "update overlay_dirs/preserved_dirs in diary-overlay.sh (and its test) before overlaying this release; not deploying" >&2
   exit 1
 fi
 # END dockerfile-copy-check
@@ -115,6 +127,24 @@ req_have=$(docker run --rm --network none --read-only --pull never --entrypoint 
 [ -n "$req_want" ] && [ "$req_want" = "$req_have" ] \
   || { echo "requirements.txt in releases/$V/services/diary is missing or differs from the running image's (or could not be read there): the overlay installs no dependencies, rebuild the image instead; not deploying" >&2; exit 1; }
 # END requirements-check
+# BEGIN preserved-dirs-check (deploy/tests/test_overlay_scripts.py runs this block with stub docker)
+# The overlay never replaces preserved_dirs. A release whose config/ (system prompt, config.yaml) or scripts/ differs from
+# the running image's would otherwise run its new agent code against the old files (#2112), so it is refused: rebuild the
+# image instead. scripts/$smoke_asset is the one release asset the overlay uses; it is run from the release (below)
+# and is left out of this comparison. The running image's listing is kept to prove the candidate leaves it untouched.
+for d in $preserved_dirs; do
+  want=$(cd "$base/releases/$V/services/diary/$d" && sh -c "$dir_listing" | preserved_filter "$d") \
+    || { echo "could not list releases/$V/services/diary/$d; not deploying" >&2; exit 1; }
+  have=$(docker run --rm --network none --read-only --pull never --entrypoint sh cowork-diary:$OLD -c "cd /app/$d && $dir_listing" | preserved_filter "$d"; exit "${PIPESTATUS[0]}") \
+    || { echo "could not list /app/$d in the running image; not deploying" >&2; exit 1; }
+  if [ "$want" != "$have" ]; then
+    echo "releases/$V/services/diary/$d differs from the running image's /app/$d: the overlay replaces only agent/ and never $d/; rebuild the image instead; not deploying:" >&2
+    diff <(printf '%s\n' "$have") <(printf '%s\n' "$want") >&2 || true
+    exit 1
+  fi
+  printf -v "preserved_have_$d" '%s' "$have"
+done
+# END preserved-dirs-check
 # The scoped backup below needs both; checked here so a bad layout fails before anything is built (#1487).
 backup_root=${BACKUP_ROOT:-/mnt/disk3/noevia-backups}
 [ -d "$backup_root" ] || { echo "backup root $backup_root is missing; not deploying" >&2; exit 1; }
@@ -250,8 +280,8 @@ docker run --rm --entrypoint python cowork-diary:$V-candidate -c "import agent.a
 # BEGIN dirs-exact (#1624, #2112: deploy/tests/test_overlay_scripts.py runs this through the whole script)
 # COPY only adds and replaces, so the Dockerfile above deletes each directory first. This proves the result: the
 # candidate's /app/<dir> must hold exactly the release's files (names and sha256), nothing stale or missing, for
-# every directory the overlay ships (agent/, config/, scripts/).
-dir_listing='find . -type f ! -path "*/__pycache__/*" -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum'
+# every directory the overlay replaces (agent/). The preserved directories (config/, scripts/) must still be exactly the
+# running image's, as listed before the build.
 for d in $overlay_dirs; do
   want=$(cd "$ctx/$d" && sh -c "$dir_listing")
   got=$(docker run --rm --network none --entrypoint sh cowork-diary:$V-candidate -c "cd /app/$d && $dir_listing") \
@@ -263,6 +293,18 @@ for d in $overlay_dirs; do
     exit 1
   fi
   echo "candidate $d/ matches the release ($(printf '%s\n' "$want" | grep -c .) files)"
+done
+for d in $preserved_dirs; do
+  got=$(docker run --rm --network none --entrypoint sh cowork-diary:$V-candidate -c "cd /app/$d && $dir_listing" | preserved_filter "$d"; exit "${PIPESTATUS[0]}") \
+    || { echo "could not list /app/$d in the candidate; not deploying" >&2; exit 1; }
+  var="preserved_have_$d"
+  if [ "$got" != "${!var}" ]; then
+    echo "candidate /app/$d differs from the running image's; the overlay must leave it untouched; not deploying:" >&2
+    diff <(printf '%s\n' "${!var}") <(printf '%s\n' "$got") >&2 || true
+    docker image rm cowork-diary:$V-candidate >/dev/null 2>&1 || true
+    exit 1
+  fi
+  echo "candidate $d/ is the running image's, untouched"
 done
 # END dirs-exact
 if [ "$rs_stage" = 1 ]; then
@@ -277,9 +319,11 @@ if [ "$rs_stage" = 1 ]; then
   fi
 fi
 # BEGIN leaf-smoke (deploy/tests/test_overlay_scripts.py runs this block with a stub docker)
-# noevia#1071 P0: the leaves have no self-test command. The release's own smoke (in scripts/, already proven equal
-# to the release above) runs each leaf the candidate has through its real adapter on synthetic data and compares
-# it with Python, selecting Rust only inside that process. Any leaf that fails stops the overlay.
+# noevia#1071 P0: the leaves have no self-test command. The release's own smoke runs each leaf the candidate has through
+# its real adapter (the candidate's agent/, proven equal to the release above) on synthetic data and compares it with
+# Python, selecting Rust only inside that process. The smoke script is the release's own file, bind-mounted read-only at
+# its place in /app/scripts for this container only: it is not copied into the image, so scripts/ stays the running
+# image's. Any leaf that fails stops the overlay.
 if [ "$rs_stage" = 1 ] && [ "$rs_leaves" = 1 ]; then
   leaf_names=""
   for spec in $rust_leaves; do leaf_names="$leaf_names ${spec##*:}"; done
@@ -291,7 +335,8 @@ if [ "$rs_stage" = 1 ] && [ "$rs_leaves" = 1 ]; then
     case " $leaf_names " in *" $b "*) ;; *) echo "unexpected leaf name from the candidate listing; not deploying" >&2; exit 1 ;; esac
   done
   if [ -n "$leaves_present" ]; then
-    docker run --rm --network none --entrypoint python cowork-diary:$V-candidate $leaf_smoke $leaves_present \
+    docker run --rm --network none -v "$base/releases/$V/services/diary/$leaf_smoke:/app/$leaf_smoke:ro" \
+      --entrypoint python cowork-diary:$V-candidate $leaf_smoke $leaves_present \
       || { echo "candidate Diary Rust leaf smoke failed; not deploying" >&2; exit 1; }
     echo "candidate Diary Rust leaves ok:" $leaves_present
   else
