@@ -1484,13 +1484,14 @@ rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
 # Adversarial outbox marker detection: absence is distinct from ambiguous or unrecognized markers.
-outbox_case() { # name core-file-content (or -) rust-feature-insert (or -) expect(ok|refuse)
+outbox_case() { # name core-file-content (or -) rust-feature-insert (or -) expect(ok|refuse) [lib.rs suffix]
   rm -f "$w/server/rust-index-outbox.cjs"
   # Export the marker only when the fixture really declares it; otherwise a valid module with no
   # export, so negative cases exercise the missing-export rule rather than a ReferenceError.
   [ "$2" = - ] || printf '%s\n' "$2" "module.exports = typeof RUST_INDEX_OUTBOX_OWNED === 'undefined' ? {} : { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
   cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
   [ "$3" = - ] || sed "s/\"start-id\"/\"start-id\", $3/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+  [ -z "${5:-}" ] || printf '%s\n' "$5" >> "$rz/bins/noevia-server/src/lib.rs"
   move_try "outbox-adv-$1"
   if [ "$4" = ok ]; then
     check "outbox adversarial $1 assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
@@ -1523,6 +1524,14 @@ outbox_case rust-concat-expression "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-
 outbox_case rust-escaped-marker-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v\\x33"' ok
 outbox_case rust-escaped-marker-v3-core-none - '"\\x72ust-index-outbox-v3"' refuse
 outbox_case rust-escaped-duplicate "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3", "rust-index-outbox-\\u{76}3"' refuse
+# Literal kinds stay distinct: an unrelated byte string may use \x80-\xFF; raw and byte strings
+# never name an entry; macros and expressions refuse rather than being read fragment by fragment.
+outbox_case rust-unrelated-byte-string-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3"' ok 'pub const SIGNATURE: &[u8] = b"\xFF";'
+outbox_case rust-byte-entry "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" 'b"rust-index-outbox-v\\x33"' refuse
+outbox_case rust-raw-entry "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" 'r#"rust-index-outbox-v3"#' refuse
+outbox_case rust-raw-byte-entry "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" 'br#"rust-index-outbox-v3"#' refuse
+outbox_case rust-split-concat-duplicate "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3", concat!("rust-", "index-outbox-v2")' refuse
+outbox_case rust-split-concat-only - 'concat!("rust-", "index-outbox-v3")' refuse
 rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
