@@ -155,18 +155,18 @@ for d in $overlay_dirs; do cp -r "$base/releases/$V/services/diary/$d" "$ctx/$d"
 # <source directory in noevia-rs>:<cargo package>:<binary installed in /usr/local/bin>. Each is built only when
 # the pinned noevia-rs has its directory, and only for a release that ships scripts/smoke_diary_leaves.py, which
 # the candidate then runs on every leaf it has. The image ships them; every selector stays python.
-rust_leaves="bins/diary-corpus-write:diary-corpus-write-cli:diary-corpus-write-cli
-crates/diary-corpus-parse:diary-corpus-parse:diary-corpus-parse
-crates/diary-score-gap:diary-score-gap:diary-score-gap
-crates/diary-temporal-focus:diary-temporal-focus:diary-temporal-cli
-crates/diary-workspace-export:diary-workspace-export:diary-workspace-export
-crates/diary-workspace-import-apply:diary-workspace-import-apply:diary-workspace-import-apply
+rust_leaves="crates/diary-backup-run:diary-backup-run:diary-backup-run
 crates/diary-entity-focus:diary-entity-focus:diary-entity-focus
 crates/diary-index-transform:diary-index-transform:diary-index-transform
 crates/diary-storage-backoff:diary-storage-backoff:diary-storage-backoff
 crates/diary-workspace-rules:diary-workspace-rules:diary-workspace-rules
 crates/diary-backup-format:diary-backup-format:diary-backup-format
-crates/diary-backup-run:diary-backup-run:diary-backup-run"
+bins/diary-corpus-write:diary-corpus-write-cli:diary-corpus-write-cli
+crates/diary-corpus-parse:diary-corpus-parse:diary-corpus-parse
+crates/diary-score-gap:diary-score-gap:diary-score-gap
+crates/diary-temporal-focus:diary-temporal-focus:diary-temporal-cli
+crates/diary-workspace-export:diary-workspace-export:diary-workspace-export
+crates/diary-workspace-import-apply:diary-workspace-import-apply:diary-workspace-import-apply"
 leaf_smoke=scripts/smoke_diary_leaves.py
 # The RUN continuation lines that build each declared leaf into /out/ (nothing when the release has no smoke).
 rust_leaf_lines() {
