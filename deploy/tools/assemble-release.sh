@@ -60,7 +60,9 @@ code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 # compared after Docker-style unquoting); LABEL and EXPOSE are free; the exact RUN/COPY lines of the template may
 # follow; anything else (ONBUILD, ADD, an extra COPY, rm, ARG, SHELL, a heredoc, any leading # key=value parser
 # directive, a third stage) fails closed. Backslash-newline is removed with nothing inserted, as Docker does, in both
-# the template and the Dockerfile. Changing the Diary Dockerfile therefore means changing the template in the same release.
+# the template and the Dockerfile; a line continues only when it ends in an odd number of backslashes. The Dockerfile
+# may hold only printable ASCII, tab and LF/CRLF. Changing the Diary Dockerfile therefore means changing the template in
+# the same release.
 diary_df_awk=
 read -r -d '' diary_df_awk <<'DIARYDFAWK' || true
 # diary_dockerfile_check: reads the template (first file) and a Diary Dockerfile (second file) and prints "ok" or
@@ -76,7 +78,7 @@ function first(s) { sub(/ .*$/, "", s); return s }
 # word) or, for the legacy `ENV name value`, a lone first word followed by its value.
 function parse_env(text,   i, n, ch, q, tok, words, nwd, w, p, rest) {
   envn = 0; split("", envname); split("", envval); split("", words)
-  n = length(text); q = ""; tok = ""; nwd = 0
+  n = length(text); q = ""; tok = ""; nwd = 0; eqseen = 0
   for (i = 1; i <= n + 1; i++) {
     ch = (i <= n) ? substr(text, i, 1) : " "
     if (q == "\047") { if (ch == "\047") q = ""; else tok = tok ch; continue }
@@ -85,9 +87,11 @@ function parse_env(text,   i, n, ch, q, tok, words, nwd, w, p, rest) {
       if (ch == "\\" && i < n) { i++; ch = substr(text, i, 1); if (ch != "\"" && ch != "\\" && ch != "$") tok = tok "\\"; tok = tok ch; continue }
       tok = tok ch; continue
     }
-    if (ch == "\047" || ch == "\"") { q = ch; wordseen = 1; continue }
-    if (ch == "\\" && i < n) { i++; tok = tok substr(text, i, 1); wordseen = 1; continue }
+    if (ch == "\047" || ch == "\"") { if (!eqseen) bad("a quote in an ENV name"); q = ch; wordseen = 1; continue }
+    if (ch == "\\" && i < n) { if (!eqseen) bad("a backslash in an ENV name"); i++; tok = tok substr(text, i, 1); wordseen = 1; continue }
+    if (ch == "=") eqseen = 1
     if (ch == " ") {
+      eqseen = 0
       if (tok != "" || wordseen) {
         nwd++; words[nwd] = tok; wend[nwd] = i
       }
@@ -125,7 +129,9 @@ FNR == NR {
   if (line ~ /^[ \t]*(#|$)/) next
   if (line ~ /^\[[a-z-]+\]$/) { section = substr(line, 2, length(line) - 2); next }
   # the template is normalized exactly like the Dockerfile: a backslash-newline is removed with nothing inserted
-  if (line ~ /\\[ \t]*$/) { sub(/\\[ \t]*$/, "", line); tacc = tacc line; next }
+  tl = line; sub(/[ \t]+$/, "", tl); tbs = 0
+  while (tbs < length(tl) && substr(tl, length(tl) - tbs, 1) == "\\") tbs++
+  if (tbs % 2 == 1) { sub(/\\[ \t]*$/, "", line); tacc = tacc line; next }
   line = norm(tacc line); tacc = ""
   gsub(/@NOEVIA_RS_REF@/, ref, line); gsub(/@NOEVIA_RS_SHA256@/, sum, line)
   if (section == "build-stage") { nb++; build[nb] = line }
@@ -147,7 +153,12 @@ FNR == NR {
     next
   }
   if (trim($0) == "") next
-  if ($0 ~ /\\[ \t]*$/) { sub(/\\[ \t]*$/, ""); acc = acc $0; next }
+  t = $0; sub(/[ \t]+$/, "", t); nbs = 0
+  while (nbs < length(t) && substr(t, length(t) - nbs, 1) == "\\") nbs++
+  # a line continues only when it ends in an ODD number of backslashes (an even number is an escaped backslash); an
+  # even number of two or more is ambiguous and refused rather than modelled
+  if (nbs >= 2 && nbs % 2 == 0) bad("a line ending in an even number of backslashes")
+  if (nbs % 2 == 1) { sub(/\\[ \t]*$/, ""); acc = acc $0; next }
   full = norm(acc $0); acc = ""
   if (full ~ /<</) bad("a heredoc or here-string")
   nins++; ins[nins] = full
@@ -183,9 +194,20 @@ END {
   print failed ? "bad: " reason : "ok"
 }
 DIARYDFAWK
+# diary_df_ascii_ok <file>: the Dockerfile holds only printable ASCII (0x20-0x7E), tab and LF or CRLF line endings, in
+# comments too. A lone CR, VT, FF, NUL, DEL, NBSP or any other non-ASCII byte could be read as a separator or hidden by
+# one tool and not another, so it is refused instead of modelled.
+diary_df_ascii_ok() {
+  local cr; cr=$(printf '\r')
+  [ "$(LC_ALL=C tr -d '\11\12\15\40-\176' < "$1" | wc -c | tr -d ' ')" = 0 ] || return 1
+  # a CR is allowed only directly before an LF: every line holding one must end with it, and the file may not end in one
+  [ "$(LC_ALL=C grep -c "$cr" "$1" || true)" = "$(LC_ALL=C grep -c "${cr}\$" "$1" || true)" ] || return 1
+  [ "$(tail -c 1 "$1" | od -An -tx1 | tr -d ' \n')" != 0d ] || return 1
+}
 diary_dockerfile_check() {
   [ -f "$1" ] && [ -f "$4" ] || { echo "bad: the template or the Dockerfile is missing"; return 0; }
-  awk -v ref="$2" -v sum="$3" "$diary_df_awk" "$1" "$4"
+  diary_df_ascii_ok "$4" || { echo "bad: the Dockerfile has a byte other than printable ASCII, tab and LF/CRLF line endings"; return 0; }
+  LC_ALL=C awk -v ref="$2" -v sum="$3" "$diary_df_awk" "$1" "$4"
 }
 # END diary-df-check
 

@@ -794,7 +794,7 @@ check "Diary native: the forwarder, all three sources and a template-shaped Dock
 dn_raw dn-paired-extras "RUN $dn_build && mkdir /out && $dn_cp" '
 RUN test -x /usr/local/bin/noevia-diary
 COPY agent/ ./agent/
-ENV FOO=bar "BAZ"="a b"
+ENV FOO=bar BAZ="a b"
 LABEL a=b
 EXPOSE 8010'
 check "Diary native: the template exact RUN/COPY lines and free-form ENV/LABEL/EXPOSE may follow the install" '[ $rc -eq 0 ]'
@@ -892,7 +892,7 @@ RUN $dn_build && mkdir /out && $dn_cp
 $dn_tail"
 diary_native_try dn-arg-dup2; diary_raw=""
 check "Diary native: a second NOEVIA_RS_REF declaration is refused" "$dn_drift"
-for dn_env in 'ENV NOEVIA_RS_REF=ffff' 'ENV "NOEVIA_RS_REF"=ffff' "ENV 'NOEVIA_RS_SHA256'=ffff" 'ENV NOEVIA_RS\_REF=ffff' 'ENV "NOEVIA_RS_REF" ffff' 'ENV A=1 "NOEVIA_RS_SHA256"=ffff' 'ENV DIARY_CORPUS_PARSE_IMPL=rust' 'ENV DIARY_RUST_ROUTES=/api/months' 'ENV DIARY_RUST_SERVER_BIN=/tmp/x' 'ENV PATH=/tmp/evil:/usr/bin' 'ENV LD_PRELOAD=/tmp/x.so' 'ENV PYTHONPATH=/tmp' 'ENV OTHER_BIN=/x' 'ENV "PATH"=/tmp/evil'; do
+for dn_env in 'ENV NOEVIA_RS_REF=ffff' 'ENV "NOEVIA_RS_REF"=ffff' "ENV 'NOEVIA_RS_SHA256'=ffff" 'ENV NOEVIA_RS\_REF=ffff' 'ENV "NOEVIA_RS_REF" ffff' 'ENV A=1 "NOEVIA_RS_SHA256"=ffff' 'ENV DIARY_CORPUS_PARSE_IMPL=rust' 'ENV DIARY_RUST_ROUTES=/api/months' 'ENV DIARY_RUST_SERVER_BIN=/tmp/x' 'ENV PATH=/tmp/evil:/usr/bin' 'ENV LD_PRELOAD=/tmp/x.so' 'ENV PYTHONPATH=/tmp' 'ENV OTHER_BIN=/x' 'ENV "PATH"=/tmp/evil' 'ENV "A"=1' 'ENV A\_B=1'; do
   dn_raw dn-env "RUN $dn_build && mkdir /out && $dn_cp" "
 $dn_env"
   check "Diary native: final-stage \`$dn_env\` is refused" "$dn_drift"
@@ -937,6 +937,30 @@ RUN $dn_build \\
 $dn_tail"
 diary_native_try dn-cont-ok; diary_raw=""
 check "Diary native: continuation lines that keep their separating space still match the template" '[ $rc -eq 0 ]'
+# --- continuation by an odd number of backslashes only; an even count is refused; only printable ASCII, tab, LF/CRLF
+dn_bs2='\\'
+diary_raw="$dn_head
+RUN $dn_build && mkdir /out && $dn_cp
+$dn_tail
+LABEL review=ok$dn_bs2
+RUN rm -f /usr/local/bin/noevia-diary"
+diary_native_try dn-even-backslash; diary_raw=""
+check "Diary native: a line ending in an even number of backslashes (the reviewer's LABEL review=ok\\\\ then RUN rm) is refused" "$dn_drift"
+diary_raw="$dn_head
+RUN $dn_build && mkdir /out && $dn_cp
+$dn_tail
+LABEL review=ok\\
+RUN rm -f /usr/local/bin/noevia-diary"
+diary_native_try dn-odd-backslash; diary_raw=""
+check "Diary native: a single trailing backslash continues the LABEL, as Docker does, so the RUN is not an instruction of its own" '[ $rc -eq 0 ]'
+for dn_bad in "LABEL a=b$(printf '\r')RUN rm -f /usr/local/bin/noevia-diary" "LABEL a=b$(printf '\v')x" "LABEL a=b$(printf '\f')x" "LABEL a=b$(printf '\302\240')x" "# caf$(printf '\303\251')" "LABEL a=b$(printf '\177')" "ENV A=1$(printf '\r')PATH=/tmp" "ENV A=1$(printf '\v')PATH=/tmp" "ENV A=1$(printf '\f')PATH=/tmp" "ENV A=1$(printf '\302\240')PATH=/tmp"; do
+  dn_raw dn-bytes "RUN $dn_build && mkdir /out && $dn_cp" "
+$dn_bad"
+  check "Diary native: a forbidden byte is refused: $(printf '%s' "$dn_bad" | od -An -c | tr -s ' ' | cut -c1-70)" "$dn_drift"
+done
+dn_raw dn-tab "RUN $dn_build && mkdir /out && $dn_cp" "
+ENV A=1$(printf '\t')B=2"
+check "Diary native: a tab between ENV words is fine (it separates words like a space)" '[ $rc -eq 0 ]'
 # --- the REAL template: it renders a Dockerfile it accepts, and every drift of that rendering is refused
 dfsrc="$work/dfcheck.sh"; sed -n '/^# BEGIN diary-df-check/,/^# END diary-df-check/p' "$here/assemble-release.sh" > "$dfsrc"; . "$dfsrc"
 rtpl="$here/diary-dockerfile.template"; rref="$(printf '1%.0s' $(seq 1 40))"; rsum2="$(printf '2%.0s' $(seq 1 64))"
@@ -948,9 +972,9 @@ rcheck() { diary_dockerfile_check "$rtpl" "$rref" "$rsum2" "$1"; }
 rmut() { # rmut <name> <python-expression on t>: writes the mutated rendering to $work/mut.df
   python3 - "$work/real.df" "$work/mut.df" "$2" <<'PY'
 import sys
-t = open(sys.argv[1]).read()
+t = open(sys.argv[1], newline='').read()
 exec(sys.argv[3])
-open(sys.argv[2], 'w').write(t)
+open(sys.argv[2], 'w', newline='', encoding='utf-8').write(t)
 PY
 }
 check "Diary native: the real template accepts the Dockerfile rendered from it" '[ "$(rcheck "$work/real.df")" = ok ]'
@@ -980,6 +1004,22 @@ for dn_m in \
   't = "# SyNtAx=evil/frontend\n" + t' \
   't = "# EsCaPe=`\n" + t' \
   't = t.replace("cargo build --release", "cargo\\\nbuild --release", 1)' \
+  't += "LABEL review=ok\\\\\nRUN rm -f /usr/local/bin/noevia-diary\n"' \
+  't += "LABEL a=b\rRUN rm -f /usr/local/bin/noevia-diary\n"' \
+  't += "LABEL a=b\r"' \
+  't += "LABEL a=b\x0bx\n"' \
+  't += "LABEL a=b\x0cx\n"' \
+  't += "LABEL a=b\xa0x\n"' \
+  't += "LABEL a=b\x00PATH=/x\n"' \
+  't += "LABEL a=b\x7f\n"' \
+  't += "# caf\xe9\n"' \
+  't += "ENV A=1\rPATH=/tmp\n"' \
+  't += "ENV A=1\x0bPATH=/tmp\n"' \
+  't += "ENV A=1\x0cPATH=/tmp\n"' \
+  't += "ENV A=1\xa0PATH=/tmp\n"' \
+  't += "ENV A=1\tPATH=/tmp\n"' \
+  't += "ENV \"A\"=1\n"' \
+  't += "ENV A\\_B=1\n"' \
   't = t.replace("--locked", "--locked --offline", 1)' \
   't = t.replace("python:3.12-slim", "python:3.13-slim", 1)' \
   't = t.replace(" -p noevia-diary", "", 1)' \
@@ -996,6 +1036,8 @@ sed -e 's/ && / \\\
     \&\& /g' "$rtpl" > "$work/wrapped.tpl"
 check "Diary native: the real template wrapped with line continuations still accepts the rendering" \
   '[ "$(diary_dockerfile_check "$work/wrapped.tpl" "$rref" "$rsum2" "$work/real.df")" = ok ] && grep -q " \\\\$" "$work/wrapped.tpl"'
+sed "s/\$/$(printf '\r')/" "$work/real.df" > "$work/crlf.df"
+check "Diary native: the real template accepts the same Dockerfile with CRLF line endings" '[ "$(rcheck "$work/crlf.df")" = ok ]'
 rmut x 't = t.replace("'"$rref"'", "'"$(printf '3%.0s' $(seq 1 40))"'")'
 check "Diary native: the real template refuses a pin that is not the lock's" '[ "$(rcheck "$work/mut.df")" != ok ]'
 if [ -n "${NOEVIA_SERVICES_DIR:-}" ] && [ -f "$NOEVIA_SERVICES_DIR/diary/Dockerfile" ]; then
