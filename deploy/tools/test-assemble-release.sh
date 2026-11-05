@@ -1968,6 +1968,143 @@ ta_try approvals-old-rust-row
 check "historic pair cannot assign approvals to Rust" 'refused "tool approval ownership pairing"'
 cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refuser.paired"
 rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
+# Chat port S4: the framing suggestion's owner pair (every method Rust's) and its loopback bridge.
+fs_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/chat-framing/suggest"\nowner = "%s"\n' "$fs_owner"; [ -z "${fs_methods:-}" ] || printf '%s\n' "$fs_methods")
+}
+cat > "$w/server/rust-chat-framing-suggest.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat-framing/suggest']));
+module.exports = { OWNED_ROUTES };
+JS
+fs_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const chatFramingSuggestBridge = require('./rust-chat-framing-suggest.cjs').createSuggestBridge({
+  secret: FRONT_SECRET, json, readJson, framing: chatFraming,
+});
+if (require('./rust-chat-framing-suggest.cjs').refuseOwned(req, res, {})) return;
+if (await chatFramingSuggestBridge(req, res)) return;
+JS
+}
+fs_front() { sed 's/"start-id"/"start-id", "rust-chat-framing-suggest"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+[ ! -f "$w/server/routes/chat-framing.cjs" ] || cp "$w/server/routes/chat-framing.cjs" "$work/fs-routes.saved"
+mkdir -p "$w/server/routes"; printf '%s\n' 'module.exports = {};' > "$w/server/routes/chat-framing.cjs"
+fs_owner=rust; fs_methods=""; fs_core
+fs_try suggest-core-only
+check "framing suggestion Core requires the native front" 'refused "framing suggestion ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; fs_front
+fs_try suggest-front-only
+check "native framing suggestion front requires its Core refusal" 'refused "framing suggestion ownership pairing"'
+fs_core
+fs_try suggest-pair
+check "framing suggestion pair with its loopback bridge assembles" '[ $rc -eq 0 ]'
+fs_methods='methods = ["POST"]'
+fs_try suggest-post-only-row
+check "framing suggestion: every method must be Rust's, not only POST" 'refused "every method must belong to Rust"'
+fs_methods=""; fs_owner=node
+fs_try suggest-node-row
+check "framing suggestion native pair cannot keep a Node-owned row" 'refused "every method must belong to Rust"'
+fs_owner=rust
+printf '%s\n' '    const result = await framing.suggest({ message });' > "$w/server/routes/chat-framing.cjs"
+fs_try suggest-old-handler
+check "framing suggestion native pair drops the public Node suggestion" 'refused "still carries the public suggestion handler"'
+printf '%s\n' 'module.exports = {};' '// framing.suggest(' > "$w/server/routes/chat-framing.cjs"
+fs_try suggest-commented-handler
+check "framing suggestion: a commented-out call is not the handler" '[ $rc -eq 0 ]'
+cp "$w/server/index.cjs" "$work/fs-index.saved"
+sed '/chatFramingSuggestBridge(req, res)/d' "$work/fs-index.saved" > "$w/server/index.cjs"
+fs_try suggest-no-mount
+check "framing suggestion bridge must be mounted" 'refused "framing suggestion ownership pairing: missing bridge mount"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/fs-index.saved" > "$w/server/index.cjs"
+fs_try suggest-no-secret
+check "framing suggestion bridge requires the captured front secret" 'refused "framing suggestion ownership pairing: missing captured front secret"'
+cp "$work/fs-index.saved" "$w/server/index.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/chat-framing/suggest']));" > "$w/server/rust-chat-framing-suggest.cjs"
+fs_try suggest-all-refuser
+check "framing suggestion: Core refuses exactly the POST" 'refused "Core must refuse exactly this POST"'
+printf '%s\n' "/*" "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat-framing/suggest']));" "*/" > "$w/server/rust-chat-framing-suggest.cjs"
+fs_try suggest-comment-marker
+check "framing suggestion: the refusal must be executable code" 'refused "Core must refuse exactly this POST"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+fs_owner=node
+fs_try suggest-old-pair
+check "framing suggestion old/old rollback pair assembles" '[ $rc -eq 0 ]'
+fs_owner=rust
+fs_try suggest-old-rust-row
+check "an old pair cannot give the suggestion to Rust" 'refused "framing suggestion ownership pairing"'
+if [ -f "$work/fs-routes.saved" ]; then cp "$work/fs-routes.saved" "$w/server/routes/chat-framing.cjs"; else rm -f "$w/server/routes/chat-framing.cjs"; fi
+rm -f "$w/server/rust-chat-framing-suggest.cjs"
+# Chat port S5: the chat turn's owner pair (POST only Rust's), its direct-turn refusal, the relay mount
+# before the gate, the user binding and the captured secret.
+ct_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/chat"\nowner = "%s"\n' "$ct_owner"; [ -z "${ct_methods:-}" ] || printf '%s\n' "$ct_methods")
+}
+cat > "$w/server/rust-chat-turn.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));
+module.exports = { OWNED_ROUTES };
+JS
+ct_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const chatTurnBridge = require('./rust-chat-turn.cjs').createTurnBridge({
+  secret: FRONT_SECRET, json,
+});
+  if (require('./rust-chat-turn.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  const relayUser = require('./rust-chat-turn.cjs').relayedUser(req);
+  if (relayUser && (!preAuth || preAuth.user.id !== relayUser)) return unauthorized(res);
+  const relay=chatTurnBridge.accept(req,res);
+JS
+}
+ct_front() { sed 's/"start-id"/"start-id", "rust-chat-turn"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ct_owner=rust; ct_methods='methods = ["POST"]'; ct_core
+ct_try turn-core-only
+check "chat turn Core requires the native front" 'refused "chat turn ownership pairing: Core and Rust must move together"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ct_front
+ct_try turn-front-only
+check "native chat turn front requires its Core refusal" 'refused "chat turn ownership pairing: Core and Rust must move together"'
+ct_core
+ct_try turn-pair
+check "chat turn pair with its relay assembles" '[ $rc -eq 0 ]'
+ct_methods=""
+ct_try turn-all-methods-row
+check "chat turn: only the POST is Rust's" 'refused "exactly the POST must belong to Rust"'
+ct_methods='methods = ["GET", "POST"]'
+ct_try turn-get-post-row
+check "chat turn: the GET stays Node's" 'refused "exactly the POST must belong to Rust"'
+ct_methods='methods = ["POST"]'; ct_owner=node
+ct_try turn-node-row
+check "chat turn native pair cannot keep a Node-owned row" 'refused "exactly the POST must belong to Rust"'
+ct_owner=rust
+cp "$w/server/index.cjs" "$work/ct-index.saved"
+sed '/rust-chat-turn.cjs.).refuseOwned/d' "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-no-refusal
+check "chat turn: Core refuses a direct turn" 'refused "chat turn ownership pairing: missing direct-turn refusal"'
+sed '/chatTurnBridge.accept/d' "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-no-mount
+check "chat turn relay must be mounted" 'refused "chat turn ownership pairing: missing relay mount"'
+sed 's#^  if (relayUser#  // if (relayUser#' "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-commented-binding
+check "chat turn: a commented-out user binding is not the binding" 'refused "not bound to the front'"'"'s user"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-no-secret
+check "chat turn relay requires the captured front secret" 'refused "chat turn ownership pairing: missing captured front secret"'
+cp "$work/ct-index.saved" "$w/server/index.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/chat']));" > "$w/server/rust-chat-turn.cjs"
+ct_try turn-all-refuser
+check "chat turn: Core refuses exactly the POST" 'refused "Core must refuse exactly this POST"'
+printf '%s\n' "/*" "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));" "*/" > "$w/server/rust-chat-turn.cjs"
+ct_try turn-comment-marker
+check "chat turn: the refusal must be executable code" 'refused "Core must refuse exactly this POST"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ct_owner=node; ct_methods=""
+ct_try turn-old-pair
+check "chat turn old/old rollback pair assembles" '[ $rc -eq 0 ]'
+ct_owner=rust; ct_methods='methods = ["POST"]'
+ct_try turn-old-rust-row
+check "an old pair cannot give the chat turn to Rust" 'refused "chat turn ownership pairing: an old pair cannot give the chat turn to Rust"'
+rm -f "$w/server/rust-chat-turn.cjs"
 # #2281 toolbox picker owner pair and the narrow facts bridge.
 tp_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
