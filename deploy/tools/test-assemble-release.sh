@@ -2354,6 +2354,59 @@ unset mdr_owner mdr_methods; mdr_try mdr-old-pair
 check "old download pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-model-downloads-read.cjs" "$w/server/rust-model-downloads-read-facts.cjs"
 if [ -f "$work/mdr-models.saved" ]; then cp "$work/mdr-models.saved" "$w/server/routes/models.cjs"; else rm -f "$w/server/routes/models.cjs"; fi
+# MTP artifact GET: Core's refusal module and the front's capability move together (static
+# detectors: node-evaluated Core export, tokenized FEATURES). Old/old stays valid for rollback.
+mtp_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    if [ "${mtp_owner:-}" ]; then
+      printf '[[route]]\npath = "/api/models/mtp-artifact"\nowner = "%s"\n%s\n' "$mtp_owner" "${mtp_methods:-}"
+    fi)
+}
+mtp_core_on() {
+  cat > "$w/server/rust-mtp-artifact.cjs" <<'JS'
+'use strict';
+const OWNED_PATHS = Object.freeze(['/api/models/mtp-artifact']);
+const ROUTE_REFUSAL = Object.freeze({ error: 'owned', code: 'RUST_MTP_ARTIFACT_OWNED' });
+module.exports = { OWNED_PATHS, ROUTE_REFUSAL };
+JS
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "if (require('./rust-mtp-artifact.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+}
+mtp_core_off() { rm -f "$w/server/rust-mtp-artifact.cjs"; cp "$work/feature-index.saved" "$w/server/index.cjs"; }
+mtp_lib() { sed "s/\"start-id\"/\"start-id\", $1/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+mtp_lib_off() { cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; }
+mtp_core_off; mtp_lib_off; unset mtp_owner mtp_methods; mtp_try mtp-legacy
+check "legacy MTP artifact pair (Node owns, no capability) assembles for rollback" '[ $rc -eq 0 ]'
+mtp_core_on; mtp_try mtp-core-only
+check "MTP artifact Core refusal alone refuses" 'refused "MTP artifact ownership pairing: Core and Rust must move together"'
+mtp_core_off; mtp_lib '"rust-mtp-artifact"'; mtp_owner=rust; mtp_methods='methods = ["GET"]'; mtp_try mtp-front-only
+check "MTP artifact front capability alone refuses" 'refused "MTP artifact ownership pairing: Core and Rust must move together"'
+mtp_core_on; mtp_try mtp-pair
+check "MTP artifact pair assembles" '[ $rc -eq 0 ]'
+mtp_methods='methods = ["GET", "HEAD"]'; mtp_try mtp-head
+check "MTP artifact pair cannot claim HEAD" 'refused "MTP artifact ownership pairing: GET only"'
+mtp_methods='methods = ["GET"]'; mtp_owner=node; mtp_try mtp-node-row
+check "MTP artifact pair needs the Rust row" 'refused "MTP artifact ownership pairing"'
+mtp_owner=rust
+mtp_lib '#[cfg(feature = "rust-storage-reads")] "rust-mtp-artifact"'; mtp_try mtp-cfg
+check "cfg-gated MTP artifact capability is invalid" 'refused "ambiguous or unrecognized capability marker"'
+mtp_lib '#[doc = "rust-mtp-artifact"] "rust-usage-x"'; mtp_try mtp-attr
+check "MTP artifact capability inside an attribute is invalid" 'refused "ambiguous or unrecognized capability marker"'
+mtp_lib 'concat!("rust-mtp-", "artifact")'; mtp_try mtp-concat
+check "concat! MTP artifact capability is invalid" 'refused "ambiguous or unrecognized capability marker"'
+mtp_lib '"rust-mtp-artifact", "rust-mtp-\\x61rtifact"'; mtp_try mtp-dup
+check "escaped duplicate MTP artifact capability is invalid" 'refused "ambiguous or unrecognized capability marker"'
+mtp_lib 'b"rust-mtp-artifact"'; mtp_try mtp-byte
+check "byte-string MTP artifact capability is invalid" 'refused "ambiguous or unrecognized capability marker"'
+mtp_lib 'r"rust-mtp-artifact"'; mtp_try mtp-raw
+check "raw-string MTP artifact capability is invalid" 'refused "ambiguous or unrecognized capability marker"'
+mtp_lib '"rust-mtp-artifact"'; printf '%s\n' 'pub const UNRELATED: &[u8] = b"\xFF";' >> "$rz/bins/noevia-server/src/lib.rs"; mtp_try mtp-unrelated-bytes
+check "an unrelated b\"\\xFF\" constant does not disturb the MTP artifact pair" '[ $rc -eq 0 ]'
+mtp_lib '"rust-mtp-artifact"'
+printf '%s\n' "// '/api/models/mtp-artifact' is the front's" "module.exports = {};" > "$w/server/rust-mtp-artifact.cjs"; mtp_try mtp-core-literal
+check "Core marker literal without the export is invalid" 'refused "ambiguous or unrecognized capability marker"'
+mtp_core_off; mtp_lib_off; unset mtp_owner mtp_methods; mtp_try mtp-legacy-again
+check "legacy MTP artifact pair stays valid after the matrix" '[ $rc -eq 0 ]'
 # Preset GET and its shared snapshot owner. Exercise the literal used by the real refuser.
 pr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';

@@ -1281,6 +1281,166 @@ if [ "$mdr_rs" = rust ]; then
     END { exit !ok }
   ' <<<"$mdr_index" || die "model downloads read ownership pairing: facts bridge needs the front captured secret"
 fi
+# The MTP artifact check (GET /api/models/mtp-artifact) moves as one owner: Core's
+# rust-mtp-artifact.cjs refusal and the front's rust-mtp-artifact capability, with exactly GET of
+# the path Rust's in routes.toml. Old/old (Node answers, no capability) stays a valid rollback pair;
+# any mixed pair, and any ambiguous or unrecognized marker on either side, refuses.
+# Detection runs in node (already required by the supervisor) under a hard process time limit.
+# Trust model: these are the owner's pinned repositories; node:vm is not a security boundary, it
+# only keeps the module's requires from reaching anything outside the file.
+# Core: the OWNED_PATHS the module actually exports, with every require() stubbed; invocation and
+# export access both run inside the timed evaluation. A marker literal without that export is
+# invalid; no literal and no export is absence. The refusal must also be wired in index.cjs.
+mtp_core_owner() {
+  local mod="$1/server/rust-mtp-artifact.cjs" wired=0
+  grep -qF "require('./rust-mtp-artifact.cjs')" "$1/server/index.cjs" 2>/dev/null && wired=1
+  [ -f "$mod" ] || { [ $wired = 1 ] && echo invalid || echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  local r
+  r="$(timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /\/api\/models\/mtp-artifact|RUST_MTP_ARTIFACT_OWNED/.test(src);
+    let value;
+    try {
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.OWNED_PATHS;" +
+        "  if (v === undefined) return undefined;" +
+        "  if (!Array.isArray(v) || v.length !== 1 || typeof v[0] !== \"string\") return null;" +
+        "  return v[0];" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    process.stdout.write(value === "/api/models/mtp-artifact" ? "rust" : "invalid");
+  ' "$mod" 2>/dev/null)" || r=invalid
+  [ -n "$r" ] || r=invalid
+  if [ "$r" = rust ] && [ $wired != 1 ]; then r=invalid; fi
+  if [ "$r" = none ] && [ $wired = 1 ]; then r=invalid; fi
+  echo "$r"
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes; each token keeps its kind, byte strings use the byte escape grammar) and
+# read the elements of the single FEATURES array, split at depth-0 commas. Every element must be
+# optional balanced attributes followed by one ordinary string literal or one plain path; macros,
+# expressions, raw or byte strings refuse. The capability must be one unconditional ordinary literal
+# equal to rust-mtp-artifact; inside an attribute, behind cfg, duplicated or misspelled is invalid.
+mtp_rs_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const MARK = "rust-mtp-artifact";
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    let found = 0;
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue;
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes(MARK));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || strs[+lit[1]].v !== MARK) out("invalid");
+        found++; continue;
+      }
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    out(found === 0 ? "none" : found === 1 ? "rust" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+mtp_core="$(mtp_core_owner "$tree/core")"
+mtp_rs="$(mtp_rs_owner "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$mtp_core" != invalid ] && [ "$mtp_rs" != invalid ] \
+  || die "MTP artifact ownership pairing: ambiguous or unrecognized capability marker (core=$mtp_core rust=$mtp_rs)"
+[ "$mtp_core" = "$mtp_rs" ] || die "MTP artifact ownership pairing: Core and Rust must move together (core=$mtp_core rust=$mtp_rs)"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mtp_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mtp_table=""
+  mtp_rows="$(printf '%s\n' "$mtp_table" | awk -F'\t' -v want="$mtp_rs" '
+    $1 == "/api/models/mtp-artifact" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "MTP artifact ownership pairing: GET only; other methods stay Node"
+  if [ "$mtp_rs" = rust ] && [ "$mtp_rows" != /api/models/mtp-artifact ]; then
+    die "MTP artifact ownership pairing: incomplete route ownership"
+  fi
+fi
 # Preset GET moves as a pair. PUT keeps the same snapshot owner and conditional writer.
 pr_core=""; pr_rs=""
 grep -qF "require('./rust-preset-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pr_core=rust
