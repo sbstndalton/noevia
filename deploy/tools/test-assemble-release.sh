@@ -1029,6 +1029,27 @@ for dn_m in \
   rmut x "$dn_m"
   check "Diary native: the real template refuses $dn_m" '[ "$(rcheck "$work/mut.df")" != ok ]'
 done
+# Every CR byte counts, not lines (delta review of b6852b3c): an interior CR on a line that also ends in CRLF, a CR
+# directly before the final CRLF, and a file mixing LF and CRLF endings are all refused.
+dn_crlf='t = t.replace("\n", "\r\n"); '
+for dn_m in \
+  "${dn_crlf}"'t += "ENV A=1\rPATH=/tmp\r\n"' \
+  "${dn_crlf}"'t += "ENV A=1\rDIARY_RUST_ROUTES=/api/months\r\n"' \
+  "${dn_crlf}"'t += "ENV A=1\rDIARY_RUST_WRITES=synthetic\r\n"' \
+  "${dn_crlf}"'t += "LABEL a=b\r\r\n"' \
+  "${dn_crlf}"'t += "\r\r\n"' \
+  't += "ENV A=1\rPATH=/tmp\r\n"' \
+  't += "ENV A=1\rDIARY_RUST_ROUTES=/api/months\r\n"' \
+  't += "ENV A=1\rDIARY_RUST_WRITES=synthetic\r\n"' \
+  't += "LABEL a=b\r\r\n"' \
+  't += "LABEL a=b\r\n"' \
+  "${dn_crlf}"'t += "LABEL a=b\n"' \
+  "${dn_crlf}"'t = t[:-2]'; do
+  rmut x "$dn_m"
+  check "Diary native: the real template refuses the CR/ending case: $dn_m" '[ "$(rcheck "$work/mut.df")" != ok ]'
+done
+rmut x "${dn_crlf}"'t += "LABEL a=b\r\n"'
+check "Diary native: an all-CRLF file with only line-ending CRs is still accepted" '[ "$(rcheck "$work/mut.df")" = ok ]'
 rmut x 't += "ENV FOO=bar PYTHONUNBUFFERED=1\nLABEL a=b\nEXPOSE 8010\n"'
 check "Diary native: the real template still accepts harmless ENV/LABEL/EXPOSE additions" '[ "$(rcheck "$work/mut.df")" = ok ]'
 # the template is normalized like the Dockerfile: wrapping its long lines with backslash-newline changes nothing

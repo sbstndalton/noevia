@@ -196,12 +196,17 @@ END {
 DIARYDFAWK
 # diary_df_ascii_ok <file>: the Dockerfile holds only printable ASCII (0x20-0x7E), tab and LF or CRLF line endings, in
 # comments too. A lone CR, VT, FF, NUL, DEL, NBSP or any other non-ASCII byte could be read as a separator or hidden by
-# one tool and not another, so it is refused instead of modelled.
+# one tool and not another, so it is refused instead of modelled. Every CR byte is checked, not lines.
 diary_df_ascii_ok() {
-  local cr; cr=$(printf '\r')
+  local cr total crlf; cr=$(printf '\r')
   [ "$(LC_ALL=C tr -d '\11\12\15\40-\176' < "$1" | wc -c | tr -d ' ')" = 0 ] || return 1
-  # a CR is allowed only directly before an LF: every line holding one must end with it, and the file may not end in one
-  [ "$(LC_ALL=C grep -c "$cr" "$1" || true)" = "$(LC_ALL=C grep -c "${cr}\$" "$1" || true)" ] || return 1
+  # Line endings: all LF or all CRLF, never mixed, and a CR only as the one byte before an LF. Every CR byte counts,
+  # not lines: strip exactly one trailing CR per line and refuse if any CR is left anywhere (an interior CR, or a CR
+  # directly before the CRLF); a file that ends in a CR has no LF to belong to.
+  total=$(LC_ALL=C grep -c '' "$1" || true)
+  crlf=$(LC_ALL=C grep -c "${cr}\$" "$1" || true)
+  [ "$crlf" = 0 ] || [ "$crlf" = "$total" ] || return 1
+  [ "$(LC_ALL=C sed "s/${cr}\$//" "$1" | LC_ALL=C grep -c "$cr" || true)" = 0 ] || return 1
   [ "$(tail -c 1 "$1" | od -An -tx1 | tr -d ' \n')" != 0d ] || return 1
 }
 diary_dockerfile_check() {
