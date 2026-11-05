@@ -43,9 +43,10 @@ echo "\$name WCONF=\${NOEVIA_RUST_PROJECT_WRITES_CONFIRMED:-} WRITES=\${NOEVIA_R
 echo "\$name SSTORE=\${NOEVIA_RUST_PROJECT_STORE_CONFIRMED:-} SPORT=\${NOEVIA_PROJECT_STORE_PORT:-} STOKLEN=\${#NOEVIA_PROJECT_STORE_TOKEN}" >> "$work/log"
 echo "\$name AUTH=\${NOEVIA_RUST_AUTH-unset}" >> "$work/log"
 echo "\$name LCLAIM=\${NOEVIA_LEGACY_CLAIM_BIN:-}" >> "$work/log"
+echo "\$name PID=\$\$" >> "$work/log"
 echo "\$name START=\${NOEVIA_START_ID-unset}" >> "$work/log"
 echo "\$name KCONF=\${NOEVIA_FRONT_CLIENT_IP:-}" >> "$work/log"
-trap 'echo "\$name TERM" >> "$work/log"; exit 0' TERM
+trap 'echo "\$name TERM" >> "$work/log"; if [ "\$name" = front ] && [ "\${STUB_FRONT_STUCK:-}" = 1 ]; then while :; do sleep 0.05; done; fi; if [ "\$name" = front ] && [ "\${STUB_FRONT_DRAIN:-}" = 1 ]; then sleep 0.15; echo "front JOINED" >> "$work/log"; fi; if [ "\$name" = node ] && [ "\${STUB_NODE_DRAIN:-}" = 1 ]; then sleep 3; echo "node HOOKS-DONE" >> "$work/log"; fi; exit 0' TERM
 # The supervisor TERMs the survivor as soon as one child exits. A front told to die at once would
 # race Node's startup logging (Node killed mid-write, its later lines lost: #1822), so a dying
 # front waits (bounded) until Node's last startup line is in the log.
@@ -572,6 +573,27 @@ reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old model maintenance pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 
+# Embedding background: one-way guard; old Core never authorizes native work.
+printf '%s\n' "module.exports = { RUST_EMBEDDING_OWNED: 'rust-embedding-background-v1' };" > "$work/server/rust-embedding-background.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "embedding Core with old front refuses before launch" '[ $rc -eq 2 ] && grep -q "requires rust-embedding-background-v1" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-embedding-background-v1" >/dev/null 2>"$work/err"; rc=$?
+check "paired embedding Core/front starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+rm "$work/server/rust-embedding-background.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-embedding-background-v1" >/dev/null 2>"$work/err"; rc=$?
+check "new embedding front with old Core starts for proof-gated legacy mode" '[ $rc -eq 3 ] && grep -q "^node " "$work/log"'
+reset
+mkdir -p "$work/server/ui-data"
+(exec 8>"$work/server/ui-data/embedding-pair.lock"; flock -x 8; touch "$work/pair-held"; while [ -f "$work/pair-held" ]; do sleep 0.05; done) &
+pair_holder=$!
+for _ in $(seq 1 100); do [ -f "$work/pair-held" ] && break; sleep 0.05; done
+run >/dev/null 2>"$work/err"; rc=$?
+check "replacement pair refuses until previous pair is quiescent" '[ $rc -eq 2 ] && grep -q "not quiescent" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/pair-held"; wait "$pair_holder"
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a bridge Core needs rust-preset-baseline;
 # a rust-preset-baseline front beside an older Core is shared mode and starts.
 printf '%s\n' "const PRESET_BASELINE_BRIDGE = 'noevia-preset-baseline-bridge/1';" > "$work/server/preset-reload.cjs"
@@ -615,12 +637,25 @@ for _ in $(seq 1 100); do [ -s "$work/rc" ] && break; sleep 0.05; done
 check "Node dying stops the front, non-zero exit" 'grep -q "^front TERM" "$work/log" && [ "$(cat "$work/rc")" = 3 ]'
 
 reset
-(cd "$work" && exec env NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 COWORK_DAV_PORT=8040 bash "$sup" >/dev/null 2>"$work/err") &
+(cd "$work" && exec env NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 COWORK_DAV_PORT=8040 STUB_FRONT_DRAIN=1 bash "$sup" >/dev/null 2>"$work/err") &
 pid=$!
 wait_log "^front" && wait_log "^node"
 check "with DAV on, Node keeps UI_HOST (default 0.0.0.0) and says so" 'grep -q "^node UI_HOST=0.0.0.0 UI_PORT=9021 " "$work/log" && grep -q "not loopback only" "$work/err"'
 kill -TERM "$pid"; wait "$pid"; rc=$?
 check "docker stop (SIGTERM) stops both and exits 0" '[ $rc -eq 0 ] && grep -q "^node TERM" "$work/log" && grep -q "^front TERM" "$work/log"'
+
+check "rollback drains and joins the front before stopping Core" 'awk "/^front JOINED$/ { joined=1 } /^node TERM$/ { if (!joined) exit 1; node=1 } END { if (!node || !joined) exit 1 }" "$work/log"'
+
+reset
+(cd "$work" && exec env NOEVIA_FRONT=rust NOEVIA_SERVER_BIN="$work/noevia-server" UI_PORT=8021 STUB_FRONT_STUCK=1 STUB_NODE_DRAIN=1 bash "$sup" >/dev/null 2>"$work/err") &
+pid=$!
+wait_log "^front KCONF=" && wait_log "^node KCONF="
+front_child="$(sed -n 's/^front PID=//p' "$work/log")"
+stop_started=$SECONDS
+kill -TERM "$pid"; wait "$pid"; rc=$?
+stop_elapsed=$((SECONDS - stop_started))
+check "stuck front is killed and joined before Core shutdown" '[ $rc -eq 0 ] && grep -q "front stop deadline reached" "$work/err" && ! kill -0 "$front_child" 2>/dev/null && awk "/^front TERM$/ { front=1 } /^node TERM$/ { if (!front) exit 1; node=1 } END { if (!node) exit 1 }" "$work/log"'
+check "Core shutdown hooks finish inside the default Docker stop budget" '[ "$stop_elapsed" -lt 10 ] && grep -q "^node HOOKS-DONE$" "$work/log"'
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]
