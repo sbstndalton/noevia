@@ -326,6 +326,18 @@ if [ "$maintenance_core_owner" != "$maintenance_front_owner" ]; then
   exit 2
 fi
 
+# A new front beside old Core stays idle (proof 404). A new Core must have the
+# native owner capability before either process is launched.
+embedding_core_owner="$(node -e "try { const m = require('./server/rust-embedding-background.cjs'); if (m.RUST_EMBEDDING_OWNED === 'rust-embedding-background-v1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if grep -qF "require('./rust-embedding-background.cjs')" "$PWD/server/index.cjs" 2>/dev/null && [ "$embedding_core_owner" != rust ]; then
+  echo "web-supervisor: invalid embedding background ownership marker" >&2
+  exit 2
+fi
+if [ "$embedding_core_owner" = rust ] && ! grep -qx 'rust-embedding-background-v1' <<<"$rust_features"; then
+  echo "web-supervisor: embedding background requires rust-embedding-background-v1; update the paired image" >&2
+  exit 2
+fi
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
 # (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
 # front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own
@@ -485,12 +497,39 @@ if [ -n "${COWORK_DAV_PORT:-}" ] && [ "${COWORK_DAV_PORT}" != 0 ]; then
   echo "web-supervisor: COWORK_DAV_PORT is set; Node's legacy port $legacy listens on $node_host, not loopback only" >&2
 fi
 
-node_pid="" front_pid="" signalled=0
+# Serialize coherent pair lifetimes, including rollback to an older Core. Keep
+# the fd inherited by both children: a replacement cannot start before both exit.
+# Never unlink this inode, including after an unclean shutdown.
+pair_data="${UI_DATA_DIR:-$PWD/server/ui-data}"
+mkdir -p "$pair_data" || exit 2
+exec 9>"$pair_data/embedding-pair.lock" || exit 2
+if ! flock -n 9; then
+  echo "web-supervisor: previous Core/front pair is not quiescent" >&2
+  exit 2
+fi
+
+node_pid="" front_pid="" signalled=0 stopping=0
 stop() {
-  local p
-  for p in "$node_pid" "$front_pid"; do
-    [ -n "$p" ] && kill -TERM "$p" 2>/dev/null
-  done
+  [ "$stopping" = 1 ] && return 0
+  stopping=1
+  # Required rollback order: stop/join the native owner before stopping Core.
+  # Revoking the proof cannot retract a previously admitted native batch.
+  if [ -n "$front_pid" ]; then
+    kill -TERM "$front_pid" 2>/dev/null || true
+    # Reserve Core's 3s shutdown-hook budget inside Docker's default 10s stop.
+    # Force a stuck front to exit before signalling Core; never overlap owners.
+    local front_deadline=$((SECONDS + 5))
+    while kill -0 "$front_pid" 2>/dev/null; do
+      if [ "$SECONDS" -ge "$front_deadline" ]; then
+        echo "web-supervisor: front stop deadline reached; killing the front before stopping Core" >&2
+        kill -KILL "$front_pid" 2>/dev/null || true
+        break
+      fi
+      sleep 0.05
+    done
+    wait "$front_pid" 2>/dev/null || true
+  fi
+  [ -n "$node_pid" ] && kill -TERM "$node_pid" 2>/dev/null
   return 0
 }
 trap 'signalled=1; stop' TERM INT
