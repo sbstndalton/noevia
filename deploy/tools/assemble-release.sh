@@ -1277,8 +1277,8 @@ mutations_core_version() {
 }
 # Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
 # literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
-# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
-# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# optional attributes followed by one ordinary string literal; paths, macros, expressions, raw or
+# byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
 # several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
 mutations_rs_version() {
   [ -f "$1" ] || { echo none; return; }
