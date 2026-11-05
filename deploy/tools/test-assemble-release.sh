@@ -6,11 +6,11 @@ here="$(cd -- "$(dirname -- "$0")" && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/assemble-release-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 fails=0; passes=0
-check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; fi; }
+check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; [ ! -f "$work/err" ] || cat "$work/err"; fi; }
 g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
-cp "$here/assemble-release.sh" "$repo/deploy/tools/"
+cp "$here/assemble-release.sh" "$here/model-writes-pairing.sh" "$repo/deploy/tools/"
 w="$repo/apps/web"
 mkdir -p "$w/src" "$w/public" "$w/scripts" "$w/contracts" "$w/tests/client" "$w/tests/server" "$w/tests/fixtures" "$w/qa" "$w/server"
 for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits.json tests/client/a.test.cjs \
@@ -2219,7 +2219,8 @@ if [ -f "$work/atr-models.saved" ]; then cp "$work/atr-models.saved" "$w/server/
 # #1863: only the idle unload GET moves.
 iur_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
-    printf '[[route]]\npath = "/api/models/idle-unload"\nowner = "%s"\n' "$iur_owner"; [ -z "${iur_methods:-}" ] || printf '%s\n' "$iur_methods")
+    printf '[[route]]\npath = "/api/models/idle-unload"\nowner = "%s"\n' "$iur_owner"; [ -z "${iur_methods:-}" ] || printf '%s\n' "$iur_methods"
+    if [ "${iur_writes:-}" = yes ]; then printf '[[route]]\npath = "/api/models/prune-missing"\nowner = "rust"\n%s\n' "${iur_prune_methods:-methods = [\"POST\"]}"; fi)
 }
 printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/idle-unload']));" > "$w/server/rust-idle-unload-read.cjs"
 touch "$w/server/rust-idle-unload-read-facts.cjs"
@@ -2246,6 +2247,31 @@ iur_try iur-front-only
 check "native idle unload GET requires its paired Core" 'refused "idle unload read ownership pairing"'
 iur_core; iur_try iur-pair
 check "matching idle unload GET pair assembles" '[ $rc -eq 0 ]'
+# The successor transfers both writers while retaining the same GET facts owner.
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/iur-read-features.saved"
+printf '%s\n' 'const MODEL_WRITES_OWNER = "rust-model-writes-d-v1"; module.exports = { MODEL_WRITES_OWNER };' > "$w/server/rust-model-write-effects.cjs"
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/idle-unload', 'PUT /api/models/idle-unload', 'POST /api/models/prune-missing']));" > "$w/server/rust-idle-unload-read.cjs"
+printf '%s\n' 'if (await modelWriteEffects(req, res)) return;' >> "$w/server/index.cjs"
+printf '%s\n' '// Native writers own persistence.' > "$w/server/routes/models.cjs"
+sed 's/"start-id"/"start-id", "rust-model-writes-d-v1"/' "$work/iur-read-features.saved" > "$rz/bins/noevia-server/src/lib.rs"
+iur_methods='methods = ["GET", "PUT"]'; iur_writes=yes
+iur_try iur-native-writers
+check "native idle PUT and prune pair assembles with the existing GET owner" '[ $rc -eq 0 ]'
+printf '%s\n' 'idleUnload.save(body, actor);' >> "$w/server/routes/models.cjs"
+iur_try iur-native-retained-writer
+check "native model writer pair rejects the replaced Node writer" 'refused "Core retains a Node writer"'
+printf '%s\n' '// Native writers own persistence.' > "$w/server/routes/models.cjs"
+iur_prune_methods='methods = ["POST", "DELETE"]'; iur_try iur-native-extra-prune-method
+check "native model writer pair rejects an extra prune method" 'refused "incorrect native methods"'
+unset iur_prune_methods
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/idle-unload']));" > "$w/server/rust-idle-unload-read.cjs"
+iur_try iur-native-missing-refusal
+check "native model writer pair requires both public writer refusals" 'refused "exact idle/prune generation"'
+rm -f "$w/server/rust-model-write-effects.cjs"
+unset iur_writes
+cp "$work/iur-read-features.saved" "$rz/bins/noevia-server/src/lib.rs"
+printf '%s\n' 'idleUnload.save(body, actor);' > "$w/server/routes/models.cjs"
+iur_core
 iur_methods='methods = ["PUT"]'; iur_try iur-put
 check "idle unload GET pair cannot claim the write" 'refused "GET only; PUT and other methods stay Node"'
 iur_methods='methods = ["GET"]'
@@ -4750,6 +4776,8 @@ g commit -qam selfagain; ssha="$(g rev-parse --short HEAD)"; fout="$work/failout
 PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ssha" "$fout" >/dev/null 2>"$work/err"; rc=$?
 check "failing final tar exits non-zero" '[ $rc -ne 0 ]'
 check "failing final tar leaves no .partial and no tarball" '[ -z "$(ls -A "$fout")" ]'
+
+check "model write pairing rejects mixed and ambiguous generations" 'bash "$here/test-model-writes-pairing.sh"'
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]

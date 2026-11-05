@@ -1178,16 +1178,27 @@ if [ "$atr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$atr_index" || die "auto-tune read ownership pairing: facts bridge needs the front captured secret"
 fi
-# #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
+# Keep the GET-only generation valid for rollback; v1 transfers PUT and prune together.
+source "$(dirname -- "${BASH_SOURCE[0]}")/model-writes-pairing.sh"
+iur_native_writes=false
+iur_expected_methods=GET
+iur_expected_refusals='GET /api/models/idle-unload '
+if [ "$(model_writes_core_version "$tree/core/server/rust-model-write-effects.cjs")" = v1 ] &&
+   [ "$(model_writes_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")" = v1 ]; then
+  iur_native_writes=true
+  iur_expected_methods=GET,PUT
+  iur_expected_refusals='GET /api/models/idle-unload POST /api/models/prune-missing PUT /api/models/idle-unload '
+fi
 iur_core_owner=""; iur_rs_owner=""
 grep -qF "require('./rust-idle-unload-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && iur_core_owner=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-idle-unload-read features; then iur_rs_owner=rust; fi
 [ "$iur_core_owner" = "$iur_rs_owner" ] || die "idle unload read ownership pairing: Core and Rust must move together"
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   iur_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || iur_table=""
-  iur_rows="$(printf '%s\n' "$iur_table" | awk -F'\t' -v want="$iur_rs_owner" '
+  iur_rows="$(printf '%s\n' "$iur_table" | awk -F'\t' -v want="$iur_rs_owner" -v methods="$iur_expected_methods" '
     $1 == "/api/models/idle-unload" {
-      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      gsub(/[ \t]/, "", $4)
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != methods)) exit 1
       if (want != "rust" && $2 != "node") exit 1
       print $1
     }')" || die "idle unload read ownership pairing: GET only; PUT and other methods stay Node"
@@ -1195,11 +1206,21 @@ fi
 if [ "$iur_rs_owner" = rust ]; then
   [ "${iur_rows:-}" = /api/models/idle-unload ] || die "idle unload read ownership pairing: incomplete route ownership"
   iur_refused="$( { project_routes_core "$tree/core/server/rust-idle-unload-read.cjs" || true; } | tr '\n' ' ')"
-  [ "$iur_refused" = 'GET /api/models/idle-unload ' ] || die "idle unload read ownership pairing: Core must refuse exactly GET idle unload"
+  [ "$iur_refused" = "$iur_expected_refusals" ] || die "idle unload read ownership pairing: Core must refuse the exact idle/prune generation"
   ! code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]get[[:space:]]*[(]' \
     || die "idle unload read ownership pairing: Core still carries the public GET handler"
-  code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]save[[:space:]]*[(]' \
-    || die "idle unload read ownership pairing: PUT must stay Node-owned"
+  if [ "$iur_native_writes" = true ]; then
+    ! code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]save[[:space:]]*[(]|function pruneMissingPresets[[:space:]]*[(]' \
+      || die "model write ownership pairing: Core retains a Node writer"
+    ! code_has "$tree/core/server/idle-unload-setting.cjs" 'function save[[:space:]]*[(]' \
+      || die "model write ownership pairing: Core retains the idle setting writer"
+    mw_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qF 'modelWriteEffects(req, res)' <<<"$mw_index" \
+      || die "model write ownership pairing: missing consumer notification mount"
+  else
+    code_has "$tree/core/server/routes/models.cjs" 'idleUnload[.]save[[:space:]]*[(]' \
+      || die "idle unload read ownership pairing: PUT must stay Node-owned"
+  fi
   code_has "$tree/core/server/idle-unload-setting.cjs" 'function effectiveSeconds[[:space:]]*[(]' \
     || die "idle unload read ownership pairing: Core does not expose the live timer fact"
   [ -f "$tree/core/server/rust-idle-unload-read-facts.cjs" ] || die "idle unload read ownership pairing: missing facts bridge"
@@ -2370,6 +2391,25 @@ elif [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
    || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
   core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
 fi
+
+# Missing-preset cleanup and idle timer writes must move with their refusal adapters.
+model_writes_pair "$tree/core" "$tree/rs" || die "model write ownership pairing: Core and Rust must move together"
+if [ "$(model_writes_core_version "$tree/core/server/rust-model-write-effects.cjs")" = v1 ]; then
+  model_write_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/models/idle-unload" || $1 == "/api/models/prune-missing" {
+      if ($2 != "rust" || $3 != "-") exit 1
+      n = split($4, m, /[^A-Z]+/); count = 0; get = 0; put = 0; post = 0
+      for (i = 1; i <= n; i++) if (m[i] != "") {
+        count++; if (m[i] == "GET") get++; else if (m[i] == "PUT") put++; else if (m[i] == "POST") post++; else exit 1
+      }
+      if ($1 == "/api/models/idle-unload" && !(count == 2 && get == 1 && put == 1)) exit 1
+      if ($1 == "/api/models/prune-missing" && !(count == 1 && post == 1)) exit 1
+      print $1
+    }' | LC_ALL=C sort)" || die "model write ownership pairing: incorrect native methods"
+  [ "$model_write_routes" = "$(printf '%s\n' /api/models/idle-unload /api/models/prune-missing | LC_ALL=C sort)" ] || die "model write ownership pairing: missing route contract"
+fi
+
+
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.
