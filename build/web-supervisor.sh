@@ -338,6 +338,26 @@ if [ "$embedding_core_owner" = rust ] && ! grep -qx 'rust-embedding-background-v
   exit 2
 fi
 
+# The source migration runs before the native project store serves. Reject either
+# half-pair before launching processes so an older process cannot race the sweep.
+source_startup_core=none
+if [ -f "$PWD/server/rust-source-startup.cjs" ]; then
+  source_startup_core="$(timeout -k 2 10 node -e '
+    const fs=require("node:fs"),vm=require("node:vm");
+    try {
+      const src=fs.readFileSync(process.argv[1],"utf8");
+      const value=vm.runInNewContext("const module={exports:{}};"+src+"\nmodule.exports.RUST_SOURCE_STARTUP_OWNED",{}, {timeout:2000});
+      process.stdout.write(value === "rust-source-startup-v1" ? "v1" : "invalid");
+    } catch { process.stdout.write("invalid"); }
+  ' "$PWD/server/rust-source-startup.cjs" 2>/dev/null)" || source_startup_core=invalid
+fi
+source_startup_front=none
+grep -qx 'rust-source-startup-v1' <<<"$rust_features" && source_startup_front=v1
+if [ "$source_startup_core" = invalid ] || [ "$source_startup_core" != "$source_startup_front" ]; then
+  echo "web-supervisor: source startup ownership mismatch; update the paired image" >&2
+  exit 2
+fi
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
 # (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
 # front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own
