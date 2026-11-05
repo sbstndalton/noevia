@@ -1637,6 +1637,143 @@ if [ "$directory_rs_owner" = rust ]; then
     }')" || die "plugin directory ownership pairing: all methods must belong to Rust"
   [ "$directory_routes" = /api/plugins/directory ] || die "plugin directory ownership pairing: incomplete route ownership"
 fi
+# F1: persistence, cleanup and the private boot proof move as one paired writer.
+auto_roles_core_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_AUTO_ROLES_WRITE_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write("invalid"); process.exit(0); }
+    const markers = src.match(/["\x27]rust-auto-roles-write[^"\x27\r\n]*["\x27]/g) || [];
+    process.stdout.write(value === "rust-auto-roles-write" && markers.length === 1 ? "rust" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+auto_roles_rs_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-auto-roles-write"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-auto-roles-write")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    out(outbox[0] === "rust-auto-roles-write" ? "rust" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+auto_roles_write_owner="$(auto_roles_core_owner "$tree/core/server/rust-auto-roles-write.cjs")"
+auto_roles_write_front="$(auto_roles_rs_owner "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$auto_roles_write_owner" != invalid ] && [ "$auto_roles_write_front" != invalid ] || die "auto-roles write ownership pairing: ambiguous or unknown capability marker"
+[ "$auto_roles_write_owner" = "$auto_roles_write_front" ] || die "auto-roles write ownership pairing: Core and Rust must move together"
+if [ "$auto_roles_write_owner" = rust ]; then
+  [ -f "$tree/core/server/rust-auto-roles-write.cjs" ] || die "auto-roles write ownership pairing: missing Core bridge"
+  code_has "$tree/core/server/index.cjs" 'PROJECT_STORE\.autoRolesReady\(\)' || die "auto-roles write ownership pairing: missing boot proof"
+  code_has "$tree/core/server/index.cjs" 'autoRolesWriteBridge\(req, res\)' || die "auto-roles write ownership pairing: missing bridge mount"
+  if code_has "$tree/core/server/models.cjs" 'saveAutoRoles[(]' || code_has "$tree/core/server/workspace.cjs" 'saveAutoRoles[(]'; then
+    die "auto-roles write ownership pairing: Core still carries a roles writer"
+  fi
+fi
 # The close-out routes: GET /api/health and GET /api/auto-roles (sbstndalton/noevia#2190) and GET
 # /api/workspace (#2191). Each is Core's refusal (server/rust-health.cjs, rust-auto-roles.cjs,
 # rust-workspace.cjs, which also publish rag-status.json and auto-roles-snapshot.json for the front) beside
@@ -1654,12 +1791,15 @@ get_only_pair() {
     || die "$label ownership pairing: Core and Rust must move together"
   if [ "$rs_owner" = rust ]; then
     [ -f "$tree/rs/contracts/http/routes.toml" ] || die "$label ownership pairing: missing route contract"
-    owned="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$route" '
+    owned="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$route" -v put="${auto_roles_write_owner:-}" '
       $1 == want {
         if ($2 != "rust" || $3 != "-") exit 1
         n = split($4, m, /[^A-Z]+/); k = 0; g = 0
         for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] == "GET") g++; k++ }
-        if (k != 1 || g != 1) exit 1
+        if (want == "/api/auto-roles" && put == "rust") {
+          p = 0; for (i = 1; i <= n; i++) if (m[i] == "PUT") p++
+          if (k != 2 || g != 1 || p != 1) exit 1
+        } else if (k != 1 || g != 1) exit 1
         print $1
       }')" || die "$label ownership pairing: exactly GET of $route must belong to Rust"
     [ "$owned" = "$route" ] || die "$label ownership pairing: incomplete route ownership"

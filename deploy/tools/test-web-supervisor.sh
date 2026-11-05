@@ -449,6 +449,51 @@ rm "$work/server/large-document-lock.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-large-document-host-lock" >/dev/null 2>"$work/err"; rc=$?
 check "host-lock front with an in-process-lock Core refuses before launch" '[ $rc -eq 2 ] && grep -q "large-document lock mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# F1 reads the actual export; duplicate and unknown runtime tokens must refuse.
+printf '%s\n' "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' };" > "$work/server/rust-auto-roles-write.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "auto-roles write: new Core refuses old front" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-auto-roles-write" >/dev/null 2>"$work/err"; rc=$?
+check "auto-roles write: paired export starts both processes" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+rm -f "$work/server/rust-auto-roles-write.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-auto-roles-write" >/dev/null 2>"$work/err"; rc=$?
+check "auto-roles write: new front refuses old Core" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+for malformed in absent unknown duplicate comment template invalid; do
+  for front in old new; do
+    case "$malformed" in
+      absent) printf "%s\n" "module.exports = {};" ;;
+      unknown) printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write-v2' };" ;;
+      duplicate) printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' }; const other = 'rust-auto-roles-write';" ;;
+      comment) printf "%s\n" "/* module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' }; */" ;;
+      template) printf '%s\n' 'const text = `not an export; "rust-auto-roles-write"`;' ;;
+      invalid) printf '%s\n' 'module.exports = {' ;;
+    esac > "$work/server/rust-auto-roles-write.cjs"
+    features="$BASE_FEATURES"; [ "$front" = old ] || features="$features rust-auto-roles-write"
+    reset
+    run STUB_FEATURES="$features" >/dev/null 2>"$work/err"; rc=$?
+    check "auto-roles write: $malformed Core marker refuses with $front front" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+  done
+done
+for core in old new; do
+  rm -f "$work/server/rust-auto-roles-write.cjs"
+  [ "$core" = old ] || printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' };" > "$work/server/rust-auto-roles-write.cjs"
+  for markers in 'rust-auto-roles-write-v2' 'rust-auto-roles-write rust-auto-roles-write' 'rust-auto-roles-write rust-auto-roles-write-v2'; do
+    reset
+    run STUB_FEATURES="$BASE_FEATURES $markers" >/dev/null 2>"$work/err"; rc=$?
+    check "auto-roles write: malformed front tokens refuse with $core Core ($markers)" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+  done
+done
+rm -f "$work/server/rust-auto-roles-write.cjs"
+printf '%s\n' "module.exports = { get RUST_AUTO_ROLES_WRITE_OWNED() { for (;;) {} } };" > "$work/server/rust-auto-roles-write.cjs"
+reset
+started=$(date +%s)
+run STUB_FEATURES="$BASE_FEATURES rust-auto-roles-write" >/dev/null 2>"$work/err"; rc=$?
+elapsed=$(( $(date +%s) - started ))
+check "auto-roles Core whose export never returns refuses within the bound" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ] && [ $elapsed -lt 30 ]'
+rm -f "$work/server/rust-auto-roles-write.cjs"
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
 for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration-routes.cjs rust-calibration-routes calibration start/read" "rust-idle-unload-read.cjs rust-idle-unload-read idle unload read" "rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read" "rust-autotune-resume.cjs rust-autotune-resume auto-tune resume" "rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation" "rust-autotune-read.cjs rust-autotune-read auto-tune status GET" "rust-tool-approvals.cjs rust-tool-approvals tool approval decision" "rust-public-pages.cjs rust-public-pages public page" "rust-task-reads.cjs rust-task-reads task read" "rust-autotune-settings.cjs rust-autotune-settings auto-tune settings" "rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation" "rust-autotune-clear.cjs rust-autotune-clear autotune dismissal" "rust-model-state-reads.cjs rust-model-state-reads model state read" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list" "rust-providers.cjs rust-providers provider registry" "rust-providers-reseal.cjs rust-providers-reseal provider key reseal" "rust-google-drive.cjs rust-google-drive Google Drive" "rust-offsite-backup.cjs rust-offsite-backup off-site backup" "rust-mcp-credentials.cjs rust-mcp-credentials MCP credential" "rust-health.cjs rust-health health check" "rust-auto-roles.cjs rust-auto-roles auto-roles read" "rust-workspace.cjs rust-workspace workspace list" "rust-diary-routes.cjs rust-diary-routes Diary connector and recovery" "rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange" "rust-mcp-directory.cjs rust-mcp-directory MCP directory" "rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker" "rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools" "rust-connectors.cjs rust-connectors connectors" "rust-project-config.cjs rust-project-config project configuration" "rust-admin-users.cjs rust-admin-users account deletion" "rust-research.cjs rust-research deep research" "rust-chat-search.cjs rust-chat-search chat search" "rust-chat-export.cjs rust-chat-export chat download" "rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery" "rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck" "rust-model-assignments.cjs rust-model-assignments model assignments read" "rust-model-downloads-read.cjs rust-model-downloads-read model download GET"; do

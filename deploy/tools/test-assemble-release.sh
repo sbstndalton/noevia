@@ -4353,6 +4353,76 @@ for close_entry in "rust-health.cjs|rust-health|/api/health|health check" "rust-
   move_try "close-$close_cap-old-pair"
   check "$close_label: the historic old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 done
+# F1 writer pairing, retaining the read pair and its exact GET|PUT contract.
+roles_core_good() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "require('./rust-auto-roles.cjs');" "require('./rust-auto-roles-write.cjs');" "PROJECT_STORE.autoRolesReady();" "autoRolesWriteBridge(req, res);" >> "$w/server/index.cjs"
+  printf '%s\n' "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' };" > "$w/server/rust-auto-roles-write.cjs"
+}
+roles_rs_good() { sed 's/"start-id"/"start-id", "rust-auto-roles", "rust-auto-roles-write"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+roles_core_good
+close_path=/api/auto-roles; close_owner=rust; close_methods='methods = ["GET", "PUT"]'
+close_try roles-write-core-only
+check "auto-roles write: Core refuses an older front" 'refused "auto-roles write ownership pairing"'
+roles_rs_good
+close_try roles-write-paired
+check "auto-roles write: coherent GET and PUT pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+close_methods='methods = ["GET"]'
+close_try roles-write-missing-put
+check "auto-roles write: a capability without PUT is refused" 'refused "auto-roles read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+rm -f "$w/server/rust-auto-roles-write.cjs"
+close_try roles-write-front-only
+check "auto-roles write: a native front refuses the old writer" 'refused "auto-roles write ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+close_try roles-write-old-old
+check "auto-roles write: historic old/old still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+close_methods='methods = ["GET", "PUT"]'
+for malformed in absent unknown duplicate comment template invalid; do
+  for front in old new; do
+    roles_core_good
+    case "$malformed" in
+      absent) printf "%s\n" "module.exports = {};" > "$w/server/rust-auto-roles-write.cjs" ;;
+      unknown) printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write-v2' };" > "$w/server/rust-auto-roles-write.cjs" ;;
+      duplicate) printf "%s\n" "const duplicate = 'rust-auto-roles-write';" >> "$w/server/rust-auto-roles-write.cjs" ;;
+      comment) printf "%s\n" "/* module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' }; */" > "$w/server/rust-auto-roles-write.cjs" ;;
+      template) printf '%s\n' 'const text = `not an export; "rust-auto-roles-write"`;' > "$w/server/rust-auto-roles-write.cjs" ;;
+      invalid) printf "%s\n" "module.exports = {" > "$w/server/rust-auto-roles-write.cjs" ;;
+    esac
+    if [ "$front" = new ]; then roles_rs_good; else cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; fi
+    close_try "roles-core-$malformed-$front"
+    check "auto-roles write: $malformed Core marker refuses with $front front" 'refused "auto-roles write ownership pairing"'
+  done
+done
+for malformed in unknown duplicate outside comment raw bytes raw-bytes concat attribute escaped-duplicate escaped; do
+  for core in old new; do
+    roles_core_good; roles_rs_good
+    if [ "$core" = old ]; then rm -f "$w/server/rust-auto-roles-write.cjs"; cp "$work/feature-index.saved" "$w/server/index.cjs"; fi
+    case "$malformed" in
+      unknown) sed 's/"rust-auto-roles-write"/"rust-auto-roles-write-v2"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      duplicate) sed 's/"rust-auto-roles-write"/"rust-auto-roles-write", "rust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      outside) cat "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib"; printf '%s\n' 'const OTHER: &str = "rust-auto-roles-write";' >> "$work/roles-lib" ;;
+      comment) cat "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib"; printf '%s\n' '/* "rust-auto-roles-write" */' >> "$work/roles-lib" ;;
+      raw) sed 's/"rust-auto-roles-write"/r#"rust-auto-roles-write"#/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      bytes) sed 's/"rust-auto-roles-write"/b"rust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      raw-bytes) sed 's/"rust-auto-roles-write"/br#"rust-auto-roles-write"#/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      concat) sed 's/"rust-auto-roles-write"/concat!("rust-auto-roles-write", "-v2")/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      attribute) sed 's/"rust-auto-roles-write"/#[cfg(feature = "rust-auto-roles-write")] "unrelated"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      escaped-duplicate) sed 's/"rust-auto-roles-write"/"rust-auto-roles-write", "\\x72ust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      escaped) sed 's/"rust-auto-roles-write"/"\\x72ust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+    esac
+    cp "$work/roles-lib" "$rz/bins/noevia-server/src/lib.rs"
+    close_try "roles-rust-$malformed-$core"
+    if [ "$core" = new ] && [[ "$malformed" =~ ^(outside|comment|escaped)$ ]]; then
+      check "auto-roles write: tokenizer accepts $malformed with the matching Core" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+    else
+      check "auto-roles write: $malformed Rust marker refuses with $core Core" 'refused "auto-roles write ownership pairing"'
+    fi
+  done
+done
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-auto-roles-write.cjs"
 # The chat pairs' Core side: exactly the GET refused, in code, and the old handler gone from routes/chat-lists.cjs.
 [ ! -f "$w/server/routes/chat-lists.cjs" ] || cp "$w/server/routes/chat-lists.cjs" "$work/chat-lists.saved"
 mkdir -p "$w/server/routes"

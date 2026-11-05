@@ -298,6 +298,45 @@ rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
 PAIRS
+# F1: compare the actual Core export with exact runtime capability entries.
+auto_roles_core_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  local auto_roles_bound="timeout -k 2 10"
+  command -v timeout >/dev/null 2>&1 || { echo invalid; return; }
+  $auto_roles_bound node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_AUTO_ROLES_WRITE_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write("invalid"); process.exit(0); }
+    const markers = src.match(/["\x27]rust-auto-roles-write[^"\x27\r\n]*["\x27]/g) || [];
+    process.stdout.write(value === "rust-auto-roles-write" && markers.length === 1 ? "rust" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+auto_roles_write_owner="$(auto_roles_core_owner "$PWD/server/rust-auto-roles-write.cjs")"
+auto_roles_write_front=none
+while IFS= read -r marker; do
+  case "$marker" in
+    *rust-auto-roles-write*)
+      if [ "$marker" = rust-auto-roles-write ] && [ "$auto_roles_write_front" = none ]; then auto_roles_write_front=rust
+      else auto_roles_write_front=invalid; fi ;;
+  esac
+done <<<"$rust_features"
+if [ "$auto_roles_write_owner" = invalid ] || [ "$auto_roles_write_front" = invalid ] || [ "$auto_roles_write_owner" != "$auto_roles_write_front" ]; then
+  echo "web-supervisor: auto-roles write route ownership mismatch or ambiguous capability marker; update the paired image" >&2
+  exit 2
+fi
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
 # that answers them (rust-model-sizing), and a rust-model-sizing front needs that Core. Old/old images

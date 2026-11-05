@@ -121,6 +121,8 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-auto-roles-pairing.sh
+        if: env.RUN_JOB == 'true'
       # #1318 step 1c: the trusted-sets seed (stub docker; needs jq, installed above).
       - run: bash deploy/tools/test-seed-search-trusted.sh
         if: env.RUN_JOB == 'true'
