@@ -2415,6 +2415,77 @@ pr_try pr-old-rust-row
 check "old preset pair rejects Rust ownership" 'refused "preset read ownership pairing"'
 pr_owner=node; unset pr_methods; pr_try pr-old-pair
 check "old preset pair stays valid for rollback" '[ $rc -eq 0 ]'
+# #2387 (G2): the preset facts are the native reader's. Rust's capability and Core's marker move together,
+# and Core then has no facts bridge. (The pair above is the previous generation, still valid for rollback.)
+pf_lib() { sed 's/"start-id"/"start-id", "rust-preset-read", "rust-preset-facts"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+pf_core_files() {
+  rm -f "$w/server/rust-preset-read-bridge.cjs"
+  cat > "$w/server/rust-preset-facts.cjs" <<'JS'
+const PROTOCOL = 'noevia-preset-facts/1';
+function verifyNative() {}
+module.exports = { PROTOCOL, verifyNative };
+JS
+  printf '%s\n' "const dav = require('./dav-parse-wasm.cjs'); dav.llamacppPresetsParse(text); dav.llamacppPresetsFacts(text, model);" > "$w/server/llamacpp-presets.cjs"
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+require('./rust-preset-facts.cjs').verifyNative(davParseWasm);
+if (require('./rust-preset-read.cjs').refuseOwned(req, res, {})) return;
+JS
+  mkdir -p "$rz/crates/llamacpp-presets/src"; echo '// parse' > "$rz/crates/llamacpp-presets/src/read.rs"
+}
+pf_core_files; pf_lib
+pr_owner=rust; pr_methods='methods = ["GET"]'
+cp "$w/server/index.cjs" "$work/pf-index.saved"
+pr_try pf-pair
+check "matching preset facts pair assembles without a facts bridge" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-preset-facts.cjs"
+pr_try pf-front-only
+check "preset facts capability rejects a Core without the native reader" 'refused "preset facts ownership pairing: Core and Rust must move together"'
+pf_core_files
+sed 's/"start-id"/"start-id", "rust-preset-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+pr_try pf-core-only
+check "preset facts marker rejects a front that asks Node for facts" 'refused "preset facts ownership pairing: Core and Rust must move together"'
+pf_lib
+touch "$w/server/rust-preset-read-bridge.cjs"
+pr_try pf-bridge-file
+check "preset facts pair rejects a Core that still carries the bridge file" 'refused "Core still carries the facts bridge"'
+rm -f "$w/server/rust-preset-read-bridge.cjs"
+printf '%s\n' "if (await presetReadBridge(req, res)) return;" >> "$w/server/index.cjs"
+pr_try pf-bridge-mount
+check "preset facts pair rejects a Core that still mounts the bridge" 'refused "Core still mounts the facts bridge"'
+grep -v "verifyNative" "$work/pf-index.saved" > "$w/server/index.cjs"
+pr_try pf-no-verify
+check "preset facts pair needs the startup check of the native reader" 'refused "verify the native reader at startup"'
+cp "$work/pf-index.saved" "$w/server/index.cjs"
+printf '%s\n' "// dav.llamacppPresetsParse dav.llamacppPresetsFacts" > "$w/server/llamacpp-presets.cjs"
+pr_try pf-comment-only
+check "preset facts calls must be executable code" 'refused "through the native reader"'
+printf '%s\n' "const dav = require('./dav-parse-wasm.cjs'); dav.llamacppPresetsParse(t); dav.llamacppPresetsFacts(t, m); require('node:crypto').createHash('sha256');" > "$w/server/llamacpp-presets.cjs"
+pr_try pf-own-revision
+check "preset facts pair rejects a Core that hashes its own revision" 'refused "own preset parser or revision"'
+printf '%s\n' "const dav = require('./dav-parse-wasm.cjs'); dav.llamacppPresetsParse(t); dav.llamacppPresetsFacts(t, m);" > "$w/server/llamacpp-presets.cjs"
+sed 's/noevia-preset-facts\/1/other\/1/' "$w/server/rust-preset-facts.cjs" > "$work/pf-marker.tmp" && cp "$work/pf-marker.tmp" "$w/server/rust-preset-facts.cjs"
+pr_try pf-wrong-protocol
+check "preset facts marker must carry the paired protocol" 'refused "not the paired protocol"'
+pf_core_files
+rm -f "$rz/crates/llamacpp-presets/src/read.rs"
+pr_try pf-no-reader
+check "preset facts capability needs the Rust reader source" 'refused "Rust has no native reader"'
+echo '// parse' > "$rz/crates/llamacpp-presets/src/read.rs"
+rm -f "$w/server/rust-preset-facts.cjs" "$rz/crates/llamacpp-presets/src/read.rs"
+cp "$work/pr-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/preset']));" > "$w/server/rust-preset-read.cjs"
+printf '%s\n' 'presetFacts: model => presets?.get(model) ?? null,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'const result = await modelManager.applyPreset(await readJson(req));' > "$w/server/routes/models.cjs"
+touch "$w/server/rust-preset-read-bridge.cjs"
+sed 's/"start-id"/"start-id", "rust-preset-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+pr_try pf-previous-pair-still-valid
+check "the previous bridge pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/llamacpp-presets.cjs" "$w/server/rust-preset-facts.cjs"
+rm -rf "$rz/crates/llamacpp-presets"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-preset-read.cjs" "$w/server/rust-preset-read-bridge.cjs"
 for pr_file in llamacpp-manager.cjs routes/models.cjs; do
   if [ -f "$work/pr-${pr_file##*/}.saved" ]; then

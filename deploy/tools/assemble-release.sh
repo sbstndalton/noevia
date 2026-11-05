@@ -1279,11 +1279,35 @@ if [ "$mdr_rs" = rust ]; then
     END { exit !ok }
   ' <<<"$mdr_index" || die "model downloads read ownership pairing: facts bridge needs the front captured secret"
 fi
+# #2387 (G2): the preset facts (parse, editor limit, revision, defaults, field names) are the native reader's:
+# the front answers GET /api/models/preset from its own read of models.ini, the one its conditional writes check,
+# and Core reads it through dav-parse.wasm (ops 5 and 6) with no facts bridge. A front that reads models.ini itself
+# beside a Core that parses its own copy, or the other way round, would let a stale write look current.
+pf_core=""; pf_rs=""
+[ -f "$tree/core/server/rust-preset-facts.cjs" ] && pf_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-preset-facts features; then pf_rs=rust; fi
+[ "$pf_core" = "$pf_rs" ] || die "preset facts ownership pairing: Core and Rust must move together"
 # Preset GET moves as a pair. PUT keeps the same snapshot owner and conditional writer.
 pr_core=""; pr_rs=""
 grep -qF "require('./rust-preset-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && pr_core=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-preset-read features; then pr_rs=rust; fi
 [ "$pr_core" = "$pr_rs" ] || die "preset read ownership pairing: Core and Rust must move together"
+if [ "$pf_rs" = rust ]; then
+  [ "$pr_rs" = rust ] || die "preset facts ownership pairing: the native facts need the native preset GET"
+  [ -f "$tree/rs/crates/llamacpp-presets/src/read.rs" ] || die "preset facts ownership pairing: Rust has no native reader"
+  [ ! -f "$tree/core/server/rust-preset-read-bridge.cjs" ] || die "preset facts ownership pairing: Core still carries the facts bridge"
+  pf_index="$(code_lines "$tree/core/server/index.cjs")"
+  ! grep -qE 'presetReadBridge|rust-preset-read-bridge|internal/preset-read' <<<"$pf_index" \
+    || die "preset facts ownership pairing: Core still mounts the facts bridge"
+  grep -qF "require('./rust-preset-facts.cjs').verifyNative(" <<<"$pf_index" \
+    || die "preset facts ownership pairing: Core must verify the native reader at startup"
+  code_has "$tree/core/server/rust-preset-facts.cjs" "^const PROTOCOL = 'noevia-preset-facts/1';$" \
+    || die "preset facts ownership pairing: Core marker is not the paired protocol"
+  code_has "$tree/core/server/llamacpp-presets.cjs" 'llamacppPresetsFacts' && code_has "$tree/core/server/llamacpp-presets.cjs" 'llamacppPresetsParse' \
+    || die "preset facts ownership pairing: Core must read the facts through the native reader"
+  ! code_has "$tree/core/server/llamacpp-presets.cjs" 'createHash|const fields[[:space:]]*=|sections[.]has[(]' \
+    || die "preset facts ownership pairing: Core carries its own preset parser or revision"
+fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   pr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || pr_table=""
   pr_rows="$(printf '%s\n' "$pr_table" | awk -F'\t' -v want="$pr_rs" '
@@ -1303,15 +1327,18 @@ if [ "$pr_rs" = rust ]; then
     || die "preset read ownership pairing: PUT must stay Node-owned"
   code_has "$tree/core/server/llamacpp-manager.cjs" 'presetFacts:.*presets[?][.]get[(]' \
     || die "preset read ownership pairing: missing shared preset snapshot"
-  [ -f "$tree/core/server/rust-preset-read-bridge.cjs" ] || die "preset read ownership pairing: missing facts bridge"
-  pr_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'presetReadBridge(req, res)' <<<"$pr_index" || die "preset read ownership pairing: missing facts bridge mount"
-  pr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$pr_index" | head -1)"
-  [ -n "$pr_secret" ] && awk -v c="$pr_secret" '
-    /createPresetReadBridge\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$pr_index" || die "preset read ownership pairing: facts bridge needs the front captured secret"
+  if [ "$pf_rs" != rust ]; then
+    # The previous pair: the front asks Node for the facts through the private bridge.
+    [ -f "$tree/core/server/rust-preset-read-bridge.cjs" ] || die "preset read ownership pairing: missing facts bridge"
+    pr_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qF 'presetReadBridge(req, res)' <<<"$pr_index" || die "preset read ownership pairing: missing facts bridge mount"
+    pr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$pr_index" | head -1)"
+    [ -n "$pr_secret" ] && awk -v c="$pr_secret" '
+      /createPresetReadBridge\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$pr_index" || die "preset read ownership pairing: facts bridge needs the front captured secret"
+  fi
 fi
 # #2293: autotune dismissal policy is native, with only facts and the conditional state writer in Core.
 ac_core_owner=""; ac_rs_owner=""

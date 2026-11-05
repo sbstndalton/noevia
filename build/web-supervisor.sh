@@ -240,7 +240,7 @@ fi
 # (server/rust-project-config.cjs beside rust-project-config, sbstndalton/noevia#2191 round 9) and an account's
 # deletion (server/rust-admin-users.cjs beside rust-admin-users, #2190: Rust deletes the rows, the folder and every
 # credential, and Core can no longer delete an account), deep research (server/rust-research.cjs beside rust-research,
-# #2218: the jobs run on the front, Node keeps only their admission lease and tool bridge), the Code and Browser task reads (server/rust-task-reads.cjs beside rust-task-reads, #2257: Node keeps the writes and the facts bridge), the inference budget and installed reads (server/rust-model-state-reads.cjs beside rust-model-state-reads, #2262: Node keeps the PUT and the facts bridge): each group moves as one owner. Old/old images
+# #2218: the jobs run on the front, Node keeps only their admission lease and tool bridge), the Code and Browser task reads (server/rust-task-reads.cjs beside rust-task-reads, #2257: Node keeps the writes and the facts bridge), the inference budget and installed reads (server/rust-model-state-reads.cjs beside rust-model-state-reads, #2262: Node keeps the PUT and the facts bridge), the preset facts (server/rust-preset-facts.cjs beside rust-preset-facts, #2387: the front reads models.ini itself and Core parses it through the same wasm reader, so neither asks the other for facts): each group moves as one owner. Old/old images
 # remain usable for rollback; mixed owners do not.
 while read -r pair_marker pair_capability pair_label; do
   pair_core_owner=""
@@ -286,6 +286,7 @@ rust-idle-unload-read.cjs rust-idle-unload-read idle unload read
 rust-model-assignments.cjs rust-model-assignments model assignments read
 rust-model-downloads-read.cjs rust-model-downloads-read model download GET
 rust-preset-read.cjs rust-preset-read preset GET
+rust-preset-facts.cjs rust-preset-facts preset facts
 rust-autotune-resume.cjs rust-autotune-resume auto-tune resume
 rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation
 rust-autotune-clear.cjs rust-autotune-clear autotune dismissal
