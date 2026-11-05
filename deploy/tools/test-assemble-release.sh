@@ -796,12 +796,8 @@ RUN test -x /usr/local/bin/noevia-diary
 COPY agent/ ./agent/
 ENV FOO=bar "BAZ"="a b"
 LABEL a=b
-USER nobody
-WORKDIR /app
-EXPOSE 8010
-HEALTHCHECK CMD ["true"]
-CMD ["true"]'
-check "Diary native: the template exact RUN/COPY lines and ENV/LABEL/USER/WORKDIR/EXPOSE/HEALTHCHECK/CMD may follow the install" '[ $rc -eq 0 ]'
+EXPOSE 8010'
+check "Diary native: the template exact RUN/COPY lines and free-form ENV/LABEL/EXPOSE may follow the install" '[ $rc -eq 0 ]'
 diary_pin_ref="$(printf 'd%.0s' $(seq 1 40))"
 diary_native_try dn-pin-ref
 check "Diary native: a Diary Dockerfile pinned to another noevia-rs ref than the lock is refused" 'refused "NOEVIA_RS_REF differs from release/versions.lock"'
@@ -896,13 +892,13 @@ RUN $dn_build && mkdir /out && $dn_cp
 $dn_tail"
 diary_native_try dn-arg-dup2; diary_raw=""
 check "Diary native: a second NOEVIA_RS_REF declaration is refused" "$dn_drift"
-for dn_env in 'ENV NOEVIA_RS_REF=ffff' 'ENV "NOEVIA_RS_REF"=ffff' "ENV 'NOEVIA_RS_SHA256'=ffff" 'ENV NOEVIA_RS\_REF=ffff' 'ENV "NOEVIA_RS_REF" ffff' 'ENV A=1 "NOEVIA_RS_SHA256"=ffff' 'ENV DIARY_CORPUS_PARSE_IMPL=rust' 'ENV DIARY_RUST_ROUTES=/api/months' 'ENV DIARY_RUST_SERVER_BIN=/tmp/x'; do
+for dn_env in 'ENV NOEVIA_RS_REF=ffff' 'ENV "NOEVIA_RS_REF"=ffff' "ENV 'NOEVIA_RS_SHA256'=ffff" 'ENV NOEVIA_RS\_REF=ffff' 'ENV "NOEVIA_RS_REF" ffff' 'ENV A=1 "NOEVIA_RS_SHA256"=ffff' 'ENV DIARY_CORPUS_PARSE_IMPL=rust' 'ENV DIARY_RUST_ROUTES=/api/months' 'ENV DIARY_RUST_SERVER_BIN=/tmp/x' 'ENV PATH=/tmp/evil:/usr/bin' 'ENV LD_PRELOAD=/tmp/x.so' 'ENV PYTHONPATH=/tmp' 'ENV OTHER_BIN=/x' 'ENV "PATH"=/tmp/evil'; do
   dn_raw dn-env "RUN $dn_build && mkdir /out && $dn_cp" "
 $dn_env"
   check "Diary native: final-stage \`$dn_env\` is refused" "$dn_drift"
 done
 # --- what may follow the install, and what may not (the delta review of 90cbea1c)
-for dn_after in 'COPY evil /usr/local/bin/noevia-diary' 'RUN rm -f /usr/local/bin/noevia-diary' 'RUN rm /usr/local/bin/noevia-diary' 'ONBUILD RUN rm /usr/local/bin/noevia-diary' 'ADD x /usr/local/bin/noevia-diary' 'COPY --chmod=0644 --from=tenant-assertion /out/ /usr/local/bin/' 'COPY --from=tenant-assertion /out/ /usr/local/bin/' 'ARG X=1' 'SHELL ["/bin/false"]' 'VOLUME /usr/local/bin'; do
+for dn_after in 'ENTRYPOINT ["/bin/true"]' 'CMD ["/bin/true"]' 'USER nonexistent' 'WORKDIR /usr/local/bin' 'HEALTHCHECK CMD rm -f /usr/local/bin/noevia-diary' 'HEALTHCHECK NONE' 'COPY evil /usr/local/bin/noevia-diary' 'RUN rm -f /usr/local/bin/noevia-diary' 'RUN rm /usr/local/bin/noevia-diary' 'ONBUILD RUN rm /usr/local/bin/noevia-diary' 'ADD x /usr/local/bin/noevia-diary' 'COPY --chmod=0644 --from=tenant-assertion /out/ /usr/local/bin/' 'COPY --from=tenant-assertion /out/ /usr/local/bin/' 'ARG X=1' 'SHELL ["/bin/false"]' 'VOLUME /usr/local/bin'; do
   dn_raw dn-after "RUN $dn_build && mkdir /out && $dn_cp" "
 $dn_after"
   check "Diary native: after the install, \`$dn_after\` is refused" "$dn_drift"
@@ -913,18 +909,40 @@ FROM python:3.12-slim
 COPY --chmod=0644 --from=tenant-assertion /out/ /usr/local/bin/"
 diary_native_try dn-chmod; diary_raw=""
 check "Diary native: COPY --chmod making the installed binary non-executable is not the install" "$dn_drift"
-diary_raw="# syntax=evil/frontend
+for dn_dir in '# syntax=evil/frontend' '# SyNtAx=evil/frontend' '#escape=`' '# EsCaPe = `' '#   CHECK=skip=all' '# foo=bar'; do
+  diary_raw="$dn_dir
 $dn_head
 RUN $dn_build && mkdir /out && $dn_cp
 $dn_tail"
-diary_native_try dn-syntax; diary_raw=""
-check "Diary native: a parser directive is refused" "$dn_drift"
+  diary_native_try dn-directive; diary_raw=""
+  check "Diary native: the leading parser directive \`$dn_dir\` is refused" "$dn_drift"
+done
+diary_raw="# a plain comment about FOO and bar, not a key=value directive
+$dn_head
+RUN $dn_build && mkdir /out && $dn_cp
+$dn_tail"
+diary_native_try dn-comment-ok; diary_raw=""
+check "Diary native: an ordinary leading comment is fine" '[ $rc -eq 0 ]'
+# --- continuations are joined the way Docker joins them: a backslash-newline is removed with nothing inserted
+diary_raw="$dn_head
+RUN cargo\\
+build --release --locked -p tenant-assertion-cli -p diary-workspace-export -p noevia-diary && mkdir /out && $dn_cp
+$dn_tail"
+diary_native_try dn-cont-split; diary_raw=""
+check "Diary native: cargo<backslash-newline>build (joined to cargobuild) is refused" "$dn_drift"
+diary_raw="$dn_head
+RUN $dn_build \\
+ && mkdir /out \\
+ && $dn_cp
+$dn_tail"
+diary_native_try dn-cont-ok; diary_raw=""
+check "Diary native: continuation lines that keep their separating space still match the template" '[ $rc -eq 0 ]'
 # --- the REAL template: it renders a Dockerfile it accepts, and every drift of that rendering is refused
 dfsrc="$work/dfcheck.sh"; sed -n '/^# BEGIN diary-df-check/,/^# END diary-df-check/p' "$here/assemble-release.sh" > "$dfsrc"; . "$dfsrc"
 rtpl="$here/diary-dockerfile.template"; rref="$(printf '1%.0s' $(seq 1 40))"; rsum2="$(printf '2%.0s' $(seq 1 64))"
 awk '/^#/ || /^$/ {next} /^\[/ {s=$0; next}
-  s=="[build-stage]" {b[++nb]=$0} s=="[final-from]" {ff=$0} s=="[install]" {ins=$0} s=="[env-fixed]" {e[++ne]=$0} s=="[final-allowed]" {a[++na]=substr($0,3)}
-  END {for(i=1;i<=nb;i++)print b[i]; print ff; print ins; for(i=1;i<=ne;i++)print "ENV " e[i]; for(i=1;i<=na;i++)print a[i]}' "$rtpl" \
+  s=="[build-stage]" {b[++nb]=$0} s=="[final-from]" {ff=$0} s=="[install]" {ins=$0} s=="[final-runtime]" {rt[++nrt]=$0} s=="[env-fixed]" {e[++ne]=$0} s=="[final-allowed]" {a[++na]=substr($0,3)}
+  END {for(i=1;i<=nb;i++)print b[i]; print ff; print ins; for(i=1;i<=ne;i++)print "ENV " e[i]; for(i=1;i<=nrt;i++)print rt[i]; for(i=1;i<=na;i++)print a[i]}' "$rtpl" \
   | sed -e "s/@NOEVIA_RS_REF@/$rref/g" -e "s/@NOEVIA_RS_SHA256@/$rsum2/g" > "$work/real.df"
 rcheck() { diary_dockerfile_check "$rtpl" "$rref" "$rsum2" "$1"; }
 rmut() { # rmut <name> <python-expression on t>: writes the mutated rendering to $work/mut.df
@@ -948,6 +966,20 @@ for dn_m in \
   't += "ONBUILD RUN rm /usr/local/bin/noevia-diary\n"' \
   't = t.replace("COPY --from=tenant-assertion /out/", "COPY --chmod=0644 --from=tenant-assertion /out/", 1)' \
   't += "ENV DIARY_RUST_ROUTES=/api/months\n"' \
+  't += "ENTRYPOINT [\"/bin/true\"]\n"' \
+  't += "CMD [\"/bin/true\"]\n"' \
+  't += "USER nonexistent\n"' \
+  't = t.replace("WORKDIR /app", "WORKDIR /usr/local/bin", 1)' \
+  't = t.replace("HEALTHCHECK --interval=60s", "HEALTHCHECK --interval=60s CMD rm -f /usr/local/bin/noevia-diary #", 1)' \
+  't = t.replace("HEALTHCHECK", "HEALTHCHECK NONE\n#", 1)' \
+  'import re; m = re.search(r"(?m)^WORKDIR /app\n", t); t = t.replace(m.group(0), "", 1) + m.group(0)' \
+  't += "ENV PATH=/tmp/evil:/usr/bin\n"' \
+  't += "ENV LD_PRELOAD=/tmp/x.so\n"' \
+  't += "ENV PYTHONPATH=/tmp\n"' \
+  't += "ENV OTHER_BIN=/x\n"' \
+  't = "# SyNtAx=evil/frontend\n" + t' \
+  't = "# EsCaPe=`\n" + t' \
+  't = t.replace("cargo build --release", "cargo\\\nbuild --release", 1)' \
   't = t.replace("--locked", "--locked --offline", 1)' \
   't = t.replace("python:3.12-slim", "python:3.13-slim", 1)' \
   't = t.replace(" -p noevia-diary", "", 1)' \
@@ -957,8 +989,13 @@ for dn_m in \
   rmut x "$dn_m"
   check "Diary native: the real template refuses $dn_m" '[ "$(rcheck "$work/mut.df")" != ok ]'
 done
-rmut x 't += "ENV FOO=bar\nLABEL a=b\nUSER nobody\nWORKDIR /app\nEXPOSE 8010\n"'
-check "Diary native: the real template still accepts harmless ENV/LABEL/USER/WORKDIR/EXPOSE additions" '[ "$(rcheck "$work/mut.df")" = ok ]'
+rmut x 't += "ENV FOO=bar PYTHONUNBUFFERED=1\nLABEL a=b\nEXPOSE 8010\n"'
+check "Diary native: the real template still accepts harmless ENV/LABEL/EXPOSE additions" '[ "$(rcheck "$work/mut.df")" = ok ]'
+# the template is normalized like the Dockerfile: wrapping its long lines with backslash-newline changes nothing
+sed -e 's/ && / \\\
+    \&\& /g' "$rtpl" > "$work/wrapped.tpl"
+check "Diary native: the real template wrapped with line continuations still accepts the rendering" \
+  '[ "$(diary_dockerfile_check "$work/wrapped.tpl" "$rref" "$rsum2" "$work/real.df")" = ok ] && grep -q " \\\\$" "$work/wrapped.tpl"'
 rmut x 't = t.replace("'"$rref"'", "'"$(printf '3%.0s' $(seq 1 40))"'")'
 check "Diary native: the real template refuses a pin that is not the lock's" '[ "$(rcheck "$work/mut.df")" != ok ]'
 if [ -n "${NOEVIA_SERVICES_DIR:-}" ] && [ -f "$NOEVIA_SERVICES_DIR/diary/Dockerfile" ]; then

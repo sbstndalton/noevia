@@ -54,11 +54,13 @@ code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 # a parser of shell: the Diary Dockerfile build stage, its final FROM and its install line must equal the template
 # (deploy/tools/diary-dockerfile.template, read from the released noevia tree) instruction for instruction, after only
 # comments, line continuations and whitespace runs are normalized away. @NOEVIA_RS_REF@ and @NOEVIA_RS_SHA256@ are
-# the template only placeholders and are replaced by the lock values. In the final stage only ENV (never the pin, a
-# *_IMPL selector or DIARY_RUST_ROUTES/WRITES, names compared after Docker-style unquoting), LABEL, USER, WORKDIR,
-# EXPOSE, HEALTHCHECK, CMD, ENTRYPOINT and the exact RUN/COPY lines of the template may follow; anything else
-# (ONBUILD, ADD, an extra COPY, rm, ARG, SHELL, a heredoc, a parser directive, a third stage) fails closed. Changing
-# the Diary Dockerfile therefore means changing the template in the same release.
+# the template only placeholders and are replaced by the lock values. In the final stage the USER, WORKDIR,
+# HEALTHCHECK, CMD and ENTRYPOINT instructions must be the template, in order, and no others; ENV may never set the pin,
+# a *_IMPL selector, DIARY_RUST_ROUTES/WRITES, PATH, LD_*, PYTHONPATH or a *_BIN other than the fixed values (names
+# compared after Docker-style unquoting); LABEL and EXPOSE are free; the exact RUN/COPY lines of the template may
+# follow; anything else (ONBUILD, ADD, an extra COPY, rm, ARG, SHELL, a heredoc, any leading # key=value parser
+# directive, a third stage) fails closed. Backslash-newline is removed with nothing inserted, as Docker does, in both
+# the template and the Dockerfile. Changing the Diary Dockerfile therefore means changing the template in the same release.
 diary_df_awk=
 read -r -d '' diary_df_awk <<'DIARYDFAWK' || true
 # diary_dockerfile_check: reads the template (first file) and a Diary Dockerfile (second file) and prints "ok" or
@@ -114,15 +116,21 @@ function check_env(text,   i, nm) {
     if (nm == "NOEVIA_RS_REF" || nm == "NOEVIA_RS_SHA256") bad("an ENV that sets " nm)
     else if (nm == "DIARY_RUST_ROUTES" || nm == "DIARY_RUST_WRITES" || nm ~ /_IMPL$/) bad("an ENV that sets the switch " nm)
     else if (nm in envfixed) { if (envval[i] != envfixed[nm]) bad("an ENV that moves " nm) }
+    else if (nm ~ /_BIN$/) bad("an ENV that sets the binary path " nm)
+    else if (nm ~ /^(PATH|ENV|BASH_ENV|SHELLOPTS|IFS|PS4)$/ || nm ~ /^(LD|DYLD)_/ || nm ~ /^PYTHON(PATH|HOME|STARTUP|USERBASE|EXECUTABLE|BREAKPOINT|INSPECT)$/) bad("an ENV that changes how programs are found or started: " nm)
   }
 }
 FNR == NR {
   line = $0; sub(/\r$/, "", line)
   if (line ~ /^[ \t]*(#|$)/) next
   if (line ~ /^\[[a-z-]+\]$/) { section = substr(line, 2, length(line) - 2); next }
+  # the template is normalized exactly like the Dockerfile: a backslash-newline is removed with nothing inserted
+  if (line ~ /\\[ \t]*$/) { sub(/\\[ \t]*$/, "", line); tacc = tacc line; next }
+  line = norm(tacc line); tacc = ""
   gsub(/@NOEVIA_RS_REF@/, ref, line); gsub(/@NOEVIA_RS_SHA256@/, sum, line)
   if (section == "build-stage") { nb++; build[nb] = line }
   else if (section == "final-from") finalfrom = line
+  else if (section == "final-runtime") { nrt++; runtime[nrt] = line }
   else if (section == "install") install = line
   else if (section == "env-fixed") { eqp = index(line, "="); envfixed[substr(line, 1, eqp - 1)] = substr(line, eqp + 1) }
   else if (section == "final-allowed") {
@@ -135,11 +143,11 @@ FNR == NR {
 {
   sub(/\r$/, "")
   if ($0 ~ /^[ \t]*#/) {
-    if (nins == 0 && acc == "" && $0 ~ /^[ \t]*#[ \t]*(syntax|escape|check)[ \t]*=/) bad("a parser directive (# syntax= / # escape= / # check=)")
+    if (nins == 0 && acc == "" && tolower($0) ~ /^[ \t]*#[ \t]*[a-z][a-z0-9_-]*[ \t]*=/) bad("a parser directive (a leading # key=value comment)")
     next
   }
   if (trim($0) == "") next
-  if ($0 ~ /\\[ \t]*$/) { sub(/\\[ \t]*$/, ""); acc = acc $0 " "; next }
+  if ($0 ~ /\\[ \t]*$/) { sub(/\\[ \t]*$/, ""); acc = acc $0; next }
   full = norm(acc $0); acc = ""
   if (full ~ /<</) bad("a heredoc or here-string")
   nins++; ins[nins] = full
@@ -162,9 +170,13 @@ END {
       if (t == install) { installs++; continue }
       if (t in allowed) { seen[t]++; continue }
       if (kw == "ENV") { check_env(trim(substr(t, 4))); continue }
-      if (kw == "LABEL" || kw == "USER" || kw == "WORKDIR" || kw == "EXPOSE" || kw == "HEALTHCHECK" || kw == "CMD" || kw == "ENTRYPOINT") continue
+      if (kw == "LABEL" || kw == "EXPOSE") continue
+      if (kw == "USER" || kw == "WORKDIR" || kw == "HEALTHCHECK" || kw == "CMD" || kw == "ENTRYPOINT") { nr++; rt[nr] = t; continue }
       bad("an instruction the final stage does not allow: " substr(t, 1, 80))
     }
+    # runtime-affecting instructions are the template, in order, and no others
+    if (nr != nrt) bad("the final stage has " nr " USER/WORKDIR/HEALTHCHECK/CMD/ENTRYPOINT instructions, the template has " nrt)
+    for (i = 1; i <= nr && i <= nrt; i++) if (rt[i] != runtime[i]) { bad("runtime instruction " i " differs from the template: " substr(rt[i], 1, 80)); break }
     if (installs != 1) bad("the final stage must install the build stage exactly once (found " installs ")")
     for (t in required) if (!seen[t]) bad("a required final-stage line is missing: " substr(t, 1, 80))
   }
