@@ -2473,6 +2473,35 @@ check "preset editor capability rejects an old Core" 'refused "preset editor own
 cp "$work/pe-index.saved" "$w/server/index.cjs"
 pe_try pe-pair
 check "matching preset editor pair assembles" '[ $rc -eq 0 ]'
+# D2 review P2: the capability counts only as an unconditional literal of the one root FEATURES array.
+pe_lib() { printf '%s\n' "$@" > "$rz/bins/noevia-server/src/lib.rs"; }
+pe_amb='refused "ambiguous or conditional editor capability"'
+FE='pub const FEATURES: &[&str] = &["start-id", "rust-preset-read", "rust-preset-editor-d2-v1"];'
+pe_lib '#[cfg(any())]' "$FE"; pe_try pe-cfg-decl
+check "a cfg-disabled FEATURES declaration is no capability" "$pe_amb"
+pe_lib '#[cfg(any())]' 'mod gated {' "$FE" '}'; pe_try pe-cfg-module
+check "a FEATURES inside a cfg-disabled module is no capability" "$pe_amb"
+pe_lib 'mod gated {' "$FE" '}'; pe_try pe-in-module
+check "a FEATURES inside any module is no capability" "$pe_amb"
+pe_lib 'pub const FEATURES: &[&str] = &["start-id", "rust-preset-read", #[cfg(any())] "rust-preset-editor-d2-v1"];'; pe_try pe-cfg-element
+check "a cfg-gated element is no capability" "$pe_amb"
+pe_lib '#![cfg(any())]' "$FE"; pe_try pe-crate-cfg
+check "a crate-level cfg makes the capability ambiguous" "$pe_amb"
+pe_lib 'pub const FEATURES: &[&str] = &["start-id", "rust-preset-read", "rust-preset-editor-d2-v1", "rust-preset-editor-d2-v1"];'; pe_try pe-duplicate
+check "a duplicated capability is ambiguous" "$pe_amb"
+pe_lib 'pub const FEATURES: &[&str] = &["start-id", "rust-preset-read", "rust-preset-editor-d2-v1", "rust-preset-editor-d2-\x76\x31"];'; pe_try pe-escaped-duplicate
+check "an escaped duplicate is ambiguous" "$pe_amb"
+pe_lib 'pub const FEATURES: &[&str] = &["start-id", "rust-preset-read", r"rust-preset-editor-d2-v1"];'; pe_try pe-raw
+check "a raw string is not the capability" "$pe_amb"
+pe_lib 'pub const FEATURES: &[&str] = &["start-id", "rust-preset-read", concat!("rust-preset-editor-", "d2-v1")];'; pe_try pe-macro
+check "a macro-built capability is ambiguous" "$pe_amb"
+pe_lib 'pub const FEATURES: &[&str] = &["start-id", "rust-preset-read", "rust-preset-editor-d2-v2"];'; pe_try pe-unknown
+check "an unknown editor spelling is ambiguous" "$pe_amb"
+pe_lib '// "rust-preset-editor-d2-v1"' 'pub const FEATURES: &[&str] = &["start-id", "rust-preset-read"];'; pe_try pe-comment-only
+check "a commented capability is none: Core alone is refused" 'refused "preset editor ownership pairing: Core and Rust must move together"'
+pe_lib '#![allow(dead_code)]' "$FE"; pe_try pe-crate-attr
+check "a harmless crate attribute does not hide the capability" '[ $rc -eq 0 ]'
+cp "$work/pe-lib-both.saved" "$rz/bins/noevia-server/src/lib.rs"
 pe_methods='methods = ["GET"]'; pe_try pe-get-only-row
 check "the editor pair needs GET and PUT in the route table" 'refused "other methods stay Node"'
 pe_methods='methods = ["GET", "PUT", "DELETE"]'; pe_try pe-too-many-methods
