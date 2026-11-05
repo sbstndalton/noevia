@@ -1638,9 +1638,73 @@ if [ "$directory_rs_owner" = rust ]; then
   [ "$directory_routes" = /api/plugins/directory ] || die "plugin directory ownership pairing: incomplete route ownership"
 fi
 # F1: persistence, cleanup and the private boot proof move as one paired writer.
-auto_roles_write_owner=""; auto_roles_write_front=""
-grep -qF "require('./rust-auto-roles-write.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && auto_roles_write_owner=rust
-if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-auto-roles-write features; then auto_roles_write_front=rust; fi
+auto_roles_core_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const markers = src.match(/["\x27]rust-auto-roles-write[^"\x27\r\n]*["\x27]/g) || [];
+    try {
+      const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });
+      const mod = { exports: {} };
+      vm.runInNewContext("(function (require, module, exports) {" + src + "\n})(require, module, module.exports)", { require: () => stub, module: mod }, { timeout: 2000 });
+      const value = mod.exports.RUST_AUTO_ROLES_WRITE_OWNED;
+      process.stdout.write(value === "rust-auto-roles-write" && markers.length === 1 ? "rust" : "invalid");
+    } catch { process.stdout.write("invalid"); }
+  ' "$1" 2>/dev/null || echo invalid
+}
+auto_roles_awk_strip='
+  function strip(line,   out, i, c, n, q) {
+    out=""; n=length(line); q=""
+    for (i=1; i<=n; i++) {
+      c=substr(line,i,1)
+      if (block) { if (c=="*" && substr(line,i+1,1)=="/") { block=0; i++ } ; continue }
+      if (q!="") { out=out c; if (c=="\\") { out=out substr(line,i+1,1); i++ } else if (c==q) q=""; continue }
+      if (index(quotes, c)) { q=c; out=out c; continue }
+      if (c=="/" && substr(line,i+1,1)=="/") break
+      if (c=="/" && substr(line,i+1,1)=="*") { block=1; i++; continue }
+      out=out c
+    }
+    gsub(/^[ \t]+|[ \t]+$/, "", out)
+    return out
+  }
+'
+auto_roles_rs_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  awk -v dq='"' -v quotes='"' "$auto_roles_awk_strip"'
+    function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    { raw += gsub(/"rust-auto-roles-write/, "&") }
+    {
+      line=strip($0)
+      if (line == "") next
+      if (index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
+      if (features) {
+        fend=index(line,"];")
+        if (fend) line=substr(line,1,fend-1)
+        n=split(line,fields,",")
+        for (i=1;i<=n;i++) {
+          f=clean(fields[i])
+          if (index(f, "rust-auto-roles-write")) {
+            if (f ~ ("^" dq "rust-auto-roles-write" dq "$")) { v="rust"; seen[v]++; if (seen[v]==1) distinct++ ; last=v }
+            else bad++
+          }
+        }
+        if (fend) features=0
+      } else if (index(line, "rust-auto-roles-write")) bad++
+    }
+    END {
+      total = 0; for (k in seen) total += seen[k]
+      if (block || decl > 1 || bad || distinct > 1 || raw != total) { print "invalid"; exit }
+      if (!decl || !distinct) { print "none"; exit }
+      if (seen[last] != 1 || last != "rust") { print "invalid"; exit }
+      print last
+    }
+  ' "$1"
+}
+auto_roles_write_owner="$(auto_roles_core_owner "$tree/core/server/rust-auto-roles-write.cjs")"
+auto_roles_write_front="$(auto_roles_rs_owner "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$auto_roles_write_owner" != invalid ] && [ "$auto_roles_write_front" != invalid ] || die "auto-roles write ownership pairing: ambiguous or unknown capability marker"
 [ "$auto_roles_write_owner" = "$auto_roles_write_front" ] || die "auto-roles write ownership pairing: Core and Rust must move together"
 if [ "$auto_roles_write_owner" = rust ]; then
   [ -f "$tree/core/server/rust-auto-roles-write.cjs" ] || die "auto-roles write ownership pairing: missing Core bridge"
