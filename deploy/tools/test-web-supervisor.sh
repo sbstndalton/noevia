@@ -631,5 +631,21 @@ rm -f "$work/server/rust-model-facts.cjs"
 run STUB_FEATURES="$BASE_FEATURES rust-model-facts-v1" > /dev/null 2>"$work/err"; rc=$?
 check "native model facts front refuses a legacy Core" '[ $rc -eq 2 ] && grep -q "model facts authority ownership mismatch" "$work/err"'
 
+rm -f "$work/server/rust-model-facts.cjs"
+printf "const SCAN_CACHE_OWNER = 'rust-model-scan-cache-v1';\n" > "$work/server/rust-model-manager-scan.cjs"
+run STUB_FEATURES="$BASE_FEATURES" >/dev/null 2>"$work/err"; rc=$?
+check "G3 manager descendants refuse an old front" '[ $rc -eq 2 ] && grep -q "model manager descendant scan cache ownership mismatch" "$work/err"'
+rm "$work/server/rust-model-manager-scan.cjs"
+run STUB_FEATURES="$BASE_FEATURES rust-model-scan-cache-v1" >/dev/null 2>"$work/err"; rc=$?
+check "G3 native cache refuses an old Core" '[ $rc -eq 2 ] && grep -q "model manager descendant scan cache ownership mismatch" "$work/err"'
+
+printf "const SCAN_CACHE_OWNER = 'rust-model-scan-cache-v1';\n" > "$work/server/rust-model-manager-scan.cjs"
+run STUB_FEATURES="$BASE_FEATURES rust-model-scan-cache-v1" >/dev/null 2>"$work/err"; rc=$?
+check "G3 matching cache pair still requires G1 authority" '[ $rc -eq 2 ] && grep -q "needs the native model facts authority" "$work/err"'
+printf "const MODEL_FACTS_OWNER = 'rust-model-facts-v1';\n" > "$work/server/rust-model-facts.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-model-scan-cache-v1 rust-model-facts-v1" >/dev/null 2>"$work/err"; rc=$?
+check "G3 coherent native cache pair boots both children" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]

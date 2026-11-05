@@ -2600,6 +2600,41 @@ mm_scan_try mm-scan-old-rust-row
 check "old scan pair rejects native child row" 'refused "model scan read ownership pairing"'
 mm_scan_owner=node; mm_scan_try mm-scan-old-pair
 check "old scan pair stays valid for rollback" '[ $rc -eq 0 ]'
+for f in rust-model-facts.cjs project-store-client.cjs routes/models.cjs; do
+  if [ -f "$w/server/$f" ]; then cp "$w/server/$f" "$work/g3-$(basename "$f").saved"; fi
+done
+# G3 moves the cache itself; reject both half-pairs and a retained Node owner.
+mm_scan_owner=rust; mm_scan_core; mm_scan_front
+printf "const SCAN_CACHE_OWNER = 'rust-model-scan-cache-v1';\n" >> "$w/server/rust-model-manager-scan.cjs"
+mm_scan_try g3-core-only
+check "G3 manager descendants reject old native cache" 'refused "model manager descendant scan cache pairing"'
+sed -i 's/"start-id"/"start-id", "rust-model-scan-cache-v1", "rust-model-facts-v1"/' "$rz/bins/noevia-server/src/lib.rs"
+cp "$w/server/rust-model-manager-scan.cjs" "$work/g3-marker.saved"
+cp "$work/mm-scan-refuser.saved" "$w/server/rust-model-manager-scan.cjs"
+mm_scan_try g3-front-only
+check "G3 front rejects old Node cache" 'refused "model manager descendant scan cache pairing"'
+cp "$work/g3-marker.saved" "$w/server/rust-model-manager-scan.cjs"
+# Complete coherent native facts + scan pair.
+printf "const MODEL_FACTS_OWNER = 'rust-model-facts-v1';\n" > "$w/server/rust-model-facts.cjs"
+printf "const inferenceBudget = createNativeFacts({});\n" >> "$w/server/index.cjs"
+printf "model-scan/invalidate\n" >> "$w/server/project-store-client.cjs"
+printf "finally { await modelScanCache.clear(); }\n" >> "$w/server/routes/models.cjs"
+mm_scan_try g3-old-bridge
+check "G3 rejects retained Node cache bridge" 'refused "Node cache bridge retained"'
+rm "$w/server/rust-model-manager-scan-cache.cjs"
+mm_scan_try g3-old-owner
+check "G3 rejects retained Node cache primitives" 'refused "duplicate cache owner"'
+printf 'module.exports = {};\n' > "$w/server/models.cjs"
+sed -i '/modelManagerScanCache/d; /secret: FRONT_SECRET/d; /^});/d' "$w/server/index.cjs"
+mm_scan_try g3-pair
+check "G3 native manager descendant cache pair assembles" '[ $rc -eq 0 ] || { cat "$work/err"; false; }'
+printf "new Map();\n" >> "$w/server/models.cjs"
+mm_scan_try g3-double-owner
+check "G3 refuses a second Node cache owner" 'refused "duplicate cache owner"'
+for f in rust-model-facts.cjs project-store-client.cjs routes/models.cjs; do
+  if [ -f "$work/g3-$(basename "$f").saved" ]; then cp "$work/g3-$(basename "$f").saved" "$w/server/$f"; else rm -f "$w/server/$f"; fi
+done
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-model-manager-scan.cjs" "$w/server/rust-model-manager-scan-cache.cjs"
 if [ -f "$work/mm-scan-service.saved" ]; then cp "$work/mm-scan-service.saved" "$w/server/models.cjs"; else rm -f "$w/server/models.cjs"; fi
 # #2301: resume policy moves independently of the live autotune worker.

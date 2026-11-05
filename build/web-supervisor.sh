@@ -242,11 +242,22 @@ fi
 # credential, and Core can no longer delete an account), deep research (server/rust-research.cjs beside rust-research,
 # #2218: the jobs run on the front, Node keeps only their admission lease and tool bridge), the Code and Browser task reads (server/rust-task-reads.cjs beside rust-task-reads, #2257: Node keeps the writes and the facts bridge), the inference budget and installed reads (server/rust-model-state-reads.cjs beside rust-model-state-reads, #2262: Node keeps the PUT and the facts bridge): each group moves as one owner. Old/old images
 # remain usable for rollback; mixed owners do not.
+scan_cache_core=node; scan_cache_front=node
+grep -qF "const SCAN_CACHE_OWNER = 'rust-model-scan-cache-v1';" "$PWD/server/rust-model-manager-scan.cjs" 2>/dev/null && scan_cache_core=rust
+grep -qx 'rust-model-scan-cache-v1' <<<"$rust_features" && scan_cache_front=rust
+if [ "$scan_cache_core" != "$scan_cache_front" ]; then
+  echo "web-supervisor: model manager descendant scan cache ownership mismatch; update the paired image" >&2
+  exit 2
+fi
 mf_core=""; mf_front=""
 grep -qF "const MODEL_FACTS_OWNER = 'rust-model-facts-v1';" "$PWD/server/rust-model-facts.cjs" 2>/dev/null && mf_core=rust
 grep -qx 'rust-model-facts-v1' <<<"$rust_features" && mf_front=rust
 if [ "$mf_core" != "$mf_front" ]; then
   echo "web-supervisor: model facts authority ownership mismatch; update the paired image" >&2
+  exit 2
+fi
+if [ "$scan_cache_core" = rust ] && [ "$mf_core" != rust ]; then
+  echo "web-supervisor: model manager descendant scan cache needs the native model facts authority" >&2
   exit 2
 fi
 while read -r pair_marker pair_capability pair_label; do

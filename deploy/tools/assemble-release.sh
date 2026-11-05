@@ -919,6 +919,19 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "task read ownership pairing: Core does not hand its task facts bridge the front's captured secret"
   fi
 fi
+# G3: every manager descendant that can invalidate the cache must pair with G1's owner.
+scan_cache_core=""; scan_cache_rs=""
+code_has "$tree/core/server/rust-model-manager-scan.cjs" "const SCAN_CACHE_OWNER = 'rust-model-scan-cache-v1';" && scan_cache_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-scan-cache-v1 features; then scan_cache_rs=rust; fi
+[ "$scan_cache_core" = "$scan_cache_rs" ] || die "model manager descendant scan cache pairing: Core and Rust must move together"
+if [ "$scan_cache_rs" = rust ]; then
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-facts-v1 features || die "model manager descendant scan cache pairing: native facts required"
+  code_has "$tree/core/server/rust-model-facts.cjs" "MODEL_FACTS_OWNER = 'rust-model-facts-v1'" || die "model manager descendant scan cache pairing: native facts consumer required"
+  [ ! -f "$tree/core/server/rust-model-manager-scan-cache.cjs" ] || die "model manager descendant scan cache pairing: Node cache bridge retained"
+  ! code_has "$tree/core/server/models.cjs" 'new Map|modelScanInflight|publishModelScan|requestModelScanRefresh' || die "model manager descendant scan cache pairing: duplicate cache owner"
+  code_has "$tree/core/server/project-store-client.cjs" "model-scan/invalidate" || die "model manager descendant scan cache pairing: native invalidation required"
+  code_has "$tree/core/server/routes/models.cjs" 'finally.*await modelScanCache.clear' || die "model manager descendant scan cache pairing: settled write fence required"
+fi
 # #2304: only the exact GET child moves; all other manager operations remain Node's.
 mm_scan_core=""; mm_scan_rs=""
 grep -qF "require('./rust-model-manager-scan.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mm_scan_core=rust
@@ -954,6 +967,7 @@ if [ "$mm_scan_rs" = rust ]; then
   ' "$tree/core/server/rust-model-manager-scan.cjs" \
     || die "model scan read ownership pairing: Core must refuse exactly this GET"
   ! code_has "$tree/core/server/routes/models.cjs" 'X-Model-Scan|scanGeneration' || die "model scan read ownership pairing: Core still carries the public cache policy"
+  if [ "$scan_cache_rs" != rust ]; then
   for primitive in 'modelScanCache[.]snapshot\(\)' 'modelScanCache[.]publish\(body,token\)' 'modelScanCache[.]refresh\(token\)'; do
     code_has "$tree/core/server/models.cjs" "$primitive" || die "model scan read ownership pairing: existing shared cache primitives required"
   done
@@ -966,6 +980,7 @@ if [ "$mm_scan_rs" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$mm_scan_index" || die "model scan read ownership pairing: cache bridge needs the front captured secret"
+  fi
 fi
 # #2292: calibration cancellation policy is native, with only facts and the conditional state writer in Core.
 cc_core_owner=""; cc_rs_owner=""
