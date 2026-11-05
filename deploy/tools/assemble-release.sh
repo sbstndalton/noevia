@@ -1769,14 +1769,246 @@ fi
 # nudges the front. Both sides declare it exactly (compiled FEATURES entry; exported RUST_CHAT_MIRROR_OWNED),
 # never in a comment. A front without the core's half leaves the journal unread (no mirror or brain follows a
 # save); a core without the front's half would run a second schedule beside it. The Node reader must be gone.
+chat_mirror_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-chat-mirror-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_CHAT_MIRROR_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-chat-mirror-v(1)$/.exec(value);
+    process.stdout.write(m ? "v" + m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+chat_mirror_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = []; // lease authority entries
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-chat-mirror-v"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-chat-mirror-v")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-chat-mirror-v(1)$/.exec(outbox[0]);
+    out(m ? "v" + m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+chat_mirror_start_enabled() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const target = process.argv[2];
+    const matches = [...code.matchAll(new RegExp(target, "g"))];
+    if (matches.length !== 1 || /#!\s*\[\s*cfg/.test(code)) out("invalid");
+    const before = code.slice(0, matches[0].index);
+    const frames = []; let start = 0;
+    // Each lexical block inherits the attributes of the item/statement that opens it.
+    // Reject a gated ancestor or statement; FEATURES proof separately requires crate root.
+    for (let k = 0; k < before.length; k++) {
+      const c = before[k];
+      if (c === "{") { frames.push(before.slice(start, k)); start = k + 1; }
+      else if (c === "}") { frames.pop(); start = k + 1; }
+      else if (c === ";") start = k + 1;
+    }
+    frames.push(before.slice(start));
+    if (frames.some(h => /#\s*!?\s*\[\s*cfg/.test(h))) out("invalid");
+    out("v1");
+  ' "$1" "$2" 2>/dev/null || echo invalid
+}
 chat_mirror_core_owner=""
 chat_mirror_rs_owner=""
 if grep -qF "require('./rust-chat-mirror.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
-  move_capability "$tree/core/server/rust-chat-mirror.cjs" RUST_CHAT_MIRROR_OWNED rust-chat-mirror-v1 js \
+  [ "$(chat_mirror_core_version "$tree/core/server/rust-chat-mirror.cjs")" = v1 ] \
     || die "chat mirror ownership pairing: index.cjs requires rust-chat-mirror.cjs, but it does not export RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1'"
   chat_mirror_core_owner=rust
 fi
-if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-mirror-v1 features; then
+chat_mirror_version="$(chat_mirror_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$chat_mirror_version" != invalid ] || die "chat mirror schedule ownership pairing: invalid capability scope"
+if [ "$chat_mirror_version" = v1 ]; then
   chat_mirror_rs_owner=rust
 fi
 [ "$chat_mirror_core_owner" = "$chat_mirror_rs_owner" ] \
@@ -1784,9 +2016,9 @@ fi
 if [ "$chat_mirror_rs_owner" = rust ]; then
   [ ! -e "$tree/core/server/chat-change-journal.cjs" ] \
     || die "chat mirror schedule ownership pairing: the core still carries the Node journal reader (server/chat-change-journal.cjs) beside the front's schedule"
-  grep -qxF 'pub mod chat_mirror;' "$tree/rs/bins/noevia-server/src/lib.rs" 2>/dev/null \
+  [ "$(chat_mirror_start_enabled "$tree/rs/bins/noevia-server/src/lib.rs" 'pub\s+mod\s+chat_mirror\s*;')" = v1 ] \
     && move_capability "$tree/rs/crates/chat-mirror-sched/src/lib.rs" MARKER noevia-chat-mirror-scheduler/1 rust \
-    && code_lines "$tree/rs/bins/noevia-server/src/main.rs" 2>/dev/null | grep -qF 'ChatMirror::start(' \
+    && [ "$(chat_mirror_start_enabled "$tree/rs/bins/noevia-server/src/main.rs" 'ChatMirror\s*::\s*start\s*\(')" = v1 ] \
     || die "chat mirror schedule ownership pairing: the front declares rust-chat-mirror-v1 but does not carry and start the schedule (chat_mirror.rs, crate chat-mirror-sched)"
   chat_mirror_paired=rust
 fi
