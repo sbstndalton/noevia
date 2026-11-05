@@ -4755,4 +4755,3 @@ check "inference machines pairing adversarial cases" 'bash "$here/test-machines-
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]
-
