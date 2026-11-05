@@ -49,28 +49,38 @@ die() { echo "assemble-release: $*" >&2; exit 1; }
 # sentence that mentions the thing (nor end the script silently when a file or a match is absent).
 code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 
-# dockerfile_packages <cargo-package> <binary> <Dockerfile>: prints ok when a build stage RUNs a plain
-# `cargo build --release ... -p <package>`, later RUNs `cp [-opts] <binary> /out/` (from target/release) and a
-# later stage installs that stage with `COPY --from=<stage> /out/ /usr/local/bin/`; otherwise nobuild, nobundle or
-# noinstall. It reads Dockerfile instructions: whole-line comments, line continuations and heredoc bodies are
-# resolved first, and each RUN is split into shell commands with quotes honoured, so a build or copy that is
-# only commented out (`# ...`, an inline `#`), echoed, quoted (`sh -c '...'`), in a heredoc, in a subshell, behind
-# a condition or spelled as another command (`fakecp`) is not evidence. Unsupported forms are refused, not guessed.
+# dockerfile_packages <cargo-package> <binary> <Dockerfile>: prints two lines. The first is ok when a build stage RUNs a
+# plain `cargo build --release ... -p <package>`, later RUNs `cp [-opts] <binary> /out/` (from target/release) and the
+# FINAL stage (the last FROM, or a stage it inherits from by FROM <earlier stage>) installs that build stage with
+# `COPY --from=<stage> /out/ /usr/local/bin/`; otherwise nobuild, nobundle or noinstall. The second is pindup when
+# NOEVIA_RS_REF or NOEVIA_RS_SHA256 is declared more than once (any stage) or set by ENV, else pinok.
+# It reads Dockerfile instructions and refuses what it cannot prove instead of modelling the shell: comments,
+# continuations and heredocs are resolved first; a RUN counts only as a plain `a && b && c` chain, so any `||`, `;`,
+# `&`, subshell, braces, `if`/`case`/loop or quoted program anywhere in it, a pipe next to the command, or any
+# `RUN --mount` (a tmpfs on /out would discard the bundle) gives no evidence. Echo, fakecp and commented lines never
+# count. Unsupported forms are refused, not guessed.
 dockerfile_packages() {
-  [ -f "$3" ] || { echo nobuild; return 0; }
+  [ -f "$3" ] || { echo nobuild; echo pinok; return 0; }
   awk -v pkg="$1" -v bin="$2" '
-# Variables: pkg (cargo package), bin (binary name).
+# Variables: pkg (cargo package), bin (binary name). Prints two lines: the packaging verdict (ok, nobuild, nobundle or
+# noinstall) and the pin verdict (pinok, or pindup when NOEVIA_RS_REF/NOEVIA_RS_SHA256 is declared more than once or
+# overridden by ENV).
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 function endword(   ) {
-  if (inword) { nw++; w[nw] = word; wq[nw] = wordq }
-  word = ""; wordq = 0; inword = 0
+  if (inword) { nw++; w[nw] = word }
+  word = ""; inword = 0
 }
 function endcmd(   ) {
   endword()
   if (nw > 0) evaluate()
-  split("", w); split("", wq); nw = 0; complex = 0
+  split("", w); nw = 0; complex = carry; carry = 0
 }
-function evaluate(   i, j, c, p, positional, np, src, ok, opt) {
+# Only a plain && chain counts, so the first word of a command may not open a compound command or a condition.
+function keyword(s) {
+  return s ~ /^(if|then|else|elif|fi|case|esac|while|until|for|do|done|select|function|time|coproc|!)$/
+}
+function evaluate(   i, c, np, positional, src) {
+  if (keyword(w[1])) reject = 1
   if (complex) { if (w[1] == "cd") cwd = "?"; return }
   if (w[1] == "cd") { c = w[2]; sub(/\/+$/, "", c); cwd = (nw == 2 && (c == "target/release" || c == "/src/target/release")) ? "release" : "?"; return }
   if (w[1] == "cargo" && w[2] == "build") {
@@ -80,21 +90,23 @@ function evaluate(   i, j, c, p, positional, np, src, ok, opt) {
       if ((w[i] == "-p" || w[i] == "--package") && w[i + 1] == pkg) hit = 1
       if (w[i] == "--package=" pkg) hit = 1
     }
-    if (rel && hit) built[stage] = 1
+    if (rel && hit) runbuilt = 1
     return
   }
-  if (w[1] == "cp" && built[stage]) {
+  if (w[1] == "cp" && (built[stage] || runbuilt)) {
     np = 0
     for (i = 2; i <= nw; i++) if (substr(w[i], 1, 1) != "-") { np++; positional[np] = w[i] }
     if (np < 2 || (positional[np] != "/out/" && positional[np] != "/out")) return
     for (i = 1; i < np; i++) {
       src = positional[i]
-      if ((src == bin && cwd == "release") || src == "target/release/" bin || src == "./target/release/" bin || src == "/src/target/release/" bin) bundled[stage] = 1
+      if ((src == bin && cwd == "release") || src == "target/release/" bin || src == "./target/release/" bin || src == "/src/target/release/" bin) runbundled = 1
     }
   }
 }
+# One RUN. Anything but a plain `a && b && c` chain (||, ;, &, a subshell, braces, a condition or loop) gives no
+# evidence at all, wherever it is in the instruction. A pipe makes both of its commands unusable as evidence.
 function shell(text,   i, n, ch, nx, q) {
-  nw = 0; word = ""; wordq = 0; inword = 0; complex = 0; cwd = "base"
+  nw = 0; word = ""; inword = 0; complex = 0; carry = 0; cwd = "base"; reject = 0; runbuilt = 0; runbundled = 0
   n = length(text); q = ""
   for (i = 1; i <= n; i++) {
     ch = substr(text, i, 1); nx = substr(text, i + 1, 1)
@@ -105,36 +117,61 @@ function shell(text,   i, n, ch, nx, q) {
       if (ch == "$" || ch == "`") complex = 1
       word = word ch; continue
     }
-    if (ch == "\047" || ch == "\"") { q = ch; inword = 1; wordq = 1; continue }
+    if (ch == "\047" || ch == "\"") { q = ch; inword = 1; continue }
     if (ch == "#" && !inword) break
     if (ch == " " || ch == "\t") { endword(); continue }
     if (ch == "&" && nx == "&") { endcmd(); i++; continue }
-    if (ch == "|" && nx == "|") { endcmd(); i++; continue }
-    if (ch == ";" || ch == "|" || ch == "&") { endcmd(); continue }
-    if (ch == "(" || ch == ")" || ch == "`" || ch == "{" || ch == "}") { complex = 1; endword(); continue }
-    if (ch == "$" || ch == "\\") complex = 1
-    if (ch == "<" || ch == ">") complex = 1
+    if (ch == "|" && nx == "|") { reject = 1; endcmd(); i++; continue }
+    if (ch == "|") { complex = 1; carry = 1; endcmd(); continue }
+    if (ch == ";" || ch == "&") { reject = 1; endcmd(); continue }
+    if (ch == "(" || ch == ")" || ch == "{" || ch == "}") { reject = 1; endword(); continue }
+    if (ch == "`") { complex = 1; endword(); continue }
+    if (ch == "$" || ch == "\\" || ch == "<" || ch == ">") complex = 1
     word = word ch; inword = 1
   }
-  if (q != "") complex = 1
+  if (q != "") reject = 1
   endcmd()
+  if (!reject) { if (runbuilt) built[stage] = 1; if (runbundled) bundled[stage] = 1 }
 }
-function instruction(line,   rest, kw, parts, k, words, nn, i, name, from, flagsdone, a, b) {
+function declared(s,   n, parts, i, name) {
+  n = split(s, parts, /[ \t]+/)
+  for (i = 1; i <= n; i++) {
+    name = parts[i]; sub(/=.*$/, "", name)
+    if (name == "NOEVIA_RS_REF" || name == "NOEVIA_RS_SHA256") return name
+  }
+  return ""
+}
+function instruction(line,   rest, kw, k, words, parts, nn, i, name, from, image, nm, mount) {
   line = trim(line)
   if (line == "") return
   kw = line; sub(/[ \t].*$/, "", kw); kw = toupper(kw)
   rest = trim(substr(line, length(kw) + 1))
-  if (heredoc) return
   if (kw == "FROM") {
-    nn = split(rest, words, /[ \t]+/); name = ""
-    for (i = 1; i <= nn; i++) if (toupper(words[i]) == "AS" && i < nn) name = words[i + 1]
+    nn = split(rest, words, /[ \t]+/); name = ""; image = ""
+    for (i = 1; i <= nn; i++) {
+      if (words[i] ~ /^--/) continue
+      if (image == "") image = words[i]
+      if (toupper(words[i]) == "AS" && i < nn) name = words[i + 1]
+    }
     stage = (name != "") ? name : "#" stages
     stages++
+    final = stage
+    parent[stage] = (image in known) ? image : ""
+    known[stage] = 1
+    return
+  }
+  if (kw == "ARG" || kw == "ENV") {
+    nm = declared(rest)
+    if (nm != "") { if (kw == "ENV") envset = 1; else argn[nm]++ }
     return
   }
   if (kw == "RUN") {
-    while (rest ~ /^--[A-Za-z]/) { sub(/^--[^ \t]+[ \t]*/, "", rest) }
-    if (substr(rest, 1, 1) == "[") return
+    mount = 0
+    while (rest ~ /^--[A-Za-z]/) {
+      if (rest ~ /^--mount/) mount = 1
+      sub(/^--[^ \t]+[ \t]*/, "", rest)
+    }
+    if (mount || substr(rest, 1, 1) == "[") return
     shell(rest)
     return
   }
@@ -145,10 +182,10 @@ function instruction(line,   rest, kw, parts, k, words, nn, i, name, from, flags
       else if (words[i] ~ /^--/) continue
       else { k++; parts[k] = words[i] }
     }
-    if (from != "" && k == 2 && parts[1] == "/out/" && parts[2] == "/usr/local/bin/") installed[from] = 1
+    if (from != "" && k == 2 && parts[1] == "/out/" && parts[2] == "/usr/local/bin/") installed[stage, from] = 1
   }
 }
-BEGIN { stages = 0; stage = "#-1" }
+BEGIN { stages = 0; stage = "#-1"; final = "" }
 {
   sub(/\r$/, "")
   if (heredoc) {
@@ -172,10 +209,18 @@ END {
   b = 0; k = 0; s = 0
   for (st in built) if (built[st]) b = 1
   for (st in bundled) if (bundled[st] && built[st]) k = 1
-  for (st in bundled) if (bundled[st] && built[st] && installed[st]) s = 1
+  # The install must be in the FINAL stage, or in a stage it inherits from (FROM <earlier stage>).
+  cur = final; hops = 0
+  while (cur != "" && hops < 100) {
+    for (key in installed) {
+      split(key, kp, SUBSEP)
+      if (kp[1] == cur && built[kp[2]] && bundled[kp[2]]) s = 1
+    }
+    cur = parent[cur]; hops++
+  }
   if (!b) print "nobuild"; else if (!k) print "nobundle"; else if (!s) print "noinstall"; else print "ok"
+  if (envset || argn["NOEVIA_RS_REF"] > 1 || argn["NOEVIA_RS_SHA256"] > 1) print "pindup"; else print "pinok"
 }
-
   ' "$3"
 }
 
@@ -311,17 +356,20 @@ if [ -f "$tree/services/diary/agent/rust_forward.py" ]; then
     [ -f "$tree/rs/$diary_native/Cargo.toml" ] \
       || die "Diary native packaging: services/diary forwards to the Rust Diary server but noevia-rs (NOEVIA_RS_REF in versions.lock at $sha) has no $diary_native"
   done
+  diary_pkg="$(dockerfile_packages noevia-diary noevia-diary "$tree/services/diary/Dockerfile")"
   # The image (and the overlay, which reads these two ARGs) builds the Rust tree it will be paired with: the
-  # Dockerfile's pin is the lock's pin, so the sources checked above are the ones that get built.
+  # Dockerfile's pin is the lock's pin, and it is declared once (a later ARG or an ENV could change what ADD fetches).
+  [ "$(printf '%s\n' "$diary_pkg" | sed -n 2p)" = pinok ] \
+    || die "Diary native packaging: services/diary/Dockerfile declares NOEVIA_RS_REF or NOEVIA_RS_SHA256 more than once or overrides it with ENV"
   for diary_arg in NOEVIA_RS_REF:"$rs_ref" NOEVIA_RS_SHA256:"$rs_sum"; do
     [ "$(sed -n "s/^ARG ${diary_arg%%:*}=//p" "$tree/services/diary/Dockerfile" | head -1)" = "${diary_arg#*:}" ] \
       || die "Diary native packaging: services/diary/Dockerfile ${diary_arg%%:*} differs from release/versions.lock at $sha"
   done
-  case "$(dockerfile_packages noevia-diary noevia-diary "$tree/services/diary/Dockerfile")" in
+  case "$(printf '%s\n' "$diary_pkg" | sed -n 1p)" in
     ok) ;;
-    nobuild) die "Diary native packaging: services/diary/Dockerfile has no RUN cargo build --release -p noevia-diary (comments, echo, quoted strings, heredocs and conditions do not count)" ;;
+    nobuild) die "Diary native packaging: services/diary/Dockerfile has no plain RUN cargo build --release -p noevia-diary in an && chain (comments, echo, quoted strings, heredocs, conditions, ||, ;, &, subshells and RUN --mount do not count)" ;;
     nobundle) die "Diary native packaging: services/diary/Dockerfile does not cp noevia-diary into /out/ after building it" ;;
-    *) die "Diary native packaging: services/diary/Dockerfile does not install that stage's /out/ with COPY --from=<stage> /out/ /usr/local/bin/" ;;
+    *) die "Diary native packaging: services/diary/Dockerfile's final stage does not install the build stage's /out/ with COPY --from=<stage> /out/ /usr/local/bin/" ;;
   esac
 fi
 
