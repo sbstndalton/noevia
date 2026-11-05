@@ -698,77 +698,91 @@ fi
 # Compare the single supported outbox generation on each side; equal legacy pairs remain rollback
 # candidates. Detection is comment-aware and distinguishes absence from an ambiguous or unrecognized
 # marker, which always refuses.
-# Shared awk prelude: strip(line) removes // and /* */ comments (tracking a block across
-# lines) while keeping code and quoted strings intact.
-outbox_awk_strip='
-  function strip(line,   out, i, c, n, q) {
-    out=""; n=length(line); q=""
-    for (i=1; i<=n; i++) {
-      c=substr(line,i,1)
-      if (block) { if (c=="*" && substr(line,i+1,1)=="/") { block=0; i++ } ; continue }
-      if (q!="") { out=out c; if (c=="\\") { out=out substr(line,i+1,1); i++ } else if (c==q) q=""; continue }
-      if (index(quotes, c)) { q=c; out=out c; continue }
-      if (c=="/" && substr(line,i+1,1)=="/") break
-      if (c=="/" && substr(line,i+1,1)=="*") { block=1; i++; continue }
-      out=out c
-    }
-    gsub(/^[ \t]+|[ \t]+$/, "", out)
-    return out
-  }
-'
-# Core: the value the module actually exports, read the way the supervisor does, but with
-# every require() stubbed so nothing outside the file runs. A marker literal present in the
-# file without a matching export (commented out, inside a string, unparsable) is invalid.
+# Outbox capability detection runs in node (already required by the supervisor) with a hard
+# process time limit. Trust model: these are the owner's pinned repositories; node:vm is not a
+# security boundary, it only keeps the module's requires from reaching anything outside the file.
+# Core: the value the module actually exports, with every require() stubbed. A marker literal in
+# the file without a matching export is invalid; no literal and no export is absence.
 outbox_core_version() {
   [ -f "$1" ] || { echo none; return; }
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  node -e '
+  timeout -k 2 10 node -e '
     const fs = require("node:fs"), vm = require("node:vm");
     const src = fs.readFileSync(process.argv[1], "utf8");
     const literal = /rust-index-outbox-v/.test(src);
     let value;
     try {
-      const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });
-      const mod = { exports: {} };
-      vm.runInNewContext("(function (require, module, exports) {" + src + "\n})", {}, { timeout: 2000 })(() => stub, mod, mod.exports);
-      value = mod.exports.RUST_INDEX_OUTBOX_OWNED;
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_INDEX_OUTBOX_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
     } catch { process.stdout.write("invalid"); process.exit(0); }
     if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
     const m = typeof value === "string" && /^rust-index-outbox-(v[123])$/.exec(value);
     process.stdout.write(m ? m[1] : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the string entries of the single FEATURES array. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
 outbox_rs_version() {
   [ -f "$1" ] || { echo none; return; }
-  awk -v dq='"' -v quotes='"' "$outbox_awk_strip"'
-    function clean(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
-    { raw += gsub(/"rust-index-outbox-/, "&") }
-    {
-      line=strip($0)
-      if (line == "") next
-      if (index(line,"pub const FEATURES: &[&str] = &[")==1) { decl++; features=1; line=substr(line,length("pub const FEATURES: &[&str] = &[")+1) }
-      if (features) {
-        fend=index(line,"];")
-        if (fend) line=substr(line,1,fend-1)
-        n=split(line,fields,",")
-        for (i=1;i<=n;i++) {
-          f=clean(fields[i])
-          if (index(f, "rust-index-outbox-")) {
-            if (f ~ ("^" dq "rust-index-outbox-v[0-9]+" dq "$")) { v=substr(f, length("rust-index-outbox-")+2); v=substr(v,1,length(v)-1); seen[v]++; if (seen[v]==1) distinct++ ; last=v }
-            else bad++
-          }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
         }
-        if (fend) features=0
-      } else if (index(line, "rust-index-outbox-")) bad++
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push(src.slice(s0, e)); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        i += c === "b" ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") { if (src[i] === "\\") { v += src[i] + (src[i + 1] || ""); i += 2; } else v += src[i++]; }
+        if (i >= n) out("invalid");
+        i++; strs.push(v); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
     }
-    END {
-      total = 0; for (k in seen) total += seen[k]
-      if (block || decl > 1 || bad || distinct > 1 || raw != total) { print "invalid"; exit }
-      if (!decl || !distinct) { print "none"; exit }
-      if (seen[last] != 1 || last !~ /^v[123]$/) { print "invalid"; exit }
-      print last
-    }
-  ' "$1"
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    const end = body.indexOf("]");
+    if (end < 0) out("invalid");
+    const entries = [...body.slice(0, end).matchAll(/\u0000(\d+)\u0000/g)].map(m => strs[+m[1]]);
+    const outbox = entries.filter(v => v.startsWith("rust-index-outbox-"));
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-index-outbox-(v[123])$/.exec(outbox[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
 }
 outbox_core_owner="$(outbox_core_version "$tree/core/server/rust-index-outbox.cjs")"
 outbox_rs_owner="$(outbox_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"

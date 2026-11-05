@@ -1486,7 +1486,9 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 # Adversarial outbox marker detection: absence is distinct from ambiguous or unrecognized markers.
 outbox_case() { # name core-file-content (or -) rust-feature-insert (or -) expect(ok|refuse)
   rm -f "$w/server/rust-index-outbox.cjs"
-  [ "$2" = - ] || printf '%s\n' "$2" "module.exports = { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
+  # Export the marker only when the fixture really declares it; otherwise a valid module with no
+  # export, so negative cases exercise the missing-export rule rather than a ReferenceError.
+  [ "$2" = - ] || printf '%s\n' "$2" "module.exports = typeof RUST_INDEX_OUTBOX_OWNED === 'undefined' ? {} : { RUST_INDEX_OUTBOX_OWNED };" > "$w/server/rust-index-outbox.cjs"
   cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
   [ "$3" = - ] || sed "s/\"start-id\"/\"start-id\", $3/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
   move_try "outbox-adv-$1"
@@ -1512,6 +1514,9 @@ outbox_case unclosed-block-core "/* const RUST_INDEX_OUTBOX_OWNED = 'rust-index-
 outbox_case inline-block-rust-v3-core-none - '\n    "rust-index-outbox-v3", \/* ownership *\/' refuse
 outbox_case inline-block-rust-v3-core-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '\n    "rust-index-outbox-v3", \/* ownership *\/' ok
 outbox_case template-hides-core-marker "$(printf '%s\n' 'const note = `' '"`; /*' "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '*/')" '"rust-index-outbox-v3"' refuse
+outbox_case core-load-never-returns "while (true) {}" - refuse
+outbox_case rust-compat-comment-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3",\n    \/\/ Compatibility marker: "rust-index-outbox-v2"' ok
+outbox_case rust-nested-comment-entry-v3-v3 "const RUST_INDEX_OUTBOX_OWNED = 'rust-index-outbox-v3';" '"rust-index-outbox-v3",\n    \/* old \/* nested *\/ "rust-index-outbox-v2", *\/' ok
 rm -f "$w/server/rust-index-outbox.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 
