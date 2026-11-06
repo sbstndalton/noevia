@@ -1066,7 +1066,7 @@ at_core_version() {
         "})()", {}, { timeout: 2000 });
     } catch { process.stdout.write("invalid"); process.exit(0); }
     if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
-    const m = typeof value === "string" && /^noevia-autotune-state-(client)\/(1)$/.exec(value);
+    const m = typeof value === "string" && /^noevia-autotune-state-(client)\/(2)$/.exec(value);
     process.stdout.write(m ? "v" + m[2] : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }
@@ -1080,7 +1080,7 @@ at_rs_version() {
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
   timeout -k 2 10 node -e '
     let src = require("node:fs").readFileSync(process.argv[1], "utf8");
-    if (process.argv[2] === "module") src = src.replace(/pub\s+mod\s+autotune_state\s*;/g, `pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";`);
+    if (process.argv[2] === "module") src = src.replace(/pub\s+mod\s+autotune_state\s*;/g, `pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";`);
     const strs = []; let code = ""; let i = 0; const n = src.length;
     const ident = c => /[A-Za-z0-9_]/.test(c || "");
     const out = r => { process.stdout.write(r); process.exit(0); };
@@ -1206,7 +1206,7 @@ at_rs_version() {
     }
     if (!outbox.length) out("none");
     if (outbox.length > 1) out("invalid");
-    const m = /^noevia-autotune-state-store\/(1)$/.exec(outbox[0]);
+    const m = /^noevia-autotune-state-store\/(2)$/.exec(outbox[0]);
     out(m ? "v" + m[1] : "invalid");
   ' "$1" "${2:-marker}" 2>/dev/null || echo invalid
 }
@@ -1216,20 +1216,21 @@ at_store_version() {
   [ "$marker" = none ] && { echo none; return; }
   module="$(at_rs_version "$tree/rs/crates/server-projects/src/lib.rs" module)"
   crate="$(at_rs_version "$tree/rs/bins/noevia-server/src/lib.rs" module)"
-  [ "$marker" = v1 ] && [ "$module" = v1 ] && [ "$crate" = v1 ] && { echo v1; return; }
+  [ "$marker" = v2 ] && [ "$module" = v2 ] && [ "$crate" = v2 ] && { echo v2; return; }
   echo invalid
 }
 autotune_state_pairing() {
   local prefix=$1 noun=$2 index secret
   code_has "$tree/core/server/llamacpp-manager.cjs" 'abort: autotuner[.]abort' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'launch: autotuner[.]launch' \
+    && code_has "$tree/core/server/llamacpp-manager.cjs" 'settle: autotuner[.]settle' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'outsideFacts: autotuner[.]outsideFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'listingFacts: autotuner[.]listingFacts' \
     && code_has "$tree/core/server/llamacpp-manager.cjs" 'identityFacts: autotuner[.]identityFacts' \
     || die "$prefix: Core does not expose the live actor primitives"
-  [ "$(at_core_version "$tree/core/server/autotune-state-client.cjs")" = v1 ] \
+  [ "$(at_core_version "$tree/core/server/autotune-state-client.cjs")" = v2 ] \
     || die "$prefix: Core does not carry the auto-tune state client marker"
-  [ "$(at_store_version)" = v1 ] \
+  [ "$(at_store_version)" = v2 ] \
     || die "$prefix: Rust does not serve the auto-tune state store"
   [ -f "$tree/core/server/rust-autotune-actor-bridge.cjs" ] || die "$prefix: missing $noun bridge"
   index="$(code_lines "$tree/core/server/index.cjs")"

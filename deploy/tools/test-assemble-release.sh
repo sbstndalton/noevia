@@ -2209,8 +2209,8 @@ rm -f "$w/server/rust-model-state-reads.cjs" "$w/server/rust-model-facts.cjs"
 # Auto-tune state ownership (noevia-core autotune-state-client.cjs / noevia-rs crates/server-projects
 # autotune_state.rs): the front holds the tune state, Core's actor is its client. The five auto-tune route
 # pairs below need both markers and the actor bridge; the marker tests follow the cancellation pair.
-at_marker_core() { printf '%s\n' "module.exports.AUTOTUNE_STATE_CLIENT_MARKER = 'noevia-autotune-state-client/1';" > "$w/server/autotune-state-client.cjs"; }
-at_marker_rs() { sed '/pub mod autotune_state;/d' "$rz/bins/noevia-server/src/lib.rs" > "$rz/bins/noevia-server/src/lib.rs.at"; mv "$rz/bins/noevia-server/src/lib.rs.at" "$rz/bins/noevia-server/src/lib.rs"; printf '%s\n' 'pub mod autotune_state;' >> "$rz/bins/noevia-server/src/lib.rs"; mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub mod autotune_state;' > "$rz/crates/server-projects/src/lib.rs"; mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' > "$rz/crates/server-projects/src/autotune_state.rs"; }
+at_marker_core() { printf '%s\n' "module.exports.AUTOTUNE_STATE_CLIENT_MARKER = 'noevia-autotune-state-client/2';" > "$w/server/autotune-state-client.cjs"; }
+at_marker_rs() { sed '/pub mod autotune_state;/d' "$rz/bins/noevia-server/src/lib.rs" > "$rz/bins/noevia-server/src/lib.rs.at"; mv "$rz/bins/noevia-server/src/lib.rs.at" "$rz/bins/noevia-server/src/lib.rs"; printf '%s\n' 'pub mod autotune_state;' >> "$rz/bins/noevia-server/src/lib.rs"; mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub mod autotune_state;' > "$rz/crates/server-projects/src/lib.rs"; mkdir -p "$rz/crates/server-projects/src"; printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";' > "$rz/crates/server-projects/src/autotune_state.rs"; }
 at_marker_core; at_marker_rs
 printf '%s\n' 'pub mod autotune_state;' >> "$work/feature-lib.saved"
 # #2306: GET-only status ownership; POST start stays in the same Node route module.
@@ -2225,7 +2225,7 @@ JS
 touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atr-manager.saved"
 [ ! -f "$w/server/routes/models.cjs" ] || cp "$w/server/routes/models.cjs" "$work/atr-models.saved"
-printf '%s\n' 'statusFacts: autotuner.statusFacts, abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'statusFacts: autotuner.statusFacts, abort: autotuner.abort, launch: autotuner.launch, settle: autotuner.settle, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 printf '%s\n' "if (req.method === 'POST') modelManager.autotune.start(model, options);" > "$w/server/routes/models.cjs"
 atr_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
@@ -2508,7 +2508,7 @@ module.exports = { OWNED_ROUTES };
 JS
 touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/ac-manager.saved"
-printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, settle: autotuner.settle, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 ac_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
@@ -2668,7 +2668,7 @@ module.exports = { OWNED_ROUTES };
 JS
 touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atrm-manager.saved"
-printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, settle: autotuner.settle, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 atrm_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
@@ -2948,7 +2948,7 @@ module.exports = { OWNED_ROUTES };
 JS
 touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/ats-manager.saved"
-printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, settle: autotuner.settle, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 ats_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
@@ -3031,7 +3031,7 @@ module.exports = { OWNED_ROUTES };
 JS
 touch "$w/server/rust-autotune-actor-bridge.cjs"
 [ ! -f "$w/server/llamacpp-manager.cjs" ] || cp "$w/server/llamacpp-manager.cjs" "$work/atc-manager.saved"
-printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
+printf '%s\n' 'abort: autotuner.abort, launch: autotuner.launch, settle: autotuner.settle, outsideFacts: autotuner.outsideFacts, listingFacts: autotuner.listingFacts, identityFacts: autotuner.identityFacts,' > "$w/server/llamacpp-manager.cjs"
 atc_core() {
   cp "$work/feature-index.saved" "$w/server/index.cjs"
   cat >> "$w/server/index.cjs" <<'JS'
@@ -3114,21 +3114,21 @@ at_marker_core; rm -f "$rz/crates/server-projects/src/autotune_state.rs"; atm_tr
 check "a Core whose actor is a state client cannot pair with a front that does not serve the store" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
 rm -f "$w/server/autotune-state-client.cjs"; atm_try atm-legacy
 check "legacy Core and legacy front (neither side) stay a valid rollback pair" '[ $rc -eq 0 ]'
-at_marker_core; printf '%s\n' '// pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' '/* "noevia-autotune-state-store/1" */' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-comment
+at_marker_core; printf '%s\n' '// pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";' '/* "noevia-autotune-state-store/2" */' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-comment
 check "a store marker only a comment mentions is not a marker" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
 printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = concat!("noevia-autotune-state-", "store/1");' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-concat
 check "a store marker assembled by a macro is not a literal marker" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
-printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-version
+printf '%s\n' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/3";' > "$rz/crates/server-projects/src/autotune_state.rs"; atm_try atm-rs-version
 check "a store of another marker version does not pair" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
-at_marker_rs; printf '%s\n' "// 'noevia-autotune-state-client/1'" > "$w/server/autotune-state-client.cjs"; atm_try atm-core-comment
+at_marker_rs; printf '%s\n' "// 'noevia-autotune-state-client/2'" > "$w/server/autotune-state-client.cjs"; atm_try atm-core-comment
 check "a client marker only a comment mentions is not a marker" 'refused "auto-tune state ownership pairing: Core and Rust must move together"'
 at_marker_core; atm_try atm-restored
 check "restoring both markers assembles again" '[ $rc -eq 0 ]'
 for scope in declaration nested crate; do
   at_marker_rs
   case "$scope" in
-    declaration) printf '%s\n' '#[cfg(any())]' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' > "$rz/crates/server-projects/src/autotune_state.rs";;
-    nested) printf '%s\n' '#[cfg(any())] mod hidden {' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";' '}' > "$rz/crates/server-projects/src/autotune_state.rs";;
+    declaration) printf '%s\n' '#[cfg(any())]' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";' > "$rz/crates/server-projects/src/autotune_state.rs";;
+    nested) printf '%s\n' '#[cfg(any())] mod hidden {' 'pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";' '}' > "$rz/crates/server-projects/src/autotune_state.rs";;
     crate) printf '%s\n' '#![cfg(any())]' 'pub mod autotune_state;' > "$rz/crates/server-projects/src/lib.rs";;
   esac
   atm_try "atm-cfg-$scope"
