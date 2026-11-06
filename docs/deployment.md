@@ -119,23 +119,54 @@ it, and do not use an overlay to bypass required native binaries or changed depe
 ### Diary overlay
 
 `deploy/examples/diary-overlay.sh` starts from the Diary image that is currently running and replaces
-whole the directories that the Diary image's `Dockerfile` copies into `/app`, so a change to the system
-prompt, `config.yaml` or a helper script ships together with the agent code (#2112):
+only the `agent/` code (the companion-overlay rule: a Diary companion ships `agent/` from the running image).
+The system prompt, `config.yaml` and the helper scripts are never replaced:
 
-Diary overlay directories: `agent/`, `config/`, `scripts/`
+Diary overlay directories replaced: `agent/`
+
+Diary overlay directories preserved: `config/`, `scripts/`
 
 Before anything is built, stopped or changed the script reads the release's own Diary `Dockerfile` and
-refuses when its `COPY <dir>/ ./<dir>/` lines name a different set of directories (it names the one it
-would leave out). Every `COPY` and `ADD` of the final stage counts: besides `COPY requirements.txt .` and the
+refuses when its `COPY <dir>/ ./<dir>/` lines name a set of directories other than those two lists together (it
+names the one it would leave out). Every `COPY` and `ADD` of the final stage counts: besides `COPY requirements.txt .` and the
 binaries taken from the Rust stage, any other copying line (a file, `--chown`, a hyphenated directory, `ADD`,
 JSON form) stops the overlay, because it would put content in the image that the overlay does not ship. It also
-refuses when the release's `requirements.txt` differs from the one in the running image. After the build it compares each directory in the candidate with the release tree (file
-names and sha256) and refuses on any difference, so a file the release dropped does not survive. A change to
+refuses when the release's `requirements.txt`, `config/` or `scripts/` differ from the ones in the running image
+(read without network access): a changed prompt, config or script needs an image rebuild, not this overlay, so new
+agent code never runs silently against the old files. The comparison is an inventory of every entry (directories,
+regular files with their sha256, and symbolic links by their target, never followed). Every variable field is written as
+the hex of its bytes (`D <hex path>`, `F <hex path> <sha256>`, `L <hex path> <hex target>`), so no name or target can imitate a
+separator, and a link target is read exactly, trailing newlines included (`readlink -n` with a sentinel). The scan that rejects
+paths containing a newline skips `__pycache__` exactly as the inventory does. a link repointed at another
+identical file, a link added or removed, or a file replaced by a link is a difference. An inventory that cannot be
+completed on either side (an unreadable directory or file, a failing `find`, `sort`, `sha256sum` or `readlink`, a
+FIFO or other special file, a name with a newline, or output without its end marker) refuses the overlay; it is never
+treated as equal. An empty directory on both sides is a valid, equal inventory. The same inventory proves the
+candidate's `agent/` equals the release's and its `config/` and `scripts/` equal the running image's. The one exception is
+`scripts/smoke_diary_leaves.py`, the release's smoke for the native leaves: it is run from the release tree by a
+read-only bind mount over `/app/scripts/smoke_diary_leaves.py` in the smoke container only, and is never copied into the
+image. After the build the script compares `agent/` in the candidate with the release tree (file names and sha256) and
+refuses on any difference, so a file the release dropped does not survive, and it proves that the candidate's `config/`
+and `scripts/` are still exactly the running image's. A change to
 `requirements.txt` or to any other part of the `Dockerfile` (apart from the noevia-rs pin, whose binaries the
 script builds) needs a rebuild, not this overlay. A test
-(`OverlayDirsInSync` in `deploy/tests/test_overlay_scripts.py`) keeps this line, the script's list and the
+(`OverlayDirsInSync` in `deploy/tests/test_overlay_scripts.py`) keeps these lines, the script's lists and the
 fixture `Dockerfile` the same; with `NOEVIA_SERVICES_DIR` set to a noevia-services checkout it compares the
 real `diary/Dockerfile` too.
+
+Native Diary binaries. When the release's Diary `Dockerfile` pins noevia-rs and the release ships
+`scripts/smoke_diary_leaves.py`, the overlay also builds the Diary Rust leaves and the Rust Diary server
+`noevia-diary` (D4–D5) from that pin into `/usr/local/bin/` and runs the smoke in the candidate. A release
+that ships the server forwarder (`agent/rust_forward.py`) must have `noevia-diary`, `tenant-assertion` and
+`diary-workspace-export` executable in the candidate (the paths `DIARY_RUST_SERVER_BIN`, `TENANT_ASSERTION_BIN`
+and `DIARY_WORKSPACE_EXPORT_BIN` default to); otherwise the overlay stops before anything is stopped. The
+assembler refuses the same pairing earlier: a services Diary with the forwarder over a noevia-rs pin without
+`bins/noevia-diary`, `bins/tenant-assertion` or `crates/diary-workspace-export`, or a Diary `Dockerfile` that
+does not build and bundle `noevia-diary`. Shipping the binary changes no behaviour: the server is started only
+when `DIARY_RUST_ROUTES` names a route or `DIARY_RUST_WRITES` a tenant, both empty by default and set by the
+owner in the Diary `.env`, never by the overlay. When the release pins noevia-rs, the overlay first removes every native Diary binary the running image already has (`tenant-assertion`, `workspace-restore-verify`, every leaf and `noevia-diary`) and then installs the bundle built from that pin, so a binary from an earlier release is never kept: a pin that lacks a crate leaves its binary absent, and its selector must stay `python`. The assembler also holds the services Diary `Dockerfile` to an allow-list: its Rust build stage, final `FROM` and install line must equal `deploy/tools/diary-dockerfile.template` instruction for instruction (only comments, line continuations and whitespace are normalized; `@NOEVIA_RS_REF@` and `@NOEVIA_RS_SHA256@` are the only placeholders and must equal `release/versions.lock`). The final stage's `USER`, `WORKDIR`, `HEALTHCHECK`, `CMD` and `ENTRYPOINT` instructions must be the template's, in order, and no others; its `ENV` may never set the pin, a `*_IMPL` selector, `DIARY_RUST_ROUTES`, `DIARY_RUST_WRITES`, `PATH`, `LD_*`, `PYTHONPATH` or a `*_BIN` other than the three fixed values (names are compared unquoted); only `LABEL`, `EXPOSE` and the template's exact `RUN`/`COPY` lines are otherwise allowed; `ONBUILD`, `ADD`, an extra `COPY`, `rm`, `ARG`, `SHELL`, heredocs, any leading `# key=value` parser directive (in any case) and a third stage fail closed; a line continues only when it ends in an odd number of backslashes (an even number of two or more is refused), and the backslash-newline is removed with nothing inserted, as Docker does, in the template and the `Dockerfile` alike. The `Dockerfile` may contain only printable ASCII, tab and LF/CRLF line endings, comments included: a lone CR, VT, FF, NUL, DEL, NBSP or any other non-ASCII byte is refused; `ENV` names may contain no quote or backslash. Changing the Diary `Dockerfile` therefore means changing the template in the same release. The real assurance is on the built image: the overlay runs `deploy/tools/check-diary-image-native.sh` on the candidate (`--network none`, no data), which requires every native binary present and executable, `noevia-diary --version` to print exactly one line, `noevia-diary <version> noevia-rs <pinned ref>`, and the self-tests to answer `ok` (each container has a unique name and a `noevia.diary-prov=<run-id>` label and a 120 s deadline `CHECK_DIARY_TIMEOUT`; every docker call has its own 10 s deadline; on exit, a deadline or a signal the script sweeps the run label with `docker ps -aq --filter label=…` and `docker rm -f`, repeating over about 10 s after an abnormal end so a pending create is caught, and exits non-zero naming any container that remains); run the same script by hand on an image built from the `Dockerfile`.
+`NOEVIA_RS_REF` and `NOEVIA_RS_SHA256` together in `release/versions.lock`, `deploy/egress-proxy/Dockerfile` and
+every noevia-services Dockerfile (`bin/repin-services.sh` does the services side); CI fails if one differs.
 
 ### Document extraction app-only overlay
 

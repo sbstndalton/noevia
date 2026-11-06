@@ -49,6 +49,173 @@ die() { echo "assemble-release: $*" >&2; exit 1; }
 # sentence that mentions the thing (nor end the script silently when a file or a match is absent).
 code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 
+# BEGIN diary-df-check (deploy/tools/test-assemble-release.sh sources this block)
+# diary_dockerfile_check <template> <rs-ref> <rs-sha256> <Dockerfile>: prints "ok" or "bad: <reason>". An ALLOW-list, not
+# a parser of shell: the Diary Dockerfile build stage, its final FROM and its install line must equal the template
+# (deploy/tools/diary-dockerfile.template, read from the released noevia tree) instruction for instruction, after only
+# comments, line continuations and whitespace runs are normalized away. @NOEVIA_RS_REF@ and @NOEVIA_RS_SHA256@ are
+# the template only placeholders and are replaced by the lock values. In the final stage the USER, WORKDIR,
+# HEALTHCHECK, CMD and ENTRYPOINT instructions must be the template, in order, and no others; ENV may never set the pin,
+# a *_IMPL selector, DIARY_RUST_ROUTES/WRITES, PATH, LD_*, PYTHONPATH or a *_BIN other than the fixed values (names
+# compared after Docker-style unquoting); LABEL and EXPOSE are free; the exact RUN/COPY lines of the template may
+# follow; anything else (ONBUILD, ADD, an extra COPY, rm, ARG, SHELL, a heredoc, any leading # key=value parser
+# directive, a third stage) fails closed. Backslash-newline is removed with nothing inserted, as Docker does, in both
+# the template and the Dockerfile; a line continues only when it ends in an odd number of backslashes. The Dockerfile
+# may hold only printable ASCII, tab and LF/CRLF. Changing the Diary Dockerfile therefore means changing the template in
+# the same release.
+diary_df_awk=
+read -r -d '' diary_df_awk <<'DIARYDFAWK' || true
+# diary_dockerfile_check: reads the template (first file) and a Diary Dockerfile (second file) and prints "ok" or
+# "bad: <reason>". With mode=dump it prints the normalized instructions, one per line, instead.
+# Variables: ref, sum (the lock NOEVIA_RS_REF / NOEVIA_RS_SHA256; they replace @NOEVIA_RS_REF@ / @NOEVIA_RS_SHA256@),
+# mode.
+function trim(s) { sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
+function norm(s) { gsub(/[ \t]+/, " ", s); return trim(s) }
+function bad(why) { if (!failed) { failed = 1; reason = why } }
+function first(s) { sub(/ .*$/, "", s); return s }
+# Docker-style unquoting of the words of an ENV instruction into envname[]/envval[] (count envn): quotes and
+# backslashes are removed, unquoted whitespace separates words, and a word is NAME=value (the first = of the unquoted
+# word) or, for the legacy `ENV name value`, a lone first word followed by its value.
+function parse_env(text,   i, n, ch, q, tok, words, nwd, w, p, rest) {
+  envn = 0; split("", envname); split("", envval); split("", words)
+  n = length(text); q = ""; tok = ""; nwd = 0; eqseen = 0
+  for (i = 1; i <= n + 1; i++) {
+    ch = (i <= n) ? substr(text, i, 1) : " "
+    if (q == "\047") { if (ch == "\047") q = ""; else tok = tok ch; continue }
+    if (q == "\"") {
+      if (ch == "\"") { q = ""; continue }
+      if (ch == "\\" && i < n) { i++; ch = substr(text, i, 1); if (ch != "\"" && ch != "\\" && ch != "$") tok = tok "\\"; tok = tok ch; continue }
+      tok = tok ch; continue
+    }
+    if (ch == "\047" || ch == "\"") { if (!eqseen) bad("a quote in an ENV name"); q = ch; wordseen = 1; continue }
+    if (ch == "\\" && i < n) { if (!eqseen) bad("a backslash in an ENV name"); i++; tok = tok substr(text, i, 1); wordseen = 1; continue }
+    if (ch == "=") eqseen = 1
+    if (ch == " ") {
+      eqseen = 0
+      if (tok != "" || wordseen) {
+        nwd++; words[nwd] = tok; wend[nwd] = i
+      }
+      tok = ""; wordseen = 0
+      if (nwd == 1 && index(words[1], "=") == 0) {  # legacy `ENV name value`
+        envn = 1; envname[1] = words[1]; envval[1] = trim(substr(text, i)); return
+      }
+      continue
+    }
+    tok = tok ch; wordseen = 1
+  }
+  if (q != "") bad("an unterminated quote in ENV")
+  for (w = 1; w <= nwd; w++) {
+    p = index(words[w], "=")
+    envn++
+    if (p == 0) { envname[envn] = words[w]; envval[envn] = "" }
+    else { envname[envn] = substr(words[w], 1, p - 1); envval[envn] = substr(words[w], p + 1) }
+  }
+}
+function check_env(text,   i, nm) {
+  parse_env(text)
+  if (envn == 0) bad("an ENV with no name")
+  for (i = 1; i <= envn; i++) {
+    nm = envname[i]
+    if (nm ~ /[$`]/) { bad("an ENV name that is not literal: " nm); continue }
+    if (nm == "NOEVIA_RS_REF" || nm == "NOEVIA_RS_SHA256") bad("an ENV that sets " nm)
+    else if (nm == "DIARY_RUST_ROUTES" || nm == "DIARY_RUST_WRITES" || nm ~ /_IMPL$/) bad("an ENV that sets the switch " nm)
+    else if (nm in envfixed) { if (envval[i] != envfixed[nm]) bad("an ENV that moves " nm) }
+    else if (nm ~ /_BIN$/) bad("an ENV that sets the binary path " nm)
+    else if (nm ~ /^(PATH|ENV|BASH_ENV|SHELLOPTS|IFS|PS4)$/ || nm ~ /^(LD|DYLD)_/ || nm ~ /^PYTHON(PATH|HOME|STARTUP|USERBASE|EXECUTABLE|BREAKPOINT|INSPECT)$/) bad("an ENV that changes how programs are found or started: " nm)
+  }
+}
+FNR == NR {
+  line = $0; sub(/\r$/, "", line)
+  if (line ~ /^[ \t]*(#|$)/) next
+  if (line ~ /^\[[a-z-]+\]$/) { section = substr(line, 2, length(line) - 2); next }
+  # the template is normalized exactly like the Dockerfile: a backslash-newline is removed with nothing inserted
+  tl = line; sub(/[ \t]+$/, "", tl); tbs = 0
+  while (tbs < length(tl) && substr(tl, length(tl) - tbs, 1) == "\\") tbs++
+  if (tbs % 2 == 1) { sub(/\\[ \t]*$/, "", line); tacc = tacc line; next }
+  line = norm(tacc line); tacc = ""
+  gsub(/@NOEVIA_RS_REF@/, ref, line); gsub(/@NOEVIA_RS_SHA256@/, sum, line)
+  if (section == "build-stage") { nb++; build[nb] = line }
+  else if (section == "final-from") finalfrom = line
+  else if (section == "final-runtime") { nrt++; runtime[nrt] = line }
+  else if (section == "install") install = line
+  else if (section == "env-fixed") { eqp = index(line, "="); envfixed[substr(line, 1, eqp - 1)] = substr(line, eqp + 1) }
+  else if (section == "final-allowed") {
+    mark = substr(line, 1, 2); body = substr(line, 3)
+    allowed[body] = 1; if (mark == "+ ") required[body] = 1
+  }
+  next
+}
+# ---- the Dockerfile: instructions (comments, continuations and blank lines resolved)
+{
+  sub(/\r$/, "")
+  if ($0 ~ /^[ \t]*#/) {
+    if (nins == 0 && acc == "" && tolower($0) ~ /^[ \t]*#[ \t]*[a-z][a-z0-9_-]*[ \t]*=/) bad("a parser directive (a leading # key=value comment)")
+    next
+  }
+  if (trim($0) == "") next
+  t = $0; sub(/[ \t]+$/, "", t); nbs = 0
+  while (nbs < length(t) && substr(t, length(t) - nbs, 1) == "\\") nbs++
+  # a line continues only when it ends in an ODD number of backslashes (an even number is an escaped backslash); an
+  # even number of two or more is ambiguous and refused rather than modelled
+  if (nbs >= 2 && nbs % 2 == 0) bad("a line ending in an even number of backslashes")
+  if (nbs % 2 == 1) { sub(/\\[ \t]*$/, ""); acc = acc $0; next }
+  full = norm(acc $0); acc = ""
+  if (full ~ /<</) bad("a heredoc or here-string")
+  nins++; ins[nins] = full
+}
+END {
+  if (acc != "") { nins++; ins[nins] = norm(acc) }
+  if (mode == "dump") { for (i = 1; i <= nins; i++) print ins[i]; exit }
+  if (nb == 0 || finalfrom == "" || install == "") bad("the template is incomplete")
+  nf = 0
+  for (i = 1; i <= nins; i++) if (toupper(first(ins[i])) == "FROM") { nf++; fromat[nf] = i }
+  if (nf != 2) bad("expected exactly two stages (two FROM lines), found " nf)
+  else {
+    if (fromat[1] != 1) bad("an instruction before the first FROM")
+    if (fromat[2] - 1 != nb) bad("the build stage has " (fromat[2] - 1) " instructions, the template has " nb)
+    for (i = 1; i <= nb && i < fromat[2]; i++) if (ins[i] != build[i]) { bad("build stage instruction " i " differs from the template: " substr(ins[i], 1, 80)); break }
+    if (ins[fromat[2]] != finalfrom) bad("the final FROM differs from the template: " ins[fromat[2]])
+    installs = 0
+    for (i = fromat[2] + 1; i <= nins; i++) {
+      t = ins[i]; kw = toupper(first(t))
+      if (t == install) { installs++; continue }
+      if (t in allowed) { seen[t]++; continue }
+      if (kw == "ENV") { check_env(trim(substr(t, 4))); continue }
+      if (kw == "LABEL" || kw == "EXPOSE") continue
+      if (kw == "USER" || kw == "WORKDIR" || kw == "HEALTHCHECK" || kw == "CMD" || kw == "ENTRYPOINT") { nr++; rt[nr] = t; continue }
+      bad("an instruction the final stage does not allow: " substr(t, 1, 80))
+    }
+    # runtime-affecting instructions are the template, in order, and no others
+    if (nr != nrt) bad("the final stage has " nr " USER/WORKDIR/HEALTHCHECK/CMD/ENTRYPOINT instructions, the template has " nrt)
+    for (i = 1; i <= nr && i <= nrt; i++) if (rt[i] != runtime[i]) { bad("runtime instruction " i " differs from the template: " substr(rt[i], 1, 80)); break }
+    if (installs != 1) bad("the final stage must install the build stage exactly once (found " installs ")")
+    for (t in required) if (!seen[t]) bad("a required final-stage line is missing: " substr(t, 1, 80))
+  }
+  print failed ? "bad: " reason : "ok"
+}
+DIARYDFAWK
+# diary_df_ascii_ok <file>: the Dockerfile holds only printable ASCII (0x20-0x7E), tab and LF or CRLF line endings, in
+# comments too. A lone CR, VT, FF, NUL, DEL, NBSP or any other non-ASCII byte could be read as a separator or hidden by
+# one tool and not another, so it is refused instead of modelled. Every CR byte is checked, not lines.
+diary_df_ascii_ok() {
+  local cr total crlf; cr=$(printf '\r')
+  [ "$(LC_ALL=C tr -d '\11\12\15\40-\176' < "$1" | wc -c | tr -d ' ')" = 0 ] || return 1
+  # Line endings: all LF or all CRLF, never mixed, and a CR only as the one byte before an LF. Every CR byte counts,
+  # not lines: strip exactly one trailing CR per line and refuse if any CR is left anywhere (an interior CR, or a CR
+  # directly before the CRLF); a file that ends in a CR has no LF to belong to.
+  total=$(LC_ALL=C grep -c '' "$1" || true)
+  crlf=$(LC_ALL=C grep -c "${cr}\$" "$1" || true)
+  [ "$crlf" = 0 ] || [ "$crlf" = "$total" ] || return 1
+  [ "$(LC_ALL=C sed "s/${cr}\$//" "$1" | LC_ALL=C grep -c "$cr" || true)" = 0 ] || return 1
+  [ "$(tail -c 1 "$1" | od -An -tx1 | tr -d ' \n')" != 0d ] || return 1
+}
+diary_dockerfile_check() {
+  [ -f "$1" ] && [ -f "$4" ] || { echo "bad: the template or the Dockerfile is missing"; return 0; }
+  diary_df_ascii_ok "$4" || { echo "bad: the Dockerfile has a byte other than printable ASCII, tab and LF/CRLF line endings"; return 0; }
+  LC_ALL=C awk -v ref="$2" -v sum="$3" "$diary_df_awk" "$1" "$4"
+}
+# END diary-df-check
+
 lock_file=""
 if [ "${1:-}" = --lock ]; then
   lock_file="${2:-}"; shift 2 || true
@@ -165,6 +332,31 @@ if [ -n "$rs_sum" ]; then
   fetch_remote noevia-rs "$rs_ref" "$rs_sum" "$tree/rs"
   [ -f "$tree/rs/Cargo.toml" ] || die "noevia-rs at $rs_ref has no Cargo.toml"
   rs_sha="$rs_ref"
+fi
+
+# Diary native packaging (D4-D5): a services Diary that forwards to the Rust Diary server (agent/rust_forward.py)
+# runs the noevia-diary binary, the tenant-assertion leaf and the workspace exporter from the one /out/ bundle its
+# Dockerfile builds at the pinned noevia-rs. A services pin ahead of the noevia-rs pin would build an image (or
+# overlay) that cannot start the server, so the pairing is refused here, before anything is built:
+# the pinned rs must carry all three, and the Diary Dockerfile must carry that same rs pin and match the reviewed
+# deploy/tools/diary-dockerfile.template (an allow-list of its build stage and install, diary_dockerfile_check).
+# DIARY_RUST_ROUTES and DIARY_RUST_WRITES stay empty by default (the Dockerfile sets neither), so a paired
+# release changes no behaviour until the owner enables them.
+if [ -f "$tree/services/diary/agent/rust_forward.py" ]; then
+  for diary_native in bins/noevia-diary bins/tenant-assertion crates/diary-workspace-export; do
+    [ -f "$tree/rs/$diary_native/Cargo.toml" ] \
+      || die "Diary native packaging: services/diary forwards to the Rust Diary server but noevia-rs (NOEVIA_RS_REF in versions.lock at $sha) has no $diary_native"
+  done
+  # The image (and the overlay, which reads these two ARGs) builds the Rust tree it will be paired with: the
+  # Dockerfile pin is the lock pin.
+  for diary_arg in NOEVIA_RS_REF:"$rs_ref" NOEVIA_RS_SHA256:"$rs_sum"; do
+    [ "$(sed -n "s/^ARG ${diary_arg%%:*}=//p" "$tree/services/diary/Dockerfile" | head -1)" = "${diary_arg#*:}" ] \
+      || die "Diary native packaging: services/diary/Dockerfile ${diary_arg%%:*} differs from release/versions.lock at $sha"
+  done
+  # And the whole build and install shape is the reviewed template (an allow-list, see diary_dockerfile_check).
+  diary_verdict="$(diary_dockerfile_check "$tree/noevia/deploy/tools/diary-dockerfile.template" "$rs_ref" "$rs_sum" "$tree/services/diary/Dockerfile")"
+  [ "$diary_verdict" = ok ] \
+    || die "Diary native packaging: services/diary/Dockerfile deviates from deploy/tools/diary-dockerfile.template: ${diary_verdict#bad: }"
 fi
 
 # Full-Rust migration M4: the Rust front and Node share projects.json. Every project route the
