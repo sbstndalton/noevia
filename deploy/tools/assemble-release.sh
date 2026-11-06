@@ -45,6 +45,9 @@
 set -euo pipefail
 
 die() { echo "assemble-release: $*" >&2; exit 1; }
+# Shared strict detector for ownership pairing guards (see lib/rs-capability.md).
+rs_capability_lib="$(cd -- "$(dirname -- "$0")" && pwd)/lib/rs-capability.cjs"
+. "$(dirname -- "$rs_capability_lib")/rs-capability.sh"
 # A source file without its comment lines: a pairing check that reads code must not be satisfied by a
 # sentence that mentions the thing (nor end the script silently when a file or a match is absent).
 code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
