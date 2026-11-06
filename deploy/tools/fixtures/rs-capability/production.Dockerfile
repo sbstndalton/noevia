@@ -20,4 +20,3 @@ RUN set -e; mkdir -p /out; \
     else \
       echo "noevia-rs in this tree has no bins/noevia-server: the image ships without the Rust front"; \
     fi
-

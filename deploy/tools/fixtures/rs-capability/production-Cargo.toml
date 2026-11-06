@@ -51,4 +51,3 @@ rust-free-chats = []
 # sbstndalton/noevia#1071: GET/POST chat context are permanent native routes.
 # (src/routes.rs PROJECT_WRITES; slice 1: a free chat's attachments project).
 rust-project-writes = []
-
