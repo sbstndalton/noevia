@@ -77,7 +77,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:1073",
@@ -221,7 +221,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:1073",
@@ -517,7 +517,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:1075",
@@ -621,7 +621,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:1073",
@@ -757,7 +757,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:1073",
@@ -837,7 +837,7 @@
     "declaration": "FEATURES",
     "capability": "rust-inference-",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "legacy"
   },
   {
     "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:534",
@@ -917,7 +917,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:1073",
@@ -1037,7 +1037,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:1073",
@@ -1181,7 +1181,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:1078",
@@ -1285,7 +1285,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:1073",
@@ -1413,7 +1413,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1073",
@@ -1629,7 +1629,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:1073",
@@ -1781,7 +1781,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:1073",
@@ -1893,7 +1893,7 @@
     "declaration": "FEATURES",
     "capability": "noevia-model-mutations/1",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:534",
@@ -1973,7 +1973,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:1073",
@@ -2109,7 +2109,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:1073",
@@ -2349,7 +2349,7 @@
     "declaration": "FEATURES",
     "capability": "start-id",
     "origin": "branch",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:1073",
@@ -2469,7 +2469,7 @@
     "declaration": "FEATURES",
     "capability": "noevia-maintenance-lease-authority/1",
     "origin": "review",
-    "expected": "invalid"
+    "expected": "legacy"
   },
   {
     "name": "review:J:duplicate_alias",
@@ -2477,7 +2477,7 @@
     "declaration": "FEATURES",
     "capability": "noevia-maintenance-lease-authority/1",
     "origin": "review",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "review:E2:plain",
@@ -2541,7 +2541,7 @@
     "declaration": "FEATURES",
     "capability": "reranker-settings-v1",
     "origin": "review",
-    "expected": "invalid"
+    "expected": "legacy"
   },
   {
     "name": "review:E2:duplicate_alias",
@@ -2549,7 +2549,7 @@
     "declaration": "FEATURES",
     "capability": "reranker-settings-v1",
     "origin": "review",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "review:E2-round1:plain",
@@ -2613,7 +2613,7 @@
     "declaration": "FEATURES",
     "capability": "reranker-settings-v1",
     "origin": "review",
-    "expected": "invalid"
+    "expected": "legacy"
   },
   {
     "name": "review:E2-round1:duplicate_alias",
@@ -2621,7 +2621,7 @@
     "declaration": "FEATURES",
     "capability": "reranker-settings-v1",
     "origin": "review",
-    "expected": "invalid"
+    "expected": "v1"
   },
   {
     "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:0",
@@ -2676,7 +2676,7 @@
     "source": "pub const FEATURES: &[&str] = &[OTHER];",
     "declaration": "FEATURES",
     "capability": "test-capability",
-    "expected": "invalid",
+    "expected": "legacy",
     "origin": "branch-expanded"
   },
   {
@@ -2948,7 +2948,7 @@
     "source": "const ALIAS: &str = \"cap\"; pub const FEATURES: &[&str] = &[ALIAS];",
     "declaration": "FEATURES",
     "capability": "cap",
-    "expected": "invalid",
+    "expected": "legacy",
     "origin": "new"
   },
   {
@@ -2956,7 +2956,7 @@
     "source": "const ALIAS: &str = \"cap\"; pub const FEATURES: &[&str] = &[\"cap\", ALIAS];",
     "declaration": "FEATURES",
     "capability": "cap",
-    "expected": "invalid",
+    "expected": "v1",
     "origin": "new"
   },
   {
@@ -2964,7 +2964,7 @@
     "source": "pub const FEATURES: &[&str] = &[unresolved::CAP];",
     "declaration": "FEATURES",
     "capability": "cap",
-    "expected": "invalid",
+    "expected": "legacy",
     "origin": "new"
   },
   {
@@ -2972,7 +2972,7 @@
     "source": "pub const FEATURES: &[&str] = &[UNKNOWN_ALIAS];",
     "declaration": "FEATURES",
     "capability": "cap",
-    "expected": "invalid",
+    "expected": "legacy",
     "origin": "new"
   },
   {
@@ -3124,7 +3124,7 @@
     "source": "pub const FEATURES: &[&str] = &[\"cap\", OTHER];",
     "declaration": "FEATURES",
     "capability": "cap",
-    "expected": "invalid",
+    "expected": "v1",
     "origin": "new"
   },
   {
@@ -3318,5 +3318,227 @@
     "capability": "cap",
     "expected": "v1",
     "origin": "new"
+  },
+  {
+    "name": "ruling:ignored-duplicates",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", \"other\", \"other\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:ignored-cfg",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"other\", \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:ignored-path-attributes",
+    "source": "pub const FEATURES: &[&str] = &[#[unknown] #[cfg(not(target_os = \"x\"))] SOME::PATH, \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:queried-only-duplicate",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", #[cfg(feature = \"off\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:escaped-query",
+    "source": "pub const FEATURES: &[&str] = &[\"c\\x61p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:unknown-query-attr",
+    "source": "pub const FEATURES: &[&str] = &[#[unknown] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\":None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\":[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\":['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:not(feature = \"on\"):None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(not(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:not(feature = \"on\"):[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(not(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:not(feature = \"on\"):['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(not(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:any(feature = \"on\"):None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:any(feature = \"on\"):[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:any(feature = \"on\"):['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:all(feature = \"on\"):None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(all(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:all(feature = \"on\"):[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(all(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:all(feature = \"on\"):['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(all(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:target_os = \"linux\":None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(target_os = \"linux\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:target_os = \"linux\":[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(target_os = \"linux\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:target_os = \"linux\":['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(target_os = \"linux\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\")] #[cfg(feature = \"on\":None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] #[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\")] #[cfg(feature = \"on\":[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] #[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\")] #[cfg(feature = \"on\":['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] #[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
   }
 ]

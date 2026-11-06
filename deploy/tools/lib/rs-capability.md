@@ -1,47 +1,55 @@
 # Shared Rust capability detector
 
-`detect(sourceText, declarationName, capabilityLiteral)` from `rs-capability.cjs`
-returns `v1`, `legacy`, or `invalid(reason)`. This API does not execute Rust or
-resolve constants. It reads balanced Rust token trees; release sources must also
-pass their normal Rust compilation checks. It is deliberately not a general Rust
-parser or evaluator. Unknown syntax in the target declaration fails closed.
+`detect(sourceText, declarationName, capabilityLiteral, enabledFeatures = null)`
+returns `v1`, `legacy`, or `invalid(reason)`. Only a direct ordinary string-literal
+element can satisfy a query. Rust escapes decode before comparison. Paths are
+ignored, including unresolved aliases to the queried literal. This is intentional:
+this API proves literal declarations, not the evaluated contents of FEATURES.
 
-The supported target is exactly one crate-root `pub const` or immutable `pub static`
-`&[&str]` initialized by `&[ordinary string literals]`. Explicit `'static` lifetimes
-are supported. Rust escapes are decoded before checking duplicates. Raw/byte/C
-strings, characters, macros, identifiers/paths and conditional elements refuse.
-All duplicates refuse, including unrelated capabilities and escaped duplicates.
-Harmless allow/warn/deny/forbid/doc/deprecated/must_use attributes are accepted;
-other target/crate attributes refuse. Nested target declarations refuse because
-this helper does not infer public re-exports or module reachability. Inner
-attributes in closed unrelated scopes do not affect the crate-root target.
+The target must be exactly one crate-root `pub const` or immutable `pub static`
+`&[&str]` initialized by `&[...]`; explicit `'static` lifetimes are supported.
+Crate/declaration cfg and unknown attributes refuse. Nested target declarations
+refuse; this helper does not infer re-exports. Inner attributes in closed unrelated
+scopes do not affect the target. Unknown target shapes, raw/byte/C literals,
+macros and non-path expressions refuse. Rust compilation remains required; this
+is a bounded token-tree proof, not a full Rust parser.
 
-The POSIX adapter in `rs-capability.sh` defines `rs_capability_version FILE NAME
-LITERAL`; set `rs_capability_lib` to the absolute JS path before sourcing it.
-It runs `timeout -k 2 10 node`, converts runtime failures to `invalid(runtime)`,
-and treats a missing source file as `legacy`. Check invalid first:
+Only duplicates of the queried literal refuse. Attributes/cfg and duplicate
+literals on other elements are ignored. Harmless attributes on the queried
+literal are allowed. One exact `#[cfg(feature = "F")]` is allowed alongside
+harmless attributes, and succeeds only if F is enabled. A disabled feature is
+`legacy`. Multiple cfg attributes, cfg_attr, not/any/all/target forms, and unknown
+queried attributes refuse. A queried cfg with no derivable feature set refuses.
+Unconditional literals do not require feature evidence.
 
-```sh
-version=$(rs_capability_version "$source" FEATURES "$marker")
-case "$version" in
-  invalid\(*\)) die "cannot prove Rust capability: $version" ;;
-esac
-```
+`deriveFeatures(dockerfileText, cargoTomlText)` returns a Set or null. It recognizes
+the production front-stage build's explicit feature seed and conditional grep
+selectors, then expands default and transitive local features from that exact
+source snapshot's manifest. It never executes shell code. Unsupported build
+syntax/flags or feature-table syntax return null. Dependency-qualified features
+are not local cfg features. Changes to the production build require updating this
+bounded reader and its fixtures; no arbitrary environment supplies enabled flags.
 
-Callers using `none` for absence must explicitly map `legacy` to `none` after
-checking invalid. A literal `/2` queried as `/1` is absent for that query: guards
-that support multiple protocol versions must check each known literal and retain
-their existing unknown-version/family validation. The detector does not infer
-protocol versions from strings. Scalar markers, module declarations, route wiring
-and startup calls require separate proofs; never replace those proofs with a
-FEATURES presence check.
+The POSIX adapter defines `rs_capability_version FILE NAME LITERAL`. Set
+`rs_capability_lib` to the absolute JS path before sourcing `rs-capability.sh`.
+It runs `timeout -k 2 10 node`. The CLI derives features from the source's sibling
+`../Cargo.toml` and this Top checkout's `build/web.Dockerfile` by default.
+Set `rs_capability_build` to the Dockerfile actually compiling the release source;
+the assembler uses `$tree/noevia/build/web.Dockerfile`. An optional
+`rs_capability_cargo` explicitly selects the same-snapshot manifest. Missing build
+or manifest evidence produces null, never an invented feature set.
 
-The assembler sources this helper for migration of pairing guards. Existing
-legacy `move_capability` checks remain unchanged: current Rust FEATURES arrays
-contain paths and cfg elements outside this stricter contract. Normalize those
-sources before adopting strict guards, rather than silently accepting identifiers
-or ignoring conditional elements.
+Missing source files are `legacy`; read/runtime/helper failures are invalid.
+Always reject `invalid(*)` before mapping `legacy` to older absence labels.
+An exact `/1` query does not validate a protocol family; retain caller validation
+for unknown/mixed versions. Scalar constants, startup calls and route registration
+still require separate proofs.
 
-Run `TMPDIR=<evidence-dir> sh deploy/tools/test-rs-capability.sh`. The same suite
-runs under bash and dash. Fixtures preserve review inputs and branch provenance;
-branch mutation cases are additionally normalized across the collected markers.
+Path-declared markers must migrate to a direct literal plus a compile-time const
+string equality assertion against the referenced constant. This ties the literal
+to Rust's actual marker without asking the release detector to resolve aliases.
+See the private integration handoff for branch-specific recipes.
+
+Run `TMPDIR=<evidence-dir> sh deploy/tools/test-rs-capability.sh`; the same fixture
+suite runs under bash and dash, including enabled/disabled/underivable cfg cases,
+production build/default-feature derivation, scope and tokenizer regressions.

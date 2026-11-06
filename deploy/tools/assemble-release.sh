@@ -90,6 +90,8 @@ out_partial=""
 # Never leave <out>.partial behind when the final tar (or anything after it) fails.
 trap 'rm -rf "$work"; if [ -n "$out_partial" ]; then rm -f "$out_partial"; fi' EXIT
 tree="$work/tree"
+# Match the Dockerfile that will compile this assembled Rust source snapshot.
+rs_capability_build="$tree/noevia/build/web.Dockerfile"
 mkdir -p "$tree/noevia" "$tree/web" "$tree/core" "$tree/services"
 
 git -C "$repo" archive --format=tar "$full_sha" | tar -x -C "$tree/noevia"
