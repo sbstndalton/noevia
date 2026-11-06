@@ -2557,6 +2557,33 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 unset pe_methods; pe_owner=node; pe_try pe-old-pair
 check "the old pair stays valid for rollback" '[ $rc -eq 0 ]'
+# Cross-process preset publication uses the same strict marker detector as row J.
+printf '%s\n' "module.exports = { PUBLICATION_CLIENT_MARKER: 'noevia-preset-publication-client/1' };" > "$w/server/preset-publication.cjs"
+printf '%s\n' 'withPublication(file, write);' >> "$w/server/llamacpp-presets.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+pe_try publication-core-only
+check "publication Core half-pair refuses" 'refused "preset publication pairing: Core and Rust must move together"'
+sed 's/"start-id"/"start-id", "noevia-preset-publication-authority\/1"/' "$work/feature-lib.saved" > "$work/publication-lib.saved"
+cp "$work/publication-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+pe_try publication-pair
+check "publication matching pair assembles" '[ $rc -eq 0 ]'
+rm "$w/server/preset-publication.cjs"
+pe_try publication-rs-only
+check "publication Rust half-pair refuses" 'refused "preset publication pairing: Core and Rust must move together"'
+printf '%s\n' "module.exports = { PUBLICATION_CLIENT_MARKER: 'noevia-preset-publication-client/1' };" > "$w/server/preset-publication.cjs"
+for publication_scope in declaration module crate; do
+ case $publication_scope in
+ declaration) printf '%s\n' '#[cfg(any())]' 'pub const FEATURES: &[&str] = &["start-id", "noevia-preset-publication-authority/1"];';;
+ module) printf '%s\n' '#[cfg(any())] mod disabled {' 'pub const FEATURES: &[&str] = &["start-id", "noevia-preset-publication-authority/1"];' '}';;
+ crate) printf '%s\n' '#![cfg(any())]' 'pub const FEATURES: &[&str] = &["start-id", "noevia-preset-publication-authority/1"];';;
+ esac > "$rz/bins/noevia-server/src/lib.rs"
+ pe_try "publication-cfg-$publication_scope"
+ check "publication rejects cfg $publication_scope" 'refused "ambiguous\|conditional"'
+done
+rm "$w/server/preset-publication.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+pe_try publication-legacy
+check "publication legacy pair remains valid" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-preset-read.cjs" "$w/server/rust-preset-write.cjs" "$w/server/rust-preset-write-effects.cjs" "$w/server/rust-preset-read-bridge.cjs"
 for pe_file in llamacpp-manager.cjs routes/models.cjs; do
   if [ -f "$work/pe-${pe_file##*/}.saved" ]; then
