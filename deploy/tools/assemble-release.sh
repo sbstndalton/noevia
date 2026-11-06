@@ -2683,6 +2683,10 @@ model_load_rs_owner="$(model_load_rs_version "$tree/rs/bins/noevia-server/src/li
   || die "model load pairing: ambiguous or unrecognized load marker (core=$model_load_core_owner rust=$model_load_rs_owner)"
 [ "$model_load_core_owner" = "$model_load_rs_owner" ] \
   || die "model load pairing: Core's load refusal and the front's load authority must move together (core=$model_load_core_owner rust=$model_load_rs_owner)"
+if [ "$model_load_rs_owner" = v1 ]; then
+  source "$repo/deploy/tools/model-load-gate-pairing.sh"
+  model_load_gate_pairing "$tree" "$rs_ref" || die "model load gate pairing: incompatible gate image recipe"
+fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.

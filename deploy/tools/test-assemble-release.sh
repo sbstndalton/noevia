@@ -10,7 +10,7 @@ check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$(
 g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
-cp "$here/assemble-release.sh" "$repo/deploy/tools/"
+cp "$here/assemble-release.sh" "$here/model-load-gate-pairing.sh" "$repo/deploy/tools/"
 w="$repo/apps/web"
 mkdir -p "$w/src" "$w/public" "$w/scripts" "$w/contracts" "$w/tests/client" "$w/tests/server" "$w/tests/fixtures" "$w/qa" "$w/server"
 for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits.json tests/client/a.test.cjs \
@@ -1146,6 +1146,10 @@ adm_clear
 
 # Port contract row A: Core's load refusal and the front's load authority move together
 # (f57a4e3-style detectors: Core's real export under node:vm, Rust's FEATURES tokenizer).
+cp "$repo/services/model-manager/Dockerfile" "$work/mld-docker.saved"
+printf 'ARG NOEVIA_RS_REF=%s\n' "$rref" > "$repo/services/model-manager/Dockerfile"
+mkdir -p "$rz/bins/noevia-inference-gate/src"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-model-load-settlement/1"];' > "$rz/bins/noevia-inference-gate/src/lib.rs"
 cp "$rz/bins/noevia-server/src/lib.rs" "$work/mld-features.saved"
 mld_core_js() { printf '%s\n' "$@" > "$w/server/rust-model-load.cjs"; }
 mld_core() { mld_core_js "const LOAD_MARKER = 'noevia-model-load-owner/1';" 'module.exports = { LOAD_MARKER };'; }
@@ -1159,6 +1163,18 @@ mld_no() { source_try "$1"; check "$2" 'refused "model load pairing"'; }
 mld_shape_no() { source_try "$1"; check "$2" 'refused "inference admission pairing: ambiguous or unrecognized lease marker"'; }
 mld_clear; mld_ok mld-legacy-legacy "legacy core with legacy Rust load owner assembles"
 mld_core; mld_rs; mld_ok mld-paired "native load refusal with native load authority assembles"
+# The gate image recipe and its compiled capability must pair with native load ownership.
+printf '%s\n' 'pub const FEATURES: &[&str] = &[];' > "$rz/bins/noevia-inference-gate/src/lib.rs"
+source_try mld-gate-legacy
+check "native load owner rejects a gate without settlement" 'refused "model load gate pairing"'
+printf '%s\n' '#[cfg(any())] pub const FEATURES: &[&str] = &["noevia-model-load-settlement/1"];' > "$rz/bins/noevia-inference-gate/src/lib.rs"
+source_try mld-gate-cfg
+check "native load owner rejects cfg-disabled gate settlement" 'refused "model load gate pairing"'
+printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-model-load-settlement/1"];' > "$rz/bins/noevia-inference-gate/src/lib.rs"
+printf 'ARG NOEVIA_RS_REF=%040d\n' 2 > "$repo/services/model-manager/Dockerfile"
+source_try mld-gate-old-pin
+check "native load owner rejects separately pinned older gate" 'refused "model load gate pairing"'
+printf 'ARG NOEVIA_RS_REF=%s\n' "$rref" > "$repo/services/model-manager/Dockerfile"
 mld_core_js "const LOAD_MARKER = ['noevia-model-load-', 'owner/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports = { LOAD_MARKER, x };'
 mld_ok mld-computed-core-export "a computed core export with stubbed requires is read by its value"
 mld_clear; mld_core; mld_no mld-core-only "native load refusal with a legacy front is refused"
@@ -1200,6 +1216,8 @@ mld_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.r
 mld_shape_no mld-crate-cfg "a crate-level cfg attribute is refused"
 mld_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; mld_ok mld-doc-commented-declaration "a doc-commented unconditional declaration assembles"
 mld_clear
+cp "$work/mld-docker.saved" "$repo/services/model-manager/Dockerfile"
+rm -rf "$rz/bins/noevia-inference-gate"
 
 
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
