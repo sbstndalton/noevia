@@ -13,7 +13,8 @@
 # taken over once, unchanged (no rotation), when it passes the checks above (a refusal names the
 # failed check in the web log as egress.issuer_unavailable reason=legacy_key_*, and writes nothing).
 # The issuer's own private state (the web key, the last session) lives in an `issuer/` directory
-# INSIDE this key directory (mode 0700, created by web, invisible to the proxy's group), never in
+# INSIDE this key directory (mode exactly 0700, created by web, invisible to the proxy's group;
+# an existing issuer/ with any group/other bit, another owner or a link is refused, reason=state_directory_*, never repaired), never in
 # UI_DATA_DIR: that mount is whatever the host made it (on the live host it is owned by another uid
 # than web's), and a state directory the issuer does not own is refused. Rolling back to the Node
 # web works on the same files; `issuer/` is simply ignored. The backup of this directory covers it.
