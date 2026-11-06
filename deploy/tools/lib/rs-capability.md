@@ -22,13 +22,33 @@ harmless attributes, and succeeds only if F is enabled. A disabled feature is
 queried attributes refuse. A queried cfg with no derivable feature set refuses.
 Unconditional literals do not require feature evidence.
 
-`deriveFeatures(dockerfileText, cargoTomlText)` returns a Set or null. It recognizes
-the production front-stage build's explicit feature seed and conditional grep
-selectors, then expands default and transitive local features from that exact
-source snapshot's manifest. It never executes shell code. Unsupported build
-syntax/flags or feature-table syntax return null. Dependency-qualified features
-are not local cfg features. Changes to the production build require updating this
-bounded reader and its fixtures; no arbitrary environment supplies enabled flags.
+`deriveFeatures(dockerfileText, cargoTomlText)` returns a Set or null. It reads
+active Dockerfile instructions with continuations joined, follows the final
+stage's FROM chain, and requires exactly one write of the shipped binary through
+COPY from an earlier local stage. Copies in unrelated build/test stages do not
+prove runtime provenance. Alternate copies, overwrites, unresolved bases, unknown
+base/setup or output programs, and additional builds in the producing stage or
+any ancestor refuse. The proof is local to `dockerfile-rs-features.cjs`, ported
+from the model-manager generator's fail-closed rules, without cross-repo imports.
+
+The complete supported front program is validated, including copying the actual
+release artifact into /out. Only its fixed literal feature seed and known grep
+selectors may be evaluated against the same Cargo snapshot; their literal result
+replaces the single known "$features" argument before cargo option parsing.
+Arbitrary dollar expansions, mixed literal/ARG lists, unknown flags, wrapped cargo
+commands, and extra commands refuse. Literal unconditional cargo builds are also
+supported with an option allowlist and an exact release-output copy.
+
+Cargo defaults and transitive local features are expanded only when declared in
+the snapshot. A missing `default` declaration contributes nothing; no feature is
+invented. `--no-default-features` excludes defaults unless explicitly listed.
+Unsupported build or manifest syntax returns null. Dependency-qualified manifest
+entries do not themselves name local cfg features. Changes to the production
+build may require updating this bounded proof and its fixtures.
+
+Rust string continuations discard only ASCII space, tab, LF and CR after the
+escaped newline; non-breaking spaces remain literal content. Physical CRLF in
+ordinary literals normalizes to LF; bare carriage returns refuse.
 
 The POSIX adapter defines `rs_capability_version FILE NAME LITERAL`. Set
 `rs_capability_lib` to the absolute JS path before sourcing `rs-capability.sh`.

@@ -3540,5 +3540,77 @@
       "on"
     ],
     "origin": "ruling"
+  },
+  {
+    "name": "review-fix:ascii-continuation",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n \t p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:nbsp-does-not-vanish",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\u00a0p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:nbsp-preserved",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\u00a0p\"];",
+    "declaration": "FEATURES",
+    "capability": "ca\u00a0p",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:formfeed-preserved",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\fp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:verticaltab-preserved",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\u000bp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:crlf-continuation",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\r\n \tp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:crlf-normalized",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\r\np\"];",
+    "declaration": "FEATURES",
+    "capability": "ca\np",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:lone-cr-escape",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\rp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:lone-cr",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\rp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "review-fix"
   }
 ]
