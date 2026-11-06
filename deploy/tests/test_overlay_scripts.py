@@ -614,6 +614,62 @@ exec "@REAL_SED@" "$@"
         self.tree(self.release, entries)
         self.tree(self.running_app, entries)
 
+    def test_the_round_three_collisions_are_differences(self):
+        # Link `a -> b` to `c` versus link `a` to `b -> c` printed one identical line; a target with and without a
+        # trailing newline printed one identical line. Each pair is one effective difference the guard must refuse.
+        pairs = {
+            'separator in the name or the target': ({'config/a -> b': ('link', 'c')}, {'config/a': ('link', 'b -> c')}),
+            'trailing newline in the target': ({'config/l': ('link', 'target')}, {'config/l': ('link', 'target\n')}),
+            'two trailing newlines': ({'config/l': ('link', 'target\n')}, {'config/l': ('link', 'target\n\n')}),
+            'name that imitates a record': ({'config/D 2e2f78': 'x\n'}, {'config/D': 'x\n'}),
+        }
+        for name, (image, release) in pairs.items():
+            with self.subTest(name):
+                for root, entries in ((self.running_app, image), (self.release, release)):
+                    self.tree(root, entries)
+                self.assert_refused_before_build(self.overlay(), "differs from the running image's /app/config")
+                for root, entries in ((self.running_app, image), (self.release, release)):
+                    for rel in entries:
+                        (root / rel).unlink()
+
+    def test_identical_awkward_links_and_names_are_accepted(self):
+        entries = {'config/a -> b': ('link', 'c'), 'config/l': ('link', 'target\n'), 'config/sp ace': 'x\n',
+                   'config/prompts/F 00': 'y\n'}
+        self.both(entries)
+        result = self.overlay()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.cand_app / 'config/l').readlink().as_posix(), 'target\n')
+
+    def test_a_difference_is_shown_decoded_with_control_characters_quoted(self):
+        self.both({'config/a -> b': ('link', 'c'), 'config/l': ('link', 'target\n')})
+        self.tree(self.release, {'config/l': ('link', 'other\n')})
+        refused = self.overlay()
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("$'target\\n'", refused.stderr)
+        self.assertIn("$'other\\n'", refused.stderr)
+        self.assertIn('./l', refused.stderr)
+
+    def test_ignored_cache_contents_do_not_change_the_verdict_on_either_side(self):
+        # Round-3 P3-1: the newline scan walked __pycache__ although the inventory prunes it.
+        for root in (self.release, self.running_app):
+            self.tree(root, {'config/__pycache__/x.pyc': 'c', 'scripts/__pycache__/y.pyc': 'c'})
+        (self.release / 'config/__pycache__/ignored\nname.pyc').write_text('x')
+        (self.running_app / 'scripts/__pycache__/also\nignored.pyc').write_text('x')
+        result = self.overlay()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root can read an unreadable directory')
+    def test_an_unreadable_ignored_cache_does_not_refuse(self):
+        for root in (self.release, self.running_app):
+            self.tree(root, {'config/__pycache__/x.pyc': 'c'})
+            (root / 'config/__pycache__').chmod(0)
+        try:
+            result = self.overlay()
+        finally:
+            for root in (self.release, self.running_app):
+                (root / 'config/__pycache__').chmod(0o755)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_a_link_that_points_at_another_identical_file_is_a_difference(self):
         # The regular-file manifests are equal; the effective system prompt is not.
         self.both({'config/prompts/a.md': 'same\n', 'config/prompts/b.md': 'same\n'})
@@ -1595,8 +1651,13 @@ class DiaryRequirementsProbe(unittest.TestCase):
                 self.assertEqual(argv[-2:], ['-c', 'sha256sum /app/requirements.txt'])
 
 
+def hx(value):
+    """The inventory's field encoding: the bytes of a string (or bytes), lower-case hex, nothing else."""
+    return (value if isinstance(value, bytes) else os.fsencode(value)).hex()
+
+
 class DirectoryManifest(unittest.TestCase):
-    """The inventory script itself, run by every POSIX shell available (the image's is dash or busybox, no pipefail)."""
+    """The inventory script itself, run by every POSIX shell available (the image's is dash, no pipefail)."""
 
     SHELLS = [sh for sh in ('sh', 'dash', 'bash') if shutil.which(sh)]
 
@@ -1604,10 +1665,13 @@ class DirectoryManifest(unittest.TestCase):
         script = RsStage().block('overlay-dirs') + '\nsh_bin=$1; shift; "$sh_bin" -c "$manifest_sh" sh "$@"'
         return subprocess.run(['bash', '-c', script, 'x', shell, str(directory), skip], capture_output=True, text=True, timeout=30)
 
-    def make(self):
+    def tmp(self):
         temp = pathlib.Path(tempfile.mkdtemp(prefix='noevia-manifest-'))
         self.addCleanup(shutil.rmtree, temp, ignore_errors=True)
-        root = temp / 'tree'
+        return temp
+
+    def make(self):
+        root = self.tmp() / 'tree'
         (root / 'sub').mkdir(parents=True)
         (root / '__pycache__').mkdir()
         (root / '__pycache__/x.pyc').write_text('c')
@@ -1619,25 +1683,29 @@ class DirectoryManifest(unittest.TestCase):
         (root / 'empty').mkdir()
         return root
 
+    def manifest(self, root, skip='', shell='sh'):
+        result = self.run_manifest(shell, root, skip)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], 'MANIFEST-COMPLETE')
+        return result.stdout.splitlines()[:-1]
+
     def test_entries_have_types_and_links_are_listed_by_target_not_followed(self):
         root = self.make()
         sha = lambda text: hashlib.sha256(text.encode()).hexdigest()
-        want = ['D ./empty', f'F {sha("x" + chr(10))} ./a.txt', 'D ./sub', f'F {sha("y" + chr(10))} ./sub/b.txt',
-                'L ./dangling -> nowhere', 'L ./dlink -> sub', 'L ./link -> a.txt', 'MANIFEST-COMPLETE']
+        want = [f'D {hx("./empty")}', f'F {hx("./a.txt")} {sha("x" + chr(10))}', f'D {hx("./sub")}',
+                f'F {hx("./sub/b.txt")} {sha("y" + chr(10))}', f'L {hx("./dangling")} {hx("nowhere")}',
+                f'L {hx("./dlink")} {hx("sub")}', f'L {hx("./link")} {hx("a.txt")}']
         for shell in self.SHELLS:
             with self.subTest(shell=shell):
-                result = self.run_manifest(shell, root)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(sorted(result.stdout.splitlines()), sorted(want))
-                self.assertEqual(result.stdout.splitlines()[-1], 'MANIFEST-COMPLETE')
-                self.assertNotIn('pycache', result.stdout)
-                self.assertNotIn('dlink/', result.stdout)
+                lines = self.manifest(root, shell=shell)
+                self.assertEqual(sorted(lines), sorted(want))
+                self.assertTrue(all(re.fullmatch(r'[DFL]( [0-9a-f]+)+', line) for line in lines), lines)
+                self.assertNotIn(hx('pycache'), ''.join(lines))
 
     def test_an_empty_directory_is_a_valid_empty_inventory(self):
         for shell in self.SHELLS:
             with self.subTest(shell=shell):
-                empty = pathlib.Path(tempfile.mkdtemp(prefix='noevia-manifest-empty-'))
-                self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+                empty = self.tmp()
                 result = self.run_manifest(shell, empty)
                 self.assertEqual((result.returncode, result.stdout), (0, 'MANIFEST-COMPLETE\n'), result.stderr)
 
@@ -1646,20 +1714,97 @@ class DirectoryManifest(unittest.TestCase):
         (root / 'smoke.py').write_text('s')
         for shell in self.SHELLS:
             with self.subTest(shell=shell):
-                self.assertNotIn('smoke.py', self.run_manifest(shell, root, 'smoke.py').stdout)
+                self.assertNotIn(hx('./smoke.py'), ' '.join(self.manifest(root, 'smoke.py', shell)))
         (root / 'smoke.py').unlink()
         (root / 'smoke.py').symlink_to('a.txt')
         for shell in self.SHELLS:
             with self.subTest(shell=shell, kind='link'):
-                self.assertIn('L ./smoke.py -> a.txt', self.run_manifest(shell, root, 'smoke.py').stdout)
+                self.assertIn(f'L {hx("./smoke.py")} {hx("a.txt")}', self.manifest(root, 'smoke.py', shell))
+
+    def link_tree(self, **links):
+        root = self.tmp() / 'tree'
+        root.mkdir()
+        for name, target in links.items():
+            os.symlink(target, root / name)
+        return root
+
+    def test_a_target_with_a_trailing_newline_is_not_the_target_without_it(self):
+        # `$(readlink x)` drops trailing newlines; the inventory reads the target exactly (round-3 review P2-1).
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                plain = self.manifest(self.link_tree(link='target'), shell=shell)
+                one = self.manifest(self.link_tree(link='target\n'), shell=shell)
+                two = self.manifest(self.link_tree(link='target\n\n'), shell=shell)
+                self.assertEqual(one, [f'L {hx("./link")} {hx("target" + chr(10))}'])
+                self.assertEqual(two, [f'L {hx("./link")} {hx("target" + chr(10) * 2)}'])
+                self.assertEqual(len({tuple(plain), tuple(one), tuple(two)}), 3)
+
+    def test_separators_inside_names_and_targets_cannot_collide(self):
+        # Round-3 P2-2: link `a -> b` to `c` and link `a` to `b -> c` printed the same line.
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                one = self.manifest(self.link_tree(**{'a -> b': 'c'}), shell=shell)
+                two = self.manifest(self.link_tree(a='b -> c'), shell=shell)
+                self.assertNotEqual(one, two)
+                self.assertEqual(one, [f'L {hx("./a -> b")} {hx("c")}'])
+                self.assertEqual(two, [f'L {hx("./a")} {hx("b -> c")}'])
+
+    def test_awkward_but_legal_names_and_targets_are_recorded_byte_for_byte(self):
+        names = {'sp ace': 't u', 'F deadbeef': 'L x y', 'x\\y': '\\', 'quote"\'s': '"', 'tab\tname': 'a\tb', 'ünï': 'ø', '-dash': '-t',
+                 '.hidden': '.', 'star*?[x]': '*'}
+        root = self.link_tree(**names)
+        (root / 'f\\g').write_text('body')   # sha256sum prints a leading backslash for such names
+        (root / '-opt').write_text('o')
+        (root / 'D 2e2f78').write_text('fake record')
+        raw = b'bytes-\xff\xfe'
+        try:
+            os.symlink(raw, os.fsencode(root) + b'/raw-\xff')
+            raw_names = True
+        except OSError:   # APFS refuses names that are not UTF-8; Linux (CI, DaServer) takes them
+            raw_names = False
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                lines = self.manifest(root, shell=shell)
+                for name, target in names.items():
+                    self.assertIn(f'L {hx("./" + name)} {hx(target)}', lines)
+                if raw_names:
+                    self.assertIn(f'L {hx(b"./raw-" + bytes([255]))} {hx(raw)}', lines)
+                sha = lambda t: hashlib.sha256(t.encode()).hexdigest()
+                self.assertIn(f'F {hx("./f" + chr(92) + "g")} {sha("body")}', lines)
+                self.assertIn(f'F {hx("./D 2e2f78")} {sha("fake record")}', lines)
+                self.assertIn(f'F {hx("./-opt")} {sha("o")}', lines)
+                self.assertTrue(all(re.fullmatch(r'[DFL]( [0-9a-f]+)+', line) for line in lines), lines)
+
+    def test_excluded_caches_are_ignored_by_every_scan(self):
+        # Round-3 P3-1: the newline scan walked __pycache__ although the inventory prunes it.
+        root = self.make()
+        (root / '__pycache__/ignored\nname.pyc').write_text('x')
+        (root / 'sub/__pycache__').mkdir()
+        (root / 'sub/__pycache__/also\nignored').write_text('x')
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                self.assertEqual(self.manifest(root, shell=shell), self.manifest(self.make(), shell=shell))
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root can read an unreadable directory')
+    def test_an_unreadable_excluded_cache_is_not_traversed(self):
+        root = self.make()
+        locked = root / '__pycache__'
+        locked.chmod(0)
+        self.addCleanup(locked.chmod, 0o755)
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                self.assertEqual(self.manifest(root, shell=shell), self.manifest(self.make(), shell=shell))
 
     def test_every_failure_exits_non_zero_without_a_complete_manifest(self):
         root = self.make()
         os.mkfifo(root / 'pipe')
         newline = self.make().parent / 'tree'
         (newline / 'bad\nname').write_text('x')
+        newline_dir = self.make().parent / 'tree'
+        (newline_dir / 'd\ne').mkdir()
         for shell in self.SHELLS:
-            for name, target in (('missing directory', root / 'absent'), ('fifo', root), ('newline name', newline)):
+            for name, target in (('missing directory', root / 'absent'), ('fifo', root), ('newline name', newline),
+                                 ('newline directory name', newline_dir)):
                 with self.subTest(shell=shell, case=name):
                     result = self.run_manifest(shell, target)
                     self.assertNotEqual(result.returncode, 0)

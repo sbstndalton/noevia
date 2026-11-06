@@ -134,7 +134,10 @@ JSON form) stops the overlay, because it would put content in the image that the
 refuses when the release's `requirements.txt`, `config/` or `scripts/` differ from the ones in the running image
 (read without network access): a changed prompt, config or script needs an image rebuild, not this overlay, so new
 agent code never runs silently against the old files. The comparison is an inventory of every entry (directories,
-regular files with their sha256, and symbolic links by their target string, never followed): a link repointed at another
+regular files with their sha256, and symbolic links by their target, never followed). Every variable field is written as
+the hex of its bytes (`D <hex path>`, `F <hex path> <sha256>`, `L <hex path> <hex target>`), so no name or target can imitate a
+separator, and a link target is read exactly, trailing newlines included (`readlink -n` with a sentinel). The scan that rejects
+paths containing a newline skips `__pycache__` exactly as the inventory does. a link repointed at another
 identical file, a link added or removed, or a file replaced by a link is a difference. An inventory that cannot be
 completed on either side (an unreadable directory or file, a failing `find`, `sort`, `sha256sum` or `readlink`, a
 FIFO or other special file, a name with a newline, or output without its end marker) refuses the overlay; it is never

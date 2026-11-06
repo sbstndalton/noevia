@@ -58,19 +58,29 @@ preserved_dirs="config scripts"
 # The release asset the candidate's smoke needs from scripts/ (run from the release, never installed).
 smoke_asset=smoke_diary_leaves.py
 # The inventory of one directory, run by `sh -c "$manifest_sh" sh <directory> <skipped file name or empty>` on the host
-# and inside the image (POSIX sh only; no pipefail there, so no pipeline: every producer's status is checked on its
-# own). One line per entry, sorted: D <path> (directory), F <sha256> <path> (regular file), L <path> -> <target>
-# (symbolic link: its type and target string, never followed). Any other entry type, a file name with a newline, an
-# unreadable directory or file, a failing find, sort, sha256sum or readlink makes it exit non-zero without a manifest;
-# a complete one ends with the line MANIFEST-COMPLETE, which callers require. __pycache__ is left out. The skipped
-# name is left out only when it is a regular file directly in the directory.
+# and inside the image (POSIX sh only; no pipefail there, so no pipeline whose status matters: every producer's status is
+# checked on its own). One line per entry, sorted, every variable field hex-encoded byte for byte (od -An -v -tx1) so no
+# name or target can imitate a separator: D <hex path>, F <hex path> <sha256>, L <hex path> <hex target>. A link's target
+# is read exactly (readlink -n prints no terminator; a sentinel x guards the command substitution, which would otherwise
+# drop trailing newlines, and only that x is removed), so a trailing newline in it is kept. Links are never followed. Any other entry type, a path with a newline (find cannot hand those over safely), an
+# unreadable directory or file, or a failing find, sort, od, tr, sha256sum or readlink makes it exit non-zero without a
+# manifest; a complete one ends with the line MANIFEST-COMPLETE (not hex), which callers require. __pycache__ directories
+# are left out of BOTH the newline scan and the inventory. The skipped name is left out only as a regular file directly
+# in the directory.
 manifest_sh='# diary-overlay-manifest
 nl="
 "
 cd "$1" || exit 1
 skip=$2
-bad=$(find . -name "*$nl*" -print) || exit 1
-[ -z "$bad" ] || { echo "a file name with a newline cannot be inventoried" >&2; exit 1; }
+hexof() {
+  raw=$(printf "%s" "$1" | od -An -v -tx1) || return 1
+  HEX=$(tr -d " \n" <<EOF
+$raw
+EOF
+) || return 1
+}
+bad=$(find . -name __pycache__ -prune -o -name "*$nl*" -print) || exit 1
+[ -z "$bad" ] || { echo "a path with a newline cannot be inventoried" >&2; exit 1; }
 ents=$(find . -name __pycache__ -prune -o ! -name . -print) || exit 1
 sorted=$(LC_ALL=C sort <<EOF
 $ents
@@ -80,15 +90,25 @@ out=
 while IFS= read -r p; do
   [ -n "$p" ] || continue
   if [ -L "$p" ]; then
-    t=$(readlink "$p") || exit 1
-    case $t in *"$nl"*) echo "a link target with a newline cannot be inventoried" >&2; exit 1 ;; esac
-    out="${out}L $p -> $t$nl"
+    t=$(readlink -n "$p" && echo x) || exit 1
+    case $t in *x) ;; *) exit 1 ;; esac
+    t=${t%x}
+    hexof "$p" || exit 1
+    hp=$HEX
+    hexof "$t" || exit 1
+    out="${out}L $hp $HEX$nl"
   elif [ -d "$p" ]; then
-    out="${out}D $p$nl"
+    hexof "$p" || exit 1
+    out="${out}D $HEX$nl"
   elif [ -f "$p" ]; then
     if [ -n "$skip" ] && [ "$p" = "./$skip" ]; then continue; fi
     h=$(sha256sum "$p") || exit 1
-    out="${out}F ${h%% *} $p$nl"
+    h=${h%% *}
+    case $h in \\*) h=${h#?} ;; esac
+    case $h in *[!0-9a-f]*) exit 1 ;; esac
+    [ ${#h} -eq 64 ] || exit 1
+    hexof "$p" || exit 1
+    out="${out}F $HEX $h$nl"
   else
     echo "unsupported entry type: $p" >&2; exit 1
   fi
@@ -105,6 +125,29 @@ image_manifest() {
   local image=$1 dir=$2 skip=${3:-} m; shift 3 || shift $#
   m=$(docker run --rm --network none "$@" --entrypoint sh "$image" -c "$manifest_sh" sh "/app/$dir" "$skip") || return 1
   manifest_accept "$m"
+}
+# Prints the records that differ between two inventories (<: first, >: second) with their paths and targets decoded for
+# a person, shell-quoted so control characters show. Diagnostics only; never part of a decision.
+unhex() {
+  local h=$1 o="" i b
+  for ((i = 0; i < ${#h}; i += 2)); do printf -v b "\\x${h:i:2}"; o+=$b; done
+  printf '%q' "$o"
+}
+manifest_diff() {
+  local line kind rest a b
+  { diff <(printf '%s\n' "$1") <(printf '%s\n' "$2") || true; } | head -n 40 | while IFS= read -r line; do
+    case $line in
+      "< "*|"> "*)
+        kind=${line:2:1}; rest=${line:4}; a=${rest%% *}; b=${rest#* }
+        case $kind in
+          D) printf '%s D %s\n' "${line:0:1}" "$(unhex "$a")" ;;
+          F) printf '%s F %s sha256 %s\n' "${line:0:1}" "$(unhex "$a")" "$b" ;;
+          L) printf '%s L %s -> %s\n' "${line:0:1}" "$(unhex "$a")" "$(unhex "$b")" ;;
+          *) printf '%s\n' "$line" ;;
+        esac ;;
+    esac
+  done || true
+  return 0
 }
 # The file the comparison leaves out of a preserved directory: the release smoke asset in scripts/.
 preserved_skip() { if [ "$1" = scripts ]; then printf '%s' "$smoke_asset"; fi; }
@@ -188,7 +231,7 @@ for d in $preserved_dirs; do
     || { echo "could not inventory /app/$d in the running image completely; not deploying" >&2; exit 1; }
   if [ "$want" != "$have" ]; then
     echo "releases/$V/services/diary/$d differs from the running image's /app/$d: the overlay replaces only agent/ and never $d/; rebuild the image instead; not deploying:" >&2
-    diff <(printf '%s\n' "$have") <(printf '%s\n' "$want") >&2 || true
+    manifest_diff "$have" "$want" >&2
     exit 1
   fi
   printf -v "preserved_have_$d" '%s' "$have"
@@ -338,7 +381,7 @@ for d in $overlay_dirs; do
     || { echo "could not list /app/$d in the candidate; not deploying" >&2; exit 1; }
   if [ "$want" != "$got" ]; then
     echo "candidate /app/$d differs from releases/$V/services/diary/$d; not deploying:" >&2
-    diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") >&2 || true
+    manifest_diff "$want" "$got" >&2
     docker image rm cowork-diary:$V-candidate >/dev/null 2>&1 || true
     exit 1
   fi
@@ -350,7 +393,7 @@ for d in $preserved_dirs; do
   var="preserved_have_$d"
   if [ "$got" != "${!var}" ]; then
     echo "candidate /app/$d differs from the running image's; the overlay must leave it untouched; not deploying:" >&2
-    diff <(printf '%s\n' "${!var}") <(printf '%s\n' "$got") >&2 || true
+    manifest_diff "${!var}" "$got" >&2
     docker image rm cowork-diary:$V-candidate >/dev/null 2>&1 || true
     exit 1
   fi
