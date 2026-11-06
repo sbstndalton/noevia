@@ -1156,6 +1156,69 @@ lease_rs_wrap '#![allow(dead_code)]'$'\n''#[doc(hidden)]'$'\n' ''; lease_no leas
 lease_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; lease_ok lease-doc-commented-declaration "a doc-commented unconditional declaration assembles"
 lease_clear
 
+# Embedding request ownership: the reviewed J detector and adversarial scope fixtures.
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/embedding-routes-features.saved"
+embedding_routes_core_js() { printf '%s\n' "$@" > "$w/server/rust-embedding-routes.cjs"; }
+embedding_routes_core() { embedding_routes_core_js "const EMBEDDING_ROUTES_MARKER = 'noevia-embedding-routes-client/1';" 'module.exports = { EMBEDDING_ROUTES_MARKER };'; }
+# embedding_routes_rs_el TEXT: lib.rs's FEATURES with TEXT as its first element(s).
+embedding_routes_rs_el() { EMBEDDING_EL="$1" perl -pe 's/pub const FEATURES: &\[&str\] = &\[/$&$ENV{EMBEDDING_EL}, /' "$work/embedding-routes-features.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+embedding_routes_rs() { embedding_routes_rs_el '"noevia-embedding-routes-authority/1"'; }
+embedding_routes_clear() { rm -f "$w/server/rust-embedding-routes.cjs"; cp "$work/embedding-routes-features.saved" "$rz/bins/noevia-server/src/lib.rs"; }
+embedding_routes_ok() { source_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'; }
+embedding_routes_no() { source_try "$1"; check "$2" 'refused "embedding routes pairing\\|maintenance lease pairing"'; }
+embedding_routes_clear; embedding_routes_ok embedding-routes-legacy-legacy "legacy core with legacy Rust embedding-routes owner assembles"
+embedding_routes_core; embedding_routes_rs; embedding_routes_ok embedding-routes-paired "native embedding-routes client with native embedding-routes authority assembles"
+embedding_routes_rs
+embedding_routes_core_js "const EMBEDDING_ROUTES_MARKER = ['noevia-embedding-routes-', 'client/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports = { EMBEDDING_ROUTES_MARKER, x };'
+embedding_routes_ok embedding-routes-computed-core-export "a computed core export with stubbed requires is read by its value"
+embedding_routes_clear; embedding_routes_core; embedding_routes_no embedding-routes-core-only "native embedding-routes client with a legacy front is refused"
+embedding_routes_clear; embedding_routes_rs; embedding_routes_no embedding-routes-rs-only "native embedding-routes authority with a legacy core is refused"
+# Adversarial Core markers (front paired at v1).
+embedding_routes_rs
+embedding_routes_core_js "// const EMBEDDING_ROUTES_MARKER = 'noevia-embedding-routes-client/1';" 'module.exports = {};'
+embedding_routes_no embedding-routes-comment-only-core "comment-only core embedding-routes marker is refused"
+embedding_routes_core_js "const EMBEDDING_ROUTES_MARKER = 'noevia-embedding-routes-client/1';" 'module.exports = {};'
+embedding_routes_no embedding-routes-unexported-core "unexported core embedding-routes marker is refused"
+embedding_routes_core_js "const EMBEDDING_ROUTES_MARKER = 'noevia-embedding-routes-client/3';" 'module.exports = { EMBEDDING_ROUTES_MARKER };'
+embedding_routes_no embedding-routes-unknown-core-version "unknown core embedding-routes marker version is refused"
+embedding_routes_core_js "module.exports = { EMBEDDING_ROUTES_MARKER: { toString: () => 'noevia-embedding-routes-client/1' } };"
+embedding_routes_no embedding-routes-object-core-export "a non-string core embedding-routes export is refused"
+embedding_routes_core_js "const EMBEDDING_ROUTES_MARKER = 'noevia-embedding-routes-client/1';" 'for (;;) {}' 'module.exports = { EMBEDDING_ROUTES_MARKER };'
+embedding_routes_no embedding-routes-hanging-core "a core embedding-routes module that never finishes evaluating is refused"
+# Adversarial Rust markers (core paired at v1).
+embedding_routes_core
+embedding_routes_rs_el '#[cfg(feature = "embedding-routes")] "noevia-embedding-routes-authority/1"'; embedding_routes_no embedding-routes-cfg-rust "cfg-gated Rust embedding-routes marker is refused"
+embedding_routes_rs_el '"noevia-embedding-routes-authority/1", "noevia-embedding-routes-authority/1"'; embedding_routes_no embedding-routes-duplicate-rust "duplicate Rust embedding-routes markers are refused"
+embedding_routes_rs_el '"noevia-embedding-routes-authority/1", "noevia-embedding-routes-authority\x2f1"'; embedding_routes_no embedding-routes-escaped-duplicate-rust "escaped duplicate Rust embedding-routes markers are refused"
+embedding_routes_rs_el 'b"noevia-embedding-routes-authority/1"'; embedding_routes_no embedding-routes-byte-rust "byte-string Rust embedding-routes marker is refused"
+embedding_routes_rs_el 'r#"noevia-embedding-routes-authority/1"#'; embedding_routes_no embedding-routes-raw-rust "raw-string Rust embedding-routes marker is refused"
+embedding_routes_rs_el 'concat!("noevia-embedding-routes-", "authority/1")'; embedding_routes_no embedding-routes-concat-rust "concat! Rust embedding-routes marker is refused"
+embedding_routes_rs_el '"noevia-embedding-routes-authority/3"'; embedding_routes_no embedding-routes-unknown-rust-version "unknown Rust embedding-routes marker version is refused"
+embedding_routes_rs_el '/* "noevia-embedding-routes-authority/1", */ "start-id-x"'; embedding_routes_no embedding-routes-comment-only-rust "comment-only Rust embedding-routes marker is refused"
+embedding_routes_rs; printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-embedding-routes-authority/1"];' >> "$rz/bins/noevia-server/src/lib.rs"
+embedding_routes_no embedding-routes-two-features-rust "a second FEATURES array is refused"
+embedding_routes_rs_el '"noevia-embedding-routes-\u{61}uthority/1"'; embedding_routes_ok embedding-routes-escaped-single-rust "one escaped Rust embedding-routes literal is read by its value"
+# Review P2: the declaration's own scope. embedding_routes_rs_wrap BEFORE AFTER wraps lib.rs's FEATURES line.
+embedding_routes_rs_wrap() { embedding_routes_rs; LB="$1" LA="$2" perl -0pi -e 's/^(pub const FEATURES: &\[&str\] = &\[.*?\];)$/$ENV{LB}$1$ENV{LA}/m' "$rz/bins/noevia-server/src/lib.rs"; }
+embedding_routes_rs_wrap '#[cfg(any())] ' ''; embedding_routes_no embedding-routes-cfg-declaration "cfg on the FEATURES declaration is refused"
+embedding_routes_rs_wrap '#[cfg(feature = "embedding-routes")]'$'\n' ''; embedding_routes_no embedding-routes-cfg-declaration-line "cfg on its own line above the declaration is refused"
+embedding_routes_rs_wrap '#[cfg(any())] mod disabled { ' ' }'; embedding_routes_no embedding-routes-cfg-module "a declaration inside a cfg-disabled module is refused"
+embedding_routes_rs_wrap 'mod inner { ' ' }'; embedding_routes_no embedding-routes-nested-module "a declaration inside a nested module is refused"
+embedding_routes_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; embedding_routes_no embedding-routes-macro-rules "a declaration inside macro_rules! is refused"
+embedding_routes_rs_wrap 'cfg_if::cfg_if! { if #[cfg(any())] { ' ' } }'; embedding_routes_no embedding-routes-macro-wrapped "a macro-wrapped declaration is refused"
+embedding_routes_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/embedding-routes-crate-cfg" && cp "$work/embedding-routes-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
+embedding_routes_no embedding-routes-crate-cfg "a crate-level cfg attribute is refused"
+# Delta review P3: a harmless crate inner attribute directly before the declaration still assembles;
+# crate cfg_attr and an outer attribute on the declaration are still refused.
+embedding_routes_rs_wrap '#![allow(dead_code)]'$'\n' ''; embedding_routes_ok embedding-routes-crate-allow "a crate inner attribute before the declaration assembles"
+embedding_routes_rs_wrap '#![allow(dead_code)] #![warn(missing_docs)]'$'\n' ''; embedding_routes_ok embedding-routes-crate-allow-two "two crate inner attributes before the declaration assemble"
+embedding_routes_rs_wrap '#![cfg_attr(any(), allow(dead_code))]'$'\n' ''; embedding_routes_no embedding-routes-crate-cfg-attr "a crate cfg_attr before the declaration is refused"
+embedding_routes_rs_wrap '#![allow(dead_code)]'$'\n''#[cfg(any())]'$'\n' ''; embedding_routes_no embedding-routes-crate-allow-then-cfg "an outer cfg after a crate attribute is refused"
+embedding_routes_rs_wrap '#![allow(dead_code)]'$'\n''#[doc(hidden)]'$'\n' ''; embedding_routes_no embedding-routes-crate-allow-then-outer "an outer attribute on the declaration is refused"
+embedding_routes_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; embedding_routes_ok embedding-routes-doc-commented-declaration "a doc-commented unconditional declaration assembles"
+embedding_routes_clear
+
+
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
  "core:chat.cjs:CHAT_MOVE_ENFORCEMENT_MARKER" "core:chat-change-journal.cjs:CHAT_MOVE_READER_MARKER" \
