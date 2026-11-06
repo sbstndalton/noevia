@@ -2567,7 +2567,7 @@ lease_core_version() {
         "})()", {}, { timeout: 2000 });
     } catch { process.stdout.write("invalid"); process.exit(0); }
     if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
-    const m = typeof value === "string" && /^noevia-maintenance-lease-(client)\/(1)$/.exec(value);
+    const m = typeof value === "string" && /^noevia-maintenance-lease-(client)\/([12])$/.exec(value);
     process.stdout.write(m ? "v" + m[2] : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }
@@ -2703,7 +2703,7 @@ lease_rs_version() {
     }
     if (!outbox.length) out("none");
     if (outbox.length > 1) out("invalid");
-    const m = /^noevia-maintenance-lease-authority\/(1)$/.exec(outbox[0]);
+    const m = /^noevia-maintenance-lease-authority\/([12])$/.exec(outbox[0]);
     out(m ? "v" + m[1] : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }

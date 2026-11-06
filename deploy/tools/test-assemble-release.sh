@@ -1102,6 +1102,11 @@ lease_ok() { source_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-rel
 lease_no() { source_try "$1"; check "$2" 'refused "maintenance lease pairing"'; }
 lease_clear; lease_ok lease-legacy-legacy "legacy core with legacy Rust lease owner assembles"
 lease_core; lease_rs; lease_ok lease-paired "native lease client with native lease authority assembles"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/2';" 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_no lease-new-core-old-rust "v2 incident completion client refuses v1 authority"
+lease_rs_el '"noevia-maintenance-lease-authority/2"'; lease_ok lease-v2-paired "v2 captured-incident repair pair assembles"
+lease_core; lease_no lease-old-core-new-rust "v1 client refuses v2 incident completion authority"
+lease_rs
 lease_core_js "const LEASE_CLIENT_MARKER = ['noevia-maintenance-lease-', 'client/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports = { LEASE_CLIENT_MARKER, x };'
 lease_ok lease-computed-core-export "a computed core export with stubbed requires is read by its value"
 lease_clear; lease_core; lease_no lease-core-only "native lease client with a legacy front is refused"
@@ -1112,7 +1117,7 @@ lease_core_js "// const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1
 lease_no lease-comment-only-core "comment-only core lease marker is refused"
 lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'module.exports = {};'
 lease_no lease-unexported-core "unexported core lease marker is refused"
-lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/2';" 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/3';" 'module.exports = { LEASE_CLIENT_MARKER };'
 lease_no lease-unknown-core-version "unknown core lease marker version is refused"
 lease_core_js "module.exports = { LEASE_CLIENT_MARKER: { toString: () => 'noevia-maintenance-lease-client/1' } };"
 lease_no lease-object-core-export "a non-string core lease export is refused"
@@ -1126,7 +1131,7 @@ lease_rs_el '"noevia-maintenance-lease-authority/1", "noevia-maintenance-lease-a
 lease_rs_el 'b"noevia-maintenance-lease-authority/1"'; lease_no lease-byte-rust "byte-string Rust lease marker is refused"
 lease_rs_el 'r#"noevia-maintenance-lease-authority/1"#'; lease_no lease-raw-rust "raw-string Rust lease marker is refused"
 lease_rs_el 'concat!("noevia-maintenance-lease-", "authority/1")'; lease_no lease-concat-rust "concat! Rust lease marker is refused"
-lease_rs_el '"noevia-maintenance-lease-authority/2"'; lease_no lease-unknown-rust-version "unknown Rust lease marker version is refused"
+lease_rs_el '"noevia-maintenance-lease-authority/3"'; lease_no lease-unknown-rust-version "unknown Rust lease marker version is refused"
 lease_rs_el '/* "noevia-maintenance-lease-authority/1", */ "start-id-x"'; lease_no lease-comment-only-rust "comment-only Rust lease marker is refused"
 lease_rs; printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-maintenance-lease-authority/1"];' >> "$rz/bins/noevia-server/src/lib.rs"
 lease_no lease-two-features-rust "a second FEATURES array is refused"
