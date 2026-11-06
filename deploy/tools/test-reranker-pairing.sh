@@ -13,12 +13,24 @@ check reranker_core_version "$work/core" v1
 check reranker_rs_version "$work/rs" v1
 check reranker_core_version "$work/absent" none
 check reranker_rs_version "$work/absent" none
+# Scope regressions: harmless crate attributes and closed unrelated modules are accepted.
+for src in \
+ '#![allow(dead_code)] #![warn(missing_docs)] pub const FEATURES: &[&str] = &["reranker-settings-v1"];' \
+ '#![allow(dead_code)] pub const FEATURES: &[&str] = &["reranker-settings-v1"];' \
+ 'mod unrelated { #![cfg(test)] fn helper() {} } pub const FEATURES: &[&str] = &["reranker-settings-v1"];'; do
+ printf '%s\n' "$src" > "$work/good"; check reranker_rs_version "$work/good" v1
+done
 # Paired, two half-pairs and legacy/legacy.
 test "$(reranker_core_version "$work/core")" = "$(reranker_rs_version "$work/rs")"
 test "$(reranker_core_version "$work/core")" != "$(reranker_rs_version "$work/absent")"
 test "$(reranker_core_version "$work/absent")" != "$(reranker_rs_version "$work/rs")"
 test "$(reranker_core_version "$work/absent")" = "$(reranker_rs_version "$work/absent")"
 for src in \
+ '#![cfg_attr(any(), allow(dead_code))] pub const FEATURES: &[&str] = &["reranker-settings-v1"];' \
+ '#![allow(dead_code)] #[cfg(any())] pub const FEATURES: &[&str] = &["reranker-settings-v1"];' \
+ '#![allow(dead_code)] #[doc(hidden)] pub const FEATURES: &[&str] = &["reranker-settings-v1"];' \
+ 'mod inner { pub const FEATURES: &[&str] = &["reranker-settings-v1"]; }' \
+ 'macro_rules! hidden { () => { pub const FEATURES: &[&str] = &["reranker-settings-v1"]; }; }' \
  'pub const FEATURES: &[&str] = &["reranker-settings-v1","reranker-settings-v1"];' \
  'pub const FEATURES: &[&str] = &["reranker-settings-v1","reranker-settings-\x76\x31"];' \
  'pub const FEATURES: &[&str] = &[#[cfg(any())] "reranker-settings-v1"];' \
@@ -32,20 +44,25 @@ for src in \
 done
 printf '%s\n' "pub const FEATURES: &'static [&str] = &[\"reranker-settings-v1\"];" > "$work/bad"
 check reranker_rs_version "$work/bad" invalid
-# A legacy unrelated reference is accepted only after proving its module and literal value.
+# J strict detector permits unrelated plain paths; only the ownership marker must be literal.
 base="$work/legacy"
 mkdir -p "$base/bins/noevia-server/src" "$base/crates/server-projects/src"
 printf 'pub mod source_jobs;\n' > "$base/crates/server-projects/src/lib.rs"
 printf 'pub const SOURCE_JOBS_STORE_MARKER: &str = "noevia-source-jobs-store/1";\n' > "$base/crates/server-projects/src/source_jobs.rs"
 printf 'pub const FEATURES: &[&str] = &[server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];\n' > "$base/bins/noevia-server/src/lib.rs"
 check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" none
+printf 'mod unrelated { #![cfg(test)] fn helper() {} } pub const FEATURES: &[&str] = &[server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,"reranker-settings-v1"];\n' > "$base/bins/noevia-server/src/lib.rs"
+check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" v1
+printf '#[cfg(any())] mod hidden { pub const FEATURES: &[&str] = &[server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,"reranker-settings-v1"]; }\n' > "$base/bins/noevia-server/src/lib.rs"
+check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" invalid
+printf 'pub const FEATURES: &[&str] = &[server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];\n' > "$base/bins/noevia-server/src/lib.rs"
 printf 'pub const FEATURES: &[&str] = &[UNKNOWN_ALIAS];\n' > "$work/bad"
-check reranker_rs_version "$work/bad" invalid
+check reranker_rs_version "$work/bad" none
 printf '#[cfg(any())] pub mod source_jobs;\n' > "$base/crates/server-projects/src/lib.rs"
-check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" invalid-source
+check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" none
 printf 'pub mod source_jobs;\n' > "$base/crates/server-projects/src/lib.rs"
 printf 'pub const SOURCE_JOBS_STORE_MARKER: &str = "reranker-settings-v1";\n' > "$base/crates/server-projects/src/source_jobs.rs"
-check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" invalid-source
+check reranker_rs_version "$base/bins/noevia-server/src/lib.rs" none
 printf "Object.defineProperty(module.exports,'RERANKER_SETTINGS_OWNER',{get(){while(true){}}});\n" > "$work/bad"
 check reranker_core_version "$work/bad" invalid
 # Exercise the production refusal block as well as the detectors.

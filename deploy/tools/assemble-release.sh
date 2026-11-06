@@ -729,10 +729,9 @@ reranker_rs_version() {
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
   timeout -k 2 10 node -e '
     const src = require("node:fs").readFileSync(process.argv[1], "utf8");
-    const out = r => { process.stdout.write(r); process.exit(0); };
-    function tokenize(src) {
     const strs = []; let code = ""; let i = 0; const n = src.length;
     const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
     while (i < n) {
       const c = src[i], d = src[i + 1];
       if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
@@ -777,57 +776,46 @@ reranker_rs_version() {
       }
       code += c; i++;
     }
-    return {code,strs};
-    }
-    const {code,strs}=tokenize(src);
-    function rootDeclaration(code,index) {
-      const prefix=code.slice(0,index); let depth=0;
-      for(const c of prefix) {if(c==="{")depth++;else if(c==="}")depth--;if(depth<0)return false;}
-      // Unknown attributes on a referenced declaration cannot prove its value or module path.
-      return depth===0 && !/#!\s*\[\s*cfg(?:_attr)?\b/.test(prefix) && !prefix.trimEnd().endsWith("]");
-    }
-    function legacyReference(rest) {
-      const names={
-        "server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER":["source_jobs","SOURCE_JOBS_STORE_MARKER","noevia-source-jobs-store/1","invalid-source"],
-        "server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER":["research_jobs","RESEARCH_JOBS_STORE_MARKER","noevia-research-jobs-store/1","invalid-research"]
-      };
-      const known=names[rest.replace(/\s/g,"")];
-      if(!known)return false;
-      const [module,name,expected,failure]=known;
-      try {
-        const base=require("node:path").resolve(require("node:path").dirname(process.argv[1]),"../../../crates/server-projects/src");
-        const parent=tokenize(require("node:fs").readFileSync(base+"/lib.rs","utf8"));
-        const modules=[...parent.code.matchAll(new RegExp("pub\\s+mod\\s+"+module+"\\s*;","g"))];
-        if(modules.length!==1 || !rootDeclaration(parent.code,modules[0].index))out(failure);
-        const child=tokenize(require("node:fs").readFileSync(base+"/"+module+".rs","utf8"));
-        const constants=[...child.code.matchAll(new RegExp("pub\\s+const\\s+"+name+"\\s*:\\s*&\\s*str\\s*=\\s*\\u0000(\\d+)\\u0000\\s*;","g"))];
-        if(constants.length!==1 || !rootDeclaration(child.code,constants[0].index))out(failure);
-        const literal=child.strs[+constants[0][1]];
-        if(!literal || literal.kind!=="str" || literal.v!==expected)out(failure);
-        return true;
-      } catch {out(failure);}
-    }
-    const hasMarker = strs.some(s => s.v.includes("reranker-settings"));
     const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
     const decls = [...code.matchAll(head)];
     if (decls.length > 1) out("invalid");
-    if (!decls.length) out(hasMarker ? "invalid" : "none");
-    const prefix = code.slice(0, decls[0].index);
-    // The capability declaration must be at crate scope; a gated enclosing module cannot prove it.
-    let scope = 0;
-    for (const c of prefix) { if (c === "{") scope++; else if (c === "}") scope--; if (scope < 0) out("invalid"); }
-    if (scope !== 0 || /#!\s*\[\s*cfg(?:_attr)?\b/.test(prefix)) out("invalid");
-    // Inspect attributes immediately preceding FEATURES, including cfg_attr nesting.
-    let before = prefix.trimEnd();
-    while (before.endsWith("]")) {
-      let depth=0,j=before.length-1;
-      for (;j>=0;j--) {if(before[j]==="]")depth++;else if(before[j]==="[" && --depth===0)break;}
-      if(j<0)out("invalid");
-      const attribute=before.slice(j); const head=before.slice(0,j).trimEnd();
-      if(!head.endsWith("#"))break;
-      if(/\bcfg(?:_attr)?\b/.test(attribute))out("invalid");
-      before=head.slice(0,-1).trimEnd();
+    if (!decls.length) out(strs.some(s => s.v.includes("reranker-settings")) ? "invalid" : "none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    let lexicalDepth = 0;
+    for (let j = 0; j < code.length; j++) {
+      if (lexicalDepth === 0 && /^#!\s*\[\s*cfg/.test(code.slice(j))) out("invalid");
+      const ch = code[j];
+      if (ch === "(" || ch === "[" || ch === "{") lexicalDepth++;
+      else if (ch === ")" || ch === "]" || ch === "}") lexicalDepth--;
+      if (lexicalDepth < 0) out("invalid");
     }
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
     const body = code.slice(decls[0].index + decls[0][0].length);
     // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
     // expressions stay inside their element.
@@ -841,7 +829,7 @@ reranker_rs_version() {
     }
     if (!closed) out("invalid");
     elements.push(cur);
-    const reranker = [];
+    const outbox = []; // lease authority entries
     for (let k = 0; k < elements.length; k++) {
       let rest = elements[k].trim(), gated = false;
       if (!rest && k === elements.length - 1) continue; // trailing comma
@@ -862,17 +850,15 @@ reranker_rs_version() {
       if (lit && strs[+lit[1]].kind === "str") {
         if (!marked) continue;
         if (gated || !strs[+lit[1]].v.includes("reranker-settings")) out("invalid");
-        reranker.push(strs[+lit[1]].v); continue;
+        outbox.push(strs[+lit[1]].v); continue;
       }
-
-      // Resolve only the two existing legacy references, through unconditional modules and
-      // ordinary constant literals. Arbitrary aliases never prove absence of this owner.
-      if (!hasMarker && !marked && legacyReference(rest)) continue;
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
       out("invalid");
     }
-    if (!reranker.length) out("none");
-    if (reranker.length > 1) out("invalid");
-    const m = /^reranker-settings-(v1)$/.exec(reranker[0]);
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^reranker-settings-(v1)$/.exec(outbox[0]);
     out(m ? m[1] : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }
