@@ -9,6 +9,10 @@ runbook, excluded from Git. It is not a record of a running backup job.
 - Include application state, configuration, tenant mappings, encryption keys, and the effective
   Compose inputs required to restore the same release. Match each key with the databases and
   provider files it encrypts.
+- Include the `preset-authority` named volume (`authority.sqlite`) when native presets are enabled.
+  It records outstanding operations and recovery incidents; retain it across restarts and image rollback.
+  Snapshot it with `deploy/tools/preset-authority-backup.sh backup <volume-mount>/authority.sqlite <private-snapshot>`;
+  SQLite's backup API includes committed WAL records. Do not copy only the main SQLite file while writers run.
 - Coordinate writers before taking a consistent snapshot. Record service shutdown/startup
   dependencies and the expected interruption locally.
 - Verify that each configured Diary storage backend is actually covered. A remote corpus is
@@ -41,3 +45,14 @@ does not authorize replacing application databases or a Diary corpus.
 Store encryption recovery material separately from the encrypted backup. Verify the off-site
 copy and restore process independently. Provider selection, account configuration, cost, and
 retention are operator decisions; see [the off-site guide](../offsite/README.md).
+
+## Native preset authority rollback
+
+An image rollback keeps `preset-authority` mounted and unchanged. Old images ignore its journal and
+fence metadata; never remove it with `docker compose down -v`. A new image initializes an empty or
+older journal and turns unfinished old-incarnation operations into recovery incidents before admission.
+For a data restore, stop web, loader and gate first, preserve displaced state, then use
+`preset-authority-backup.sh restore <snapshot> <volume-mount>/authority.sqlite --services-stopped`.
+Restart all three after the restore so Gate reopens its read-only journal snapshot.
+Verify a fresh covered preset reread before opening admission. A code rollback alone never restores
+an older authority snapshot or clears an incident.

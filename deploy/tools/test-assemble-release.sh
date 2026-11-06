@@ -721,6 +721,10 @@ try_routes() {
   tar -czf "$work/rs.tgz" -C "$work/remote" noevia-rs-t
   rsum="$( (sha256sum "$work/rs.tgz" 2>/dev/null || shasum -a 256 "$work/rs.tgz") | cut -d' ' -f1)"
   printf 'NOEVIA_RS_REF=%s\nNOEVIA_RS_SHA256=%s\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n' "$rref" "$rsum" > "$repo/release/versions.lock"
+  if [ "${publication_loader_fixture:-0}" = 1 ]; then
+    printf 'ARG NOEVIA_RS_REF=%s\nARG NOEVIA_RS_SHA256=%s\n && cargo build --release -p noevia-model-manager --features noevia-model-manager/native-routing\n' "${publication_loader_ref:-$rref}" "${publication_loader_sum:-$rsum}" > "$repo/services/model-manager/Dockerfile"
+    printf 'NOEVIA_SERVICES_REF=self\n' >> "$repo/release/versions.lock"
+  fi
   g add -A && g commit -qm "$1"; tsha="$(g rev-parse --short HEAD)"
   PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$tsha" "$out" >/dev/null 2>"$work/err"; rc=$?
 }
@@ -1099,7 +1103,9 @@ lease_rs_el() { LEASE_EL="$1" perl -pe 's/pub const FEATURES: &\[&str\] = &\[/$&
 lease_rs() { lease_rs_el '"noevia-maintenance-lease-authority/1"'; }
 lease_clear() { rm -f "$w/server/model-maintenance-lease.cjs"; cp "$work/lease-features.saved" "$rz/bins/noevia-server/src/lib.rs"; }
 lease_ok() { source_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'; }
-lease_no() { source_try "$1"; check "$2" 'refused "maintenance lease pairing"'; }
+# Several strict capability detectors reject an unprovable FEATURES scope. D2's editor detector
+# runs first; either precise ambiguity diagnostic proves refusal with no release artifact.
+lease_no() { source_try "$1"; check "$2" 'refused "maintenance lease pairing\|preset editor ownership pairing: ambiguous"'; }
 lease_clear; lease_ok lease-legacy-legacy "legacy core with legacy Rust lease owner assembles"
 lease_core; lease_rs; lease_ok lease-paired "native lease client with native lease authority assembles"
 lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/2';" 'module.exports = { LEASE_CLIENT_MARKER };'
@@ -2647,6 +2653,48 @@ for publication_scope in declaration module crate; do
  pe_try "publication-cfg-$publication_scope"
  check "publication rejects cfg $publication_scope" 'refused "ambiguous\|conditional"'
 done
+# v2 additionally pairs the Rust source actually built into the loader image.
+cp "$repo/services/model-manager/Dockerfile" "$work/publication-docker.saved"
+printf '%s\n' "module.exports = { PUBLICATION_CLIENT_MARKER: 'noevia-preset-publication-client/2' };" > "$w/server/preset-publication.cjs"
+sed 's/authority\/1/authority\/2/' "$work/publication-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+pe_try publication-v2-old-loader
+check "fenced web refuses legacy loader" 'refused "fenced web and loader Rust source must move together"'
+publication_loader_fixture=1
+mkdir -p "$rz/bins/noevia-model-manager/src"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-preset-publication-authority/2"];' > "$rz/bins/noevia-model-manager/src/lib.rs"
+pe_try publication-v2-pair
+check "matching fenced web and loader source assembles" '[ $rc -eq 0 ]'
+rm "$w/server/preset-publication.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+pe_try publication-v2-new-loader-old-web
+check "fenced loader refuses legacy web" 'refused "fenced web and loader Rust source must move together"'
+printf '%s\n' "module.exports = { PUBLICATION_CLIENT_MARKER: 'noevia-preset-publication-client/2' };" > "$w/server/preset-publication.cjs"
+sed 's/authority\/1/authority\/2/' "$work/publication-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+for publication_scope in declaration module crate; do
+ case $publication_scope in
+ declaration) printf '%s\n' '#[cfg(any())]' 'pub const FEATURES: &[&str] = &["noevia-preset-publication-authority/2"];';;
+ module) printf '%s\n' '#[cfg(any())] mod disabled {' 'pub const FEATURES: &[&str] = &["noevia-preset-publication-authority/2"];' '}';;
+ crate) printf '%s\n' '#![cfg(any())]' 'pub const FEATURES: &[&str] = &["noevia-preset-publication-authority/2"];';;
+ esac > "$rz/bins/noevia-model-manager/src/lib.rs"
+ pe_try "publication-loader-cfg-$publication_scope"
+ check "loader publication rejects cfg $publication_scope" 'refused "ambiguous or conditional loader capability"'
+done
+# A distinct, checksum-verified loader Rust ref must be inspected instead of reusing web's source.
+mkdir -p "$work/loader-source/noevia-rs-loader/bins/noevia-model-manager/src"
+printf '%s\n' 'pub const FEATURES: &[&str] = &[];' > "$work/loader-source/noevia-rs-loader/bins/noevia-model-manager/src/lib.rs"
+tar -czf "$work/loader-rs.tgz" -C "$work/loader-source" noevia-rs-loader
+publication_loader_ref="$(printf 'd%.0s' $(seq 1 40))"
+publication_loader_sum="$( (sha256sum "$work/loader-rs.tgz" 2>/dev/null || shasum -a 256 "$work/loader-rs.tgz") | cut -d' ' -f1)"
+cp "$work/bin/curl" "$work/publication-curl.saved"
+sed '/^while /i\
+case "$*" in *dddddddddddddddddddddddddddddddddddddddd*) src="'"$work"'/loader-rs.tgz";; esac
+' "$work/publication-curl.saved" > "$work/bin/curl"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-preset-publication-authority/2"];' > "$rz/bins/noevia-model-manager/src/lib.rs"
+pe_try publication-different-loader-ref
+check "different pinned loader source lacking fence is refused" 'refused "fenced web and loader Rust source must move together"'
+cp "$work/publication-curl.saved" "$work/bin/curl"
+unset publication_loader_fixture publication_loader_ref publication_loader_sum
+cp "$work/publication-docker.saved" "$repo/services/model-manager/Dockerfile"
+rm -f "$rz/bins/noevia-model-manager/src/lib.rs"
 rm "$w/server/preset-publication.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 pe_try publication-legacy

@@ -16,7 +16,7 @@ project_volumes="$(docker volume ls --filter label=com.docker.compose.project=co
 [[ -z "$project_volumes" ]] || fail 'Cowork project volumes already exist; use a restore or existing-install procedure.'
 volumes="$(docker volume ls --format '{{.Name}}')" || fail 'Could not inspect existing volumes.'
 while IFS= read -r volume; do
-  case "$volume" in cowork_web-data|cowork_diary-data) fail 'Cowork managed state already exists; use a restore or existing-install procedure.';; esac
+  case "$volume" in cowork_web-data|cowork_diary-data|cowork_preset-authority) fail 'Cowork managed state already exists; use a restore or existing-install procedure.';; esac
 done <<< "$volumes"
 umask 077
 fresh_env="$(mktemp "$install_root/.env.fresh.XXXXXX")"

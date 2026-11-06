@@ -2917,7 +2917,7 @@ publication_core_version() {
         "})()", {}, { timeout: 2000 });
     } catch { process.stdout.write("invalid"); process.exit(0); }
     if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
-    const m = typeof value === "string" && /^noevia-preset-publication-(client)\/(1)$/.exec(value);
+    const m = typeof value === "string" && /^noevia-preset-publication-(client)\/([12])$/.exec(value);
     process.stdout.write(m ? "v" + m[2] : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }
@@ -3053,7 +3053,7 @@ publication_rs_version() {
     }
     if (!outbox.length) out("none");
     if (outbox.length > 1) out("invalid");
-    const m = /^noevia-preset-publication-authority\/(1)$/.exec(outbox[0]);
+    const m = /^noevia-preset-publication-authority\/([12])$/.exec(outbox[0]);
     out(m ? "v" + m[1] : "invalid");
   ' "$1" 2>/dev/null || echo invalid
 }
@@ -3063,9 +3063,33 @@ publication_rs="$(publication_rs_version "$tree/rs/bins/noevia-server/src/lib.rs
   || die "preset publication pairing: ambiguous or conditional capability"
 [ "$publication_core" = "$publication_rs" ] \
   || die "preset publication pairing: Core and Rust must move together"
-if [ "$publication_rs" = v1 ]; then
+if [ "$publication_rs" = v1 ] || [ "$publication_rs" = v2 ]; then
   code_has "$tree/core/server/llamacpp-presets.cjs" 'withPublication' \
     || die "preset publication pairing: Node web writer lacks shared publication"
+fi
+
+# Services may build the loader from a different Rust pin than the web front. Inspect THAT source.
+publication_loader=none
+loader_docker="$tree/services/model-manager/Dockerfile"
+if [ -f "$loader_docker" ] && grep -Eiq '^[[:space:]]*ARG[[:space:]]+NOEVIA_RS_REF' "$loader_docker"; then
+  loader_ref="$(sed -nE 's/^[[:space:]]*[Aa][Rr][Gg][[:space:]]+NOEVIA_RS_REF=([0-9a-f]{40})[[:space:]]*$/\1/p' "$loader_docker")"
+  loader_sum="$(sed -nE 's/^[[:space:]]*[Aa][Rr][Gg][[:space:]]+NOEVIA_RS_SHA256=([0-9a-f]{64})[[:space:]]*$/\1/p' "$loader_docker")"
+  [[ "$loader_ref" =~ ^[0-9a-f]{40}$ ]] && [[ "$loader_sum" =~ ^[0-9a-f]{64}$ ]] \
+    || die "preset publication pairing: loader Rust pins are ambiguous"
+  loader_tree="$tree/rs"
+  if [ "$loader_ref" != "$rs_ref" ] || [ "$loader_sum" != "$rs_sum" ]; then
+    loader_tree="$work/loader-rs"; mkdir -p "$loader_tree"
+    fetch_remote noevia-rs "$loader_ref" "$loader_sum" "$loader_tree"
+  fi
+  publication_loader="$(publication_rs_version "$loader_tree/bins/noevia-model-manager/src/lib.rs")"
+  [ "$publication_loader" != invalid ] || die "preset publication pairing: ambiguous or conditional loader capability"
+fi
+if [ "$publication_rs" = v2 ] || [ "$publication_loader" = v2 ]; then
+  [ "$publication_rs" = v2 ] && [ "$publication_loader" = v2 ] \
+    || die "preset publication pairing: fenced web and loader Rust source must move together"
+  grep -Eq '^[[:space:]]*(&&|RUN)[[:space:]]+cargo build .*--features .*noevia-model-manager/native-routing' "$loader_docker" \
+    || die "preset publication pairing: loader must build its native routing capability"
+  [ -n "$(lock_value NOEVIA_SERVICES_REF)" ] || die "preset publication pairing: pin Services with the matching loader Rust source"
 fi
 
 printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\nNOEVIA_SERVICES_SHA=%s\nNOEVIA_RS_SHA=%s\n' \

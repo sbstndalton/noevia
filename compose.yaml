@@ -272,3 +272,5 @@ networks:
 volumes:
   web-data:
   diary-data:
+  # Shared native preset authority; retain across image rollback. Mounted by compose.llamacpp.yaml.
+  preset-authority:

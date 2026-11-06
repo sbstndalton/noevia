@@ -106,7 +106,8 @@ bash deploy/init-managed.sh
 This creates a private `.env` only after checking that no environment file, state
 path, Cowork containers or managed state volumes already exist. It creates no
 volumes and starts no services. The next Compose startup allocates `web-data` and
-`diary-data` under the existing `cowork` project name.
+`diary-data` under the existing `cowork` project name. The native preset overlay also
+allocates `preset-authority` for the shared operation journal.
 
 For an **existing installation**, keep its `.env` and storage bindings. The
 initializer deliberately refuses it. For an explicitly chosen host bind on a new
@@ -380,7 +381,12 @@ Direct Node development without `OCR_BASE_URL` remains native-text-only. See
 
 Managed-volume lifecycle: ordinary `docker compose down` retains state; never use
 `down -v` or prune these volumes unless deliberately discarding their data. Include
-both selected volumes and the matching web encryption key in backups. Changing
+both selected volumes and the matching web encryption key in backups. Include
+`preset-authority` when native presets are enabled; use the WAL-aware snapshot helper
+in [deploy/backups/README.md](deploy/backups/README.md). Retain that volume on image
+rollback; old images ignore it, and new images initialize or migrate it. Stop web,
+loader and gate before restoring an authority snapshot and reopen all three afterwards.
+Changing
 `COWORK_STATE_DIR` has no effect while explicit storage overrides are set. A later
 storage change requires a separate copy/restore and verification, not only editing
 these variables. The live Unraid Compose Manager template keeps explicit host binds.

@@ -31,6 +31,8 @@
 #   2. scp <out>/noevia-release-$NEW.tar.gz and <out>/app-$NEW.tar.gz to /tmp on the server.
 #   3. Take the appdata backup:
 #      php /usr/local/emhttp/plugins/appdata.backup/scripts/backup.php
+#      Also snapshot the preset-authority named volume with deploy/tools/preset-authority-backup.sh
+#      (see deploy/backups/README.md); keep that volume unchanged on an image-only rollback.
 # Usage: overlay-release.sh OLD NEW
 # Afterwards: record the release in docs/deployment.md and the DaServer changelog.
 set -euo pipefail

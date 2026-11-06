@@ -20,7 +20,8 @@ case "$1" in
  info) [[ "$INIT_QA_DOCKER" != offline ]];;
  compose) [[ "$2" == version ]] || exit 77;;
  ps) [[ "$INIT_QA_DOCKER" != containers ]] || echo existing-container;;
- volume) [[ "$2" == ls ]] || exit 77; [[ "$INIT_QA_DOCKER" != volumes ]] || echo cowork_web-data;;
+ volume) [[ "$2" == ls ]] || exit 77; [[ "$INIT_QA_DOCKER" != volumes ]] || echo cowork_web-data;
+   if [[ "$INIT_QA_DOCKER" == preset ]] && [[ "$*" != *--filter* ]]; then echo cowork_preset-authority; fi;;
  *) exit 77;;
 esac
 exit 0
@@ -45,7 +46,7 @@ exit 0
         for value in ['env','state','symlink']:
             with self.subTest(value=value):self.run_case(existing=value)
     def test_existing_engine_state_or_unavailable_engine_refused(self):
-        for value in ['containers','volumes','offline']:
+        for value in ['containers','volumes','preset','offline']:
             with self.subTest(value=value):self.run_case(docker_state=value)
     def test_explicit_host_storage_refused(self):self.run_case(env_override={'COWORK_STATE_DIR':'/existing/state'})
 if __name__=='__main__':unittest.main()

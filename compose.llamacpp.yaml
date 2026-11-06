@@ -34,6 +34,8 @@ services:
     restart: unless-stopped
     command: ["noevia-inference-gate"]
     environment:
+      NOEVIA_PRESET_AUTHORITY_FILE: /preset-authority/authority.sqlite
+      NOEVIA_PRESET_AUTHORITY_URL: http://model-loader:8090
       # noevia#2115: the gate admits one chat model at a time and never unloads a model that is
       # answering; see docs/deployment.md "Inference gate". Blank values take the gate's defaults.
       GATE_UPSTREAM: http://llama:8080
@@ -56,6 +58,8 @@ services:
       GATE_UPSTREAM_HEADER_TIMEOUT_SECONDS: ${GATE_UPSTREAM_HEADER_TIMEOUT_SECONDS:-}
       GATE_HEADER_READ_TIMEOUT_SECONDS: ${GATE_HEADER_READ_TIMEOUT_SECONDS:-}
       GATE_MAX_CONNECTIONS: ${GATE_MAX_CONNECTIONS:-}
+    volumes:
+      - preset-authority:/preset-authority:ro
     read_only: true
     user: "65534:65534"
     cap_drop: [ALL]
@@ -83,6 +87,7 @@ services:
     image: cowork-model-loader:${MODEL_MANAGER_VERSION:?Set MODEL_MANAGER_VERSION to the built model manager image tag}
     restart: unless-stopped
     environment:
+      NOEVIA_PRESET_AUTHORITY_FILE: /preset-authority/authority.sqlite
       MODELS_DIR: /models
       MODELS_HOST_PATH: ${LLAMACPP_MODELS_DIR}
       MODELS_INI_PATH: /config/models.ini
@@ -105,6 +110,7 @@ services:
       # Blank = 900 s (15 min); 0 disables. The chat router only; embedding.ini and Laya are untouched.
       CHAT_MODEL_IDLE_UNLOAD_SECONDS: ${CHAT_MODEL_IDLE_UNLOAD_SECONDS:-}
     volumes:
+      - preset-authority:/preset-authority
       - ${LLAMACPP_MODELS_DIR}:/models
       - ${LLAMACPP_CONFIG_DIR}:/config
       - ${MODEL_LOADER_DATA_DIR:?Set a writable Model Loader data directory}:/data
@@ -116,6 +122,7 @@ services:
   web:
     networks: [models]
     environment:
+      NOEVIA_PRESET_AUTHORITY_FILE: /preset-authority/authority.sqlite
       # noevia#2115: through the gate, which forwards to the router and admits one chat model.
       INFERENCE_BASE_URL: http://inference-gate:8080/v1
       MODEL_MANAGER_KIND: llamacpp
@@ -153,6 +160,7 @@ services:
       # Rollback to web: set MODELS_INI_WRITER=web AND drop :ro below, then recreate web.
       MODELS_INI_WRITER: ${MODELS_INI_WRITER:-model-loader}
     volumes:
+      - preset-authority:/preset-authority
       # Read-only: web only reads models.ini; model-loader writes it through PUT /api/v1/models-ini.
       - ${LLAMACPP_CONFIG_DIR}:/llamacpp-config:ro
       - ${LLAMACPP_MODELS_DIR}:/models:ro
@@ -170,3 +178,7 @@ services:
 networks:
   # Web, the engine, the gate and the model manager only. The Diary sidecar is not attached.
   models: {}
+
+# Operation permits survive a front/gate restart. This volume contains no presets or user data.
+volumes:
+  preset-authority: {}

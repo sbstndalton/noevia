@@ -166,6 +166,12 @@ candidate checks, deployment readiness, authenticated UI verification, and model
 Use synthetic accounts and data for functional checks. Live tests need their own authorization.
 
 Retain the previous assembled release, image identities, environment, and Compose files.
+Native preset deployments also retain the `preset-authority` named volume. Web and loader mount it
+read-write; gate reads it read-only with WAL-aware SQLite access. Keep the preset config mount
+read-only. Back up the authority through the SQLite backup helper described in
+[the backup guide](../deploy/backups/README.md); include it in installation backup coverage and
+never delete it when reverting images. Old images ignore it; newer images initialize or migrate it
+and reconcile outstanding operations under a fresh incarnation before admission.
 Rollback must restore the matching configuration and scoped services. Do not overwrite live
 SQLite files or restore application data merely to revert an image. Recovery involving data
 requires its own verified backup and migration plan. Preserve old releases until the operator's
