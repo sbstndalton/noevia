@@ -3905,6 +3905,9 @@ cmx_front() { # the paired schedule front plus the executors
   printf '%s\n' 'pub mod chat_mirror_work;' >> "$rz/bins/noevia-server/src/lib.rs"
   mkdir -p "$rz/crates/chat-mirror-exec/src"; echo 'pub const MARKER: &str = "noevia-chat-mirror-exec/1";' > "$rz/crates/chat-mirror-exec/src/lib.rs"
 }
+# An unprovable FEATURES declaration is refused by whichever strict detector meets it first: the schedule
+# pairing's (rust-chat-mirror-v1, round 2) refuses the whole declaration, the executor pairing's refuses its entry.
+cmx_unprovable() { refused "chat mirror schedule ownership pairing: invalid capability scope" || refused "not one unconditional FEATURES literal in a proven scope"; }
 cmx_lib() { # apply a sed to the paired front's lib.rs
   sed "$1" "$rz/bins/noevia-server/src/lib.rs" > "$work/cmx-lib.tmp"; cp "$work/cmx-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
 }
@@ -3923,22 +3926,22 @@ check "a cfg-gated executor capability entry is refused" 'refused "not one uncon
 cmx_restore; cmx_core; cmx_front; cmx_lib 's/^pub const FEATURES/#[cfg(not(test))]\
 pub const FEATURES/'
 move_try chat-mirror-exec-gated-declaration
-check "a FEATURES declaration under its own cfg attribute is refused (scope not proven)" 'refused "not one unconditional FEATURES literal in a proven scope"'
+check "a FEATURES declaration under its own cfg attribute is refused (scope not proven)" 'cmx_unprovable'
 cmx_restore; cmx_core; cmx_front; { echo '#![cfg(feature = "front")]'; cat "$rz/bins/noevia-server/src/lib.rs"; } > "$work/cmx-lib.tmp"; cp "$work/cmx-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
 move_try chat-mirror-exec-crate-cfg
-check "an inner crate cfg attribute in lib.rs is refused (scope not proven)" 'refused "not one unconditional FEATURES literal in a proven scope"'
+check "an inner crate cfg attribute in lib.rs is refused (scope not proven)" 'cmx_unprovable'
 cmx_restore; cmx_core; cmx_front; { echo 'mod inner {'; cat "$rz/bins/noevia-server/src/lib.rs"; echo '}'; } > "$work/cmx-lib.tmp"; cp "$work/cmx-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
 move_try chat-mirror-exec-nested-module
-check "a FEATURES declaration inside a module is refused (scope not proven)" 'refused "not one unconditional FEATURES literal in a proven scope"'
+check "a FEATURES declaration inside a module is refused (scope not proven)" 'cmx_unprovable'
 cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/"rust-chat-mirror-exec-v1", "rust-chat-mirror-exec-v1"/'
 move_try chat-mirror-exec-duplicate
 check "a duplicated executor capability entry is refused" 'refused "not one unconditional FEATURES literal in a proven scope"'
 cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/concat!("rust-chat-mirror-", "exec-v1")/'
 move_try chat-mirror-exec-concat
-check "a concat! executor capability entry is refused" 'refused "not one unconditional FEATURES literal in a proven scope"'
+check "a concat! executor capability entry is refused" 'cmx_unprovable'
 cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/r"rust-chat-mirror-exec-v1"/'
 move_try chat-mirror-exec-raw
-check "a raw-string executor capability entry is refused" 'refused "not one unconditional FEATURES literal in a proven scope"'
+check "a raw-string executor capability entry is refused" 'cmx_unprovable'
 cmx_restore; cmx_core; cmx_front; cmx_lib 's/"rust-chat-mirror-exec-v1"/"x"/'; printf '%s\n' '// "rust-chat-mirror-exec-v1" is the capability' >> "$rz/bins/noevia-server/src/lib.rs"
 move_try chat-mirror-exec-comment-capability
 check "an executor capability named only in a comment is not the capability" 'refused "Core and Rust must move together (rust-chat-mirror-exec-v1)"'
