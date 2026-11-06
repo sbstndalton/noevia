@@ -3,8 +3,11 @@
 A chat brain is a small, structured note about one chat: what it was about, what was decided, what
 was established, what is still open and who or what came up. It is a framework interface, versioned
 like the [task packet](spec-task-packet.md). Any model that emits this JSON can fill the reasoner
-role, including a future in-house model. The code is in `apps/web/server/chat-brain.cjs` (issue
-#742).
+role, including a future in-house model. The build, the store and the parser are in the Rust front
+(noevia-rs `crates/chat-mirror-exec`, `brain.rs`; scheduled by `crates/chat-mirror-sched`, issue #742).
+Core `apps/web/server/chat-brain.cjs` keeps only the retrieval (reading a stored brain into a chat's
+context); the reasoner call itself still goes through Core's engine seam until the front owns the
+engine admission.
 
 ## Shape
 
@@ -69,7 +72,7 @@ The task packet's rules, unchanged in spirit:
 
 ## In the vault note
 
-When a chat has a brain, its mirrored note (`chat-vault-mirror.cjs`) gets `brain_schema: 1` in the
+When a chat has a brain, its mirrored note (noevia-rs `crates/chat-mirror-exec`, `note.rs`) gets `brain_schema: 1` in the
 frontmatter and these sections right after it, followed by a rule and the transcript as before:
 
 ```markdown
