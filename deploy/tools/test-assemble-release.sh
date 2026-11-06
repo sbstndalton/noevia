@@ -3806,6 +3806,83 @@ cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try mirror-old-pair
 check "historic vault mirror old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 
+# The chat journal tail and the mirror and brain schedules (rust-chat-mirror-v1): the front owns them, the core
+# keeps the executors; both declare it exactly, neither in a comment, and the Node journal reader is gone.
+cm_note="$work/cm.saved"; mkdir -p "$cm_note"
+cp "$w/server/chat-change-journal.cjs" "$cm_note/journal.cjs"; cp "$rz/bins/noevia-server/src/main.rs" "$cm_note/main.rs"
+cm_restore() {
+  cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cp "$cm_note/journal.cjs" "$w/server/chat-change-journal.cjs"; cp "$cm_note/main.rs" "$rz/bins/noevia-server/src/main.rs"
+  rm -rf "$w/server/rust-chat-mirror.cjs" "$rz/crates/chat-mirror-sched"
+}
+cm_core() { # the paired core: the executor module, the require, no Node journal reader
+  printf '%s\n' "const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "module.exports = { RUST_CHAT_MIRROR_OWNED };" > "$w/server/rust-chat-mirror.cjs"
+  cp "$work/feature-index.saved" "$w/server/index.cjs"; printf '%s\n' "const chatMirror = require('./rust-chat-mirror.cjs');" >> "$w/server/index.cjs"
+  rm -f "$w/server/chat-change-journal.cjs"
+}
+cm_front() { # the paired front: capability, module, scheduler marker, the start call (journal op kept)
+  sed 's/"start-id"/"start-id", "rust-chat-mirror-v1"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+  printf '%s\n' 'pub mod chat_mirror;' >> "$rz/bins/noevia-server/src/lib.rs"
+  mkdir -p "$rz/crates/chat-mirror-sched/src"; echo 'pub const MARKER: &str = "noevia-chat-mirror-scheduler/1";' > "$rz/crates/chat-mirror-sched/src/lib.rs"
+  printf '%s\n' 'fn route() { let op = "/v1/changes/read"; }' 'fn start() { ChatMirror::start(); }' > "$rz/bins/noevia-server/src/main.rs"
+}
+cm_restore; cm_core; cm_front
+move_try chat-mirror-pair
+check "a paired chat mirror Core and front assemble, the move reader and journal consumer being the front's" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cm_restore; cm_core
+move_try chat-mirror-core-only
+check "a chat mirror Core beside a front without the capability is refused" 'refused "chat mirror schedule ownership pairing"'
+cm_restore; cm_front
+move_try chat-mirror-front-only
+check "a chat mirror front beside the old Core (a second schedule) is refused" 'refused "chat mirror schedule ownership pairing"'
+cm_restore; cm_core; cm_front; cp "$cm_note/journal.cjs" "$w/server/chat-change-journal.cjs"
+move_try chat-mirror-two-readers
+check "a pair whose Core still carries the Node journal reader is refused" 'refused "still carries the Node journal reader"'
+cm_restore; cm_core; cm_front
+sed 's/"rust-chat-mirror-v1"/"x"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; printf '%s\n' '// "rust-chat-mirror-v1" is the capability' >> "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
+move_try chat-mirror-comment-capability
+check "a capability named only in a comment is not the capability" 'refused "chat mirror schedule ownership pairing"'
+cm_restore; cm_core; cm_front
+sed 's/"rust-chat-mirror-v1"/"rust-chat-mirror-v1", "rust-chat-mirror-v1"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs"
+move_try chat-mirror-duplicate-capability
+check "a duplicated capability entry is refused" 'refused "chat mirror schedule ownership pairing"'
+cm_restore; cm_core; cm_front
+printf '%s\n' "// const RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1';" "module.exports = {};" > "$w/server/rust-chat-mirror.cjs"
+move_try chat-mirror-unexported-marker
+check "a Core module that does not export its marker is refused" 'refused "does not export RUST_CHAT_MIRROR_OWNED"'
+cm_restore; cm_core; cm_front
+printf '%s\n' 'fn route() { let op = "/v1/changes/read"; }' '// ChatMirror::start(' > "$rz/bins/noevia-server/src/main.rs"
+move_try chat-mirror-never-started
+check "a front that declares the capability but never starts the schedule is refused" 'refused "does not carry and start the schedule"'
+cm_restore; cm_core; cm_front
+echo 'pub const MARKER: &str = "something-else/1";' > "$rz/crates/chat-mirror-sched/src/lib.rs"
+move_try chat-mirror-wrong-scheduler
+check "a front whose scheduler crate lacks its marker is refused" 'refused "does not carry and start the schedule"'
+for cm_case in element declaration module startup startup-parent module-declaration escaped raw macro exported-wrong; do
+  cm_restore; cm_core; cm_front
+  case "$cm_case" in
+    element) sed 's/"rust-chat-mirror-v1"/#[cfg(any())] "rust-chat-mirror-v1"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs";;
+    declaration) sed '/pub const FEATURES/i\
+#[cfg(any())]
+' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs";;
+    module) cp "$rz/bins/noevia-server/src/lib.rs" "$work/cm-lib.tmp"; { echo '#[cfg(any())] mod disabled {'; cat "$work/cm-lib.tmp"; echo '}'; } > "$rz/bins/noevia-server/src/lib.rs";;
+    module-declaration) sed '/pub mod chat_mirror/i\
+#[cfg(any())]
+' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs";;
+    startup) printf '%s\n' '#[cfg(any())] fn start() { ChatMirror::start(); }' > "$rz/bins/noevia-server/src/main.rs";;
+    startup-parent) printf '%s\n' '#[cfg(any())] mod disabled { fn start() { ChatMirror::start(); } }' > "$rz/bins/noevia-server/src/main.rs";;
+    escaped) sed 's/"rust-chat-mirror-v1"/"rust-chat-mirror-v1", "rust-chat-mirror-v\\x31"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs";;
+    raw) sed 's/"rust-chat-mirror-v1"/r#"rust-chat-mirror-v1"#/' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs";;
+    macro) sed 's/"rust-chat-mirror-v1"/concat!("rust-chat-mirror-v", "1")/' "$rz/bins/noevia-server/src/lib.rs" > "$work/cm-lib.tmp"; cp "$work/cm-lib.tmp" "$rz/bins/noevia-server/src/lib.rs";;
+    exported-wrong) echo "module.exports.RUST_CHAT_MIRROR_OWNED = 'wrong';" >> "$w/server/rust-chat-mirror.cjs";;
+  esac
+  move_try "chat-mirror-disabled-$cm_case"
+  check "chat mirror rejects unprovable $cm_case" 'refused "chat mirror"'
+done
+cm_restore
+move_try chat-mirror-old-pair
+check "historic chat mirror old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
 # Round 4 (#2190): the storage connection save, exactly GET and PUT of the path Rust's.
 conn_try() {
   try_routes "$1" <<TOML
