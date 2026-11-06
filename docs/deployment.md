@@ -132,8 +132,14 @@ names the one it would leave out). Every `COPY` and `ADD` of the final stage cou
 binaries taken from the Rust stage, any other copying line (a file, `--chown`, a hyphenated directory, `ADD`,
 JSON form) stops the overlay, because it would put content in the image that the overlay does not ship. It also
 refuses when the release's `requirements.txt`, `config/` or `scripts/` differ from the ones in the running image
-(file names and sha256, read without network access): a changed prompt, config or script needs an image rebuild, not
-this overlay, so new agent code never runs silently against the old files. The one exception is
+(read without network access): a changed prompt, config or script needs an image rebuild, not this overlay, so new
+agent code never runs silently against the old files. The comparison is an inventory of every entry (directories,
+regular files with their sha256, and symbolic links by their target string, never followed): a link repointed at another
+identical file, a link added or removed, or a file replaced by a link is a difference. An inventory that cannot be
+completed on either side (an unreadable directory or file, a failing `find`, `sort`, `sha256sum` or `readlink`, a
+FIFO or other special file, a name with a newline, or output without its end marker) refuses the overlay; it is never
+treated as equal. An empty directory on both sides is a valid, equal inventory. The same inventory proves the
+candidate's `agent/` equals the release's and its `config/` and `scripts/` equal the running image's. The one exception is
 `scripts/smoke_diary_leaves.py`, the release's smoke for the native leaves: it is run from the release tree by a
 read-only bind mount over `/app/scripts/smoke_diary_leaves.py` in the smoke container only, and is never copied into the
 image. After the build the script compares `agent/` in the candidate with the release tree (file names and sha256) and

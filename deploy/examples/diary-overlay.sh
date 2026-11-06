@@ -57,10 +57,57 @@ overlay_dirs="agent"
 preserved_dirs="config scripts"
 # The release asset the candidate's smoke needs from scripts/ (run from the release, never installed).
 smoke_asset=smoke_diary_leaves.py
-# Names and sha256 of one directory's files, run inside the directory.
-dir_listing='find . -type f ! -path "*/__pycache__/*" -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum'
-# The comparison listing of a preserved directory: scripts/ without the smoke asset.
-preserved_filter() { if [ "$1" = scripts ]; then grep -v -x "[0-9a-f]\{64\}  \./$smoke_asset" || true; else cat; fi; }
+# The inventory of one directory, run by `sh -c "$manifest_sh" sh <directory> <skipped file name or empty>` on the host
+# and inside the image (POSIX sh only; no pipefail there, so no pipeline: every producer's status is checked on its
+# own). One line per entry, sorted: D <path> (directory), F <sha256> <path> (regular file), L <path> -> <target>
+# (symbolic link: its type and target string, never followed). Any other entry type, a file name with a newline, an
+# unreadable directory or file, a failing find, sort, sha256sum or readlink makes it exit non-zero without a manifest;
+# a complete one ends with the line MANIFEST-COMPLETE, which callers require. __pycache__ is left out. The skipped
+# name is left out only when it is a regular file directly in the directory.
+manifest_sh='# diary-overlay-manifest
+nl="
+"
+cd "$1" || exit 1
+skip=$2
+bad=$(find . -name "*$nl*" -print) || exit 1
+[ -z "$bad" ] || { echo "a file name with a newline cannot be inventoried" >&2; exit 1; }
+ents=$(find . -name __pycache__ -prune -o ! -name . -print) || exit 1
+sorted=$(LC_ALL=C sort <<EOF
+$ents
+EOF
+) || exit 1
+out=
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  if [ -L "$p" ]; then
+    t=$(readlink "$p") || exit 1
+    case $t in *"$nl"*) echo "a link target with a newline cannot be inventoried" >&2; exit 1 ;; esac
+    out="${out}L $p -> $t$nl"
+  elif [ -d "$p" ]; then
+    out="${out}D $p$nl"
+  elif [ -f "$p" ]; then
+    if [ -n "$skip" ] && [ "$p" = "./$skip" ]; then continue; fi
+    h=$(sha256sum "$p") || exit 1
+    out="${out}F ${h%% *} $p$nl"
+  else
+    echo "unsupported entry type: $p" >&2; exit 1
+  fi
+done <<EOF
+$sorted
+EOF
+printf "%s" "$out"
+echo MANIFEST-COMPLETE'
+# Accepts a captured manifest only when it is complete; prints it without the end marker.
+manifest_accept() { case $1 in *MANIFEST-COMPLETE) printf '%s' "${1%MANIFEST-COMPLETE}" ;; *) return 1 ;; esac; }
+# host_manifest <directory> [skipped name]; image_manifest <image> <directory in /app> [skipped name] [docker flags...]
+host_manifest() { local m; m=$(sh -c "$manifest_sh" sh "$1" "${2:-}") || return 1; manifest_accept "$m"; }
+image_manifest() {
+  local image=$1 dir=$2 skip=${3:-} m; shift 3 || shift $#
+  m=$(docker run --rm --network none "$@" --entrypoint sh "$image" -c "$manifest_sh" sh "/app/$dir" "$skip") || return 1
+  manifest_accept "$m"
+}
+# The file the comparison leaves out of a preserved directory: the release smoke asset in scripts/.
+preserved_skip() { if [ "$1" = scripts ]; then printf '%s' "$smoke_asset"; fi; }
 # The Dockerfile tail that replaces each directory whole: delete first (COPY only adds and replaces), then copy.
 overlay_copy_lines() {
   local d rm_list=""
@@ -130,13 +177,15 @@ req_have=$(docker run --rm --network none --read-only --pull never --entrypoint 
 # BEGIN preserved-dirs-check (deploy/tests/test_overlay_scripts.py runs this block with stub docker)
 # The overlay never replaces preserved_dirs. A release whose config/ (system prompt, config.yaml) or scripts/ differs from
 # the running image's would otherwise run its new agent code against the old files (#2112), so it is refused: rebuild the
-# image instead. scripts/$smoke_asset is the one release asset the overlay uses; it is run from the release (below)
-# and is left out of this comparison. The running image's listing is kept to prove the candidate leaves it untouched.
+# image instead. The comparison covers entry types and symbolic-link targets as well as file hashes (a link repointed
+# to another identical file is a difference), and an inventory that cannot be completed on either side refuses.
+# scripts/$smoke_asset is the one release asset the overlay uses; it is run from the release (below) and is left out
+# of this comparison. The running image's inventory is kept to prove the candidate leaves it untouched.
 for d in $preserved_dirs; do
-  want=$(cd "$base/releases/$V/services/diary/$d" && sh -c "$dir_listing" | preserved_filter "$d") \
-    || { echo "could not list releases/$V/services/diary/$d; not deploying" >&2; exit 1; }
-  have=$(docker run --rm --network none --read-only --pull never --entrypoint sh cowork-diary:$OLD -c "cd /app/$d && $dir_listing" | preserved_filter "$d"; exit "${PIPESTATUS[0]}") \
-    || { echo "could not list /app/$d in the running image; not deploying" >&2; exit 1; }
+  want=$(host_manifest "$base/releases/$V/services/diary/$d" "$(preserved_skip "$d")") \
+    || { echo "could not inventory releases/$V/services/diary/$d completely; not deploying" >&2; exit 1; }
+  have=$(image_manifest cowork-diary:$OLD "$d" "$(preserved_skip "$d")" --read-only --pull never) \
+    || { echo "could not inventory /app/$d in the running image completely; not deploying" >&2; exit 1; }
   if [ "$want" != "$have" ]; then
     echo "releases/$V/services/diary/$d differs from the running image's /app/$d: the overlay replaces only agent/ and never $d/; rebuild the image instead; not deploying:" >&2
     diff <(printf '%s\n' "$have") <(printf '%s\n' "$want") >&2 || true
@@ -279,12 +328,13 @@ docker build -q -t cowork-diary:$V-candidate "$ctx" >/dev/null
 docker run --rm --entrypoint python cowork-diary:$V-candidate -c "import agent.app, agent.workspace_files as w, agent.workspace_ops as o; assert hasattr(w,'_modified'); print('candidate imports ok')"
 # BEGIN dirs-exact (#1624, #2112: deploy/tests/test_overlay_scripts.py runs this through the whole script)
 # COPY only adds and replaces, so the Dockerfile above deletes each directory first. This proves the result: the
-# candidate's /app/<dir> must hold exactly the release's files (names and sha256), nothing stale or missing, for
+# candidate's /app/<dir> must hold exactly the release's entries (names, types, link targets and file sha256), nothing stale or missing, for
 # every directory the overlay replaces (agent/). The preserved directories (config/, scripts/) must still be exactly the
 # running image's, as listed before the build.
 for d in $overlay_dirs; do
-  want=$(cd "$ctx/$d" && sh -c "$dir_listing")
-  got=$(docker run --rm --network none --entrypoint sh cowork-diary:$V-candidate -c "cd /app/$d && $dir_listing") \
+  want=$(host_manifest "$ctx/$d") \
+    || { echo "could not inventory $ctx/$d completely; not deploying" >&2; exit 1; }
+  got=$(image_manifest cowork-diary:$V-candidate "$d") \
     || { echo "could not list /app/$d in the candidate; not deploying" >&2; exit 1; }
   if [ "$want" != "$got" ]; then
     echo "candidate /app/$d differs from releases/$V/services/diary/$d; not deploying:" >&2
@@ -292,10 +342,10 @@ for d in $overlay_dirs; do
     docker image rm cowork-diary:$V-candidate >/dev/null 2>&1 || true
     exit 1
   fi
-  echo "candidate $d/ matches the release ($(printf '%s\n' "$want" | grep -c .) files)"
+  echo "candidate $d/ matches the release ($(printf '%s\n' "$want" | awk '/^F /{n++} END{print n+0}') files)"
 done
 for d in $preserved_dirs; do
-  got=$(docker run --rm --network none --entrypoint sh cowork-diary:$V-candidate -c "cd /app/$d && $dir_listing" | preserved_filter "$d"; exit "${PIPESTATUS[0]}") \
+  got=$(image_manifest cowork-diary:$V-candidate "$d" "$(preserved_skip "$d")") \
     || { echo "could not list /app/$d in the candidate; not deploying" >&2; exit 1; }
   var="preserved_have_$d"
   if [ "$got" != "${!var}" ]; then

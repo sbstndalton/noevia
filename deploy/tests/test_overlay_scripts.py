@@ -220,7 +220,21 @@ class ScopedDiaryOverlay(unittest.TestCase):
     LIFECYCLE = {'stop', 'start', 'restart', 'kill', 'rm', 'down', 'pause', 'unpause', 'update'}
 
     DOCKER_STUB = r"""
-printf 'docker %s\n' "$*" >> "$CALL_LOG"
+# Runs the overlay's own inventory script (the argument after -c) the way the image would, on the emulated /app.
+manifest_in() {
+  root=$1; shift
+  while [ "$1" != -c ]; do shift; done; shift
+  script=$1; shift; shift   # the script, then argv0
+  dir=$1; shift             # /app/<dir>, then the skipped name
+  sub="${dir#/app/}"
+  [ "${MISSING_LISTING_DIR:-}" != "$sub" ] || exit 1
+  [ "${MISSING_RUNNING_DIR:-}" != "$sub" ] || [ "$root" != "$RUNNING_APP" ] || exit 1
+  if [ "$root" = "$CAND_APP" ]; then case "${STALE_FILE:-}" in "$sub/"*) mkdir -p "$(dirname "$root/$STALE_FILE")"; printf x > "$root/$STALE_FILE" ;; esac; fi
+  if [ "${TRUNCATED_MANIFEST:-}" = "$sub" ]; then echo "F 0 ./partial"; exit 0; fi
+  sh -c "$script" sh "$root/$sub" "$@"
+}
+logargs=(); for a in "$@"; do case "$a" in *diary-overlay-manifest*) a='<manifest>' ;; esac; logargs+=("$a"); done
+printf 'docker %s\n' "${logargs[*]}" >> "$CALL_LOG"
 case "$*" in
   "image inspect cowork-diary:@NEW@") [ -e "$CALL_LOG.tagged" ] || exit 1 ;;
   "tag @OLD_ID@ "*) ;;
@@ -235,11 +249,9 @@ case "$*" in
   "run --rm "*"--entrypoint sh cowork-diary:@OLD@ -c"*)
     all="$*"
     case "$all" in
-      *"cd /app/"*)
+      *diary-overlay-manifest*)
         # The running image's preserved directory (config/, scripts/): the overlay replaces neither.
-        dir="${all#*cd /app/}"; dir="${dir%% *}"
-        [ "${MISSING_RUNNING_DIR:-}" != "$dir" ] || exit 1
-        (cd "$RUNNING_APP/$dir" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum) ;;
+        manifest_in "$RUNNING_APP" "$@" ;;
       *)
         # The running image's /app/requirements.txt (#2112): the overlay installs no dependencies.
         [ -f "$RUNNING_APP/requirements.txt" ] && sha256sum "$RUNNING_APP/requirements.txt" ;;
@@ -260,14 +272,22 @@ case "$*" in
     done < "$ctx/Dockerfile" ;;
   "run --rm --network none --entrypoint sh cowork-diary:@NEW@-candidate -c"*)
     # The candidate's /app/<dir> as the emulated build left it, plus a stale file when the test asks (#1624).
-    all="$*"; dir="${all#*cd /app/}"; dir="${dir%% *}"
-    [ "${MISSING_LISTING_DIR:-}" != "$dir" ] || exit 1
-    (cd "$CAND_APP/$dir" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum)
-    case "${STALE_FILE:-}" in "$dir/"*) echo "$(printf x | sha256sum | cut -d' ' -f1)  ./${STALE_FILE#$dir/}" ;; esac ;;
+    manifest_in "$CAND_APP" "$@" ;;
   "compose "*" config --format json") echo "{}" ;;
   "compose "*" up "*) [ -z "${FAIL_UP:-}" ] || exit 1 ;;
 esac
 exit 0
+"""
+    # A tool that fails (FAIL_MODE=fail: no output; partial: its first output line) when it is run by the inventory in a
+    # directory matching FAIL_PWD (the inventory cd's into the tree it lists first), for the tool named in FAIL_TOOL.
+    TOOL_SHIM = r"""
+if [ "${FAIL_TOOL:-}" = "@NAME@" ]; then
+  case "$PWD" in ${FAIL_PWD:-__no_such_directory__})
+    if [ "${FAIL_MODE:-fail}" = partial ]; then "@REAL@" "$@" | head -n 1; fi
+    echo "@NAME@: injected failure" >&2; exit 1 ;;
+  esac
+fi
+exec "@REAL@" "$@"
 """
     PHP_STUB = r"""
 printf 'php %s\n' "$*" >> "$CALL_LOG"
@@ -341,6 +361,8 @@ exec "@REAL_SED@" "$@"
         self.stub('php', self.PHP_STUB, subst)
         self.stub('gzip', self.GZIP_STUB, subst)
         self.stub('sed', self.SED_STUB, subst)
+        for tool in ('find', 'sort', 'sha256sum', 'readlink'):
+            self.stub(tool, self.TOOL_SHIM, {'@NAME@': tool, '@REAL@': shutil.which(tool) or f'/usr/bin/{tool}'})
         text = DIARY.read_text()
         for old, new in [('base=/mnt/docker/appdata/cowork;', f"base='{self.base}';"),
                          ('cd /boot/config/plugins/compose.manager/projects/Cowork', f"cd '{self.manager}'")]:
@@ -365,7 +387,8 @@ exec "@REAL_SED@" "$@"
                        RUNNING_APP=str(self.running_app), CAND_APP=str(self.cand_app))
         for name in ('STALE_FILE', 'MISSING_LISTING_DIR'):
             environ.pop(name, None)
-        environ.pop('MISSING_RUNNING_DIR', None)
+        for name in ('MISSING_RUNNING_DIR', 'FAIL_TOOL', 'FAIL_PWD', 'FAIL_MODE', 'TRUNCATED_MANIFEST'):
+            environ.pop(name, None)
         environ.pop('INJECT_GZIP_FAILURE', None)
         environ.update(env or {})
         return subprocess.run(['bash', str(self.script), self.NEW], env=environ, capture_output=True, text=True, timeout=60)
@@ -467,7 +490,7 @@ exec "@REAL_SED@" "$@"
     def test_an_unlistable_candidate_stops_before_anything_is_stopped(self):
         result = self.overlay(env={'MISSING_LISTING_DIR': 'agent'})
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('could not list /app/agent', result.stderr)
+        self.assertIn('could not list /app/agent in the candidate', result.stderr)
         self.assertFalse([c for c in self.calls() if c.startswith('docker stop')])
 
     def test_the_candidate_listing_of_the_replaced_and_the_preserved_directories_is_checked_and_reported(self):
@@ -481,7 +504,7 @@ exec "@REAL_SED@" "$@"
         listing = [c for c in self.calls() if '--entrypoint sh cowork-diary:abc1234-candidate' in c]
         self.assertEqual(len(listing), 3, self.calls())
         for line, name in zip(listing, ('agent', 'config', 'scripts')):
-            self.assertIn(f'cd /app/{name} ', line)
+            self.assertIn(f' sh /app/{name} ', line + ' ')
 
     def test_only_agent_is_replaced_config_and_scripts_stay_the_running_images(self):
         # Companion rule (review P2-1, supersedes the #2112 whole-tree replacement): agent/ code only.
@@ -539,7 +562,7 @@ exec "@REAL_SED@" "$@"
             with self.subTest(name=name):
                 result = self.overlay(env={'MISSING_RUNNING_DIR': name})
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn(f'could not list /app/{name} in the running image', result.stderr)
+                self.assertIn(f'could not inventory /app/{name} in the running image completely', result.stderr)
                 self.assert_nothing_started()
                 self.log.unlink(missing_ok=True)
 
@@ -561,6 +584,165 @@ exec "@REAL_SED@" "$@"
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(f'candidate /app/{stale.split("/")[0]} differs from the running image', result.stderr)
                 self.assertIn(stale.split('/', 1)[1].rsplit('/', 1)[-1], result.stderr)
+                self.assertFalse([c for c in self.calls() if c.startswith(('docker stop', 'docker compose', 'docker tag cowork-diary:abc'))])
+                self.assertIn(f'DIARY_VERSION={self.OLD}', self.config.read_text())
+                self.log.unlink(missing_ok=True)
+
+    # ---- the preserved-directory inventory covers links and cannot be completed silently (round-2 review P2-1, P2-2)
+
+    def tree(self, root, entries):
+        """Write {relative path: text} (a str is a regular file) or {path: ('link', target)} under root, replacing any entry."""
+        for rel, value in entries.items():
+            path = root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+            if isinstance(value, tuple):
+                path.symlink_to(value[1])
+            else:
+                path.write_text(value)
+
+    def assert_refused_before_build(self, result, text=None):
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        if text:
+            self.assertIn(text, result.stderr)
+        self.assert_nothing_started()
+        self.assertEqual(list(self.backups.iterdir()), [])
+        self.log.unlink(missing_ok=True)
+
+    def both(self, entries):
+        self.tree(self.release, entries)
+        self.tree(self.running_app, entries)
+
+    def test_a_link_that_points_at_another_identical_file_is_a_difference(self):
+        # The regular-file manifests are equal; the effective system prompt is not.
+        self.both({'config/prompts/a.md': 'same\n', 'config/prompts/b.md': 'same\n'})
+        self.tree(self.running_app, {'config/prompts/system.md': ('link', 'a.md')})
+        self.tree(self.release, {'config/prompts/system.md': ('link', 'b.md')})
+        self.assert_refused_before_build(self.overlay(), "differs from the running image's /app/config")
+
+    def test_a_link_present_on_one_side_only_is_a_difference(self):
+        for side, name in (('release', 'scripts__new_py'), ('image', 'scripts__new_py'), ('release', 'config__extra'), ('image', 'config__extra')):
+            with self.subTest(side=side, name=name):
+                root = self.release if side == 'release' else self.running_app
+                self.tree(root, {name.replace('__', '/').replace('_py', '.py'): ('link', 'tool.py' if name.startswith('scripts') else 'config.yaml')})
+                self.assert_refused_before_build(self.overlay(), "differs from the running image's")
+                (root / name.replace('__', '/').replace('_py', '.py')).unlink()
+
+    def test_a_file_replaced_by_a_link_or_a_link_by_a_file_is_a_difference(self):
+        self.both({'config/prompts/real.md': 'body\n'})
+        self.tree(self.running_app, {'config/prompts/system.md': 'body\n'})
+        self.tree(self.release, {'config/prompts/system.md': ('link', 'real.md')})
+        self.assert_refused_before_build(self.overlay(), "differs from the running image's /app/config")
+        self.tree(self.running_app, {'config/prompts/system.md': ('link', 'real.md')})
+        self.tree(self.release, {'config/prompts/system.md': 'body\n'})
+        self.assert_refused_before_build(self.overlay(), "differs from the running image's /app/config")
+
+    def test_a_directory_link_is_compared_by_target_not_followed(self):
+        self.both({'config/a/x': '1\n', 'config/b/x': '1\n'})
+        self.tree(self.running_app, {'config/cur': ('link', 'a')})
+        self.tree(self.release, {'config/cur': ('link', 'b')})
+        self.assert_refused_before_build(self.overlay(), "differs from the running image's /app/config")
+
+    def test_identical_links_including_dangling_and_directory_links_are_accepted(self):
+        self.both({'config/prompts/a.md': 'x\n', 'config/prompts/system.md': ('link', 'a.md'), 'config/dir/f': '1\n',
+                   'config/cur': ('link', 'dir'), 'scripts/gone': ('link', 'missing.py')})
+        result = self.overlay()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.cand_app / 'config/prompts/system.md').readlink().as_posix(), 'a.md')
+        self.assertEqual((self.cand_app / 'scripts/gone').readlink().as_posix(), 'missing.py')
+
+    def test_empty_preserved_directories_on_both_sides_are_accepted(self):
+        for root in (self.release, self.running_app):
+            (root / 'scripts/tool.py').unlink()
+        result = self.overlay()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("candidate scripts/ is the running image's, untouched", result.stdout)
+
+    def test_unsupported_entries_and_names_refuse_on_either_side(self):
+        cases = []
+        for side in ('release', 'image'):
+            root = self.release if side == 'release' else self.running_app
+            cases.append((side, 'fifo', lambda r=root: os.mkfifo(r / 'config/pipe')))
+            cases.append((side, 'newline name', lambda r=root: (r / 'config/bad\nname').write_text('x')))
+        for side, name, make in cases:
+            with self.subTest(side=side, name=name):
+                make()
+                self.assert_refused_before_build(self.overlay(), 'could not inventory')
+                for root in (self.release, self.running_app):
+                    for leftover in ('pipe', 'bad\nname'):
+                        (root / 'config' / leftover).unlink(missing_ok=True)
+
+    TOOLS = ('find', 'sort', 'sha256sum', 'readlink')
+
+    def test_a_failing_tool_while_inventorying_either_tree_refuses(self):
+        # Hidden before: find | sort | xargs sha256sum reported only xargs' status, so a failed traversal looked like
+        # an empty (or short) directory. Each producer failing, with nothing or only part of its output, must refuse.
+        self.both({'config/prompts/a.md': 'x\n', 'config/prompts/link': ('link', 'a.md')})
+        sides = (('release', f'*/releases/{self.NEW}/services/diary/config*', 'could not inventory releases/'),
+                 ('image', '*/running-app/config*', 'in the running image completely'))
+        for side, pattern, message in sides:
+            for tool in self.TOOLS:
+                for mode in ('fail', 'partial'):
+                    if tool in ('sha256sum', 'readlink') and mode == 'partial':
+                        continue
+                    with self.subTest(side=side, tool=tool, mode=mode):
+                        result = self.overlay(env={'FAIL_TOOL': tool, 'FAIL_PWD': pattern, 'FAIL_MODE': mode})
+                        self.assert_refused_before_build(result, message)
+
+    def test_a_failed_traversal_is_not_an_empty_directory_that_equals_an_empty_directory(self):
+        # The reviewer's case: the image's scripts/ is empty, the release's cannot be traversed.
+        for root in (self.release, self.running_app):
+            (root / 'scripts/tool.py').unlink()
+        for tool in ('find', 'sort'):
+            with self.subTest(tool=tool):
+                result = self.overlay(env={'FAIL_TOOL': tool, 'FAIL_PWD': f'*/releases/{self.NEW}/services/diary/scripts*'})
+                self.assert_refused_before_build(result, 'could not inventory releases/')
+            with self.subTest(tool=tool, side='image'):
+                result = self.overlay(env={'FAIL_TOOL': tool, 'FAIL_PWD': '*/running-app/scripts*'})
+                self.assert_refused_before_build(result, 'in the running image completely')
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root can read an unreadable directory')
+    def test_an_unreadable_subdirectory_on_either_side_refuses(self):
+        self.both({'config/prompts/a.md': 'x\n'})
+        for root, message in ((self.release, 'could not inventory releases/'), (self.running_app, 'in the running image completely')):
+            with self.subTest(root=root.name):
+                locked = root / 'config/prompts'
+                locked.chmod(0)
+                try:
+                    result = self.overlay()
+                finally:
+                    locked.chmod(0o755)
+                self.assert_refused_before_build(result, message)
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root can read an unreadable file')
+    def test_an_unreadable_file_on_either_side_refuses(self):
+        for root in (self.release, self.running_app):
+            with self.subTest(root=root.name):
+                target = root / 'config/config.yaml'
+                target.chmod(0)
+                try:
+                    result = self.overlay()
+                finally:
+                    target.chmod(0o644)
+                self.assert_refused_before_build(result, 'could not inventory')
+
+    def test_an_incomplete_manifest_without_its_end_marker_is_not_accepted(self):
+        result = self.overlay(env={'TRUNCATED_MANIFEST': 'config'})
+        self.assert_refused_before_build(result, 'in the running image completely')
+
+    def test_a_candidate_inventory_that_fails_or_is_incomplete_refuses_before_anything_is_stopped(self):
+        cases = [('agent', {'FAIL_TOOL': 'find', 'FAIL_PWD': '*/candidate-app/agent*'}, 'could not list /app/agent in the candidate'),
+                 ('config', {'FAIL_TOOL': 'sort', 'FAIL_PWD': '*/candidate-app/config*'}, 'could not list /app/config in the candidate'),
+                 ('scripts', {'FAIL_TOOL': 'sha256sum', 'FAIL_PWD': '*/candidate-app/scripts*'}, 'could not list /app/scripts in the candidate'),
+                 ('agent', {'FAIL_TOOL': 'find', 'FAIL_PWD': '*/ctx/agent*'}, 'completely'),
+                 ('config', {'TRUNCATED_MANIFEST': 'config'}, None)]
+        for name, env, message in cases:
+            with self.subTest(name=name, env=env):
+                result = self.overlay(env=env)
+                self.assertNotEqual(result.returncode, 0)
+                if message:
+                    self.assertIn(message, result.stderr)
                 self.assertFalse([c for c in self.calls() if c.startswith(('docker stop', 'docker compose', 'docker tag cowork-diary:abc'))])
                 self.assertIn(f'DIARY_VERSION={self.OLD}', self.config.read_text())
                 self.log.unlink(missing_ok=True)
@@ -1411,6 +1593,77 @@ class DiaryRequirementsProbe(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertNotIn('PROBED', result.stdout)
                 self.assertEqual(argv[-2:], ['-c', 'sha256sum /app/requirements.txt'])
+
+
+class DirectoryManifest(unittest.TestCase):
+    """The inventory script itself, run by every POSIX shell available (the image's is dash or busybox, no pipefail)."""
+
+    SHELLS = [sh for sh in ('sh', 'dash', 'bash') if shutil.which(sh)]
+
+    def run_manifest(self, shell, directory, skip=''):
+        script = RsStage().block('overlay-dirs') + '\nsh_bin=$1; shift; "$sh_bin" -c "$manifest_sh" sh "$@"'
+        return subprocess.run(['bash', '-c', script, 'x', shell, str(directory), skip], capture_output=True, text=True, timeout=30)
+
+    def make(self):
+        temp = pathlib.Path(tempfile.mkdtemp(prefix='noevia-manifest-'))
+        self.addCleanup(shutil.rmtree, temp, ignore_errors=True)
+        root = temp / 'tree'
+        (root / 'sub').mkdir(parents=True)
+        (root / '__pycache__').mkdir()
+        (root / '__pycache__/x.pyc').write_text('c')
+        (root / 'a.txt').write_text('x\n')
+        (root / 'sub/b.txt').write_text('y\n')
+        (root / 'link').symlink_to('a.txt')
+        (root / 'dlink').symlink_to('sub')
+        (root / 'dangling').symlink_to('nowhere')
+        (root / 'empty').mkdir()
+        return root
+
+    def test_entries_have_types_and_links_are_listed_by_target_not_followed(self):
+        root = self.make()
+        sha = lambda text: hashlib.sha256(text.encode()).hexdigest()
+        want = ['D ./empty', f'F {sha("x" + chr(10))} ./a.txt', 'D ./sub', f'F {sha("y" + chr(10))} ./sub/b.txt',
+                'L ./dangling -> nowhere', 'L ./dlink -> sub', 'L ./link -> a.txt', 'MANIFEST-COMPLETE']
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                result = self.run_manifest(shell, root)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(sorted(result.stdout.splitlines()), sorted(want))
+                self.assertEqual(result.stdout.splitlines()[-1], 'MANIFEST-COMPLETE')
+                self.assertNotIn('pycache', result.stdout)
+                self.assertNotIn('dlink/', result.stdout)
+
+    def test_an_empty_directory_is_a_valid_empty_inventory(self):
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                empty = pathlib.Path(tempfile.mkdtemp(prefix='noevia-manifest-empty-'))
+                self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+                result = self.run_manifest(shell, empty)
+                self.assertEqual((result.returncode, result.stdout), (0, 'MANIFEST-COMPLETE\n'), result.stderr)
+
+    def test_the_skipped_name_is_left_out_only_as_a_regular_file(self):
+        root = self.make()
+        (root / 'smoke.py').write_text('s')
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell):
+                self.assertNotIn('smoke.py', self.run_manifest(shell, root, 'smoke.py').stdout)
+        (root / 'smoke.py').unlink()
+        (root / 'smoke.py').symlink_to('a.txt')
+        for shell in self.SHELLS:
+            with self.subTest(shell=shell, kind='link'):
+                self.assertIn('L ./smoke.py -> a.txt', self.run_manifest(shell, root, 'smoke.py').stdout)
+
+    def test_every_failure_exits_non_zero_without_a_complete_manifest(self):
+        root = self.make()
+        os.mkfifo(root / 'pipe')
+        newline = self.make().parent / 'tree'
+        (newline / 'bad\nname').write_text('x')
+        for shell in self.SHELLS:
+            for name, target in (('missing directory', root / 'absent'), ('fifo', root), ('newline name', newline)):
+                with self.subTest(shell=shell, case=name):
+                    result = self.run_manifest(shell, target)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn('MANIFEST-COMPLETE', result.stdout)
 
 
 class OverlayDirsInSync(unittest.TestCase):
