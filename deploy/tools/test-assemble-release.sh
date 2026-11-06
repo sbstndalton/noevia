@@ -1795,17 +1795,30 @@ mx_rs_files="bins/noevia-server/src/project_store.rs"
 mkdir -p "$work/mx-saved"
 for f in $mx_files; do if [ -f "$w/$f" ]; then cp "$w/$f" "$work/mx-saved/$(basename "$f")"; else rm -f "$work/mx-saved/$(basename "$f")"; fi; done
 for f in $mx_rs_files; do if [ -f "$rz/$f" ]; then cp "$rz/$f" "$work/mx-saved/$(basename "$f")"; else rm -f "$work/mx-saved/$(basename "$f")"; fi; done
+# mx_core_js LINES...: Core's project-store-client.cjs (the shipped fixture) with LINES appended.
+mx_core_js() { { cat "$work/mx-client.saved"; printf '%s\n' "$@"; } > "$w/server/project-store-client.cjs"; }
 mx_core() {
-  { cat "$work/mx-client.saved"; printf "const MCP_EXEC_CLIENT_MARKER = 'noevia-mcp-exec-client/1';\n"; } > "$w/server/project-store-client.cjs"
+  mx_core_js "const MCP_EXEC_CLIENT_MARKER = 'noevia-mcp-exec-client/1';" 'module.exports.MCP_EXEC_CLIENT_MARKER = MCP_EXEC_CLIENT_MARKER;'
   printf 'function createMcpWiring() {}\nmodule.exports = { createMcpWiring };\n' > "$w/server/mcp-wiring.cjs"
   printf 'module.exports = {};\n' > "$w/server/rust-research-bridge.cjs"
+  mx_core_wiring
+}
+mx_core_wiring() {
   cp "$work/mx-index.saved" "$w/server/index.cjs"
   printf 'const wiring = { mcpExec: (request, opts) => PROJECT_STORE.mcpCall(request, opts) };\n' >> "$w/server/index.cjs"
 }
 mx_front() {
   sed 's/"start-id"/"start-id", "rust-mcp-exec"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
-  printf 'pub fn routes() { let _ = "/v1/mcp/call"; }\n' > "$rz/bins/noevia-server/src/project_store.rs"
+  mx_routes 'router = router.route("/v1/mcp/call", post(move |h: HeaderMap, r: Bytes| { async move { mcp_call(store, app, h, r).await } }));'
 }
+# mx_routes STATEMENT [BEFORE-FN] [WRAP-OPEN] [WRAP-CLOSE]: project_store.rs with the router builder holding STATEMENT.
+mx_routes() {
+  printf '%s\n' "${3:-}" "${2:-}pub fn router_with_app(store: Store) -> Router {" '    let mut router = Router::new();' "    { let (store, app) = (store.clone(), app.clone()); $1 }" '    router' '}' "${4:-}" \
+    'async fn mcp_call(store: Store, app: Option<Arc<App>>, headers: HeaderMap, raw: Bytes) -> Response<Body> {' '    crate::mcp_exec::internal_call(app, &raw).await' '}' > "$rz/bins/noevia-server/src/project_store.rs"
+}
+# mx_rs_el TEXT: lib.rs's FEATURES with TEXT as its first element(s); mx_rs_wrap BEFORE AFTER wraps the declaration.
+mx_rs_el() { MX_EL="$1" perl -pe 's/pub const FEATURES: &\[&str\] = &\[/$&$ENV{MX_EL}, /' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+mx_rs_wrap() { mx_rs_el '"rust-mcp-exec"'; MB="$1" MA="$2" perl -0pi -e 's/^(pub const FEATURES: &\[&str\] = &\[.*?\];)$/$ENV{MB}$1$ENV{MA}/ms' "$rz/bins/noevia-server/src/lib.rs"; }
 mx_clean() {
   cp "$work/mx-client.saved" "$w/server/project-store-client.cjs"; cp "$work/mx-index.saved" "$w/server/index.cjs"
   cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
@@ -1840,6 +1853,69 @@ check "the matching MCP executor pair assembles" '[ $rc -eq 0 ] && [ -f "$out/no
 mx_clean
 move_try mcp-exec-old-pair
 check "historic MCP executor old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Review P2 (round 2): the same detectors as the lease pairing (c6e0b79d) -- Core's real export under node:vm, Rust's FEATURES
+# tokenizer with the declaration's scope, and the route proven as code. A disabled capability or route never grants the pair.
+mx_ok() { move_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'; }
+mx_no() { move_try "$1"; check "$2" 'refused "MCP tool executor ownership pairing"'; }
+mx_core; mx_front
+mx_ok mcp-exec-pair-again "the executor pair with a proven route and capability assembles"
+mx_core_js "const MCP_EXEC_CLIENT_MARKER = ['noevia-mcp-exec-', 'client/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports.MCP_EXEC_CLIENT_MARKER = MCP_EXEC_CLIENT_MARKER;'; mx_core_wiring
+mx_ok mcp-exec-computed-core-export "a computed Core export with stubbed requires is read by its value"
+# Adversarial Core markers (front paired).
+mx_core_js "// const MCP_EXEC_CLIENT_MARKER = 'noevia-mcp-exec-client/1';"; mx_core_wiring
+mx_no mcp-exec-comment-only-core "a comment-only Core marker is refused"
+mx_core_js "const MCP_EXEC_CLIENT_MARKER = 'noevia-mcp-exec-client/1';"; mx_core_wiring
+mx_no mcp-exec-unexported-core "an unexported Core marker is refused"
+mx_core_js "const MCP_EXEC_CLIENT_MARKER = 'noevia-mcp-exec-client/2';" 'module.exports.MCP_EXEC_CLIENT_MARKER = MCP_EXEC_CLIENT_MARKER;'; mx_core_wiring
+mx_no mcp-exec-unknown-core-version "an unknown Core marker version is refused"
+mx_core_js "module.exports.MCP_EXEC_CLIENT_MARKER = { toString: () => 'noevia-mcp-exec-client/1' };"; mx_core_wiring
+mx_no mcp-exec-object-core-export "a non-string Core export is refused"
+mx_core_js "const MCP_EXEC_CLIENT_MARKER = 'noevia-mcp-exec-client/1';" 'for (;;) {}' 'module.exports.MCP_EXEC_CLIENT_MARKER = MCP_EXEC_CLIENT_MARKER;'; mx_core_wiring
+mx_no mcp-exec-hanging-core "a Core module that never finishes evaluating is refused"
+# Adversarial Rust capability (Core paired).
+mx_core; mx_routes 'router = router.route("/v1/mcp/call", post(move |h: HeaderMap, r: Bytes| { async move { mcp_call(store, app, h, r).await } }));'
+mx_rs_el '#[cfg(feature = "mcp")] "rust-mcp-exec"'; mx_no mcp-exec-cfg-element "a cfg-disabled FEATURES element is refused"
+mx_rs_el '#[cfg(any())]
+    "rust-mcp-exec"'; mx_no mcp-exec-cfg-element-line "a cfg-disabled element on the preceding line is refused"
+mx_rs_el '"rust-mcp-exec", "rust-mcp-exec"'; mx_no mcp-exec-duplicate "a duplicate capability is refused"
+mx_rs_el '"rust-mcp-exec", "rust-mcp-exec\x2d"'; mx_no mcp-exec-near-duplicate "an escaped near-duplicate is refused"
+mx_rs_el '"rust-mcp-exec", "rust\x2dmcp-exec"'; mx_no mcp-exec-escaped-duplicate "an escaped duplicate is refused"
+mx_rs_el 'b"rust-mcp-exec"'; mx_no mcp-exec-byte "a byte-string capability is refused"
+mx_rs_el 'r#"rust-mcp-exec"#'; mx_no mcp-exec-raw "a raw-string capability is refused"
+mx_rs_el 'concat!("rust-mcp-", "exec")'; mx_no mcp-exec-concat "a concat! capability is refused"
+mx_rs_el '"rust-mcp-exec-v2"'; mx_no mcp-exec-unknown-version "an unknown capability name is refused"
+mx_rs_el '/* "rust-mcp-exec", */ "start-id-x"'; mx_no mcp-exec-comment-only "a comment-only capability is refused"
+mx_rs_el '"rust-mcp-\u{65}xec"'; mx_ok mcp-exec-escaped-single "one escaped literal is read by its value"
+mx_rs_el '"rust-mcp-exec"'; printf '%s\n' 'pub const FEATURES: &[&str] = &["rust-mcp-exec"];' >> "$rz/bins/noevia-server/src/lib.rs"
+mx_no mcp-exec-two-features "a second FEATURES array is refused"
+mx_rs_wrap '#[cfg(any())] ' ''; mx_no mcp-exec-cfg-declaration "cfg on the FEATURES declaration is refused"
+mx_rs_wrap '#[cfg(feature = "mcp")]'$'\n' ''; mx_no mcp-exec-cfg-declaration-line "cfg on its own line above the declaration is refused"
+mx_rs_wrap '#[cfg(any())] mod disabled { ' ' }'; mx_no mcp-exec-cfg-module "a declaration inside a cfg-disabled module is refused"
+mx_rs_wrap 'mod inner { ' ' }'; mx_no mcp-exec-nested-module "a declaration inside a nested module is refused"
+mx_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; mx_no mcp-exec-macro-rules "a declaration inside macro_rules! is refused"
+mx_rs_el '"rust-mcp-exec"'; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/mx-crate-cfg" && cp "$work/mx-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
+mx_no mcp-exec-crate-cfg "a crate-level cfg attribute is refused"
+mx_rs_wrap '#![allow(dead_code)]'$'\n' ''; mx_ok mcp-exec-crate-allow "a crate inner attribute before the declaration assembles"
+mx_rs_wrap '#![cfg_attr(any(), allow(dead_code))]'$'\n' ''; mx_no mcp-exec-crate-cfg-attr "a crate cfg_attr before the declaration is refused"
+mx_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; mx_ok mcp-exec-doc-commented "a doc-commented unconditional declaration assembles"
+# The route: a quoted, commented or disabled /v1/mcp/call grants nothing.
+mx_front
+mx_routes '// router = router.route("/v1/mcp/call", post(mcp_call));'; mx_no mcp-exec-route-commented "a commented route is refused"
+mx_routes 'let _ = r#"router = router.route("/v1/mcp/call", post(mcp_call))"#;'; mx_no mcp-exec-route-in-string "a route inside a string is refused"
+mx_routes '#[cfg(any())] router = router.route("/v1/mcp/call", post(mcp_call));'; mx_no mcp-exec-route-cfg-statement "a cfg-disabled route statement is refused"
+mx_routes 'if false { router = router.route("/v1/mcp/call", post(mcp_call)); }'; mx_no mcp-exec-route-conditional "a route behind a conditional is refused"
+mx_routes 'let _unused = || { router = router.route("/v1/mcp/call", post(mcp_call)); };'; mx_no mcp-exec-route-closure "a route inside a closure is refused"
+mx_routes 'router = router.route("/v1/mcp/call", post(mcp_call));' '#[cfg(any())] '; mx_no mcp-exec-route-cfg-fn "a cfg-disabled router builder is refused"
+mx_routes 'router = router.route("/v1/mcp/call", post(mcp_call));' '' '#[cfg(any())] mod disabled {' '}'; mx_no mcp-exec-route-cfg-module "a router builder inside a disabled module is refused"
+mx_routes 'router = router.route("/v1/mcp/call", post(mcp_call));' '' 'macro_rules! hidden { () => {' '}; }'; mx_no mcp-exec-route-macro "a router builder inside macro_rules! is refused"
+mx_routes 'router = router.route("/v1/mcp/call", post(mcp_call)); router = router.route("/v1/mcp/call", post(mcp_call));'; mx_no mcp-exec-route-twice "a route wired twice is refused"
+mx_routes 'router = router.route("/v1/mcp/call", post(other));'; mx_no mcp-exec-route-other-handler "a route that does not name mcp_call is refused"
+mx_routes 'router = router.route("/v1/mcp/call", post(mcp_call));'
+sed -i.bak 's/crate::mcp_exec::internal_call(app, \&raw).await/let _ = app;/' "$rz/bins/noevia-server/src/project_store.rs" && rm -f "$rz/bins/noevia-server/src/project_store.rs.bak"
+mx_no mcp-exec-route-handler-hollow "a handler that never calls the executor is refused"
+mx_routes 'router = router.route("/v1/mcp/call", post(mcp_call));'
+mx_ok mcp-exec-route-bare "a plain unconditional route statement assembles"
+mx_clean
 # The Code and Browser task reads (sbstndalton/noevia#2257): the pair, its rows and what Core must have done.
 tr_project_rows() {
   for path in code 'code/{task}' browser 'browser/{task}'; do
