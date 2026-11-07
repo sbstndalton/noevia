@@ -2861,6 +2861,96 @@ cr_try cr-old-rust-rows
 check "old calibration pair rejects Rust ownership" 'refused "calibration start/read ownership pairing"'
 cr_owner=node; cr_try cr-old-pair
 check "old calibration start/read pair stays valid for rollback" '[ $rc -eq 0 ]'
+# #2303 (worker): the calibration job's owner pairs by explicit markers, both ways, beside the route pairs.
+cw_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/calibration"\nowner = "%s"\n' "${cw_routes_owner:-rust}"
+    printf '[[route]]\npath = "/api/models/calibration/cancel"\nowner = "%s"\n' "${cw_routes_owner:-rust}")
+}
+cp "$w/server/rust-calibration-routes.cjs" "$work/cw-routes.saved"; cp "$w/server/llamacpp-manager.cjs" "$work/cw-manager.saved"
+cat > "$w/server/rust-calibration-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration/cancel']));
+JS
+touch "$w/server/rust-calibration-cancel-bridge.cjs"
+# `cw_marker [generation]`: Core's exported marker (generation 2 unless given).
+cw_marker() {
+  printf '%s\n' "const CALIBRATION_WORKER_OWNER = 'noevia-calibration-worker-rust/${1:-2}';" \
+    "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration']));" \
+    'module.exports = { CALIBRATION_WORKER_OWNER, OWNED_ROUTES };' > "$w/server/rust-calibration-routes.cjs"
+}
+cw_unmarked() { cp "$work/cw-routes.saved" "$w/server/rust-calibration-routes.cjs"; }
+# Core's live primitives, and its public calibrator built only when a caller asks for it.
+cw_primitives() {
+  { cat "$work/cw-manager.saved"
+    printf '%s\n' 'cancellationFacts: calibrator.cancellationFacts, compareAndAbort: calibrator.compareAndAbort,'
+    printf '%s\n' "$1"
+  } > "$w/server/llamacpp-manager.cjs"
+}
+cw_manager() { cw_primitives "  const calibrator=presets&&publicCalibrator?require('./llamacpp-calibration.cjs').createCalibrator({}):null;"; }
+cw_ungated() { cw_primitives "  const calibrator=presets?require('./llamacpp-calibration.cjs').createCalibrator({}):null;"; }
+cw_core() {
+  cr_core
+  cat >> "$w/server/index.cjs" <<'JS'
+const calibrationCancelBridge = require('./rust-calibration-cancel-bridge.cjs').createCalibrationCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationCancelBridge(req, res)) return;
+JS
+}
+cw_front() { sed "s/\"start-id\"/\"start-id\", \"rust-calibration-routes\", \"rust-calibration-cancel\"${1:+, \"$1\"}/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+mkdir -p "$repo/build"; cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+cw_marker; cw_manager; cw_core; cw_front
+cw_try cw-core-only
+check "calibration worker marker cannot pair with a front that lacks the worker" 'refused "calibration worker pairing"'
+cw_unmarked; cw_ungated; cw_front rust-calibration-worker-v2
+cw_try cw-front-only
+check "native calibration worker cannot pair with a Core that still runs the job" 'refused "calibration worker pairing"'
+cw_marker; cw_manager
+cw_try cw-pair
+check "matching calibration worker pair assembles" '[ $rc -eq 0 ]'
+# Generation 2 has every calibration load decided by Core first: generations pair only with themselves, and
+# generation 1 (loads without that decision) is refused even matched.
+cw_marker 1
+cw_try cw-core-1-front-2
+check "a generation-1 Core cannot pair with a generation-2 front" 'refused "Core (generation 1) and Rust (generation 2)"'
+cw_marker; cw_front rust-calibration-worker
+cw_try cw-core-2-front-1
+check "a generation-2 Core cannot pair with a generation-1 front" 'refused "Core (generation 2) and Rust (generation 1)"'
+cw_marker 1
+cw_try cw-gen-1-pair
+check "a matched generation-1 pair is refused: its loads skip Core's load decision" 'refused "generation 1 sends calibration loads without Core'"'"'s load decision"'
+cw_marker; cw_front rust-calibration-worker-v2
+cp "$repo/build/web-supervisor.sh" "$work/cw-supervisor.saved"
+sed 's#rust-calibration-worker-v2#rust-calibration-worker#g; s#noevia-calibration-worker-rust/2#noevia-calibration-worker-rust/1#g' "$work/cw-supervisor.saved" > "$repo/build/web-supervisor.sh"
+cw_try cw-gen-1-supervisor
+check "a supervisor that compares only generation 1 cannot launch a generation-2 pair" 'refused "web supervisor lacks a prelaunch capability comparison"'
+cp "$work/cw-supervisor.saved" "$repo/build/web-supervisor.sh"
+# Core's source shape is not this script's to judge (Core CI boots index.cjs for that): a marked Core whose
+# manager reads differently, or whose index.cjs mentions recover() in a comment, still pairs by its marker.
+cp "$w/server/index.cjs" "$work/cw-index.saved"
+printf '%s\n' '/* boot */ // modelManager.calibration?.recover()' >> "$w/server/index.cjs"; cw_ungated
+cw_try cw-shape-free
+check "a marked calibration worker pair is decided by its markers, not Core's source shapes" '[ $rc -eq 0 ]'
+cp "$work/cw-index.saved" "$w/server/index.cjs"; cw_manager
+cp "$repo/build/web-supervisor.sh" "$work/cw-supervisor.saved"; grep -v 'CALIBRATION_WORKER_OWNER\|rust-calibration-worker' "$work/cw-supervisor.saved" > "$repo/build/web-supervisor.sh"
+cw_try cw-no-supervisor
+check "native calibration worker needs the supervisor's prelaunch comparison" 'refused "web supervisor lacks a prelaunch capability comparison"'
+cp "$work/cw-supervisor.saved" "$repo/build/web-supervisor.sh"
+sed 's/^const CALIBRATION_WORKER_OWNER/\/\/ const CALIBRATION_WORKER_OWNER/' "$w/server/rust-calibration-routes.cjs" > "$work/cw-comment.cjs"; cp "$work/cw-comment.cjs" "$w/server/rust-calibration-routes.cjs"
+cw_try cw-comment-marker
+check "a calibration worker marker in a comment is no marker" 'refused "calibration worker pairing"'
+cw_marker
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cw_front rust-calibration-worker-v2
+sed 's/"rust-calibration-routes", "rust-calibration-cancel", //' "$rz/bins/noevia-server/src/lib.rs" > "$work/cw-lib"; cp "$work/cw-lib" "$rz/bins/noevia-server/src/lib.rs"
+cw_routes_owner=node cw_try cw-no-routes
+check "native calibration worker needs the native calibration routes" 'refused "needs the native start/read and cancellation routes"'
+cw_unmarked; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cp "$work/cw-manager.saved" "$w/server/llamacpp-manager.cjs"
+cw_routes_owner=node cw_try cw-old-old
+check "old calibration worker pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs" "$repo/build/web-supervisor.sh"
+cw_unmarked; cp "$work/cw-manager.saved" "$w/server/llamacpp-manager.cjs"
 rm -f "$w/server/rust-calibration-routes.cjs" "$w/server/rust-calibration-routes-bridge.cjs"
 if [ -f "$work/cr-manager.saved" ]; then cp "$work/cr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 if [ -f "$work/cr-original-actor.saved" ]; then cp "$work/cr-original-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
@@ -4652,6 +4742,46 @@ check "a rust-model-maintenance front cannot pair with the old Core handlers" 'r
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try maint-old-pair
 check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Watchdog ownership matrix, using the same explicit capability parser as route moves.
+mkdir -p "$repo/build"
+cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cat > "$w/server/rust-budget-watch.cjs" <<'JS'
+const BUDGET_WATCH_OWNER = 'noevia-budget-watch-rust/3';
+module.exports = { BUDGET_WATCH_OWNER };
+JS
+try_routes bw-core-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: new Core and old front refused" 'refused "budget watch pairing"'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+try_routes bw-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+[ "$rc" -eq 0 ] || cat "$work/err" >&2
+check "budget watch: new paired owners assemble" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v2-front-v3-core
+check "budget watch: v2 front and v3 Core refused" 'refused "budget watch pairing"'
+sed -i.bak 's@noevia-budget-watch-rust/3@noevia-budget-watch-rust/2@' "$w/server/rust-budget-watch.cjs"
+move_try bw-v2-pair
+check "budget watch: matched native v2 pair assembles for rollback" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v3-front-v2-core
+check "budget watch: v3 front and v2 Core refused" 'refused "budget watch pairing"'
+sed -i.bak 's@noevia-budget-watch-rust/2@noevia-budget-watch-rust/3@' "$w/server/rust-budget-watch.cjs"
+sed 's/"start-id"/"start-id", "rust-budget-watch"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v1-front-v3-core
+check "budget watch: v1 front and v3 Core refused" 'refused "budget watch pairing"'
+sed -i.bak 's@noevia-budget-watch-rust/3@noevia-budget-watch-rust/1@' "$w/server/rust-budget-watch.cjs"
+move_try bw-v1-pair
+check "budget watch: matched native v1 pair assembles for rollback" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v3-front-v1-core
+check "budget watch: v3 front and v1 Core refused" 'refused "budget watch pairing"'
+rm "$w/server/rust-budget-watch.cjs"
+try_routes bw-front-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: old Core and new front refused" 'refused "budget watch pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+try_routes bw-old-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: old paired owners assemble for rollback" '[ $rc -eq 0 ]'
 
 # #2286 recheck moves independently, after the native evidence-store group.
 cat > "$w/server/rust-model-evidence-recheck.cjs" <<'JS'
