@@ -297,6 +297,7 @@ rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
+rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
@@ -367,6 +368,42 @@ grep -qx 'rust-web-address-write' <<<"$rust_features" && web_write_front_owner=r
 web_write_core_owner="$(node -e "try { const m = require('./server/rust-web-address.cjs'); if (m.WEB_ADDRESS_WRITE_OWNER === 'noevia-web-address-write-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
 if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
   echo "web-supervisor: web-address POST ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# Diary backup ownership is compiled into the paired artifacts, never inherited from the environment.
+diary_backup_front_owner=""
+grep -qx 'rust-diary-backup-worker' <<<"$rust_features" && diary_backup_front_owner=rust
+diary_backup_core_owner="$(node -e "try { const m = require('./server/rust-diary.cjs'); if (m.DIARY_BACKUP_WORKER_OWNER === 'noevia-diary-backup-worker-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$diary_backup_front_owner" != "$diary_backup_core_owner" ]; then
+  echo "web-supervisor: diary backup worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
+# The inference budget watch moves with paired exported/compiled markers. Refuse mixed owners.
+# Root accepts legacy rollback ignoring leftover fences: like a legacy Node restart it loses
+# the in-memory quarantine. Old releases ignore the directory; its files never gate rollback.
+budget_watch_front_owner=""
+grep -qx 'rust-budget-watch' <<<"$rust_features" && budget_watch_front_owner=v1
+grep -qx 'rust-budget-watch-v2' <<<"$rust_features" && budget_watch_front_owner=v2
+grep -qx 'rust-budget-watch-v3' <<<"$rust_features" && budget_watch_front_owner=v3
+budget_watch_core_owner="$(node -e "try { const m = require('./server/rust-budget-watch.cjs'); if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/1') process.stdout.write('v1'); else if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/2') process.stdout.write('v2'); else if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/3') process.stdout.write('v3'); } catch {}" 2>/dev/null || true)"
+if [ "$budget_watch_front_owner" != "$budget_watch_core_owner" ]; then
+  echo "web-supervisor: budget watch ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
+# The calibration job itself (sbstndalton/noevia#2303: its state file, boot recovery and maintenance hold) is
+# the front's when it lists the worker and Core exports CALIBRATION_WORKER_OWNER (Core then builds no public
+# calibrator and does not recover the job at boot). A mixed pair would recover one state file twice at a joint
+# restart, or never. Generation 2 (rust-calibration-worker-v2, noevia-calibration-worker-rust/2) has every load
+# the job asks for decided by Core first, so a generation pairs only with itself. Neither result comes from an
+# inherited environment.
+calibration_worker_front_owner=""
+grep -qx 'rust-calibration-worker' <<<"$rust_features" && calibration_worker_front_owner=v1
+grep -qx 'rust-calibration-worker-v2' <<<"$rust_features" && calibration_worker_front_owner=v2
+calibration_worker_core_owner="$(node -e "try { const m = require('./server/rust-calibration-routes.cjs'); if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/1') process.stdout.write('v1'); else if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/2') process.stdout.write('v2'); } catch {}" 2>/dev/null || true)"
+if [ "$calibration_worker_front_owner" != "$calibration_worker_core_owner" ]; then
+  echo "web-supervisor: calibration worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
 # Source job journals are a paired internal-store capability: this Node client has no local
