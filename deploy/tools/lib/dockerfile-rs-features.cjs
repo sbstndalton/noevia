@@ -36,6 +36,9 @@ function instructions(text) {
 function stages(text) {
   const list = [];
   for (const ins of instructions(text)) {
+    // Heredoc bodies are data, and can contain apparent FROM/COPY instructions.
+    // Refuse them file-wide before interpreting stage ancestry or binary copies.
+    if (['RUN', 'COPY', 'ADD'].includes(ins.kw) && ins.args.includes('<<')) fail('heredoc instruction data cannot prove the shipped binary');
     if (ins.kw === 'FROM') {
       if (ins.args.startsWith('--')) fail('unsupported FROM options');
       const m = /^(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?\s*$/i.exec(ins.args);

@@ -84,4 +84,14 @@ check('trace a real alternate producer rather than unused evidence', df({copy:'C
 assert.equal(instructions('# RUN bogus\nRUN cargo \\\n# continued comment\n build')[0].args,'cargo  build');
 const absentDefault=deriveFeatures(df(),minimal);
 assert.equal(detect('pub const FEATURES: &[&str] = &[#[cfg(feature = "default")] "cap"];','FEATURES','cap',absentDefault),'legacy');
+for (const text of [
+ df({copy: "COPY <<'EOF' /tmp/example\nCOPY --from=front /out/ /usr/local/bin/\nEOF"}),
+ df({copy: "RUN cat <<'EOF' > /tmp/example\nCOPY --from=front /out/ /usr/local/bin/\nEOF"}),
+ df({copy: "ADD <<'EOF' /tmp/example\nCOPY --from=front /out/ /usr/local/bin/\nEOF"}),
+ "FROM debian AS unrelated\nRUN cat <<'EOF' > /tmp/example\nFROM scratch AS fake\nCOPY --from=front /out/ /usr/local/bin/\nEOF\n" + df(),
+]) {
+ check('heredoc data is never an active binary copy', text, null);
+ assert.equal(detect('pub const FEATURES: &[&str] = &[#[cfg(feature = "rust-routing-mode")] "cap"];',
+  'FEATURES', 'cap', deriveFeatures(text,cargo)), 'invalid(production-features-underivable)');
+}
 console.log(`Shipped binary feature proof: ${count+2} passed`);
