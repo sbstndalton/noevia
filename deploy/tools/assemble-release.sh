@@ -700,6 +700,43 @@ if [ "$project_reads_rs_owner" = rust ]; then
   project_read_expected="$(printf '%s\n' '/api/projects/{id}/sources/text' '/api/projects/{id}/documents/original' '/api/projects/{id}/{*}/original' | sort)"
   [ "$project_read_routes" = "$project_read_expected" ] || die "project source read ownership pairing: incomplete route ownership"
 fi
+reranker_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /reranker-settings-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RERANKER_SETTINGS_OWNER;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^reranker-settings-(v1)$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+reranker_core_owner="$(reranker_core_version "$tree/core/server/rerank-settings.cjs")"
+reranker_rs_owner="$(rs_capability_version "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES "reranker-settings-v1")"
+case "$reranker_rs_owner" in
+  invalid\(*\)) die "reranker settings ownership pairing: $reranker_rs_owner" ;;
+  legacy) reranker_rs_owner=none ;;
+  v1) ;;
+  *) die "reranker settings ownership pairing: invalid detector response" ;;
+esac
+[ "$reranker_core_owner" != invalid ] \
+  || die "reranker settings ownership pairing: ambiguous or unrecognized Core capability marker"
+[ "$reranker_core_owner" = "$reranker_rs_owner" ] || die "reranker settings ownership pairing: Core and Rust capability versions must match"
+
+
 # A project's create and delete (sbstndalton/noevia#2191 round 2) move as one owner: Core's
 # rust-project-lifecycle.cjs refusal and the front's rust-project-lifecycle capability, with exactly POST
 # of /api/projects and DELETE of /api/projects/{projectId} Rust's in routes.toml (Node keeps every other
