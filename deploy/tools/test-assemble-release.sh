@@ -11,6 +11,7 @@ g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
 cp "$here/assemble-release.sh" "$repo/deploy/tools/"
+cp -R "$here/lib" "$repo/deploy/tools/"
 w="$repo/apps/web"
 mkdir -p "$w/src" "$w/public" "$w/scripts" "$w/contracts" "$w/tests/client" "$w/tests/server" "$w/tests/fixtures" "$w/qa" "$w/server"
 for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits.json tests/client/a.test.cjs \
