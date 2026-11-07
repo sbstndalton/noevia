@@ -45,6 +45,9 @@
 set -euo pipefail
 
 die() { echo "assemble-release: $*" >&2; exit 1; }
+# Shared strict detector for ownership pairing guards (see lib/rs-capability.md).
+rs_capability_lib="$(cd -- "$(dirname -- "$0")" && pwd)/lib/rs-capability.cjs"
+. "$(dirname -- "$rs_capability_lib")/rs-capability.sh"
 # A source file without its comment lines: a pairing check that reads code must not be satisfied by a
 # sentence that mentions the thing (nor end the script silently when a file or a match is absent).
 code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
@@ -87,6 +90,8 @@ out_partial=""
 # Never leave <out>.partial behind when the final tar (or anything after it) fails.
 trap 'rm -rf "$work"; if [ -n "$out_partial" ]; then rm -f "$out_partial"; fi' EXIT
 tree="$work/tree"
+# Match the Dockerfile that will compile this assembled Rust source snapshot.
+rs_capability_build="$tree/noevia/build/web.Dockerfile"
 mkdir -p "$tree/noevia" "$tree/web" "$tree/core" "$tree/services"
 
 git -C "$repo" archive --format=tar "$full_sha" | tar -x -C "$tree/noevia"
