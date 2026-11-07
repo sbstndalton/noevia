@@ -974,6 +974,23 @@ if [ "$mm_scan_rs" = rust ]; then
     END { exit !ok }
   ' <<<"$mm_scan_index" || die "model scan read ownership pairing: cache bridge needs the front captured secret"
 fi
+# Row V: the front is the only issuer of the code-sandbox egress proxy's control key and signed task
+# grants (rs code_egress.rs, FEATURES "rust-code-egress-issuer"). The paired Core is a fail-closed client of
+# it (server/code-egress-client.cjs CODE_EGRESS_CLIENT_MARKER) and carries no Node issuer. A Core that still
+# publishes the key and signs grants beside a front that does the same would race over the one key file;
+# a client Core beside a front without the issuer could never get a grant. Markers are code lines, never
+# comments (a comment-only mention counts for nothing).
+ce_core_owner=""; ce_rs_owner=""
+code_has "$tree/core/server/code-egress-client.cjs" "^const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" && ce_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-code-egress-issuer features; then ce_rs_owner=rust; fi
+[ "$ce_core_owner" = "$ce_rs_owner" ] || die "code egress issuer pairing: Core ('noevia-code-egress-client/1') and Rust ('rust-code-egress-issuer') must move together"
+if [ "$ce_core_owner" = rust ]; then
+  [ ! -e "$tree/core/server/code-egress-control.cjs" ] || die "code egress issuer pairing: Core still carries the Node issuer (server/code-egress-control.cjs)"
+  ! code_has "$tree/core/server/code-egress.cjs" 'publishWebKey|createKeyKeeper|createControlClient|mintGrant|secrets[.]derive' \
+    || die "code egress issuer pairing: Core still publishes keys or signs grants"
+  code_has "$tree/core/server/code-egress.cjs" "require\\('[.]/code-egress-client[.]cjs'\\)" \
+    || die "code egress issuer pairing: Core's egress setup does not use the native client"
+fi
 # #2292: calibration cancellation policy is native, with only facts and the conditional state writer in Core.
 cc_core_owner=""; cc_rs_owner=""
 grep -qF "require('./rust-calibration-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && cc_core_owner=rust
