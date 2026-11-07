@@ -23,7 +23,7 @@ const derived = deriveFeatures(build,cargo);
 const featureCases = [
   ['actual production features', derived instanceof Set && derived.has('rust-storage-reads') && derived.has('rust-project-chats') && !derived.has('absent')],
   ['current production build', deriveFeatures(fs.readFileSync(path.join(__dirname,'../../build/web.Dockerfile'),'utf8'),cargo)?.has('rust-storage-reads')],
-  ['no default flag refuses', deriveFeatures(build.replace('cargo build --release','cargo build --no-default-features --release'),cargo) === null],
+  ['no default flag excludes default', deriveFeatures(build.replace('cargo build --release','cargo build --no-default-features --release'),cargo) instanceof Set && !deriveFeatures(build.replace('cargo build --release','cargo build --no-default-features --release'),cargo).has('default')],
   ['all features flag refuses', deriveFeatures(build.replace('cargo build --release','cargo build --all-features --release'),cargo) === null],
   ['unknown selector refuses', deriveFeatures(build.replace('features=rust-reasoning-settings','features=$CUSTOM'),cargo) === null],
   ['extra assignment refuses', deriveFeatures(build.replace('cargo build --release','features=other; cargo build --release'),cargo) === null],
@@ -41,6 +41,16 @@ featureCases.push(['disabled default feature', !deriveFeatures(build,graph.repla
 const src = 'pub const FEATURES: &[&str] = &[#[cfg(feature = "transitive")] "cap"];';
 featureCases.push(['derived default queried cfg', detect(src,'FEATURES','cap',transitive) === 'v1']);
 featureCases.push(['underivable queried cfg', detect(src,'FEATURES','cap',deriveFeatures('',cargo)) === 'invalid(production-features-underivable)']);
+const noDefault = deriveFeatures(build.replace('cargo build --release','cargo build --no-default-features --release'),graph);
+featureCases.push(['no-default excludes default transitive closure', noDefault instanceof Set && !noDefault.has('default') && !noDefault.has('transitive')]);
+const minimal = '[features]\nrust-reasoning-settings=[]\nrust-routing-mode=[]\n';
+for (const manifest of [minimal,minimal+'default=[]\n']) {
+  const featureSet=deriveFeatures(build,manifest);
+  const defaultSrc='pub const FEATURES: &[&str] = &[#[cfg(feature = "default")] "cap"];';
+  featureCases.push(['default declaration presence '+manifest.length, featureSet instanceof Set && featureSet.has('default') === manifest.includes('default=')]);
+  featureCases.push(['queried default declaration '+manifest.length, detect(defaultSrc,'FEATURES','cap',featureSet) === (manifest.includes('default=')?'v1':'legacy')]);
+}
+featureCases.push(['undeclared explicit feature refuses', deriveFeatures(build.replace('features=rust-reasoning-settings,','features=undeclared-feature,'),minimal) === null]);
 for (const [name,ok] of featureCases) { if (!ok) { console.error('feature derivation: '+name); failures++; } }
 if (failures) process.exit(1);
 console.log(`Production feature derivation: ${featureCases.length} passed`);

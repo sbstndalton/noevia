@@ -14,7 +14,11 @@ function detect(source, declaration, capability, enabledFeatures = null) {
     const quoted = (quote, kind) => {
       i++; let value = '';
       while (i < source.length && source[i] !== quote) {
-        if (source[i] !== '\\') { value += source[i++]; continue; }
+        if (source[i] !== '\\') {
+          if (source[i] === '\r' && source[i+1] === '\n') { value += '\n'; i += 2; }
+          else { if (source[i] === '\r') fail('bare-carriage-return'); value += source[i++]; }
+          continue;
+        }
         i++;
         const e = source[i++];
         const simple = {n:'\n', r:'\r', t:'\t', '0':'\0', '\\':'\\', '"':'"', "'":"'"};
@@ -29,8 +33,9 @@ function detect(source, declaration, capability, enabledFeatures = null) {
           const cp = parseInt(hex,16);
           if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) fail('escape');
           value += String.fromCodePoint(cp); i = end + 1;
-        } else if (quote === '"' && /[\r\n]/.test(e || '')) {
-          while (/\s/.test(source[i] || '') && i < source.length) i++;
+        } else if (quote === '"' && (e === '\n' || (e === '\r' && source[i] === '\n'))) {
+          if (e === '\r') i++;
+          while (/[ \t\r\n]/.test(source[i] || '') && i < source.length) i++;
         } else fail('escape');
       }
       if (source[i++] !== quote) fail('unterminated-literal');
@@ -198,35 +203,14 @@ function deriveFeatures(build, cargo) {
       if (!values.every(x => typeof x === 'string')) return null;
       graph.set(m[1],values); rest = rest.slice(m[0].length);
     }
-    // Isolate the front stage and insist on the known build command and selector
-    // grammar. Different flags, inherited feature env, or multiple builds refuse.
-    const stage = /FROM [^\n]+ AS front\n([\s\S]*?)(?=\nFROM |$)/.exec(build)?.[1];
-    if (!stage || /(?:CARGO_ENCODED_RUSTFLAGS|RUSTFLAGS|CARGO_FEATURE|--no-default-features|--all-features)/.test(stage)) return null;
-    if ((stage.match(/cargo build/g) || []).length !== 1) return null;
-    const program = /features=([a-zA-Z0-9_,-]+);\s*\\\n([\s\S]*?)cargo build --release --locked -p noevia-server --features "\$features";/.exec(stage);
-    if (!program) return null;
-    const enabled = new Set(['default', ...program[1].split(',')]);
-    let selectors = program[2].replace(/\\\n/g,' ').trim();
-    while (selectors) {
-      const m = /^if grep -(qx|q) '([^']+)' bins\/noevia-server\/Cargo\.toml; then features="\$features,([A-Za-z0-9_-]+)"; fi;\s*/.exec(selectors);
-      if (!m) return null;
-      const exact = m[2] === m[3] + ' = \\[\\]';
-      const prefix = m[2] === '^' + m[3] + ' = ';
-      if ((m[1] === 'qx' && !exact) || (m[1] === 'q' && !prefix)) return null;
-      // Reproduce grep against the original snapshot, not reformatted TOML.
-      if (cargo.split('\n').some(line => exact ? line === m[3] + ' = []' : line.startsWith(m[3] + ' = '))) enabled.add(m[3]);
-      selectors = selectors.slice(m[0].length).trim();
-    }
-    // Everything between the stage header and selector must be the known setup;
-    // no alternate features assignment or extra cargo flags may be hidden there.
-    const prefix = stage.slice(0,program.index).replace(/\\\n/g,' ').replace(/\s+/g,' ').trim();
-    if (!/^ENV RUSTUP_TOOLCHAIN=[^ ]+ CARGO_TERM_COLOR=never COPY rs\/ \/src\/ WORKDIR \/src RUN set -e; mkdir -p \/out; if \[ -f bins\/noevia-server\/Cargo.toml \]; then$/.test(prefix)) return null;
+    const proof = require('./dockerfile-rs-features.cjs').proveFeatures(build,cargo);
+    const enabled = new Set(proof.features);
+    if (!proof.noDefault && graph.has('default')) enabled.add('default');
     const visited = new Set();
     function visit(name) {
       if (visited.has(name)) return;
       visited.add(name);
       if (!graph.has(name)) {
-        if (name === 'default') return;
         throw new Error('unknown-feature');
       }
       enabled.add(name);

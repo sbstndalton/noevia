@@ -5,6 +5,7 @@ rs_capability_lib="$here/lib/rs-capability.cjs"
 . "$here/lib/rs-capability.sh"
 # Every shell uses the production timeout and CLI, as well as the source-text API.
 timeout -k 2 10 node "$here/test-rs-capability.cjs"
+timeout -k 2 10 node "$here/test-rs-feature-proof.cjs"
 : "${TMPDIR:?set TMPDIR to an evidence directory}"
 work=$(mktemp -d "$TMPDIR/rs-capability.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
