@@ -700,7 +700,6 @@ if [ "$project_reads_rs_owner" = rust ]; then
   project_read_expected="$(printf '%s\n' '/api/projects/{id}/sources/text' '/api/projects/{id}/documents/original' '/api/projects/{id}/{*}/original' | sort)"
   [ "$project_read_routes" = "$project_read_expected" ] || die "project source read ownership pairing: incomplete route ownership"
 fi
-
 # A project's create and delete (sbstndalton/noevia#2191 round 2) move as one owner: Core's
 # rust-project-lifecycle.cjs refusal and the front's rust-project-lifecycle capability, with exactly POST
 # of /api/projects and DELETE of /api/projects/{projectId} Rust's in routes.toml (Node keeps every other

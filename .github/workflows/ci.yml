@@ -126,6 +126,7 @@ jobs:
             "$shell" deploy/tools/test-rs-capability.sh
           done
       - run: bash deploy/tools/test-assemble-release.sh
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-residual-fallback-pairing.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
