@@ -1735,6 +1735,10 @@ auto_roles_rs_owner() {
       }
       code += c; i++;
     }
+    // No decoded literal (ordinary, raw or byte) mentions auto-roles: this guard has nothing
+    // to prove, so other capability guards report their own FEATURES shapes. A split marker
+    // still cannot hand PUT to Rust: get_only_pair then requires GET-only ownership.
+    if (!strs.some(s => s.v.includes("auto-roles"))) out("none");
     const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
     const decls = [...code.matchAll(head)];
     if (decls.length > 1) out("invalid");

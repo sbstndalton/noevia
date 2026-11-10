@@ -46,6 +46,20 @@ for mode in raw bytes raw-bytes nested-comment outside-string duplicate unknown 
   expected=rust; [[ "$mode" =~ ^(raw|bytes|raw-bytes|duplicate|unknown|concat|attribute|gated|escaped-duplicate)$ ]] && expected=invalid
   check "Rust tokenizer $mode" "$expected" bash "$work/rs.sh" "$work/lib.rs"
 done
+# Shapes that never mention auto-roles belong to other guards (the maintenance lease guard
+# reports its own byte/raw/concat/duplicate-array refusals); any auto-roles text stays strict.
+for mode in other-bytes other-raw other-concat other-two-features split-concat split-bytes; do
+  case "$mode" in
+    other-bytes) printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", b"noevia-maintenance-lease-authority/1"];' ;;
+    other-raw) printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", r#"noevia-maintenance-lease-authority/1"#];' ;;
+    other-concat) printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", concat!("noevia-maintenance-lease-", "authority/1")];' ;;
+    other-two-features) printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id"];' 'pub const FEATURES: &[&str] = &["noevia-maintenance-lease-authority/1"];' ;;
+    split-concat) printf '%s\n' 'pub const FEATURES: &[&str] = &[concat!("rust-auto-roles-", "write")];' ;;
+    split-bytes) printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", b"rust-auto-roles-"];' ;;
+  esac > "$work/lib.rs"
+  expected=none; [[ "$mode" =~ ^split- ]] && expected=invalid
+  check "Rust tokenizer $mode" "$expected" bash "$work/rs.sh" "$work/lib.rs"
+done
 # Exercise the production pairing condition with a decoded capability and no Core bridge.
 mkdir -p "$work/pair/core/server" "$work/pair/rs/bins/noevia-server/src"
 printf '%s\n' 'pub const FEATURES: &[&str] = &["\x72ust-auto-roles-write"];' > "$work/pair/rs/bins/noevia-server/src/lib.rs"
