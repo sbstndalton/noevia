@@ -49,6 +49,18 @@ class NativeProfileTests(unittest.TestCase):
         self.reject(lambda s: s['egress-rs'].update(group_add=[]))
         self.reject(lambda s: s['web']['environment'].update(CODE_EGRESS_CONTROL_KEY_FILE='/old/grant.key'))
 
+    def test_issuer_private_state_stays_inside_the_key_directory(self):
+        # Default (unset) and an explicit path inside the key directory are the supported layouts.
+        config = rendered()
+        PROFILE.validate(config)
+        config['services']['web']['environment']['CODE_EGRESS_ISSUER_STATE_FILE'] = PROFILE.TARGET + '/issuer/code-egress-issuer.json'
+        PROFILE.validate(config)
+        # UI_DATA_DIR (a host mount with whatever owner the host gave it), other mounts and traversal are refused.
+        for bad in ('/app/server/ui-data/code-egress-issuer.json', '/tmp/state.json', PROFILE.TARGET + '/../x/state.json',
+                    PROFILE.TARGET + '-other/state.json', PROFILE.TARGET + '/./issuer/state.json'):
+            self.reject(lambda s, bad=bad: s['web']['environment'].update(CODE_EGRESS_ISSUER_STATE_FILE=bad))
+        self.reject(lambda s: s['egress-rs']['environment'].update(CODE_EGRESS_ISSUER_STATE_FILE=PROFILE.TARGET + '/issuer/s.json'))
+
     def test_published_or_multinetwork_listener_rejected(self):
         self.reject(lambda s: s['egress-rs'].update(ports=['8040:8040']))
         self.reject(lambda s: s['web']['networks']['default'].update(aliases=['egress-rs-code']))
