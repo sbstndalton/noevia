@@ -33,6 +33,12 @@ check refused "$js" 'pub const FEATURES: &[&str] = &[#[cfg(any())] "rust-source-
 check refused "$js" 'pub const FEATURES: &[&str] = &[r"rust-source-startup-v1"];'
 check refused "$js" 'pub const FEATURES: &[&str] = &[b"rust-source-startup-v1"];'
 check refused "$js" 'pub const FEATURES: &[&str] = &[concat!("rust-source-startup-v1")];'
+# Harmless crate inner attributes may precede the declaration; crate cfg_attr still refuses.
+check accepted "$js" '#![allow(dead_code)] pub const FEATURES: &[&str] = &["rust-source-startup-v1"];'
+check accepted "$js" '#![allow(dead_code)] #![warn(missing_docs)]
+pub const FEATURES: &[&str] = &["rust-source-startup-v1"];'
+check refused "$js" '#![cfg_attr(any(), allow(dead_code))] pub const FEATURES: &[&str] = &["rust-source-startup-v1"];'
+check refused "$js" '#![allow(dead_code)] #[cfg(any())] pub const FEATURES: &[&str] = &["rust-source-startup-v1"];'
 check refused "// rust-source-startup-v1
 module.exports={};" "$rs"
 check refused 'Object.defineProperty(module.exports,"RUST_SOURCE_STARTUP_OWNED",{get(){while(true){}}});' "$rs"

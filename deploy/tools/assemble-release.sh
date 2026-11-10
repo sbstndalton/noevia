@@ -539,308 +539,6 @@ project_routes_core() {
 }
 # Feature authority moves as one three-namespace owner. Historic old/old pins remain
 # valid rollback pairs; either mixed generation is refused before producing an archive.
-source_startup_core_version() {
-  [ -f "$1" ] || { echo none; return; }
-  command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  timeout -k 2 10 node -e '
-    const fs = require("node:fs"), vm = require("node:vm");
-    const src = fs.readFileSync(process.argv[1], "utf8");
-    const literal = /rust-source-startup-v/.test(src);
-    let value;
-    try {
-      // Invocation and export access both run inside the timed evaluation.
-      value = vm.runInNewContext(
-        "(function () {" +
-        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
-        "  const module = { exports: {} };" +
-        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
-        "  const v = module.exports.RUST_SOURCE_STARTUP_OWNED;" +
-        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
-        "})()", {}, { timeout: 2000 });
-    } catch { process.stdout.write("invalid"); process.exit(0); }
-    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
-    const m = typeof value === "string" && /^rust-source-startup-(v1)$/.exec(value);
-    process.stdout.write(m ? m[1] : "invalid");
-  ' "$1" 2>/dev/null || echo invalid
-}
-# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
-# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
-# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
-# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
-# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
-source_startup_rs_version() {
-  [ -f "$1" ] || { echo none; return; }
-  command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  timeout -k 2 10 node -e '
-    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
-    const strs = []; let code = ""; let i = 0; const n = src.length;
-    const ident = c => /[A-Za-z0-9_]/.test(c || "");
-    const out = r => { process.stdout.write(r); process.exit(0); };
-    while (i < n) {
-      const c = src[i], d = src[i + 1];
-      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
-      if (c === "/" && d === "*") {
-        let depth = 1; i += 2;
-        while (i < n && depth) {
-          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
-          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
-          else i++;
-        }
-        if (depth) out("invalid");
-        code += " "; continue;
-      }
-      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
-      if (raw && !ident(src[i - 1])) {
-        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
-        if (e < 0) out("invalid");
-        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
-      }
-      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
-        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
-        while (i < n && src[i] !== "\"") {
-          if (src[i] !== "\\") { v += src[i++]; continue; }
-          const e = src[i + 1];
-          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
-          if (e in simple) { v += simple[e]; i += 2; }
-          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
-          else if (!bytes && e === "u" && src[i + 2] === "{") {
-            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
-            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
-            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
-          }
-          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
-          else out("invalid");
-        }
-        if (i >= n) out("invalid");
-        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
-      }
-      if (c === "\x27") {
-        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
-        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
-      }
-      code += c; i++;
-    }
-    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
-    const decls = [...code.matchAll(head)];
-    if (decls.length > 1) out("invalid");
-    if (!decls.length) out("none");
-    // FEATURES must be a top-level, unconditional declaration. Unknown attributes
-    // can transform declarations too: only inert doc/allow attributes are accepted.
-    const before = code.slice(0, decls[0].index);
-    let braces = 0;
-    for (const ch of before) { if (ch === "{") braces++; if (ch === "}") braces--; }
-    if (braces !== 0 || /#!\s*\[\s*cfg(?:_attr)?\b/.test(code)) out("invalid");
-    const tail = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
-    if (tail && !/^(?:#\s*\[\s*(?:doc\s*=\s*\u0000\d+\u0000|allow\s*\([^\[\]]*\))\s*\]\s*)+$/.test(tail)) out("invalid");
-    const body = code.slice(decls[0].index + decls[0][0].length);
-    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
-    // expressions stay inside their element.
-    const elements = []; let depth = 0, cur = "", closed = false;
-    for (const ch of body) {
-      if (ch === "(" || ch === "[" || ch === "{") depth++;
-      else if (ch === ")" || ch === "}") depth--;
-      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
-      if (depth < 0) out("invalid");
-      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
-    }
-    if (!closed) out("invalid");
-    elements.push(cur);
-    const outbox = [];
-    for (let k = 0; k < elements.length; k++) {
-      let rest = elements[k].trim(), gated = false;
-      if (!rest && k === elements.length - 1) continue; // trailing comma
-      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
-      while (rest.startsWith("#")) {
-        const open = rest.slice(1).trimStart();
-        if (!open.startsWith("[")) out("invalid");
-        let j = rest.length - open.length, dep = 0;
-        for (; j < rest.length; j++) {
-          if (rest[j] === "[") dep++;
-          else if (rest[j] === "]" && --dep === 0) break;
-        }
-        if (dep) out("invalid");
-        gated = true; rest = rest.slice(j + 1).trim();
-      }
-      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
-      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-source-startup"));
-      if (lit && strs[+lit[1]].kind === "str") {
-        if (!marked) continue;
-        if (gated || !strs[+lit[1]].v.includes("rust-source-startup")) out("invalid");
-        outbox.push(strs[+lit[1]].v); continue;
-      }
-      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
-      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
-      out("invalid");
-    }
-    if (!outbox.length) out("none");
-    if (outbox.length > 1) out("invalid");
-    const m = /^rust-source-startup-(v1)$/.exec(outbox[0]);
-    out(m ? m[1] : "invalid");
-  ' "$1" 2>/dev/null || echo invalid
-}
-source_startup_core_owner="$(source_startup_core_version "$tree/core/server/rust-source-startup.cjs")"
-source_startup_rs_owner="$(source_startup_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
-[ "$source_startup_core_owner" != invalid ] && [ "$source_startup_rs_owner" != invalid ] \
-  || die "source startup ownership pairing: ambiguous capability marker"
-[ "$source_startup_core_owner" = "$source_startup_rs_owner" ] \
-  || die "source startup ownership pairing: Core and Rust must move together"
-
-dav_listener_core_version() {
-  [ -f "$1" ] || { echo none; return; }
-  command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  timeout -k 2 10 node -e '
-    const fs = require("node:fs"), vm = require("node:vm");
-    const src = fs.readFileSync(process.argv[1], "utf8");
-    const literal = /rust-dav-listener-v/.test(src);
-    let value;
-    try {
-      // Invocation and export access both run inside the timed evaluation.
-      value = vm.runInNewContext(
-        "(function () {" +
-        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
-        "  const module = { exports: {} };" +
-        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
-        "  const v = module.exports.RUST_DAV_LISTENER_OWNED;" +
-        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
-        "})()", {}, { timeout: 2000 });
-    } catch { process.stdout.write("invalid"); process.exit(0); }
-    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
-    const m = typeof value === "string" && /^rust-dav-listener-(v1)$/.exec(value);
-    process.stdout.write(m ? m[1] : "invalid");
-  ' "$1" 2>/dev/null || echo invalid
-}
-# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
-# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
-# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
-# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
-# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
-dav_listener_rs_version() {
-  [ -f "$1" ] || { echo none; return; }
-  command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  timeout -k 2 10 node -e '
-    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
-    const strs = []; let code = ""; let i = 0; const n = src.length;
-    const ident = c => /[A-Za-z0-9_]/.test(c || "");
-    const out = r => { process.stdout.write(r); process.exit(0); };
-    while (i < n) {
-      const c = src[i], d = src[i + 1];
-      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
-      if (c === "/" && d === "*") {
-        let depth = 1; i += 2;
-        while (i < n && depth) {
-          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
-          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
-          else i++;
-        }
-        if (depth) out("invalid");
-        code += " "; continue;
-      }
-      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
-      if (raw && !ident(src[i - 1])) {
-        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
-        if (e < 0) out("invalid");
-        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
-      }
-      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
-        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
-        while (i < n && src[i] !== "\"") {
-          if (src[i] !== "\\") { v += src[i++]; continue; }
-          const e = src[i + 1];
-          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
-          if (e in simple) { v += simple[e]; i += 2; }
-          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
-          else if (!bytes && e === "u" && src[i + 2] === "{") {
-            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
-            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
-            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
-          }
-          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
-          else out("invalid");
-        }
-        if (i >= n) out("invalid");
-        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
-      }
-      if (c === "\x27") {
-        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
-        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
-      }
-      code += c; i++;
-    }
-    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
-    const decls = [...code.matchAll(head)];
-    if (decls.length > 1) out("invalid");
-    if (!decls.length) out("none");
-    // FEATURES must be a top-level, unconditional declaration. Unknown attributes
-    // can transform declarations too: only inert doc/allow attributes are accepted.
-    const before = code.slice(0, decls[0].index);
-    let braces = 0;
-    for (const ch of before) { if (ch === "{") braces++; if (ch === "}") braces--; }
-    if (braces !== 0 || /#!\s*\[\s*cfg(?:_attr)?\b/.test(code)) out("invalid");
-    const tail = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
-    if (tail && !/^(?:#\s*\[\s*(?:doc\s*=\s*\u0000\d+\u0000|allow\s*\([^\[\]]*\))\s*\]\s*)+$/.test(tail)) out("invalid");
-    const body = code.slice(decls[0].index + decls[0][0].length);
-    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
-    // expressions stay inside their element.
-    const elements = []; let depth = 0, cur = "", closed = false;
-    for (const ch of body) {
-      if (ch === "(" || ch === "[" || ch === "{") depth++;
-      else if (ch === ")" || ch === "}") depth--;
-      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
-      if (depth < 0) out("invalid");
-      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
-    }
-    if (!closed) out("invalid");
-    elements.push(cur);
-    const outbox = [];
-    for (let k = 0; k < elements.length; k++) {
-      let rest = elements[k].trim(), gated = false;
-      if (!rest && k === elements.length - 1) continue; // trailing comma
-      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
-      while (rest.startsWith("#")) {
-        const open = rest.slice(1).trimStart();
-        if (!open.startsWith("[")) out("invalid");
-        let j = rest.length - open.length, dep = 0;
-        for (; j < rest.length; j++) {
-          if (rest[j] === "[") dep++;
-          else if (rest[j] === "]" && --dep === 0) break;
-        }
-        if (dep) out("invalid");
-        gated = true; rest = rest.slice(j + 1).trim();
-      }
-      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
-      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-dav-listener"));
-      if (lit && strs[+lit[1]].kind === "str") {
-        if (!marked) continue;
-        if (gated || !strs[+lit[1]].v.includes("rust-dav-listener")) out("invalid");
-        outbox.push(strs[+lit[1]].v); continue;
-      }
-      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
-      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
-      out("invalid");
-    }
-    if (!outbox.length) out("none");
-    if (outbox.length > 1) out("invalid");
-    const m = /^rust-dav-listener-(v1)$/.exec(outbox[0]);
-    out(m ? m[1] : "invalid");
-  ' "$1" 2>/dev/null || echo invalid
-}
-
-dav_listener_core_owner="$(dav_listener_core_version "$tree/core/server/rust-dav-listener.cjs")"
-dav_listener_rs_owner="$(dav_listener_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
-[ "$dav_listener_core_owner" != invalid ] && [ "$dav_listener_rs_owner" != invalid ] \
-  || die "DAV listener ownership pairing: ambiguous capability marker"
-[ "$dav_listener_core_owner" = "$dav_listener_rs_owner" ] \
-  || die "DAV listener ownership pairing: Core and Rust must move together"
-if [ "$dav_listener_core_owner" = v1 ]; then
-  ! code_lines "$tree/core/server/index.cjs" | grep -qE 'davServer|createDavHandler|davConfig\.available' \
-    || die "DAV listener ownership pairing: Node listener remains"
-  [ ! -f "$tree/core/server/dav.cjs" ] && [ ! -f "$tree/core/server/dav-ops.cjs" ] \
-    || die "DAV listener ownership pairing: live Node handlers remain"
-  code_lines "$tree/rs/bins/noevia-server/src/main.rs" | grep -qF 'dav::start(' \
-    || die "DAV listener ownership pairing: native startup hook absent"
-  code_lines "$tree/noevia/build/web-supervisor.sh" | grep -qF rust-dav-listener-v1 \
-    || die "DAV listener ownership pairing: supervisor comparison absent"
-fi
 
 feature_core_owner=""
 feature_rs_owner=""
@@ -3314,6 +3012,317 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
     die "noevia-rs at $rs_ref has switched routes in routes.toml ($(printf '%s' "$route_switches" | tr '\n' ';')); deployment ownership switches are retired and this web supervisor passes none (sbstndalton/noevia#1071, #2096)"
   fi
 fi
+
+# Source startup and DAV listener pairing run after every other ownership guard: their strict
+# whole-FEATURES readers refuse any malformed element, so they must not pre-empt another guard's
+# own refusal of its marker.
+source_startup_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-source-startup-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_SOURCE_STARTUP_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-source-startup-(v1)$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+source_startup_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // FEATURES must be a top-level, unconditional declaration. Unknown attributes
+    // can transform declarations too: only inert doc/allow attributes are accepted.
+    const before = code.slice(0, decls[0].index);
+    let braces = 0;
+    for (const ch of before) { if (ch === "{") braces++; if (ch === "}") braces--; }
+    if (braces !== 0 || /#!\s*\[\s*cfg(?:_attr)?\b/.test(code)) out("invalid");
+    const tail = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Crate inner attributes (#![...], never cfg/cfg_attr, refused above) apply to the crate, not to
+    // the declaration, so they may precede it, as in the maintenance lease reader.
+    if (tail && !/^(?:#\s*\[\s*(?:doc\s*=\s*\u0000\d+\u0000|allow\s*\([^\[\]]*\))\s*\]\s*|#!\s*\[[^\[\]]*\]\s*)+$/.test(tail)) out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-source-startup"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-source-startup")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-source-startup-(v1)$/.exec(outbox[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+source_startup_core_owner="$(source_startup_core_version "$tree/core/server/rust-source-startup.cjs")"
+source_startup_rs_owner="$(source_startup_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$source_startup_core_owner" != invalid ] && [ "$source_startup_rs_owner" != invalid ] \
+  || die "source startup ownership pairing: ambiguous capability marker"
+[ "$source_startup_core_owner" = "$source_startup_rs_owner" ] \
+  || die "source startup ownership pairing: Core and Rust must move together"
+
+dav_listener_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-dav-listener-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_DAV_LISTENER_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-dav-listener-(v1)$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+dav_listener_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // FEATURES must be a top-level, unconditional declaration. Unknown attributes
+    // can transform declarations too: only inert doc/allow attributes are accepted.
+    const before = code.slice(0, decls[0].index);
+    let braces = 0;
+    for (const ch of before) { if (ch === "{") braces++; if (ch === "}") braces--; }
+    if (braces !== 0 || /#!\s*\[\s*cfg(?:_attr)?\b/.test(code)) out("invalid");
+    const tail = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Crate inner attributes (#![...], never cfg/cfg_attr, refused above) apply to the crate, not to
+    // the declaration, so they may precede it, as in the maintenance lease reader.
+    if (tail && !/^(?:#\s*\[\s*(?:doc\s*=\s*\u0000\d+\u0000|allow\s*\([^\[\]]*\))\s*\]\s*|#!\s*\[[^\[\]]*\]\s*)+$/.test(tail)) out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-dav-listener"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-dav-listener")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-dav-listener-(v1)$/.exec(outbox[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+
+dav_listener_core_owner="$(dav_listener_core_version "$tree/core/server/rust-dav-listener.cjs")"
+dav_listener_rs_owner="$(dav_listener_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$dav_listener_core_owner" != invalid ] && [ "$dav_listener_rs_owner" != invalid ] \
+  || die "DAV listener ownership pairing: ambiguous capability marker"
+[ "$dav_listener_core_owner" = "$dav_listener_rs_owner" ] \
+  || die "DAV listener ownership pairing: Core and Rust must move together"
+if [ "$dav_listener_core_owner" = v1 ]; then
+  ! code_lines "$tree/core/server/index.cjs" | grep -qE 'davServer|createDavHandler|davConfig\.available' \
+    || die "DAV listener ownership pairing: Node listener remains"
+  [ ! -f "$tree/core/server/dav.cjs" ] && [ ! -f "$tree/core/server/dav-ops.cjs" ] \
+    || die "DAV listener ownership pairing: live Node handlers remain"
+  code_lines "$tree/rs/bins/noevia-server/src/main.rs" | grep -qF 'dav::start(' \
+    || die "DAV listener ownership pairing: native startup hook absent"
+  code_lines "$tree/noevia/build/web-supervisor.sh" | grep -qF rust-dav-listener-v1 \
+    || die "DAV listener ownership pairing: supervisor comparison absent"
+fi
+# End of source startup and DAV listener pairing.
 
 for need in web/package.json web/package-lock.json web/src web/index.html core/server/package.json core/server/index.cjs core/contracts \
             core/code-sandbox/Dockerfile services/diary/Dockerfile services/docling/Dockerfile services/laya/Dockerfile \

@@ -33,6 +33,12 @@ check refused "$js" 'pub const FEATURES: &[&str] = &[#[cfg(any())] "rust-dav-lis
 check refused "$js" 'pub const FEATURES: &[&str] = &[r"rust-dav-listener-v1"];'
 check refused "$js" 'pub const FEATURES: &[&str] = &[b"rust-dav-listener-v1"];'
 check refused "$js" 'pub const FEATURES: &[&str] = &[concat!("rust-dav-listener-v1")];'
+# Harmless crate inner attributes may precede the declaration; crate cfg_attr still refuses.
+check accepted "$js" '#![allow(dead_code)] pub const FEATURES: &[&str] = &["rust-dav-listener-v1"];'
+check accepted "$js" '#![allow(dead_code)] #![warn(missing_docs)]
+pub const FEATURES: &[&str] = &["rust-dav-listener-v1"];'
+check refused "$js" '#![cfg_attr(any(), allow(dead_code))] pub const FEATURES: &[&str] = &["rust-dav-listener-v1"];'
+check refused "$js" '#![allow(dead_code)] #[cfg(any())] pub const FEATURES: &[&str] = &["rust-dav-listener-v1"];'
 check refused "// rust-dav-listener-v1
 module.exports={};" "$rs"
 check refused 'Object.defineProperty(module.exports,"RUST_DAV_LISTENER_OWNED",{get(){while(true){}}});' "$rs"
@@ -42,7 +48,7 @@ echo "DAV listener pairing: $count fixtures passed"
 # wiring checks; marker agreement alone must not retire a still-live listener.
 tree="$work/tree"
 mkdir -p "$tree/core/server" "$tree/rs/bins/noevia-server/src" "$tree/noevia/build"
-sed -n '/^dav_listener_core_owner=/,/^feature_core_owner=/p' "$base/assemble-release.sh" | sed '$d' > "$work/guards.sh"
+sed -n '/^dav_listener_core_owner=/,/^# End of source startup and DAV listener pairing\./p' "$base/assemble-release.sh" | sed '$d' > "$work/guards.sh"
 {
   cat "$work/functions.sh"
   sed -n '/^code_lines() /p' "$base/assemble-release.sh"
