@@ -2036,6 +2036,73 @@ ta_try approvals-old-rust-row
 check "historic pair cannot assign approvals to Rust" 'refused "tool approval ownership pairing"'
 cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refuser.paired"
 rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
+# Chat port S4: the framing suggestion's owner pair (every method Rust's) and its loopback bridge.
+fs_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/chat-framing/suggest"\nowner = "%s"\n' "$fs_owner"; [ -z "${fs_methods:-}" ] || printf '%s\n' "$fs_methods")
+}
+cat > "$w/server/rust-chat-framing-suggest.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat-framing/suggest']));
+module.exports = { OWNED_ROUTES };
+JS
+fs_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const chatFramingSuggestBridge = require('./rust-chat-framing-suggest.cjs').createSuggestBridge({
+  secret: FRONT_SECRET, json, readJson, framing: chatFraming,
+});
+if (require('./rust-chat-framing-suggest.cjs').refuseOwned(req, res, {})) return;
+if (await chatFramingSuggestBridge(req, res)) return;
+JS
+}
+fs_front() { sed 's/"start-id"/"start-id", "rust-chat-framing-suggest"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+[ ! -f "$w/server/routes/chat-framing.cjs" ] || cp "$w/server/routes/chat-framing.cjs" "$work/fs-routes.saved"
+mkdir -p "$w/server/routes"; printf '%s\n' 'module.exports = {};' > "$w/server/routes/chat-framing.cjs"
+fs_owner=rust; fs_methods=""; fs_core
+fs_try suggest-core-only
+check "framing suggestion Core requires the native front" 'refused "framing suggestion ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; fs_front
+fs_try suggest-front-only
+check "native framing suggestion front requires its Core refusal" 'refused "framing suggestion ownership pairing"'
+fs_core
+fs_try suggest-pair
+check "framing suggestion pair with its loopback bridge assembles" '[ $rc -eq 0 ]'
+fs_methods='methods = ["POST"]'
+fs_try suggest-post-only-row
+check "framing suggestion: every method must be Rust's, not only POST" 'refused "every method must belong to Rust"'
+fs_methods=""; fs_owner=node
+fs_try suggest-node-row
+check "framing suggestion native pair cannot keep a Node-owned row" 'refused "every method must belong to Rust"'
+fs_owner=rust
+printf '%s\n' '    const result = await framing.suggest({ message });' > "$w/server/routes/chat-framing.cjs"
+fs_try suggest-old-handler
+check "framing suggestion native pair drops the public Node suggestion" 'refused "still carries the public suggestion handler"'
+printf '%s\n' 'module.exports = {};' '// framing.suggest(' > "$w/server/routes/chat-framing.cjs"
+fs_try suggest-commented-handler
+check "framing suggestion: a commented-out call is not the handler" '[ $rc -eq 0 ]'
+cp "$w/server/index.cjs" "$work/fs-index.saved"
+sed '/chatFramingSuggestBridge(req, res)/d' "$work/fs-index.saved" > "$w/server/index.cjs"
+fs_try suggest-no-mount
+check "framing suggestion bridge must be mounted" 'refused "framing suggestion ownership pairing: missing bridge mount"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/fs-index.saved" > "$w/server/index.cjs"
+fs_try suggest-no-secret
+check "framing suggestion bridge requires the captured front secret" 'refused "framing suggestion ownership pairing: missing captured front secret"'
+cp "$work/fs-index.saved" "$w/server/index.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/chat-framing/suggest']));" > "$w/server/rust-chat-framing-suggest.cjs"
+fs_try suggest-all-refuser
+check "framing suggestion: Core refuses exactly the POST" 'refused "Core must refuse exactly this POST"'
+printf '%s\n' "/*" "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat-framing/suggest']));" "*/" > "$w/server/rust-chat-framing-suggest.cjs"
+fs_try suggest-comment-marker
+check "framing suggestion: the refusal must be executable code" 'refused "Core must refuse exactly this POST"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+fs_owner=node
+fs_try suggest-old-pair
+check "framing suggestion old/old rollback pair assembles" '[ $rc -eq 0 ]'
+fs_owner=rust
+fs_try suggest-old-rust-row
+check "an old pair cannot give the suggestion to Rust" 'refused "framing suggestion ownership pairing"'
+if [ -f "$work/fs-routes.saved" ]; then cp "$work/fs-routes.saved" "$w/server/routes/chat-framing.cjs"; else rm -f "$w/server/routes/chat-framing.cjs"; fi
+rm -f "$w/server/rust-chat-framing-suggest.cjs"
 # #2281 toolbox picker owner pair and the narrow facts bridge.
 tp_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -4846,6 +4913,28 @@ check "a rust-model-maintenance front cannot pair with the old Core handlers" 'r
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try maint-old-pair
 check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Diary worker capability pair beside the unchanged route fixture.
+cp "$w/server/index.cjs" "$work/db-index.saved"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/db-lib.saved"
+[ ! -f "$w/server/rust-diary.cjs" ] || cp "$w/server/rust-diary.cjs" "$work/db-module.saved"
+mkdir -p "$repo/build"; cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+db_try() { move_try "$1"; }
+printf "%s\n" "const DIARY_BACKUP_WORKER_OWNER = 'noevia-diary-backup-worker-rust/1';" "module.exports = { DIARY_BACKUP_WORKER_OWNER };" > "$w/server/rust-diary.cjs"
+db_try diary-core-only
+check "diary worker new Core old front refused" 'refused "diary backup worker pairing"'
+sed 's/"start-id"/"start-id", "rust-diary-backup-worker"/' "$work/db-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+db_try diary-pair
+check "diary worker matched pair assembles" '[ $rc -eq 0 ]'
+printf "%s\n" "require('./diary-backup-worker.cjs').startDiaryBackupWorker({});" >> "$w/server/index.cjs"
+db_try diary-double
+check "diary worker retained Node startup refused" 'refused "Core still starts the worker"'
+cp "$work/db-index.saved" "$w/server/index.cjs"
+printf 'module.exports = {};\n' > "$w/server/rust-diary.cjs"
+db_try diary-front-only
+check "diary worker new front old Core refused" 'refused "diary backup worker pairing"'
+cp "$work/db-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+if [ -f "$work/db-module.saved" ]; then cp "$work/db-module.saved" "$w/server/rust-diary.cjs"; else rm -f "$w/server/rust-diary.cjs"; fi
 
 # Watchdog ownership matrix, using the same explicit capability parser as route moves.
 mkdir -p "$repo/build"

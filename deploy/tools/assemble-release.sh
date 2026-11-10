@@ -1063,6 +1063,16 @@ if [ "$cr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
 fi
+# Diary backup must move as a pair: new front + old Core would run two loops.
+db_core_owner=""; db_rs_owner=""
+move_capability "$tree/core/server/rust-diary.cjs" DIARY_BACKUP_WORKER_OWNER noevia-diary-backup-worker-rust/1 js && db_core_owner=rust
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary-backup-worker features && db_rs_owner=rust
+[ "$db_core_owner" = "$db_rs_owner" ] || die "diary backup worker pairing: Core and Rust must move together"
+if [ "$db_rs_owner" = rust ]; then
+  ! code_has "$tree/core/server/index.cjs" 'startDiaryBackupWorker' || die "diary backup worker pairing: Core still starts the worker"
+  grep -qF 'DIARY_BACKUP_WORKER_OWNER' "$tree/noevia/build/web-supervisor.sh" && grep -qF 'rust-diary-backup-worker' "$tree/noevia/build/web-supervisor.sh" || die "diary backup worker pairing: supervisor guard missing"
+fi
+
 # The memory watchdog moves as one owner; mixed pairs double-run it or leave no watch.
 bw_core_owner=""; bw_rs_owner=""
 move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/1 js && bw_core_owner=v1
@@ -1173,6 +1183,41 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       END { exit !ok }
     ' <<<"$ta_index" || die "tool approval ownership pairing: missing captured front secret"
   fi
+fi
+# Chat port S4: the framing suggestion. The front owns every method of exactly /api/chat-framing/suggest
+# (capability rust-chat-framing-suggest); Core refuses exactly its POST (server/rust-chat-framing-suggest.cjs),
+# no longer makes a suggestion in routes/chat-framing.cjs, and serves the front's loopback
+# /internal/chat-framing/suggest with the captured front secret. Old/old stays valid; mixed pairs are refused.
+fs_core_owner=""; fs_rs_owner=""
+grep -qF "require('./rust-chat-framing-suggest.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && fs_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-framing-suggest features; then fs_rs_owner=rust; fi
+[ "$fs_core_owner" = "$fs_rs_owner" ] || die "framing suggestion ownership pairing: Core and Rust must move together"
+if [ "$fs_rs_owner" != rust ] && [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # The old pair: Node answers the suggestion, so the route table must not give it to Rust.
+  fs_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || fs_table=""
+  printf '%s\n' "$fs_table" | awk -F'\t' '$1 == "/api/chat-framing/suggest" && $2 == "rust" { bad = 1 } END { exit bad }' \
+    || die "framing suggestion ownership pairing: an old pair cannot give the suggestion to Rust"
+fi
+if [ "$fs_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "framing suggestion ownership pairing: missing route contract"
+  fs_rows="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/chat-framing/suggest" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "framing suggestion ownership pairing: every method must belong to Rust"
+  [ "$fs_rows" = /api/chat-framing/suggest ] || die "framing suggestion ownership pairing: incomplete route ownership"
+  code_has "$tree/core/server/rust-chat-framing-suggest.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'POST /api/chat-framing/suggest'[]][)][)];$" \
+    || die "framing suggestion ownership pairing: Core must refuse exactly this POST"
+  ! code_has "$tree/core/server/routes/chat-framing.cjs" 'framing[.]suggest[(]' \
+    || die "framing suggestion ownership pairing: Core still carries the public suggestion handler"
+  fs_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qE 'chatFramingSuggestBridge\(req, res\)' <<<"$fs_index" || die "framing suggestion ownership pairing: missing bridge mount"
+  fs_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$fs_index" | head -1)"
+  [ -n "$fs_secret" ] && awk -v c="$fs_secret" '
+    /createSuggestBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$fs_index" || die "framing suggestion ownership pairing: missing captured front secret"
 fi
 # #2281: the toolbox picker moves as one owner, with only raw discovery/prefill facts in Core.
 tp_core_owner=""; tp_rs_owner=""

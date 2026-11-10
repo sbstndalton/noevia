@@ -297,6 +297,7 @@ rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
+rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
 PAIRS
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
@@ -369,6 +370,15 @@ if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
   echo "web-supervisor: web-address POST ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
+# Diary backup ownership is compiled into the paired artifacts, never inherited from the environment.
+diary_backup_front_owner=""
+grep -qx 'rust-diary-backup-worker' <<<"$rust_features" && diary_backup_front_owner=rust
+diary_backup_core_owner="$(node -e "try { const m = require('./server/rust-diary.cjs'); if (m.DIARY_BACKUP_WORKER_OWNER === 'noevia-diary-backup-worker-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$diary_backup_front_owner" != "$diary_backup_core_owner" ]; then
+  echo "web-supervisor: diary backup worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
 # The inference budget watch moves with paired exported/compiled markers. Refuse mixed owners.
 # Root accepts legacy rollback ignoring leftover fences: like a legacy Node restart it loses
 # the in-memory quarantine. Old releases ignore the directory; its files never gate rollback.
