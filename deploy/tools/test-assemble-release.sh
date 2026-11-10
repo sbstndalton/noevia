@@ -11,6 +11,7 @@ g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
 cp "$here/assemble-release.sh" "$repo/deploy/tools/"
+cp -R "$here/lib" "$repo/deploy/tools/"
 w="$repo/apps/web"
 mkdir -p "$w/src" "$w/public" "$w/scripts" "$w/contracts" "$w/tests/client" "$w/tests/server" "$w/tests/fixtures" "$w/qa" "$w/server"
 for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits.json tests/client/a.test.cjs \
@@ -1088,6 +1089,73 @@ cp "$work/source-routes.saved" "$rz/bins/noevia-server/src/project_store.rs"
 cp "$work/source-move-client.saved" "$w/server/project-store-client.cjs"
 cp "$work/source-move-features.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$rz/crates/server-projects/src/source_jobs.rs" "$rz/crates/server-projects/src/lib.rs" "$rz/bins/noevia-server/src/project_store.rs"
+
+# Port contract row J: Core's maintenance lease client and the front's lease authority move together
+# (f57a4e3-style detectors: Core's real export under node:vm, Rust's FEATURES tokenizer).
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/lease-features.saved"
+lease_core_js() { printf '%s\n' "$@" > "$w/server/model-maintenance-lease.cjs"; }
+lease_core() { lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'module.exports = { LEASE_CLIENT_MARKER };'; }
+# lease_rs_el TEXT: lib.rs's FEATURES with TEXT as its first element(s).
+lease_rs_el() { LEASE_EL="$1" perl -pe 's/pub const FEATURES: &\[&str\] = &\[/$&$ENV{LEASE_EL}, /' "$work/lease-features.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+lease_rs() { lease_rs_el '"noevia-maintenance-lease-authority/1"'; }
+lease_clear() { rm -f "$w/server/model-maintenance-lease.cjs"; cp "$work/lease-features.saved" "$rz/bins/noevia-server/src/lib.rs"; }
+lease_ok() { source_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'; }
+lease_no() { source_try "$1"; check "$2" 'refused "maintenance lease pairing"'; }
+lease_clear; lease_ok lease-legacy-legacy "legacy core with legacy Rust lease owner assembles"
+lease_core; lease_rs; lease_ok lease-paired "native lease client with native lease authority assembles"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/2';" 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_no lease-new-core-old-rust "v2 incident completion client refuses v1 authority"
+lease_rs_el '"noevia-maintenance-lease-authority/2"'; lease_ok lease-v2-paired "v2 captured-incident repair pair assembles"
+lease_core; lease_no lease-old-core-new-rust "v1 client refuses v2 incident completion authority"
+lease_rs
+lease_core_js "const LEASE_CLIENT_MARKER = ['noevia-maintenance-lease-', 'client/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports = { LEASE_CLIENT_MARKER, x };'
+lease_ok lease-computed-core-export "a computed core export with stubbed requires is read by its value"
+lease_clear; lease_core; lease_no lease-core-only "native lease client with a legacy front is refused"
+lease_clear; lease_rs; lease_no lease-rs-only "native lease authority with a legacy core is refused"
+# Adversarial Core markers (front paired at v1).
+lease_rs
+lease_core_js "// const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'module.exports = {};'
+lease_no lease-comment-only-core "comment-only core lease marker is refused"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'module.exports = {};'
+lease_no lease-unexported-core "unexported core lease marker is refused"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/3';" 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_no lease-unknown-core-version "unknown core lease marker version is refused"
+lease_core_js "module.exports = { LEASE_CLIENT_MARKER: { toString: () => 'noevia-maintenance-lease-client/1' } };"
+lease_no lease-object-core-export "a non-string core lease export is refused"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'for (;;) {}' 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_no lease-hanging-core "a core lease module that never finishes evaluating is refused"
+# Adversarial Rust markers (core paired at v1).
+lease_core
+lease_rs_el '#[cfg(feature = "lease")] "noevia-maintenance-lease-authority/1"'; lease_no lease-cfg-rust "cfg-gated Rust lease marker is refused"
+lease_rs_el '"noevia-maintenance-lease-authority/1", "noevia-maintenance-lease-authority/1"'; lease_no lease-duplicate-rust "duplicate Rust lease markers are refused"
+lease_rs_el '"noevia-maintenance-lease-authority/1", "noevia-maintenance-lease-authority\x2f1"'; lease_no lease-escaped-duplicate-rust "escaped duplicate Rust lease markers are refused"
+lease_rs_el 'b"noevia-maintenance-lease-authority/1"'; lease_no lease-byte-rust "byte-string Rust lease marker is refused"
+lease_rs_el 'r#"noevia-maintenance-lease-authority/1"#'; lease_no lease-raw-rust "raw-string Rust lease marker is refused"
+lease_rs_el 'concat!("noevia-maintenance-lease-", "authority/1")'; lease_no lease-concat-rust "concat! Rust lease marker is refused"
+lease_rs_el '"noevia-maintenance-lease-authority/3"'; lease_no lease-unknown-rust-version "unknown Rust lease marker version is refused"
+lease_rs_el '/* "noevia-maintenance-lease-authority/1", */ "start-id-x"'; lease_no lease-comment-only-rust "comment-only Rust lease marker is refused"
+lease_rs; printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-maintenance-lease-authority/1"];' >> "$rz/bins/noevia-server/src/lib.rs"
+lease_no lease-two-features-rust "a second FEATURES array is refused"
+lease_rs_el '"noevia-maintenance-lease-\u{61}uthority/1"'; lease_ok lease-escaped-single-rust "one escaped Rust lease literal is read by its value"
+# Review P2: the declaration's own scope. lease_rs_wrap BEFORE AFTER wraps lib.rs's FEATURES line.
+lease_rs_wrap() { lease_rs; LB="$1" LA="$2" perl -0pi -e 's/^(pub const FEATURES: &\[&str\] = &\[.*?\];)$/$ENV{LB}$1$ENV{LA}/m' "$rz/bins/noevia-server/src/lib.rs"; }
+lease_rs_wrap '#[cfg(any())] ' ''; lease_no lease-cfg-declaration "cfg on the FEATURES declaration is refused"
+lease_rs_wrap '#[cfg(feature = "lease")]'$'\n' ''; lease_no lease-cfg-declaration-line "cfg on its own line above the declaration is refused"
+lease_rs_wrap '#[cfg(any())] mod disabled { ' ' }'; lease_no lease-cfg-module "a declaration inside a cfg-disabled module is refused"
+lease_rs_wrap 'mod inner { ' ' }'; lease_no lease-nested-module "a declaration inside a nested module is refused"
+lease_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; lease_no lease-macro-rules "a declaration inside macro_rules! is refused"
+lease_rs_wrap 'cfg_if::cfg_if! { if #[cfg(any())] { ' ' } }'; lease_no lease-macro-wrapped "a macro-wrapped declaration is refused"
+lease_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/lease-crate-cfg" && cp "$work/lease-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
+lease_no lease-crate-cfg "a crate-level cfg attribute is refused"
+# Delta review P3: a harmless crate inner attribute directly before the declaration still assembles;
+# crate cfg_attr and an outer attribute on the declaration are still refused.
+lease_rs_wrap '#![allow(dead_code)]'$'\n' ''; lease_ok lease-crate-allow "a crate inner attribute before the declaration assembles"
+lease_rs_wrap '#![allow(dead_code)] #![warn(missing_docs)]'$'\n' ''; lease_ok lease-crate-allow-two "two crate inner attributes before the declaration assemble"
+lease_rs_wrap '#![cfg_attr(any(), allow(dead_code))]'$'\n' ''; lease_no lease-crate-cfg-attr "a crate cfg_attr before the declaration is refused"
+lease_rs_wrap '#![allow(dead_code)]'$'\n''#[cfg(any())]'$'\n' ''; lease_no lease-crate-allow-then-cfg "an outer cfg after a crate attribute is refused"
+lease_rs_wrap '#![allow(dead_code)]'$'\n''#[doc(hidden)]'$'\n' ''; lease_no lease-crate-allow-then-outer "an outer attribute on the declaration is refused"
+lease_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; lease_ok lease-doc-commented-declaration "a doc-commented unconditional declaration assembles"
+lease_clear
 
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
@@ -2821,6 +2889,43 @@ cc_owner=node; cc_try cc-old-pair
 check "old calibration cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
 if [ -f "$work/cc-manager.saved" ]; then cp "$work/cc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# Row V: the front is the only issuer of the egress proxy's control key and signed grants; Core is a
+# fail-closed client (marker 'noevia-code-egress-client/1', FEATURES "rust-code-egress-issuer"). Both
+# halves move together; a comment is not a marker; the Node issuer must be gone from a client Core.
+ce_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+}
+ce_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" > "$w/server/code-egress-client.cjs"
+  printf '%s\n' "const { createEgressClient } = require('./code-egress-client.cjs');" > "$w/server/code-egress.cjs"
+  rm -f "$w/server/code-egress-control.cjs"
+}
+ce_front() { sed 's/"start-id"/"start-id", "rust-code-egress-issuer"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; rm -f "$w/server/code-egress-client.cjs" "$w/server/code-egress.cjs" "$w/server/code-egress-control.cjs"
+printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"
+printf '%s\n' "const { publishWebKey } = require('./code-egress-control.cjs');" > "$w/server/code-egress.cjs"
+ce_try ce-legacy
+check "code egress: legacy Core with a legacy front assembles (rollback pair)" '[ $rc -eq 0 ]'
+ce_core; ce_try ce-core-only
+check "code egress: a client Core cannot pair with a front that has no issuer" 'refused "code egress issuer pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; ce_front
+printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"
+printf '%s\n' "const { publishWebKey } = require('./code-egress-control.cjs');" > "$w/server/code-egress.cjs"; rm -f "$w/server/code-egress-client.cjs"
+ce_try ce-front-only
+check "code egress: a front that issues cannot pair with a Core that still publishes the key" 'refused "code egress issuer pairing"'
+printf '%s\n' "// const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" > "$w/server/code-egress-client.cjs"; ce_try ce-comment-marker
+check "code egress: a commented marker is not the marker" 'refused "code egress issuer pairing"'
+ce_core; printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"; ce_try ce-node-issuer
+check "code egress: a client Core that still carries the Node issuer is refused" 'refused "still carries the Node issuer"'
+ce_core; printf '%s\n' "const { createEgressClient } = require('./code-egress-client.cjs'); publishWebKey({});" > "$w/server/code-egress.cjs"; ce_try ce-publishes
+check "code egress: a client Core whose setup still publishes keys is refused" 'refused "still publishes keys or signs grants"'
+ce_core; printf '%s\n' "module.exports = {};" > "$w/server/code-egress.cjs"; ce_try ce-no-client
+check "code egress: a client Core whose setup does not use the client is refused" 'refused "does not use the native client"'
+ce_core; ce_try ce-pair
+check "code egress: the matching client Core and issuer front assemble" '[ $rc -eq 0 ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/code-egress-client.cjs" "$w/server/code-egress.cjs" "$w/server/code-egress-control.cjs"
 # #2303: start/status policy moves independently of the live calibration worker.
 cr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';

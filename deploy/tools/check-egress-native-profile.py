@@ -46,6 +46,13 @@ def validate(config, project_root=ROOT):
         require(str(ne['CODE_EGRESS_CONTROL_KEY_' + suffix]) == value, 'key identity mismatch')
     require(str(we['CODE_EGRESS_KEY_GID']) in [str(g) for g in native['group_add']], 'native supplementary key group missing')
     require(not any('GRANT_KEY' in key for key in (*ne, *we)), 'legacy key mode must not coexist')
+    # The issuer's private state sits inside the key directory (the one directory the issuer is known to
+    # own), by default; an override must stay inside it. UI_DATA_DIR is the host's, with whatever owner it has
+    # (the live one is owned by another uid), and a state directory the issuer does not own is refused.
+    state = we.get('CODE_EGRESS_ISSUER_STATE_FILE')
+    require(state in (None, '') or (str(state).startswith(TARGET + '/') and '/../' not in str(state) and '/./' not in str(state)),
+            'issuer private state must live inside the key directory, not in UI_DATA_DIR')
+    require('CODE_EGRESS_ISSUER_STATE_FILE' not in ne, 'the native proxy has no issuer state')
     mounts = []
     for service, readonly in ((native, True), (web, False)):
         matches = [v for v in service['volumes'] if v.get('target') == TARGET]
