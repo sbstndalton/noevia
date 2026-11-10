@@ -117,6 +117,14 @@ jobs:
       # #1148: build/tag helpers refuse cowork-diary:* outside diary-overlay.sh (stub docker).
       - run: bash deploy/tools/test-diary-image-guard.sh
         if: env.RUN_JOB == 'true'
+      - name: Shared Rust capability fixtures (bash, dash, sh)
+        if: env.RUN_JOB == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          for shell in bash dash sh; do
+            "$shell" deploy/tools/test-rs-capability.sh
+          done
       - run: bash deploy/tools/test-assemble-release.sh
       - run: bash deploy/tools/test-residual-fallback-pairing.sh
         if: env.RUN_JOB == 'true'
