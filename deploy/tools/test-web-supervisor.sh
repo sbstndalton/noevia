@@ -139,10 +139,99 @@ reset
 run STUB_FEATURES="$BASE_FEATURES rust-web-address-read" WEB_ADDRESS_READ_OWNER=noevia-web-address-read-rust/1 >/dev/null 2>"$work/err"; rc=$?
 check "web-address: inherited owner value cannot spoof a wrong core" '[ $rc -eq 2 ] && grep -q "web-address GET ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 rm -f "$work/server/rust-web-address.cjs"
+# sbstndalton/noevia#2303: the calibration job (state file, boot recovery, hold) moves as one owner, one
+# generation (2: Core decides every calibration load first).
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker-v2" >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: native front over a Core that still runs the job is refused before launch" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { CALIBRATION_WORKER_OWNER: 'noevia-calibration-worker-rust/2' };" > "$work/server/rust-calibration-routes.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: Core that stopped running the job over an old front is refused before launch" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker" >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: a generation-1 front over a generation-2 Core is refused before launch" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { CALIBRATION_WORKER_OWNER: 'noevia-calibration-worker-rust/1' };" > "$work/server/rust-calibration-routes.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker-v2" >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: a generation-2 front over a generation-1 Core is refused before launch" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { CALIBRATION_WORKER_OWNER: 'noevia-calibration-worker-rust/2' };" > "$work/server/rust-calibration-routes.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker-v2" >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: matching exported Core and compiled front start together" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+printf "%s\n" "module.exports = { CALIBRATION_WORKER_OWNER: 'wrong' };" > "$work/server/rust-calibration-routes.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-calibration-worker-v2" CALIBRATION_WORKER_OWNER=noevia-calibration-worker-rust/2 >/dev/null 2>"$work/err"; rc=$?
+check "calibration worker: inherited owner value cannot spoof a wrong Core" '[ $rc -eq 2 ] && grep -q "calibration worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm -f "$work/server/rust-calibration-routes.cjs"
+
+# The budget watchdog moves as one owner.
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: native front over a Core that still runs the job is refused before launch" '[ $rc -eq 2 ] && grep -q "budget watch ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/3' };" > "$work/server/rust-budget-watch.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: Core that stopped running the job over an old front is refused before launch" '[ $rc -eq 2 ] && grep -q "budget watch ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: matching exported Core and compiled front start together" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: v2 front over v3 Core is refused" '[ $rc -eq 2 ]'
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/2' };" > "$work/server/rust-budget-watch.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: v3 front over v2 Core is refused" '[ $rc -eq 2 ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v2" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: matched native v2 remains a rollback pair" '[ $rc -eq 3 ]'
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/3' };" > "$work/server/rust-budget-watch.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: unfenced v1 front over v3 Core is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'noevia-budget-watch-rust/1' };" > "$work/server/rust-budget-watch.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: v3 front over unfenced v1 Core is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: matched native v1 pair remains a rollback pair" '[ $rc -eq 3 ]'
+printf "%s\n" "module.exports = { BUDGET_WATCH_OWNER: 'wrong' };" > "$work/server/rust-budget-watch.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-budget-watch-v3" BUDGET_WATCH_OWNER=noevia-budget-watch-rust/3 >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: inherited owner value cannot spoof a wrong Core" '[ $rc -eq 2 ] && grep -q "budget watch ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm -f "$work/server/rust-budget-watch.cjs"
+
+# Leftover native pending, recorded and damaged fences do not gate legacy rollback.
+mkdir -p "$work/data/budget-watch-synthetic"
+printf '%s\n' '{"model":"pending","recorded":false}' > "$work/data/budget-watch-synthetic/pending.json"
+printf '%s\n' '{"model":"recorded","recorded":true}' > "$work/data/budget-watch-synthetic/recorded.json"
+printf '%s\n' 'damaged' > "$work/data/budget-watch-synthetic/unknown.json.damaged-1"
+reset; touch "$work/die-front"
+run UI_DATA_DIR="$work/data" >/dev/null 2>"$work/err"; rc=$?
+check "budget watch: legacy rollback starts with leftover fence files present" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log" && [ -f "$work/data/budget-watch-synthetic/pending.json" ] && [ -f "$work/data/budget-watch-synthetic/recorded.json" ]'
 
 reset
 run UI_PORT=65000 >/dev/null 2>&1; rc=$?
 check "a UI_PORT with no room for +1000 is refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+
+# Compiled/exported ownership, both directions and at restart; env cannot forge an export.
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-diary-backup-worker" >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: new front over old Core refused before launch" '[ $rc -eq 2 ] && grep -q "diary backup worker ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf "%s\n" "module.exports = { DIARY_BACKUP_WORKER_OWNER: 'noevia-diary-backup-worker-rust/1' };" > "$work/server/rust-diary.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: new Core over old front refused" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-diary-backup-worker" >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: paired worker starts" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+printf "%s\n" "module.exports = { DIARY_BACKUP_WORKER_OWNER: 'wrong' };" > "$work/server/rust-diary.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-diary-backup-worker" DIARY_BACKUP_WORKER_OWNER=noevia-diary-backup-worker-rust/1 >/dev/null 2>"$work/err"; rc=$?
+check "diary backup: env owner cannot spoof installed Core on restart" '[ $rc -eq 2 ] && [ ! -s "$work/log" ]'
+rm -f "$work/server/rust-diary.cjs"
 
 # Source-journal pairing probes the actual installed Node export and Rust binary --features.
 mkdir -p "$work/server"
@@ -449,9 +538,69 @@ rm "$work/server/large-document-lock.cjs"
 reset
 run STUB_FEATURES="$BASE_FEATURES rust-large-document-host-lock" >/dev/null 2>"$work/err"; rc=$?
 check "host-lock front with an in-process-lock Core refuses before launch" '[ $rc -eq 2 ] && grep -q "large-document lock mismatch" "$work/err" && [ ! -s "$work/log" ]'
+# F1 reads the actual export; duplicate and unknown runtime tokens must refuse.
+printf '%s\n' "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' };" > "$work/server/rust-auto-roles-write.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "auto-roles write: new Core refuses old front" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-auto-roles-write" >/dev/null 2>"$work/err"; rc=$?
+check "auto-roles write: paired export starts both processes" '[ $rc -eq 3 ] && grep -q "^node " "$work/log" && grep -q "^front " "$work/log"'
+rm -f "$work/server/rust-auto-roles-write.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-auto-roles-write" >/dev/null 2>"$work/err"; rc=$?
+check "auto-roles write: new front refuses old Core" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+for malformed in absent unknown duplicate comment template invalid; do
+  for front in old new; do
+    case "$malformed" in
+      absent) printf "%s\n" "module.exports = {};" ;;
+      unknown) printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write-v2' };" ;;
+      duplicate) printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' }; const other = 'rust-auto-roles-write';" ;;
+      comment) printf "%s\n" "/* module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' }; */" ;;
+      template) printf '%s\n' 'const text = `not an export; "rust-auto-roles-write"`;' ;;
+      invalid) printf '%s\n' 'module.exports = {' ;;
+    esac > "$work/server/rust-auto-roles-write.cjs"
+    features="$BASE_FEATURES"; [ "$front" = old ] || features="$features rust-auto-roles-write"
+    reset
+    run STUB_FEATURES="$features" >/dev/null 2>"$work/err"; rc=$?
+    check "auto-roles write: $malformed Core marker refuses with $front front" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+  done
+done
+for core in old new; do
+  rm -f "$work/server/rust-auto-roles-write.cjs"
+  [ "$core" = old ] || printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' };" > "$work/server/rust-auto-roles-write.cjs"
+  for markers in 'rust-auto-roles-write-v2' 'rust-auto-roles-write rust-auto-roles-write' 'rust-auto-roles-write rust-auto-roles-write-v2'; do
+    reset
+    run STUB_FEATURES="$BASE_FEATURES $markers" >/dev/null 2>"$work/err"; rc=$?
+    check "auto-roles write: malformed front tokens refuse with $core Core ($markers)" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ]'
+  done
+done
+rm -f "$work/server/rust-auto-roles-write.cjs"
+printf '%s\n' "module.exports = { get RUST_AUTO_ROLES_WRITE_OWNED() { for (;;) {} } };" > "$work/server/rust-auto-roles-write.cjs"
+reset
+started=$(date +%s)
+run STUB_FEATURES="$BASE_FEATURES rust-auto-roles-write" >/dev/null 2>"$work/err"; rc=$?
+elapsed=$(( $(date +%s) - started ))
+check "auto-roles Core whose export never returns refuses within the bound" '[ $rc -eq 2 ] && grep -q "auto-roles write" "$work/err" && [ ! -s "$work/log" ] && [ $elapsed -lt 30 ]'
+rm -f "$work/server/rust-auto-roles-write.cjs"
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
 for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration-routes.cjs rust-calibration-routes calibration start/read" "rust-idle-unload-read.cjs rust-idle-unload-read idle unload read" "rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read" "rust-autotune-resume.cjs rust-autotune-resume auto-tune resume" "rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation" "rust-autotune-read.cjs rust-autotune-read auto-tune status GET" "rust-tool-approvals.cjs rust-tool-approvals tool approval decision" "rust-public-pages.cjs rust-public-pages public page" "rust-task-reads.cjs rust-task-reads task read" "rust-autotune-settings.cjs rust-autotune-settings auto-tune settings" "rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation" "rust-autotune-clear.cjs rust-autotune-clear autotune dismissal" "rust-model-state-reads.cjs rust-model-state-reads model state read" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list" "rust-providers.cjs rust-providers provider registry" "rust-providers-reseal.cjs rust-providers-reseal provider key reseal" "rust-google-drive.cjs rust-google-drive Google Drive" "rust-offsite-backup.cjs rust-offsite-backup off-site backup" "rust-mcp-credentials.cjs rust-mcp-credentials MCP credential" "rust-health.cjs rust-health health check" "rust-auto-roles.cjs rust-auto-roles auto-roles read" "rust-workspace.cjs rust-workspace workspace list" "rust-diary-routes.cjs rust-diary-routes Diary connector and recovery" "rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange" "rust-mcp-directory.cjs rust-mcp-directory MCP directory" "rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker" "rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools" "rust-connectors.cjs rust-connectors connectors" "rust-project-config.cjs rust-project-config project configuration" "rust-admin-users.cjs rust-admin-users account deletion" "rust-research.cjs rust-research deep research" "rust-chat-search.cjs rust-chat-search chat search" "rust-chat-export.cjs rust-chat-export chat download" "rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery" "rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck" "rust-model-assignments.cjs rust-model-assignments model assignments read" "rust-model-downloads-read.cjs rust-model-downloads-read model download GET"; do
+  read -r p_marker p_cap p_label <<<"$pair"
+  printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+  reset
+  run >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: refusing Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+  reset; touch "$work/die-front"
+  run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: matching native pair starts both processes (the other group old/old)" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+  rm "$work/server/index.cjs"
+  reset
+  run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
+  check "$p_label: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+done
+# Chat port S4: the framing suggestion pair, in both directions (its own loop, beside the list above).
+for pair in "rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
@@ -594,6 +743,30 @@ run >/dev/null 2>"$work/err"; rc=$?
 check "replacement pair refuses until previous pair is quiescent" '[ $rc -eq 2 ] && grep -q "not quiescent" "$work/err" && [ ! -s "$work/log" ]'
 rm "$work/pair-held"; wait "$pair_holder"
 
+# The chat journal tail and the mirror and brain schedules (rust-chat-mirror-v1): both sides together or neither.
+printf '%s\n' "module.exports = { RUST_CHAT_MIRROR_OWNED: 'rust-chat-mirror-v1' };" > "$work/server/rust-chat-mirror.cjs"
+printf '%s\n' "const chatMirror = require('./rust-chat-mirror.cjs');" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "a chat mirror Core beside an old front refuses before launch (the journal would go unread)" '[ $rc -eq 2 ] && grep -q "chat mirror schedule ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "a paired chat mirror Core and front start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="rust-chat-mirror-v1x $BASE_FEATURES" >/dev/null 2>"$work/err"; rc=$?
+check "a lookalike capability name is not the capability" '[ $rc -eq 2 ] && grep -q "chat mirror schedule ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "module.exports = { RUST_CHAT_MIRROR_OWNED: 'something-else' };" > "$work/server/rust-chat-mirror.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "an index.cjs that requires the module without its marker refuses before launch" '[ $rc -eq 2 ] && grep -q "invalid chat mirror ownership marker" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/rust-chat-mirror.cjs" "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "a chat mirror front beside an old Core refuses before launch (a second schedule would run)" '[ $rc -eq 2 ] && grep -q "chat mirror schedule ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "the old chat mirror pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a bridge Core needs rust-preset-baseline;
 # a rust-preset-baseline front beside an older Core is shared mode and starts.
 printf '%s\n' "const PRESET_BASELINE_BRIDGE = 'noevia-preset-baseline-bridge/1';" > "$work/server/preset-reload.cjs"
@@ -656,6 +829,19 @@ kill -TERM "$pid"; wait "$pid"; rc=$?
 stop_elapsed=$((SECONDS - stop_started))
 check "stuck front is killed and joined before Core shutdown" '[ $rc -eq 0 ] && grep -q "front stop deadline reached" "$work/err" && ! kill -0 "$front_child" 2>/dev/null && awk "/^front TERM$/ { front=1 } /^node TERM$/ { if (!front) exit 1; node=1 } END { if (!node) exit 1 }" "$work/log"'
 check "Core shutdown hooks finish inside the default Docker stop budget" '[ "$stop_elapsed" -lt 10 ] && grep -q "^node HOOKS-DONE$" "$work/log"'
+
+# Dedicated sharing moves as an independently paired runtime owner.
+printf '%s\n' "const RUST_DAV_LISTENER_OWNED='rust-dav-listener-v1'; module.exports={RUST_DAV_LISTENER_OWNED};" > "$work/server/rust-dav-listener.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "native DAV Core refuses a front without the listener" '[ $rc -eq 2 ] && grep -q "DAV listener ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-dav-listener-v1" COWORK_DAV_PORT=8031 UI_HOST=192.0.2.7 >/dev/null 2>"$work/err"; rc=$?
+check "native DAV pair retains the front bind while keeping Node loopback-only" '[ $rc -eq 3 ] && grep -q "^node UI_HOST=127.0.0.1 UI_PORT=9021 " "$work/log" && grep -q "^front UI_HOST=192.0.2.7 UI_PORT=" "$work/log"'
+rm "$work/server/rust-dav-listener.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-dav-listener-v1" >/dev/null 2>"$work/err"; rc=$?
+check "native DAV front refuses an old Core listener" '[ $rc -eq 2 ] && grep -q "DAV listener ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 
 echo "passed $passes, failed $fails"
 [ "$fails" -eq 0 ]
