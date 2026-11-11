@@ -1591,6 +1591,104 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-storage-old-pair
 check "historic project storage old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Since noevia-core b6e2238 Core loads the split through its outbox view: index.cjs requires
+# rust-index-outbox.cjs, which requires rust-project-storage.cjs. Each link must be a real require call.
+storage_mismatch='refused "project storage write ownership pairing: Core and Rust must move together"'
+cat > "$work/outbox-link.real" <<'JS'
+const indexOutbox = require('./rust-index-outbox.cjs').createIndexOutbox({ dir: 'synthetic' });
+JS
+cat > "$work/outbox-link.spelled" <<'JS'
+// const indexOutbox = require('./rust-index-outbox.cjs').createIndexOutbox({ dir: 'synthetic' });
+/* require('./rust-index-outbox.cjs') */
+const note = "require('./rust-index-outbox.cjs')", tmpl = `require('./rust-index-outbox.cjs')`;
+const viaProperty = loader.require('./rust-index-outbox.cjs');
+JS
+cat > "$work/outbox-body.real" <<'JS'
+'use strict';
+const { CORE_KINDS } = require('./rust-project-storage.cjs');
+function kindSql(kinds) {
+  if (!kinds.every((k) => /^[a-z]+$/.test(k))) throw new Error('outbox kinds must be lower-case identifiers');
+  return `kind IN (${kinds.map((k) => `'${k}'`).join(', ')})`;
+}
+module.exports = { createIndexOutbox: () => ({ where: kindSql(CORE_KINDS) }) };
+JS
+cat > "$work/outbox-body.spelled" <<'JS'
+'use strict';
+// const { CORE_KINDS } = require('./rust-project-storage.cjs');
+/* require('./rust-project-storage.cjs') */
+const note = "require('./rust-project-storage.cjs')", tmpl = `${"require('./rust-project-storage.cjs')"}`;
+const viaProperty = loader.require('./rust-project-storage.cjs');
+const dynamic = require(`./rust-project-${'storage'}.cjs`);
+module.exports = { createIndexOutbox: () => ({}) };
+JS
+cat > "$work/outbox-body.escaped" <<'JS'
+// node reads both literals as './rust-project-storage.cjs', so each is a real require of the split.
+const { CORE_KINDS } = require('./rust\x2dproject-storage.cjs');
+const again = require(`./rust-project-storage.cjs`);
+module.exports = { createIndexOutbox: () => ({ CORE_KINDS, again }) };
+JS
+cat > "$work/outbox-body.unterminated" <<'JS'
+const { CORE_KINDS } = require('./rust-project-storage.cjs');
+const broken = 'never closed
+JS
+# storage_chain <index link fixture|none> <outbox body fixture|none> <front FEATURES addition>
+storage_chain() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  [ "$1" = none ] || cat "$work/outbox-link.$1" >> "$w/server/index.cjs"
+  rm -f "$w/server/rust-index-outbox.cjs"
+  [ "$2" = none ] || cp "$work/outbox-body.$2" "$w/server/rust-index-outbox.cjs"
+  sed "s/\"start-id\"/\"start-id\", \"rust-project-lifecycle\"$3/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+}
+node -e 'const fs = require("node:fs"), vm = require("node:vm");
+  for (const f of process.argv.slice(1)) new vm.Script(fs.readFileSync(f, "utf8"), { filename: f });' \
+  "$work/outbox-link.real" "$work/outbox-link.spelled" "$work/outbox-body.real" "$work/outbox-body.spelled" "$work/outbox-body.escaped" 2>/dev/null; node_rc=$?
+check "storage chain fixtures are valid JavaScript (only the unterminated one is not)" '[ $node_rc -eq 0 ]'
+storage_chain real real ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-pair
+check "a Core split loaded through the outbox view pairs with the native storage capability" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real real ''
+project_lifecycle_try project-storage-chain-core-only
+check "a chained Core split without the native storage capability is refused" "$storage_mismatch"
+storage_chain spelled real ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link1-spelled
+check "chain broken at index.cjs (outbox require only in a comment, string, template or property) is refused" "$storage_mismatch"
+storage_chain none real ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link1-unloaded
+check "chain broken at index.cjs (an outbox file index.cjs does not load) is refused" "$storage_mismatch"
+storage_chain none real ''
+project_lifecycle_try project-storage-chain-unloaded-old
+check "a storage require in an outbox file index.cjs does not load is not Core's split (old/old assembles)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real spelled ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link2-spelled
+check "chain broken at the outbox (storage require only in a comment, string, template, substitution or property) is refused" "$storage_mismatch"
+storage_chain real escaped ''
+project_lifecycle_try project-storage-chain-escaped-old-front
+check "an escaped or template-literal storage require is still Core's split (an old front is refused)" "$storage_mismatch"
+storage_chain real escaped ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-escaped-pair
+check "an escaped or template-literal storage require pairs with the native capability" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real none ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link2-missing
+check "chain broken at the outbox (index.cjs requires a missing outbox file) is refused" "$storage_mismatch"
+storage_chain real spelled ''
+project_lifecycle_try project-storage-chain-link2-old
+check "an outbox view without the storage require is an old Core (old/old assembles)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real unterminated ''
+project_lifecycle_try project-storage-chain-unreadable
+check "an outbox view that cannot be tokenized refuses instead of reading as absent" 'refused "project storage write ownership pairing: Core wiring could not be read"'
+storage_chain spelled none ''
+printf '%s\n' "// kinds: require('./rust-project-storage.cjs').CORE_KINDS," "const s = \"require('./rust-project-storage.cjs')\";" >> "$w/server/index.cjs"
+sed "s/\"start-id\"/\"start-id\", \"rust-project-lifecycle\", \"rust-project-storage\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-storage-direct-spelled
+check "a direct storage require only in a comment or string is not Core's split" "$storage_mismatch"
+storage_chain real real ', "rust-project-storage"'
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," >> "$w/server/index.cjs"
+project_lifecycle_try project-storage-direct-and-chain
+check "the direct require and the chain together still pair" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-index-outbox.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-project-storage.cjs"
 # Project file delete owner release matrix (sbstndalton/noevia#2191 round 3): DELETE
 # /api/projects/{id}/files only, on top of the create/delete and storage pairs.
@@ -2483,6 +2581,61 @@ printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/down
 printf "%s\n" "    if (p === '/api/models/downloads') {" > "$w/server/routes/models.cjs"
 mdr_try mdr-old-branch
 check "paired download read rejects legacy GET handler" 'refused "Core must retain only the legacy methods"'
+# Since noevia-core 9919523 the non-GET methods may instead be residuals that rust-residual-fallbacks.cjs
+# refuses (paired with the front's rust-residual-fallbacks-v1 by the residual fallback pairing).
+cat > "$work/mdr-residual.cjs" <<'JS'
+'use strict';
+const RUST_RESIDUAL_FALLBACKS_OWNED = 'rust-residual-fallbacks-v1';
+function owned(method, p) {
+  if (p === '/api/models/downloads') return method !== 'GET';
+  return p.startsWith('/api/models/synthetic-');
+}
+function refuseOwned(req, res, { parseRequestUrl, json }) {
+  const p = parseRequestUrl(req)?.pathname;
+  if (!p || !owned(req.method, p)) return false;
+  json(res, 503, { error: 'synthetic residual refusal' });
+  return true;
+}
+module.exports = { RUST_RESIDUAL_FALLBACKS_OWNED, owned, refuseOwned };
+JS
+sed "s|  if (p === '/api/models/downloads') return method !== 'GET';|  if (p === '/api/models/downloads') return false;|" "$work/mdr-residual.cjs" > "$work/mdr-residual-keeps.cjs"
+sed "s|  if (p === '/api/models/downloads') return method !== 'GET';|  if (p === '/api/models/downloads') return true;|" "$work/mdr-residual.cjs" > "$work/mdr-residual-get.cjs"
+check "residual download fixtures differ only in what they refuse" \
+  '! cmp -s "$work/mdr-residual.cjs" "$work/mdr-residual-keeps.cjs" && ! cmp -s "$work/mdr-residual.cjs" "$work/mdr-residual-get.cjs"'
+mdr_mount="if (require('./rust-residual-fallbacks.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"
+mdr_no_handler="    // /api/models/downloads non-GET residuals are refused at the front ownership boundary."
+# mdr_residual <residual module|none> <index.cjs mount line> <routes/models.cjs line>
+mdr_residual() {
+  if [ "$1" = none ]; then rm -f "$w/server/rust-residual-fallbacks.cjs"; else cp "$1" "$w/server/rust-residual-fallbacks.cjs"; fi
+  cp "$work/mdr-index.saved" "$w/server/index.cjs"; printf '%s\n' "$2" >> "$w/server/index.cjs"
+  printf '%s\n' "$3" > "$w/server/routes/models.cjs"
+}
+mdr_legacy='refused "model downloads read ownership pairing: Core must retain only the legacy methods"'
+sed 's/"start-id"/"start-id", "rust-model-downloads-read", "rust-residual-fallbacks-v1"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mdr_residual "$work/mdr-residual.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-pair
+check "download GET pair with residual non-GET methods (Core 9919523) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mdr_residual "$work/mdr-residual.cjs" "// $mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-unmounted
+check "a residual boundary index.cjs only mentions in a comment does not replace the legacy methods" "$mdr_legacy"
+mdr_residual none "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-missing
+check "a residual boundary index.cjs requires but Core lacks does not replace the legacy methods" "$mdr_legacy"
+mdr_residual "$work/mdr-residual-keeps.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-keeps-downloads
+check "a residual boundary that lets non-GET downloads through does not replace the legacy methods" "$mdr_legacy"
+mdr_residual "$work/mdr-residual-get.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-refuses-get
+check "a residual boundary that also refuses the GET does not replace the legacy methods" "$mdr_legacy"
+mdr_residual "$work/mdr-residual.cjs" "$mdr_mount" "    if (p === '/api/models/downloads') {"
+mdr_try mdr-residual-node-handler
+check "a residual boundary beside a Node downloads handler is refused" "$mdr_legacy"
+sed 's/"start-id"/"start-id", "rust-model-downloads-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mdr_residual "$work/mdr-residual.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-old-front
+check "residual download methods still need the front's residual capability" 'refused "residual fallback pairing: Core and Rust must move together"'
+rm -f "$w/server/rust-residual-fallbacks.cjs"
+printf "%s\n" "    if (p === '/api/models/downloads') {" > "$w/server/routes/models.cjs"
 cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 mdr_try mdr-old-rust-row
