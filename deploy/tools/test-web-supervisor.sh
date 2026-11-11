@@ -743,6 +743,30 @@ run >/dev/null 2>"$work/err"; rc=$?
 check "replacement pair refuses until previous pair is quiescent" '[ $rc -eq 2 ] && grep -q "not quiescent" "$work/err" && [ ! -s "$work/log" ]'
 rm "$work/pair-held"; wait "$pair_holder"
 
+# The chat journal tail and the mirror and brain schedules (rust-chat-mirror-v1): both sides together or neither.
+printf '%s\n' "module.exports = { RUST_CHAT_MIRROR_OWNED: 'rust-chat-mirror-v1' };" > "$work/server/rust-chat-mirror.cjs"
+printf '%s\n' "const chatMirror = require('./rust-chat-mirror.cjs');" > "$work/server/index.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "a chat mirror Core beside an old front refuses before launch (the journal would go unread)" '[ $rc -eq 2 ] && grep -q "chat mirror schedule ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "a paired chat mirror Core and front start both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run STUB_FEATURES="rust-chat-mirror-v1x $BASE_FEATURES" >/dev/null 2>"$work/err"; rc=$?
+check "a lookalike capability name is not the capability" '[ $rc -eq 2 ] && grep -q "chat mirror schedule ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "module.exports = { RUST_CHAT_MIRROR_OWNED: 'something-else' };" > "$work/server/rust-chat-mirror.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "an index.cjs that requires the module without its marker refuses before launch" '[ $rc -eq 2 ] && grep -q "invalid chat mirror ownership marker" "$work/err" && [ ! -s "$work/log" ]'
+rm "$work/server/rust-chat-mirror.cjs" "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-chat-mirror-v1" >/dev/null 2>"$work/err"; rc=$?
+check "a chat mirror front beside an old Core refuses before launch (a second schedule would run)" '[ $rc -eq 2 ] && grep -q "chat mirror schedule ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "the old chat mirror pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a bridge Core needs rust-preset-baseline;
 # a rust-preset-baseline front beside an older Core is shared mode and starts.
 printf '%s\n' "const PRESET_BASELINE_BRIDGE = 'noevia-preset-baseline-bridge/1';" > "$work/server/preset-reload.cjs"

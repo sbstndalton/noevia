@@ -378,6 +378,23 @@ if [ "$embedding_core_owner" = rust ] && ! grep -qx 'rust-embedding-background-v
   exit 2
 fi
 
+# The chat journal tail and the mirror and brain schedules (rust-chat-mirror-v1): the front reads each active
+# account's change journal in process and owns the debounce, backoff, idle timers and queue; the core keeps only
+# their two work executors (server/rust-chat-mirror.cjs) and nudges the front. A core that leaves the schedule to
+# the front beside a front without it would leave the journal unread; a front with it beside a core that still
+# tails the journal would run a second schedule. Either mix is refused before any process starts.
+chat_mirror_core_owner="$(node -e "try { const m = require('./server/rust-chat-mirror.cjs'); if (m.RUST_CHAT_MIRROR_OWNED === 'rust-chat-mirror-v1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if grep -qF "require('./rust-chat-mirror.cjs')" "$PWD/server/index.cjs" 2>/dev/null && [ "$chat_mirror_core_owner" != rust ]; then
+  echo "web-supervisor: invalid chat mirror ownership marker" >&2
+  exit 2
+fi
+chat_mirror_front_owner=""
+grep -qx 'rust-chat-mirror-v1' <<<"$rust_features" && chat_mirror_front_owner=rust
+if [ "$chat_mirror_core_owner" != "$chat_mirror_front_owner" ]; then
+  echo "web-supervisor: chat mirror schedule ownership mismatch between noevia-server and noevia-core (rust-chat-mirror-v1); update the paired image" >&2
+  exit 2
+fi
+
 # The source migration runs before the native project store serves. Reject either
 # half-pair before launching processes so an older process cannot race the sweep.
 source_startup_core=none
