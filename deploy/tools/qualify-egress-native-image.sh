@@ -13,6 +13,12 @@ core_ref=$(sed -n 's/^NOEVIA_CORE_REF=//p' "$root/release/versions.lock")
 [[ $rs_ref =~ ^[0-9a-f]{40}$ && $core_ref =~ ^[0-9a-f]{40}$ ]] || { echo 'release lock has no exact Rust and Core refs' >&2; exit 2; }
 [[ $(git -C "$rs" rev-parse HEAD) == "$rs_ref" && -z $(git -C "$rs" status --porcelain) ]] || { echo 'reviewed Rust checkout mismatch' >&2; exit 2; }
 [[ $(git -C "$core" rev-parse HEAD) == "$core_ref" && -z $(git -C "$core" status --porcelain) ]] || { echo 'reviewed Core checkout mismatch' >&2; exit 2; }
+# The issuer that drives the native image is the reviewed Core's frozen oracle (row V, noevia-core
+# 09a2710), tracked at that exact commit; the production glue beside it must be the fail-closed client.
+for f in tests/reference/code-egress-control.cjs tests/reference/code-egress.cjs server/code-egress.cjs server/code-egress-client.cjs; do
+  git -C "$core" ls-files --error-unmatch -- "$f" >/dev/null 2>&1 || { echo "reviewed Core lacks tracked $f" >&2; exit 2; }
+done
+grep -qF 'FROZEN ORACLE' "$core/tests/reference/code-egress-control.cjs" || { echo 'reviewed Core control oracle is not the frozen one' >&2; exit 2; }
 work=$(mktemp -d)
 name="noevia-egress-${work##*/}"
 name=${name,,}
@@ -49,7 +55,7 @@ service.pop('build'); service['image'] = image
 config = {'services': {'egress-rs': service}, 'networks': {'code': {'name': name + '-code', 'internal': True}, 'default': {'name': name + '-default'}}}
 (work / 'native.json').write_text(json.dumps(config))
 web = json.loads((work / 'profile.json').read_text())['services']['web']['environment']
-(work / 'client.env').write_text('\n'.join(k + '=' + str(v) for k, v in web.items() if k.startswith('CODE_EGRESS_')) + '\nNOEVIA_EGRESS_CORE_SERVER=/reviewed-core/server\n')
+(work / 'client.env').write_text('\n'.join(k + '=' + str(v) for k, v in web.items() if k.startswith('CODE_EGRESS_')) + '\nNOEVIA_EGRESS_CORE_ROOT=/reviewed-core\n')
 PY
 # Select the same Node runtime family as build/web.Dockerfile; no model or live web runtime.
 docker pull node:22-bookworm
