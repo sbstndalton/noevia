@@ -5469,6 +5469,7 @@ PATH="$work/bin:$PATH" bash "$repo/deploy/tools/assemble-release.sh" "$ssha" "$f
 check "failing final tar exits non-zero" '[ $rc -ne 0 ]'
 check "failing final tar leaves no .partial and no tarball" '[ -z "$(ls -A "$fout")" ]'
 
+check "native media ownership adversarial pairings" 'node "$here/test-media-pairing.cjs"'
 check "inference machines pairing adversarial cases" 'bash "$here/test-machines-pairing.sh"'
 
 echo "passed $passes, failed $fails"
