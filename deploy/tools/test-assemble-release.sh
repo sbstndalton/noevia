@@ -1617,6 +1617,7 @@ cat > "$work/outbox-body.spelled" <<'JS'
 // const { CORE_KINDS } = require('./rust-project-storage.cjs');
 /* require('./rust-project-storage.cjs') */
 const note = "require('./rust-project-storage.cjs')", tmpl = `${"require('./rust-project-storage.cjs')"}`;
+const loader = { require: () => ({}) };
 const viaProperty = loader.require('./rust-project-storage.cjs');
 const dynamic = require(`./rust-project-${'storage'}.cjs`);
 module.exports = { createIndexOutbox: () => ({}) };
@@ -1644,6 +1645,14 @@ node -e 'const fs = require("node:fs"), vm = require("node:vm");
   for (const f of process.argv.slice(1)) new vm.Script(fs.readFileSync(f, "utf8"), { filename: f });' \
   "$work/outbox-link.real" "$work/outbox-link.spelled" "$work/outbox-body.real" "$work/outbox-body.spelled" "$work/outbox-body.escaped" 2>/dev/null; node_rc=$?
 check "storage chain fixtures are valid JavaScript (only the unterminated one is not)" '[ $node_rc -eq 0 ]'
+# Outbox pairing guards evaluate rust-index-outbox.cjs (every require stubbed), so its fixtures must run.
+node -e 'const fs = require("node:fs"), vm = require("node:vm");
+  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });
+  for (const f of process.argv.slice(1)) {
+    const module = { exports: {} };
+    vm.runInNewContext("(function (require, module, exports) {" + fs.readFileSync(f, "utf8") + "\n})", {})(() => stub, module, module.exports);
+  }' "$work/outbox-body.real" "$work/outbox-body.spelled" "$work/outbox-body.escaped" 2>/dev/null; node_rc=$?
+check "storage chain outbox fixtures evaluate with stubbed requires" '[ $node_rc -eq 0 ]'
 storage_chain real real ', "rust-project-storage"'
 project_lifecycle_try project-storage-chain-pair
 check "a Core split loaded through the outbox view pairs with the native storage capability" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
