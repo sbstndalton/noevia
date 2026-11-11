@@ -8,6 +8,8 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-pair-'));
 const marker = 'rust-media-background-v1';
 const core = `module.exports.RUST_MEDIA_BACKGROUND_OWNED = '${marker}';`;
 const rust = `pub const FEATURES: &[&str] = &["${marker}"];`;
+// sbstndalton/noevia e4f49a36: the compiled source store lists its marker constant by path.
+const storePath = 'server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER';
 const cases = [
   ['paired', core, rust, true], ['legacy', '', 'pub const FEATURES: &[&str] = &[];', true],
   ['core half', core, '', false], ['rust half', '', rust, false],
@@ -15,6 +17,10 @@ const cases = [
   ['nonstring export', 'module.exports.RUST_MEDIA_BACKGROUND_OWNED = 1;', rust, false],
   ['comment only', '', `// "${marker}"\npub const FEATURES: &[&str] = &[];`, true],
   ['mixed literal and alias duplicate', core, `const DUP: &str = "${marker}"; pub const FEATURES: &[&str] = &["${marker}", DUP];`, false],
+  ['mixed literal and escaped alias duplicate', core, `const DUP: &str = "rust-media-background-v\\x31"; pub const FEATURES: &[&str] = &["${marker}", DUP];`, false],
+  ['unrelated plain path beside the marker (source-store generation)', core, `pub const FEATURES: &[&str] = &["${marker}", ${storePath}];`, true],
+  ['unrelated plain path without the marker is legacy', '', `pub const FEATURES: &[&str] = &["start-id", ${storePath}];`, true],
+  ['unrelated plain path cannot pair a Core half', core, `pub const FEATURES: &[&str] = &["start-id", ${storePath}];`, false],
   ['constant alias cannot hide ownership', '', `const HIDDEN: &str = "${marker}"; pub const FEATURES: &[&str] = &[HIDDEN];`, false],
   ['gated element', core, `pub const FEATURES: &[&str] = &[#[cfg(any())] "${marker}"];`, false],
   ['gated declaration', core, `#[cfg(any())]\n${rust}`, false],
@@ -46,7 +52,9 @@ try {
   const outboxCases = [
     ['paired outbox', `pub const FEATURES: &[&str] = &["${om}"];`, true],
     ['outbox mixed literal and alias duplicate', `const DUP: &str = "${om}"; pub const FEATURES: &[&str] = &["${om}", DUP];`, false],
-    ['outbox named path cannot hide a different authority', `const OTHER: &str = "unrelated"; pub const FEATURES: &[&str] = &["${om}", OTHER];`, false],
+    ['outbox named path cannot hide a different authority', `const OTHER: &str = "rust-index-outbox-v2"; pub const FEATURES: &[&str] = &["${om}", OTHER];`, false],
+    ['outbox unrelated plain path (source-store generation) still pairs', `pub const FEATURES: &[&str] = &["${om}", ${storePath}];`, true],
+    ['outbox unrelated plain path cannot pair a Core half', `pub const FEATURES: &[&str] = &["start-id", ${storePath}];`, false],
   ];
   for (const [name, r, pass] of outboxCases) {
     fs.writeFileSync(rf, r);

@@ -524,7 +524,7 @@ core_source_client() {
 }
 rs_source_store() {
   move_capability "$tree/rs/crates/server-projects/src/source_jobs.rs" SOURCE_JOBS_STORE_MARKER noevia-source-jobs-store/1 rust || return 1
-  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES noevia-source-jobs-store/1 features || return 1
+  move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER feature_ref || return 1
   grep -qxF 'pub mod source_jobs;' "$tree/rs/crates/server-projects/src/lib.rs" || return 1
   grep -qF 'use server_projects::source_jobs as jobs;' "$tree/rs/bins/noevia-server/src/project_store.rs" || return 1
   local route
@@ -3978,7 +3978,7 @@ fi
 # End of inference machines pairing.
 
 # Index outbox and native media pairing run last, after source startup and DAV: their strict
-# whole-FEATURES readers refuse any nonliteral element, so they must not pre-empt another guard's
+# whole-FEATURES readers refuse any malformed element, so they must not pre-empt another guard's
 # own refusal of its marker. Keep the source-indexing dependency paired as well as media ownership.
 outbox_core_version() {
   [ -f "$1" ] || { echo none; return; }
@@ -4006,9 +4006,11 @@ outbox_core_version() {
 }
 # Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
 # literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
-# optional attributes followed by one ordinary string literal; aliases, macros, expressions,
-# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
-# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. A plain path counts only while the file spells no marker text outside
+# the FEATURES entries: a constant that could alias or duplicate the marker makes any path invalid.
+# An outbox entry must be an unconditional ordinary literal. Duplicate, several, malformed or unknown
+# outbox entries are invalid; no FEATURES array or no entry is absence.
 outbox_rs_version() {
   [ -f "$1" ] || { echo none; return; }
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
@@ -4107,6 +4109,8 @@ outbox_rs_version() {
     }
     if (!closed) out("invalid");
     elements.push(cur);
+    const listed = new Set(elements.flatMap(e => [...e.matchAll(/\u0000(\d+)\u0000/g)].map(m => +m[1])));
+    const aliasable = strs.some((t, idx) => !listed.has(idx) && t.v.includes("rust-index-outbox"));
     const outbox = [];
     for (let k = 0; k < elements.length; k++) {
       let rest = elements[k].trim(), gated = false;
@@ -4130,6 +4134,9 @@ outbox_rs_version() {
         if (gated || !strs[+lit[1]].v.includes("rust-index-outbox")) out("invalid");
         outbox.push(strs[+lit[1]].v); continue;
       }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element nor,
+      // outside the FEATURES entries, anywhere in the file (then it could alias or duplicate the marker).
+      if (!marked && !aliasable && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
       out("invalid");
     }
     if (!outbox.length) out(strs.some(s => s.v.includes("rust-index-outbox-v")) ? "invalid" : "none");
@@ -4172,9 +4179,11 @@ media_core_version() {
 }
 # Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
 # literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
-# optional attributes followed by one ordinary string literal; aliases, macros, expressions,
-# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
-# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. A plain path counts only while the file spells no marker text outside
+# the FEATURES entries: a constant that could alias or duplicate the marker makes any path invalid.
+# An outbox entry must be an unconditional ordinary literal. Duplicate, several, malformed or unknown
+# outbox entries are invalid; no FEATURES array or no entry is absence.
 media_rs_version() {
   [ -f "$1" ] || { echo none; return; }
   command -v node >/dev/null 2>&1 || { echo invalid; return; }
@@ -4273,6 +4282,8 @@ media_rs_version() {
     }
     if (!closed) out("invalid");
     elements.push(cur);
+    const listed = new Set(elements.flatMap(e => [...e.matchAll(/\u0000(\d+)\u0000/g)].map(m => +m[1])));
+    const aliasable = strs.some((t, idx) => !listed.has(idx) && t.v.includes("rust-media-background-v"));
     const outbox = []; // lease authority entries
     for (let k = 0; k < elements.length; k++) {
       let rest = elements[k].trim(), gated = false;
@@ -4296,6 +4307,9 @@ media_rs_version() {
         if (gated || !strs[+lit[1]].v.includes("rust-media-background-v")) out("invalid");
         outbox.push(strs[+lit[1]].v); continue;
       }
+      // A plain path (a named constant) is allowed only when no media text appears in the element nor,
+      // outside the FEATURES entries, anywhere in the file (then it could alias or duplicate the marker).
+      if (!marked && !aliasable && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
       out("invalid");
     }
     if (!outbox.length) out(strs.some(s => s.v.includes("rust-media-background-v")) ? "invalid" : "none");

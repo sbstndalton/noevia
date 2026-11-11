@@ -6,7 +6,7 @@ here="$(cd -- "$(dirname -- "$0")" && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/assemble-release-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 fails=0; passes=0
-check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; [ ! -f "$work/err" ] || sed -n "1,8p" "$work/err" >&2; fi; }
+check() { if eval "$2"; then passes=$((passes+1)); echo "ok - $1"; else fails=$((fails+1)); echo "FAIL - $1"; fi; }
 g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
@@ -1053,7 +1053,7 @@ check "source pairing is checked even without Rust public routes.toml" 'refused 
 mkdir -p "$rz/crates/server-projects/src"
 echo 'pub const SOURCE_JOBS_STORE_MARKER: &str = "noevia-source-jobs-store/1";' > "$rz/crates/server-projects/src/source_jobs.rs"
 echo 'pub mod source_jobs;' > "$rz/crates/server-projects/src/lib.rs"
-printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", "noevia-source-jobs-store/1"];' > "$rz/bins/noevia-server/src/lib.rs"
+printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];' > "$rz/bins/noevia-server/src/lib.rs"
 {
   echo 'use server_projects::source_jobs as jobs;'
   for op in recover start abandon progress finish read; do
@@ -1062,11 +1062,6 @@ printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", "noevia-source-jobs-s
 } > "$rz/bins/noevia-server/src/project_store.rs"
 source_try source-matched
 check "matching exported source client and compiled Rust store assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
-cp "$rz/bins/noevia-server/src/lib.rs" "$work/source-literal-features.saved"
-printf '%s\n' 'pub const FEATURES: &[&str] = &["start-id", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];' > "$rz/bins/noevia-server/src/lib.rs"
-source_try source-alias-capability
-check "a source-store alias cannot bypass the literal capability proof" 'refused "source job store pairing"'
-cp "$work/source-literal-features.saved" "$rz/bins/noevia-server/src/lib.rs"
 cp "$w/server/project-store-client.cjs" "$work/source-client.saved"
 printf '%s\n' 'function sourceJobsFor(user) { return { user }; }' 'module.exports = { sourceJobsFor };' > "$w/server/project-store-client.cjs"
 source_try source-stripped-core-marker
