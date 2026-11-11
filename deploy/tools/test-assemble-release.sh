@@ -1591,6 +1591,104 @@ cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try project-storage-old-pair
 check "historic project storage old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Since noevia-core b6e2238 Core loads the split through its outbox view: index.cjs requires
+# rust-index-outbox.cjs, which requires rust-project-storage.cjs. Each link must be a real require call.
+storage_mismatch='refused "project storage write ownership pairing: Core and Rust must move together"'
+cat > "$work/outbox-link.real" <<'JS'
+const indexOutbox = require('./rust-index-outbox.cjs').createIndexOutbox({ dir: 'synthetic' });
+JS
+cat > "$work/outbox-link.spelled" <<'JS'
+// const indexOutbox = require('./rust-index-outbox.cjs').createIndexOutbox({ dir: 'synthetic' });
+/* require('./rust-index-outbox.cjs') */
+const note = "require('./rust-index-outbox.cjs')", tmpl = `require('./rust-index-outbox.cjs')`;
+const viaProperty = loader.require('./rust-index-outbox.cjs');
+JS
+cat > "$work/outbox-body.real" <<'JS'
+'use strict';
+const { CORE_KINDS } = require('./rust-project-storage.cjs');
+function kindSql(kinds) {
+  if (!kinds.every((k) => /^[a-z]+$/.test(k))) throw new Error('outbox kinds must be lower-case identifiers');
+  return `kind IN (${kinds.map((k) => `'${k}'`).join(', ')})`;
+}
+module.exports = { createIndexOutbox: () => ({ where: kindSql(CORE_KINDS) }) };
+JS
+cat > "$work/outbox-body.spelled" <<'JS'
+'use strict';
+// const { CORE_KINDS } = require('./rust-project-storage.cjs');
+/* require('./rust-project-storage.cjs') */
+const note = "require('./rust-project-storage.cjs')", tmpl = `${"require('./rust-project-storage.cjs')"}`;
+const viaProperty = loader.require('./rust-project-storage.cjs');
+const dynamic = require(`./rust-project-${'storage'}.cjs`);
+module.exports = { createIndexOutbox: () => ({}) };
+JS
+cat > "$work/outbox-body.escaped" <<'JS'
+// node reads both literals as './rust-project-storage.cjs', so each is a real require of the split.
+const { CORE_KINDS } = require('./rust\x2dproject-storage.cjs');
+const again = require(`./rust-project-storage.cjs`);
+module.exports = { createIndexOutbox: () => ({ CORE_KINDS, again }) };
+JS
+cat > "$work/outbox-body.unterminated" <<'JS'
+const { CORE_KINDS } = require('./rust-project-storage.cjs');
+const broken = 'never closed
+JS
+# storage_chain <index link fixture|none> <outbox body fixture|none> <front FEATURES addition>
+storage_chain() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+  [ "$1" = none ] || cat "$work/outbox-link.$1" >> "$w/server/index.cjs"
+  rm -f "$w/server/rust-index-outbox.cjs"
+  [ "$2" = none ] || cp "$work/outbox-body.$2" "$w/server/rust-index-outbox.cjs"
+  sed "s/\"start-id\"/\"start-id\", \"rust-project-lifecycle\"$3/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+}
+node -e 'const fs = require("node:fs"), vm = require("node:vm");
+  for (const f of process.argv.slice(1)) new vm.Script(fs.readFileSync(f, "utf8"), { filename: f });' \
+  "$work/outbox-link.real" "$work/outbox-link.spelled" "$work/outbox-body.real" "$work/outbox-body.spelled" "$work/outbox-body.escaped" 2>/dev/null; node_rc=$?
+check "storage chain fixtures are valid JavaScript (only the unterminated one is not)" '[ $node_rc -eq 0 ]'
+storage_chain real real ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-pair
+check "a Core split loaded through the outbox view pairs with the native storage capability" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real real ''
+project_lifecycle_try project-storage-chain-core-only
+check "a chained Core split without the native storage capability is refused" "$storage_mismatch"
+storage_chain spelled real ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link1-spelled
+check "chain broken at index.cjs (outbox require only in a comment, string, template or property) is refused" "$storage_mismatch"
+storage_chain none real ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link1-unloaded
+check "chain broken at index.cjs (an outbox file index.cjs does not load) is refused" "$storage_mismatch"
+storage_chain none real ''
+project_lifecycle_try project-storage-chain-unloaded-old
+check "a storage require in an outbox file index.cjs does not load is not Core's split (old/old assembles)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real spelled ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link2-spelled
+check "chain broken at the outbox (storage require only in a comment, string, template, substitution or property) is refused" "$storage_mismatch"
+storage_chain real escaped ''
+project_lifecycle_try project-storage-chain-escaped-old-front
+check "an escaped or template-literal storage require is still Core's split (an old front is refused)" "$storage_mismatch"
+storage_chain real escaped ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-escaped-pair
+check "an escaped or template-literal storage require pairs with the native capability" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real none ', "rust-project-storage"'
+project_lifecycle_try project-storage-chain-link2-missing
+check "chain broken at the outbox (index.cjs requires a missing outbox file) is refused" "$storage_mismatch"
+storage_chain real spelled ''
+project_lifecycle_try project-storage-chain-link2-old
+check "an outbox view without the storage require is an old Core (old/old assembles)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+storage_chain real unterminated ''
+project_lifecycle_try project-storage-chain-unreadable
+check "an outbox view that cannot be tokenized refuses instead of reading as absent" 'refused "project storage write ownership pairing: Core wiring could not be read"'
+storage_chain spelled none ''
+printf '%s\n' "// kinds: require('./rust-project-storage.cjs').CORE_KINDS," "const s = \"require('./rust-project-storage.cjs')\";" >> "$w/server/index.cjs"
+sed "s/\"start-id\"/\"start-id\", \"rust-project-lifecycle\", \"rust-project-storage\"/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+project_lifecycle_try project-storage-direct-spelled
+check "a direct storage require only in a comment or string is not Core's split" "$storage_mismatch"
+storage_chain real real ', "rust-project-storage"'
+printf '%s\n' "  kinds: require('./rust-project-storage.cjs').CORE_KINDS," >> "$w/server/index.cjs"
+project_lifecycle_try project-storage-direct-and-chain
+check "the direct require and the chain together still pair" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$w/server/rust-index-outbox.cjs"
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/rust-project-storage.cjs"
 # Project file delete owner release matrix (sbstndalton/noevia#2191 round 3): DELETE
 # /api/projects/{id}/files only, on top of the create/delete and storage pairs.

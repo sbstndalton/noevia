@@ -466,6 +466,100 @@ code_has() {
   ' "$1")" || return 2
   grep -qE -e "$2" <<<"$code"
 }
+# Whether a Core module really calls require('<module>'): prints yes, no or invalid. The file is
+# tokenized (line and block comments, '...' and "..." strings, template literals with nested ${...},
+# regex literals) and only the token run  require ( <module> )  counts, with `require` not a property
+# (x.require) and <module> a literal whose value (escapes decoded, as node reads it) is the module: a
+# quoted string or a template without substitutions. A comment, a string or a template that spells
+# the call is not one. An unterminated comment, string, template or regex, an undecodable literal, a
+# missing node or a timeout is invalid (callers refuse it); a missing file is no.
+core_requires() {
+  [ -f "$1" ] || { echo no; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const raw = require("node:fs").readFileSync(process.argv[1], "utf8"), want = process.argv[2];
+    const vm = require("node:vm");
+    const s = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw, n = s.length, toks = [], stack = [];
+    const bad = () => { process.stdout.write("invalid"); process.exit(0); };
+    let i = 0;
+    if (s.startsWith("#!")) while (i < n && s[i] !== "\n") i++;
+    const kw = new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"]);
+    // A slash starts a regex after an operator, an opening bracket or a keyword; after a value it divides.
+    const regexOk = () => {
+      const t = toks[toks.length - 1];
+      if (!t) return true;
+      if (t.k === "p") return t.v !== ")" && t.v !== "]";
+      return t.k === "id" && kw.has(t.v);
+    };
+    // The value of one complete string or template literal (only a literal: the scanner delimited it).
+    const cooked = (lit) => {
+      if (!lit.includes("\\")) return lit.slice(1, -1);
+      try { const v = vm.runInNewContext(lit, {}, { timeout: 500 }); return typeof v === "string" ? v : bad(); } catch { bad(); }
+    };
+    // Template text from i (just past the backtick, or the closing brace of ${...} when first is false)
+    // to its end or the next ${. A whole template without substitutions is a string value.
+    const tmpl = (first) => {
+      const start = i - 1;
+      for (;;) {
+        if (i >= n) bad();
+        const c = s[i];
+        if (c === "\\") { i += 2; continue; }
+        if (c === "`") { i++; toks.push(first ? { k: "s", v: cooked(s.slice(start, i)) } : { k: "t" }); return; }
+        if (c === "$" && s[i + 1] === "{") { i += 2; stack.push("t"); toks.push({ k: "p", v: "(" }); return; }
+        i++;
+      }
+    };
+    while (i < n) {
+      const c = s[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === "/" && s[i + 1] === "/") { while (i < n && s[i] !== "\n") i++; continue; }
+      if (c === "/" && s[i + 1] === "*") { const e = s.indexOf("*/", i + 2); if (e < 0) bad(); i = e + 2; continue; }
+      if (c === "\x27" || c === "\"") {
+        let j = i + 1;
+        for (;; j++) {
+          if (j >= n || s[j] === "\n") bad();
+          if (s[j] === "\\") { j++; continue; }
+          if (s[j] === c) break;
+        }
+        toks.push({ k: "s", v: cooked(s.slice(i, j + 1)) }); i = j + 1; continue;
+      }
+      if (c === "`") { i++; tmpl(true); continue; }
+      if (c === "{") { stack.push("{"); toks.push({ k: "p", v: c }); i++; continue; }
+      if (c === "}") {
+        if (stack[stack.length - 1] === "t") { stack.pop(); toks.push({ k: "p", v: ")" }); i++; tmpl(false); continue; }
+        stack.pop(); toks.push({ k: "p", v: c }); i++; continue;
+      }
+      if (c === "/" && regexOk()) {
+        let j = i + 1, cls = false;
+        for (;; j++) {
+          if (j >= n || s[j] === "\n") bad();
+          const d = s[j];
+          if (d === "\\") { j++; continue; }
+          if (cls) { if (d === "]") cls = false; continue; }
+          if (d === "[") cls = true; else if (d === "/") break;
+        }
+        j++; while (j < n && /[A-Za-z]/.test(s[j])) j++;
+        toks.push({ k: "r" }); i = j; continue;
+      }
+      if (/[A-Za-z_$\u0080-\uffff]/.test(c)) {
+        let j = i + 1; while (j < n && /[\w$\u0080-\uffff]/.test(s[j])) j++;
+        toks.push({ k: "id", v: s.slice(i, j) }); i = j; continue;
+      }
+      if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(s[i + 1] || ""))) {
+        let j = i + 1; while (j < n && /[\w.]/.test(s[j])) j++;
+        toks.push({ k: "n" }); i = j; continue;
+      }
+      toks.push({ k: "p", v: c }); i++;
+    }
+    let found = false;
+    for (let k = 0; k + 3 < toks.length; k++) {
+      const a = toks[k], b = toks[k + 1], m = toks[k + 2], e = toks[k + 3], before = toks[k - 1];
+      if (a.k === "id" && a.v === "require" && !(before && before.k === "p" && before.v === ".")
+        && b.k === "p" && b.v === "(" && m.k === "s" && m.v === want && e.k === "p" && e.v === ")") found = true;
+    }
+    process.stdout.write(found ? "yes" : "no");
+  ' "$1" "$2" 2>/dev/null || echo invalid
+}
 # Slice7: exact canonical declarations + actual shorthand exports, never comment literals.
 # A transitional handler must be a named exported async chatMoveRoute in its actual route module.
 move_capability() {
@@ -737,11 +831,22 @@ if [ "$project_lifecycle_rs_owner" = rust ]; then
   [ "$project_lifecycle_routes" = "$project_lifecycle_expected" ] || die "project create/delete ownership pairing: incomplete route ownership"
 fi
 # A project's storage writes (sbstndalton/noevia#2191 round 3) move as one owner: Core's
-# rust-project-storage.cjs job-kind split (required by index.cjs) and the front's rust-project-storage
-# capability. No route moves with it; it builds on the create/delete pair, which must be Rust's too.
+# rust-project-storage.cjs job-kind split and the front's rust-project-storage capability. No route moves
+# with it; it builds on the create/delete pair, which must be Rust's too. Core loads the split either
+# straight from index.cjs or, since noevia-core b6e2238, through the read-only outbox view that index.cjs
+# loads (index.cjs requires rust-index-outbox.cjs, which requires rust-project-storage.cjs). Every link
+# is a real require call in code (core_requires): a comment or a string that spells it is not one, and
+# neither is a require in an outbox file index.cjs does not load. An unscannable link refuses.
 project_storage_core_owner=""
 project_storage_rs_owner=""
-grep -qF "require('./rust-project-storage.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && project_storage_core_owner=rust
+ps_direct="$(core_requires "$tree/core/server/index.cjs" ./rust-project-storage.cjs)"
+ps_outbox="$(core_requires "$tree/core/server/index.cjs" ./rust-index-outbox.cjs)"
+ps_chain=no
+[ "$ps_outbox" = yes ] && ps_chain="$(core_requires "$tree/core/server/rust-index-outbox.cjs" ./rust-project-storage.cjs)"
+case "$ps_direct $ps_outbox $ps_chain" in
+  *invalid*) die "project storage write ownership pairing: Core wiring could not be read" ;;
+esac
+{ [ "$ps_direct" = yes ] || [ "$ps_chain" = yes ]; } && project_storage_core_owner=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-storage features; then
   project_storage_rs_owner=rust
 fi
