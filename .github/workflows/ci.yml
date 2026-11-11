@@ -121,6 +121,8 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-dav-listener-pairing.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-chat-mirror-pairing.sh
+        if: env.RUN_JOB == 'true'
       - name: Reranker Core/Rust pairing guard
         if: env.RUN_JOB == 'true'
         env:

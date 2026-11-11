@@ -16,20 +16,22 @@ The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than mat
 
 ## Release 2406d67acad3e9261e8e12b471c10fe10107340f - 2026-11-11 (native owners: maintenance lease, code egress, workers; #2416, #2424, #2423, #2419, #2418, #2417, #2426, #2409, #2367, #2369, #2421, #2420, #2425, #2360, #2359, #2365)
 
-Pins: web 90d470d7 (unchanged), core cb2dea2d, rs d8874d7c, services 61d44d27. The cutover replaced only the web image (from 758f2eb). The egress proxy (3a34a0ed) and the Diary image (75089810) were retained.
+Pins: web 90d470d7 (unchanged), core cb2dea2d, rs d8874d7c, services 61d44d27. The previous release was 758f2eb.
 
 What changed for you: nothing you will see day to day. More of the server now runs in the native front:
 - The Rust front is the single model-maintenance lease authority (#2420). Node keeps only the chat-admission latch.
-- The code-egress issuer moved to the front. It adopts the key the previous release published, rotates it once at once, and keeps the published shape (#2421).
+- The code-egress issuer moved to the front. It adopts the previously published key, rotates it once immediately, and keeps the published shape (#2421).
 - The embedding worker, the media/figure/document backfill and the emergency budget watch run in the native worker (#2365, #2416, #2367).
 - These moved to the front as well: the change-journal and vault mirror, startup project migration, MCP discovery and status, the inference-machine registry, reranker settings, auto-roles writes and residual method/path fallbacks (#2418, #2417, #2423, #2424, #2426, #2409, #2419). The Diary tools overlay moved too (#2359, #2360).
+- Chat journal activity and the framing-suggestion edge are answered natively (#2369).
+- Release assembly shares the Rust capability checks that verify the shipped binary (#2425).
 
-Qualification: the in-image tests passed 2207/2207. The synthetic qualification passed on attempt 2 of 3. The first attempt, and the earlier runs, failed on harness faults, not product faults:
+Qualification: the in-image tests passed 2207/2207. The synthetic qualification passed on attempt 2 of 3. Every failure along the way was a harness fault, not a product fault. Attempt 1 failed because the synthetic member id was not UUID-shaped. The earlier runs and two unofficial dry runs found three more:
 - the loader stub had no benchmark progress route, so the new boot barrier of the sweep guard never lifted;
-- the synthetic member id was not UUID-shaped;
-- two waits raced the egress recovery.
+- a capability check raced the code client's reconnect after an egress restart;
+- an issuer grant raced the front's control-ready after a web restart.
 
-The rollback rehearsal passed on synthetic state. Known gap, filed as #2439: if the model loader is unreachable, or answers anything but ok at web start, chat stays paused with no log line until it answers.
+The rollback rehearsal passed on synthetic state. Known gap, filed as #2439: if the model loader is unreachable or does not answer ok at web start, chat and maintenance holds stay paused with no log line until it answers ok.
 
 ## Release 9375ce98e35abb1cef148c75835ad62b65de2448 - 2026-10-19 (native-service completion; #1318, #1071, #2027)
 
