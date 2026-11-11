@@ -14,6 +14,23 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
+## Release 2406d67acad3e9261e8e12b471c10fe10107340f - 2026-11-11 (native owners: maintenance lease, code egress, workers; #2416, #2424, #2423, #2419, #2418, #2417, #2426, #2409, #2367, #2369, #2421, #2420, #2425, #2360, #2359, #2365)
+
+Pins: web 90d470d7 (unchanged), core cb2dea2d, rs d8874d7c, services 61d44d27. The cutover replaced only the web image (from 758f2eb). The egress proxy (3a34a0ed) and the Diary image (75089810) were retained.
+
+What changed for you: nothing you will see day to day. More of the server now runs in the native front:
+- The Rust front is the single model-maintenance lease authority (#2420). Node keeps only the chat-admission latch.
+- The code-egress issuer moved to the front. It adopts the key the previous release published, rotates it once at once, and keeps the published shape (#2421).
+- The embedding worker, the media/figure/document backfill and the emergency budget watch run in the native worker (#2365, #2416, #2367).
+- These moved to the front as well: the change-journal and vault mirror, startup project migration, MCP discovery and status, the inference-machine registry, reranker settings, auto-roles writes and residual method/path fallbacks (#2418, #2417, #2423, #2424, #2426, #2409, #2419). The Diary tools overlay moved too (#2359, #2360).
+
+Qualification: the in-image tests passed 2207/2207. The synthetic qualification passed on attempt 2 of 3. The first attempt, and the earlier runs, failed on harness faults, not product faults:
+- the loader stub had no benchmark progress route, so the new boot barrier of the sweep guard never lifted;
+- the synthetic member id was not UUID-shaped;
+- two waits raced the egress recovery.
+
+The rollback rehearsal passed on synthetic state. Known gap, filed as #2439: if the model loader is unreachable, or answers anything but ok at web start, chat stays paused with no log line until it answers.
+
 ## Release 9375ce98e35abb1cef148c75835ad62b65de2448 - 2026-10-19 (native-service completion; #1318, #1071, #2027)
 
 Core 1896db0 makes role-context, streamed JSON validation, presets, and relevant tool decisions unconditionally Rust-owned, and adds the bounded Rust workspace-claim helper called by Node while the authenticated account transaction is held (#2027). Services 2545ebc retires Diary's tenant selector while keeping its restart guard and nonce cache.
