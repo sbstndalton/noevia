@@ -1638,7 +1638,38 @@ if [ "$mas_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$mas_index" || die "model assignments read ownership pairing: facts bridge needs the front captured secret"
 fi
-# Download GET moves as a pair; Core retains the tracker and every other method.
+# Download GET moves as a pair; Core retains the tracker and every other method, unless (noevia-core
+# 9919523) those other methods are residuals: index.cjs really requires rust-residual-fallbacks.cjs
+# (core_requires), its refuseOwned, run under a time limit with every require stubbed, refuses exactly
+# the non-GET methods of /api/models/downloads, and routes/models.cjs keeps no downloads handler. The
+# residual fallback pairing below then holds the front to answering them.
+mdr_residual_core() {
+  [ "$(core_requires "$tree/core/server/index.cjs" ./rust-residual-fallbacks.cjs)" = yes ] || return 1
+  local rc=0
+  code_has "$tree/core/server/routes/models.cjs" "/api/models/downloads" || rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  [ -f "$tree/core/server/rust-residual-fallbacks.cjs" ] && command -v node >/dev/null 2>&1 || return 1
+  [ "$(timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    try {
+      const r = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const refuse = module.exports.refuseOwned;" +
+        "  if (typeof refuse !== \"function\") return \"no\";" +
+        "  const p = \"/api/models/downloads\";" +
+        "  const refused = (method) => { let sent = false;" +
+        "    const answered = refuse({ method, url: p, headers: {} }, {}, { parseRequestUrl: () => new URL(p, \"http://synthetic.invalid\"), json: () => { sent = true; } });" +
+        "    return answered === true && sent ? true : answered === false && !sent ? false : null; };" +
+        "  return refused(\"GET\") === false && [\"POST\", \"PUT\", \"PATCH\", \"DELETE\"].every(m => refused(m) === true) ? \"yes\" : \"no\";" +
+        "})()", { URL }, { timeout: 2000 });
+      process.stdout.write(r === "yes" ? "yes" : "no");
+    } catch { process.stdout.write("no"); }
+  ' "$tree/core/server/rust-residual-fallbacks.cjs" 2>/dev/null)" = yes ]
+}
 mdr_core=""; mdr_rs=""
 grep -qF "require('./rust-model-downloads-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mdr_core=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-downloads-read features; then mdr_rs=rust; fi
@@ -1657,6 +1688,7 @@ if [ "$mdr_rs" = rust ]; then
   code_has "$tree/core/server/rust-model-downloads-read.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/models/downloads'[]][)][)];$" \
     || die "model downloads read ownership pairing: Core must refuse exactly this GET"
   code_has "$tree/core/server/routes/models.cjs" "^[[:space:]]*if [(]p === '/api/models/downloads' && req[.]method !== 'GET'[)] [{]$" \
+    || mdr_residual_core \
     || die "model downloads read ownership pairing: Core must retain only the legacy methods"
   [ -f "$tree/core/server/rust-model-downloads-read-facts.cjs" ] || die "model downloads read ownership pairing: missing facts bridge"
   mdr_index="$(code_lines "$tree/core/server/index.cjs")"

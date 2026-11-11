@@ -2581,6 +2581,61 @@ printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/models/down
 printf "%s\n" "    if (p === '/api/models/downloads') {" > "$w/server/routes/models.cjs"
 mdr_try mdr-old-branch
 check "paired download read rejects legacy GET handler" 'refused "Core must retain only the legacy methods"'
+# Since noevia-core 9919523 the non-GET methods may instead be residuals that rust-residual-fallbacks.cjs
+# refuses (paired with the front's rust-residual-fallbacks-v1 by the residual fallback pairing).
+cat > "$work/mdr-residual.cjs" <<'JS'
+'use strict';
+const RUST_RESIDUAL_FALLBACKS_OWNED = 'rust-residual-fallbacks-v1';
+function owned(method, p) {
+  if (p === '/api/models/downloads') return method !== 'GET';
+  return p.startsWith('/api/models/synthetic-');
+}
+function refuseOwned(req, res, { parseRequestUrl, json }) {
+  const p = parseRequestUrl(req)?.pathname;
+  if (!p || !owned(req.method, p)) return false;
+  json(res, 503, { error: 'synthetic residual refusal' });
+  return true;
+}
+module.exports = { RUST_RESIDUAL_FALLBACKS_OWNED, owned, refuseOwned };
+JS
+sed "s|  if (p === '/api/models/downloads') return method !== 'GET';|  if (p === '/api/models/downloads') return false;|" "$work/mdr-residual.cjs" > "$work/mdr-residual-keeps.cjs"
+sed "s|  if (p === '/api/models/downloads') return method !== 'GET';|  if (p === '/api/models/downloads') return true;|" "$work/mdr-residual.cjs" > "$work/mdr-residual-get.cjs"
+check "residual download fixtures differ only in what they refuse" \
+  '! cmp -s "$work/mdr-residual.cjs" "$work/mdr-residual-keeps.cjs" && ! cmp -s "$work/mdr-residual.cjs" "$work/mdr-residual-get.cjs"'
+mdr_mount="if (require('./rust-residual-fallbacks.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"
+mdr_no_handler="    // /api/models/downloads non-GET residuals are refused at the front ownership boundary."
+# mdr_residual <residual module|none> <index.cjs mount line> <routes/models.cjs line>
+mdr_residual() {
+  if [ "$1" = none ]; then rm -f "$w/server/rust-residual-fallbacks.cjs"; else cp "$1" "$w/server/rust-residual-fallbacks.cjs"; fi
+  cp "$work/mdr-index.saved" "$w/server/index.cjs"; printf '%s\n' "$2" >> "$w/server/index.cjs"
+  printf '%s\n' "$3" > "$w/server/routes/models.cjs"
+}
+mdr_legacy='refused "model downloads read ownership pairing: Core must retain only the legacy methods"'
+sed 's/"start-id"/"start-id", "rust-model-downloads-read", "rust-residual-fallbacks-v1"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mdr_residual "$work/mdr-residual.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-pair
+check "download GET pair with residual non-GET methods (Core 9919523) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mdr_residual "$work/mdr-residual.cjs" "// $mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-unmounted
+check "a residual boundary index.cjs only mentions in a comment does not replace the legacy methods" "$mdr_legacy"
+mdr_residual none "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-missing
+check "a residual boundary index.cjs requires but Core lacks does not replace the legacy methods" "$mdr_legacy"
+mdr_residual "$work/mdr-residual-keeps.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-keeps-downloads
+check "a residual boundary that lets non-GET downloads through does not replace the legacy methods" "$mdr_legacy"
+mdr_residual "$work/mdr-residual-get.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-refuses-get
+check "a residual boundary that also refuses the GET does not replace the legacy methods" "$mdr_legacy"
+mdr_residual "$work/mdr-residual.cjs" "$mdr_mount" "    if (p === '/api/models/downloads') {"
+mdr_try mdr-residual-node-handler
+check "a residual boundary beside a Node downloads handler is refused" "$mdr_legacy"
+sed 's/"start-id"/"start-id", "rust-model-downloads-read"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+mdr_residual "$work/mdr-residual.cjs" "$mdr_mount" "$mdr_no_handler"
+mdr_try mdr-residual-old-front
+check "residual download methods still need the front's residual capability" 'refused "residual fallback pairing: Core and Rust must move together"'
+rm -f "$w/server/rust-residual-fallbacks.cjs"
+printf "%s\n" "    if (p === '/api/models/downloads') {" > "$w/server/routes/models.cjs"
 cp "$work/feature-index.saved" "$w/server/index.cjs"
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 mdr_try mdr-old-rust-row
