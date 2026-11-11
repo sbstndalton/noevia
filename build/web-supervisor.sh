@@ -149,9 +149,21 @@ fi
 # its own job kinds (server/rust-project-storage.cjs, required by index.cjs) needs a front that runs the
 # storage sweep jobs and #687's create-time storage step itself (rust-project-storage), and such a front
 # needs that Core (an older one would run the same sweeps). Old/old images remain usable for rollback.
+# Since noevia-core b6e2238 index.cjs loads the split through the outbox view it requires
+# (server/rust-index-outbox.cjs requires rust-project-storage.cjs), so either chain counts. Each require
+# must sit on a code line of the file that loads it; release assembly proves the links strictly.
 project_storage_core_owner=""
 project_storage_front_owner=""
-grep -qF "require('./rust-project-storage.cjs')" "$PWD/server/index.cjs" 2>/dev/null && project_storage_core_owner=rust
+storage_code_requires() {
+  local code
+  code="$(grep -vE '^[[:space:]]*(//|/\*|\*)' "$1" 2>/dev/null)" || return 1
+  grep -qF "require('./$2')" <<<"$code"
+}
+if storage_code_requires "$PWD/server/index.cjs" rust-project-storage.cjs \
+  || { storage_code_requires "$PWD/server/index.cjs" rust-index-outbox.cjs \
+    && storage_code_requires "$PWD/server/rust-index-outbox.cjs" rust-project-storage.cjs; }; then
+  project_storage_core_owner=rust
+fi
 grep -qx 'rust-project-storage' <<<"$rust_features" && project_storage_front_owner=rust
 if [ "$project_storage_core_owner" != "$project_storage_front_owner" ]; then
   echo "web-supervisor: project storage write ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
@@ -283,7 +295,6 @@ rust-research.cjs rust-research deep research
 rust-task-reads.cjs rust-task-reads task read
 rust-autotune-read.cjs rust-autotune-read auto-tune status GET
 rust-idle-unload-read.cjs rust-idle-unload-read idle unload read
-rust-inference-machines.cjs rust-inference-machines inference machines
 rust-model-assignments.cjs rust-model-assignments model assignments read
 rust-model-downloads-read.cjs rust-model-downloads-read model download GET
 rust-preset-read.cjs rust-preset-read preset GET
@@ -300,6 +311,17 @@ rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence reche
 rust-model-state-reads.cjs rust-model-state-reads model state read
 rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
 PAIRS
+# Inference machines (#1638): Core's native-owner clients are marked by MACHINES_CLIENT_MARKER, exported by
+# server/rust-inference-machines.cjs (noevia-core 16e260f loads it from routes/inference-machines.cjs, never
+# from index.cjs), the marker release assembly pairs with the front's rust-inference-machines. Old/old
+# images remain usable for rollback; mixed owners do not.
+machines_core_owner="$(node -e "try { const m = require('./server/rust-inference-machines.cjs'); if (m.MACHINES_CLIENT_MARKER === 'noevia-inference-machines-client/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+machines_front_owner=""
+grep -qx 'rust-inference-machines' <<<"$rust_features" && machines_front_owner=rust
+if [ "$machines_core_owner" != "$machines_front_owner" ]; then
+  echo "web-supervisor: inference machines route ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
 # F1: compare the actual Core export with exact runtime capability entries.
 auto_roles_core_owner() {
   [ -f "$1" ] || { echo none; return; }

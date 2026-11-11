@@ -440,6 +440,32 @@ check "rust-project-storage front with old Core refuses before launch" '[ $rc -e
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "old project storage pair (old Core, old front) still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+# Since noevia-core b6e2238 index.cjs loads the split through its outbox view.
+storage_outbox_link="const indexOutbox = require('./rust-index-outbox.cjs').createIndexOutbox({});"
+storage_outbox_body="const { CORE_KINDS } = require('./rust-project-storage.cjs');"
+printf '%s\n' "$storage_outbox_link" > "$work/server/index.cjs"; printf '%s\n' "$storage_outbox_body" > "$work/server/rust-index-outbox.cjs"
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "a storage split loaded through the outbox view pairs with the native front" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "a storage split loaded through the outbox view refuses an old front" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "// $storage_outbox_body" > "$work/server/rust-index-outbox.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "an outbox view naming the split only in a comment is no split (native front refused)" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "// $storage_outbox_link" > "$work/server/index.cjs"; printf '%s\n' "$storage_outbox_body" > "$work/server/rust-index-outbox.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "an outbox view index.cjs does not load is no split (native front refused)" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "an outbox view index.cjs does not load leaves an old pair that still starts" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "  // kinds: require('./rust-project-storage.cjs').CORE_KINDS," > "$work/server/index.cjs"; rm -f "$work/server/rust-index-outbox.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-project-storage" >/dev/null 2>"$work/err"; rc=$?
+check "a direct storage require only in a comment is no split (native front refused)" '[ $rc -eq 2 ] && grep -q "project storage write ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
+rm -f "$work/server/index.cjs"
 # Project file delete ownership (sbstndalton/noevia#2191 round 3) must agree in both directions.
 printf '%s\n' "  if (require('./rust-project-files.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
 reset
@@ -585,7 +611,7 @@ check "auto-roles Core whose export never returns refuses within the bound" '[ $
 rm -f "$work/server/rust-auto-roles-write.cjs"
 # The public pages and the plugin directory (sbstndalton/noevia#2190): two pairs, each checked in
 # both directions and independently of the other (one group may roll back alone).
-for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration-routes.cjs rust-calibration-routes calibration start/read" "rust-idle-unload-read.cjs rust-idle-unload-read idle unload read" "rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read" "rust-autotune-resume.cjs rust-autotune-resume auto-tune resume" "rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation" "rust-autotune-read.cjs rust-autotune-read auto-tune status GET" "rust-tool-approvals.cjs rust-tool-approvals tool approval decision" "rust-public-pages.cjs rust-public-pages public page" "rust-task-reads.cjs rust-task-reads task read" "rust-autotune-settings.cjs rust-autotune-settings auto-tune settings" "rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation" "rust-autotune-clear.cjs rust-autotune-clear autotune dismissal" "rust-model-state-reads.cjs rust-model-state-reads model state read" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list" "rust-providers.cjs rust-providers provider registry" "rust-providers-reseal.cjs rust-providers-reseal provider key reseal" "rust-google-drive.cjs rust-google-drive Google Drive" "rust-offsite-backup.cjs rust-offsite-backup off-site backup" "rust-mcp-credentials.cjs rust-mcp-credentials MCP credential" "rust-health.cjs rust-health health check" "rust-auto-roles.cjs rust-auto-roles auto-roles read" "rust-workspace.cjs rust-workspace workspace list" "rust-diary-routes.cjs rust-diary-routes Diary connector and recovery" "rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange" "rust-mcp-directory.cjs rust-mcp-directory MCP directory" "rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker" "rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools" "rust-connectors.cjs rust-connectors connectors" "rust-project-config.cjs rust-project-config project configuration" "rust-admin-users.cjs rust-admin-users account deletion" "rust-research.cjs rust-research deep research" "rust-chat-search.cjs rust-chat-search chat search" "rust-chat-export.cjs rust-chat-export chat download" "rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery" "rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck" "rust-inference-machines.cjs rust-inference-machines inference machines" "rust-model-assignments.cjs rust-model-assignments model assignments read" "rust-model-downloads-read.cjs rust-model-downloads-read model download GET"; do
+for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration-routes.cjs rust-calibration-routes calibration start/read" "rust-idle-unload-read.cjs rust-idle-unload-read idle unload read" "rust-model-manager-scan.cjs rust-model-manager-scan model folder scan read" "rust-autotune-resume.cjs rust-autotune-resume auto-tune resume" "rust-autotune-cancel.cjs rust-autotune-cancel auto-tune cancellation" "rust-autotune-read.cjs rust-autotune-read auto-tune status GET" "rust-tool-approvals.cjs rust-tool-approvals tool approval decision" "rust-public-pages.cjs rust-public-pages public page" "rust-task-reads.cjs rust-task-reads task read" "rust-autotune-settings.cjs rust-autotune-settings auto-tune settings" "rust-calibration-cancel.cjs rust-calibration-cancel calibration cancellation" "rust-autotune-clear.cjs rust-autotune-clear autotune dismissal" "rust-model-state-reads.cjs rust-model-state-reads model state read" "rust-plugin-directory.cjs rust-plugin-directory plugin directory" "rust-decision-settings.cjs rust-decision-settings decision settings" "rust-storage-integrations.cjs rust-storage-integrations storage integration" "rust-vault-mirror-preferences.cjs rust-vault-mirror-preferences vault mirror preference" "rust-storage-connection.cjs rust-storage-connection storage connection" "rust-provider-test.cjs rust-provider-test provider test" "rust-chatgpt-oauth.cjs rust-chatgpt-oauth ChatGPT sign-in" "rust-provider-models.cjs rust-provider-models provider model list" "rust-providers.cjs rust-providers provider registry" "rust-providers-reseal.cjs rust-providers-reseal provider key reseal" "rust-google-drive.cjs rust-google-drive Google Drive" "rust-offsite-backup.cjs rust-offsite-backup off-site backup" "rust-mcp-credentials.cjs rust-mcp-credentials MCP credential" "rust-health.cjs rust-health health check" "rust-auto-roles.cjs rust-auto-roles auto-roles read" "rust-workspace.cjs rust-workspace workspace list" "rust-diary-routes.cjs rust-diary-routes Diary connector and recovery" "rust-diary-local-exchange.cjs rust-diary-local-exchange Diary local exchange" "rust-mcp-directory.cjs rust-mcp-directory MCP directory" "rust-toolbox-picker.cjs rust-toolbox-picker toolbox picker" "rust-toolboxes-permitted.cjs rust-toolboxes-permitted permitted tools" "rust-connectors.cjs rust-connectors connectors" "rust-project-config.cjs rust-project-config project configuration" "rust-admin-users.cjs rust-admin-users account deletion" "rust-research.cjs rust-research deep research" "rust-chat-search.cjs rust-chat-search chat search" "rust-chat-export.cjs rust-chat-export chat download" "rust-autotune-untuned.cjs rust-autotune-untuned untuned discovery" "rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck" "rust-model-assignments.cjs rust-model-assignments model assignments read" "rust-model-downloads-read.cjs rust-model-downloads-read model download GET"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset
@@ -599,6 +625,31 @@ for pair in "rust-preset-read.cjs rust-preset-read preset GET" "rust-calibration
   run STUB_FEATURES="$BASE_FEATURES $p_cap" >/dev/null 2>"$work/err"; rc=$?
   check "$p_label: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$p_label route ownership mismatch" "$work/err" && [ ! -s "$work/log" ]'
 done
+# Inference machines pair on Core's exported client marker, not an index.cjs require (noevia-core 16e260f).
+machines_label="inference machines route ownership mismatch"
+printf '%s\n' "const MACHINES_CLIENT_MARKER = 'noevia-inference-machines-client/1';" "module.exports = { MACHINES_CLIENT_MARKER };" > "$work/server/rust-inference-machines.cjs"
+reset
+run >/dev/null 2>"$work/err"; rc=$?
+check "inference machines: marked Core with an old front refuses before launch" '[ $rc -eq 2 ] && grep -q "$machines_label" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run STUB_FEATURES="$BASE_FEATURES rust-inference-machines" >/dev/null 2>"$work/err"; rc=$?
+check "inference machines: marked Core with the native front starts both processes" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
+printf '%s\n' "const MACHINES_CLIENT_MARKER = 'noevia-inference-machines-client/2';" "module.exports = { MACHINES_CLIENT_MARKER };" > "$work/server/rust-inference-machines.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-inference-machines" >/dev/null 2>"$work/err"; rc=$?
+check "inference machines: an unknown marker is no native Core (native front refused)" '[ $rc -eq 2 ] && grep -q "$machines_label" "$work/err" && [ ! -s "$work/log" ]'
+printf '%s\n' "// const MACHINES_CLIENT_MARKER = 'noevia-inference-machines-client/1';" "module.exports = {};" > "$work/server/rust-inference-machines.cjs"
+printf '%s\n' "  if (require('./rust-inference-machines.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-inference-machines" >/dev/null 2>"$work/err"; rc=$?
+check "inference machines: an index.cjs require without the exported marker is no native Core" '[ $rc -eq 2 ] && grep -q "$machines_label" "$work/err" && [ ! -s "$work/log" ]'
+rm -f "$work/server/rust-inference-machines.cjs" "$work/server/index.cjs"
+reset
+run STUB_FEATURES="$BASE_FEATURES rust-inference-machines" >/dev/null 2>"$work/err"; rc=$?
+check "inference machines: native front with old Core refuses before launch" '[ $rc -eq 2 ] && grep -q "$machines_label" "$work/err" && [ ! -s "$work/log" ]'
+reset; touch "$work/die-front"
+run >/dev/null 2>"$work/err"; rc=$?
+check "inference machines: old pair still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
 # Chat port S4: the framing suggestion pair, in both directions (its own loop, beside the list above).
 for pair in "rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion"; do
   read -r p_marker p_cap p_label <<<"$pair"
