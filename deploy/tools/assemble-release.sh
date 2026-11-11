@@ -1331,62 +1331,6 @@ if [ "$iur_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
 fi
-# Registry persistence and the remote measurement runner transfer together.
-machines_core_version() {
-  [ -f "$1" ] || { echo none; return; }
-  command -v node >/dev/null 2>&1 || { echo invalid; return; }
-  timeout -k 2 10 node -e '
-    const fs = require("node:fs"), vm = require("node:vm");
-    const src = fs.readFileSync(process.argv[1], "utf8");
-    const literal = /noevia-inference-machines-client\//.test(src);
-    let value;
-    try {
-      // Invocation and export access both run inside the timed evaluation.
-      value = vm.runInNewContext(
-        "(function () {" +
-        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
-        "  const module = { exports: {} };" +
-        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
-        "  const v = module.exports.MACHINES_CLIENT_MARKER;" +
-        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
-        "})()", {}, { timeout: 2000 });
-    } catch { process.stdout.write("invalid"); process.exit(0); }
-    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
-    const m = typeof value === "string" && /^noevia-inference-machines-(client)\/(1)$/.exec(value);
-    process.stdout.write(m ? "v" + m[2] : "invalid");
-  ' "$1" 2>/dev/null || echo invalid
-}
-# Root-approved source guard contract: prove the direct declared literal with the
-# maintained helper. Paths/aliases are ignored, not evaluated runtime absence proof.
-# The shipped B marker must remain a direct ordinary literal in real FEATURES.
-machines_rs_version() {
-  local result
-  result="$(rs_capability_version "$1" FEATURES rust-inference-machines)"
-  case "$result" in
-    v1) echo v1 ;;
-    legacy) echo none ;;
-    *) echo invalid ;;
-  esac
-}
-check_machines_pair() {
-  local core rs
-  core="$(machines_core_version "$1")"; rs="$(machines_rs_version "$2")"
-  [ "$core" != invalid ] && [ "$rs" != invalid ] && [ "$core" = "$rs" ]
-}
-
-check_machines_pair "$tree/core/server/rust-inference-machines.cjs" "$tree/rs/bins/noevia-server/src/lib.rs" \
-  || die "inference machines ownership pairing: Core and Rust must move together"
-if [ "$(machines_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")" = v1 ]; then
-  machines_row="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/machines" { if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1; print $1 }')" \
-    || die "inference machines ownership pairing: all methods must be native"
-  [ "$machines_row" = /api/models/machines ] || die "inference machines ownership pairing: missing route"
-  code_has "$tree/core/server/inference-machines.cjs" "native-machines-client[.]cjs" \
-    && code_has "$tree/core/server/machine-tune.cjs" "native-machines-client[.]cjs" \
-    || die "inference machines ownership pairing: missing native owner clients"
-  ! code_has "$tree/core/server/inference-machines.cjs" 'function readState|function save' \
-    && ! code_has "$tree/core/server/machine-tune.cjs" 'async function script|function save' \
-    || die "inference machines ownership pairing: obsolete Node executors remain"
-fi
 # #2238: only the assignments GET moves. Core retains its shared installed/probe owners.
 mas_core_owner=""; mas_rs_owner=""
 grep -qF "require('./rust-model-assignments.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mas_core_owner=rust
@@ -3800,6 +3744,66 @@ if [ "$dav_listener_core_owner" = v1 ]; then
     || die "DAV listener ownership pairing: supervisor comparison absent"
 fi
 # End of source startup and DAV listener pairing.
+
+# Registry persistence and the remote measurement runner transfer together.
+# Kept after every other pairing guard: the strict FEATURES reader below refuses lib.rs
+# shapes those guards' own refusals must name first.
+machines_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /noevia-inference-machines-client\//.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.MACHINES_CLIENT_MARKER;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^noevia-inference-machines-(client)\/(1)$/.exec(value);
+    process.stdout.write(m ? "v" + m[2] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Root-approved source guard contract: prove the direct declared literal with the
+# maintained helper. Paths/aliases are ignored, not evaluated runtime absence proof.
+# The shipped B marker must remain a direct ordinary literal in real FEATURES.
+machines_rs_version() {
+  local result
+  result="$(rs_capability_version "$1" FEATURES rust-inference-machines)"
+  case "$result" in
+    v1) echo v1 ;;
+    legacy) echo none ;;
+    *) echo invalid ;;
+  esac
+}
+check_machines_pair() {
+  local core rs
+  core="$(machines_core_version "$1")"; rs="$(machines_rs_version "$2")"
+  [ "$core" != invalid ] && [ "$rs" != invalid ] && [ "$core" = "$rs" ]
+}
+
+check_machines_pair "$tree/core/server/rust-inference-machines.cjs" "$tree/rs/bins/noevia-server/src/lib.rs" \
+  || die "inference machines ownership pairing: Core and Rust must move together"
+if [ "$(machines_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")" = v1 ]; then
+  machines_row="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/machines" { if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1; print $1 }')" \
+    || die "inference machines ownership pairing: all methods must be native"
+  [ "$machines_row" = /api/models/machines ] || die "inference machines ownership pairing: missing route"
+  code_has "$tree/core/server/inference-machines.cjs" "native-machines-client[.]cjs" \
+    && code_has "$tree/core/server/machine-tune.cjs" "native-machines-client[.]cjs" \
+    || die "inference machines ownership pairing: missing native owner clients"
+  ! code_has "$tree/core/server/inference-machines.cjs" 'function readState|function save' \
+    && ! code_has "$tree/core/server/machine-tune.cjs" 'async function script|function save' \
+    || die "inference machines ownership pairing: obsolete Node executors remain"
+fi
+# End of inference machines pairing.
 
 for need in web/package.json web/package-lock.json web/src web/index.html core/server/package.json core/server/index.cjs core/contracts \
             core/code-sandbox/Dockerfile services/diary/Dockerfile services/docling/Dockerfile services/laya/Dockerfile \
