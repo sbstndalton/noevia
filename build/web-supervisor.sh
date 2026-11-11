@@ -297,7 +297,47 @@ rust-autotune-settings.cjs rust-autotune-settings auto-tune settings
 rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
+rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
 PAIRS
+# F1: compare the actual Core export with exact runtime capability entries.
+auto_roles_core_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  local auto_roles_bound="timeout -k 2 10"
+  command -v timeout >/dev/null 2>&1 || { echo invalid; return; }
+  $auto_roles_bound node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_AUTO_ROLES_WRITE_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write("invalid"); process.exit(0); }
+    const markers = src.match(/["\x27]rust-auto-roles-write[^"\x27\r\n]*["\x27]/g) || [];
+    process.stdout.write(value === "rust-auto-roles-write" && markers.length === 1 ? "rust" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+auto_roles_write_owner="$(auto_roles_core_owner "$PWD/server/rust-auto-roles-write.cjs")"
+auto_roles_write_front=none
+while IFS= read -r marker; do
+  case "$marker" in
+    *rust-auto-roles-write*)
+      if [ "$marker" = rust-auto-roles-write ] && [ "$auto_roles_write_front" = none ]; then auto_roles_write_front=rust
+      else auto_roles_write_front=invalid; fi ;;
+  esac
+done <<<"$rust_features"
+if [ "$auto_roles_write_owner" = invalid ] || [ "$auto_roles_write_front" = invalid ] || [ "$auto_roles_write_owner" != "$auto_roles_write_front" ]; then
+  echo "web-supervisor: auto-roles write route ownership mismatch or ambiguous capability marker; update the paired image" >&2
+  exit 2
+fi
 # The two read-only model sizing reads (sbstndalton/noevia#2189, GET /api/models/estimate and GET
 # /api/models/preset/suggest): a Core that refuses them (server/rust-model-sizing.cjs) needs a front
 # that answers them (rust-model-sizing), and a rust-model-sizing front needs that Core. Old/old images
@@ -355,6 +395,44 @@ if [ "$chat_mirror_core_owner" != "$chat_mirror_front_owner" ]; then
   exit 2
 fi
 
+# The source migration runs before the native project store serves. Reject either
+# half-pair before launching processes so an older process cannot race the sweep.
+source_startup_core=none
+if [ -f "$PWD/server/rust-source-startup.cjs" ]; then
+  source_startup_core="$(timeout -k 2 10 node -e '
+    const fs=require("node:fs"),vm=require("node:vm");
+    try {
+      const src=fs.readFileSync(process.argv[1],"utf8");
+      const value=vm.runInNewContext("const module={exports:{}};"+src+"\nmodule.exports.RUST_SOURCE_STARTUP_OWNED",{}, {timeout:2000});
+      process.stdout.write(value === "rust-source-startup-v1" ? "v1" : "invalid");
+    } catch { process.stdout.write("invalid"); }
+  ' "$PWD/server/rust-source-startup.cjs" 2>/dev/null)" || source_startup_core=invalid
+fi
+source_startup_front=none
+grep -qx 'rust-source-startup-v1' <<<"$rust_features" && source_startup_front=v1
+if [ "$source_startup_core" = invalid ] || [ "$source_startup_core" != "$source_startup_front" ]; then
+  echo "web-supervisor: source startup ownership mismatch; update the paired image" >&2
+  exit 2
+fi
+
+dav_listener_core=none
+if [ -f "$PWD/server/rust-dav-listener.cjs" ]; then
+  dav_listener_core="$(timeout -k 2 10 node -e '
+    const fs=require("node:fs"),vm=require("node:vm");
+    try {
+      const src=fs.readFileSync(process.argv[1],"utf8");
+      const value=vm.runInNewContext("const module={exports:{}};"+src+"\nmodule.exports.RUST_DAV_LISTENER_OWNED",{}, {timeout:2000});
+      process.stdout.write(value === "rust-dav-listener-v1" ? "v1" : "invalid");
+    } catch { process.stdout.write("invalid"); }
+  ' "$PWD/server/rust-dav-listener.cjs" 2>/dev/null)" || dav_listener_core=invalid
+fi
+dav_listener_front=none
+grep -qx 'rust-dav-listener-v1' <<<"$rust_features" && dav_listener_front=v1
+if [ "$dav_listener_core" = invalid ] || [ "$dav_listener_core" != "$dav_listener_front" ]; then
+  echo "web-supervisor: DAV listener ownership mismatch; update the paired image" >&2
+  exit 2
+fi
+
 # The preset reload baseline (noevia-rs model_maint/reload.rs): a Core that asks the front for it
 # (server/preset-reload.cjs createBridgeReloadGuard, marker noevia-preset-baseline-bridge/1) needs a
 # front that holds it (rust-preset-baseline). One direction only: such a Core falls back to its own
@@ -384,6 +462,42 @@ grep -qx 'rust-web-address-write' <<<"$rust_features" && web_write_front_owner=r
 web_write_core_owner="$(node -e "try { const m = require('./server/rust-web-address.cjs'); if (m.WEB_ADDRESS_WRITE_OWNER === 'noevia-web-address-write-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
 if [ "$web_write_front_owner" != "$web_write_core_owner" ]; then
   echo "web-supervisor: web-address POST ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+# Diary backup ownership is compiled into the paired artifacts, never inherited from the environment.
+diary_backup_front_owner=""
+grep -qx 'rust-diary-backup-worker' <<<"$rust_features" && diary_backup_front_owner=rust
+diary_backup_core_owner="$(node -e "try { const m = require('./server/rust-diary.cjs'); if (m.DIARY_BACKUP_WORKER_OWNER === 'noevia-diary-backup-worker-rust/1') process.stdout.write('rust'); } catch {}" 2>/dev/null || true)"
+if [ "$diary_backup_front_owner" != "$diary_backup_core_owner" ]; then
+  echo "web-supervisor: diary backup worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
+# The inference budget watch moves with paired exported/compiled markers. Refuse mixed owners.
+# Root accepts legacy rollback ignoring leftover fences: like a legacy Node restart it loses
+# the in-memory quarantine. Old releases ignore the directory; its files never gate rollback.
+budget_watch_front_owner=""
+grep -qx 'rust-budget-watch' <<<"$rust_features" && budget_watch_front_owner=v1
+grep -qx 'rust-budget-watch-v2' <<<"$rust_features" && budget_watch_front_owner=v2
+grep -qx 'rust-budget-watch-v3' <<<"$rust_features" && budget_watch_front_owner=v3
+budget_watch_core_owner="$(node -e "try { const m = require('./server/rust-budget-watch.cjs'); if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/1') process.stdout.write('v1'); else if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/2') process.stdout.write('v2'); else if (m.BUDGET_WATCH_OWNER === 'noevia-budget-watch-rust/3') process.stdout.write('v3'); } catch {}" 2>/dev/null || true)"
+if [ "$budget_watch_front_owner" != "$budget_watch_core_owner" ]; then
+  echo "web-supervisor: budget watch ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
+  exit 2
+fi
+
+# The calibration job itself (sbstndalton/noevia#2303: its state file, boot recovery and maintenance hold) is
+# the front's when it lists the worker and Core exports CALIBRATION_WORKER_OWNER (Core then builds no public
+# calibrator and does not recover the job at boot). A mixed pair would recover one state file twice at a joint
+# restart, or never. Generation 2 (rust-calibration-worker-v2, noevia-calibration-worker-rust/2) has every load
+# the job asks for decided by Core first, so a generation pairs only with itself. Neither result comes from an
+# inherited environment.
+calibration_worker_front_owner=""
+grep -qx 'rust-calibration-worker' <<<"$rust_features" && calibration_worker_front_owner=v1
+grep -qx 'rust-calibration-worker-v2' <<<"$rust_features" && calibration_worker_front_owner=v2
+calibration_worker_core_owner="$(node -e "try { const m = require('./server/rust-calibration-routes.cjs'); if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/1') process.stdout.write('v1'); else if (m.CALIBRATION_WORKER_OWNER === 'noevia-calibration-worker-rust/2') process.stdout.write('v2'); } catch {}" 2>/dev/null || true)"
+if [ "$calibration_worker_front_owner" != "$calibration_worker_core_owner" ]; then
+  echo "web-supervisor: calibration worker ownership mismatch between noevia-server and noevia-core; update the paired image" >&2
   exit 2
 fi
 # Source job journals are a paired internal-store capability: this Node client has no local
@@ -504,12 +618,11 @@ if ! [[ "$start_id" =~ ^[0-9a-f]{32}$ ]]; then
   exit 2
 fi
 
-# Node binds UI_HOST for the UI listener AND the Diary file-sharing (DAV) listener. With DAV off
-# the legacy port is loopback-only; with DAV on, Node keeps UI_HOST so DAV stays reachable, and
-# the legacy port is then reachable from the container's networks too (never published by
-# Compose; the same exposure Node's UI port has today) until core splits the two bind hosts.
+# A native sharing pair binds DAV in the front using the original environment.
+# Only rollback pairs with the old listener need Node on UI_HOST; the native
+# pair keeps the legacy listener loopback-only even with sharing configured.
 node_host="127.0.0.1"
-if [ -n "${COWORK_DAV_PORT:-}" ] && [ "${COWORK_DAV_PORT}" != 0 ]; then
+if [ "$dav_listener_core" != v1 ] && [ -n "${COWORK_DAV_PORT:-}" ] && [ "${COWORK_DAV_PORT}" != 0 ]; then
   node_host="${UI_HOST:-0.0.0.0}"
   echo "web-supervisor: COWORK_DAV_PORT is set; Node's legacy port $legacy listens on $node_host, not loopback only" >&2
 fi

@@ -11,6 +11,7 @@ g() { git -C "$repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 repo="$work/repo"; out="$work/out"; mkdir -p "$repo/deploy/tools" "$repo/release" "$out" "$work/bin"
 cp "$here/assemble-release.sh" "$repo/deploy/tools/"
+cp -R "$here/lib" "$repo/deploy/tools/"
 w="$repo/apps/web"
 mkdir -p "$w/src" "$w/public" "$w/scripts" "$w/contracts" "$w/tests/client" "$w/tests/server" "$w/tests/fixtures" "$w/qa" "$w/server"
 for f in src/main.tsx public/icon.svg scripts/build.cjs contracts/project-limits.json tests/client/a.test.cjs \
@@ -1089,6 +1090,73 @@ cp "$work/source-move-client.saved" "$w/server/project-store-client.cjs"
 cp "$work/source-move-features.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$rz/crates/server-projects/src/source_jobs.rs" "$rz/crates/server-projects/src/lib.rs" "$rz/bins/noevia-server/src/project_store.rs"
 
+# Port contract row J: Core's maintenance lease client and the front's lease authority move together
+# (f57a4e3-style detectors: Core's real export under node:vm, Rust's FEATURES tokenizer).
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/lease-features.saved"
+lease_core_js() { printf '%s\n' "$@" > "$w/server/model-maintenance-lease.cjs"; }
+lease_core() { lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'module.exports = { LEASE_CLIENT_MARKER };'; }
+# lease_rs_el TEXT: lib.rs's FEATURES with TEXT as its first element(s).
+lease_rs_el() { LEASE_EL="$1" perl -pe 's/pub const FEATURES: &\[&str\] = &\[/$&$ENV{LEASE_EL}, /' "$work/lease-features.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+lease_rs() { lease_rs_el '"noevia-maintenance-lease-authority/1"'; }
+lease_clear() { rm -f "$w/server/model-maintenance-lease.cjs"; cp "$work/lease-features.saved" "$rz/bins/noevia-server/src/lib.rs"; }
+lease_ok() { source_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'; }
+lease_no() { source_try "$1"; check "$2" 'refused "maintenance lease pairing"'; }
+lease_clear; lease_ok lease-legacy-legacy "legacy core with legacy Rust lease owner assembles"
+lease_core; lease_rs; lease_ok lease-paired "native lease client with native lease authority assembles"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/2';" 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_no lease-new-core-old-rust "v2 incident completion client refuses v1 authority"
+lease_rs_el '"noevia-maintenance-lease-authority/2"'; lease_ok lease-v2-paired "v2 captured-incident repair pair assembles"
+lease_core; lease_no lease-old-core-new-rust "v1 client refuses v2 incident completion authority"
+lease_rs
+lease_core_js "const LEASE_CLIENT_MARKER = ['noevia-maintenance-lease-', 'client/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports = { LEASE_CLIENT_MARKER, x };'
+lease_ok lease-computed-core-export "a computed core export with stubbed requires is read by its value"
+lease_clear; lease_core; lease_no lease-core-only "native lease client with a legacy front is refused"
+lease_clear; lease_rs; lease_no lease-rs-only "native lease authority with a legacy core is refused"
+# Adversarial Core markers (front paired at v1).
+lease_rs
+lease_core_js "// const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'module.exports = {};'
+lease_no lease-comment-only-core "comment-only core lease marker is refused"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'module.exports = {};'
+lease_no lease-unexported-core "unexported core lease marker is refused"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/3';" 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_no lease-unknown-core-version "unknown core lease marker version is refused"
+lease_core_js "module.exports = { LEASE_CLIENT_MARKER: { toString: () => 'noevia-maintenance-lease-client/1' } };"
+lease_no lease-object-core-export "a non-string core lease export is refused"
+lease_core_js "const LEASE_CLIENT_MARKER = 'noevia-maintenance-lease-client/1';" 'for (;;) {}' 'module.exports = { LEASE_CLIENT_MARKER };'
+lease_no lease-hanging-core "a core lease module that never finishes evaluating is refused"
+# Adversarial Rust markers (core paired at v1).
+lease_core
+lease_rs_el '#[cfg(feature = "lease")] "noevia-maintenance-lease-authority/1"'; lease_no lease-cfg-rust "cfg-gated Rust lease marker is refused"
+lease_rs_el '"noevia-maintenance-lease-authority/1", "noevia-maintenance-lease-authority/1"'; lease_no lease-duplicate-rust "duplicate Rust lease markers are refused"
+lease_rs_el '"noevia-maintenance-lease-authority/1", "noevia-maintenance-lease-authority\x2f1"'; lease_no lease-escaped-duplicate-rust "escaped duplicate Rust lease markers are refused"
+lease_rs_el 'b"noevia-maintenance-lease-authority/1"'; lease_no lease-byte-rust "byte-string Rust lease marker is refused"
+lease_rs_el 'r#"noevia-maintenance-lease-authority/1"#'; lease_no lease-raw-rust "raw-string Rust lease marker is refused"
+lease_rs_el 'concat!("noevia-maintenance-lease-", "authority/1")'; lease_no lease-concat-rust "concat! Rust lease marker is refused"
+lease_rs_el '"noevia-maintenance-lease-authority/3"'; lease_no lease-unknown-rust-version "unknown Rust lease marker version is refused"
+lease_rs_el '/* "noevia-maintenance-lease-authority/1", */ "start-id-x"'; lease_no lease-comment-only-rust "comment-only Rust lease marker is refused"
+lease_rs; printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-maintenance-lease-authority/1"];' >> "$rz/bins/noevia-server/src/lib.rs"
+lease_no lease-two-features-rust "a second FEATURES array is refused"
+lease_rs_el '"noevia-maintenance-lease-\u{61}uthority/1"'; lease_ok lease-escaped-single-rust "one escaped Rust lease literal is read by its value"
+# Review P2: the declaration's own scope. lease_rs_wrap BEFORE AFTER wraps lib.rs's FEATURES line.
+lease_rs_wrap() { lease_rs; LB="$1" LA="$2" perl -0pi -e 's/^(pub const FEATURES: &\[&str\] = &\[.*?\];)$/$ENV{LB}$1$ENV{LA}/m' "$rz/bins/noevia-server/src/lib.rs"; }
+lease_rs_wrap '#[cfg(any())] ' ''; lease_no lease-cfg-declaration "cfg on the FEATURES declaration is refused"
+lease_rs_wrap '#[cfg(feature = "lease")]'$'\n' ''; lease_no lease-cfg-declaration-line "cfg on its own line above the declaration is refused"
+lease_rs_wrap '#[cfg(any())] mod disabled { ' ' }'; lease_no lease-cfg-module "a declaration inside a cfg-disabled module is refused"
+lease_rs_wrap 'mod inner { ' ' }'; lease_no lease-nested-module "a declaration inside a nested module is refused"
+lease_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; lease_no lease-macro-rules "a declaration inside macro_rules! is refused"
+lease_rs_wrap 'cfg_if::cfg_if! { if #[cfg(any())] { ' ' } }'; lease_no lease-macro-wrapped "a macro-wrapped declaration is refused"
+lease_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/lease-crate-cfg" && cp "$work/lease-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
+lease_no lease-crate-cfg "a crate-level cfg attribute is refused"
+# Delta review P3: a harmless crate inner attribute directly before the declaration still assembles;
+# crate cfg_attr and an outer attribute on the declaration are still refused.
+lease_rs_wrap '#![allow(dead_code)]'$'\n' ''; lease_ok lease-crate-allow "a crate inner attribute before the declaration assembles"
+lease_rs_wrap '#![allow(dead_code)] #![warn(missing_docs)]'$'\n' ''; lease_ok lease-crate-allow-two "two crate inner attributes before the declaration assemble"
+lease_rs_wrap '#![cfg_attr(any(), allow(dead_code))]'$'\n' ''; lease_no lease-crate-cfg-attr "a crate cfg_attr before the declaration is refused"
+lease_rs_wrap '#![allow(dead_code)]'$'\n''#[cfg(any())]'$'\n' ''; lease_no lease-crate-allow-then-cfg "an outer cfg after a crate attribute is refused"
+lease_rs_wrap '#![allow(dead_code)]'$'\n''#[doc(hidden)]'$'\n' ''; lease_no lease-crate-allow-then-outer "an outer attribute on the declaration is refused"
+lease_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; lease_ok lease-doc-commented-declaration "a doc-commented unconditional declaration assembles"
+lease_clear
+
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
  "core:chat.cjs:CHAT_MOVE_ENFORCEMENT_MARKER" "core:chat-change-journal.cjs:CHAT_MOVE_READER_MARKER" \
@@ -1968,6 +2036,73 @@ ta_try approvals-old-rust-row
 check "historic pair cannot assign approvals to Rust" 'refused "tool approval ownership pairing"'
 cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refuser.paired"
 rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
+# Chat port S4: the framing suggestion's owner pair (every method Rust's) and its loopback bridge.
+fs_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/chat-framing/suggest"\nowner = "%s"\n' "$fs_owner"; [ -z "${fs_methods:-}" ] || printf '%s\n' "$fs_methods")
+}
+cat > "$w/server/rust-chat-framing-suggest.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat-framing/suggest']));
+module.exports = { OWNED_ROUTES };
+JS
+fs_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const chatFramingSuggestBridge = require('./rust-chat-framing-suggest.cjs').createSuggestBridge({
+  secret: FRONT_SECRET, json, readJson, framing: chatFraming,
+});
+if (require('./rust-chat-framing-suggest.cjs').refuseOwned(req, res, {})) return;
+if (await chatFramingSuggestBridge(req, res)) return;
+JS
+}
+fs_front() { sed 's/"start-id"/"start-id", "rust-chat-framing-suggest"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+[ ! -f "$w/server/routes/chat-framing.cjs" ] || cp "$w/server/routes/chat-framing.cjs" "$work/fs-routes.saved"
+mkdir -p "$w/server/routes"; printf '%s\n' 'module.exports = {};' > "$w/server/routes/chat-framing.cjs"
+fs_owner=rust; fs_methods=""; fs_core
+fs_try suggest-core-only
+check "framing suggestion Core requires the native front" 'refused "framing suggestion ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; fs_front
+fs_try suggest-front-only
+check "native framing suggestion front requires its Core refusal" 'refused "framing suggestion ownership pairing"'
+fs_core
+fs_try suggest-pair
+check "framing suggestion pair with its loopback bridge assembles" '[ $rc -eq 0 ]'
+fs_methods='methods = ["POST"]'
+fs_try suggest-post-only-row
+check "framing suggestion: every method must be Rust's, not only POST" 'refused "every method must belong to Rust"'
+fs_methods=""; fs_owner=node
+fs_try suggest-node-row
+check "framing suggestion native pair cannot keep a Node-owned row" 'refused "every method must belong to Rust"'
+fs_owner=rust
+printf '%s\n' '    const result = await framing.suggest({ message });' > "$w/server/routes/chat-framing.cjs"
+fs_try suggest-old-handler
+check "framing suggestion native pair drops the public Node suggestion" 'refused "still carries the public suggestion handler"'
+printf '%s\n' 'module.exports = {};' '// framing.suggest(' > "$w/server/routes/chat-framing.cjs"
+fs_try suggest-commented-handler
+check "framing suggestion: a commented-out call is not the handler" '[ $rc -eq 0 ]'
+cp "$w/server/index.cjs" "$work/fs-index.saved"
+sed '/chatFramingSuggestBridge(req, res)/d' "$work/fs-index.saved" > "$w/server/index.cjs"
+fs_try suggest-no-mount
+check "framing suggestion bridge must be mounted" 'refused "framing suggestion ownership pairing: missing bridge mount"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/fs-index.saved" > "$w/server/index.cjs"
+fs_try suggest-no-secret
+check "framing suggestion bridge requires the captured front secret" 'refused "framing suggestion ownership pairing: missing captured front secret"'
+cp "$work/fs-index.saved" "$w/server/index.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/chat-framing/suggest']));" > "$w/server/rust-chat-framing-suggest.cjs"
+fs_try suggest-all-refuser
+check "framing suggestion: Core refuses exactly the POST" 'refused "Core must refuse exactly this POST"'
+printf '%s\n' "/*" "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat-framing/suggest']));" "*/" > "$w/server/rust-chat-framing-suggest.cjs"
+fs_try suggest-comment-marker
+check "framing suggestion: the refusal must be executable code" 'refused "Core must refuse exactly this POST"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+fs_owner=node
+fs_try suggest-old-pair
+check "framing suggestion old/old rollback pair assembles" '[ $rc -eq 0 ]'
+fs_owner=rust
+fs_try suggest-old-rust-row
+check "an old pair cannot give the suggestion to Rust" 'refused "framing suggestion ownership pairing"'
+if [ -f "$work/fs-routes.saved" ]; then cp "$work/fs-routes.saved" "$w/server/routes/chat-framing.cjs"; else rm -f "$w/server/routes/chat-framing.cjs"; fi
+rm -f "$w/server/rust-chat-framing-suggest.cjs"
 # #2281 toolbox picker owner pair and the narrow facts bridge.
 tp_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -2754,6 +2889,43 @@ cc_owner=node; cc_try cc-old-pair
 check "old calibration cancellation pair stays valid for rollback" '[ $rc -eq 0 ]'
 rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs"
 if [ -f "$work/cc-manager.saved" ]; then cp "$work/cc-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
+# Row V: the front is the only issuer of the egress proxy's control key and signed grants; Core is a
+# fail-closed client (marker 'noevia-code-egress-client/1', FEATURES "rust-code-egress-issuer"). Both
+# halves move together; a comment is not a marker; the Node issuer must be gone from a client Core.
+ce_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+}
+ce_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" > "$w/server/code-egress-client.cjs"
+  printf '%s\n' "const { createEgressClient } = require('./code-egress-client.cjs');" > "$w/server/code-egress.cjs"
+  rm -f "$w/server/code-egress-control.cjs"
+}
+ce_front() { sed 's/"start-id"/"start-id", "rust-code-egress-issuer"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; rm -f "$w/server/code-egress-client.cjs" "$w/server/code-egress.cjs" "$w/server/code-egress-control.cjs"
+printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"
+printf '%s\n' "const { publishWebKey } = require('./code-egress-control.cjs');" > "$w/server/code-egress.cjs"
+ce_try ce-legacy
+check "code egress: legacy Core with a legacy front assembles (rollback pair)" '[ $rc -eq 0 ]'
+ce_core; ce_try ce-core-only
+check "code egress: a client Core cannot pair with a front that has no issuer" 'refused "code egress issuer pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; ce_front
+printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"
+printf '%s\n' "const { publishWebKey } = require('./code-egress-control.cjs');" > "$w/server/code-egress.cjs"; rm -f "$w/server/code-egress-client.cjs"
+ce_try ce-front-only
+check "code egress: a front that issues cannot pair with a Core that still publishes the key" 'refused "code egress issuer pairing"'
+printf '%s\n' "// const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" > "$w/server/code-egress-client.cjs"; ce_try ce-comment-marker
+check "code egress: a commented marker is not the marker" 'refused "code egress issuer pairing"'
+ce_core; printf '%s\n' "function publishWebKey() {}" > "$w/server/code-egress-control.cjs"; ce_try ce-node-issuer
+check "code egress: a client Core that still carries the Node issuer is refused" 'refused "still carries the Node issuer"'
+ce_core; printf '%s\n' "const { createEgressClient } = require('./code-egress-client.cjs'); publishWebKey({});" > "$w/server/code-egress.cjs"; ce_try ce-publishes
+check "code egress: a client Core whose setup still publishes keys is refused" 'refused "still publishes keys or signs grants"'
+ce_core; printf '%s\n' "module.exports = {};" > "$w/server/code-egress.cjs"; ce_try ce-no-client
+check "code egress: a client Core whose setup does not use the client is refused" 'refused "does not use the native client"'
+ce_core; ce_try ce-pair
+check "code egress: the matching client Core and issuer front assemble" '[ $rc -eq 0 ]'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/code-egress-client.cjs" "$w/server/code-egress.cjs" "$w/server/code-egress-control.cjs"
 # #2303: start/status policy moves independently of the live calibration worker.
 cr_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
@@ -2860,6 +3032,96 @@ cr_try cr-old-rust-rows
 check "old calibration pair rejects Rust ownership" 'refused "calibration start/read ownership pairing"'
 cr_owner=node; cr_try cr-old-pair
 check "old calibration start/read pair stays valid for rollback" '[ $rc -eq 0 ]'
+# #2303 (worker): the calibration job's owner pairs by explicit markers, both ways, beside the route pairs.
+cw_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';
+    printf '[[route]]\npath = "/api/models/calibration"\nowner = "%s"\n' "${cw_routes_owner:-rust}"
+    printf '[[route]]\npath = "/api/models/calibration/cancel"\nowner = "%s"\n' "${cw_routes_owner:-rust}")
+}
+cp "$w/server/rust-calibration-routes.cjs" "$work/cw-routes.saved"; cp "$w/server/llamacpp-manager.cjs" "$work/cw-manager.saved"
+cat > "$w/server/rust-calibration-cancel.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration/cancel']));
+JS
+touch "$w/server/rust-calibration-cancel-bridge.cjs"
+# `cw_marker [generation]`: Core's exported marker (generation 2 unless given).
+cw_marker() {
+  printf '%s\n' "const CALIBRATION_WORKER_OWNER = 'noevia-calibration-worker-rust/${1:-2}';" \
+    "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/models/calibration']));" \
+    'module.exports = { CALIBRATION_WORKER_OWNER, OWNED_ROUTES };' > "$w/server/rust-calibration-routes.cjs"
+}
+cw_unmarked() { cp "$work/cw-routes.saved" "$w/server/rust-calibration-routes.cjs"; }
+# Core's live primitives, and its public calibrator built only when a caller asks for it.
+cw_primitives() {
+  { cat "$work/cw-manager.saved"
+    printf '%s\n' 'cancellationFacts: calibrator.cancellationFacts, compareAndAbort: calibrator.compareAndAbort,'
+    printf '%s\n' "$1"
+  } > "$w/server/llamacpp-manager.cjs"
+}
+cw_manager() { cw_primitives "  const calibrator=presets&&publicCalibrator?require('./llamacpp-calibration.cjs').createCalibrator({}):null;"; }
+cw_ungated() { cw_primitives "  const calibrator=presets?require('./llamacpp-calibration.cjs').createCalibrator({}):null;"; }
+cw_core() {
+  cr_core
+  cat >> "$w/server/index.cjs" <<'JS'
+const calibrationCancelBridge = require('./rust-calibration-cancel-bridge.cjs').createCalibrationCancelBridge({
+  secret: FRONT_SECRET, json, readJson,
+});
+if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, {})) return;
+if (await calibrationCancelBridge(req, res)) return;
+JS
+}
+cw_front() { sed "s/\"start-id\"/\"start-id\", \"rust-calibration-routes\", \"rust-calibration-cancel\"${1:+, \"$1\"}/" "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+mkdir -p "$repo/build"; cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+cw_marker; cw_manager; cw_core; cw_front
+cw_try cw-core-only
+check "calibration worker marker cannot pair with a front that lacks the worker" 'refused "calibration worker pairing"'
+cw_unmarked; cw_ungated; cw_front rust-calibration-worker-v2
+cw_try cw-front-only
+check "native calibration worker cannot pair with a Core that still runs the job" 'refused "calibration worker pairing"'
+cw_marker; cw_manager
+cw_try cw-pair
+check "matching calibration worker pair assembles" '[ $rc -eq 0 ]'
+# Generation 2 has every calibration load decided by Core first: generations pair only with themselves, and
+# generation 1 (loads without that decision) is refused even matched.
+cw_marker 1
+cw_try cw-core-1-front-2
+check "a generation-1 Core cannot pair with a generation-2 front" 'refused "Core (generation 1) and Rust (generation 2)"'
+cw_marker; cw_front rust-calibration-worker
+cw_try cw-core-2-front-1
+check "a generation-2 Core cannot pair with a generation-1 front" 'refused "Core (generation 2) and Rust (generation 1)"'
+cw_marker 1
+cw_try cw-gen-1-pair
+check "a matched generation-1 pair is refused: its loads skip Core's load decision" 'refused "generation 1 sends calibration loads without Core'"'"'s load decision"'
+cw_marker; cw_front rust-calibration-worker-v2
+cp "$repo/build/web-supervisor.sh" "$work/cw-supervisor.saved"
+sed 's#rust-calibration-worker-v2#rust-calibration-worker#g; s#noevia-calibration-worker-rust/2#noevia-calibration-worker-rust/1#g' "$work/cw-supervisor.saved" > "$repo/build/web-supervisor.sh"
+cw_try cw-gen-1-supervisor
+check "a supervisor that compares only generation 1 cannot launch a generation-2 pair" 'refused "web supervisor lacks a prelaunch capability comparison"'
+cp "$work/cw-supervisor.saved" "$repo/build/web-supervisor.sh"
+# Core's source shape is not this script's to judge (Core CI boots index.cjs for that): a marked Core whose
+# manager reads differently, or whose index.cjs mentions recover() in a comment, still pairs by its marker.
+cp "$w/server/index.cjs" "$work/cw-index.saved"
+printf '%s\n' '/* boot */ // modelManager.calibration?.recover()' >> "$w/server/index.cjs"; cw_ungated
+cw_try cw-shape-free
+check "a marked calibration worker pair is decided by its markers, not Core's source shapes" '[ $rc -eq 0 ]'
+cp "$work/cw-index.saved" "$w/server/index.cjs"; cw_manager
+cp "$repo/build/web-supervisor.sh" "$work/cw-supervisor.saved"; grep -v 'CALIBRATION_WORKER_OWNER\|rust-calibration-worker' "$work/cw-supervisor.saved" > "$repo/build/web-supervisor.sh"
+cw_try cw-no-supervisor
+check "native calibration worker needs the supervisor's prelaunch comparison" 'refused "web supervisor lacks a prelaunch capability comparison"'
+cp "$work/cw-supervisor.saved" "$repo/build/web-supervisor.sh"
+sed 's/^const CALIBRATION_WORKER_OWNER/\/\/ const CALIBRATION_WORKER_OWNER/' "$w/server/rust-calibration-routes.cjs" > "$work/cw-comment.cjs"; cp "$work/cw-comment.cjs" "$w/server/rust-calibration-routes.cjs"
+cw_try cw-comment-marker
+check "a calibration worker marker in a comment is no marker" 'refused "calibration worker pairing"'
+cw_marker
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cw_front rust-calibration-worker-v2
+sed 's/"rust-calibration-routes", "rust-calibration-cancel", //' "$rz/bins/noevia-server/src/lib.rs" > "$work/cw-lib"; cp "$work/cw-lib" "$rz/bins/noevia-server/src/lib.rs"
+cw_routes_owner=node cw_try cw-no-routes
+check "native calibration worker needs the native calibration routes" 'refused "needs the native start/read and cancellation routes"'
+cw_unmarked; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cp "$work/cw-manager.saved" "$w/server/llamacpp-manager.cjs"
+cw_routes_owner=node cw_try cw-old-old
+check "old calibration worker pair stays valid for rollback" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-calibration-cancel.cjs" "$w/server/rust-calibration-cancel-bridge.cjs" "$repo/build/web-supervisor.sh"
+cw_unmarked; cp "$work/cw-manager.saved" "$w/server/llamacpp-manager.cjs"
 rm -f "$w/server/rust-calibration-routes.cjs" "$w/server/rust-calibration-routes-bridge.cjs"
 if [ -f "$work/cr-manager.saved" ]; then cp "$work/cr-manager.saved" "$w/server/llamacpp-manager.cjs"; else rm -f "$w/server/llamacpp-manager.cjs"; fi
 if [ -f "$work/cr-original-actor.saved" ]; then cp "$work/cr-original-actor.saved" "$w/server/llamacpp-calibration.cjs"; else rm -f "$w/server/llamacpp-calibration.cjs"; fi
@@ -3826,7 +4088,10 @@ cm_front() { # the paired front: capability, module, scheduler marker, the start
   mkdir -p "$rz/crates/chat-mirror-sched/src"; echo 'pub const MARKER: &str = "noevia-chat-mirror-scheduler/1";' > "$rz/crates/chat-mirror-sched/src/lib.rs"
   printf '%s\n' 'fn route() { let op = "/v1/changes/read"; }' 'fn start() { ChatMirror::start(); }' > "$rz/bins/noevia-server/src/main.rs"
 }
+# This guard's Rust detector, read from the assembler under test, on the fixture's lib.rs.
+cm_rs_detect() { ( eval "$(sed -n '/^chat_mirror_core_version()/,/^chat_mirror_core_owner=/{ /^chat_mirror_core_owner=/d; p; }' "$here/assemble-release.sh")"; chat_mirror_rs_version "$rz/bins/noevia-server/src/lib.rs" ); }
 cm_restore; cm_core; cm_front
+check "the direct chat mirror detector reads the paired fixture front" '[ "$(cm_rs_detect)" = v1 ]'
 move_try chat-mirror-pair
 check "a paired chat mirror Core and front assemble, the move reader and journal consumer being the front's" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 cm_restore; cm_core
@@ -3877,7 +4142,14 @@ for cm_case in element declaration module startup startup-parent module-declarat
     exported-wrong) echo "module.exports.RUST_CHAT_MIRROR_OWNED = 'wrong';" >> "$w/server/rust-chat-mirror.cjs";;
   esac
   move_try "chat-mirror-disabled-$cm_case"
-  check "chat mirror rejects unprovable $cm_case" 'refused "chat mirror"'
+  case "$cm_case" in
+    # An unprovable FEATURES declaration or element is refused first by the strict readers that run
+    # before this guard (maintenance lease, reranker settings). The release must still be refused,
+    # and this guard's own detector must refuse the same lib.rs when run directly.
+    declaration|module|raw|macro)
+      check "chat mirror rejects unprovable $cm_case" '{ refused "chat mirror" || refused "maintenance lease pairing" || refused "reranker settings ownership pairing"; } && [ "$(cm_rs_detect)" = invalid ]';;
+    *) check "chat mirror rejects unprovable $cm_case" 'refused "chat mirror"';;
+  esac
 done
 cm_restore
 move_try chat-mirror-old-pair
@@ -4430,6 +4702,76 @@ for close_entry in "rust-health.cjs|rust-health|/api/health|health check" "rust-
   move_try "close-$close_cap-old-pair"
   check "$close_label: the historic old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 done
+# F1 writer pairing, retaining the read pair and its exact GET|PUT contract.
+roles_core_good() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "require('./rust-auto-roles.cjs');" "require('./rust-auto-roles-write.cjs');" "PROJECT_STORE.autoRolesReady();" "autoRolesWriteBridge(req, res);" >> "$w/server/index.cjs"
+  printf '%s\n' "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' };" > "$w/server/rust-auto-roles-write.cjs"
+}
+roles_rs_good() { sed 's/"start-id"/"start-id", "rust-auto-roles", "rust-auto-roles-write"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+roles_core_good
+close_path=/api/auto-roles; close_owner=rust; close_methods='methods = ["GET", "PUT"]'
+close_try roles-write-core-only
+check "auto-roles write: Core refuses an older front" 'refused "auto-roles write ownership pairing"'
+roles_rs_good
+close_try roles-write-paired
+check "auto-roles write: coherent GET and PUT pair assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+close_methods='methods = ["GET"]'
+close_try roles-write-missing-put
+check "auto-roles write: a capability without PUT is refused" 'refused "auto-roles read ownership pairing"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+rm -f "$w/server/rust-auto-roles-write.cjs"
+close_try roles-write-front-only
+check "auto-roles write: a native front refuses the old writer" 'refused "auto-roles write ownership pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+close_try roles-write-old-old
+check "auto-roles write: historic old/old still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+close_methods='methods = ["GET", "PUT"]'
+for malformed in absent unknown duplicate comment template invalid; do
+  for front in old new; do
+    roles_core_good
+    case "$malformed" in
+      absent) printf "%s\n" "module.exports = {};" > "$w/server/rust-auto-roles-write.cjs" ;;
+      unknown) printf "%s\n" "module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write-v2' };" > "$w/server/rust-auto-roles-write.cjs" ;;
+      duplicate) printf "%s\n" "const duplicate = 'rust-auto-roles-write';" >> "$w/server/rust-auto-roles-write.cjs" ;;
+      comment) printf "%s\n" "/* module.exports = { RUST_AUTO_ROLES_WRITE_OWNED: 'rust-auto-roles-write' }; */" > "$w/server/rust-auto-roles-write.cjs" ;;
+      template) printf '%s\n' 'const text = `not an export; "rust-auto-roles-write"`;' > "$w/server/rust-auto-roles-write.cjs" ;;
+      invalid) printf "%s\n" "module.exports = {" > "$w/server/rust-auto-roles-write.cjs" ;;
+    esac
+    if [ "$front" = new ]; then roles_rs_good; else cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; fi
+    close_try "roles-core-$malformed-$front"
+    check "auto-roles write: $malformed Core marker refuses with $front front" 'refused "auto-roles write ownership pairing"'
+  done
+done
+for malformed in unknown duplicate outside comment raw bytes raw-bytes concat attribute escaped-duplicate escaped; do
+  for core in old new; do
+    roles_core_good; roles_rs_good
+    if [ "$core" = old ]; then rm -f "$w/server/rust-auto-roles-write.cjs"; cp "$work/feature-index.saved" "$w/server/index.cjs"; fi
+    case "$malformed" in
+      unknown) sed 's/"rust-auto-roles-write"/"rust-auto-roles-write-v2"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      duplicate) sed 's/"rust-auto-roles-write"/"rust-auto-roles-write", "rust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      outside) cat "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib"; printf '%s\n' 'const OTHER: &str = "rust-auto-roles-write";' >> "$work/roles-lib" ;;
+      comment) cat "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib"; printf '%s\n' '/* "rust-auto-roles-write" */' >> "$work/roles-lib" ;;
+      raw) sed 's/"rust-auto-roles-write"/r#"rust-auto-roles-write"#/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      bytes) sed 's/"rust-auto-roles-write"/b"rust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      raw-bytes) sed 's/"rust-auto-roles-write"/br#"rust-auto-roles-write"#/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      concat) sed 's/"rust-auto-roles-write"/concat!("rust-auto-roles-write", "-v2")/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      attribute) sed 's/"rust-auto-roles-write"/#[cfg(feature = "rust-auto-roles-write")] "unrelated"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      escaped-duplicate) sed 's/"rust-auto-roles-write"/"rust-auto-roles-write", "\\x72ust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+      escaped) sed 's/"rust-auto-roles-write"/"\\x72ust-auto-roles-write"/' "$rz/bins/noevia-server/src/lib.rs" > "$work/roles-lib" ;;
+    esac
+    cp "$work/roles-lib" "$rz/bins/noevia-server/src/lib.rs"
+    close_try "roles-rust-$malformed-$core"
+    if [ "$core" = new ] && [[ "$malformed" =~ ^(outside|comment|escaped)$ ]]; then
+      check "auto-roles write: tokenizer accepts $malformed with the matching Core" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+    else
+      check "auto-roles write: $malformed Rust marker refuses with $core Core" 'refused "auto-roles write ownership pairing"'
+    fi
+  done
+done
+cp "$work/feature-index.saved" "$w/server/index.cjs"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-auto-roles-write.cjs"
 # The chat pairs' Core side: exactly the GET refused, in code, and the old handler gone from routes/chat-lists.cjs.
 [ ! -f "$w/server/routes/chat-lists.cjs" ] || cp "$w/server/routes/chat-lists.cjs" "$work/chat-lists.saved"
 mkdir -p "$w/server/routes"
@@ -4728,6 +5070,68 @@ check "a rust-model-maintenance front cannot pair with the old Core handlers" 'r
 cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 move_try maint-old-pair
 check "historic model maintenance old/old rollback pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+
+# Diary worker capability pair beside the unchanged route fixture.
+cp "$w/server/index.cjs" "$work/db-index.saved"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/db-lib.saved"
+[ ! -f "$w/server/rust-diary.cjs" ] || cp "$w/server/rust-diary.cjs" "$work/db-module.saved"
+mkdir -p "$repo/build"; cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+db_try() { move_try "$1"; }
+printf "%s\n" "const DIARY_BACKUP_WORKER_OWNER = 'noevia-diary-backup-worker-rust/1';" "module.exports = { DIARY_BACKUP_WORKER_OWNER };" > "$w/server/rust-diary.cjs"
+db_try diary-core-only
+check "diary worker new Core old front refused" 'refused "diary backup worker pairing"'
+sed 's/"start-id"/"start-id", "rust-diary-backup-worker"/' "$work/db-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+db_try diary-pair
+check "diary worker matched pair assembles" '[ $rc -eq 0 ]'
+printf "%s\n" "require('./diary-backup-worker.cjs').startDiaryBackupWorker({});" >> "$w/server/index.cjs"
+db_try diary-double
+check "diary worker retained Node startup refused" 'refused "Core still starts the worker"'
+cp "$work/db-index.saved" "$w/server/index.cjs"
+printf 'module.exports = {};\n' > "$w/server/rust-diary.cjs"
+db_try diary-front-only
+check "diary worker new front old Core refused" 'refused "diary backup worker pairing"'
+cp "$work/db-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+if [ -f "$work/db-module.saved" ]; then cp "$work/db-module.saved" "$w/server/rust-diary.cjs"; else rm -f "$w/server/rust-diary.cjs"; fi
+
+# Watchdog ownership matrix, using the same explicit capability parser as route moves.
+mkdir -p "$repo/build"
+cp "$here/../../build/web-supervisor.sh" "$repo/build/web-supervisor.sh"
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+cat > "$w/server/rust-budget-watch.cjs" <<'JS'
+const BUDGET_WATCH_OWNER = 'noevia-budget-watch-rust/3';
+module.exports = { BUDGET_WATCH_OWNER };
+JS
+try_routes bw-core-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: new Core and old front refused" 'refused "budget watch pairing"'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+try_routes bw-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+[ "$rc" -eq 0 ] || cat "$work/err" >&2
+check "budget watch: new paired owners assemble" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v2"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v2-front-v3-core
+check "budget watch: v2 front and v3 Core refused" 'refused "budget watch pairing"'
+sed -i.bak 's@noevia-budget-watch-rust/3@noevia-budget-watch-rust/2@' "$w/server/rust-budget-watch.cjs"
+move_try bw-v2-pair
+check "budget watch: matched native v2 pair assembles for rollback" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v3-front-v2-core
+check "budget watch: v3 front and v2 Core refused" 'refused "budget watch pairing"'
+sed -i.bak 's@noevia-budget-watch-rust/2@noevia-budget-watch-rust/3@' "$w/server/rust-budget-watch.cjs"
+sed 's/"start-id"/"start-id", "rust-budget-watch"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v1-front-v3-core
+check "budget watch: v1 front and v3 Core refused" 'refused "budget watch pairing"'
+sed -i.bak 's@noevia-budget-watch-rust/3@noevia-budget-watch-rust/1@' "$w/server/rust-budget-watch.cjs"
+move_try bw-v1-pair
+check "budget watch: matched native v1 pair assembles for rollback" '[ $rc -eq 0 ]'
+sed 's/"start-id"/"start-id", "rust-budget-watch-v3"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+move_try bw-v3-front-v1-core
+check "budget watch: v3 front and v1 Core refused" 'refused "budget watch pairing"'
+rm "$w/server/rust-budget-watch.cjs"
+try_routes bw-front-only < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: old Core and new front refused" 'refused "budget watch pairing"'
+cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+try_routes bw-old-pair < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n')
+check "budget watch: old paired owners assemble for rollback" '[ $rc -eq 0 ]'
 
 # #2286 recheck moves independently, after the native evidence-store group.
 cat > "$w/server/rust-model-evidence-recheck.cjs" <<'JS'
