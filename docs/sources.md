@@ -24,7 +24,7 @@ Three kinds of entry, kept apart on purpose:
 | [llama.cpp GGUF constants](https://github.com/ggml-org/llama.cpp/blob/master/gguf-py/gguf/constants.py) | Read | Reading GGUF headers for model details (`gguf-meta.cjs`) |
 | [lemonade-sdk/lemonade](https://github.com/lemonade-sdk/lemonade) | Read | The previous backend. Its `runtime_config.cpp`, `llamacpp_server.cpp` and `auto_tune.h` (v10.8.0) informed the auto-tune and preset work after the move to direct llama.cpp; [docs](https://lemonade-server.ai/docs/guide/configuration/) |
 | [scratchhax/model-loader](https://github.com/scratchhax/model-loader) | Runs here | The model-manager sidecar (`cowork-model-loader-1`), and the parity audit target for noevia's own model pages |
-| [unslothai/unsloth](https://github.com/unslothai/unsloth) | Read | Quantisation guidance: [dynamic v2](https://unsloth.ai/blog/dynamic-v2), [dynamic 3.0 GGUFs](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs), [Qwen3.5 GGUF benchmarks](https://unsloth.ai/docs/models/qwen3.5/gguf-benchmarks). Its UD (dynamic) GGUF quants are the files the GPU model-evaluation campaign tests |
+| [unslothai/unsloth](https://github.com/unslothai/unsloth) (Apache-2.0) | Read | Quantisation guidance: [dynamic v2](https://unsloth.ai/blog/dynamic-v2), [dynamic 3.0 GGUFs](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs), [Qwen3.5 GGUF benchmarks](https://unsloth.ai/docs/models/qwen3.5/gguf-benchmarks). Its UD (dynamic) GGUF quants are the files the GPU model-evaluation campaign tests |
 | noevia-router prototype (private, Python, 2026-11-11) | Read | The origin of the native router's design: one OpenAI-compatible endpoint, one model loaded at a time, drain → verified stop → start → health → proxy, per-model ttl and swap timings. Ported by behaviour to Rust as `model-router` and `bins/noevia-router` in noevia-rs (noevia#2440); the prototype itself does not ship |
 | [Tiiny-AI/PowerInfer](https://github.com/Tiiny-AI/PowerInfer) (MIT, C++) | Read | Hot/cold-neuron hybrid CPU/GPU inference: a reference for tiered serving of models larger than VRAM on a two-GPU host |
 | [crit-labs/crit](https://github.com/crit-labs/crit) (Apache-2.0, Python) | Read | A toolkit for building hardware-tailored inference engines: a reference for the tiered-expert engine work |
@@ -40,7 +40,7 @@ Three kinds of entry, kept apart on purpose:
 | [OpenCode](https://opencode.ai) | Read | The ACP agent Code mode is built against; the live run is still pending |
 | [cbcoutinho/nextcloud-mcp-server](https://github.com/cbcoutinho/nextcloud-mcp-server) | Runs here | The Nextcloud MCP server behind the Notes, Files, Calendar, Tasks, Talk and Mail toolboxes; its quirks (SSE-wrapped JSON-RPC, session header) shaped the client |
 | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) and [Playwright MCP security notes](https://qaskills.sh/blog/playwright-mcp-security-best-practices-2026) | Read | Browser-capability research; not adopted |
-| [earendil-works/pi](https://github.com/earendil-works/pi) (MIT, TypeScript) | Runs here (opt-in) | The code sandbox's alternative agent harness (`@earendil-works/pi-coding-agent` 0.87.0 through the pi ACP bridge; the default harness is still OpenCode). Also a reference for the agent loop and a unified LLM API |
+| [earendil-works/pi](https://github.com/earendil-works/pi) (MIT, TypeScript) | Runs here (opt-in) | The code sandbox's alternative agent harness (`@earendil-works/pi-coding-agent` 0.87.0 through the pi ACP bridge; the default `HARNESS_PACKAGE` is OpenCode). Also a reference for the agent loop and a unified LLM API |
 | [apache/burr](https://github.com/apache/burr) (Apache-2.0, Python) | Read | A state-machine agent framework: a reference for durable agent and task state and for tracing. The owner asked for an assessment in October 2026; it was queued but no written assessment was produced, and a timeline view modelled on it was deferred. Nothing of it ships |
 | [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT) | Read (tooling) | The development orchestration app used to run the coding agents; nothing of it ships |
 | [Anthropic Agent Skills](https://agentskills.io) and [Claude Code skills docs](https://code.claude.com/docs/en/skills) | Read | The `SKILL.md` format noevia's instruction skills follow |
@@ -230,8 +230,9 @@ commit, not the README.
 
 ### Rust port reuse research (2026-11-11)
 
-A survey of what the remaining Rust port could reuse, area by area. Licence and activity were checked
-with the GitHub API on 2026-11-11. Everything here is **Read**: an entry moves to *Runs here* or
+A survey of what the remaining Rust port could reuse, area by area. Licences (as GitHub reports them; some
+projects are dual-licensed) and activity were checked with the GitHub API on 2026-11-11; kreuzberg's
+rename was confirmed there too. Everything here is **Read**: an entry moves to *Runs here* or
 *Vendored* only when a port slice adopts it.
 
 | Source | Planned use |
@@ -253,12 +254,14 @@ with the GitHub API on 2026-11-11. Everything here is **Read**: an entry moves t
 | [apache/opendal](https://github.com/apache/opendal) (Apache-2.0) or [aws-sigv4](https://github.com/awslabs/aws-sdk-rust) (Apache-2.0) | Adapt: WebDAV/S3 transport and offsite backup, after ETag and signer parity tests |
 | [bosun-ai/swiftide](https://github.com/bosun-ai/swiftide), [Abraxas-365/langchain-rust](https://github.com/Abraxas-365/langchain-rust) (MIT), [anush008/fastembed-rs](https://github.com/anush008/fastembed-rs) (Apache-2.0) | Reference: RAG pipelines and embeddings |
 | [ramosbugs/oauth2-rs](https://github.com/ramosbugs/oauth2-rs) (Apache-2.0) and [ramosbugs/openidconnect-rs](https://github.com/ramosbugs/openidconnect-rs) (MIT) | Adopt: connector OAuth routes |
-| [juhaku/utoipa](https://github.com/juhaku/utoipa) (Apache-2.0) | Adopt if we want an OpenAPI spec |
+| [juhaku/utoipa](https://github.com/juhaku/utoipa) (Apache-2.0) | Adapt, if we want an OpenAPI spec |
 | [kanidm/webauthn-rs](https://github.com/kanidm/webauthn-rs) (MPL-2.0) | Reference: a differential oracle for our `passkey` crate |
 | [atuinsh/atuin](https://github.com/atuinsh/atuin) (MIT) and [kanidm/kanidm](https://github.com/kanidm/kanidm) (MPL-2.0) | Reference: Rust auth/session and sync designs |
 | kreuzberg, now [xberg-io/xberg](https://github.com/xberg-io/xberg) (MIT) | Reference: a binary spike against the Docling fixtures only |
 | [gpustack/gguf-parser-go](https://github.com/gpustack/gguf-parser-go) (MIT) | Reference: GGUF memory estimates for model authority |
-| llama.cpp router mode and `--fit` (above) | Adopt as configuration where it matches; the native router covers engines it cannot spawn |
+| [tokio-rs/tokio](https://github.com/tokio-rs/tokio) (MIT) `Semaphore` | Adopt: admission leases |
+| llama-optimize (repository not pinned down) | Reference: design of experiments for autotune |
+| llama.cpp router mode and `--fit` (above) | Adopt as configuration where it matches (the research's recommendation). The owner then chose a native Rust router for engines router mode cannot spawn (noevia-rs#443) |
 
 **Excluded:**
 - **Licence.** [Helicone/ai-gateway](https://github.com/Helicone/ai-gateway) is GPL-3.0 and stale. [trailbase](https://github.com/trailbaseio/trailbase) is OSL-3.0. Vaultwarden, Lemmy, Plume and Cherry Studio are AGPL. lldap, PinePods and Chatbox are GPL. Jan, Zed and Tabby have mixed or unverified licences.
