@@ -134,6 +134,8 @@ jobs:
           done
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-residual-fallback-pairing.sh
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-auto-roles-pairing.sh
