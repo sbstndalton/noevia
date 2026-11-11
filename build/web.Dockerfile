@@ -70,6 +70,7 @@ RUN NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
 # Lay web/ and core/ out as the monorepo's apps/web was, so the same test gate and build command run.
 COPY web/ ./
 COPY core/server ./server
+RUN rm -rf ./server/ui-data
 # #2069: preserved JS oracles are test inputs too. Older core pins have no
 # reference directory; create the empty destination so the runtime COPY works for both.
 RUN mkdir -p tests/reference
@@ -83,6 +84,11 @@ RUN set -e; set -a; . ./release-refs; set +a; export STAMP_VERSION="$NOEVIA_SHA"
     node --test --test-concurrency=1 tests/server/code-actions-performance.qualification.cjs && npm run build && \
     node -e 'const fs=require("fs");const f="dist/version.json";const v=JSON.parse(fs.readFileSync(f,"utf8"));if(v.version!==process.env.STAMP_VERSION){console.error("version.json not stamped with "+process.env.STAMP_VERSION);process.exit(1)}fs.writeFileSync(f,JSON.stringify({version:v.version,web:process.env.NOEVIA_WEB_SHA,core:process.env.NOEVIA_CORE_SHA})+"\n")'
 
+# Sanitize source independently of the test stage, which may itself create runtime state.
+FROM node:22-alpine AS server-source
+COPY core/server /server
+RUN rm -rf /server/ui-data
+
 # Runtime (glibc for sqlite-vec / better-sqlite3).
 FROM node:22-bookworm
 WORKDIR /app
@@ -91,7 +97,7 @@ COPY --from=build /app/dist ./dist
 COPY web/package.json ./
 COPY core/server/package.json core/server/package-lock.json* ./server/
 RUN cd server && NODE_OPTIONS=--dns-result-order=ipv4first npm ci --no-fund --no-audit
-COPY core/server ./server
+COPY --from=server-source /server ./server
 COPY --from=dav-parse /out/dav-parse.wasm ./server/wasm/dav-parse.wasm
 # core owns contracts/; server/ requires it as ../contracts.
 COPY core/contracts ./contracts
