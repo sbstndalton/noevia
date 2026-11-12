@@ -16,6 +16,9 @@ Three kinds of entry, kept apart on purpose:
 - **Read, not used** — a reference, a measurement someone else published, or an idea taken from a
   design; nothing of theirs ships.
 
+Two planned variants also appear: *Read; fork source* (read now, to become Vendored when a PR copies code from it) and
+*Build tooling* (used to build or measure things; nothing of it ships).
+
 ## Engine, models and serving
 
 | Source | Kind | Used for |
@@ -27,8 +30,8 @@ Three kinds of entry, kept apart on purpose:
 | [unslothai/unsloth](https://github.com/unslothai/unsloth) (Apache-2.0) | Read | Quantisation guidance: [dynamic v2](https://unsloth.ai/blog/dynamic-v2), [dynamic 3.0 GGUFs](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs), [Qwen3.5 GGUF benchmarks](https://unsloth.ai/docs/models/qwen3.5/gguf-benchmarks). Its UD (dynamic) GGUF quants are the files the GPU model-evaluation campaign tests |
 | noevia-router prototype (private, Python, 2026-11-11) | Read | The origin of the native router's design: one OpenAI-compatible endpoint, one model loaded at a time, drain → verified stop → start → health → proxy, per-model ttl and swap timings. Ported by behaviour to Rust as `model-router` and `bins/noevia-router` in noevia-rs (noevia#2440); the prototype itself does not ship |
 | [Tiiny-AI/PowerInfer](https://github.com/Tiiny-AI/PowerInfer) (MIT, C++) | Read | Hot/cold-neuron hybrid CPU/GPU inference: a reference for tiered serving of models larger than VRAM on a two-GPU host |
-| [crit-labs/crit](https://github.com/crit-labs/crit) (Apache-2.0, Python) | Build tooling | The toolkit the B50 engine work is built and measured with (owner decision 2026-11-12): its agent workflow, technique plugins with ablation switches, and its eval suite of hardware limits and correctness checks. Its GPU kernels target another vendor's cards, so the kernels are ours to port; its process guardian, ownership and lease code and its admission, residency and disconnect handling are a reference for the native model router. Nothing of it ships; engines built with it run as external binaries |
-| [unslothai/llama.cpp](https://github.com/unslothai/llama.cpp) (MIT, C++) | Read | A fork of the engine with pinned sets of upstream changes; to be compared with our own B50 image through the eval queue before any switch |
+| [crit-labs/crit](https://github.com/crit-labs/crit) (Apache-2.0, Python) | Build tooling | The toolkit the GPU engine work is built and measured with (owner decision 2026-11-12): its agent workflow, technique plugins with ablation switches, and its eval suite of hardware limits and correctness checks. Its GPU kernels target another vendor's cards, so the kernels are ours to port; its process guardian, ownership and lease code and its admission, residency and disconnect handling are a reference for the native model router. Nothing of it ships; engines built with it run as external binaries |
+| [unslothai/llama.cpp](https://github.com/unslothai/llama.cpp) (MIT, C++) | Read | A fork of the engine with pinned sets of upstream changes; to be compared with our own GPU-specific image through the eval queue before any switch |
 | [unslothai/notebooks](https://github.com/unslothai/notebooks) (LGPL-3.0) | Read, not used | Fine-tuning notebooks; a reference for the later code-side work. LGPL: nothing is copied into these repos |
 | [Hugging Face GGUF docs](https://huggingface.co/docs/hub/gguf) and the Hub API | Runs here | Model search, downloads and cache layout in Discover |
 | [vLLM](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/) ([GGUF](https://docs.vllm.ai/en/v0.20.1/features/quantization/gguf/)), [ROCm inference](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/vllm.html), [llm-tracker AMD GPUs](https://llm-tracker.info/howto/AMD-GPUs) | Read | Backend-portability research; no migration ([spec](spec-backend-portability.md)) |
@@ -62,13 +65,14 @@ These sources seed [a measured research plan](research-skills-mcp-loading.md). N
 | Practitioner observation supplied by the user on 2026-09-23 | Read, anecdotal | Hypothesis that Markdown skills vary across providers and script-backed skills depend on their execution host; original speaker, URL, date, versions and measurements were unavailable |
 | User's prompt-driven System-One proposal, 2026-09-23 | Proposed, not implemented | A model proposes relevant skill/toolbox IDs; deterministic code validates and loads only the existing authorized capabilities |
 
-## Coworkers and Spaces — 2026-11-11
+## Coworkers and Spaces — 2026-11-11/12
 
 Sources for the persistent coworkers feature ([#2446](https://github.com/sbstndalton/noevia/issues/2446)). The decision
 (2026-11-11/12): build our own native version — Rust-owned routes and stores, our web client, local models — and fork and
-adapt MIT code where it works. Rejected outright: the hosted conversation and memory service these templates require
-(separately licensed, with online licence renewal), their Node agent runtime, and their telemetry. Each row turns to
-**Vendored** in the PR that copies code from it, with the pinned commit and a `THIRD_PARTY_NOTICES.md` entry.
+adapt MIT code where it works. Rejected outright: the hosted conversation and memory service the OpenDots, OpenBot and OpenDuet templates require
+(separately licensed, with online licence renewal), their Node agent runtime, and their telemetry. Each
+**fork source** row turns to **Vendored** in the PR that copies code from it, with the pinned commit and a
+`THIRD_PARTY_NOTICES.md` entry.
 
 | Source | Kind | Used for |
 | --- | --- | --- |
@@ -302,7 +306,7 @@ No existing app replaces a whole noevia subsystem, and no JS-to-Rust transpiler 
 | Serve the Diary corpus over SMB from the Mac | [Samba leases](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#SMB2LEASES), [SQLite over a network](https://www.sqlite.org/useovernet.html) | Retired 2026-09-18 (D22); plain files and WebDAV won |
 | Keep mirroring backups with host rclone | [rclone](https://rclone.org) | Replaced by noevia's own Google Drive upload, so the whole flow is in one place |
 | Bulk model delete, and a command palette in the model manager | The model-loader parity audit | Rare and destructive; and a palette is an app-wide concern, not a model one |
-| Run an agent-workspace template whole for coworkers | [CopilotKit/OpenDots](https://github.com/CopilotKit/OpenDots), [OpenBot](https://github.com/CopilotKit/OpenBot), [OpenDuet](https://github.com/CopilotKit/OpenDuet) (see Coworkers and Spaces above) | Conversations and memory need a separately licensed service with online licence renewal, the agent runtime is a Node server, and usage telemetry is on by default; noevia is local-first with a Rust backend. The feature is built natively and only MIT code is adapted |
+| Run an agent-workspace template whole for coworkers | [CopilotKit/OpenDots](https://github.com/CopilotKit/OpenDots), [OpenBot](https://github.com/CopilotKit/OpenBot), [OpenDuet](https://github.com/CopilotKit/OpenDuet) (see Coworkers and Spaces above) | Conversations and memory need a separately licensed service with online licence renewal, the agent runtime is a Node server, and usage telemetry is on by default; noevia is local-first with a Rust backend. The feature is built natively and only permissively licensed (MIT) code from these templates is adapted |
 | Vendor an agent framework, or adopt an external harness as noevia's API | Every harness read above | Kept as references and adapters, never as the architecture ([roadmap history](roadmap-history.md#explicitly-not-doing)) |
 
 ## Where the longer write-ups live
