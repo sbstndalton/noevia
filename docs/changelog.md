@@ -14,6 +14,35 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
+## Release web 1e632e54 - 2026-11-12 (web client only; noevia-web#122, #123, #124, #125; #2136, #2326, #2397, #2399, #2400, #2401, #2456, #2457, #2458, #2459, #2460, #2461)
+
+Pins: web 1e632e54 (was 90d470d7), core cb2dea2d, rs d8874d7c, services 61d44d27 (all three unchanged). The previous release was 2406d67a. Only the web image is replaced.
+
+What changed for you:
+- Twelve interface fixes (noevia-web#122, #125). Models page: refusals with a known code read in the interface language (#2136), the tab strip fits at 375 px or scrolls with an edge fade and moves with the arrow, Home and End keys (#2459, #2460), and the reranker switch shows the effective state (#2397). The inference banner keeps its closing period with the Settings link (#2326). The chat/code switch no longer spills through the open sidebar header (#2461).
+- Sidebar search refuses a query over 200 characters with a message and notes truncated results (#2399). The Settings detail panel draws no frame when focus moves in without a key press (#2401). Searching settings opens the single remaining section, or the first one if the open section is filtered out (#2458). The retention setting reads "Not loaded" instead of "Never" while it has not loaded (#2400).
+- The Diary page says so when Diary is off for the account, or when it cannot be reached, instead of a blank area (#2456). "Set up later" on the passkey step is remembered for 30 days per browser (#2457).
+- The Spaces and Coworkers area (noevia-web#123, #124) is in the client but stays hidden: the pinned server does not have its routes yet, so no entry appears and `/spaces` and `/coworkers` read as not found. It switches on with the release that carries those routes.
+
+## Release 2406d67acad3e9261e8e12b471c10fe10107340f - 2026-11-11 (native owners: maintenance lease, code egress, workers; #2416, #2424, #2423, #2419, #2418, #2417, #2426, #2409, #2367, #2369, #2421, #2420, #2425, #2360, #2359, #2365)
+
+Pins: web 90d470d7 (unchanged), core cb2dea2d, rs d8874d7c, services 61d44d27. The previous release was 758f2eb.
+
+What changed for you: nothing you will see day to day. More of the server now runs in the native front:
+- The Rust front is the single model-maintenance lease authority (#2420). Node keeps only the chat-admission latch.
+- The code-egress issuer moved to the front. It adopts the previously published key, rotates it once immediately, and keeps the published shape (#2421).
+- The embedding worker, the media/figure/document backfill and the emergency budget watch run in the native worker (#2365, #2416, #2367).
+- These moved to the front as well: the change-journal and vault mirror, startup project migration, MCP discovery and status, the inference-machine registry, reranker settings, auto-roles writes and residual method/path fallbacks (#2418, #2417, #2423, #2424, #2426, #2409, #2419). The Diary tools overlay moved too (#2359, #2360).
+- Chat journal activity and the framing-suggestion edge are answered natively (#2369).
+- Release assembly shares the Rust capability checks that verify the shipped binary (#2425).
+
+Qualification: the in-image tests passed 2207/2207. The synthetic qualification passed on attempt 2 of 3. Every failure along the way was a harness fault, not a product fault. Attempt 1 failed because the synthetic member id was not UUID-shaped. The earlier runs and two unofficial dry runs found three more:
+- the loader stub had no benchmark progress route, so the new boot barrier of the sweep guard never lifted;
+- a capability check raced the code client's reconnect after an egress restart;
+- an issuer grant raced the front's control-ready after a web restart.
+
+The rollback rehearsal passed on synthetic state. Known gap, filed as #2439: if the model loader is unreachable or does not answer ok at web start, chat and maintenance holds stay paused with no log line until it answers ok.
+
 ## Release 9375ce98e35abb1cef148c75835ad62b65de2448 - 2026-10-19 (native-service completion; #1318, #1071, #2027)
 
 Core 1896db0 makes role-context, streamed JSON validation, presets, and relevant tool decisions unconditionally Rust-owned, and adds the bounded Rust workspace-claim helper called by Node while the authenticated account transaction is held (#2027). Services 2545ebc retires Diary's tenant selector while keeping its restart guard and nonce cache.

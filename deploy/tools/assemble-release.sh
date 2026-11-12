@@ -45,6 +45,9 @@
 set -euo pipefail
 
 die() { echo "assemble-release: $*" >&2; exit 1; }
+# Shared strict detector for ownership pairing guards (see lib/rs-capability.md).
+rs_capability_lib="$(cd -- "$(dirname -- "$0")" && pwd)/lib/rs-capability.cjs"
+. "$(dirname -- "$rs_capability_lib")/rs-capability.sh"
 # A source file without its comment lines: a pairing check that reads code must not be satisfied by a
 # sentence that mentions the thing (nor end the script silently when a file or a match is absent).
 code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
@@ -87,6 +90,8 @@ out_partial=""
 # Never leave <out>.partial behind when the final tar (or anything after it) fails.
 trap 'rm -rf "$work"; if [ -n "$out_partial" ]; then rm -f "$out_partial"; fi' EXIT
 tree="$work/tree"
+# Match the Dockerfile that will compile this assembled Rust source snapshot.
+rs_capability_build="$tree/noevia/build/web.Dockerfile"
 mkdir -p "$tree/noevia" "$tree/web" "$tree/core" "$tree/services"
 
 git -C "$repo" archive --format=tar "$full_sha" | tar -x -C "$tree/noevia"
@@ -401,9 +406,16 @@ core_uses_history_ops() {
 rs_serves_change_journal() {
   grep -rqs --include='*.rs' -e '/v1/changes/read' "$tree/rs/bins"
 }
-# Whether the pinned core tails that journal (server/chat-change-journal.cjs carries its marker).
-core_tails_change_journal() {
+# Whether the pinned core's own Node reader tails that journal (server/chat-change-journal.cjs carries its marker).
+core_tails_change_journal_legacy() {
   grep -q "'noevia-chat-change-journal-reader/1'" "$tree/core/server/chat-change-journal.cjs" 2>/dev/null
+}
+# Whether the release has a journal consumer: that legacy reader, or the paired front's own
+# (rust-chat-mirror-v1: the front tails the journal in process and the core keeps only the executors).
+# chat_mirror_paired is set below, once, from the exact declarations of both sides, and starts empty.
+chat_mirror_paired=""
+core_tails_change_journal() {
+  core_tails_change_journal_legacy || [ "$chat_mirror_paired" = rust ]
 }
 # Whether the pinned core builds a chat's brain only for journal entries with origin "history"
 # (sbstndalton/noevia#2153: then it no longer nudges the brain itself while the front journals).
@@ -439,6 +451,8 @@ core_deletes_via_store() {
 }
 # True when the file has a line of CODE matching the extended regex: comment-only lines (`//` ones and
 # `/* ... */` blocks) never count, so a marker or an op name that only a comment mentions is not one.
+# Status 1 means only "read and scanned, no match" (or no such file); a failed scan is status 2, so a
+# caller that needs a definite "absent" can reject anything other than 1.
 # (The text is captured first: `grep -q` closing the pipe early would fail the pipeline under pipefail.)
 code_has() {
   [ -f "$1" ] || return 1
@@ -449,8 +463,102 @@ code_has() {
     line ~ /^\/\// { next }
     line ~ /^\/\*/ { if (!index(line, "*/")) block = 1; next }
     { print }
-  ' "$1")" || return 1
+  ' "$1")" || return 2
   grep -qE -e "$2" <<<"$code"
+}
+# Whether a Core module really calls require('<module>'): prints yes, no or invalid. The file is
+# tokenized (line and block comments, '...' and "..." strings, template literals with nested ${...},
+# regex literals) and only the token run  require ( <module> )  counts, with `require` not a property
+# (x.require) and <module> a literal whose value (escapes decoded, as node reads it) is the module: a
+# quoted string or a template without substitutions. A comment, a string or a template that spells
+# the call is not one. An unterminated comment, string, template or regex, an undecodable literal, a
+# missing node or a timeout is invalid (callers refuse it); a missing file is no.
+core_requires() {
+  [ -f "$1" ] || { echo no; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const raw = require("node:fs").readFileSync(process.argv[1], "utf8"), want = process.argv[2];
+    const vm = require("node:vm");
+    const s = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw, n = s.length, toks = [], stack = [];
+    const bad = () => { process.stdout.write("invalid"); process.exit(0); };
+    let i = 0;
+    if (s.startsWith("#!")) while (i < n && s[i] !== "\n") i++;
+    const kw = new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"]);
+    // A slash starts a regex after an operator, an opening bracket or a keyword; after a value it divides.
+    const regexOk = () => {
+      const t = toks[toks.length - 1];
+      if (!t) return true;
+      if (t.k === "p") return t.v !== ")" && t.v !== "]";
+      return t.k === "id" && kw.has(t.v);
+    };
+    // The value of one complete string or template literal (only a literal: the scanner delimited it).
+    const cooked = (lit) => {
+      if (!lit.includes("\\")) return lit.slice(1, -1);
+      try { const v = vm.runInNewContext(lit, {}, { timeout: 500 }); return typeof v === "string" ? v : bad(); } catch { bad(); }
+    };
+    // Template text from i (just past the backtick, or the closing brace of ${...} when first is false)
+    // to its end or the next ${. A whole template without substitutions is a string value.
+    const tmpl = (first) => {
+      const start = i - 1;
+      for (;;) {
+        if (i >= n) bad();
+        const c = s[i];
+        if (c === "\\") { i += 2; continue; }
+        if (c === "`") { i++; toks.push(first ? { k: "s", v: cooked(s.slice(start, i)) } : { k: "t" }); return; }
+        if (c === "$" && s[i + 1] === "{") { i += 2; stack.push("t"); toks.push({ k: "p", v: "(" }); return; }
+        i++;
+      }
+    };
+    while (i < n) {
+      const c = s[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === "/" && s[i + 1] === "/") { while (i < n && s[i] !== "\n") i++; continue; }
+      if (c === "/" && s[i + 1] === "*") { const e = s.indexOf("*/", i + 2); if (e < 0) bad(); i = e + 2; continue; }
+      if (c === "\x27" || c === "\"") {
+        let j = i + 1;
+        for (;; j++) {
+          if (j >= n || s[j] === "\n") bad();
+          if (s[j] === "\\") { j++; continue; }
+          if (s[j] === c) break;
+        }
+        toks.push({ k: "s", v: cooked(s.slice(i, j + 1)) }); i = j + 1; continue;
+      }
+      if (c === "`") { i++; tmpl(true); continue; }
+      if (c === "{") { stack.push("{"); toks.push({ k: "p", v: c }); i++; continue; }
+      if (c === "}") {
+        if (stack[stack.length - 1] === "t") { stack.pop(); toks.push({ k: "p", v: ")" }); i++; tmpl(false); continue; }
+        stack.pop(); toks.push({ k: "p", v: c }); i++; continue;
+      }
+      if (c === "/" && regexOk()) {
+        let j = i + 1, cls = false;
+        for (;; j++) {
+          if (j >= n || s[j] === "\n") bad();
+          const d = s[j];
+          if (d === "\\") { j++; continue; }
+          if (cls) { if (d === "]") cls = false; continue; }
+          if (d === "[") cls = true; else if (d === "/") break;
+        }
+        j++; while (j < n && /[A-Za-z]/.test(s[j])) j++;
+        toks.push({ k: "r" }); i = j; continue;
+      }
+      if (/[A-Za-z_$\u0080-\uffff]/.test(c)) {
+        let j = i + 1; while (j < n && /[\w$\u0080-\uffff]/.test(s[j])) j++;
+        toks.push({ k: "id", v: s.slice(i, j) }); i = j; continue;
+      }
+      if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(s[i + 1] || ""))) {
+        let j = i + 1; while (j < n && /[\w.]/.test(s[j])) j++;
+        toks.push({ k: "n" }); i = j; continue;
+      }
+      toks.push({ k: "p", v: c }); i++;
+    }
+    let found = false;
+    for (let k = 0; k + 3 < toks.length; k++) {
+      const a = toks[k], b = toks[k + 1], m = toks[k + 2], e = toks[k + 3], before = toks[k - 1];
+      if (a.k === "id" && a.v === "require" && !(before && before.k === "p" && before.v === ".")
+        && b.k === "p" && b.v === "(" && m.k === "s" && m.v === want && e.k === "p" && e.v === ")") found = true;
+    }
+    process.stdout.write(found ? "yes" : "no");
+  ' "$1" "$2" 2>/dev/null || echo invalid
 }
 # Slice7: exact canonical declarations + actual shorthand exports, never comment literals.
 # A transitional handler must be a named exported async chatMoveRoute in its actual route module.
@@ -497,7 +605,9 @@ rs_move_start() { move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATU
 rs_move_journal() { move_capability "$tree/rs/crates/server-projects/src/journal.rs" CHAT_MOVE_JOURNAL_MARKER noevia-chat-move-journal/1 rust; }
 core_move_client() { move_capability "$tree/core/server/project-store-client.cjs" CHAT_MOVE_CLIENT_MARKER noevia-chat-move-client/1 js; }
 core_move_enforcement() { move_capability "$tree/core/server/chat.cjs" CHAT_MOVE_ENFORCEMENT_MARKER noevia-chat-move-enforcement/1 js; }
-core_move_reader() { move_capability "$tree/core/server/chat-change-journal.cjs" CHAT_MOVE_READER_MARKER noevia-chat-move-reader/1 js; }
+core_move_reader_legacy() { move_capability "$tree/core/server/chat-change-journal.cjs" CHAT_MOVE_READER_MARKER noevia-chat-move-reader/1 js; }
+# The move events are read by that legacy reader or, paired, by the front's consumer (live/recovery delivery, event identity).
+core_move_reader() { core_move_reader_legacy || [ "$chat_mirror_paired" = rust ]; }
 core_move_owner() { move_capability "$tree/core/server/rust-projects.cjs" CHAT_MOVE_PUBLIC_OWNER "$1" js; }
 core_move_handler() { move_capability "$tree/core/server/routes/chat-lists.cjs" chatMoveRoute - function; }
 # Source jobs retain the Node executor while Rust alone owns their persisted journals. A
@@ -532,6 +642,7 @@ project_routes_core() {
 }
 # Feature authority moves as one three-namespace owner. Historic old/old pins remain
 # valid rollback pairs; either mixed generation is refused before producing an archive.
+
 feature_core_owner=""
 feature_rs_owner=""
 grep -qF '.createReadOnlyFeatures(' "$tree/core/server/index.cjs" 2>/dev/null && feature_core_owner=rust
@@ -572,12 +683,37 @@ if [ "$diary_rs_owner" = rust ]; then
   diary_expected="$(printf '%s\n' /api/diary/source /api/diary/today /api/diary/storage-import /api/diary/workspace-export /api/diary/workspace-import | sort)"
   [ "$diary_routes" = "$diary_expected" ] || die "Diary ownership pairing: incomplete route ownership"
 fi
+# The Diary local exchange moves as one owner: Core's rust-diary-local-exchange.cjs refusal (with the
+# admission lease's diaryExchange ask, through which the front holds Node's model throttle and inference
+# gate) and the front's rust-diary-local-exchange capability, with every method of the route Rust's in
+# routes.toml. Without the pair the route stays Node's. Historic old/old pins remain valid rollback pairs.
+lx_core_owner=""
+lx_rs_owner=""
+grep -qF "require('./rust-diary-local-exchange.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && lx_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary-local-exchange features; then
+  lx_rs_owner=rust
+fi
+[ "$lx_core_owner" = "$lx_rs_owner" ] \
+  || die "Diary local exchange ownership pairing: Core and Rust must move together"
+lx_owner=node
+if [ "$lx_rs_owner" = rust ]; then
+  lx_owner=rust
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary local exchange ownership pairing: missing route contract"
+  lx_route="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/diary/local-exchange" { if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1; print $1 }')" \
+    || die "Diary local exchange ownership pairing: every method must belong to Rust"
+  [ "$lx_route" = "/api/diary/local-exchange" ] || die "Diary local exchange ownership pairing: missing route ownership"
+  grep -qF "diaryExchange" "$tree/core/server/inference-admission-lease.cjs" 2>/dev/null \
+    || die "Diary local exchange ownership pairing: Core's admission lease does not take the exchange"
+  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause.
+  code_lines "$tree/core/server/index.cjs" | grep -qF "diaryExchange: { rateLimited:" \
+    || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
+fi
 # The rest of the Diary routes the web client names (sbstndalton/noevia#2206) move as one owner: Core's
 # rust-diary-routes.cjs refusal and the front's rust-diary-routes capability, with the methods Node
 # answered Rust's in routes.toml: every method of /api/diary, /api/diary-connector and the storage
 # status; GET and POST of the context, the exchanges and the connector credentials; DELETE of one
-# credential. POST /api/diary/local-exchange stays Node's (the model throttle and the inference
-# gate), so it must not be Rust's here. Core must refuse exactly those paths and be the one that keeps
+# credential. /api/diary/local-exchange is Rust's only with its own pair above (lx_owner). Core must refuse exactly those paths and be the one that keeps
 # the diary_connectors table out of Node's hands. Historic old/old pins remain valid rollback pairs.
 dr_core_owner=""
 dr_rs_owner=""
@@ -589,14 +725,14 @@ fi
   || die "Diary route ownership pairing: Core and Rust must move together"
 if [ "$dr_rs_owner" = rust ]; then
   [ -f "$tree/rs/contracts/http/routes.toml" ] || die "Diary route ownership pairing: missing route contract"
-  dr_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+  dr_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v lx="$lx_owner" '
     function want(path) {
       if (path == "/api/diary" || path == "/api/diary-connector" || path == "/api/diary/storage-status") return "ALL"
       if (path == "/api/diary/context" || path == "/api/diary/exchanges" || path == "/api/profile/diary-connectors") return "GET,POST"
       if (path == "/api/profile/diary-connectors/{*}") return "DELETE"
       return ""
     }
-    $1 == "/api/diary/local-exchange" { if ($2 != "node") exit 1 }
+    $1 == "/api/diary/local-exchange" { if ($2 != lx) exit 1 }
     want($1) != "" {
       if ($2 != "rust" || $3 != "-") exit 1
       w = want($1)
@@ -606,7 +742,7 @@ if [ "$dr_rs_owner" = rust ]; then
       for (i = 1; i <= n; i++) if (m[i] != "") { if (!(m[i] in ok) || (m[i] in seen)) exit 1; seen[m[i]] = 1; k++ }
       if (k != ne) exit 1
       print $1
-    }')" || die "Diary route ownership pairing: exactly the methods Node answered must belong to Rust, and the local exchange must stay Node's"
+    }')" || die "Diary route ownership pairing: exactly the methods Node answered must belong to Rust, and the local exchange only with its own pair"
   dr_routes="$(printf '%s\n' "$dr_routes" | sort | tr '\n' ' ')"
   [ "$dr_routes" = "/api/diary /api/diary-connector /api/diary/context /api/diary/exchanges /api/diary/storage-status /api/profile/diary-connectors /api/profile/diary-connectors/{*} " ] \
     || die "Diary route ownership pairing: incomplete route ownership"
@@ -695,11 +831,22 @@ if [ "$project_lifecycle_rs_owner" = rust ]; then
   [ "$project_lifecycle_routes" = "$project_lifecycle_expected" ] || die "project create/delete ownership pairing: incomplete route ownership"
 fi
 # A project's storage writes (sbstndalton/noevia#2191 round 3) move as one owner: Core's
-# rust-project-storage.cjs job-kind split (required by index.cjs) and the front's rust-project-storage
-# capability. No route moves with it; it builds on the create/delete pair, which must be Rust's too.
+# rust-project-storage.cjs job-kind split and the front's rust-project-storage capability. No route moves
+# with it; it builds on the create/delete pair, which must be Rust's too. Core loads the split either
+# straight from index.cjs or, since noevia-core b6e2238, through the read-only outbox view that index.cjs
+# loads (index.cjs requires rust-index-outbox.cjs, which requires rust-project-storage.cjs). Every link
+# is a real require call in code (core_requires): a comment or a string that spells it is not one, and
+# neither is a require in an outbox file index.cjs does not load. An unscannable link refuses.
 project_storage_core_owner=""
 project_storage_rs_owner=""
-grep -qF "require('./rust-project-storage.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && project_storage_core_owner=rust
+ps_direct="$(core_requires "$tree/core/server/index.cjs" ./rust-project-storage.cjs)"
+ps_outbox="$(core_requires "$tree/core/server/index.cjs" ./rust-index-outbox.cjs)"
+ps_chain=no
+[ "$ps_outbox" = yes ] && ps_chain="$(core_requires "$tree/core/server/rust-index-outbox.cjs" ./rust-project-storage.cjs)"
+case "$ps_direct $ps_outbox $ps_chain" in
+  *invalid*) die "project storage write ownership pairing: Core wiring could not be read" ;;
+esac
+{ [ "$ps_direct" = yes ] || [ "$ps_chain" = yes ]; } && project_storage_core_owner=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-project-storage features; then
   project_storage_rs_owner=rust
 fi
@@ -942,6 +1089,23 @@ if [ "$mm_scan_rs" = rust ]; then
     END { exit !ok }
   ' <<<"$mm_scan_index" || die "model scan read ownership pairing: cache bridge needs the front captured secret"
 fi
+# Row V: the front is the only issuer of the code-sandbox egress proxy's control key and signed task
+# grants (rs code_egress.rs, FEATURES "rust-code-egress-issuer"). The paired Core is a fail-closed client of
+# it (server/code-egress-client.cjs CODE_EGRESS_CLIENT_MARKER) and carries no Node issuer. A Core that still
+# publishes the key and signs grants beside a front that does the same would race over the one key file;
+# a client Core beside a front without the issuer could never get a grant. Markers are code lines, never
+# comments (a comment-only mention counts for nothing).
+ce_core_owner=""; ce_rs_owner=""
+code_has "$tree/core/server/code-egress-client.cjs" "^const CODE_EGRESS_CLIENT_MARKER = 'noevia-code-egress-client/1';" && ce_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-code-egress-issuer features; then ce_rs_owner=rust; fi
+[ "$ce_core_owner" = "$ce_rs_owner" ] || die "code egress issuer pairing: Core ('noevia-code-egress-client/1') and Rust ('rust-code-egress-issuer') must move together"
+if [ "$ce_core_owner" = rust ]; then
+  [ ! -e "$tree/core/server/code-egress-control.cjs" ] || die "code egress issuer pairing: Core still carries the Node issuer (server/code-egress-control.cjs)"
+  ! code_has "$tree/core/server/code-egress.cjs" 'publishWebKey|createKeyKeeper|createControlClient|mintGrant|secrets[.]derive' \
+    || die "code egress issuer pairing: Core still publishes keys or signs grants"
+  code_has "$tree/core/server/code-egress.cjs" "require\\('[.]/code-egress-client[.]cjs'\\)" \
+    || die "code egress issuer pairing: Core's egress setup does not use the native client"
+fi
 # #2292: calibration cancellation policy is native, with only facts and the conditional state writer in Core.
 cc_core_owner=""; cc_rs_owner=""
 grep -qF "require('./rust-calibration-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && cc_core_owner=rust
@@ -1013,6 +1177,215 @@ if [ "$cr_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
+fi
+discovery_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = []; // lease authority entries
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-mcp-discovery"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-mcp-discovery")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    out(outbox[0] === "rust-mcp-discovery" ? "v1" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+
+# Row T: MCP tool discovery is native; Core is its fail-closed client and publishes only the chat process's toolbox facts.
+md_core_owner=""; md_rs_owner=""
+grep -qF "require('./mcp-native-discovery.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && md_core_owner=rust
+md_rs_version="$(discovery_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+# A FEATURES declaration this reader cannot prove is refused here when lib.rs names the capability at all.
+# One that never names it is left to the strict readers further down (maintenance lease, auto-roles write,
+# chat mirror, ...), so each still gives its own refusal first; it is refused after the last of them.
+md_rs_deferred=""
+if [ "$md_rs_version" = invalid ]; then
+  ! grep -qF 'rust-mcp-discovery' "$tree/rs/bins/noevia-server/src/lib.rs" 2>/dev/null \
+    || die "MCP discovery ownership pairing: invalid Rust capability"
+  md_rs_deferred=invalid
+fi
+[ "$md_rs_version" != v1 ] || md_rs_owner=rust
+[ "$md_core_owner" = "$md_rs_owner" ] || die "MCP discovery ownership pairing: Core and Rust must move together"
+if [ "$md_rs_owner" = rust ]; then
+  [ -f "$tree/core/server/mcp-native-discovery.cjs" ] || die "MCP discovery ownership pairing: missing the discovery client"
+  ! code_has "$tree/core/server/mcp-wiring.cjs" '(async[[:space:]]+)?function[[:space:]]+discoverOneServer' \
+    || die "MCP discovery ownership pairing: Core still discovers"
+  code_has "$tree/core/server/index.cjs" 'createChatFactsPublisher' \
+    || die "MCP discovery ownership pairing: Core must publish the chat process's toolbox facts"
+  ! code_has "$tree/core/server/index.cjs" 'createMcpDiscoveryPublisher' \
+    || die "MCP discovery ownership pairing: Core still publishes a discovery catalogue"
+  [ ! -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] \
+    || die "MCP discovery ownership pairing: the picker facts bridge is gone"
+fi
+# Diary backup must move as a pair: new front + old Core would run two loops.
+db_core_owner=""; db_rs_owner=""
+move_capability "$tree/core/server/rust-diary.cjs" DIARY_BACKUP_WORKER_OWNER noevia-diary-backup-worker-rust/1 js && db_core_owner=rust
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-diary-backup-worker features && db_rs_owner=rust
+[ "$db_core_owner" = "$db_rs_owner" ] || die "diary backup worker pairing: Core and Rust must move together"
+if [ "$db_rs_owner" = rust ]; then
+  ! code_has "$tree/core/server/index.cjs" 'startDiaryBackupWorker' || die "diary backup worker pairing: Core still starts the worker"
+  grep -qF 'DIARY_BACKUP_WORKER_OWNER' "$tree/noevia/build/web-supervisor.sh" && grep -qF 'rust-diary-backup-worker' "$tree/noevia/build/web-supervisor.sh" || die "diary backup worker pairing: supervisor guard missing"
+fi
+
+# The memory watchdog moves as one owner; mixed pairs double-run it or leave no watch.
+bw_core_owner=""; bw_rs_owner=""
+move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/1 js && bw_core_owner=v1
+move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/2 js && bw_core_owner=v2
+move_capability "$tree/core/server/rust-budget-watch.cjs" BUDGET_WATCH_OWNER noevia-budget-watch-rust/3 js && bw_core_owner=v3
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-budget-watch features && bw_rs_owner=v1
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-budget-watch-v2 features && bw_rs_owner=v2
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-budget-watch-v3 features && bw_rs_owner=v3
+[ "$bw_core_owner" = "$bw_rs_owner" ] \
+  || die "budget watch pairing: Core and Rust must move the watchdog together"
+if [ -n "$bw_rs_owner" ]; then
+  grep -qF 'BUDGET_WATCH_OWNER' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    && grep -qF 'rust-budget-watch' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    || die "budget watch pairing: web supervisor lacks a prelaunch capability comparison"
+fi
+
+# #2303 (worker): the calibration job itself (its state file, boot recovery and hold) moves with explicit
+# markers, never source shapes: Core exports CALIBRATION_WORKER_OWNER from rust-calibration-routes.cjs, the
+# front lists the worker in --features. A mixed pair recovers one state file twice at a joint restart (new
+# front, old Core) or never (old front, new Core), so either half alone is refused. That a marked Core builds
+# no public calibrator, recovers nothing at boot and hands the front its load decision is Core CI's to prove,
+# by booting index.cjs (noevia-core server/native-calibration-boot-2303.test.cjs), not this script's to guess
+# from source text. Generation 2 (noevia-calibration-worker-rust/2, rust-calibration-worker-v2): every load the
+# job asks for is first decided by Core's overBudget() (POST /internal/model-maintenance/load-refusal).
+# Generations pair only with themselves, and generation 1 (no load decision: quarantined or over-budget
+# profiles reached the engine) is refused outright; no release ever shipped it.
+cw_core_gen=""; cw_rs_gen=""
+move_capability "$tree/core/server/rust-calibration-routes.cjs" CALIBRATION_WORKER_OWNER noevia-calibration-worker-rust/1 js && cw_core_gen=1
+move_capability "$tree/core/server/rust-calibration-routes.cjs" CALIBRATION_WORKER_OWNER noevia-calibration-worker-rust/2 js && cw_core_gen=2
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-worker features && cw_rs_gen=1
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-calibration-worker-v2 features && cw_rs_gen=2
+[ "$cw_core_gen" = "$cw_rs_gen" ] \
+  || die "calibration worker pairing: Core (generation ${cw_core_gen:-none}) and Rust (generation ${cw_rs_gen:-none}) must move the calibration job together, at one generation"
+[ "$cw_rs_gen" != 1 ] \
+  || die "calibration worker pairing: generation 1 sends calibration loads without Core's load decision; pair noevia-calibration-worker-rust/2 with rust-calibration-worker-v2"
+if [ -n "$cw_rs_gen" ]; then
+  [ "$cr_rs_owner" = rust ] && [ "$cc_rs_owner" = rust ] \
+    || die "calibration worker pairing: the native worker needs the native start/read and cancellation routes"
+  grep -qF 'noevia-calibration-worker-rust/2' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    && grep -qF 'rust-calibration-worker-v2' "$tree/noevia/build/web-supervisor.sh" 2>/dev/null \
+    || die "calibration worker pairing: web supervisor lacks a prelaunch capability comparison"
 fi
 # #2287: auto-tune settings policy is native, with only facts and the conditional state writer in Core.
 ats_core_owner=""; ats_rs_owner=""
@@ -1178,15 +1551,21 @@ if [ "$tp_rs_owner" = rust ]; then
     || die "toolbox picker ownership pairing: Core still carries the public handler or status composition"
   ! code_has "$tree/core/server/toolboxes.cjs" 'function toolboxSummaries' \
     || die "toolbox picker ownership pairing: Core still carries picker summary composition"
-  [ -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] || die "toolbox picker ownership pairing: missing raw facts bridge"
-  tp_index="$(code_lines "$tree/core/server/index.cjs")"
-  grep -qF 'toolboxPickerFacts(req, res)' <<<"$tp_index" || die "toolbox picker ownership pairing: missing facts mount"
-  tp_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tp_index" | head -1)"
-  [ -n "$tp_secret" ] && awk -v c="$tp_secret" '
-    /createToolboxPickerFacts\(\{/ { bridge = NR }
-    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-    END { exit !ok }
-  ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
+  if [ "$md_rs_owner" = rust ]; then
+    # Row T: the picker's facts are the front's own discovery plus the chat process's published toolbox facts; the
+    # bridge is gone (the MCP discovery guard above refuses a Core that still carries it).
+    :
+  else
+    [ -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] || die "toolbox picker ownership pairing: missing raw facts bridge"
+    tp_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qF 'toolboxPickerFacts(req, res)' <<<"$tp_index" || die "toolbox picker ownership pairing: missing facts mount"
+    tp_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tp_index" | head -1)"
+    [ -n "$tp_secret" ] && awk -v c="$tp_secret" '
+      /createToolboxPickerFacts\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
+  fi
 fi
 # #2306: only GET status moves; POST start and all other verbs remain Node-owned.
 atr_core_owner=""; atr_rs_owner=""
@@ -1257,6 +1636,107 @@ if [ "$iur_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$iur_index" || die "idle unload read ownership pairing: facts bridge needs the front captured secret"
+fi
+# #2238: only the assignments GET moves. Core retains its shared installed/probe owners.
+mas_core_owner=""; mas_rs_owner=""
+grep -qF "require('./rust-model-assignments.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mas_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-assignments features; then mas_rs_owner=rust; fi
+[ "$mas_core_owner" = "$mas_rs_owner" ] || die "model assignments read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mas_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mas_table=""
+  mas_rows="$(printf '%s\n' "$mas_table" | awk -F'\t' -v want="$mas_rs_owner" '
+    $1 == "/api/models/assignments" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model assignments read ownership pairing: GET only; other methods stay Node"
+fi
+if [ "$mas_rs_owner" = rust ]; then
+  [ "${mas_rows:-}" = /api/models/assignments ] || die "model assignments read ownership pairing: incomplete route ownership"
+  awk -v quote="'" '
+    block { if (index($0, "*/")) block = 0; next }
+    /^[[:space:]]*\/\// { next }
+    /^[[:space:]]*\/\*/ { if (!index($0, "*/")) block = 1; next }
+    /^const OWNED_ROUTES = / {
+      markers++
+      exact = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET /api/models/assignments" quote "]));")
+    }
+    END { exit !(markers == 1 && exact) }
+  ' "$tree/core/server/rust-model-assignments.cjs" \
+    || die "model assignments read ownership pairing: Core must refuse exactly GET model assignments"
+  [ ! -f "$tree/core/server/model-assignments.cjs" ] \
+    || die "model assignments read ownership pairing: Core still carries the public GET formatter"
+  [ -f "$tree/core/server/rust-model-assignments-facts.cjs" ] || die "model assignments read ownership pairing: missing facts bridge"
+  mas_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelAssignmentsFacts(req, res)' <<<"$mas_index" || die "model assignments read ownership pairing: missing facts bridge mount"
+  mas_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mas_index" | head -1)"
+  [ -n "$mas_secret" ] && awk -v c="$mas_secret" '
+    /createModelAssignmentsFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mas_index" || die "model assignments read ownership pairing: facts bridge needs the front captured secret"
+fi
+# Download GET moves as a pair; Core retains the tracker and every other method, unless (noevia-core
+# 9919523) those other methods are residuals: index.cjs really requires rust-residual-fallbacks.cjs
+# (core_requires), its refuseOwned, run under a time limit with every require stubbed, refuses exactly
+# the non-GET methods of /api/models/downloads, and routes/models.cjs keeps no downloads handler. The
+# residual fallback pairing below then holds the front to answering them.
+mdr_residual_core() {
+  [ "$(core_requires "$tree/core/server/index.cjs" ./rust-residual-fallbacks.cjs)" = yes ] || return 1
+  local rc=0
+  code_has "$tree/core/server/routes/models.cjs" "/api/models/downloads" || rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  [ -f "$tree/core/server/rust-residual-fallbacks.cjs" ] && command -v node >/dev/null 2>&1 || return 1
+  [ "$(timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    try {
+      const r = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const refuse = module.exports.refuseOwned;" +
+        "  if (typeof refuse !== \"function\") return \"no\";" +
+        "  const p = \"/api/models/downloads\";" +
+        "  const refused = (method) => { let sent = false;" +
+        "    const answered = refuse({ method, url: p, headers: {} }, {}, { parseRequestUrl: () => new URL(p, \"http://synthetic.invalid\"), json: () => { sent = true; } });" +
+        "    return answered === true && sent ? true : answered === false && !sent ? false : null; };" +
+        "  return refused(\"GET\") === false && [\"POST\", \"PUT\", \"PATCH\", \"DELETE\"].every(m => refused(m) === true) ? \"yes\" : \"no\";" +
+        "})()", { URL }, { timeout: 2000 });
+      process.stdout.write(r === "yes" ? "yes" : "no");
+    } catch { process.stdout.write("no"); }
+  ' "$tree/core/server/rust-residual-fallbacks.cjs" 2>/dev/null)" = yes ]
+}
+mdr_core=""; mdr_rs=""
+grep -qF "require('./rust-model-downloads-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mdr_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-downloads-read features; then mdr_rs=rust; fi
+[ "$mdr_core" = "$mdr_rs" ] || die "model downloads read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mdr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mdr_table=""
+  mdr_rows="$(printf '%s\n' "$mdr_table" | awk -F'\t' -v want="$mdr_rs" '
+    $1 == "/api/models/downloads" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model downloads read ownership pairing: GET only; other methods stay Node"
+fi
+if [ "$mdr_rs" = rust ]; then
+  [ "${mdr_rows:-}" = /api/models/downloads ] || die "model downloads read ownership pairing: incomplete route ownership"
+  code_has "$tree/core/server/rust-model-downloads-read.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/models/downloads'[]][)][)];$" \
+    || die "model downloads read ownership pairing: Core must refuse exactly this GET"
+  code_has "$tree/core/server/routes/models.cjs" "^[[:space:]]*if [(]p === '/api/models/downloads' && req[.]method !== 'GET'[)] [{]$" \
+    || mdr_residual_core \
+    || die "model downloads read ownership pairing: Core must retain only the legacy methods"
+  [ -f "$tree/core/server/rust-model-downloads-read-facts.cjs" ] || die "model downloads read ownership pairing: missing facts bridge"
+  mdr_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelDownloadsFacts(req, res)' <<<"$mdr_index" || die "model downloads read ownership pairing: missing facts bridge mount"
+  mdr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mdr_index" | head -1)"
+  [ -n "$mdr_secret" ] && awk -v c="$mdr_secret" '
+    /createModelDownloadsFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mdr_index" || die "model downloads read ownership pairing: facts bridge needs the front captured secret"
 fi
 # Preset GET moves as a pair. PUT keeps the same snapshot owner and conditional writer.
 pr_core=""; pr_rs=""
@@ -1363,6 +1843,31 @@ if [ "$atrm_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$atrm_index" || die "auto-tune resume ownership pairing: state bridge needs the front captured secret"
 fi
+# Retention PUT and the hourly sweep share one native writer. Refuse mixed generations.
+retention_core_put=""
+if grep -qF "  [/^\\/api\\/account\\/retention$/, ['GET', 'PUT']]," "$tree/core/server/rust-auth.cjs" 2>/dev/null; then
+  retention_core_put='PUT /api/account/retention'
+fi
+retention_rs_put=""
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # An unreadable table is refused further down with its own #2096 error; read it tolerantly here
+  # (as the auto-tune cancellation block does) so that error, not this one, is what is reported.
+  # With Core moved and the table unreadable, the pairing below still refuses.
+  retention_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || retention_table=""
+  retention_rs_put="$(printf '%s\n' "$retention_table" | awk -F'\t' '
+    $1 == "/api/account/retention" && $2 == "rust" && ($4 == "-" || $4 ~ /(^|,)[ \t]*PUT([ \t]*,|[ \t]*$)/) {print "PUT /api/account/retention"}')"
+fi
+[ "$retention_core_put" = "$retention_rs_put" ] || die "retention PUT ownership pairing: Core and Rust must move together"
+if [ -n "$retention_core_put" ]; then
+  code_has "$tree/core/server/routes/account.cjs" "Retention settings are owned by the Rust front." \
+    || die "retention PUT ownership pairing: Core must refuse the moved writer"
+  if code_has "$tree/core/server/routes/account.cjs" 'retention\.write\('; then
+    die "retention PUT ownership pairing: Core still writes retention settings"
+  else
+    retention_match_status=$?
+    [ "$retention_match_status" -eq 1 ] || die "retention PUT ownership pairing: writer matcher failed"
+  fi
+fi
 # #2294: auto-tune cancellation policy is native, with only facts and the conditional state writer in Core.
 atc_core_owner=""; atc_rs_owner=""
 grep -qF "require('./rust-autotune-cancel.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && atc_core_owner=rust
@@ -1397,6 +1902,45 @@ if [ "$atc_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$atc_index" || die "auto-tune cancellation ownership pairing: state bridge needs the front captured secret"
+fi
+# #2295: untuned discovery policy is native, with only facts and the conditional state writer in Core.
+au_scan_core_owner=""; au_scan_rs_owner=""
+grep -qF "require('./rust-autotune-untuned.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && au_scan_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-autotune-untuned features; then au_scan_rs_owner=rust; fi
+[ "$au_scan_core_owner" = "$au_scan_rs_owner" ] || die "untuned discovery ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  au_scan_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || au_scan_table=""
+  au_scan_rows="$(printf '%s\n' "$au_scan_table" | awk -F'\t' -v want="$au_scan_rs_owner" '
+    $1 == "/api/models/autotune/untuned" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "untuned discovery ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$au_scan_rs_owner" = rust ]; then
+  [ "${au_scan_rows:-}" = /api/models/autotune/untuned ] || die "untuned discovery ownership pairing: incomplete route ownership"
+  au_scan_refused="$( { project_routes_core "$tree/core/server/rust-autotune-untuned.cjs" || true; } | tr '\n' ' ')"
+  [ "$au_scan_refused" = 'ALL /api/models/autotune/untuned ' ] || die "untuned discovery ownership pairing: Core must refuse exactly the discovery path"
+  ! code_has "$tree/core/server/routes/models.cjs" '/api/models/autotune/untuned' \
+    || die "untuned discovery ownership pairing: Core still carries the public handler"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'async[[:space:]]+function[[:space:]]+untuned[[:space:]]*\(' \
+    || die "untuned discovery ownership pairing: Core still carries the public discovery policy"
+  code_has "$tree/core/server/llamacpp-manager.cjs" 'scanFacts: autotuner.scanFacts' \
+    && code_has "$tree/core/server/llamacpp-full-autotune.cjs" '[.]autotuneScan[[:space:]]*\(' \
+    && code_has "$tree/core/server/dav-parse-wasm.cjs" '[.]autotune_scan[[:space:]]*\(' \
+    && code_has "$tree/rs/bins/dav-parse-wasm/src/lib.rs" 'fn[[:space:]]+autotune_scan[[:space:]]*\(' \
+    || die "untuned discovery ownership pairing: shared Rust/WASM policy and raw owner facts required"
+  ! code_has "$tree/core/server/llamacpp-full-autotune.cjs" 'latest?.version === VERSION' \
+    || die "untuned discovery ownership pairing: Core still carries candidate selection policy"
+  [ -f "$tree/core/server/rust-autotune-untuned-facts.cjs" ] || die "untuned discovery ownership pairing: missing state bridge"
+  au_scan_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'autotuneUntunedFacts(req, res)' <<<"$au_scan_index" || die "untuned discovery ownership pairing: missing state bridge mount"
+  au_scan_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$au_scan_index" | head -1)"
+  [ -n "$au_scan_secret" ] && awk -v c="$au_scan_secret" '
+    /createAutotuneUntunedFacts\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$au_scan_index" || die "untuned discovery ownership pairing: state bridge needs the front captured secret"
 fi
 # An account's deletion (sbstndalton/noevia#2190, #2191 round 9) moves as one owner: Core's rust-admin-users.cjs
 # refusal and the front's rust-admin-users capability, with exactly DELETE of /api/admin/users/{id} Rust's in
@@ -1550,6 +2094,147 @@ if [ "$directory_rs_owner" = rust ]; then
     }')" || die "plugin directory ownership pairing: all methods must belong to Rust"
   [ "$directory_routes" = /api/plugins/directory ] || die "plugin directory ownership pairing: incomplete route ownership"
 fi
+# F1: persistence, cleanup and the private boot proof move as one paired writer.
+auto_roles_core_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_AUTO_ROLES_WRITE_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write("invalid"); process.exit(0); }
+    const markers = src.match(/["\x27]rust-auto-roles-write[^"\x27\r\n]*["\x27]/g) || [];
+    process.stdout.write(value === "rust-auto-roles-write" && markers.length === 1 ? "rust" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+auto_roles_rs_owner() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    // No decoded literal (ordinary, raw or byte) mentions auto-roles: this guard has nothing
+    // to prove, so other capability guards report their own FEATURES shapes. A split marker
+    // still cannot hand PUT to Rust: get_only_pair then requires GET-only ownership.
+    if (!strs.some(s => s.v.includes("auto-roles"))) out("none");
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-auto-roles-write"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-auto-roles-write")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    out(outbox[0] === "rust-auto-roles-write" ? "rust" : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+auto_roles_write_owner="$(auto_roles_core_owner "$tree/core/server/rust-auto-roles-write.cjs")"
+auto_roles_write_front="$(auto_roles_rs_owner "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$auto_roles_write_owner" != invalid ] && [ "$auto_roles_write_front" != invalid ] || die "auto-roles write ownership pairing: ambiguous or unknown capability marker"
+[ "$auto_roles_write_owner" = "$auto_roles_write_front" ] || die "auto-roles write ownership pairing: Core and Rust must move together"
+if [ "$auto_roles_write_owner" = rust ]; then
+  [ -f "$tree/core/server/rust-auto-roles-write.cjs" ] || die "auto-roles write ownership pairing: missing Core bridge"
+  code_has "$tree/core/server/index.cjs" 'PROJECT_STORE\.autoRolesReady\(\)' || die "auto-roles write ownership pairing: missing boot proof"
+  code_has "$tree/core/server/index.cjs" 'autoRolesWriteBridge\(req, res\)' || die "auto-roles write ownership pairing: missing bridge mount"
+  if code_has "$tree/core/server/models.cjs" 'saveAutoRoles[(]' || code_has "$tree/core/server/workspace.cjs" 'saveAutoRoles[(]'; then
+    die "auto-roles write ownership pairing: Core still carries a roles writer"
+  fi
+fi
 # The close-out routes: GET /api/health and GET /api/auto-roles (sbstndalton/noevia#2190) and GET
 # /api/workspace (#2191). Each is Core's refusal (server/rust-health.cjs, rust-auto-roles.cjs,
 # rust-workspace.cjs, which also publish rag-status.json and auto-roles-snapshot.json for the front) beside
@@ -1567,12 +2252,15 @@ get_only_pair() {
     || die "$label ownership pairing: Core and Rust must move together"
   if [ "$rs_owner" = rust ]; then
     [ -f "$tree/rs/contracts/http/routes.toml" ] || die "$label ownership pairing: missing route contract"
-    owned="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$route" '
+    owned="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' -v want="$route" -v put="${auto_roles_write_owner:-}" '
       $1 == want {
         if ($2 != "rust" || $3 != "-") exit 1
         n = split($4, m, /[^A-Z]+/); k = 0; g = 0
         for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] == "GET") g++; k++ }
-        if (k != 1 || g != 1) exit 1
+        if (want == "/api/auto-roles" && put == "rust") {
+          p = 0; for (i = 1; i <= n; i++) if (m[i] == "PUT") p++
+          if (k != 2 || g != 1 || p != 1) exit 1
+        } else if (k != 1 || g != 1) exit 1
         print $1
       }')" || die "$label ownership pairing: exactly GET of $route must belong to Rust"
     [ "$owned" = "$route" ] || die "$label ownership pairing: incomplete route ownership"
@@ -1581,6 +2269,23 @@ get_only_pair() {
 get_only_pair rust-health.cjs rust-health "health check" /api/health
 get_only_pair rust-auto-roles.cjs rust-auto-roles "auto-roles read" /api/auto-roles
 get_only_pair rust-workspace.cjs rust-workspace "workspace list" /api/workspace
+# The chat search (#1450) and one chat's Markdown download (#1471), each its own pair of Core refusal
+# (server/rust-chat-search.cjs, rust-chat-export.cjs) and front capability, exactly the GET Rust's. A paired
+# Core no longer carries the handler in routes/chat-lists.cjs and refuses exactly that GET.
+get_only_pair rust-chat-search.cjs rust-chat-search "chat search" /api/chats/search
+get_only_pair rust-chat-export.cjs rust-chat-export "chat download" "/api/chats/{chatId}/export"
+if grep -qF "require('./rust-chat-search.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  code_has "$tree/core/server/rust-chat-search.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/chats/search'[]][)][)];$" \
+    || die "chat search ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/chat-lists.cjs" "p === '/api/chats/search'" \
+    || die "chat search ownership pairing: Core still carries the public search handler"
+fi
+if grep -qF "require('./rust-chat-export.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  code_has "$tree/core/server/rust-chat-export.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'GET /api/chats/[{]chatId[}]/export'[]][)][)];$" \
+    || die "chat download ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/chat-lists.cjs" 'chatMarkdown[(]' \
+    || die "chat download ownership pairing: Core still carries the public download handler"
+fi
 # The decision settings (sbstndalton/noevia#2190): Core's rust-decision-settings.cjs refusal and the
 # front's rust-decision-settings capability (Rust the single writer of decision:configuration), every
 # method of both routes Rust's in routes.toml.
@@ -1841,12 +2546,19 @@ fi
 # (rust-mcp-directory.cjs, rust-toolboxes-permitted.cjs, rust-connectors.cjs) paired with a front capability of the
 # same name, with exactly the methods the front answers Rust's in routes.toml. Together they make the front the
 # only writer of directory_mcp_servers (Node re-reads it: its directory-mcp.cjs must hold no write of it) and move
-# the last two views onto the discovery snapshot Node publishes (mcp-discovery.json): a pair without the Core half
-# that publishes it, or the front half that reads it, would answer from nothing.
+# the last two views onto the discovery snapshot Node publishes (mcp-discovery.json), or, since row T, onto the front's
+# own discovery and Node's toolbox-chat-facts.json: a pair without the Core half that publishes it, or the front half
+# that reads it, would answer from nothing.
 discovery_pair_ok() {
-  code_has "$tree/core/server/index.cjs" "createMcpDiscoveryPublisher[[:space:]]*\\(" \
-    && [ -f "$tree/core/server/mcp-discovery-snapshot.cjs" ] \
-    && code_has "$tree/rs/bins/noevia-server/src/lib.rs" "pub[[:space:]]+mod[[:space:]]+mcp_discovery"
+  code_has "$tree/rs/bins/noevia-server/src/lib.rs" "pub[[:space:]]+mod[[:space:]]+mcp_discovery" || return 1
+  if [ "$md_rs_owner" = rust ]; then
+    # Row T: the front discovers itself and reads the chat process's toolbox facts.
+    code_has "$tree/core/server/index.cjs" "createChatFactsPublisher[[:space:]]*\\(" \
+      && [ -f "$tree/core/server/toolbox-chat-facts.cjs" ]
+  else
+    code_has "$tree/core/server/index.cjs" "createMcpDiscoveryPublisher[[:space:]]*\\(" \
+      && [ -f "$tree/core/server/mcp-discovery-snapshot.cjs" ]
+  fi
 }
 mcpd_core_owner=""
 mcpd_rs_owner=""
@@ -2081,7 +2793,7 @@ fi
 # The model maintenance routes (sbstndalton/noevia#2210) move as one owner: Core's rust-model-maintenance.cjs
 # refusal and the front's rust-model-maintenance capability, with exactly POST /api/models/presets/reload,
 # GET /api/models/evidence and POST /api/models/evidence/import Rust's in routes.toml (Node keeps every other
-# method and the recheck). The front is the single writer of the reload guard state file and the evidence
+# method; recheck moves separately in #2286). The front is the single writer of the reload guard state file and the evidence
 # store; a mixed pair would have two writers or none. Historic old/old pins remain valid rollback pairs.
 maint_core_owner=""
 maint_rs_owner=""
@@ -2104,9 +2816,46 @@ if [ "$maint_rs_owner" = rust ]; then
     }' | sort)" || die "model maintenance ownership pairing: exactly the one method of each route must belong to Rust"
   maint_expected="$(printf '%s\n' /api/models/presets/reload /api/models/evidence /api/models/evidence/import | sort)"
   [ "$maint_routes" = "$maint_expected" ] || die "model maintenance ownership pairing: incomplete route ownership"
-  # The recheck loads a model after Node's admission check: it must not be Rust's.
-  if routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/evidence/recheck" && $2 == "rust" { f = 1 } END { exit !f }'; then
+  # Recheck needs its own native probe/admission pairing, beyond this earlier maintenance group.
+  if ! move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-evidence-recheck features && routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/evidence/recheck" && $2 == "rust" { f = 1 } END { exit !f }'; then
     die "model maintenance ownership pairing: the recheck stays Node's"
+  fi
+fi
+
+# #2286: the 1x1 recheck probe and evidence filing are native; Node keeps live admission only.
+er_core_owner=""
+er_rs_owner=""
+grep -qF "require('./rust-model-evidence-recheck.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && er_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-evidence-recheck features; then er_rs_owner=rust; fi
+[ "$er_core_owner" = "$er_rs_owner" ] || die "evidence recheck ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # The common contract parser below reports malformed TOML; preserve its old-pair diagnostic.
+  er_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || er_table=""
+  er_rows="$(printf '%s\n' "$er_table" | awk -F'\t' -v want="$er_rs_owner" '
+    $1 == "/api/models/evidence/recheck" {
+      if(want=="rust") {
+        if($2!="rust" || $3!="-") exit 1
+        n=split($4,m,/[^A-Z]+/); k=0
+        for(i=1;i<=n;i++) if(m[i]!="") {if(m[i]!="POST") exit 1;k++}
+        if(k!=1) exit 1
+      } else if($2!="node") exit 1
+      print $1
+    }')" || die "evidence recheck ownership pairing: POST alone must be native with the new pair and Node's with the old"
+  if [ "$er_rs_owner" = rust ]; then
+    [ "$maint_rs_owner" = rust ] || die "evidence recheck ownership pairing: native evidence store required"
+    [ "$(printf '%s\n' "$er_rows" | wc -w | tr -d ' ')" = 1 ] || die "evidence recheck ownership pairing: missing route"
+    er_refused="$( { project_routes_core "$tree/core/server/rust-model-evidence-recheck.cjs" || true; } | sort | tr '\n' ' ')"
+    [ "$er_refused" = 'POST /api/models/evidence/recheck ' ] || die "evidence recheck ownership pairing: exact POST refusal required"
+    ! grep -qE 'createVisionProbe|source:[[:space:]]*.recheck.' "$tree/core/server/routes/models.cjs" 2>/dev/null || die "evidence recheck ownership pairing: public Node probe still present"
+    [ -f "$tree/core/server/inference-admission-lease.cjs" ] || die "evidence recheck ownership pairing: live inference admission required"
+    er_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'inferenceAdmission\.handle\(req, res\)' <<<"$er_index" || die "evidence recheck ownership pairing: inference admission must be mounted"
+    er_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$er_index" | head -1)"
+    [ -n "$er_secret" ] && awk -v c="$er_secret" '
+      /createAdmissionRoutes\(\{/ {bridge=NR}
+      index($0,"secret: " c) && bridge && NR-bridge<=3 {ok=1}
+      END {exit !ok}
+    ' <<<"$er_index" || die "evidence recheck ownership pairing: captured inference admission secret required"
   fi
 fi
 
@@ -2229,6 +2978,481 @@ elif [ -f "$tree/rs/crates/server-projects/src/source_jobs.rs" ] \
    || grep -qF 'workspace.sourceJobs' "$tree/core/server/source-jobs.cjs" 2>/dev/null; then
   core_source_client && rs_source_store || die "source job store pairing: core needs an exported source client and Rust needs the compiled source store capability and six internal routes"
 fi
+# Port contract row J: the front is the one model-maintenance lease authority, and Core's
+# maintenance gate takes every hold there and fails closed without it. Core and Rust must carry the
+# same lease generation; legacy/legacy (none/none) stays the rollback pair. Detection follows the
+# outbox pairing (f57a4e3): Core's value is what server/model-maintenance-lease.cjs actually exports
+# as LEASE_CLIENT_MARKER (evaluated in node:vm under a hard time limit, every require stubbed; a
+# marker literal without the export is invalid), and Rust's is the single unconditional ordinary
+# string literal "noevia-maintenance-lease-authority/<n>" in lib.rs's one FEATURES array (comment-,
+# raw-, byte- and escape-aware tokenizer; attributes, macros, expressions, duplicates, escaped
+# duplicates and unknown versions are invalid). Invalid always refuses.
+lease_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /noevia-maintenance-lease-client\//.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.LEASE_CLIENT_MARKER;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^noevia-maintenance-lease-(client)\/([12])$/.exec(value);
+    process.stdout.write(m ? "v" + m[2] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+lease_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = []; // lease authority entries
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("noevia-maintenance-lease-authority"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("noevia-maintenance-lease-authority")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^noevia-maintenance-lease-authority\/([12])$/.exec(outbox[0]);
+    out(m ? "v" + m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+lease_core_owner="$(lease_core_version "$tree/core/server/model-maintenance-lease.cjs")"
+lease_rs_owner="$(lease_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$lease_core_owner" != invalid ] && [ "$lease_rs_owner" != invalid ] \
+  || die "maintenance lease pairing: ambiguous or unrecognized lease marker (core=$lease_core_owner rust=$lease_rs_owner)"
+[ "$lease_core_owner" = "$lease_rs_owner" ] \
+  || die "maintenance lease pairing: Core's lease client and the front's lease authority must move together (core=$lease_core_owner rust=$lease_rs_owner)"
+reranker_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /reranker-settings-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RERANKER_SETTINGS_OWNER;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^reranker-settings-(v1)$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+reranker_core_owner="$(reranker_core_version "$tree/core/server/rerank-settings.cjs")"
+reranker_rs_owner="$(rs_capability_version "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES "reranker-settings-v1")"
+case "$reranker_rs_owner" in
+  invalid\(*\)) die "reranker settings ownership pairing: $reranker_rs_owner" ;;
+  legacy) reranker_rs_owner=none ;;
+  v1) ;;
+  *) die "reranker settings ownership pairing: invalid detector response" ;;
+esac
+[ "$reranker_core_owner" != invalid ] \
+  || die "reranker settings ownership pairing: ambiguous or unrecognized Core capability marker"
+[ "$reranker_core_owner" = "$reranker_rs_owner" ] || die "reranker settings ownership pairing: Core and Rust capability versions must match"
+
+# Chat mirror pairing runs after the maintenance lease and reranker guards: its strict whole-FEATURES
+# reader refuses any malformed element, so it must not pre-empt their own refusal of their markers. It
+# still runs before the history/journal guards below, which read chat_mirror_paired.
+# The chat journal tail and the mirror and brain schedules (rust-chat-mirror-v1): the front tails each
+# active account's change journal in process and owns the debounce, backoff, idle timers and queue
+# (noevia-rs crates/chat-mirror-sched); the core keeps their two work executors (rust-chat-mirror.cjs) and
+# nudges the front. Both sides declare it exactly (compiled FEATURES entry; exported RUST_CHAT_MIRROR_OWNED),
+# never in a comment. A front without the core's half leaves the journal unread (no mirror or brain follows a
+# save); a core without the front's half would run a second schedule beside it. The Node reader must be gone.
+chat_mirror_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-chat-mirror-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_CHAT_MIRROR_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-chat-mirror-v(1)$/.exec(value);
+    process.stdout.write(m ? "v" + m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+chat_mirror_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = []; // lease authority entries
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-chat-mirror-v"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-chat-mirror-v")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-chat-mirror-v(1)$/.exec(outbox[0]);
+    out(m ? "v" + m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+chat_mirror_start_enabled() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const target = process.argv[2];
+    const matches = [...code.matchAll(new RegExp(target, "g"))];
+    if (matches.length !== 1 || /#!\s*\[\s*cfg/.test(code)) out("invalid");
+    const before = code.slice(0, matches[0].index);
+    const frames = []; let start = 0;
+    // Each lexical block inherits the attributes of the item/statement that opens it.
+    // Reject a gated ancestor or statement; FEATURES proof separately requires crate root.
+    for (let k = 0; k < before.length; k++) {
+      const c = before[k];
+      if (c === "{") { frames.push(before.slice(start, k)); start = k + 1; }
+      else if (c === "}") { frames.pop(); start = k + 1; }
+      else if (c === ";") start = k + 1;
+    }
+    frames.push(before.slice(start));
+    if (frames.some(h => /#\s*!?\s*\[\s*cfg/.test(h))) out("invalid");
+    out("v1");
+  ' "$1" "$2" 2>/dev/null || echo invalid
+}
+chat_mirror_core_owner=""
+chat_mirror_rs_owner=""
+if grep -qF "require('./rust-chat-mirror.cjs')" "$tree/core/server/index.cjs" 2>/dev/null; then
+  [ "$(chat_mirror_core_version "$tree/core/server/rust-chat-mirror.cjs")" = v1 ] \
+    || die "chat mirror ownership pairing: index.cjs requires rust-chat-mirror.cjs, but it does not export RUST_CHAT_MIRROR_OWNED = 'rust-chat-mirror-v1'"
+  chat_mirror_core_owner=rust
+fi
+chat_mirror_version="$(chat_mirror_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$chat_mirror_version" != invalid ] || die "chat mirror schedule ownership pairing: invalid capability scope"
+if [ "$chat_mirror_version" = v1 ]; then
+  chat_mirror_rs_owner=rust
+fi
+[ "$chat_mirror_core_owner" = "$chat_mirror_rs_owner" ] \
+  || die "chat mirror schedule ownership pairing: Core and Rust must move together (rust-chat-mirror-v1)"
+if [ "$chat_mirror_rs_owner" = rust ]; then
+  [ ! -e "$tree/core/server/chat-change-journal.cjs" ] \
+    || die "chat mirror schedule ownership pairing: the core still carries the Node journal reader (server/chat-change-journal.cjs) beside the front's schedule"
+  [ "$(chat_mirror_start_enabled "$tree/rs/bins/noevia-server/src/lib.rs" 'pub\s+mod\s+chat_mirror\s*;')" = v1 ] \
+    && move_capability "$tree/rs/crates/chat-mirror-sched/src/lib.rs" MARKER noevia-chat-mirror-scheduler/1 rust \
+    && [ "$(chat_mirror_start_enabled "$tree/rs/bins/noevia-server/src/main.rs" 'ChatMirror\s*::\s*start\s*\(')" = v1 ] \
+    || die "chat mirror schedule ownership pairing: the front declares rust-chat-mirror-v1 but does not carry and start the schedule (chat_mirror.rs, crate chat-mirror-sched)"
+  chat_mirror_paired=rust
+fi
+# End of chat mirror pairing.
+
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # The supervisor no longer forwards a context switch. An older switched front
   # paired with permanent core refusal would leave these routes unavailable.
@@ -2372,7 +3596,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   # #1071 slice7: an internal move capability is unsafe beside old Node grants too.
   # Refuse partial security/provenance stacks even before switching public ownership.
   if rust_owns_chat_move "$routes_file" || core_refuses_chat_move || rs_move_foundation || rs_move_journal \
-     || core_move_client || core_move_enforcement || core_move_reader; then
+     || core_move_client || core_move_enforcement || core_move_reader_legacy; then
     move_other_methods="$( { project_routes_rs "$routes_file"; project_routes_core "$tree/core/server/rust-projects.cjs" || true; } | awk '$2=="/api/chats/{}/move" && $1!="POST"')"
     [ -z "$move_other_methods" ] || die "chat move POST ownership pairing: non-POST move ownership/refusal would remove its existing fallback"
     rs_move_foundation && rs_move_journal && rs_move_start \
@@ -2407,6 +3631,876 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   fi
 fi
 
+# BEGIN residual fallback pairing
+residual_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-residual-fallbacks-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_RESIDUAL_FALLBACKS_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-residual-fallbacks-(v1)$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An residual entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown residual entries are invalid; no FEATURES array or no entry is absence.
+residual_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out(/\bFEATURES\b/.test(code) ? "invalid" : "none");
+    // Only the unconditional crate-root declaration is authority. Declaration attributes and
+    // crate cfg attributes must not hide it, nor may an enclosing module change its scope.
+    const prefix = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of prefix) { if (ch === "{") scope++; else if (ch === "}") scope--; if (scope < 0) out("invalid"); }
+    if (scope !== 0) out("invalid");
+    const item = prefix.slice(Math.max(prefix.lastIndexOf(";"), prefix.lastIndexOf("}")) + 1);
+    if (/#\s*\[/.test(item) || /#\s*!\s*\[[^\]]*\bcfg(?:_attr)?\b/.test(prefix)) out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const residual = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-residual-fallbacks"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-residual-fallbacks")) out("invalid");
+        residual.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no residual text appears in the element.
+      // Existing store markers are the only reviewed nonliteral entries. An arbitrary alias
+      // could hide a concatenated capability, so unknown paths fail closed too.
+      if (!marked && ["server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER", "server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER"].includes(rest.replace(/\s/g, ""))) continue;
+      out("invalid");
+    }
+    if (!residual.length) out("none");
+    if (residual.length > 1) out("invalid");
+    const m = /^rust-residual-fallbacks-(v1)$/.exec(residual[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+residual_core_owner="$(residual_core_version "$tree/core/server/rust-residual-fallbacks.cjs")"
+residual_rs_owner="$(residual_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$residual_core_owner" != invalid ] && [ "$residual_rs_owner" != invalid ] \
+  || die "residual fallback pairing: ambiguous capability marker"
+[ "$residual_core_owner" = "$residual_rs_owner" ] || die "residual fallback pairing: Core and Rust must move together"
+# END residual fallback pairing
+# Source startup and DAV listener pairing run after every other ownership guard: their strict
+# whole-FEATURES readers refuse any malformed element, so they must not pre-empt another guard's
+# own refusal of its marker.
+source_startup_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-source-startup-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_SOURCE_STARTUP_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-source-startup-(v1)$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+source_startup_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // FEATURES must be a top-level, unconditional declaration. Unknown attributes
+    // can transform declarations too: only inert doc/allow attributes are accepted.
+    const before = code.slice(0, decls[0].index);
+    let braces = 0;
+    for (const ch of before) { if (ch === "{") braces++; if (ch === "}") braces--; }
+    if (braces !== 0 || /#!\s*\[\s*cfg(?:_attr)?\b/.test(code)) out("invalid");
+    const tail = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Crate inner attributes (#![...], never cfg/cfg_attr, refused above) apply to the crate, not to
+    // the declaration, so they may precede it, as in the maintenance lease reader.
+    if (tail && !/^(?:#\s*\[\s*(?:doc\s*=\s*\u0000\d+\u0000|allow\s*\([^\[\]]*\))\s*\]\s*|#!\s*\[[^\[\]]*\]\s*)+$/.test(tail)) out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-source-startup"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-source-startup")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-source-startup-(v1)$/.exec(outbox[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+source_startup_core_owner="$(source_startup_core_version "$tree/core/server/rust-source-startup.cjs")"
+source_startup_rs_owner="$(source_startup_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$source_startup_core_owner" != invalid ] && [ "$source_startup_rs_owner" != invalid ] \
+  || die "source startup ownership pairing: ambiguous capability marker"
+[ "$source_startup_core_owner" = "$source_startup_rs_owner" ] \
+  || die "source startup ownership pairing: Core and Rust must move together"
+
+dav_listener_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-dav-listener-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_DAV_LISTENER_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-dav-listener-(v1)$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. An outbox entry must be an unconditional ordinary literal. Duplicate,
+# several, malformed or unknown outbox entries are invalid; no FEATURES array or no entry is absence.
+dav_listener_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // FEATURES must be a top-level, unconditional declaration. Unknown attributes
+    // can transform declarations too: only inert doc/allow attributes are accepted.
+    const before = code.slice(0, decls[0].index);
+    let braces = 0;
+    for (const ch of before) { if (ch === "{") braces++; if (ch === "}") braces--; }
+    if (braces !== 0 || /#!\s*\[\s*cfg(?:_attr)?\b/.test(code)) out("invalid");
+    const tail = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Crate inner attributes (#![...], never cfg/cfg_attr, refused above) apply to the crate, not to
+    // the declaration, so they may precede it, as in the maintenance lease reader.
+    if (tail && !/^(?:#\s*\[\s*(?:doc\s*=\s*\u0000\d+\u0000|allow\s*\([^\[\]]*\))\s*\]\s*|#!\s*\[[^\[\]]*\]\s*)+$/.test(tail)) out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const outbox = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-dav-listener"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-dav-listener")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element.
+      if (!marked && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out("none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-dav-listener-(v1)$/.exec(outbox[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+
+dav_listener_core_owner="$(dav_listener_core_version "$tree/core/server/rust-dav-listener.cjs")"
+dav_listener_rs_owner="$(dav_listener_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$dav_listener_core_owner" != invalid ] && [ "$dav_listener_rs_owner" != invalid ] \
+  || die "DAV listener ownership pairing: ambiguous capability marker"
+[ "$dav_listener_core_owner" = "$dav_listener_rs_owner" ] \
+  || die "DAV listener ownership pairing: Core and Rust must move together"
+if [ "$dav_listener_core_owner" = v1 ]; then
+  ! code_lines "$tree/core/server/index.cjs" | grep -qE 'davServer|createDavHandler|davConfig\.available' \
+    || die "DAV listener ownership pairing: Node listener remains"
+  [ ! -f "$tree/core/server/dav.cjs" ] && [ ! -f "$tree/core/server/dav-ops.cjs" ] \
+    || die "DAV listener ownership pairing: live Node handlers remain"
+  code_lines "$tree/rs/bins/noevia-server/src/main.rs" | grep -qF 'dav::start(' \
+    || die "DAV listener ownership pairing: native startup hook absent"
+  code_lines "$tree/noevia/build/web-supervisor.sh" | grep -qF rust-dav-listener-v1 \
+    || die "DAV listener ownership pairing: supervisor comparison absent"
+fi
+# End of source startup and DAV listener pairing.
+# Row T: the unprovable FEATURES declaration deferred by the MCP discovery guard, after every other strict reader.
+[ "$md_rs_deferred" != invalid ] || die "MCP discovery ownership pairing: invalid Rust capability"
+
+# Registry persistence and the remote measurement runner transfer together.
+# Kept after every other pairing guard: the strict FEATURES reader below refuses lib.rs
+# shapes those guards' own refusals must name first.
+machines_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /noevia-inference-machines-client\//.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.MACHINES_CLIENT_MARKER;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^noevia-inference-machines-(client)\/(1)$/.exec(value);
+    process.stdout.write(m ? "v" + m[2] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Root-approved source guard contract: prove the direct declared literal with the
+# maintained helper. Paths/aliases are ignored, not evaluated runtime absence proof.
+# The shipped B marker must remain a direct ordinary literal in real FEATURES.
+machines_rs_version() {
+  local result
+  result="$(rs_capability_version "$1" FEATURES rust-inference-machines)"
+  case "$result" in
+    v1) echo v1 ;;
+    legacy) echo none ;;
+    *) echo invalid ;;
+  esac
+}
+check_machines_pair() {
+  local core rs
+  core="$(machines_core_version "$1")"; rs="$(machines_rs_version "$2")"
+  [ "$core" != invalid ] && [ "$rs" != invalid ] && [ "$core" = "$rs" ]
+}
+
+check_machines_pair "$tree/core/server/rust-inference-machines.cjs" "$tree/rs/bins/noevia-server/src/lib.rs" \
+  || die "inference machines ownership pairing: Core and Rust must move together"
+if [ "$(machines_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")" = v1 ]; then
+  machines_row="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '$1 == "/api/models/machines" { if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1; print $1 }')" \
+    || die "inference machines ownership pairing: all methods must be native"
+  [ "$machines_row" = /api/models/machines ] || die "inference machines ownership pairing: missing route"
+  code_has "$tree/core/server/inference-machines.cjs" "native-machines-client[.]cjs" \
+    && code_has "$tree/core/server/machine-tune.cjs" "native-machines-client[.]cjs" \
+    || die "inference machines ownership pairing: missing native owner clients"
+  ! code_has "$tree/core/server/inference-machines.cjs" 'function readState|function save' \
+    && ! code_has "$tree/core/server/machine-tune.cjs" 'async function script|function save' \
+    || die "inference machines ownership pairing: obsolete Node executors remain"
+fi
+# End of inference machines pairing.
+
+# Index outbox and native media pairing run last, after source startup and DAV: their strict
+# whole-FEATURES readers refuse any malformed element, so they must not pre-empt another guard's
+# own refusal of its marker. Keep the source-indexing dependency paired as well as media ownership.
+outbox_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-index-outbox-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_INDEX_OUTBOX_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-index-outbox-(v[123])$/.exec(value);
+    process.stdout.write(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. A plain path counts only while the file spells no marker text outside
+# the FEATURES entries: a constant that could alias or duplicate the marker makes any path invalid.
+# An outbox entry must be an unconditional ordinary literal. Duplicate, several, malformed or unknown
+# outbox entries are invalid; no FEATURES array or no entry is absence.
+outbox_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const listed = new Set(elements.flatMap(e => [...e.matchAll(/\u0000(\d+)\u0000/g)].map(m => +m[1])));
+    const aliasable = strs.some((t, idx) => !listed.has(idx) && t.v.includes("rust-index-outbox"));
+    const outbox = [];
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-index-outbox"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-index-outbox")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no outbox text appears in the element nor,
+      // outside the FEATURES entries, anywhere in the file (then it could alias or duplicate the marker).
+      if (!marked && !aliasable && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out(strs.some(s => s.v.includes("rust-index-outbox-v")) ? "invalid" : "none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-index-outbox-(v[123])$/.exec(outbox[0]);
+    out(m ? m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+outbox_core_owner="$(outbox_core_version "$tree/core/server/rust-index-outbox.cjs")"
+outbox_rs_owner="$(outbox_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$outbox_core_owner" != invalid ] && [ "$outbox_rs_owner" != invalid ] \
+  || die "index outbox ownership pairing: ambiguous or unrecognized capability marker (core=$outbox_core_owner rust=$outbox_rs_owner)"
+[ "$outbox_core_owner" = "$outbox_rs_owner" ] || die "index outbox ownership pairing: Core and Rust capability versions must match"
+# Native media scheduling must transfer as one Core/Rust pair. The bounded
+# detectors include declaration and enclosing-scope checks from the reviewed
+# ownership parser; comments, attributes and lookalike literals grant no ownership.
+media_core_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const fs = require("node:fs"), vm = require("node:vm");
+    const src = fs.readFileSync(process.argv[1], "utf8");
+    const literal = /rust-media-background-v/.test(src);
+    let value;
+    try {
+      // Invocation and export access both run inside the timed evaluation.
+      value = vm.runInNewContext(
+        "(function () {" +
+        "  const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });" +
+        "  const module = { exports: {} };" +
+        "  (function (require, module, exports) {" + src + "\n})(() => stub, module, module.exports);" +
+        "  const v = module.exports.RUST_MEDIA_BACKGROUND_OWNED;" +
+        "  return v === undefined ? undefined : typeof v === \"string\" ? v : null;" +
+        "})()", {}, { timeout: 2000 });
+    } catch { process.stdout.write("invalid"); process.exit(0); }
+    if (value === undefined) { process.stdout.write(literal ? "invalid" : "none"); process.exit(0); }
+    const m = typeof value === "string" && /^rust-media-background-v(1)$/.exec(value);
+    process.stdout.write(m ? "v" + m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+# Rust: tokenize lib.rs (nested block comments, line comments, escaped, raw and byte strings, char
+# literals vs lifetimes) and read the entries of the single FEATURES array. Every element must be
+# optional attributes followed by one ordinary string literal or one plain path; macros, expressions,
+# raw or byte strings refuse. A plain path counts only while the file spells no marker text outside
+# the FEATURES entries: a constant that could alias or duplicate the marker makes any path invalid.
+# An outbox entry must be an unconditional ordinary literal. Duplicate, several, malformed or unknown
+# outbox entries are invalid; no FEATURES array or no entry is absence.
+media_rs_version() {
+  [ -f "$1" ] || { echo none; return; }
+  command -v node >/dev/null 2>&1 || { echo invalid; return; }
+  timeout -k 2 10 node -e '
+    const src = require("node:fs").readFileSync(process.argv[1], "utf8");
+    const strs = []; let code = ""; let i = 0; const n = src.length;
+    const ident = c => /[A-Za-z0-9_]/.test(c || "");
+    const out = r => { process.stdout.write(r); process.exit(0); };
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+      if (c === "/" && d === "*") {
+        let depth = 1; i += 2;
+        while (i < n && depth) {
+          if (src[i] === "/" && src[i + 1] === "*") { depth++; i += 2; }
+          else if (src[i] === "*" && src[i + 1] === "/") { depth--; i += 2; }
+          else i++;
+        }
+        if (depth) out("invalid");
+        code += " "; continue;
+      }
+      const raw = /^b?r(#*)"/.exec(src.slice(i, i + 260));
+      if (raw && !ident(src[i - 1])) {
+        const close = "\"" + raw[1]; const s0 = i + raw[0].length; const e = src.indexOf(close, s0);
+        if (e < 0) out("invalid");
+        strs.push({ kind: "other", v: src.slice(s0, e) }); code += "\u0000" + (strs.length - 1) + "\u0000"; i = e + close.length; continue;
+      }
+      if (c === "\"" || (c === "b" && d === "\"" && !ident(src[i - 1]))) {
+        const bytes = c === "b"; i += bytes ? 2 : 1; let v = "";
+        while (i < n && src[i] !== "\"") {
+          if (src[i] !== "\\") { v += src[i++]; continue; }
+          const e = src[i + 1];
+          const simple = { n: "\n", r: "\r", t: "\t", "\\": "\\", "0": "\0", "\x27": "\x27", "\"": "\"" };
+          if (e in simple) { v += simple[e]; i += 2; }
+          else if (e === "x" && (bytes ? /^[0-9A-Fa-f]{2}$/ : /^[0-7][0-9A-Fa-f]$/).test(src.slice(i + 2, i + 4))) { v += String.fromCharCode(parseInt(src.slice(i + 2, i + 4), 16)); i += 4; }
+          else if (!bytes && e === "u" && src[i + 2] === "{") {
+            const close = src.indexOf("}", i + 3); const hex = src.slice(i + 3, close).replace(/_/g, "");
+            if (close < 0 || !/^[0-9A-Fa-f]{1,6}$/.test(hex)) out("invalid");
+            v += String.fromCodePoint(parseInt(hex, 16)); i = close + 1;
+          }
+          else if (e === "\n" || e === "\r") { i += 2; while (i < n && /[ \t\r\n]/.test(src[i])) i++; }
+          else out("invalid");
+        }
+        if (i >= n) out("invalid");
+        i++; strs.push({ kind: bytes ? "other" : "str", v }); code += "\u0000" + (strs.length - 1) + "\u0000"; continue;
+      }
+      if (c === "\x27") {
+        if (d === "\\") { const e = src.indexOf("\x27", i + 3); if (e < 0) out("invalid"); i = e + 1; code += " "; continue; }
+        if (src[i + 2] === "\x27") { i += 3; code += " "; continue; }
+      }
+      code += c; i++;
+    }
+    const head = /pub\s+const\s+FEATURES\s*:\s*&\s*\[\s*&\s*str\s*\]\s*=\s*&\s*\[/g;
+    const decls = [...code.matchAll(head)];
+    if (decls.length > 1) out("invalid");
+    if (!decls.length) out("none");
+    // Row J review P2: the declaration itself must be unconditional and at the crate root of lib.rs:
+    // no attribute of its own (cfg or any other), not inside a module, function, block or macro body
+    // (depth 0), and no crate-level cfg attribute. A scope that cannot be proven this way is invalid.
+    if (/#!\s*\[\s*cfg/.test(code)) out("invalid"); // cfg and cfg_attr at crate level
+    const before = code.slice(0, decls[0].index);
+    let scope = 0;
+    for (const ch of before) {
+      if (ch === "(" || ch === "[" || ch === "{") scope++;
+      else if (ch === ")" || ch === "]" || ch === "}") scope--;
+    }
+    if (scope !== 0) out("invalid");
+    let lead = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("}")) + 1).trim();
+    // Delta review P3: crate inner attributes (#![...], balanced, never cfg/cfg_attr, refused above)
+    // apply to the crate, not to the declaration, so they may precede it. An outer #[...] may not.
+    while (lead.startsWith("#")) {
+      const bang = lead.slice(1).trimStart();
+      if (!bang.startsWith("!")) out("invalid");
+      const open = bang.slice(1).trimStart();
+      if (!open.startsWith("[")) out("invalid");
+      let d = 0, end = -1;
+      for (let j = 0; j < open.length; j++) {
+        if (open[j] === "[" || open[j] === "(" || open[j] === "{") d++;
+        else if (open[j] === "]" || open[j] === ")" || open[j] === "}") { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end < 0) out("invalid");
+      if (/^\[\s*cfg/.test(open)) out("invalid");
+      lead = open.slice(end + 1).trim();
+    }
+    if (lead !== "") out("invalid");
+    const body = code.slice(decls[0].index + decls[0][0].length);
+    // Split the array at depth-0 commas, balancing (), [] and {} so attributes and nested
+    // expressions stay inside their element.
+    const elements = []; let depth = 0, cur = "", closed = false;
+    for (const ch of body) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      else if (ch === "]") { if (depth === 0) { closed = true; break; } depth--; }
+      if (depth < 0) out("invalid");
+      if (ch === "," && depth === 0) { elements.push(cur); cur = ""; } else cur += ch;
+    }
+    if (!closed) out("invalid");
+    elements.push(cur);
+    const listed = new Set(elements.flatMap(e => [...e.matchAll(/\u0000(\d+)\u0000/g)].map(m => +m[1])));
+    const aliasable = strs.some((t, idx) => !listed.has(idx) && t.v.includes("rust-media-background-v"));
+    const outbox = []; // lease authority entries
+    for (let k = 0; k < elements.length; k++) {
+      let rest = elements[k].trim(), gated = false;
+      if (!rest && k === elements.length - 1) continue; // trailing comma
+      // Strip leading attributes (#[...], balanced); they gate but never name an entry.
+      while (rest.startsWith("#")) {
+        const open = rest.slice(1).trimStart();
+        if (!open.startsWith("[")) out("invalid");
+        let j = rest.length - open.length, dep = 0;
+        for (; j < rest.length; j++) {
+          if (rest[j] === "[") dep++;
+          else if (rest[j] === "]" && --dep === 0) break;
+        }
+        if (dep) out("invalid");
+        gated = true; rest = rest.slice(j + 1).trim();
+      }
+      const lit = /^\u0000(\d+)\u0000$/.exec(rest);
+      const marked = [...elements[k].matchAll(/\u0000(\d+)\u0000/g)].some(m => strs[+m[1]].v.includes("rust-media-background-v"));
+      if (lit && strs[+lit[1]].kind === "str") {
+        if (!marked) continue;
+        if (gated || !strs[+lit[1]].v.includes("rust-media-background-v")) out("invalid");
+        outbox.push(strs[+lit[1]].v); continue;
+      }
+      // A plain path (a named constant) is allowed only when no media text appears in the element nor,
+      // outside the FEATURES entries, anywhere in the file (then it could alias or duplicate the marker).
+      if (!marked && !aliasable && /^(::)?[A-Za-z_][A-Za-z0-9_]*(\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*$/.test(rest)) continue;
+      out("invalid");
+    }
+    if (!outbox.length) out(strs.some(s => s.v.includes("rust-media-background-v")) ? "invalid" : "none");
+    if (outbox.length > 1) out("invalid");
+    const m = /^rust-media-background-v(1)$/.exec(outbox[0]);
+    out(m ? "v" + m[1] : "invalid");
+  ' "$1" 2>/dev/null || echo invalid
+}
+media_core_owner="$(media_core_version "$tree/core/server/rust-media-background.cjs")"
+media_rs_owner="$(media_rs_version "$tree/rs/bins/noevia-server/src/lib.rs")"
+[ "$media_core_owner" != invalid ] && [ "$media_rs_owner" != invalid ] \
+  || die "media worker pairing: ambiguous or unrecognized media worker marker (core=$media_core_owner rust=$media_rs_owner)"
+[ "$media_core_owner" = "$media_rs_owner" ] \
+  || die "media worker pairing: Core's media hints and the front's workers must move together (core=$media_core_owner rust=$media_rs_owner)"
+# End of index outbox and native media pairing.
+
 for need in web/package.json web/package-lock.json web/src web/index.html core/server/package.json core/server/index.cjs core/contracts \
             core/code-sandbox/Dockerfile services/diary/Dockerfile services/docling/Dockerfile services/laya/Dockerfile \
             services/model-manager/Dockerfile services/ocr/Dockerfile; do
@@ -2416,7 +4510,9 @@ done
 printf 'NOEVIA_SHA=%s\nNOEVIA_WEB_SHA=%s\nNOEVIA_CORE_SHA=%s\nNOEVIA_SERVICES_SHA=%s\nNOEVIA_RS_SHA=%s\n' \
   "$sha" "$web_sha" "$core_sha" "$services_sha" "$rs_sha" > "$tree/release-refs"
 # The web image's entrypoint is the one file of noevia/ its build needs.
-printf 'noevia\n!noevia/build/web-supervisor.sh\nservices\n' > "$tree/.dockerignore"
+# Runtime state must never enter an assembled release, even from an old source archive.
+find "$tree" -type d -path '*/server/ui-data' -prune -exec rm -rf {} +
+printf 'noevia\n!noevia/build/web-supervisor.sh\nservices\n**/server/ui-data\n' > "$tree/.dockerignore"
 
 out="$out_dir/noevia-release-$sha.tar.gz"
 out_partial="$out.partial"

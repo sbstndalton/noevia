@@ -117,9 +117,35 @@ jobs:
       # #1148: build/tag helpers refuse cowork-diary:* outside diary-overlay.sh (stub docker).
       - run: bash deploy/tools/test-diary-image-guard.sh
         if: env.RUN_JOB == 'true'
+      # Release lock vs sidecar Dockerfile rs pins, with and without NOEVIA_SERVICES_RS_REF/SHA256.
+      - run: bash deploy/tools/test-check-services-rs-pins.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-source-startup-pairing.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-dav-listener-pairing.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-chat-mirror-pairing.sh
+        if: env.RUN_JOB == 'true'
+      - name: Reranker Core/Rust pairing guard
+        if: env.RUN_JOB == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash deploy/tools/test-reranker-pairing.sh
+      - name: Shared Rust capability fixtures (bash, dash, sh)
+        if: env.RUN_JOB == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          for shell in bash dash sh; do
+            "$shell" deploy/tools/test-rs-capability.sh
+          done
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-residual-fallback-pairing.sh
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-auto-roles-pairing.sh
         if: env.RUN_JOB == 'true'
       # #1318 step 1c: the trusted-sets seed (stub docker; needs jq, installed above).
       - run: bash deploy/tools/test-seed-search-trusted.sh
@@ -280,6 +306,9 @@ jobs:
           WEB_REF: ${{ steps.assemble.outputs.web_ref }}
           CORE_REF: ${{ steps.assemble.outputs.core_ref }}
           SERVICES_REF: ${{ steps.assemble.outputs.services_ref }}
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           cat "$TREE/release-refs"
@@ -291,38 +320,22 @@ jobs:
             [ -f "$TREE/services/$svc/Dockerfile" ] || { echo "::error::services/$svc build context missing"; exit 1; }
           done
           [ -f "$TREE/core/code-sandbox/Dockerfile" ] || { echo "::error::core/code-sandbox build context missing"; exit 1; }
-          # model-manager builds gguf-meta from noevia-rs with the same pin as the egress proxy.
-          ref=$(sed -n 's/^NOEVIA_RS_REF=//p' release/versions.lock)
-          mm="$TREE/services/model-manager/Dockerfile"
-          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$mm")" = "$ref" ] \
-            || { echo "::error::noevia-services model-manager/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
-          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$mm")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
-            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and model-manager Dockerfiles"; exit 1; }
-          # #981: the OCR image builds docx-text from the same noevia-rs pin.
-          ocr="$TREE/services/ocr/Dockerfile"
-          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$ocr")" = "$ref" ] \
-            || { echo "::error::noevia-services ocr/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
-          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$ocr")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
-            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and ocr Dockerfiles"; exit 1; }
-          # The diary image (and diary-overlay.sh, which reads this Dockerfile's pins) builds
-          # tenant-assertion from the same noevia-rs pin.
-          diary="$TREE/services/diary/Dockerfile"
-          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$diary")" = "$ref" ] \
-            || { echo "::error::noevia-services diary/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
-          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$diary")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
-            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and diary Dockerfiles"; exit 1; }
-          # #1322: the native Docling image builds from the same reviewed release source.
-          docling="$TREE/services/docling/Dockerfile"
-          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$docling")" = "$ref" ] \
-            || { echo "::error::noevia-services docling/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
-          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$docling")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
-            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and docling Dockerfiles"; exit 1; }
-          # #1326: the native Laya image uses the same reviewed Rust source.
-          laya="$TREE/services/laya/Dockerfile"
-          [ "$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$laya")" = "$ref" ] \
-            || { echo "::error::noevia-services laya/Dockerfile NOEVIA_RS_REF != release/versions.lock ($ref)"; exit 1; }
-          [ "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$laya")" = "$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' deploy/egress-proxy/Dockerfile)" ] \
-            || { echo "::error::NOEVIA_RS_SHA256 differs between egress-proxy and laya Dockerfiles"; exit 1; }
+          # The five sidecar Dockerfiles (model-manager gguf-meta, ocr docx-text #981, diary
+          # tenant-assertion, docling #1322, laya #1326) build from the Services tree's own noevia-rs
+          # pin: NOEVIA_RS_REF/SHA256, or the optional NOEVIA_SERVICES_RS_REF/SHA256 when a release
+          # moves only the web Rust pin and leaves the Services pin alone. The egress proxy
+          # (deploy/egress-proxy/Dockerfile) always follows NOEVIA_RS_REF, in the egress job.
+          base_lock=""
+          if grep -q '^NOEVIA_SERVICES_RS_REF=' release/versions.lock; then
+            base_ref="$BASE_REF"
+            if [ "$EVENT" != pull_request ]; then
+              base_ref=main; [[ "$BEFORE" =~ ^0+$ ]] || base_ref="$BEFORE"
+            fi
+            git fetch --depth=1 origin "$base_ref"
+            git show FETCH_HEAD:release/versions.lock > "$RUNNER_TEMP/base-versions.lock"
+            base_lock="$RUNNER_TEMP/base-versions.lock"
+          fi
+          bash deploy/tools/check-services-rs-pins.sh "$TREE" release/versions.lock $base_lock
       # #2112: exercise the directory list and actual production COPY parser against the assembled Diary Dockerfile.
       - name: Diary overlay COPY contract matches the pinned Diary Dockerfile
         if: env.RUN_JOB == 'true'
