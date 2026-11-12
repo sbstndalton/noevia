@@ -16,6 +16,9 @@ Three kinds of entry, kept apart on purpose:
 - **Read, not used** — a reference, a measurement someone else published, or an idea taken from a
   design; nothing of theirs ships.
 
+Two planned variants also appear: *Read; fork source* (read now, to become Vendored when a PR copies code from it) and
+*Build tooling* (used to build or measure things; nothing of it ships).
+
 ## Engine, models and serving
 
 | Source | Kind | Used for |
@@ -27,7 +30,9 @@ Three kinds of entry, kept apart on purpose:
 | [unslothai/unsloth](https://github.com/unslothai/unsloth) (Apache-2.0) | Read | Quantisation guidance: [dynamic v2](https://unsloth.ai/blog/dynamic-v2), [dynamic 3.0 GGUFs](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs), [Qwen3.5 GGUF benchmarks](https://unsloth.ai/docs/models/qwen3.5/gguf-benchmarks). Its UD (dynamic) GGUF quants are the files the GPU model-evaluation campaign tests |
 | noevia-router prototype (private, Python, 2026-11-11) | Read | The origin of the native router's design: one OpenAI-compatible endpoint, one model loaded at a time, drain → verified stop → start → health → proxy, per-model ttl and swap timings. Ported by behaviour to Rust as `model-router` and `bins/noevia-router` in noevia-rs (noevia#2440); the prototype itself does not ship |
 | [Tiiny-AI/PowerInfer](https://github.com/Tiiny-AI/PowerInfer) (MIT, C++) | Read | Hot/cold-neuron hybrid CPU/GPU inference: a reference for tiered serving of models larger than VRAM on a two-GPU host |
-| [crit-labs/crit](https://github.com/crit-labs/crit) (Apache-2.0, Python) | Read | A toolkit for building hardware-tailored inference engines: a reference for the tiered-expert engine work |
+| [crit-labs/crit](https://github.com/crit-labs/crit) (Apache-2.0, Python) | Build tooling | The toolkit the GPU engine work is built and measured with (owner decision 2026-11-12): its agent workflow, technique plugins with ablation switches, and its eval suite of hardware limits and correctness checks. Its GPU kernels target another vendor's cards, so the kernels are ours to port; its process guardian, ownership and lease code and its admission, residency and disconnect handling are a reference for the native model router. Nothing of it ships; engines built with it run as external binaries |
+| [unslothai/llama.cpp](https://github.com/unslothai/llama.cpp) (MIT, C++) | Read | A fork of the engine with pinned sets of upstream changes; to be compared with our own GPU-specific image through the eval queue before any switch |
+| [unslothai/notebooks](https://github.com/unslothai/notebooks) (LGPL-3.0) | Read, not used | Fine-tuning notebooks; a reference for the later code-side work. LGPL: nothing is copied into these repos |
 | [Hugging Face GGUF docs](https://huggingface.co/docs/hub/gguf) and the Hub API | Runs here | Model search, downloads and cache layout in Discover |
 | [vLLM](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/) ([GGUF](https://docs.vllm.ai/en/v0.20.1/features/quantization/gguf/)), [ROCm inference](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/vllm.html), [llm-tracker AMD GPUs](https://llm-tracker.info/howto/AMD-GPUs) | Read | Backend-portability research; no migration ([spec](spec-backend-portability.md)) |
 
@@ -43,6 +48,7 @@ Three kinds of entry, kept apart on purpose:
 | [earendil-works/pi](https://github.com/earendil-works/pi) (MIT, TypeScript) | Runs here (opt-in) | The code sandbox's alternative agent harness (`@earendil-works/pi-coding-agent` 0.87.0 through the pi ACP bridge; the default `HARNESS_PACKAGE` is OpenCode). Also a reference for the agent loop and a unified LLM API |
 | [apache/burr](https://github.com/apache/burr) (Apache-2.0, Python) | Read | A state-machine agent framework: a reference for durable agent and task state and for tracing. The owner asked for an assessment in October 2026; it was queued but no written assessment was produced, and a timeline view modelled on it was deferred. Nothing of it ships |
 | [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT) | Read (tooling) | The development orchestration app used to run the coding agents; nothing of it ships |
+| [pingdotgg/ts-rust](https://github.com/pingdotgg/ts-rust) (MIT, Rust) | Read (tooling) | An experimental Rust port of the TypeScript compiler; a candidate for faster web type checks in CI, to be measured before any use. Nothing of it ships |
 | [Anthropic Agent Skills](https://agentskills.io) and [Claude Code skills docs](https://code.claude.com/docs/en/skills) | Read | The `SKILL.md` format noevia's instruction skills follow |
 | [anthropics/skills](https://github.com/anthropics/skills) | Read | The skills catalogue Plugins browses and installs from (one `SKILL.md` per skill, fetched on request) |
 
@@ -58,6 +64,26 @@ These sources seed [a measured research plan](research-skills-mcp-loading.md). N
 | [nickclyde/duckduckgo-mcp-server](https://github.com/nickclyde/duckduckgo-mcp-server) | Read, not used | Optional search/fetch candidate pending pinned transport, quality, citation, latency, rate-limit, fetch-control and maintenance checks |
 | Practitioner observation supplied by the user on 2026-09-23 | Read, anecdotal | Hypothesis that Markdown skills vary across providers and script-backed skills depend on their execution host; original speaker, URL, date, versions and measurements were unavailable |
 | User's prompt-driven System-One proposal, 2026-09-23 | Proposed, not implemented | A model proposes relevant skill/toolbox IDs; deterministic code validates and loads only the existing authorized capabilities |
+
+## Coworkers and Spaces — 2026-11-11/12
+
+Sources for the persistent coworkers feature ([#2446](https://github.com/sbstndalton/noevia/issues/2446)). The decision
+(2026-11-11/12): build our own native version — Rust-owned routes and stores, our web client, local models — and fork and
+adapt MIT code where it works. Rejected outright: the hosted conversation and memory service the OpenDots, OpenBot and OpenDuet templates require
+(separately licensed, with online licence renewal), their Node agent runtime, and their telemetry. Each
+**fork source** row turns to **Vendored** in the PR that copies code from it, with the pinned commit and a
+`THIRD_PARTY_NOTICES.md` entry.
+
+| Source | Kind | Used for |
+| --- | --- | --- |
+| [CopilotKit/OpenDots](https://github.com/CopilotKit/OpenDots) (MIT, TypeScript) | Read; fork source | The product model for coworkers, Spaces and review-before-save. Its web components (Spaces library, page editor, coworker settings, timeline, review card) are the starting point for ours, cut free of the hosted thread layer |
+| [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) (MIT, TypeScript) | Read; fork source | The container supervisor and computer service (a browser, files and shell per coworker, every action decided before it happens and recorded after): to be ported to Rust on our sandbox bridge, egress policy and browser crates, with its computer panel adapted for the web client (phase 2) |
+| [CopilotKit/OpenDuet](https://github.com/CopilotKit/OpenDuet) (MIT, TypeScript) and the [introduction post](https://www.copilotkit.ai/blog/introducing-openduet) | Read | The proactive agent that briefs, works in the background and asks before acting; the behaviour reference for background schedules (phase 4) |
+| [CopilotKit/openmuse](https://github.com/CopilotKit/openmuse) (MIT, TypeScript) | Read | A second reference for long-running work on a persistent computer |
+| [CopilotKit/CopilotKit](https://github.com/CopilotKit/CopilotKit) (MIT, TypeScript) | Read, not used | The React SDK. Not a dependency: it would only be considered against our own event endpoint with telemetry removed, never with its runtime or hosted service |
+| [ag-ui-protocol/ag-ui](https://github.com/ag-ui-protocol/ag-ui) (MIT) | Read; fork source | The open agent-to-interface event protocol (run, text message, tool call, state and interrupt events over SSE). Its community Rust crate `ag-ui-core` (`sdks/community/rust`) is to be vendored into noevia-rs at a pinned commit and extended for the coworker event stream; it also ships a Swift SDK, noted for the later Mac client |
+| [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT, TypeScript) | Read | A plugin-based agent harness; a reference for the per-coworker tool loop once the chat path is native |
+| [odysseus-dev/odysseus](https://github.com/odysseus-dev/odysseus) (AGPL-3.0, Python) | Read, ideas only | A self-hosted workspace close to noevia in scope. AGPL: no code is copied. Read for feature ideas (hardware-aware model picks, blind side-by-side comparison, a writing-first document editor, mail triage, notes and tasks) and for its provenance and threat-model files |
 
 ## Design references
 
@@ -280,6 +306,7 @@ No existing app replaces a whole noevia subsystem, and no JS-to-Rust transpiler 
 | Serve the Diary corpus over SMB from the Mac | [Samba leases](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#SMB2LEASES), [SQLite over a network](https://www.sqlite.org/useovernet.html) | Retired 2026-09-18 (D22); plain files and WebDAV won |
 | Keep mirroring backups with host rclone | [rclone](https://rclone.org) | Replaced by noevia's own Google Drive upload, so the whole flow is in one place |
 | Bulk model delete, and a command palette in the model manager | The model-loader parity audit | Rare and destructive; and a palette is an app-wide concern, not a model one |
+| Run an agent-workspace template whole for coworkers | [CopilotKit/OpenDots](https://github.com/CopilotKit/OpenDots), [OpenBot](https://github.com/CopilotKit/OpenBot), [OpenDuet](https://github.com/CopilotKit/OpenDuet) (see Coworkers and Spaces above) | Conversations and memory need a separately licensed service with online licence renewal, the agent runtime is a Node server, and usage telemetry is on by default; noevia is local-first with a Rust backend. The feature is built natively and only permissively licensed (MIT) code from these templates is adapted |
 | Vendor an agent framework, or adopt an external harness as noevia's API | Every harness read above | Kept as references and adapters, never as the architecture ([roadmap history](roadmap-history.md#explicitly-not-doing)) |
 
 ## Where the longer write-ups live
