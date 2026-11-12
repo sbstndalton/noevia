@@ -1068,6 +1068,19 @@ if [ -n "${NOEVIA_SERVICES_DIR:-}" ] && [ -f "$NOEVIA_SERVICES_DIR/diary/Dockerf
   svc_ref="$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"; svc_sum="$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"
   check "Diary native: the real template accepts the real services Diary Dockerfile (NOEVIA_SERVICES_DIR)" '[ "$(diary_dockerfile_check "$rtpl" "$svc_ref" "$svc_sum" "$NOEVIA_SERVICES_DIR/diary/Dockerfile")" = ok ]'
 fi
+# The REAL services Diary Dockerfile at the lock's NOEVIA_SERVICES_REF (53cf1e47, a byte copy in fixtures/, sha256
+# cfbe5b6c...). It must pass the template against the lock's own pin, and a Dockerfile with an extra unknown COPY or a
+# changed ENTRYPOINT must still be refused.
+svc_df="$here/fixtures/services-diary-Dockerfile.53cf1e47"
+lk_ref="$(sed -n 's/^NOEVIA_RS_REF=//p' "$here/../../release/versions.lock" | head -1)"; lk_sum="$(sed -n 's/^NOEVIA_RS_SHA256=//p' "$here/../../release/versions.lock" | head -1)"
+check "Diary native: the real template accepts the pinned services Diary Dockerfile (53cf1e47) against the lock pin" \
+  '[ "$(diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$svc_df")" = ok ]'
+sed 's/^ENTRYPOINT \["diary-entrypoint"\]$/COPY evil \/usr\/local\/bin\/evil\n&/' "$svc_df" > "$work/real-extra-copy.df"
+check "Diary native: the pinned services Dockerfile plus an unknown COPY is refused" \
+  '[ "$(diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$work/real-extra-copy.df")" != ok ] && diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$work/real-extra-copy.df" | grep -q "^bad: "'
+sed 's/^ENTRYPOINT \["diary-entrypoint"\]$/ENTRYPOINT ["\/bin\/true"]/' "$svc_df" > "$work/real-entrypoint.df"
+check "Diary native: the pinned services Dockerfile with a changed ENTRYPOINT is refused" \
+  '! grep -qx "ENTRYPOINT \[\"/bin/true\"\]" "$svc_df" && grep -qx "ENTRYPOINT \[\"/bin/true\"\]" "$work/real-entrypoint.df" && [ "$(diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$work/real-entrypoint.df")" != ok ] && diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$work/real-entrypoint.df" | grep -q "^bad: "'
 diary_raw=""
 # Leave the fixture as it was for the checks below: no forwarder, the synthetic Dockerfile, no Diary sources.
 g rm -q -f services/diary/agent/rust_forward.py
