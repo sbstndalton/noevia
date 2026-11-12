@@ -14,6 +14,16 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
+## Release web 1e632e54 - 2026-11-12 (web client only; noevia-web#122, #123, #124, #125; #2136, #2326, #2397, #2399, #2400, #2401, #2456, #2457, #2458, #2459, #2460, #2461)
+
+Pins: web 1e632e54 (was 90d470d7), core cb2dea2d, rs d8874d7c, services 61d44d27 (all three unchanged). The previous release was 2406d67a. Only the web image is replaced.
+
+What changed for you:
+- Twelve interface fixes (noevia-web#122, #125). Models page: refusals with a known code read in the interface language (#2136), the tab strip fits at 375 px or scrolls with an edge fade and moves with the arrow, Home and End keys (#2459, #2460), and the reranker switch shows the effective state (#2397). The inference banner keeps its closing period with the Settings link (#2326). The chat/code switch no longer spills through the open sidebar header (#2461).
+- Sidebar search refuses a query over 200 characters with a message and notes truncated results (#2399). The Settings detail panel draws no frame when focus moves in without a key press (#2401). Searching settings opens the single remaining section, or the first one if the open section is filtered out (#2458). The retention setting reads "Not loaded" instead of "Never" while it has not loaded (#2400).
+- The Diary page says so when Diary is off for the account, or when it cannot be reached, instead of a blank area (#2456). "Set up later" on the passkey step is remembered for 30 days per browser (#2457).
+- The Spaces and Coworkers area (noevia-web#123, #124) is in the client but stays hidden: the pinned server does not have its routes yet, so no entry appears and `/spaces` and `/coworkers` read as not found. It switches on with the release that carries those routes.
+
 ## Release 2406d67acad3e9261e8e12b471c10fe10107340f - 2026-11-11 (native owners: maintenance lease, code egress, workers; #2416, #2424, #2423, #2419, #2418, #2417, #2426, #2409, #2367, #2369, #2421, #2420, #2425, #2360, #2359, #2365)
 
 Pins: web 90d470d7 (unchanged), core cb2dea2d, rs d8874d7c, services 61d44d27. The previous release was 758f2eb.
