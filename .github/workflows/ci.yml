@@ -119,9 +119,32 @@ jobs:
       # noevia#2391: the image-level provenance check of the native Diary binaries (fake docker; no image is built).
       - run: bash deploy/tools/test-check-diary-image-native.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-source-startup-pairing.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-dav-listener-pairing.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-chat-mirror-pairing.sh
+        if: env.RUN_JOB == 'true'
+      - name: Reranker Core/Rust pairing guard
+        if: env.RUN_JOB == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash deploy/tools/test-reranker-pairing.sh
+      - name: Shared Rust capability fixtures (bash, dash, sh)
+        if: env.RUN_JOB == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          for shell in bash dash sh; do
+            "$shell" deploy/tools/test-rs-capability.sh
+          done
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-residual-fallback-pairing.sh
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
+        if: env.RUN_JOB == 'true'
+      - run: bash deploy/tools/test-auto-roles-pairing.sh
         if: env.RUN_JOB == 'true'
       # #1318 step 1c: the trusted-sets seed (stub docker; needs jq, installed above).
       - run: bash deploy/tools/test-seed-search-trusted.sh
