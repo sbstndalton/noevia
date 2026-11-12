@@ -152,11 +152,13 @@ manifest_diff() {
 # The file the comparison leaves out of a preserved directory: the release smoke asset in scripts/.
 preserved_skip() { if [ "$1" = scripts ]; then printf '%s' "$smoke_asset"; fi; }
 # The Dockerfile tail that replaces each directory whole: delete first (COPY only adds and replaces), then copy.
+# The operator entrypoint (df_entrypoint, set by the copy check above) follows the directories.
 overlay_copy_lines() {
   local d rm_list=""
   for d in $overlay_dirs; do rm_list="$rm_list ./$d"; done
   printf 'RUN rm -rf%s\n' "$rm_list"
   for d in $overlay_dirs; do printf 'COPY %s/ ./%s/\n' "$d" "$d"; done
+  if [ "${df_entrypoint:-0}" = 1 ]; then printf 'COPY entrypoint.sh /usr/local/bin/diary-entrypoint\n'; fi
 }
 # END overlay-dirs
 for d in $overlay_dirs $preserved_dirs; do
@@ -169,12 +171,14 @@ diary_df_check=$base/releases/$V/services/diary/Dockerfile
 [ -f "$diary_df_check" ] || { echo "no releases/$V/services/diary/Dockerfile to check the overlay directories against; not deploying" >&2; exit 1; }
 # BEGIN dockerfile-copy-check (deploy/tests/test_overlay_scripts.py runs this block)
 # Every COPY and ADD of the final stage is significant. Known shapes are the dependency list, the generated
-# /out/ binary bundle, the release's two exact individual binary copies, and COPY <dir>/ ./<dir>/ for app directories.
+# /out/ binary bundle, the release's two exact individual binary copies, the operator entrypoint script (shipped
+# with the overlay: entrypoint.sh to /usr/local/bin/diary-entrypoint, mode 755; ENTRYPOINT is inherited from the base
+# image), and COPY <dir>/ ./<dir>/ for app directories.
 # An arbitrary source/destination from the Rust stage is not accepted. Any other line that copies something
 # (a file, a hyphenated directory, --chown, ADD, JSON form, a continued line) would put content into the image that
 # this overlay does not ship, so it stops the overlay instead of being ignored.
 final_stage=$(awk 'tolower($0) ~ /^[ \t]*from[ \t]/ { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$diary_df_check")
-df_dirs=""; df_unknown=""
+df_dirs=""; df_unknown=""; df_entrypoint=0
 while IFS= read -r df_line || [ -n "$df_line" ]; do
   df_line="${df_line#"${df_line%%[![:space:]]*}"}"; df_line="${df_line%"${df_line##*[![:space:]]}"}"
   case "$(printf '%s' "$df_line" | tr 'A-Z' 'a-z')" in copy|copy[[:space:]]*|add|add[[:space:]]*) ;; *) continue ;; esac
@@ -182,6 +186,7 @@ while IFS= read -r df_line || [ -n "$df_line" ]; do
   elif [ "$df_line" = "COPY --from=tenant-assertion /out/ /usr/local/bin/" ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion" ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify" ]; then continue
+  elif [ "$df_line" = "COPY entrypoint.sh /usr/local/bin/diary-entrypoint" ]; then df_entrypoint=1; continue
   elif [[ $df_line =~ ^COPY\ ([a-z_][a-z0-9_]*)/\ \./([a-z_][a-z0-9_]*)/$ ]] && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]; then
     df_dirs="$df_dirs${BASH_REMATCH[1]}"$'\n'
   else df_unknown="$df_unknown$df_line"$'\n'
@@ -191,6 +196,7 @@ if [ -n "$df_unknown" ]; then
   echo "the release Diary Dockerfile copies something into the image that this overlay does not know how to ship:" >&2
   printf '%s' "$df_unknown" | head -n 5 | sed 's/^/  /' >&2
   echo "Rust COPY must be the exact /out/ bundle or an exact tenant-assertion/workspace-restore-verify release binary path into /usr/local/bin/" >&2
+  echo "the only other accepted copy is entrypoint.sh to /usr/local/bin/diary-entrypoint" >&2
   echo "update diary-overlay.sh (and its test) for these lines, or rebuild the image; not deploying" >&2
   exit 1
 fi
@@ -274,6 +280,11 @@ on_exit() {
 trap on_exit EXIT
 docker tag "$OLD_ID" cowork-diary:rollback-before-diary-overlay
 for d in $overlay_dirs; do cp -r "$base/releases/$V/services/diary/$d" "$ctx/$d"; done
+# The operator entrypoint is shipped with the overlay, so an overlay never leaves a stale one behind: the release's file, mode 755.
+if [ "$df_entrypoint" = 1 ]; then
+  [ -f "$base/releases/$V/services/diary/entrypoint.sh" ] || { echo "the release Diary Dockerfile copies entrypoint.sh but releases/$V/services/diary/entrypoint.sh is missing; not deploying" >&2; exit 1; }
+  install -m 755 "$base/releases/$V/services/diary/entrypoint.sh" "$ctx/entrypoint.sh"
+fi
 # BEGIN rust-leaves (deploy/tests/test_overlay_scripts.py runs this block with rs-stage and leaf-smoke)
 # noevia#1071 P0: the Diary Rust leaves whose Python adapters already exist (and, last, the D4-D5 server process
 # noevia-diary, which Python starts only when DIARY_RUST_ROUTES/DIARY_RUST_WRITES is set), one per line as

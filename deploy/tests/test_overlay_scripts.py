@@ -267,6 +267,7 @@ case "$*" in
       case "$line" in
         "RUN rm -rf "*) for t in ${line#RUN rm -rf }; do rm -rf "$CAND_APP/${t#./}"; done ;;
         "COPY --from"*) ;;
+        "COPY entrypoint.sh /usr/local/bin/diary-entrypoint") cp "$ctx/entrypoint.sh" "$CAND_APP/entrypoint.sh"; stat -c '%a' "$ctx/entrypoint.sh" > "$CALL_LOG.entrypoint_mode" ;;
         "COPY "*) src="${line#COPY }"; src="${src%% *}"; mkdir -p "$CAND_APP/$src"; cp -R "$ctx/$src/." "$CAND_APP/$src/" ;;
       esac
     done < "$ctx/Dockerfile" ;;
@@ -865,6 +866,25 @@ exec "@REAL_SED@" "$@"
         (self.release / 'requirements.txt').write_text('synthetic-dependency==1.0\n')
         (self.running_app / 'requirements.txt').unlink()
         self.assertNotEqual(self.overlay().returncode, 0, 'one the running image cannot show is a refusal too')
+
+    def test_the_overlay_ships_the_operator_entrypoint_as_an_executable_and_copies_it(self):
+        # Before this, the overlay refused a release whose Dockerfile copies the entrypoint (an unknown shape).
+        (self.release / 'entrypoint.sh').write_text('#!/bin/sh\nexec "$@"\n')
+        self.dockerfile(DIARY_DOCKERFILE.replace('CMD [', 'COPY entrypoint.sh /usr/local/bin/diary-entrypoint\nCMD ['))
+        result = self.overlay()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('entrypoint.sh', self.context_files())
+        self.assertEqual(pathlib.Path(f'{self.log}.entrypoint_mode').read_text().strip(), '755')
+        self.assertTrue(self.dockerfile_text().rstrip().endswith('COPY entrypoint.sh /usr/local/bin/diary-entrypoint'), self.dockerfile_text())
+        self.assertNotIn('ENTRYPOINT', self.dockerfile_text())   # inherited from the running image's base
+
+    def test_an_overlay_whose_release_lacks_the_entrypoint_file_refuses_before_anything_is_built(self):
+        self.dockerfile(DIARY_DOCKERFILE.replace('CMD [', 'COPY entrypoint.sh /usr/local/bin/diary-entrypoint\nCMD ['))
+        result = self.overlay()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('entrypoint.sh', result.stderr)
+        self.assertFalse([c for c in self.calls() if c.startswith(('docker build', 'docker stop', 'docker compose'))], self.calls())
+        self.assertIn(f'DIARY_VERSION={self.OLD}', self.config.read_text())
 
     def test_a_missing_release_dockerfile_refuses(self):
         (self.release / 'Dockerfile').unlink()
@@ -1539,6 +1559,14 @@ class DiaryCopyContract(unittest.TestCase):
                             'COPY requirements.txt ./', 'COPY agent/ \\\n  ./agent/']:
             self.refused(instruction)
 
+    def test_operator_entrypoint_copy_is_an_accepted_shape(self):
+        self.accepted(DIARY_DOCKERFILE.replace('CMD [', 'COPY entrypoint.sh /usr/local/bin/diary-entrypoint\nCMD ['))
+
+    def test_operator_entrypoint_copy_is_exact(self):
+        for instruction in ['COPY entrypoint.sh /usr/local/bin/other', 'COPY entrypoint.sh /usr/local/bin/diary-entrypoint2',
+                            'COPY --chmod=755 entrypoint.sh /usr/local/bin/diary-entrypoint', 'COPY entrypoint.sh ./']:
+            self.refused(instruction)
+
     def test_individual_release_binary_copies_pass_both_parsers(self):
         copies = '\n'.join(
             f'COPY --from=tenant-assertion /src/target/release/{name} /usr/local/bin/{name}'
@@ -1843,6 +1871,7 @@ class OverlayDirsInSync(unittest.TestCase):
                 'COPY --from=tenant-assertion /out/ /usr/local/bin/',
                 'COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion',
                 'COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify',
+                'COPY entrypoint.sh /usr/local/bin/diary-entrypoint',
             ):
                 continue
             match = re.fullmatch(r'COPY ([a-z_][a-z0-9_]*)/ \./\1/', line)
