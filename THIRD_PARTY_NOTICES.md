@@ -111,3 +111,42 @@ Changes: rewritten in CommonJS for the web server; per-user encrypted token stor
 `secrets.cjs` instead of `~/.codex/auth.json`; single-flight refresh; the device-code flow instead
 of the loopback redirect; no Vercel AI SDK. Full licence text:
 `apps/web/server/LICENSE-APACHE-2.0.txt`.
+
+## CopilotKit/OpenDots (MIT)
+
+Parts of the Spaces and Coworkers pages in [noevia-web](https://github.com/sbstndalton/noevia-web) adapt web
+components from [CopilotKit/OpenDots](https://github.com/CopilotKit/OpenDots) at commit
+`46eaf96c9e3802adc972ceafd8f20f99bda34e70`, under the MIT License (Copyright (c) Atai Barkai). Each adapted
+file carries the notice in its header. Only the web components were adapted; the thread, agent runtime and
+telemetry code was not used. The adapted files (noevia-web path <- upstream path):
+
+- `src/page-autosave.ts` <- `src/client/editor/autosave.ts`
+- `src/components/spaces/usePageAutosave.ts` <- `src/client/editor/use-page-autosave.ts`
+- `src/components/spaces/PageEditor.tsx` <- `src/client/PageDocument.tsx` (editor chrome only)
+- `src/components/spaces/SpacePages.tsx` <- `src/client/SpaceLibrary.tsx`
+- `src/components/spaces/SpaceLibrary.tsx` <- `src/client/SpaceNav.tsx` and `src/client/SpaceLibrary.tsx`
+- `src/components/coworkers/CoworkerSettings.tsx` and the default-Space rule in `src/coworker-form.ts` <- `src/client/WorkspaceDialog.tsx`
+
+```
+The MIT License
+
+Copyright (c) Atai Barkai
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
