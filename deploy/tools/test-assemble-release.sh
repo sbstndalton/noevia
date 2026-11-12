@@ -1393,6 +1393,9 @@ cp "$w/server/index.cjs" "$work/lx-index-full.saved"
 cp "$work/lx-index-wired.saved" "$w/server/index.cjs"
 dr_try lx-no-throttle
 check "a Core that does not give the lease chat's throttle is refused" 'refused "is not given the chat throttle"'
+printf '%s\n' "  if (require('./rust-chat-edge.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+dr_try lx-edge-throttle
+check "a Core that runs the chat edge needs no lease throttle (the front counts the exchange), but its edge pair still applies" '! grep -q "is not given the chat throttle" "$work/err"'
 cp "$work/lx-index-full.saved" "$w/server/index.cjs"
 cp "$work/lx-index.saved" "$w/server/index.cjs"
 dr_try lx-front-only

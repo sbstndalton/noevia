@@ -705,8 +705,11 @@ if [ "$lx_rs_owner" = rust ]; then
   [ "$lx_route" = "/api/diary/local-exchange" ] || die "Diary local exchange ownership pairing: missing route ownership"
   grep -qF "diaryExchange" "$tree/core/server/inference-admission-lease.cjs" 2>/dev/null \
     || die "Diary local exchange ownership pairing: Core's admission lease does not take the exchange"
-  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause.
+  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause,
+  # unless Core runs the chat edge (chat port S6), whose front counts the exchange on the shared `llm:` budget
+  # (the chat edge pairing below then requires the front's rust-chat-edge too).
   code_lines "$tree/core/server/index.cjs" | grep -qF "diaryExchange: { rateLimited:" \
+    || code_has "$tree/core/server/index.cjs" "require\\('\\./rust-chat-edge\\.cjs'\\)" \
     || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
 fi
 # The rest of the Diary routes the web client names (sbstndalton/noevia#2206) move as one owner: Core's
