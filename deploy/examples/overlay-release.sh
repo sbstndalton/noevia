@@ -16,8 +16,8 @@
 # instead: layer dist/, server/ and contracts/ onto the previous cowork-web:<sha>, point `current` and
 # COWORK_VERSION at the new release (back up .env first), then
 #   tools/preflight/up.sh --env-file <abs path to .env> -- -d --no-build --no-deps --wait web
-# (docs/deployment.md, "Web-only release"). A Diary change (agent/, config/ and scripts/,
-# including the system prompt) ships separately with diary-overlay.sh.
+# (docs/deployment.md, "Web-only release"). A Diary change to agent/ ships separately with
+# diary-overlay.sh (it never replaces config/ or scripts/; a prompt or config change needs a Diary image rebuild).
 #
 # Before running:
 #   1. Locally, from a clean noevia checkout (repo split, #952: the client and server come from the
