@@ -13,7 +13,7 @@
 set -euo pipefail
 
 tree="${1:?assembled tree}"; lock="${2:?lock file}"; base="${3:-}"
-val() { sed -n "s/^$1=//p" "$2" | head -1; }
+val() { sed -n "s/^$1=//p" "$2" | tail -1; }
 fail() { echo "::error::$*"; exit 1; }
 
 rs_ref=$(val NOEVIA_RS_REF "$lock"); rs_sum=$(val NOEVIA_RS_SHA256 "$lock")
