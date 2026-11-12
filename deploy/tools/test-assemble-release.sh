@@ -1068,12 +1068,12 @@ if [ -n "${NOEVIA_SERVICES_DIR:-}" ] && [ -f "$NOEVIA_SERVICES_DIR/diary/Dockerf
   svc_ref="$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"; svc_sum="$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"
   check "Diary native: the real template accepts the real services Diary Dockerfile (NOEVIA_SERVICES_DIR)" '[ "$(diary_dockerfile_check "$rtpl" "$svc_ref" "$svc_sum" "$NOEVIA_SERVICES_DIR/diary/Dockerfile")" = ok ]'
 fi
-# The REAL services Diary Dockerfile at the lock's NOEVIA_SERVICES_REF (53cf1e47, a byte copy in fixtures/, sha256
-# cfbe5b6c...). It must pass the template against the lock's own pin, and a Dockerfile with an extra unknown COPY or a
+# The REAL services Diary Dockerfile at the lock's NOEVIA_SERVICES_REF (decf3a8d, a byte copy in fixtures/, 
+# a75ee6a6...). It must pass the template against the lock's own pin, and a Dockerfile with an extra unknown COPY or a
 # changed ENTRYPOINT must still be refused.
-svc_df="$here/fixtures/services-diary-Dockerfile.53cf1e47"
+svc_df="$here/fixtures/services-diary-Dockerfile.decf3a8d"
 lk_ref="$(sed -n 's/^NOEVIA_RS_REF=//p' "$here/../../release/versions.lock" | head -1)"; lk_sum="$(sed -n 's/^NOEVIA_RS_SHA256=//p' "$here/../../release/versions.lock" | head -1)"
-check "Diary native: the real template accepts the pinned services Diary Dockerfile (53cf1e47) against the lock pin" \
+check "Diary native: the real template accepts the pinned services Diary Dockerfile (decf3a8d) against the lock pin" \
   '[ "$(diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$svc_df")" = ok ]'
 sed 's/^ENTRYPOINT \["diary-entrypoint"\]$/COPY evil \/usr\/local\/bin\/evil\n&/' "$svc_df" > "$work/real-extra-copy.df"
 check "Diary native: the pinned services Dockerfile plus an unknown COPY is refused" \
@@ -1518,6 +1518,61 @@ lease_rs_wrap '#![allow(dead_code)]'$'\n''#[cfg(any())]'$'\n' ''; lease_no lease
 lease_rs_wrap '#![allow(dead_code)]'$'\n''#[doc(hidden)]'$'\n' ''; lease_no lease-crate-allow-then-outer "an outer attribute on the declaration is refused"
 lease_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; lease_ok lease-doc-commented-declaration "a doc-commented unconditional declaration assembles"
 lease_clear
+# Port contract row H: Core's admission latch and the front's admission authority move together
+# (f57a4e3-style detectors: Core's real export under node:vm, Rust's FEATURES tokenizer).
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/adm-features.saved"
+adm_core_js() { printf '%s\n' "$@" > "$w/server/inference-admission-lease.cjs"; }
+adm_core() { adm_core_js "const LATCH_MARKER = 'noevia-inference-admission-latch/1';" 'module.exports = { LATCH_MARKER };'; }
+# adm_rs_el TEXT: lib.rs's FEATURES with TEXT as its first element(s).
+adm_rs_el() { ADM_EL="$1" perl -pe 's/pub const FEATURES: &\[&str\] = &\[/$&$ENV{ADM_EL}, /' "$work/adm-features.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+adm_rs() { adm_rs_el '"noevia-inference-admission-authority/1"'; }
+adm_clear() { rm -f "$w/server/inference-admission-lease.cjs"; cp "$work/adm-features.saved" "$rz/bins/noevia-server/src/lib.rs"; }
+adm_ok() { source_try "$1"; check "$2" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'; }
+# Row J's tokenizer reads the same FEATURES array and refuses a non-literal or misplaced element first, so either pairing's refusal counts.
+adm_no() { source_try "$1"; check "$2" 'refused "\(inference admission\|maintenance lease\) pairing"'; }
+adm_clear; adm_ok adm-legacy-legacy "legacy core with legacy Rust lease owner assembles"
+adm_core; adm_rs; adm_ok adm-paired "native lease client with native lease authority assembles"
+adm_core_js "const LATCH_MARKER = ['noevia-inference-admission-', 'latch/1'].join('');" "const { x } = require('./missing.cjs');" 'module.exports = { LATCH_MARKER, x };'
+adm_ok adm-computed-core-export "a computed core export with stubbed requires is read by its value"
+adm_clear; adm_core; adm_no adm-core-only "native lease client with a legacy front is refused"
+adm_clear; adm_rs; adm_no adm-rs-only "native lease authority with a legacy core is refused"
+# Adversarial Core markers (front paired at v1).
+adm_rs
+adm_core_js "// const LATCH_MARKER = 'noevia-inference-admission-latch/1';" 'module.exports = {};'
+adm_no adm-comment-only-core "comment-only core lease marker is refused"
+adm_core_js "const LATCH_MARKER = 'noevia-inference-admission-latch/1';" 'module.exports = {};'
+adm_no adm-unexported-core "unexported core lease marker is refused"
+adm_core_js "const LATCH_MARKER = 'noevia-inference-admission-latch/2';" 'module.exports = { LATCH_MARKER };'
+adm_no adm-unknown-core-version "unknown core lease marker version is refused"
+adm_core_js "module.exports = { LATCH_MARKER: { toString: () => 'noevia-inference-admission-latch/1' } };"
+adm_no adm-object-core-export "a non-string core lease export is refused"
+adm_core_js "const LATCH_MARKER = 'noevia-inference-admission-latch/1';" 'for (;;) {}' 'module.exports = { LATCH_MARKER };'
+adm_no adm-hanging-core "a core lease module that never finishes evaluating is refused"
+# Adversarial Rust markers (core paired at v1).
+adm_core
+adm_rs_el '#[cfg(feature = "adm")] "noevia-inference-admission-authority/1"'; adm_no adm-cfg-rust "cfg-gated Rust lease marker is refused"
+adm_rs_el '"noevia-inference-admission-authority/1", "noevia-inference-admission-authority/1"'; adm_no adm-duplicate-rust "duplicate Rust lease markers are refused"
+adm_rs_el '"noevia-inference-admission-authority/1", "noevia-inference-admission-authority\x2f1"'; adm_no adm-escaped-duplicate-rust "escaped duplicate Rust lease markers are refused"
+adm_rs_el 'b"noevia-inference-admission-authority/1"'; adm_no adm-byte-rust "byte-string Rust lease marker is refused"
+adm_rs_el 'r#"noevia-inference-admission-authority/1"#'; adm_no adm-raw-rust "raw-string Rust lease marker is refused"
+adm_rs_el 'concat!("noevia-inference-admission-", "authority/1")'; adm_no adm-concat-rust "concat! Rust lease marker is refused"
+adm_rs_el '"noevia-inference-admission-authority/2"'; adm_no adm-unknown-rust-version "unknown Rust lease marker version is refused"
+adm_rs_el '/* "noevia-inference-admission-authority/1", */ "start-id-x"'; adm_no adm-comment-only-rust "comment-only Rust lease marker is refused"
+adm_rs; printf '%s\n' 'pub const FEATURES: &[&str] = &["noevia-inference-admission-authority/1"];' >> "$rz/bins/noevia-server/src/lib.rs"
+adm_no adm-two-features-rust "a second FEATURES array is refused"
+adm_rs_el '"noevia-inference-admission-\u{61}uthority/1"'; adm_ok adm-escaped-single-rust "one escaped Rust lease literal is read by its value"
+# Review P2: the declaration's own scope. adm_rs_wrap BEFORE AFTER wraps lib.rs's FEATURES line.
+adm_rs_wrap() { adm_rs; LB="$1" LA="$2" perl -0pi -e 's/^(pub const FEATURES: &\[&str\] = &\[.*?\];)$/$ENV{LB}$1$ENV{LA}/m' "$rz/bins/noevia-server/src/lib.rs"; }
+adm_rs_wrap '#[cfg(any())] ' ''; adm_no adm-cfg-declaration "cfg on the FEATURES declaration is refused"
+adm_rs_wrap '#[cfg(feature = "adm")]'$'\n' ''; adm_no adm-cfg-declaration-line "cfg on its own line above the declaration is refused"
+adm_rs_wrap '#[cfg(any())] mod disabled { ' ' }'; adm_no adm-cfg-module "a declaration inside a cfg-disabled module is refused"
+adm_rs_wrap 'mod inner { ' ' }'; adm_no adm-nested-module "a declaration inside a nested module is refused"
+adm_rs_wrap 'macro_rules! hidden { () => { ' ' }; }'; adm_no adm-macro-rules "a declaration inside macro_rules! is refused"
+adm_rs_wrap 'cfg_if::cfg_if! { if #[cfg(any())] { ' ' } }'; adm_no adm-macro-wrapped "a macro-wrapped declaration is refused"
+adm_rs; printf '%s\n' '#![cfg(any())]' | cat - "$rz/bins/noevia-server/src/lib.rs" > "$work/adm-crate-cfg" && cp "$work/adm-crate-cfg" "$rz/bins/noevia-server/src/lib.rs"
+adm_no adm-crate-cfg "a crate-level cfg attribute is refused"
+adm_rs_wrap '/// The capabilities.'$'\n''// plain comment'$'\n' ''; adm_ok adm-doc-commented-declaration "a doc-commented unconditional declaration assembles"
+adm_clear
 
 for item in "rs:chat_move.rs:MOVE_MARKER" "rs:journal.rs:CHAT_MOVE_JOURNAL_MARKER" \
  "features:lib.rs:FEATURES" "core:project-store-client.cjs:CHAT_MOVE_CLIENT_MARKER" \
@@ -1733,7 +1788,7 @@ cp "$rz/bins/noevia-server/src/lib.rs" "$work/lx-lib.saved"
 printf '%s\n' "  if (require('./rust-diary-local-exchange.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
 cp "$w/server/index.cjs" "$work/lx-index-wired.saved"
 printf '%s\n' "  diaryExchange: { rateLimited: (userId) => llmRateLimited(userId), foreground: () => rag.foreground() }," >> "$w/server/index.cjs"
-printf '%s\n' "  if (ask && typeof ask === 'object' && 'diaryExchange' in ask) {" > "$w/server/inference-admission-lease.cjs"
+printf '%s\n' "function admit(ask) {" "  if (ask && typeof ask === 'object' && 'diaryExchange' in ask) { return ask; }" "}"  "module.exports = { admit };" > "$w/server/inference-admission-lease.cjs"
 dr_try lx-core-only
 check "a Core that refuses the local exchange requires the native capability" 'refused "Diary local exchange ownership pairing: Core and Rust must move together"'
 sed 's/"rust-diary-routes"/"rust-diary-routes", "rust-diary-local-exchange"/' "$work/lx-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
@@ -1748,7 +1803,7 @@ dr_local=rust
 printf '%s\n' "// no exchange ask" > "$w/server/inference-admission-lease.cjs"
 dr_try lx-no-lease
 check "a Core whose admission lease cannot take the exchange is refused" 'refused "admission lease does not take the exchange"'
-printf '%s\n' "  if (ask && typeof ask === 'object' && 'diaryExchange' in ask) {" > "$w/server/inference-admission-lease.cjs"
+printf '%s\n' "function admit(ask) {" "  if (ask && typeof ask === 'object' && 'diaryExchange' in ask) { return ask; }" "}"  "module.exports = { admit };" > "$w/server/inference-admission-lease.cjs"
 cp "$w/server/index.cjs" "$work/lx-index-full.saved"
 cp "$work/lx-index-wired.saved" "$w/server/index.cjs"
 dr_try lx-no-throttle
