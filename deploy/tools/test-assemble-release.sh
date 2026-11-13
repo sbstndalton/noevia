@@ -1068,12 +1068,12 @@ if [ -n "${NOEVIA_SERVICES_DIR:-}" ] && [ -f "$NOEVIA_SERVICES_DIR/diary/Dockerf
   svc_ref="$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"; svc_sum="$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"
   check "Diary native: the real template accepts the real services Diary Dockerfile (NOEVIA_SERVICES_DIR)" '[ "$(diary_dockerfile_check "$rtpl" "$svc_ref" "$svc_sum" "$NOEVIA_SERVICES_DIR/diary/Dockerfile")" = ok ]'
 fi
-# The REAL services Diary Dockerfile at the lock's NOEVIA_SERVICES_REF (decf3a8d, a byte copy in fixtures/, 
+# The REAL services Diary Dockerfile at the lock's NOEVIA_SERVICES_REF (051fe8d3, a byte copy in fixtures/, 
 # a75ee6a6...). It must pass the template against the lock's own pin, and a Dockerfile with an extra unknown COPY or a
 # changed ENTRYPOINT must still be refused.
-svc_df="$here/fixtures/services-diary-Dockerfile.decf3a8d"
+svc_df="$here/fixtures/services-diary-Dockerfile.051fe8d3"
 lk_ref="$(sed -n 's/^NOEVIA_RS_REF=//p' "$here/../../release/versions.lock" | head -1)"; lk_sum="$(sed -n 's/^NOEVIA_RS_SHA256=//p' "$here/../../release/versions.lock" | head -1)"
-check "Diary native: the real template accepts the pinned services Diary Dockerfile (decf3a8d) against the lock pin" \
+check "Diary native: the real template accepts the pinned services Diary Dockerfile (051fe8d3) against the lock pin" \
   '[ "$(diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$svc_df")" = ok ]'
 sed 's/^ENTRYPOINT \["diary-entrypoint"\]$/COPY evil \/usr\/local\/bin\/evil\n&/' "$svc_df" > "$work/real-extra-copy.df"
 check "Diary native: the pinned services Dockerfile plus an unknown COPY is refused" \
