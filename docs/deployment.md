@@ -207,6 +207,12 @@ Keep exact backup paths, host/service inventories, recovery manifests, and deplo
 outside version control. Public release notes should describe software behavior and validation
 limits rather than the private state of an installation.
 
+## Operator invitation (#2582)
+
+An install that already has accounts gets a new one without an administrator's session by running `noevia-server --operator-invitation <member|admin>` inside the web container (`docker exec`); it reads `UI_DATA_DIR`, is safe while the server runs, and refuses an empty store (use first-run setup) or a store with no active administrator.
+It prints one single-use invitation token (valid 24 hours) on stdout and nothing else; the audit log records `invite.create` with no actor and `"via":"operator-invitation"`. Treat the token as a password.
+The account is made by accepting the invitation on the sign-in page as usual; the command never creates an account, session or password, and has no network or environment-switch equivalent.
+
 ## Inference gate (#2115)
 
 The chat router holds one model at a time. Before this gate, a request for another model unloaded
