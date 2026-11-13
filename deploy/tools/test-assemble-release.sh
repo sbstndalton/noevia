@@ -1031,6 +1031,11 @@ for dn_m in \
   't += "FROM python:3.12-slim\n"' \
   't += "ENV PIP_INDEX_URL=https://example.invalid/simple\n"' \
   't += "ENV PIP_FIND_LINKS=/tmp\n"' \
+  't += "ENV XDG_CONFIG_HOME=/app/config\n"' \
+  't += "ENV XDG_CONFIG_DIRS=/app/config\n"' \
+  't += "ENV HOME=/app/config\n"' \
+  't += "ENV https_proxy=http://proxy.invalid:3128\n"' \
+  't += "ENV SSL_CERT_FILE=/app/config/ca.pem\n"' \
   't = t.replace(" -c constraints.txt -r", " -r", 1)' \
   't = t.replace("--upgrade -c constraints.txt", "--upgrade", 1)' \
   't = t.replace("COPY requirements.txt constraints.txt ./", "COPY requirements.txt .", 1)'; do
