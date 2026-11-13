@@ -24,6 +24,26 @@ What changed for you:
 - The Diary page says so when Diary is off for the account, or when it cannot be reached, instead of a blank area (#2456). "Set up later" on the passkey step is remembered for 30 days per browser (#2457).
 - The Spaces and Coworkers area (noevia-web#123, #124) is in the client but stays hidden: the pinned server does not have its routes yet, so no entry appears and `/spaces` and `/coworkers` read as not found. It switches on with the release that carries those routes.
 
+## Release web d8e24b63 - this release (web client only; noevia-web#128, #129; #2486, #2487, #2488, #2489, #2468)
+
+Pins: web d8e24b63 (was 51ceda61); core 6c23568d, rs cb72e3e3 and services 53cf1e47 are as on main. The previous release was 69aa4dcf. Only the web image is replaced. The lock's rs and services refs are ahead of the running images (rs adds only the Diary operator command-line crate; the Rust front is unchanged), and the Diary image and every sidecar stay as they are.
+
+What changed for you:
+- A turn that ends after an approved page save keeps the reply text that followed the tool call, also after a reload (noevia-web#128, #2489).
+- Spaces and Settings polish (noevia-web#129): the Space, page and coworker headings no longer show a focus ring when you arrive by click or by address, only when you reach them with Tab (#2486); Space and coworker card names take the card width, up to two lines, with the full name as a tooltip (#2487); the conflict banner says what Keep mine and Take theirs do (#2488); the Settings search is kept in the address, so Back returns to the previous search (#2468, in part).
+
+## Release 69aa4dcf697090d2a73f6e7735daaaeb04991c4a - 2026-11-12 (Coworkers and Spaces, phase 1; #2446, #2474, #2475, #2476)
+
+Pins: web 51ceda61 (#126, #127), core 6c23568d (#355, #356, #357), rs 3c4a7e92 (#443-#448), services 61d44d27 (unchanged). `NOEVIA_SERVICES_RS_REF` and `NOEVIA_SERVICES_RS_SHA256` keep the sidecar images at rs d8874d7c: only the web image is replaced. The egress proxy Dockerfile follows the new rs pin but its running container is not rebuilt.
+
+What changed for you:
+- Coworkers and Spaces appear in the app: create Spaces with pages (autosave, conflict handling, search), and coworkers you grant Spaces to, whose proposed pages you review before saving (#2446, phase 1).
+- Removing a source now asks first (#2475), the source hover card stays inside the window (#2476), and the sign-in wizard resumes where it stopped (#2474, partly; the rest is #2478).
+- Not in phase 1: the event route, the coworker computer, connections and schedules.
+- Rolling back to the previous image hides the area again and leaves the new files untouched. A coworker created in between leaves its hidden project in the old image's project list; delete the coworker before rolling back.
+
+Qualification: the in-image tests passed 2313/2313 (42 skipped). The synthetic qualification passed on attempt 1 of 3, with a new `coworkers` stage (Space, page with a stale-write 409, coworker, hidden project in no list, page save through the internal store route, member isolation, delete). The rollback rehearsal passed on synthetic state. The cutover replaced only the web image (from 514cbd23); the egress proxy, Diary and every sidecar image were retained.
+
 ## Release 2406d67acad3e9261e8e12b471c10fe10107340f - 2026-11-11 (native owners: maintenance lease, code egress, workers; #2416, #2424, #2423, #2419, #2418, #2417, #2426, #2409, #2367, #2369, #2421, #2420, #2425, #2360, #2359, #2365)
 
 Pins: web 90d470d7 (unchanged), core cb2dea2d, rs d8874d7c, services 61d44d27. The previous release was 758f2eb.
