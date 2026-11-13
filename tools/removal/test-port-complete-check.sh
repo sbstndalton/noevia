@@ -25,6 +25,8 @@ clean() {
   commit "$d/noevia-core" server/index.test.cjs "'use strict';"
   commit "$d/noevia-core" code-sandbox/Dockerfile $'FROM alpine:3.20\nCMD ["true"]'
   commit "$d/noevia-services" diary/Dockerfile $'FROM debian:bookworm-slim\nCMD ["true"]'
+  commit "$d/noevia-services" ocr/Dockerfile $'FROM rust:1.99 AS build\nFROM debian:bookworm-slim\nCMD ["true"]'
+  commit "$d/noevia-services" model-manager/Dockerfile $'FROM debian:bookworm-slim AS runtime\nFROM runtime AS production\nCMD ["true"]'
   commit "$d/noevia" build/web.Dockerfile $'FROM rust:1.99-slim-bookworm AS front\nFROM debian:bookworm-slim\nHEALTHCHECK CMD curl -f http://127.0.0.1:8021/ || exit 1'
 }
 run() {  # run DIR [extra args] : prints output to $tmp/out and returns the check's exit code
@@ -58,6 +60,14 @@ mkrepo "$tmp/img"; commit "$tmp/img" build/web.Dockerfile $'FROM node:22-bookwor
 "$check" --core "$tmp/clean/noevia-core" --rs "$tmp/clean/noevia-rs" --services "$tmp/clean/noevia-services" \
   --noevia "$tmp/img" --ref HEAD --allow-skip > "$tmp/out" 2>&1
 if grep -q '^FAIL  4  web final base' "$tmp/out" && grep -q '^FAIL  4b' "$tmp/out"; then ok "a Node web base and HEALTHCHECK fail check 4"; else bad "check 4"; cat "$tmp/out"; fi
+
+# Case 5b: a final stage that names an earlier Python stage is followed to its base and fails check 4.
+mkrepo "$tmp/svc"; commit "$tmp/svc" diary/Dockerfile $'FROM debian:bookworm-slim\nCMD ["true"]'
+commit "$tmp/svc" ocr/Dockerfile $'FROM --platform=linux/amd64 python:3.12-slim AS runtime\nFROM runtime AS production'
+commit "$tmp/svc" model-manager/Dockerfile $'FROM debian:bookworm-slim'
+"$check" --core "$tmp/clean/noevia-core" --rs "$tmp/clean/noevia-rs" --services "$tmp/svc" \
+  --noevia "$tmp/clean/noevia" --ref HEAD --allow-skip > "$tmp/out" 2>&1
+if grep -q '^FAIL  4  ocr final base is Node/Python: FROM python:3.12-slim' "$tmp/out" && grep -q '^PASS  4  model-manager' "$tmp/out"; then ok "a stage alias is followed to its Python base (check 4)"; else bad "check 4 alias"; cat "$tmp/out"; fi
 
 # Case 6: a captured process list with node outside declared engines fails check 5.
 printf '%s\n' "root 1234 node /app/server/index.cjs" > "$tmp/ps.txt"

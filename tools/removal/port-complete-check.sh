@@ -86,10 +86,26 @@ if [ -n "$CENSUS" ] && [ -r "$CENSUS" ]; then
   else echo "INFO  3b census: Python source in services $ptot lines (declared engines are counted here too)"; fi
 fi
 
-# 4. Final stage of each image: no Node or Python base unless declared.
-for pair in "$NOEVIA:build/web.Dockerfile:web" "$CORE:code-sandbox/Dockerfile:code-sandbox" "$SERVICES:diary/Dockerfile:diary"; do
+# 4. Final stage of each image: no Node or Python base unless declared. A final stage named after an
+# earlier stage (FROM runtime AS production) is followed to that stage's base. The docling and Laya
+# images are declared Python engines and are not listed.
+final_base() {  # stdin: a Dockerfile; prints "FROM <base>" of the final stage, stage aliases resolved
+  awk 'toupper($1) == "FROM" {
+         img = ""; alias = ""
+         for (i = 2; i <= NF; i++) {
+           if ($i ~ /^--/) continue
+           if (img == "") { img = $i; continue }
+           if (toupper($i) == "AS" && i < NF) { alias = $(i + 1); break }
+         }
+         if (alias != "") base[tolower(alias)] = img
+         last = img
+       }
+       END { if (last == "") exit; n = 0; while ((tolower(last) in base) && n++ < 32) last = base[tolower(last)]; print "FROM " last }'
+}
+for pair in "$NOEVIA:build/web.Dockerfile:web" "$CORE:code-sandbox/Dockerfile:code-sandbox" "$SERVICES:diary/Dockerfile:diary" \
+    "$SERVICES:ocr/Dockerfile:ocr" "$SERVICES:model-manager/Dockerfile:model-manager"; do
   IFS=: read -r repo path name <<<"$pair"
-  last=$(g "$repo" show "$REF:$path" | grep -E '^FROM ' | tail -1 || true)
+  last=$(g "$repo" show "$REF:$path" | final_base || true)
   if [ -z "$last" ]; then fail "4  $name: no FROM found in $path"; continue; fi
   if echo "$last" | grep -qE 'node|python'; then
     case " $ALLOW_NODE_IMAGES " in *" $name "*) pass "4  $name final base is Node/Python but declared: $last" ;;
