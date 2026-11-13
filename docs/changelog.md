@@ -24,7 +24,17 @@ What changed for you:
 - The Diary page says so when Diary is off for the account, or when it cannot be reached, instead of a blank area (#2456). "Set up later" on the passkey step is remembered for 30 days per browser (#2457).
 - The Spaces and Coworkers area (noevia-web#123, #124) is in the client but stays hidden: the pinned server does not have its routes yet, so no entry appears and `/spaces` and `/coworkers` read as not found. It switches on with the release that carries those routes.
 
-## Release web d8e24b63 - this release (web client only; noevia-web#128, #129; #2486, #2487, #2488, #2489, #2468)
+## Release port batch 1 - this release (web image only; noevia-rs#417, #449, #451, #452; noevia-core#334, #340, #358)
+
+Pins: rs f50a3e97 (was cb72e3e3), core c6058fa6 (was 6c23568d), services decf3a8d (lock only; the Dockerfiles carry the same rs ref), web d8e24b63 unchanged. The previous release was b29c6b60. The lock on main already carries these pins (noevia#2415); this entry is the only change. Only the web image is replaced: the Diary image, the egress proxy and every sidecar stay as they are.
+
+What changed for you: nothing you will see; more of the server moved from Node to the native Rust server.
+- Which chat or job may use the inference engine next is now decided by the native server, one at a time, and a stopped turn frees its place at once (noevia-rs#417, noevia-core#340).
+- The native server now writes the model state files itself (noevia-rs#449, noevia-core#358), and removing model entries whose files are gone is answered natively (noevia-rs#451).
+- A coworker's event history can be replayed by the owner through `GET /api/specialists/{id}/events` (noevia-rs#452); other accounts get not found.
+- The Core half of the native chat relay (noevia-core#334) is in but inert until its Rust half ships.
+
+## Release b29c6b60f5fa264ffcd0492ad423042363c667e3 - 2026-11-12 (web client only, web d8e24b63; noevia-web#128, #129; #2486, #2487, #2488, #2489, #2468)
 
 Pins: web d8e24b63 (was 51ceda61); core 6c23568d, rs cb72e3e3 and services 53cf1e47 are as on main. The previous release was 69aa4dcf. Only the web image is replaced. The lock's rs and services refs are ahead of the running images (rs adds only the Diary operator command-line crate; the Rust front is unchanged), and the Diary image and every sidecar stay as they are.
 
