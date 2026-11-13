@@ -14,7 +14,18 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
-## Release port batch 2 - this release (web image only; noevia-rs#411, #450, #455; noevia-core#335, #359, #360, #367; #2528, #2559)
+## Release port batch 3 - this release (web image only; noevia-rs#488, #489, #495, #496, #498, #499, #500, #503, #506, #510; noevia-core#363, #364, #371, #372, #373, #374, #376, #377; #2561, #2562, #2582)
+
+Pins: rs fcebcc62 (was a0d7df69), core d6bc7ab8 (was 8558e292), services 0981b446 (was 0bc10693; lock only: the Diary and sidecar Dockerfiles at that ref pin rs fcebcc62, and those images are not rebuilt), web d8e24b63 unchanged. The previous web release was af67a21f. Only the web image is replaced; the Diary keeps the image of the Diary release 5453963a.
+
+What changed for you: nothing in daily use. Operators get a way to invite an account from the server's shell, and Code mode gets two security fixes.
+- An operator with shell access to the web container can make one invitation with `noevia-server --operator-invitation member` (or `admin`). It prints one token, valid once and for 24 hours, which is accepted on the sign-in page like an invitation made in Settings. It refuses on an installation without accounts (use first-run setup there) and is recorded in the audit log (noevia-rs#506, #2582).
+- Security, Code mode: after a restart, an interrupted task whose workspace cannot be taken back from the harness user is left as it is and its record says why; nothing is removed by path in a tree that user still holds (#2561). Pinning the harness configuration needs /proc only when a separate harness user is configured (#2562) (noevia-core#373).
+- Starting an auto-tune now passes through the native server, which hands it to the same auto-tune as before; the answers are unchanged (noevia-rs#489).
+- Node's old approval registry, unused since the previous release, is no longer in the image (noevia-core#376).
+- Also included and switched off, so nothing changes until the owner turns them on: Code tasks in the native server (noevia-rs#488, #499, #510), the native auto-tune runner (noevia-rs#489, noevia-core#364), the native chat executor with instruction skills, chat-wide grants and the coworker page-save card (noevia-rs#495, #496, #500, #503, noevia-core#372, #374, #377), MCP calls and Drive tools in the native server (noevia-core#363), and native image search (noevia-core#371); plus a larger file limit in a diagnosis tool (noevia-rs#498). The Diary server's new internal routes (noevia-rs#492, #508) live in the Diary image, which this release does not rebuild, so they do not ship.
+
+## Release port batch 2 af67a21f - 2026-11-13 (web image only; noevia-rs#411, #450, #455; noevia-core#335, #359, #360, #367; #2528, #2559)
 
 Pins: rs a0d7df69 (was ec403684), core 8558e292 (was c6058fa6), services 0bc10693 (was ae1e13ef; lock only: the Diary and sidecar Dockerfiles at that ref pin rs a0d7df69, and those images are not rebuilt), web d8e24b63 unchanged. The previous web release was 33ca6eb0. Only the web image is replaced; the Diary keeps the image of the Diary release 5453963a.
 
