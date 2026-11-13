@@ -3022,8 +3022,12 @@ cp "$work/atr-index-old.saved" "$w/server/index.cjs"; atr_try atr-runner-new-fro
 check "R6 mix: a GET+POST front with a Core lacking rust-autotune-runner.cjs is refused" 'refused "auto-tune runner ownership pairing: the Rust front.s /api/models/autotune row lists GET and POST .* but Core lacks require(.\./rust-autotune-runner\.cjs.)"'
 cp "$work/atr-index-new.saved" "$w/server/index.cjs"; atr_methods='methods = ["GET"]'; atr_try atr-runner-old-front-new-core
 check "R6 mix: Core's rust-autotune-runner.cjs with a GET-only front row is refused" 'refused "auto-tune runner ownership pairing: Core requires rust-autotune-runner.cjs .* but the Rust front.s /api/models/autotune row is not GET and POST"'
-cp "$work/atr-lib-old.saved" "$atr_rs_src/lib.rs"; atr_owner=node; unset atr_methods; atr_try atr-runner-node-front-new-core
+# A front from before #2306 (no rust-autotune-read, an all-Node row) beside a Core without the read refusal.
+cp "$work/feature-lib.saved" "$atr_rs_src/lib.rs"
+{ cat "$work/feature-index.saved"; printf '%s\n' "const frontAutotune = require('./rust-autotune-runner.cjs').frontOwnsRunner(process.env) ? {} : null;"; } > "$w/server/index.cjs"
+atr_owner=node; unset atr_methods; atr_try atr-runner-node-front-new-core
 check "R6 mix: Core's rust-autotune-runner.cjs with an all-Node auto-tune front is refused" 'refused "auto-tune runner ownership pairing: Core requires rust-autotune-runner.cjs"'
+cp "$work/atr-index-new.saved" "$w/server/index.cjs"
 cp "$work/atr-lib-new.saved" "$atr_rs_src/lib.rs"; atr_owner=rust; atr_methods='methods = ["GET", "POST"]'
 cp "$work/atr-handler-old.saved" "$atr_rs_src/autotune_read_routes.rs"; atr_try atr-runner-no-forward
 check "R6: a GET+POST row whose handler has no switched POST forward is refused" 'refused "autotune_read_routes.rs does not forward POST to Node behind the native runner switch"'
