@@ -3015,6 +3015,9 @@ printf '%s\n' "const IMPL_ENV = 'AUTOTUNE_RUNNER_IMPL';" "module.exports = { IMP
 cp "$work/atr-lib-new.saved" "$atr_rs_src/lib.rs"; cp "$work/atr-index-new.saved" "$w/server/index.cjs"
 atr_methods='methods = ["GET", "POST"]'; atr_try atr-runner-new-pair
 check "R6 new/new: GET+POST row with the front's forward and runner beside Core's rust-autotune-runner.cjs assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+atr_methods='methods = ["POST", "GET"]'; atr_try atr-runner-new-pair-post-first
+check "R6 new/new: the same row with POST listed first assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+atr_methods='methods = ["GET", "POST"]'
 cp "$work/atr-index-old.saved" "$w/server/index.cjs"; atr_try atr-runner-new-front-old-core
 check "R6 mix: a GET+POST front with a Core lacking rust-autotune-runner.cjs is refused" 'refused "auto-tune runner ownership pairing: the Rust front.s /api/models/autotune row lists GET and POST .* but Core lacks require(.\./rust-autotune-runner\.cjs.)"'
 cp "$work/atr-index-new.saved" "$w/server/index.cjs"; atr_methods='methods = ["GET"]'; atr_try atr-runner-old-front-new-core

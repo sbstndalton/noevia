@@ -1832,7 +1832,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   atr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || atr_table=""
   atr_rows="$(printf '%s\n' "$atr_table" | awk -F'\t' -v want="$atr_rs_owner" '
     $1 == "/api/models/autotune" {
-      m = $4; gsub(/[ \t]/, "", m)
+      m = $4; gsub(/[ \t]/, "", m); if (m == "POST,GET") m = "GET,POST"
       if (want == "rust" && ($2 != "rust" || $3 != "-" || (m != "GET" && m != "GET,POST"))) exit 1
       if (want != "rust" && $2 != "node") exit 1
       print $1 "\t" m
