@@ -18,7 +18,8 @@
 # The directory lists below are checked against the release's own Diary Dockerfile: when its COPY lines into /app name
 # a different set of directories, the overlay refuses instead of silently leaving one out.
 # Use when only files under services/diary/agent changed since the running image (the overlay refuses when
-# requirements.txt, config/ or scripts/ differ from the running image's): no pip install runs, so no dependency can drift.
+# requirements.txt, constraints.txt, config/ or scripts/ differ from the running image's): no pip install runs, so no
+# dependency can drift.
 # Keeps cowork-diary:rollback-before-diary-overlay and config/.env.bak.before-diary-<SRC_SHA>.
 # Backup (#1487): the Diary state and .env are archived into a new diary_<SRC_SHA>_<UTC> folder under
 # /mnt/disk3/noevia-backups. The Appdata Backup plugin is NOT run: it stops whichever containers its own
@@ -170,7 +171,8 @@ done
 diary_df_check=$base/releases/$V/services/diary/Dockerfile
 [ -f "$diary_df_check" ] || { echo "no releases/$V/services/diary/Dockerfile to check the overlay directories against; not deploying" >&2; exit 1; }
 # BEGIN dockerfile-copy-check (deploy/tests/test_overlay_scripts.py runs this block)
-# Every COPY and ADD of the final stage is significant. Known shapes are the dependency list, the generated
+# Every COPY and ADD of the final stage is significant. Known shapes are the dependency list (requirements.txt, alone
+# or with the constraints.txt that pins its versions, noevia#2523), the generated
 # /out/ binary bundle, the release's two exact individual binary copies, the operator entrypoint script (shipped
 # with the overlay: entrypoint.sh to /usr/local/bin/diary-entrypoint, mode 755; ENTRYPOINT is inherited from the base
 # image), and COPY <dir>/ ./<dir>/ for app directories.
@@ -183,6 +185,7 @@ while IFS= read -r df_line || [ -n "$df_line" ]; do
   df_line="${df_line#"${df_line%%[![:space:]]*}"}"; df_line="${df_line%"${df_line##*[![:space:]]}"}"
   case "$(printf '%s' "$df_line" | tr 'A-Z' 'a-z')" in copy|copy[[:space:]]*|add|add[[:space:]]*) ;; *) continue ;; esac
   if [ "$df_line" = "COPY requirements.txt ." ]; then continue
+  elif [ "$df_line" = "COPY requirements.txt constraints.txt ./" ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /out/ /usr/local/bin/" ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion" ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify" ]; then continue
@@ -222,6 +225,14 @@ req_want=$(sha256sum "$base/releases/$V/services/diary/requirements.txt" 2>/dev/
 req_have=$(docker run --rm --network none --read-only --pull never --entrypoint sh cowork-diary:$OLD -c 'sha256sum /app/requirements.txt' 2>/dev/null | cut -d' ' -f1) || req_have=""
 [ -n "$req_want" ] && [ "$req_want" = "$req_have" ] \
   || { echo "requirements.txt in releases/$V/services/diary is missing or differs from the running image's (or could not be read there): the overlay installs no dependencies, rebuild the image instead; not deploying" >&2; exit 1; }
+# noevia#2523: a release that pins its dependency versions in constraints.txt needs the running image to have been
+# built from the same pins; an image built without them (or from other pins) refuses the same way.
+if [ -e "$base/releases/$V/services/diary/constraints.txt" ]; then
+  con_want=$(sha256sum "$base/releases/$V/services/diary/constraints.txt" 2>/dev/null | cut -d' ' -f1) || con_want=""
+  con_have=$(docker run --rm --network none --read-only --pull never --entrypoint sh cowork-diary:$OLD -c 'sha256sum /app/constraints.txt' 2>/dev/null | cut -d' ' -f1) || con_have=""
+  [ -n "$con_want" ] && [ "$con_want" = "$con_have" ] \
+    || { echo "constraints.txt in releases/$V/services/diary differs from the running image's (or the image has none, or it could not be read there): the overlay installs no dependencies, rebuild the image instead; not deploying" >&2; exit 1; }
+fi
 # END requirements-check
 # BEGIN preserved-dirs-check (deploy/tests/test_overlay_scripts.py runs this block with stub docker)
 # The overlay never replaces preserved_dirs. A release whose config/ (system prompt, config.yaml) or scripts/ differs from

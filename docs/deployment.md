@@ -128,10 +128,11 @@ Diary overlay directories preserved: `config/`, `scripts/`
 
 Before anything is built, stopped or changed the script reads the release's own Diary `Dockerfile` and
 refuses when its `COPY <dir>/ ./<dir>/` lines name a set of directories other than those two lists together (it
-names the one it would leave out). Every `COPY` and `ADD` of the final stage counts: besides `COPY requirements.txt .` and the
+names the one it would leave out). Every `COPY` and `ADD` of the final stage counts: besides `COPY requirements.txt .` (or
+`COPY requirements.txt constraints.txt ./`, noevia#2523) and the
 binaries taken from the Rust stage, any other copying line (a file, `--chown`, a hyphenated directory, `ADD`,
 JSON form) stops the overlay, because it would put content in the image that the overlay does not ship. It also
-refuses when the release's `requirements.txt`, `config/` or `scripts/` differ from the ones in the running image
+refuses when the release's `requirements.txt`, `constraints.txt` (when the release has one), `config/` or `scripts/` differ from the ones in the running image
 (read without network access): a changed prompt, config or script needs an image rebuild, not this overlay, so new
 agent code never runs silently against the old files. The comparison is an inventory of every entry (directories,
 regular files with their sha256, and symbolic links by their target, never followed). Every variable field is written as

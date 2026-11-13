@@ -1527,6 +1527,16 @@ class DiaryCopyContract(unittest.TestCase):
     def test_requirements_copy_exception(self):
         self.accepted(DIARY_DOCKERFILE.replace('COPY --from=tenant-assertion /out/ /usr/local/bin/\n', ''))
 
+    def test_requirements_with_constraints_copy_exception(self):
+        # noevia#2523: the dependency list may come with the constraints file that pins its versions.
+        self.accepted(DIARY_DOCKERFILE.replace('COPY requirements.txt .\n', 'COPY requirements.txt constraints.txt ./\n'))
+
+    def test_constraints_copy_shape_is_exact(self):
+        for instruction in ['COPY constraints.txt ./', 'COPY requirements.txt constraints.txt .',
+                            'COPY constraints.txt requirements.txt ./', 'COPY requirements.txt constraints.txt other.txt ./',
+                            'COPY requirements.txt constraints.txt /app/']:
+            self.refused(instruction)
+
     def test_binary_copy_exception(self):
         self.accepted(DIARY_DOCKERFILE.replace('COPY requirements.txt .\n', ''))
 
@@ -1677,6 +1687,63 @@ class DiaryRequirementsProbe(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertNotIn('PROBED', result.stdout)
                 self.assertEqual(argv[-2:], ['-c', 'sha256sum /app/requirements.txt'])
+
+
+class DiaryConstraintsProbe(unittest.TestCase):
+    """noevia#2523: a release with constraints.txt needs the running image to carry the same file."""
+
+    REQUIREMENTS = b'synthetic-dependency>=1\n'
+    CONSTRAINTS = b'synthetic-dependency==1.0\n'
+
+    def probe(self, image_constraints=CONSTRAINTS, release_constraints=CONSTRAINTS):
+        with tempfile.TemporaryDirectory(prefix='noevia-constraints-probe-') as temp:
+            base = pathlib.Path(temp)
+            release = base / 'releases/abc1234/services/diary'
+            release.mkdir(parents=True)
+            (release / 'requirements.txt').write_bytes(self.REQUIREMENTS)
+            if release_constraints is not None:
+                (release / 'constraints.txt').write_bytes(release_constraints)
+            image = base / 'image'
+            image.mkdir()
+            (image / 'requirements.txt').write_bytes(self.REQUIREMENTS)
+            if image_constraints is not None:
+                (image / 'constraints.txt').write_bytes(image_constraints)
+            docker = base / 'docker'
+            docker.write_text('#!/usr/bin/env python3\nimport hashlib, json, os, pathlib, sys\n'
+                              'with open(os.environ["ARGV_LOG"], "a") as log: log.write(json.dumps(sys.argv[1:]) + "\\n")\n'
+                              'name = sys.argv[-1].split("/app/", 1)[1]\n'
+                              'path = pathlib.Path(os.environ["IMAGE_APP"]) / name\n'
+                              'if not path.exists(): sys.exit(1)\n'
+                              'print(hashlib.sha256(path.read_bytes()).hexdigest() + "  /app/" + name)\n')
+            docker.chmod(0o755)
+            block = RsStage().block('requirements-check')
+            script = 'set -euo pipefail\nbase=$1; V=abc1234; OLD=def5678\n' + block + '\necho PROBED'
+            result = subprocess.run(['bash', '-c', script, 'x', str(base)],
+                                    env=dict(os.environ, PATH=f'{base}:{os.environ["PATH"]}',
+                                             ARGV_LOG=str(base / 'argv.jsonl'), IMAGE_APP=str(image)),
+                                    capture_output=True, text=True, timeout=30)
+            argv = [json.loads(line) for line in (base / 'argv.jsonl').read_text().splitlines()]
+            return result, argv
+
+    def test_equal_constraints_pass_and_are_probed_read_only(self):
+        result, argv = self.probe()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['PROBED'])
+        self.assertEqual(argv[-1], ['run', '--rm', '--network', 'none', '--read-only', '--pull', 'never',
+                                    '--entrypoint', 'sh', 'cowork-diary:def5678', '-c', 'sha256sum /app/constraints.txt'])
+
+    def test_a_release_without_constraints_probes_only_the_requirements(self):
+        result, argv = self.probe(image_constraints=None, release_constraints=None)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([a[-1] for a in argv], ['sha256sum /app/requirements.txt'])
+
+    def test_different_or_missing_image_constraints_refuse(self):
+        for image_constraints in (b'synthetic-dependency==2.0\n', None):
+            with self.subTest(image_constraints=image_constraints):
+                result, _ = self.probe(image_constraints=image_constraints)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('PROBED', result.stdout)
+                self.assertIn('constraints.txt', result.stderr)
 
 
 def hx(value):
@@ -1865,7 +1932,7 @@ class OverlayDirsInSync(unittest.TestCase):
             line = line.strip()
             if not re.match(r'(?i)^(COPY|ADD)(\s|$)', line):
                 continue
-            if line == 'COPY requirements.txt .':
+            if line in ('COPY requirements.txt .', 'COPY requirements.txt constraints.txt ./'):
                 continue
             if line in (
                 'COPY --from=tenant-assertion /out/ /usr/local/bin/',
