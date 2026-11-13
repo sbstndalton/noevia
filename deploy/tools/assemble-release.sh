@@ -901,6 +901,47 @@ if [ "$lx_rs_owner" = rust ]; then
   code_lines "$tree/core/server/index.cjs" | grep -qF "diaryExchange: { rateLimited:" \
     || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
 fi
+# Chat port S5 (sbstndalton/noevia#2508): the public POST /api/chat is the front's or Node's, never both and never
+# neither. Core refuses it (server/rust-chat-turn.cjs, OWNED_ROUTES, wired in index.cjs) exactly when the front
+# owns it: the rust-chat-turn capability and routes.toml's /api/chat owner rust for POST alone with no switch.
+# A Core that refuses without the front answers 503 RUST_CHAT_TURN_OWNED to every chat; the front without
+# Core's refusal would answer twice. Old/old (no refusal, Node's row) stays the rollback pair.
+ct_core_refuses=0
+if code_has "$tree/core/server/rust-chat-turn.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'POST /api/chat'[]][)][)];$" \
+   && code_has "$tree/core/server/rust-chat-turn.cjs" "^function refuseOwned[(]" \
+   && code_has "$tree/core/server/rust-chat-turn.cjs" "RUST_CHAT_TURN_OWNED" \
+   && code_lines "$tree/core/server/index.cjs" | grep -qE "require[(]'[.]/rust-chat-turn[.]cjs'[)][.]refuseOwned[(]req, res"; then
+  ct_core_refuses=1
+fi
+ct_rs_feature=0
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-turn features && ct_rs_feature=1
+ct_rs_route=node
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  ct_rs_route="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/chat" {
+      n++
+      if ($2 == "rust") own = ($3 == "-" && $4 == "POST") ? "rust" : "bad"
+      else own = "node"
+    }
+    END { if (n > 1 || own == "bad") print "bad"; else if (n == 0) print "node"; else print own }' 2>/dev/null)" \
+    || ct_rs_route=unreadable
+fi
+# An unreadable routes.toml is refused by the switch check (#2096) below, with its own message.
+if [ "$ct_rs_route" != unreadable ]; then
+  [ "$ct_rs_route" != bad ] || die "chat turn ownership pairing: Rust's /api/chat must be POST alone, with no switch, and one row"
+  ct_rs_owns=0
+  if [ "$ct_rs_feature" = 1 ] || [ "$ct_rs_route" = rust ]; then
+    [ "$ct_rs_feature" = 1 ] && [ "$ct_rs_route" = rust ] \
+      || die "chat turn ownership pairing: the rust-chat-turn capability and routes.toml's /api/chat owner must move together"
+    ct_rs_owns=1
+  fi
+  if [ "$ct_core_refuses" = 1 ] && [ "$ct_rs_owns" = 0 ]; then
+    die "chat turn pairing: Core refuses the public POST /api/chat but the Rust front does not own it (every chat would answer 503 RUST_CHAT_TURN_OWNED)"
+  fi
+  if [ "$ct_rs_owns" = 1 ] && [ "$ct_core_refuses" = 0 ]; then
+    die "chat turn pairing: the Rust front owns POST /api/chat but Core does not refuse it (a double answer)"
+  fi
+fi
 # The rest of the Diary routes the web client names (sbstndalton/noevia#2206) move as one owner: Core's
 # rust-diary-routes.cjs refusal and the front's rust-diary-routes capability, with the methods Node
 # answered Rust's in routes.toml: every method of /api/diary, /api/diary-connector and the storage
