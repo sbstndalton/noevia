@@ -14,7 +14,18 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
-## Release Diary image - this release (Diary image only; noevia-services#226, #228; #2337, #2338, #2378, #2523, #2524)
+## Release port batch 2 - this release (web image only; noevia-rs#411, #450, #455; noevia-core#335, #359, #360, #367; #2528, #2559)
+
+Pins: rs a0d7df69 (was ec403684), core 8558e292 (was c6058fa6), services 0bc10693 (was ae1e13ef; lock only: the Diary and sidecar Dockerfiles at that ref pin rs a0d7df69, and those images are not rebuilt), web d8e24b63 unchanged. The previous web release was 33ca6eb0. Only the web image is replaced; the Diary keeps the image of the Diary release 5453963a.
+
+What changed for you: chat works as before, more of it now runs in the native server, and one security fix for Code mode.
+- The native server now checks a chat request before the chat pipeline sees it: sign-in, size, shape and the per-account chat budget, which the Diary's local exchange still shares. The answers are the ones you got before (noevia-rs#411, noevia-core#335).
+- A chat turn takes its place on the inference engine through the native server, one admission per turn, given back when the turn ends or is stopped. A turn that arrives while models are being reconfigured waits a moment and is asked to retry, as before (noevia-rs#450, noevia-core#359).
+- Approval cards for tools that change something are now held by the native server. Approve, approve for this chat and decline work as before; approve for this chat never covers a coworker's page save (#2559); a card that was open when the server restarted is no longer answerable, and nothing runs. Moving or deleting a chat or project can ask you to retry in the rare case its open approvals could not be withdrawn (noevia-rs#455, noevia-core#360).
+- Security: in Code mode, a task's workspace whose own git configuration would make git run a program (for example a signing program) is no longer saved back. It is kept for inspection and the program does not run (noevia-core#367, #2528; part of #2527 and #2529).
+- Also included and switched off, so nothing changes until the owner turns them on: native project retrieval (noevia-rs#490, #494, noevia-core#366), MCP calls and Drive tools in the native server (noevia-rs#491, #477), the Code executor and chat hand-over switches (noevia-core#368, #362, #369), and new library crates no program uses yet.
+
+## Release Diary image 5453963a - 2026-11-13 (Diary image only; noevia-services#226, #228; #2337, #2338, #2378, #2523, #2524)
 
 Pins: services ae1e13ef (was 051fe8d3); rs ec403684, core c6058fa6 and web d8e24b63 unchanged. Only the Diary image is rebuilt and replaced; the web image (release 33ca6eb0) and every other container stay as they are. The image is a full build of the pinned `services/diary`, not the overlay (the overlay cannot produce it: #2521, #2522).
 
