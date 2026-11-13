@@ -922,7 +922,8 @@ if [ "$lx_rs_owner" = rust ]; then
   if [ "$ce_edge_core" = rust ]; then
     # S6: the front counts the exchange's llm: budget (rust-chat-edge), so index.cjs hands the lease routes only the
     # backfill pause; a lease still given a throttle would charge the call a second time.
-    ! grep -qE "diaryExchange: [{][^}]*rateLimited|function llmRateLimited[(]" <<<"$lx_index" \
+    ! awk '/diaryExchange: [{]/ { at = NR } at && NR - at <= 3 && /rateLimited[[:space:]]*:/ { bad = 1 }
+      /function llmRateLimited[(]/ { bad = 1 } END { exit !bad }' <<<"$lx_index" \
       || die "Diary local exchange ownership pairing: Core (rust-chat-edge) still gives the admission lease a chat throttle the front's rust-chat-edge already counts"
     grep -qF "diaryExchange: { foreground:" <<<"$lx_index" \
       || die "Diary local exchange ownership pairing: Core (rust-chat-edge) does not give the admission lease the backfill pause"
@@ -1697,7 +1698,7 @@ if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-tool-a
 [ "$ta_core_owner" = "$ta_rs_owner" ] || die "tool approval ownership pairing: Core and Rust must move together"
 # Port contract S9 (noevia-core#360, noevia-rs#455): the pending approvals and chat grants are the front's registry.
 # The new pair is Core's require('./rust-approval-registry.cjs') in index.cjs beside the front's rust-approval-registry
-# capability, with no rust-tool-approval-bridge.cjs, mount or secret capture; the old pair has neither marker and keeps
+# capability, with no rust-tool-approval-bridge.cjs or bridge mount; the old pair has neither marker and keeps
 # the bridge. A mix leaves every pending approval where the other side never looks.
 ar_core_owner=node
 code_lines "$tree/core/server/index.cjs" | grep -qF "require('./rust-approval-registry.cjs')" && ar_core_owner=rust
@@ -1731,7 +1732,7 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
     [ ! -f "$tree/core/server/routes/approvals.cjs" ] || die "tool approval ownership pairing: Core still carries the public handler"
     ta_index="$(code_lines "$tree/core/server/index.cjs")"
     if [ "$ar_rs_owner" = rust ]; then
-      # S9: the front's registry holds the pending state; Core's bridge, its mount and its secret capture are gone.
+      # S9: the front's registry holds the pending state; Core's bridge and its mount (with the bridge's secret) are gone.
       [ -f "$tree/core/server/rust-approval-registry.cjs" ] || die "tool approval ownership pairing: Core (rust-approval-registry) is missing server/rust-approval-registry.cjs"
       [ ! -e "$tree/core/server/rust-tool-approval-bridge.cjs" ] \
         || die "tool approval ownership pairing: Core (rust-approval-registry) still carries the pending state bridge server/rust-tool-approval-bridge.cjs"

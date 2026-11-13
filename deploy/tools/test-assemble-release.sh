@@ -1855,8 +1855,13 @@ dr_try ce-edge-unnamed
 check "S6 new/new whose rust-chat-edge.cjs does not name the capability is refused" 'refused "rust-chat-edge.cjs does not name the rust-chat-edge capability"'
 printf '%s
 ' "const FRONT_CAPABILITY = 'rust-chat-edge';" "module.exports = { FRONT_CAPABILITY };" > "$w/server/rust-chat-edge.cjs"
+{ cat "$work/lx-index-wired.saved"; printf '%s\n' "const chatEdge = require('./rust-chat-edge.cjs');" "  diaryExchange: {" "    foreground: () => rag.foreground()," "    rateLimited: (userId) => chatLimit(userId)," "  },"; } > "$w/server/index.cjs"
+dr_try ce-new-pair-lease-throttled-multiline
+check "S6 new/new whose multi-line lease is still given a throttle is refused" 'refused "Core (rust-chat-edge) still gives the admission lease a chat throttle"'
+{ cat "$work/ce-index-new.saved"; printf '%s\n' "function llmRateLimited(userId) {" "  return false;" "}"; } > "$w/server/index.cjs"
+dr_try ce-new-pair-node-limiter
+check "S6 new/new whose Core still keeps its llm: limiter is refused" 'refused "Core (rust-chat-edge) still gives the admission lease a chat throttle"'
 cp "$work/ce-lib-old.saved" "$rz/bins/noevia-server/src/lib.rs"
-cp "$work/lx-index-full.saved" "$w/server/index.cjs"
 cp "$work/lx-index.saved" "$w/server/index.cjs"
 dr_try lx-front-only
 check "a rust-diary-local-exchange front cannot pair with a Core that still answers the exchange" 'refused "Diary local exchange ownership pairing: Core and Rust must move together"'
@@ -2640,6 +2645,9 @@ ar_core; printf '%s
 ' "if (await toolApprovalBridge(req, res)) return;" >> "$w/server/index.cjs"
 ta_try ar-new-pair-bridge-mount
 check "S9 new/new that still mounts the bridge is refused" 'refused "Core (rust-approval-registry) still mounts the pending state bridge"'
+ar_core; printf '%s\n' "const b = toolApprovals.createToolApprovalBridge({" "  secret: FRONT_SECRET, json, readJson," "});" >> "$w/server/index.cjs"
+ta_try ar-new-pair-bridge-created
+check "S9 new/new that still creates the bridge (no mount) is refused" 'refused "Core (rust-approval-registry) still mounts the pending state bridge"'
 ar_core; rm -f "$w/server/rust-approval-registry.cjs"
 ta_try ar-new-pair-no-registry
 check "S9 new/new without Core's rust-approval-registry.cjs is refused" 'refused "is missing server/rust-approval-registry.cjs"'
