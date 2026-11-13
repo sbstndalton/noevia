@@ -14,6 +14,16 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
+## Release Diary image - this release (Diary image only; noevia-services#226, #228; #2337, #2338, #2378, #2523)
+
+Pins: services ae1e13ef (was 051fe8d3); rs ec403684, core c6058fa6 and web d8e24b63 unchanged. Only the Diary image is rebuilt and replaced; the web image (release 33ca6eb0) and every other container stay as they are. The image is a full build of the pinned `services/diary`, not the overlay (the overlay cannot produce it: #2521, #2522).
+
+What changed for you: the Diary image now includes its native tools; nothing changes for people using the app until the owner turns the new paths on.
+- The image carries the native Diary binaries (`noevia-diary`, `tenant-assertion`, `diary-workspace-export`, the leaves and the operator tools) and its entrypoint. Every `DIARY_RUST_*` setting stays absent, so the Python service answers every request as before.
+- Its Python dependencies are installed from `constraints.txt` at exactly the versions the previous image ran, so no dependency moves (noevia-services#228, #2523); `sqlite-vec` is pinned at 0.1.9 (#2337).
+- The Diary code is the pinned Services tree's, which also brings the Diary fixes made since the previous image was built (#2524): opening an existing app-managed Diary no longer rewrites its database (#2378), an empty `WORKSPACE_EXPORT_IMPL` means the Python exporter (#2338), and the backup, journal-recovery and one-writer-per-tenant safeguards of the native port.
+- Release tooling: the assembler's Diary Dockerfile template allows only the constrained install, and the Diary overlay accepts the constraints file and refuses when it differs from the running image's.
+
 ## Release web 1e632e54 - 2026-11-12 (web client only; noevia-web#122, #123, #124, #125; #2136, #2326, #2397, #2399, #2400, #2401, #2456, #2457, #2458, #2459, #2460, #2461)
 
 Pins: web 1e632e54 (was 90d470d7), core cb2dea2d, rs d8874d7c, services 61d44d27 (all three unchanged). The previous release was 2406d67a. Only the web image is replaced.
@@ -24,7 +34,7 @@ What changed for you:
 - The Diary page says so when Diary is off for the account, or when it cannot be reached, instead of a blank area (#2456). "Set up later" on the passkey step is remembered for 30 days per browser (#2457).
 - The Spaces and Coworkers area (noevia-web#123, #124) is in the client but stays hidden: the pinned server does not have its routes yet, so no entry appears and `/spaces` and `/coworkers` read as not found. It switches on with the release that carries those routes.
 
-## Release port batch 1 - this release (web image only; noevia-rs#410, #417, #449, #451, #452, #453, #454; noevia-core#334, #340, #358)
+## Release port batch 1 33ca6eb0 - 2026-11-13 (web image only; noevia-rs#410, #417, #449, #451, #452, #453, #454; noevia-core#334, #340, #358)
 
 Pins: rs ec403684 (was cb72e3e3), core c6058fa6 (was 6c23568d), services 051fe8d3 (was 53cf1e47; lock only, the Diary and sidecar Dockerfiles at that ref also pin rs ec403684 and those images are not rebuilt), web d8e24b63 unchanged. The previous release was b29c6b60. Only the web image is replaced. An earlier candidate with rs f50a3e97 was not released: core c6058fa6 refuses every chat turn that does not come through the native relay, and that relay (noevia-rs#410) was not in f50a3e97 (#2508).
 
