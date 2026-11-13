@@ -897,8 +897,11 @@ if [ "$lx_rs_owner" = rust ]; then
   [ "$lx_route" = "/api/diary/local-exchange" ] || die "Diary local exchange ownership pairing: missing route ownership"
   grep -qF "diaryExchange" "$tree/core/server/inference-admission-lease.cjs" 2>/dev/null \
     || die "Diary local exchange ownership pairing: Core's admission lease does not take the exchange"
-  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause.
+  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause,
+  # unless Core runs the chat edge (chat port S6), whose front counts the exchange on the shared `llm:` budget
+  # (the chat edge pairing below then requires the front's rust-chat-edge too).
   code_lines "$tree/core/server/index.cjs" | grep -qF "diaryExchange: { rateLimited:" \
+    || code_has "$tree/core/server/index.cjs" "require\\('\\./rust-chat-edge\\.cjs'\\)" \
     || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
 fi
 # The rest of the Diary routes the web client names (sbstndalton/noevia#2206) move as one owner: Core's
@@ -1682,6 +1685,71 @@ if [ "$fs_rs_owner" = rust ]; then
     index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
     END { exit !ok }
   ' <<<"$fs_index" || die "framing suggestion ownership pairing: missing captured front secret"
+fi
+# Chat port S5: the chat turn. The front owns POST to exactly /api/chat (capability rust-chat-turn) as a relay;
+# Core refuses that POST unless it came through the relay (server/rust-chat-turn.cjs), accepts the front's
+# loopback /internal/chat/turn before its inference gate, binds the relayed turn to the front's user, and
+# serves the relay with the captured front secret. Old/old stays valid; mixed pairs are refused.
+ct_core_owner=""; ct_rs_owner=""
+grep -qF "require('./rust-chat-turn.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ct_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-turn features; then ct_rs_owner=rust; fi
+[ "$ct_core_owner" = "$ct_rs_owner" ] || die "chat turn ownership pairing: Core and Rust must move together"
+if [ "$ct_rs_owner" != rust ] && [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # The old pair: Node answers the turn, so the route table must not give it to Rust.
+  ct_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ct_table=""
+  printf '%s\n' "$ct_table" | awk -F'\t' '$1 == "/api/chat" && $2 == "rust" { bad = 1 } END { exit bad }' \
+    || die "chat turn ownership pairing: an old pair cannot give the chat turn to Rust"
+fi
+if [ "$ct_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "chat turn ownership pairing: missing route contract"
+  ct_rows="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/chat" {
+      m = $4; gsub(/[^A-Z,]/, "", m)
+      if ($2 != "rust" || $3 != "-" || m != "POST") exit 1
+      print $1
+    }')" || die "chat turn ownership pairing: exactly the POST must belong to Rust"
+  [ "$ct_rows" = /api/chat ] || die "chat turn ownership pairing: incomplete route ownership"
+  code_has "$tree/core/server/rust-chat-turn.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'POST /api/chat'[]][)][)];$" \
+    || die "chat turn ownership pairing: Core must refuse exactly this POST"
+  ct_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qE "require\('\./rust-chat-turn\.cjs'\)\.refuseOwned\(req, res, \{ parseRequestUrl, json \}\)" <<<"$ct_index" \
+    || die "chat turn ownership pairing: missing direct-turn refusal"
+  grep -qF "const relay=chatTurnBridge.accept(req,res);" <<<"$ct_index" || die "chat turn ownership pairing: missing relay mount"
+  grep -qF "if (relayUser && (!preAuth || preAuth.user.id !== relayUser)) return unauthorized(res);" <<<"$ct_index" \
+    || die "chat turn ownership pairing: the relayed turn is not bound to the front's user"
+  ct_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ct_index" | head -1)"
+  [ -n "$ct_secret" ] && awk -v c="$ct_secret" '
+    /createTurnBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$ct_index" || die "chat turn ownership pairing: missing captured front secret"
+fi
+# Chat port S6: the chat edge. The front answers routes/chat.cjs's checks before the loop and owns the `llm:` budget
+# that the turn and the Diary local exchange share (capability rust-chat-edge); Core (server/rust-chat-edge.cjs)
+# keeps no llm: limiter, accepts the front's Cowork start as a relayed turn, and holds its inference gate for the
+# front's call (a lease) so the front counts only what the gate let in, and the call adopts that hold. The edge rides on the S5 relay. Old/old stays valid for rollback; mixed pairs are refused (Core
+# without its limiter beside an old front would leave the budget to nobody; an edge front beside a limiting Core would
+# charge each call twice).
+ce_core_owner=""; ce_rs_owner=""
+code_has "$tree/core/server/index.cjs" "require\\('\\./rust-chat-edge\\.cjs'\\)" && ce_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-edge features; then ce_rs_owner=rust; fi
+[ "$ce_core_owner" = "$ce_rs_owner" ] || die "chat edge ownership pairing: Core and Rust must move together"
+if [ -f "$tree/core/server/index.cjs" ]; then
+  ce_index="$(code_lines "$tree/core/server/index.cjs")"
+  ce_limiter=""; grep -qE "llmRateLimited|llmRateLimiter" <<<"$ce_index" && ce_limiter=node
+  if [ "$ce_rs_owner" = rust ]; then
+    [ "$ct_rs_owner" = rust ] || die "chat edge ownership pairing: the edge needs the chat turn relay"
+    [ -z "$ce_limiter" ] || die "chat edge ownership pairing: Core must not keep its own llm: limiter"
+    code_has "$tree/core/server/rust-chat-edge.cjs" "^const FRONT_CAPABILITY = 'rust-chat-edge';$" \
+      || die "chat edge ownership pairing: Core's marker must name the front capability"
+    code_has "$tree/core/server/rust-chat-edge.cjs" "^const COWORK_PATH = '/internal/chat/cowork';$" \
+      && code_has "$tree/core/server/rust-chat-turn.cjs" "pathname !== edge[.]COWORK_PATH" \
+      || die "chat edge ownership pairing: Core must accept the front's Cowork start"
+    grep -qF "return chatEdge.leases.hold(res,ask.route,leave);" <<<"$ce_index" \
+      || die "chat edge ownership pairing: Core must hold its gate for the front's call"
+    grep -qF "if(adopted)leave=adopted;else if(inference)leave=await" <<<"$ce_index" \
+      || die "chat edge ownership pairing: the front's call must adopt the gate hold"
+  fi
 fi
 # #2281: the toolbox picker moves as one owner, with only raw discovery/prefill facts in Core.
 tp_core_owner=""; tp_rs_owner=""

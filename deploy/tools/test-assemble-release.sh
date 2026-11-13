@@ -1808,6 +1808,9 @@ cp "$w/server/index.cjs" "$work/lx-index-full.saved"
 cp "$work/lx-index-wired.saved" "$w/server/index.cjs"
 dr_try lx-no-throttle
 check "a Core that does not give the lease chat's throttle is refused" 'refused "is not given the chat throttle"'
+printf '%s\n' "  if (require('./rust-chat-edge.cjs').refuseOwned(req, res, {})) return;" >> "$w/server/index.cjs"
+dr_try lx-edge-throttle
+check "a Core that runs the chat edge needs no lease throttle (the front counts the exchange), but its edge pair still applies" '! grep -q "is not given the chat throttle" "$work/err"'
 cp "$work/lx-index-full.saved" "$w/server/index.cjs"
 cp "$work/lx-index.saved" "$w/server/index.cjs"
 dr_try lx-front-only
@@ -2627,6 +2630,136 @@ fs_try suggest-old-rust-row
 check "an old pair cannot give the suggestion to Rust" 'refused "framing suggestion ownership pairing"'
 if [ -f "$work/fs-routes.saved" ]; then cp "$work/fs-routes.saved" "$w/server/routes/chat-framing.cjs"; else rm -f "$w/server/routes/chat-framing.cjs"; fi
 rm -f "$w/server/rust-chat-framing-suggest.cjs"
+# Chat port S5: the chat turn's owner pair (POST only Rust's), its direct-turn refusal, the relay mount
+# before the gate, the user binding and the captured secret.
+ct_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/chat"\nowner = "%s"\n' "$ct_owner"; [ -z "${ct_methods:-}" ] || printf '%s\n' "$ct_methods")
+}
+cat > "$w/server/rust-chat-turn.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));
+module.exports = { OWNED_ROUTES };
+JS
+ct_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const chatTurnBridge = require('./rust-chat-turn.cjs').createTurnBridge({
+  secret: FRONT_SECRET, json,
+});
+  if (require('./rust-chat-turn.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  const relayUser = require('./rust-chat-turn.cjs').relayedUser(req);
+  if (relayUser && (!preAuth || preAuth.user.id !== relayUser)) return unauthorized(res);
+  const relay=chatTurnBridge.accept(req,res);
+JS
+}
+ct_front() { sed 's/"start-id"/"start-id", "rust-chat-turn"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ct_owner=rust; ct_methods='methods = ["POST"]'; ct_core
+ct_try turn-core-only
+check "chat turn Core requires the native front" 'refused "chat turn ownership pairing: Core and Rust must move together"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ct_front
+ct_try turn-front-only
+check "native chat turn front requires its Core refusal" 'refused "chat turn ownership pairing: Core and Rust must move together"'
+ct_core
+ct_try turn-pair
+check "chat turn pair with its relay assembles" '[ $rc -eq 0 ]'
+ct_methods=""
+ct_try turn-all-methods-row
+check "chat turn: only the POST is Rust's" 'refused "exactly the POST must belong to Rust"'
+ct_methods='methods = ["GET", "POST"]'
+ct_try turn-get-post-row
+check "chat turn: the GET stays Node's" 'refused "exactly the POST must belong to Rust"'
+ct_methods='methods = ["POST"]'; ct_owner=node
+ct_try turn-node-row
+check "chat turn native pair cannot keep a Node-owned row" 'refused "exactly the POST must belong to Rust"'
+ct_owner=rust
+cp "$w/server/index.cjs" "$work/ct-index.saved"
+sed '/rust-chat-turn.cjs.).refuseOwned/d' "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-no-refusal
+check "chat turn: Core refuses a direct turn" 'refused "chat turn ownership pairing: missing direct-turn refusal"'
+sed '/chatTurnBridge.accept/d' "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-no-mount
+check "chat turn relay must be mounted" 'refused "chat turn ownership pairing: missing relay mount"'
+sed 's#^  if (relayUser#  // if (relayUser#' "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-commented-binding
+check "chat turn: a commented-out user binding is not the binding" 'refused "not bound to the front'"'"'s user"'
+sed "s/secret: FRONT_SECRET/secret: ''/" "$work/ct-index.saved" > "$w/server/index.cjs"
+ct_try turn-no-secret
+check "chat turn relay requires the captured front secret" 'refused "chat turn ownership pairing: missing captured front secret"'
+cp "$work/ct-index.saved" "$w/server/index.cjs"
+printf "%s\n" "const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/chat']));" > "$w/server/rust-chat-turn.cjs"
+ct_try turn-all-refuser
+check "chat turn: Core refuses exactly the POST" 'refused "Core must refuse exactly this POST"'
+printf '%s\n' "/*" "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));" "*/" > "$w/server/rust-chat-turn.cjs"
+ct_try turn-comment-marker
+check "chat turn: the refusal must be executable code" 'refused "Core must refuse exactly this POST"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ct_owner=node; ct_methods=""
+ct_try turn-old-pair
+check "chat turn old/old rollback pair assembles" '[ $rc -eq 0 ]'
+ct_owner=rust; ct_methods='methods = ["POST"]'
+ct_try turn-old-rust-row
+check "an old pair cannot give the chat turn to Rust" 'refused "chat turn ownership pairing: an old pair cannot give the chat turn to Rust"'
+# Chat port S6: the chat edge's owner pair on top of the S5 relay, Core without its llm: limiter, the Cowork start
+# accepted as a relayed turn, and the gate held for the front's call and adopted by it.
+cat > "$w/server/rust-chat-turn.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));
+    if (pathname !== TURN_PATH && pathname !== GATE_PATH && pathname !== edge.COWORK_PATH) return null;
+module.exports = { OWNED_ROUTES };
+JS
+ce_marker() { printf '%s\n' "const FRONT_CAPABILITY = '${1:-rust-chat-edge}';" "const COWORK_PATH = '/internal/chat/cowork';" "module.exports = { FRONT_CAPABILITY, COWORK_PATH };" > "$w/server/rust-chat-edge.cjs"; }
+ce_marker
+ce_lines() {
+  cat >> "$w/server/index.cjs" <<'JS'
+const chatEdge = require('./rust-chat-edge.cjs');
+  try {if(adopted)leave=adopted;else if(inference)leave=await chatAdmission.enterChatInference(modelManager,{signal:aborted.signal});}
+  if(relay==='gate'){const ask=gateAsk(req);if(ask&&ask.hold)return chatEdge.leases.hold(res,ask.route,leave);}
+JS
+}
+ce_core() { ct_core; ce_lines; }
+ce_front() { sed 's/"start-id"/"start-id", "rust-chat-turn", "rust-chat-edge"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ct_owner=rust; ct_methods='methods = ["POST"]'
+ce_core; ct_front
+ct_try edge-core-only
+check "chat edge Core requires the native front" 'refused "chat edge ownership pairing: Core and Rust must move together"'
+ct_core; ce_front
+ct_try edge-front-only
+check "native chat edge front requires its Core" 'refused "chat edge ownership pairing: Core and Rust must move together"'
+ce_core
+ct_try edge-pair
+check "chat edge pair on the chat turn relay assembles" '[ $rc -eq 0 ]'
+cp "$w/server/index.cjs" "$work/ce-index.saved"
+printf '%s\n' "const llmRateLimiter = createRateLimiter();" >> "$w/server/index.cjs"
+ct_try edge-node-limiter
+check "chat edge: Core must not keep its own llm: limiter" 'refused "Core must not keep its own llm: limiter"'
+cp "$work/ce-index.saved" "$w/server/index.cjs"; printf '%s\n' "// the llmRateLimited budget moved to the front" >> "$w/server/index.cjs"
+ct_try edge-limiter-comment
+check "chat edge: a comment naming the old limiter is not a limiter" '[ $rc -eq 0 ]'
+sed '/chatEdge.leases.hold/d' "$work/ce-index.saved" > "$w/server/index.cjs"
+ct_try edge-no-hold
+check "chat edge: Core holds its gate for the front's call" 'refused "hold its gate for the front'"'"'s call"'
+sed 's/if(adopted)leave=adopted;else //' "$work/ce-index.saved" > "$w/server/index.cjs"
+ct_try edge-no-adopt
+check "chat edge: the front's call adopts the gate hold" 'refused "must adopt the gate hold"'
+cp "$work/ce-index.saved" "$w/server/index.cjs"
+ce_marker rust-chat-edgy
+ct_try edge-wrong-capability
+check "chat edge: Core's marker names the front capability" 'refused "marker must name the front capability"'
+ce_marker
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));" > "$w/server/rust-chat-turn.cjs"
+ct_try edge-no-cowork
+check "chat edge: Core accepts the front's Cowork start" 'refused "accept the front'"'"'s Cowork start"'
+printf '%s\n' "const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));" "    if (pathname !== TURN_PATH && pathname !== GATE_PATH && pathname !== edge.COWORK_PATH) return null;" > "$w/server/rust-chat-turn.cjs"
+# The edge without the S5 relay: the turn old/old (Node's row), the edge native on both sides.
+cp "$work/feature-index.saved" "$w/server/index.cjs"; ce_lines
+sed 's/"start-id"/"start-id", "rust-chat-edge"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ct_owner=node; ct_methods=""
+ct_try edge-without-relay
+check "chat edge needs the chat turn relay" 'refused "chat edge ownership pairing: the edge needs the chat turn relay"'
+cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+ct_try edge-old-pair
+check "chat edge old/old rollback pair assembles" '[ $rc -eq 0 ]'
+rm -f "$w/server/rust-chat-edge.cjs"
+rm -f "$w/server/rust-chat-turn.cjs"
 # #2281 toolbox picker owner pair and the narrow facts bridge.
 tp_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n';

@@ -650,8 +650,9 @@ check "inference machines: native front with old Core refuses before launch" '[ 
 reset; touch "$work/die-front"
 run >/dev/null 2>"$work/err"; rc=$?
 check "inference machines: old pair still starts for rollback" '[ $rc -eq 3 ] && grep -q "^front " "$work/log" && grep -q "^node " "$work/log"'
-# Chat port S4: the framing suggestion pair, in both directions (its own loop, beside the list above).
-for pair in "rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion"; do
+# Chat ports S4, S5 and S6: the framing suggestion, chat turn and chat edge pairs, in both directions (their own loop,
+# beside the list above).
+for pair in "rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion" "rust-chat-turn.cjs rust-chat-turn chat turn" "rust-chat-edge.cjs rust-chat-edge chat edge"; do
   read -r p_marker p_cap p_label <<<"$pair"
   printf '%s\n' "  if (require('./$p_marker').refuseOwned(req, res, { parseRequestUrl, json })) return;" > "$work/server/index.cjs"
   reset

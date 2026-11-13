@@ -310,6 +310,8 @@ rust-tool-approvals.cjs rust-tool-approvals tool approval decision
 rust-model-evidence-recheck.cjs rust-model-evidence-recheck model evidence recheck
 rust-model-state-reads.cjs rust-model-state-reads model state read
 rust-chat-framing-suggest.cjs rust-chat-framing-suggest framing suggestion
+rust-chat-turn.cjs rust-chat-turn chat turn
+rust-chat-edge.cjs rust-chat-edge chat edge
 PAIRS
 # Inference machines (#1638): Core's native-owner clients are marked by MACHINES_CLIENT_MARKER, exported by
 # server/rust-inference-machines.cjs (noevia-core 16e260f loads it from routes/inference-machines.cjs, never
