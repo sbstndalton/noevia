@@ -10,7 +10,7 @@ services:
     profiles: [laya]
     build:
       context: ${COWORK_SOURCE_DIR:-..}/services/laya
-    image: cowork-laya:0.3.5-noevia1
+    image: cowork-laya:${LAYA_VERSION:-0.3.5-noevia1}
     restart: "on-failure:3"
     read_only: true
     user: "1000:1000"
