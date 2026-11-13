@@ -1,0 +1,40 @@
+# CI form of the R10 "port complete" check. NOT ACTIVE: this file is a template kept outside
+# .github/workflows/ on purpose. To activate, the root moves it there after the owner provides a read-only
+# token secret for the sibling repositories (the secret NAME is the owner's choice; this file uses PORT_READ_TOKEN).
+# Until then it cannot run, so nothing in CI goes red because of it.
+#
+# Read-only by construction: the check only runs git plumbing over the checkouts and never runs
+# docker, ssh or a process capture. Without --allow-skip a skipped check is not a pass, so a missing
+# input fails the job. Expected result before R10: FAIL (the failing lines are the work list).
+name: port-complete-check
+on:
+  workflow_dispatch:
+  # A schedule is intentionally absent. Add one only after the owner agrees to a weekly read.
+permissions:
+  contents: read
+jobs:
+  port-complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out noevia
+        uses: actions/checkout@v4
+        with:
+          path: noevia
+          fetch-depth: 0
+      - name: Check out sibling repositories (read-only)
+        env:
+          GH_TOKEN: ${{ secrets.PORT_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          for r in noevia-core noevia-rs noevia-services; do
+            git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/sbstndalton/${r}.git" "$RUNNER_TEMP/$r"
+          done
+      - name: Run the check
+        run: |
+          set -euo pipefail
+          bash noevia/tools/removal/test-port-complete-check.sh
+          bash noevia/tools/removal/port-complete-check.sh \
+            --core "$RUNNER_TEMP/noevia-core" --rs "$RUNNER_TEMP/noevia-rs" \
+            --services "$RUNNER_TEMP/noevia-services" --noevia "$PWD/noevia" \
+            --ref origin/main
