@@ -1028,7 +1028,17 @@ for dn_m in \
   't = t.replace(" -p noevia-diary", "", 1)' \
   't = t.replace("RUN python scripts/smoke_diary_leaves.py --all\n", "", 1)' \
   't += "COPY --from=tenant-assertion /out/ /usr/local/bin/\n"' \
-  't += "FROM python:3.12-slim\n"'; do
+  't += "FROM python:3.12-slim\n"' \
+  't += "ENV PIP_INDEX_URL=https://example.invalid/simple\n"' \
+  't += "ENV PIP_FIND_LINKS=/tmp\n"' \
+  't += "ENV XDG_CONFIG_HOME=/app/config\n"' \
+  't += "ENV XDG_CONFIG_DIRS=/app/config\n"' \
+  't += "ENV HOME=/app/config\n"' \
+  't += "ENV https_proxy=http://proxy.invalid:3128\n"' \
+  't += "ENV SSL_CERT_FILE=/app/config/ca.pem\n"' \
+  't = t.replace(" -c constraints.txt -r", " -r", 1)' \
+  't = t.replace("--upgrade -c constraints.txt", "--upgrade", 1)' \
+  't = t.replace("COPY requirements.txt constraints.txt ./", "COPY requirements.txt .", 1)'; do
   rmut x "$dn_m"
   check "Diary native: the real template refuses $dn_m" '[ "$(rcheck "$work/mut.df")" != ok ]'
 done
@@ -1068,12 +1078,12 @@ if [ -n "${NOEVIA_SERVICES_DIR:-}" ] && [ -f "$NOEVIA_SERVICES_DIR/diary/Dockerf
   svc_ref="$(sed -n 's/^ARG NOEVIA_RS_REF=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"; svc_sum="$(sed -n 's/^ARG NOEVIA_RS_SHA256=//p' "$NOEVIA_SERVICES_DIR/diary/Dockerfile" | head -1)"
   check "Diary native: the real template accepts the real services Diary Dockerfile (NOEVIA_SERVICES_DIR)" '[ "$(diary_dockerfile_check "$rtpl" "$svc_ref" "$svc_sum" "$NOEVIA_SERVICES_DIR/diary/Dockerfile")" = ok ]'
 fi
-# The REAL services Diary Dockerfile at the lock's NOEVIA_SERVICES_REF (051fe8d3, a byte copy in fixtures/, 
-# a75ee6a6...). It must pass the template against the lock's own pin, and a Dockerfile with an extra unknown COPY or a
+# The REAL services Diary Dockerfile at the lock's NOEVIA_SERVICES_REF (ae1e13ef, a byte copy in fixtures/, 
+# 20da02ca...). It must pass the template against the lock's own pin, and a Dockerfile with an extra unknown COPY or a
 # changed ENTRYPOINT must still be refused.
-svc_df="$here/fixtures/services-diary-Dockerfile.051fe8d3"
+svc_df="$here/fixtures/services-diary-Dockerfile.ae1e13ef"
 lk_ref="$(sed -n 's/^NOEVIA_RS_REF=//p' "$here/../../release/versions.lock" | head -1)"; lk_sum="$(sed -n 's/^NOEVIA_RS_SHA256=//p' "$here/../../release/versions.lock" | head -1)"
-check "Diary native: the real template accepts the pinned services Diary Dockerfile (051fe8d3) against the lock pin" \
+check "Diary native: the real template accepts the pinned services Diary Dockerfile (ae1e13ef) against the lock pin" \
   '[ "$(diary_dockerfile_check "$rtpl" "$lk_ref" "$lk_sum" "$svc_df")" = ok ]'
 sed 's/^ENTRYPOINT \["diary-entrypoint"\]$/COPY evil \/usr\/local\/bin\/evil\n&/' "$svc_df" > "$work/real-extra-copy.df"
 check "Diary native: the pinned services Dockerfile plus an unknown COPY is refused" \

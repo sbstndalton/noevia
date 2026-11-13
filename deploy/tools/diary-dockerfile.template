@@ -13,7 +13,8 @@
 # [final-allowed]  RUN and COPY lines the final stage may contain, exactly ("+ " must be present, "- " may be).
 #
 # Besides these, the final stage may contain only ENV (never the rs pin, a *_IMPL selector, DIARY_RUST_ROUTES or
-# DIARY_RUST_WRITES, PATH, LD_*, PYTHONPATH and the like, or a *_BIN other than [env-fixed]; names are compared after
+# DIARY_RUST_WRITES, PATH, LD_*, PYTHONPATH, PIP_*, HOME, XDG_CONFIG_*, proxy/CA settings and the like, or a *_BIN other
+# than [env-fixed]; names are compared after
 # Docker-style unquoting), and the free-form LABEL and EXPOSE. ONBUILD, ADD, an extra COPY, rm, ARG, SHELL and
 # anything else fail closed. Backslash-newline is removed with nothing inserted, as Docker does, in both this file
 # and the Dockerfile.
@@ -45,8 +46,8 @@ DIARY_WORKSPACE_EXPORT_BIN=/usr/local/bin/diary-workspace-export
 TENANT_ASSERTION_BIN=/usr/local/bin/tenant-assertion
 
 [final-allowed]
-- COPY requirements.txt .
-- RUN pip install --no-cache-dir --upgrade "pip>=26.2" && pip install --no-cache-dir -r requirements.txt
+- COPY requirements.txt constraints.txt ./
+- RUN pip install --no-cache-dir --upgrade -c constraints.txt "pip>=26.2" && pip install --no-cache-dir -c constraints.txt -r requirements.txt
 + RUN tenant-assertion self-test | grep -qx ok && workspace-restore-verify self-test | grep -qx ok
 + RUN test -x "$DIARY_RUST_SERVER_BIN" && test -x "$DIARY_WORKSPACE_EXPORT_BIN" && test -x "$TENANT_ASSERTION_BIN"
 - COPY agent/ ./agent/

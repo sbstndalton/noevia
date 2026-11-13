@@ -59,7 +59,8 @@ code_lines() { grep -vE '^[[:space:]]*(//|/\*|\*|#)' "$1" 2>/dev/null || true; }
 # comments, line continuations and whitespace runs are normalized away. @NOEVIA_RS_REF@ and @NOEVIA_RS_SHA256@ are
 # the template only placeholders and are replaced by the lock values. In the final stage the USER, WORKDIR,
 # HEALTHCHECK, CMD and ENTRYPOINT instructions must be the template, in order, and no others; ENV may never set the pin,
-# a *_IMPL selector, DIARY_RUST_ROUTES/WRITES, PATH, LD_*, PYTHONPATH or a *_BIN other than the fixed values (names
+# a *_IMPL selector, DIARY_RUST_ROUTES/WRITES, PATH, LD_*, PYTHONPATH, PIP_* (or HOME, XDG_CONFIG_*, a proxy or CA
+# setting, which redirect pip's configuration or downloads) or a *_BIN other than the fixed values (names
 # compared after Docker-style unquoting); LABEL and EXPOSE are free; the exact RUN/COPY lines of the template may
 # follow; anything else (ONBUILD, ADD, an extra COPY, rm, ARG, SHELL, a heredoc, any leading # key=value parser
 # directive, a third stage) fails closed. Backslash-newline is removed with nothing inserted, as Docker does, in both
@@ -125,6 +126,7 @@ function check_env(text,   i, nm) {
     else if (nm in envfixed) { if (envval[i] != envfixed[nm]) bad("an ENV that moves " nm) }
     else if (nm ~ /_BIN$/) bad("an ENV that sets the binary path " nm)
     else if (nm ~ /^(PATH|ENV|BASH_ENV|SHELLOPTS|IFS|PS4)$/ || nm ~ /^(LD|DYLD)_/ || nm ~ /^PYTHON(PATH|HOME|STARTUP|USERBASE|EXECUTABLE|BREAKPOINT|INSPECT)$/) bad("an ENV that changes how programs are found or started: " nm)
+    else if (nm ~ /^PIP_/ || nm ~ /^(HOME|XDG_CONFIG_HOME|XDG_CONFIG_DIRS|SSL_CERT_FILE|SSL_CERT_DIR|REQUESTS_CA_BUNDLE|CURL_CA_BUNDLE)$/ || tolower(nm) ~ /^(http|https|all|ftp)_proxy$/) bad("an ENV that changes what pip installs or where it fetches from: " nm)
   }
 }
 FNR == NR {
