@@ -2996,6 +2996,52 @@ atr_try atr-front-only
 check "GET autotune status capability cannot pair with old Core" 'refused "auto-tune read ownership pairing"'
 atr_core; atr_try atr-pair
 check "matching GET-only autotune status pair assembles" '[ $rc -eq 0 ]'
+# Rust port R6 (#2516; noevia-rs#489, noevia-core#364): a GET+POST row is the front's native runner pair, which needs the
+# front's POST forward and runner and Core's rust-autotune-runner.cjs; a GET-only row needs a Core without it.
+atr_rs_src="$rz/bins/noevia-server/src"
+mkdir -p "$atr_rs_src/model_maint"
+printf '%s\n' '    let native_start = req.method() == Method::POST && app.config.autotune.is_some();' \
+  '    if path != PATH || (req.method() != Method::GET && !native_start) {' \
+  '        return app.proxy.forward(conn.peer, req).await;' '    }' > "$work/atr-handler-new.saved"
+printf '%s\n' '    if path != PATH || req.method() != Method::GET {' \
+  '        return app.proxy.forward(conn.peer, req).await;' '    }' > "$work/atr-handler-old.saved"
+printf '%s\n' 'pub const IMPL_ENV: &str = "AUTOTUNE_RUNNER_IMPL";' > "$atr_rs_src/model_maint/autotune_deps.rs"
+cp "$work/atr-handler-new.saved" "$atr_rs_src/autotune_read_routes.rs"
+cp "$atr_rs_src/lib.rs" "$work/atr-lib-old.saved"
+{ printf '%s\n' 'pub mod autotune_runner;'; cat "$work/atr-lib-old.saved"; } > "$work/atr-lib-new.saved"
+cp "$w/server/index.cjs" "$work/atr-index-old.saved"
+{ cat "$work/atr-index-old.saved"; printf '%s\n' "const frontAutotune = require('./rust-autotune-runner.cjs').frontOwnsRunner(process.env) ? {} : null;"; } > "$work/atr-index-new.saved"
+printf '%s\n' "const IMPL_ENV = 'AUTOTUNE_RUNNER_IMPL';" "module.exports = { IMPL_ENV };" > "$w/server/rust-autotune-runner.cjs"
+cp "$work/atr-lib-new.saved" "$atr_rs_src/lib.rs"; cp "$work/atr-index-new.saved" "$w/server/index.cjs"
+atr_methods='methods = ["GET", "POST"]'; atr_try atr-runner-new-pair
+check "R6 new/new: GET+POST row with the front's forward and runner beside Core's rust-autotune-runner.cjs assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+atr_methods='methods = ["POST", "GET"]'; atr_try atr-runner-new-pair-post-first
+check "R6 new/new: the same row with POST listed first assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+atr_methods='methods = ["GET", "POST"]'
+cp "$work/atr-index-old.saved" "$w/server/index.cjs"; atr_try atr-runner-new-front-old-core
+check "R6 mix: a GET+POST front with a Core lacking rust-autotune-runner.cjs is refused" 'refused "auto-tune runner ownership pairing: the Rust front.s /api/models/autotune row lists GET and POST .* but Core lacks require(.\./rust-autotune-runner\.cjs.)"'
+cp "$work/atr-index-new.saved" "$w/server/index.cjs"; atr_methods='methods = ["GET"]'; atr_try atr-runner-old-front-new-core
+check "R6 mix: Core's rust-autotune-runner.cjs with a GET-only front row is refused" 'refused "auto-tune runner ownership pairing: Core requires rust-autotune-runner.cjs .* but the Rust front.s /api/models/autotune row is not GET and POST"'
+# A front from before #2306 (no rust-autotune-read, an all-Node row) beside a Core without the read refusal.
+cp "$work/feature-lib.saved" "$atr_rs_src/lib.rs"
+{ cat "$work/feature-index.saved"; printf '%s\n' "const frontAutotune = require('./rust-autotune-runner.cjs').frontOwnsRunner(process.env) ? {} : null;"; } > "$w/server/index.cjs"
+atr_owner=node; unset atr_methods; atr_try atr-runner-node-front-new-core
+check "R6 mix: Core's rust-autotune-runner.cjs with an all-Node auto-tune front is refused" 'refused "auto-tune runner ownership pairing: Core requires rust-autotune-runner.cjs"'
+cp "$work/atr-index-new.saved" "$w/server/index.cjs"
+cp "$work/atr-lib-new.saved" "$atr_rs_src/lib.rs"; atr_owner=rust; atr_methods='methods = ["GET", "POST"]'
+cp "$work/atr-handler-old.saved" "$atr_rs_src/autotune_read_routes.rs"; atr_try atr-runner-no-forward
+check "R6: a GET+POST row whose handler has no switched POST forward is refused" 'refused "autotune_read_routes.rs does not forward POST to Node behind the native runner switch"'
+cp "$work/atr-handler-new.saved" "$atr_rs_src/autotune_read_routes.rs"
+cp "$work/atr-lib-old.saved" "$atr_rs_src/lib.rs"; atr_try atr-runner-no-runner
+check "R6: a GET+POST row on a front without the native runner module is refused" 'refused "the front carries no native runner switched by AUTOTUNE_RUNNER_IMPL"'
+cp "$work/atr-lib-new.saved" "$atr_rs_src/lib.rs"
+printf '%s\n' "module.exports = {};" > "$w/server/rust-autotune-runner.cjs"; atr_try atr-runner-core-no-switch
+check "R6: a Core runner module that does not read AUTOTUNE_RUNNER_IMPL is refused" 'refused "rust-autotune-runner.cjs does not read AUTOTUNE_RUNNER_IMPL"'
+cp "$work/atr-index-old.saved" "$w/server/index.cjs"; cp "$work/atr-lib-old.saved" "$atr_rs_src/lib.rs"
+rm -f "$w/server/rust-autotune-runner.cjs" "$atr_rs_src/autotune_read_routes.rs" "$atr_rs_src/model_maint/autotune_deps.rs"
+rmdir "$atr_rs_src/model_maint"
+atr_methods='methods = ["GET"]'; atr_try atr-runner-old-pair
+check "R6 old/old: GET-only row and no Core runner module still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 atr_owner=node; atr_try atr-node-rows
 check "native status pair rejects Node GET ownership" 'refused "auto-tune read ownership pairing"'
 atr_owner=rust; atr_skip=yes; atr_try atr-missing-row

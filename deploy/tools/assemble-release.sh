@@ -1832,10 +1832,40 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   atr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || atr_table=""
   atr_rows="$(printf '%s\n' "$atr_table" | awk -F'\t' -v want="$atr_rs_owner" '
     $1 == "/api/models/autotune" {
-      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      m = $4; gsub(/[ \t]/, "", m); if (m == "POST,GET") m = "GET,POST"
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || (m != "GET" && m != "GET,POST"))) exit 1
       if (want != "rust" && $2 != "node") exit 1
-      print $1
-    }')" || die "auto-tune read ownership pairing: GET only; POST start and other methods stay Node"
+      print $1 "\t" m
+    }')" || die "auto-tune read ownership pairing: GET only; POST start and other methods stay Node (POST beside GET only with the #2516 runner pair)"
+fi
+# Rust port R6 (sbstndalton/noevia#2516; noevia-rs#489, noevia-core#364): who runs auto-tune. The new pair is the
+# front's GET+POST /api/models/autotune row, its autotune_read_routes.rs forwarding POST to Node unless the native
+# runner (lib.rs pub mod autotune_runner, switch AUTOTUNE_RUNNER_IMPL) is on, beside Core's
+# require('./rust-autotune-runner.cjs') in index.cjs (the module reading the same AUTOTUNE_RUNNER_IMPL; Core then builds
+# no auto-tuner). The old pair has a GET-only row and no Core runner module. With the switch set a mix runs two
+# auto-tuners on one state file (old Core) or none (old front: POST reaches a Core that built no auto-tuner).
+atr_row_methods="$(printf '%s\n' "${atr_rows:-}" | cut -f2)"
+atr_rows="$(printf '%s\n' "${atr_rows:-}" | cut -f1)"
+atr_runner_core=node
+code_lines "$tree/core/server/index.cjs" | grep -qF "require('./rust-autotune-runner.cjs')" && atr_runner_core=rust
+atr_runner_rs=node
+[ "$atr_rs_owner" = rust ] && [ "$atr_row_methods" = GET,POST ] && atr_runner_rs=rust
+if [ "$atr_runner_core" = rust ] && [ "$atr_runner_rs" != rust ]; then
+  die "auto-tune runner ownership pairing: Core requires rust-autotune-runner.cjs (builds no auto-tuner with AUTOTUNE_RUNNER_IMPL=rust) but the Rust front's /api/models/autotune row is not GET and POST (POST start would reach a Core with no auto-tuner)"
+fi
+if [ "$atr_runner_rs" = rust ] && [ "$atr_runner_core" != rust ]; then
+  die "auto-tune runner ownership pairing: the Rust front's /api/models/autotune row lists GET and POST (its native runner starts with AUTOTUNE_RUNNER_IMPL=rust) but Core lacks require('./rust-autotune-runner.cjs') (Core would build its own auto-tuner on the same state file)"
+fi
+if [ "$atr_runner_rs" = rust ]; then
+  atr_handler="$tree/rs/bins/noevia-server/src/autotune_read_routes.rs"
+  code_has "$atr_handler" 'req[.]method[(][)] != Method::GET && !native_start' \
+    && code_has "$atr_handler" 'app[.]proxy[.]forward[(]' \
+    || die "auto-tune runner ownership pairing: the Rust front's row lists POST but autotune_read_routes.rs does not forward POST to Node behind the native runner switch"
+  code_lines "$tree/rs/bins/noevia-server/src/lib.rs" | grep -qxF 'pub mod autotune_runner;' \
+    && code_has "$tree/rs/bins/noevia-server/src/model_maint/autotune_deps.rs" '^pub const IMPL_ENV: &str = "AUTOTUNE_RUNNER_IMPL";' \
+    || die "auto-tune runner ownership pairing: the Rust front's row lists POST but the front carries no native runner switched by AUTOTUNE_RUNNER_IMPL"
+  code_has "$tree/core/server/rust-autotune-runner.cjs" "^const IMPL_ENV = 'AUTOTUNE_RUNNER_IMPL';" \
+    || die "auto-tune runner ownership pairing: Core's server/rust-autotune-runner.cjs does not read AUTOTUNE_RUNNER_IMPL"
 fi
 if [ "$atr_rs_owner" = rust ]; then
   [ "${atr_rows:-}" = /api/models/autotune ] || die "auto-tune read ownership pairing: incomplete route ownership"
