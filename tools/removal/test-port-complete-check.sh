@@ -64,6 +64,15 @@ printf '%s\n' "root 1234 node /app/server/index.cjs" > "$tmp/ps.txt"
 run "$tmp/clean" --allow-skip --ps-file "$tmp/ps.txt"; rc=$?
 if [ "$rc" -eq 1 ] && grep -q '^FAIL  5' "$tmp/out"; then ok "node process fails check 5"; else bad "check 5: rc=$rc"; fi
 
+# Case 7: a Python OCR server is not a declared engine, so it fails check 5; a Laya worker line passes check 5
+# (the repos are no longer clean after cases 3 and 4, so only the check-5 line is read).
+printf '%s\n' "cowork-ocr  root 77 python3 /app/server.py" > "$tmp/ps.txt"
+run "$tmp/clean" --allow-skip --ps-file "$tmp/ps.txt"; rc=$?
+if [ "$rc" -eq 1 ] && grep -q '^FAIL  5' "$tmp/out"; then ok "python OCR process fails check 5"; else bad "check 5 ocr: rc=$rc"; fi
+printf '%s\n' "cowork-laya-1  1000 12 python3 /app/engine_worker.py" > "$tmp/ps.txt"
+run "$tmp/clean" --allow-skip --ps-file "$tmp/ps.txt"; rc=$?
+if grep -q "^PASS  5" "$tmp/out"; then ok "declared Laya worker passes check 5"; else bad "check 5 laya: rc=$rc"; fi
+
 echo "---"
 [ "$fail" -eq 0 ] && echo "all self-test cases passed" || echo "self-test failures: $fail"
 [ "$fail" -eq 0 ]

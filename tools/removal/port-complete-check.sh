@@ -19,6 +19,8 @@ CORE= RS= SERVICES= NOEVIA= REF=origin/main PS_FILE= FALLBACK= CENSUS= CENSUS_RO
 ALLOW_PY_ENGINES="docling/extract.py docling/isolated_worker.py docling/download_models.py docling/selftest.py docling/fake_converter.py laya/server.py laya/download.py"
 # Image bases that may stay Node until the owner decides the code-agent harness (plan, open question Q1).
 ALLOW_NODE_IMAGES="code-sandbox"
+# Process-list lines (check 5) that may name node or python: the declared engines above, by container name.
+ALLOW_PROCESSES="laya|docling|code-sandbox"
 
 usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
 while [ $# -gt 0 ]; do
@@ -101,7 +103,9 @@ if [ "${hc:-0}" -eq 0 ]; then pass "4b web HEALTHCHECK does not need node"; else
 if [ -n "$PS_FILE" ]; then
   if [ -r "$PS_FILE" ]; then
     # Anything named node/python must be an engine we declared; names only, no environment is printed.
-    hits=$(grep -nE '(^|[ /])(node|nodejs|python3?)( |$)' "$PS_FILE" | grep -vE 'laya|docling|kev|embed|llama|ocr' || true)
+    # Only the declared interpreter engines are excused (docling converter, Laya engine worker, the code agent
+    # harness in the sandbox). The OCR server and the embedding/inference engines are not interpreters.
+    hits=$(grep -nE '(^|[ /])(node|nodejs|python3?)( |$)' "$PS_FILE" | grep -vE "$ALLOW_PROCESSES" || true)
     if [ -z "$hits" ]; then pass "5  captured process list has no node/python outside declared engines"
     else fail "5  node/python processes: $(echo "$hits" | head -3 | cut -c1-120 | tr '\n' ';')"; fi
   else fail "5  --ps-file not readable"; fi
