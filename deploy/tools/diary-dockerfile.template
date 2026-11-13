@@ -13,7 +13,7 @@
 # [final-allowed]  RUN and COPY lines the final stage may contain, exactly ("+ " must be present, "- " may be).
 #
 # Besides these, the final stage may contain only ENV (never the rs pin, a *_IMPL selector, DIARY_RUST_ROUTES or
-# DIARY_RUST_WRITES, PATH, LD_*, PYTHONPATH and the like, or a *_BIN other than [env-fixed]; names are compared after
+# DIARY_RUST_WRITES, PATH, LD_*, PYTHONPATH, PIP_* and the like, or a *_BIN other than [env-fixed]; names are compared after
 # Docker-style unquoting), and the free-form LABEL and EXPOSE. ONBUILD, ADD, an extra COPY, rm, ARG, SHELL and
 # anything else fail closed. Backslash-newline is removed with nothing inserted, as Docker does, in both this file
 # and the Dockerfile.

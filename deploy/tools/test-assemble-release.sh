@@ -1028,7 +1028,12 @@ for dn_m in \
   't = t.replace(" -p noevia-diary", "", 1)' \
   't = t.replace("RUN python scripts/smoke_diary_leaves.py --all\n", "", 1)' \
   't += "COPY --from=tenant-assertion /out/ /usr/local/bin/\n"' \
-  't += "FROM python:3.12-slim\n"'; do
+  't += "FROM python:3.12-slim\n"' \
+  't += "ENV PIP_INDEX_URL=https://example.invalid/simple\n"' \
+  't += "ENV PIP_FIND_LINKS=/tmp\n"' \
+  't = t.replace(" -c constraints.txt -r", " -r", 1)' \
+  't = t.replace("--upgrade -c constraints.txt", "--upgrade", 1)' \
+  't = t.replace("COPY requirements.txt constraints.txt ./", "COPY requirements.txt .", 1)'; do
   rmut x "$dn_m"
   check "Diary native: the real template refuses $dn_m" '[ "$(rcheck "$work/mut.df")" != ok ]'
 done

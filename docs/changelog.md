@@ -14,15 +14,15 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
-## Release Diary image - this release (Diary image only; noevia-services#226, #228; #2337, #2338, #2378, #2523)
+## Release Diary image - this release (Diary image only; noevia-services#226, #228; #2337, #2338, #2378, #2523, #2524)
 
 Pins: services ae1e13ef (was 051fe8d3); rs ec403684, core c6058fa6 and web d8e24b63 unchanged. Only the Diary image is rebuilt and replaced; the web image (release 33ca6eb0) and every other container stay as they are. The image is a full build of the pinned `services/diary`, not the overlay (the overlay cannot produce it: #2521, #2522).
 
 What changed for you: the Diary image now includes its native tools; nothing changes for people using the app until the owner turns the new paths on.
-- The image carries the native Diary binaries (`noevia-diary`, `tenant-assertion`, `diary-workspace-export`, the leaves and the operator tools) and its entrypoint. Every `DIARY_RUST_*` setting stays absent, so the Python service answers every request as before.
+- The image carries the native Diary binaries (`noevia-diary`, `tenant-assertion`, `diary-workspace-export`, the leaves and the operator tools) and its entrypoint. `DIARY_RUST_ROUTES` and `DIARY_RUST_WRITES` stay unset, so the Python service answers every request as before.
 - Its Python dependencies are installed from `constraints.txt` at exactly the versions the previous image ran, so no dependency moves (noevia-services#228, #2523); `sqlite-vec` is pinned at 0.1.9 (#2337).
 - The Diary code is the pinned Services tree's, which also brings the Diary fixes made since the previous image was built (#2524): opening an existing app-managed Diary no longer rewrites its database (#2378), an empty `WORKSPACE_EXPORT_IMPL` means the Python exporter (#2338), and the backup, journal-recovery and one-writer-per-tenant safeguards of the native port.
-- Release tooling: the assembler's Diary Dockerfile template allows only the constrained install, and the Diary overlay accepts the constraints file and refuses when it differs from the running image's.
+- Release tooling: the assembler's Diary Dockerfile template allows only the constrained install and refuses an `ENV PIP_*`, and the Diary overlay accepts the constraints file and refuses when it differs from the running image's.
 
 ## Release web 1e632e54 - 2026-11-12 (web client only; noevia-web#122, #123, #124, #125; #2136, #2326, #2397, #2399, #2400, #2401, #2456, #2457, #2458, #2459, #2460, #2461)
 

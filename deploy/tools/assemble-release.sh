@@ -125,6 +125,7 @@ function check_env(text,   i, nm) {
     else if (nm in envfixed) { if (envval[i] != envfixed[nm]) bad("an ENV that moves " nm) }
     else if (nm ~ /_BIN$/) bad("an ENV that sets the binary path " nm)
     else if (nm ~ /^(PATH|ENV|BASH_ENV|SHELLOPTS|IFS|PS4)$/ || nm ~ /^(LD|DYLD)_/ || nm ~ /^PYTHON(PATH|HOME|STARTUP|USERBASE|EXECUTABLE|BREAKPOINT|INSPECT)$/) bad("an ENV that changes how programs are found or started: " nm)
+    else if (nm ~ /^PIP_/) bad("an ENV that changes what pip installs: " nm)
   }
 }
 FNR == NR {

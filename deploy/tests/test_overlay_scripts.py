@@ -253,8 +253,9 @@ case "$*" in
         # The running image's preserved directory (config/, scripts/): the overlay replaces neither.
         manifest_in "$RUNNING_APP" "$@" ;;
       *)
-        # The running image's /app/requirements.txt (#2112): the overlay installs no dependencies.
-        [ -f "$RUNNING_APP/requirements.txt" ] && sha256sum "$RUNNING_APP/requirements.txt" ;;
+        # The running image's /app/requirements.txt (#2112) or /app/constraints.txt (#2523): the file the probe names.
+        f=$(printf '%s' "$all" | grep -oE '/app/(requirements|constraints)\.txt' | tail -1)
+        [ -n "$f" ] && [ -f "$RUNNING_APP/${f#/app/}" ] && sha256sum "$RUNNING_APP/${f#/app/}" ;;
     esac ;;
   "run --rm --entrypoint python"*) [ -z "${FAIL_CANDIDATE_IMPORT:-}" ] || exit 1; echo "candidate imports ok" ;;
   "build -q -t cowork-diary:@NEW@-candidate "*)
@@ -1695,7 +1696,7 @@ class DiaryConstraintsProbe(unittest.TestCase):
     REQUIREMENTS = b'synthetic-dependency>=1\n'
     CONSTRAINTS = b'synthetic-dependency==1.0\n'
 
-    def probe(self, image_constraints=CONSTRAINTS, release_constraints=CONSTRAINTS):
+    def probe(self, image_constraints=CONSTRAINTS, release_constraints=CONSTRAINTS, dockerfile_copies=False):
         with tempfile.TemporaryDirectory(prefix='noevia-constraints-probe-') as temp:
             base = pathlib.Path(temp)
             release = base / 'releases/abc1234/services/diary'
@@ -1717,7 +1718,8 @@ class DiaryConstraintsProbe(unittest.TestCase):
                               'print(hashlib.sha256(path.read_bytes()).hexdigest() + "  /app/" + name)\n')
             docker.chmod(0o755)
             block = RsStage().block('requirements-check')
-            script = 'set -euo pipefail\nbase=$1; V=abc1234; OLD=def5678\n' + block + '\necho PROBED'
+            script = ('set -euo pipefail\nbase=$1; V=abc1234; OLD=def5678\n'
+                      + ('df_constraints=1\n' if dockerfile_copies else '') + block + '\necho PROBED')
             result = subprocess.run(['bash', '-c', script, 'x', str(base)],
                                     env=dict(os.environ, PATH=f'{base}:{os.environ["PATH"]}',
                                              ARGV_LOG=str(base / 'argv.jsonl'), IMAGE_APP=str(image)),
@@ -1736,6 +1738,13 @@ class DiaryConstraintsProbe(unittest.TestCase):
         result, argv = self.probe(image_constraints=None, release_constraints=None)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([a[-1] for a in argv], ['sha256sum /app/requirements.txt'])
+
+    def test_a_dockerfile_that_copies_constraints_needs_the_release_file(self):
+        # The copy check saw COPY requirements.txt constraints.txt ./, but the release has no constraints.txt.
+        result, _ = self.probe(release_constraints=None, dockerfile_copies=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('PROBED', result.stdout)
+        self.assertIn('constraints.txt', result.stderr)
 
     def test_different_or_missing_image_constraints_refuse(self):
         for image_constraints in (b'synthetic-dependency==2.0\n', None):

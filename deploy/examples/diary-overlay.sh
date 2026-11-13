@@ -180,12 +180,12 @@ diary_df_check=$base/releases/$V/services/diary/Dockerfile
 # (a file, a hyphenated directory, --chown, ADD, JSON form, a continued line) would put content into the image that
 # this overlay does not ship, so it stops the overlay instead of being ignored.
 final_stage=$(awk 'tolower($0) ~ /^[ \t]*from[ \t]/ { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$diary_df_check")
-df_dirs=""; df_unknown=""; df_entrypoint=0
+df_dirs=""; df_unknown=""; df_entrypoint=0; df_constraints=0
 while IFS= read -r df_line || [ -n "$df_line" ]; do
   df_line="${df_line#"${df_line%%[![:space:]]*}"}"; df_line="${df_line%"${df_line##*[![:space:]]}"}"
   case "$(printf '%s' "$df_line" | tr 'A-Z' 'a-z')" in copy|copy[[:space:]]*|add|add[[:space:]]*) ;; *) continue ;; esac
   if [ "$df_line" = "COPY requirements.txt ." ]; then continue
-  elif [ "$df_line" = "COPY requirements.txt constraints.txt ./" ]; then continue
+  elif [ "$df_line" = "COPY requirements.txt constraints.txt ./" ]; then df_constraints=1; continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /out/ /usr/local/bin/" ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/tenant-assertion /usr/local/bin/tenant-assertion" ]; then continue
   elif [ "$df_line" = "COPY --from=tenant-assertion /src/target/release/workspace-restore-verify /usr/local/bin/workspace-restore-verify" ]; then continue
@@ -226,8 +226,9 @@ req_have=$(docker run --rm --network none --read-only --pull never --entrypoint 
 [ -n "$req_want" ] && [ "$req_want" = "$req_have" ] \
   || { echo "requirements.txt in releases/$V/services/diary is missing or differs from the running image's (or could not be read there): the overlay installs no dependencies, rebuild the image instead; not deploying" >&2; exit 1; }
 # noevia#2523: a release that pins its dependency versions in constraints.txt needs the running image to have been
-# built from the same pins; an image built without them (or from other pins) refuses the same way.
-if [ -e "$base/releases/$V/services/diary/constraints.txt" ]; then
+# built from the same pins; an image built without them (or from other pins) refuses the same way. A Dockerfile that
+# copies constraints.txt (df_constraints, set by the copy check) needs it even when the release file is missing.
+if [ "${df_constraints:-0}" = 1 ] || [ -e "$base/releases/$V/services/diary/constraints.txt" ]; then
   con_want=$(sha256sum "$base/releases/$V/services/diary/constraints.txt" 2>/dev/null | cut -d' ' -f1) || con_want=""
   con_have=$(docker run --rm --network none --read-only --pull never --entrypoint sh cowork-diary:$OLD -c 'sha256sum /app/constraints.txt' 2>/dev/null | cut -d' ' -f1) || con_have=""
   [ -n "$con_want" ] && [ "$con_want" = "$con_have" ] \
