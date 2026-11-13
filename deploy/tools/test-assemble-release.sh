@@ -1819,12 +1819,62 @@ cp "$work/lx-index-wired.saved" "$w/server/index.cjs"
 dr_try lx-no-throttle
 check "a Core that does not give the lease chat's throttle is refused" 'refused "is not given the chat throttle"'
 cp "$work/lx-index-full.saved" "$w/server/index.cjs"
+# Chat port S6 (noevia-core#335, noevia-rs#411): the llm: budget the exchange shares with chat is counted by the front
+# exactly when Core requires rust-chat-edge.cjs and the front has rust-chat-edge; then the lease gets only the pause.
+dr_try ce-old-pair
+check "S6 old/old: Core's throttle on the lease and no chat edge on either side assembles" '[ $rc -eq 0 ]'
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/ce-lib-old.saved"
+sed 's/"rust-diary-local-exchange"/"rust-diary-local-exchange", "rust-chat-edge"/' "$work/ce-lib-old.saved" > "$work/ce-lib-new.saved"
+printf '%s
+' "const FRONT_CAPABILITY = 'rust-chat-edge';" "module.exports = { FRONT_CAPABILITY };" > "$w/server/rust-chat-edge.cjs"
+{ cat "$work/lx-index-wired.saved"
+  printf '%s
+' "const chatEdge = require('./rust-chat-edge.cjs');" "  diaryExchange: { foreground: () => rag.foreground() },"
+} > "$work/ce-index-new.saved"
+cp "$work/ce-index-new.saved" "$w/server/index.cjs"; cp "$work/ce-lib-new.saved" "$rz/bins/noevia-server/src/lib.rs"
+dr_try ce-new-pair
+check "S6 new/new: Core's rust-chat-edge.cjs, the lease given only the pause, and the front's rust-chat-edge assemble" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$work/ce-lib-old.saved" "$rz/bins/noevia-server/src/lib.rs"
+dr_try ce-new-core-old-front
+check "S6 mix: Core without a limiter and a front without rust-chat-edge is refused" 'refused "chat edge ownership pairing: Core requires rust-chat-edge.cjs (keeps no llm: limiter) but the Rust front lacks the rust-chat-edge capability"'
+cp "$work/lx-index-full.saved" "$w/server/index.cjs"; cp "$work/ce-lib-new.saved" "$rz/bins/noevia-server/src/lib.rs"
+dr_try ce-old-core-new-front
+check "S6 mix: Core's throttle and the front's rust-chat-edge (counted twice) is refused" 'refused "chat edge ownership pairing: the Rust front has the rust-chat-edge capability (counts the llm: budget) but Core lacks require(.\./rust-chat-edge\.cjs.)"'
+{ cat "$work/lx-index-full.saved"; printf '%s
+' "const chatEdge = require('./rust-chat-edge.cjs');"; } > "$w/server/index.cjs"
+dr_try ce-new-pair-lease-throttled
+check "S6 new/new whose lease is still given the chat throttle is refused" 'refused "Diary local exchange ownership pairing: Core (rust-chat-edge) still gives the admission lease a chat throttle"'
+{ cat "$work/lx-index-wired.saved"; printf '%s
+' "const chatEdge = require('./rust-chat-edge.cjs');"; } > "$w/server/index.cjs"
+dr_try ce-new-pair-no-pause
+check "S6 new/new whose lease is not given the backfill pause is refused" 'refused "Diary local exchange ownership pairing: Core (rust-chat-edge) does not give the admission lease the backfill pause"'
+cp "$work/ce-index-new.saved" "$w/server/index.cjs"
+printf '%s
+' "module.exports = {};" > "$w/server/rust-chat-edge.cjs"
+dr_try ce-edge-unnamed
+check "S6 new/new whose rust-chat-edge.cjs does not name the capability is refused" 'refused "rust-chat-edge.cjs does not name the rust-chat-edge capability"'
+printf '%s
+' "const FRONT_CAPABILITY = 'rust-chat-edge';" "module.exports = { FRONT_CAPABILITY };" > "$w/server/rust-chat-edge.cjs"
+{ cat "$work/lx-index-wired.saved"; printf '%s\n' "const chatEdge = require('./rust-chat-edge.cjs');" "  diaryExchange: {" "    foreground: () => rag.foreground()," "    rateLimited: (userId) => chatLimit(userId)," "  },"; } > "$w/server/index.cjs"
+dr_try ce-new-pair-lease-throttled-multiline
+check "S6 new/new whose multi-line lease is still given a throttle is refused" 'refused "Core (rust-chat-edge) still gives the admission lease a chat throttle"'
+{ cat "$work/ce-index-new.saved"; printf '%s\n' "function llmRateLimited(userId) {" "  return false;" "}"; } > "$w/server/index.cjs"
+dr_try ce-new-pair-node-limiter
+check "S6 new/new whose Core still keeps its llm: limiter is refused" 'refused "Core (rust-chat-edge) still gives the admission lease a chat throttle"'
+cp "$work/ce-lib-old.saved" "$rz/bins/noevia-server/src/lib.rs"
 cp "$work/lx-index.saved" "$w/server/index.cjs"
 dr_try lx-front-only
 check "a rust-diary-local-exchange front cannot pair with a Core that still answers the exchange" 'refused "Diary local exchange ownership pairing: Core and Rust must move together"'
 cp "$work/lx-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 rm -f "$w/server/inference-admission-lease.cjs"
 dr_local=node
+{ cat "$work/lx-index.saved"; printf '%s
+' "const chatEdge = require('./rust-chat-edge.cjs');"; } > "$w/server/index.cjs"
+sed 's/"rust-diary-routes"/"rust-diary-routes", "rust-chat-edge"/' "$work/lx-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+dr_try ce-pair-exchange-node
+check "S6 chat edge pair while the local exchange is still Node's (left uncounted) is refused" 'refused "the exchange is still Node.s (no rust-diary-local-exchange pair)"'
+cp "$work/lx-index.saved" "$w/server/index.cjs"; cp "$work/lx-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+rm -f "$w/server/rust-chat-edge.cjs"
 dr_skip="/api/diary/exchanges"; dr_refusal; dr_try dr-core-not-refusing
 check "a Core that does not refuse a Diary path the front answers is refused" 'refused "Core does not refuse /api/diary/exchanges"'
 dr_skip=""; dr_refusal
@@ -2561,6 +2611,52 @@ printf '%s\n' 'module.exports = {};' > "$w/server/rust-tool-approvals.cjs"
 ta_try approvals-no-owned-route
 check "approval refusal must list the exact POST" 'refused "Core must refuse exactly the approval POST"'
 cp "$work/ta-refusal.saved" "$w/server/rust-tool-approvals.cjs"
+# Port contract S9 (noevia-core#360, noevia-rs#455): the pending approvals are the front's registry. Core requires
+# rust-approval-registry.cjs and drops the bridge, its mount and its secret; the front has rust-approval-registry.
+ta_try ar-old-pair
+check "S9 old/old: Core's pending state bridge and no registry on either side assembles" '[ $rc -eq 0 ]'
+ar_core() {
+  cp "$work/feature-index.saved" "$w/server/index.cjs"
+  cat >> "$w/server/index.cjs" <<'JS'
+const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');
+const approvalRegistry = require('./rust-approval-registry.cjs').createApprovalRegistry({
+  approvals: (op, payload, options) => PROJECT_STORE.approvals(op, payload, options),
+});
+if (require('./rust-tool-approvals.cjs').refuseOwned(req, res, {})) return;
+JS
+  printf '%s
+' "function createApprovalRegistry() { return {}; }" "module.exports = { createApprovalRegistry };" > "$w/server/rust-approval-registry.cjs"
+  rm -f "$w/server/rust-tool-approval-bridge.cjs"
+}
+ar_front() { sed 's/"start-id"/"start-id", "rust-tool-approvals", "rust-approval-registry"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ar_core; ar_front
+ta_try ar-new-pair
+check "S9 new/new: Core's rust-approval-registry.cjs without the bridge and the front's rust-approval-registry assemble" '[ $rc -eq 0 ]'
+ta_front
+ta_try ar-new-core-old-front
+check "S9 mix: Core's registry client with a front that has no registry is refused" 'refused "approval registry ownership pairing: Core requires rust-approval-registry.cjs (keeps no pending approvals) but the Rust front lacks the rust-approval-registry capability"'
+rm -f "$w/server/rust-approval-registry.cjs"; ta_core; touch "$w/server/rust-tool-approval-bridge.cjs"; ar_front
+ta_try ar-old-core-new-front
+check "S9 mix: Core's pending state bridge with the front's registry is refused" 'refused "approval registry ownership pairing: the Rust front has the rust-approval-registry capability but Core lacks require(.\./rust-approval-registry\.cjs.)"'
+ar_core; touch "$w/server/rust-tool-approval-bridge.cjs"
+ta_try ar-new-pair-bridge-file
+check "S9 new/new that still carries the bridge file is refused" 'refused "still carries the pending state bridge server/rust-tool-approval-bridge.cjs"'
+ar_core; printf '%s
+' "if (await toolApprovalBridge(req, res)) return;" >> "$w/server/index.cjs"
+ta_try ar-new-pair-bridge-mount
+check "S9 new/new that still mounts the bridge is refused" 'refused "Core (rust-approval-registry) still mounts the pending state bridge"'
+ar_core; printf '%s\n' "const b = toolApprovals.createToolApprovalBridge({" "  secret: FRONT_SECRET, json, readJson," "});" >> "$w/server/index.cjs"
+ta_try ar-new-pair-bridge-created
+check "S9 new/new that still creates the bridge (no mount) is refused" 'refused "Core (rust-approval-registry) still mounts the pending state bridge"'
+ar_core; rm -f "$w/server/rust-approval-registry.cjs"
+ta_try ar-new-pair-no-registry
+check "S9 new/new without Core's rust-approval-registry.cjs is refused" 'refused "is missing server/rust-approval-registry.cjs"'
+ar_core; sed '/rust-tool-approvals.cjs/d' "$w/server/index.cjs" > "$work/ar-index.tmp"; cp "$work/ar-index.tmp" "$w/server/index.cjs"
+sed 's/"start-id"/"start-id", "rust-approval-registry"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"
+ta_owner=node
+ta_try ar-pair-without-approvals
+check "S9 registry pair without the tool approval pair is refused" 'refused "the front.s rust-approval-registry needs the tool approval pair"'
+rm -f "$w/server/rust-approval-registry.cjs"; touch "$w/server/rust-tool-approval-bridge.cjs"
 cp "$work/feature-index.saved" "$w/server/index.cjs"; cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
 ta_owner=node
 ta_try approvals-old-pair

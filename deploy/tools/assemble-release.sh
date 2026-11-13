@@ -877,10 +877,29 @@ if [ "$diary_rs_owner" = rust ]; then
   diary_expected="$(printf '%s\n' /api/diary/source /api/diary/today /api/diary/storage-import /api/diary/workspace-export /api/diary/workspace-import | sort)"
   [ "$diary_routes" = "$diary_expected" ] || die "Diary ownership pairing: incomplete route ownership"
 fi
+# Chat port S6 (noevia-core#335, noevia-rs#411): the per-user llm: budget that chat and the Diary local exchange
+# share is counted by one side. The new pair is Core's require('./rust-chat-edge.cjs') in index.cjs (the module naming
+# FRONT_CAPABILITY 'rust-chat-edge', Core keeps no limiter) beside the front's rust-chat-edge capability; the old pair
+# has neither and Node counts. A mix counts every call twice (old Core, new front) or never (new Core, old front).
+ce_edge_core=node
+code_lines "$tree/core/server/index.cjs" | grep -qF "require('./rust-chat-edge.cjs')" && ce_edge_core=rust
+ce_edge_rs=node
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-edge features && ce_edge_rs=rust
+if [ "$ce_edge_core" = rust ] && [ "$ce_edge_rs" != rust ]; then
+  die "chat edge ownership pairing: Core requires rust-chat-edge.cjs (keeps no llm: limiter) but the Rust front lacks the rust-chat-edge capability (the budget would never be counted)"
+fi
+if [ "$ce_edge_rs" = rust ] && [ "$ce_edge_core" != rust ]; then
+  die "chat edge ownership pairing: the Rust front has the rust-chat-edge capability (counts the llm: budget) but Core lacks require('./rust-chat-edge.cjs') (Core counts it too: every call charged twice)"
+fi
+if [ "$ce_edge_core" = rust ]; then
+  code_has "$tree/core/server/rust-chat-edge.cjs" "^const FRONT_CAPABILITY = 'rust-chat-edge';" \
+    || die "chat edge ownership pairing: Core's server/rust-chat-edge.cjs does not name the rust-chat-edge capability"
+fi
 # The Diary local exchange moves as one owner: Core's rust-diary-local-exchange.cjs refusal (with the
-# admission lease's diaryExchange ask, through which the front holds Node's model throttle and inference
-# gate) and the front's rust-diary-local-exchange capability, with every method of the route Rust's in
-# routes.toml. Without the pair the route stays Node's. Historic old/old pins remain valid rollback pairs.
+# admission lease's diaryExchange ask, through which the front holds Node's inference gate and the backfill
+# pause, and before S6 Node's model throttle) and the front's rust-diary-local-exchange capability, with every
+# method of the route Rust's in routes.toml. Without the pair the route stays Node's. Historic old/old pins remain
+# valid rollback pairs.
 lx_core_owner=""
 lx_rs_owner=""
 grep -qF "require('./rust-diary-local-exchange.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && lx_core_owner=rust
@@ -899,9 +918,23 @@ if [ "$lx_rs_owner" = rust ]; then
   [ "$lx_route" = "/api/diary/local-exchange" ] || die "Diary local exchange ownership pairing: missing route ownership"
   grep -qF "diaryExchange" "$tree/core/server/inference-admission-lease.cjs" 2>/dev/null \
     || die "Diary local exchange ownership pairing: Core's admission lease does not take the exchange"
-  # The ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause.
-  code_lines "$tree/core/server/index.cjs" | grep -qF "diaryExchange: { rateLimited:" \
-    || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
+  lx_index="$(code_lines "$tree/core/server/index.cjs")"
+  if [ "$ce_edge_core" = rust ]; then
+    # S6: the front counts the exchange's llm: budget (rust-chat-edge), so index.cjs hands the lease routes only the
+    # backfill pause; a lease still given a throttle would charge the call a second time.
+    ! awk '/diaryExchange: [{]/ { at = NR } at && NR - at <= 3 && /rateLimited[[:space:]]*:/ { bad = 1 }
+      /function llmRateLimited[(]/ { bad = 1 } END { exit !bad }' <<<"$lx_index" \
+      || die "Diary local exchange ownership pairing: Core (rust-chat-edge) still gives the admission lease a chat throttle the front's rust-chat-edge already counts"
+    grep -qF "diaryExchange: { foreground:" <<<"$lx_index" \
+      || die "Diary local exchange ownership pairing: Core (rust-chat-edge) does not give the admission lease the backfill pause"
+  else
+    # Before S6 the ask alone is not the throttle: index.cjs must hand the lease routes chat's throttle and the backfill pause.
+    grep -qF "diaryExchange: { rateLimited:" <<<"$lx_index" \
+      || die "Diary local exchange ownership pairing: Core's admission lease is not given the chat throttle"
+  fi
+fi
+if [ "$ce_edge_rs" = rust ] && [ "$lx_owner" != rust ]; then
+  die "chat edge ownership pairing: the Rust front's rust-chat-edge counts the Diary local exchange's llm: budget but the exchange is still Node's (no rust-diary-local-exchange pair): Node keeps no limiter, so it would go uncounted"
 fi
 # Chat port S5 (sbstndalton/noevia#2508): the public POST /api/chat is the front's or Node's, never both and never
 # neither. Core refuses it (server/rust-chat-turn.cjs, OWNED_ROUTES, wired in index.cjs) exactly when the front
@@ -1657,12 +1690,29 @@ if [ "$ats_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$ats_index" || die "auto-tune settings ownership pairing: state bridge needs the front captured secret"
 fi
-# Approval decisions (#2282): Rust owns public policy; Core keeps only the trusted pending-Promise bridge.
+# Approval decisions (#2282): Rust owns public policy; before S9 Core keeps only the trusted pending-Promise bridge.
 ta_core_owner=""
 ta_rs_owner=""
 grep -qF "require('./rust-tool-approvals.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ta_core_owner=rust
 if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-tool-approvals features; then ta_rs_owner=rust; fi
 [ "$ta_core_owner" = "$ta_rs_owner" ] || die "tool approval ownership pairing: Core and Rust must move together"
+# Port contract S9 (noevia-core#360, noevia-rs#455): the pending approvals and chat grants are the front's registry.
+# The new pair is Core's require('./rust-approval-registry.cjs') in index.cjs beside the front's rust-approval-registry
+# capability, with no rust-tool-approval-bridge.cjs or bridge mount; the old pair has neither marker and keeps
+# the bridge. A mix leaves every pending approval where the other side never looks.
+ar_core_owner=node
+code_lines "$tree/core/server/index.cjs" | grep -qF "require('./rust-approval-registry.cjs')" && ar_core_owner=rust
+ar_rs_owner=node
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-approval-registry features && ar_rs_owner=rust
+if [ "$ar_core_owner" = rust ] && [ "$ar_rs_owner" != rust ]; then
+  die "approval registry ownership pairing: Core requires rust-approval-registry.cjs (keeps no pending approvals) but the Rust front lacks the rust-approval-registry capability"
+fi
+if [ "$ar_rs_owner" = rust ] && [ "$ar_core_owner" != rust ]; then
+  die "approval registry ownership pairing: the Rust front has the rust-approval-registry capability but Core lacks require('./rust-approval-registry.cjs') (Core still holds the pending approvals)"
+fi
+if [ "$ar_rs_owner" = rust ] && [ "$ta_rs_owner" != rust ]; then
+  die "approval registry ownership pairing: the front's rust-approval-registry needs the tool approval pair (rust-tool-approvals and Core's rust-tool-approvals.cjs refusal)"
+fi
 if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
   ta_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ta_table=""
   ta_rows="$(printf '%s\n' "$ta_table" | awk -F'\t' -v want="$ta_rs_owner" '
@@ -1680,15 +1730,24 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
     ta_refused="$( { project_routes_core "$tree/core/server/rust-tool-approvals.cjs" || true; } | sort | tr '\n' ' ')"
     [ "$ta_refused" = 'POST /api/tool-approvals/{} ' ] || die "tool approval ownership pairing: Core must refuse exactly the approval POST"
     [ ! -f "$tree/core/server/routes/approvals.cjs" ] || die "tool approval ownership pairing: Core still carries the public handler"
-    [ -f "$tree/core/server/rust-tool-approval-bridge.cjs" ] || die "tool approval ownership pairing: missing pending state bridge"
     ta_index="$(code_lines "$tree/core/server/index.cjs")"
-    grep -qE 'toolApprovalBridge\(req, res\)' <<<"$ta_index" || die "tool approval ownership pairing: missing bridge mount"
-    ta_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ta_index" | head -1)"
-    [ -n "$ta_secret" ] && awk -v c="$ta_secret" '
-      /createToolApprovalBridge\(\{/ { bridge = NR }
-      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
-      END { exit !ok }
-    ' <<<"$ta_index" || die "tool approval ownership pairing: missing captured front secret"
+    if [ "$ar_rs_owner" = rust ]; then
+      # S9: the front's registry holds the pending state; Core's bridge and its mount (with the bridge's secret) are gone.
+      [ -f "$tree/core/server/rust-approval-registry.cjs" ] || die "tool approval ownership pairing: Core (rust-approval-registry) is missing server/rust-approval-registry.cjs"
+      [ ! -e "$tree/core/server/rust-tool-approval-bridge.cjs" ] \
+        || die "tool approval ownership pairing: Core (rust-approval-registry) still carries the pending state bridge server/rust-tool-approval-bridge.cjs"
+      ! grep -qE 'toolApprovalBridge\(req, res\)|createToolApprovalBridge\(' <<<"$ta_index" \
+        || die "tool approval ownership pairing: Core (rust-approval-registry) still mounts the pending state bridge"
+    else
+      [ -f "$tree/core/server/rust-tool-approval-bridge.cjs" ] || die "tool approval ownership pairing: missing pending state bridge"
+      grep -qE 'toolApprovalBridge\(req, res\)' <<<"$ta_index" || die "tool approval ownership pairing: missing bridge mount"
+      ta_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ta_index" | head -1)"
+      [ -n "$ta_secret" ] && awk -v c="$ta_secret" '
+        /createToolApprovalBridge\(\{/ { bridge = NR }
+        index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+        END { exit !ok }
+      ' <<<"$ta_index" || die "tool approval ownership pairing: missing captured front secret"
+    fi
   fi
 fi
 # Chat port S4: the framing suggestion. The front owns every method of exactly /api/chat-framing/suggest
