@@ -24,15 +24,15 @@ What changed for you:
 - The Diary page says so when Diary is off for the account, or when it cannot be reached, instead of a blank area (#2456). "Set up later" on the passkey step is remembered for 30 days per browser (#2457).
 - The Spaces and Coworkers area (noevia-web#123, #124) is in the client but stays hidden: the pinned server does not have its routes yet, so no entry appears and `/spaces` and `/coworkers` read as not found. It switches on with the release that carries those routes.
 
-## Release port batch 1 - this release (web image only; noevia-rs#417, #449, #451, #452; noevia-core#334, #340, #358)
+## Release port batch 1 - this release (web image only; noevia-rs#410, #417, #449, #451, #452, #453, #454; noevia-core#334, #340, #358)
 
-Pins: rs f50a3e97 (was cb72e3e3), core c6058fa6 (was 6c23568d), services decf3a8d (was 53cf1e47; lock only, the Diary and sidecar Dockerfiles at that ref also pin rs f50a3e97 and those images are not rebuilt), web d8e24b63 unchanged. The previous release was b29c6b60. The lock on main already carries these pins (noevia#2415); this entry is the only change. Only the web image is replaced: the Diary image, the egress proxy and every sidecar stay as they are.
+Pins: rs ec403684 (was cb72e3e3), core c6058fa6 (was 6c23568d), services 051fe8d3 (was 53cf1e47; lock only, the Diary and sidecar Dockerfiles at that ref also pin rs ec403684 and those images are not rebuilt), web d8e24b63 unchanged. The previous release was b29c6b60. Only the web image is replaced. An earlier candidate with rs f50a3e97 was not released: core c6058fa6 refuses every chat turn that does not come through the native relay, and that relay (noevia-rs#410) was not in f50a3e97 (#2508).
 
 What changed for you: nothing you will see; more of the server moved from Node to the native Rust server.
+- Chat turns are now received and streamed by the native server, which relays them to the existing chat pipeline unchanged (noevia-rs#410, noevia-core#334). Stopping a turn, the busy answers and the streamed reply are as before.
 - Which chat or job may use the inference engine next is now decided by the native server, one at a time, and a stopped turn frees its place at once (noevia-rs#417, noevia-core#340).
-- The native server now writes the model state files itself (noevia-rs#449, noevia-core#358), and removing model entries whose files are gone is answered natively (noevia-rs#451).
+- The native server now writes the model state files itself (noevia-rs#449, noevia-core#358); removing model entries whose files are gone (#451), deleting a model (#453) and loading or unloading one (#454) are answered natively.
 - A coworker's event history can be replayed by the owner through `GET /api/specialists/{id}/events` (noevia-rs#452); other accounts get not found.
-- The Core half of the native chat relay (noevia-core#334) is in but inert until its Rust half ships.
 
 ## Release b29c6b60 - 2026-11-12 (web client only, web d8e24b63; noevia-web#128, #129; #2486, #2487, #2488, #2489, #2468)
 
