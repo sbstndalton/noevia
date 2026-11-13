@@ -2570,6 +2570,64 @@ ta_try approvals-old-rust-row
 check "historic pair cannot assign approvals to Rust" 'refused "tool approval ownership pairing"'
 cp "$w/server/rust-tool-approvals.cjs" "$work/ta-refuser.paired"
 rm -f "$w/server/rust-tool-approvals.cjs" "$w/server/rust-tool-approval-bridge.cjs"
+# Chat turn pairing (sbstndalton/noevia#2508): Core's refusal of the public POST /api/chat and the front's
+# rust-chat-turn capability with routes.toml's /api/chat owner rust (POST alone) move together. Old/old passes.
+cp "$w/server/index.cjs" "$work/ct-index.saved"
+cp "$rz/bins/noevia-server/src/lib.rs" "$work/ct-lib.saved"
+# The project routes check (#1071 family) reads Core's rust-projects.cjs too; give it the shape a pinned Core has.
+[ ! -f "$w/server/rust-projects.cjs" ] || cp "$w/server/rust-projects.cjs" "$work/ct-projects.saved"
+[ ! -f "$w/server/routes/chat-lists.cjs" ] || cp "$w/server/routes/chat-lists.cjs" "$work/ct-lists.saved"
+printf '%s\n' "async function chatMoveRoute(store,user,chat,target) {" "  return store.chatMove(user,chat,target);" "}" "module.exports = { chatMoveRoute };" > "$w/server/routes/chat-lists.cjs"
+[ ! -f "$w/server/rust-auth.cjs" ] || cp "$w/server/rust-auth.cjs" "$work/ct-auth.saved"
+# The sign-in guard (#1071) has the same shape: an unconditional refuseOwned.
+printf '%s\n' "function refuseOwned(req, res, pathname, json) { return false; }" > "$w/server/rust-auth.cjs"
+printf '%s\n' "const CHAT_MOVE_PUBLIC_OWNER = 'node';" "function refuseOwnedRoute() { return false; }" "const OWNED_ROUTES = Object.freeze(new Set([" "]));" "module.exports = { CHAT_MOVE_PUBLIC_OWNER, refuseOwnedRoute };" > "$w/server/rust-projects.cjs"
+ct_core() {
+  cat > "$w/server/rust-chat-turn.cjs" <<'JS'
+const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat']));
+const ROUTE_REFUSAL = Object.freeze({ error: 'Chat turns are owned by the Rust front.', code: 'RUST_CHAT_TURN_OWNED' });
+function refuseOwned(req, res, { parseRequestUrl, json }) { json(res, 503, ROUTE_REFUSAL); return true; }
+module.exports = { OWNED_ROUTES, ROUTE_REFUSAL, refuseOwned };
+JS
+  cp "$work/ct-index.saved" "$w/server/index.cjs"
+  printf '%s\n' "  if (require('./rust-chat-turn.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;" >> "$w/server/index.cjs"
+}
+ct_core_clear() { rm -f "$w/server/rust-chat-turn.cjs"; cp "$work/ct-index.saved" "$w/server/index.cjs"; }
+ct_front() { sed 's/"start-id"/"start-id", "rust-chat-turn"/' "$work/feature-lib.saved" > "$rz/bins/noevia-server/src/lib.rs"; }
+ct_front_clear() { cp "$work/feature-lib.saved" "$rz/bins/noevia-server/src/lib.rs"; }
+ct_try() {
+  try_routes "$1" < <(printf '[[route]]\npath = "/api/chat"\nowner = "%s"\n' "$ct_owner"; [ -z "${ct_methods:-}" ] || printf '%s\n' "$ct_methods")
+}
+ct_owner=node; ct_methods=""
+ct_front_clear; ct_core_clear
+ct_try chat-old-pair
+check "chat turn old/old rollback pair assembles" '[ $rc -eq 0 ]'
+ct_core
+ct_try chat-core-refuses-no-front
+check "chat turn: Core refusing POST /api/chat without the front is refused (503 for every chat)" 'refused "Core refuses the public POST /api/chat but the Rust front does not own it"'
+ct_core_clear; ct_front; ct_owner=rust; ct_methods='methods = ["POST"]'
+ct_try chat-front-no-core
+check "chat turn: the front owning POST /api/chat without Core's refusal is refused (double answer)" 'refused "the Rust front owns POST /api/chat but Core does not refuse it"'
+ct_core
+ct_try chat-pair
+check "chat turn: the matching pair (refusal, capability, POST row) assembles" '[ $rc -eq 0 ]'
+ct_owner=node; ct_methods=""
+ct_try chat-capability-node-row
+check "chat turn: the capability with Node's /api/chat row is refused" 'refused "must move together"'
+ct_owner=rust; ct_methods='methods = ["GET", "POST"]'
+ct_try chat-row-not-post-only
+check "chat turn: Rust's /api/chat must be POST alone" 'refused "Rust.s /api/chat must be POST alone"'
+ct_methods='methods = ["POST"]'
+ct_front_clear; ct_try chat-row-no-capability
+check "chat turn: Rust's /api/chat row without the capability is refused" 'refused "must move together"'
+ct_front_clear; ct_core_clear; ct_owner=node; ct_methods=""
+ct_try chat-back-to-old
+check "chat turn: back on the old pair assembles again" '[ $rc -eq 0 ]'
+cp "$work/ct-index.saved" "$w/server/index.cjs"; rm -f "$w/server/rust-chat-turn.cjs"
+cp "$work/ct-lib.saved" "$rz/bins/noevia-server/src/lib.rs"
+if [ -f "$work/ct-projects.saved" ]; then cp "$work/ct-projects.saved" "$w/server/rust-projects.cjs"; else rm -f "$w/server/rust-projects.cjs"; fi
+if [ -f "$work/ct-auth.saved" ]; then cp "$work/ct-auth.saved" "$w/server/rust-auth.cjs"; else rm -f "$w/server/rust-auth.cjs"; fi
+if [ -f "$work/ct-lists.saved" ]; then cp "$work/ct-lists.saved" "$w/server/routes/chat-lists.cjs"; else rm -f "$w/server/routes/chat-lists.cjs"; fi
 # Chat port S4: the framing suggestion's owner pair (every method Rust's) and its loopback bridge.
 fs_try() {
   try_routes "$1" < <(printf '[[route]]\npath = "/api/chats/{conversationId}/move"\nowner = "rust"\nmethods = ["POST"]\n'; printf '[[route]]\npath = "/api/chat-framing/suggest"\nowner = "%s"\n' "$fs_owner"; [ -z "${fs_methods:-}" ] || printf '%s\n' "$fs_methods")
