@@ -3351,8 +3351,8 @@ fi
 # front's rust-project-source-work capability go together. In that generation Core keeps no worker path
 # (no source-work.cjs, folder-import.cjs, pdf-reduce.cjs, no `x-noevia-source-work`), the front still runs
 # the source jobs (rust-source-jobs), Docling extraction and the host-wide large-document lock, both sides
-# name the same storage latch and file-operation files, and routes.toml gives Rust exactly POST of the
-# upload, the sync and the folder import's plan.
+# name the same file-operation file (and the same storage latch file while Core still carries a latch), and
+# routes.toml gives Rust exactly POST of the upload, the sync and the folder import's plan.
 source_work_core_owner=""
 source_work_rs_owner=""
 grep -qF "require('./rust-project-source-work.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && source_work_core_owner=rust
@@ -3370,20 +3370,28 @@ if [ "$source_work_rs_owner" = rust ]; then
     && ! grep -qiF 'x-noevia-source-work' "$tree/core/server/routes/projects.cjs" 2>/dev/null \
     && ! grep -qiF 'x-noevia-source-work' "$tree/core/server/index.cjs" 2>/dev/null; } \
     || die "project source work ownership pairing: Core still carries the worker path"
-  [ -f "$tree/core/server/rust-source-ops.cjs" ] && [ -f "$tree/core/server/storage-latch.cjs" ] \
-    || die "project source work ownership pairing: Core lacks its readers of the front's file operations and storage latch"
-  core_latch="$(code_lines "$tree/core/server/index.cjs" | grep -o "storage-latch\.db" | head -1 || true)"
-  rs_latch="$(sed -n 's/^pub const FILE: &str = "\(storage-latch\.db\)";.*/\1/p' "$tree/rs/crates/server-projects/src/storage_latch.rs" 2>/dev/null | head -1)"
-  { [ -n "$core_latch" ] && [ "$core_latch" = "$rs_latch" ]; } \
-    || die "project source work ownership pairing: Core and Rust must name the same storage latch file (Core '$core_latch', Rust '$rs_latch')"
+  [ -f "$tree/core/server/rust-source-ops.cjs" ] \
+    || die "project source work ownership pairing: Core lacks its readers of the front's file operations"
   core_ops="$(sed -n "s/^const FILE = '\(source-file-ops\.json\)';.*/\1/p" "$tree/core/server/rust-source-ops.cjs" 2>/dev/null | head -1)"
   rs_ops="$(sed -n 's/^pub const FILE: &str = "\(source-file-ops\.json\)";.*/\1/p' "$tree/rs/crates/server-projects/src/source_ops.rs" 2>/dev/null | head -1)"
   { [ -n "$core_ops" ] && [ "$core_ops" = "$rs_ops" ]; } \
     || die "project source work ownership pairing: Core and Rust must name the same file-operation list (Core '$core_ops', Rust '$rs_ops')"
-  latch_core_code="$(code_lines "$tree/core/server/storage-latch.cjs")"
-  latch_rs_code="$(code_lines "$tree/rs/crates/server-projects/src/storage_latch.rs")"
-  { grep -qF "exec('BEGIN IMMEDIATE')" <<<"$latch_core_code" && grep -qF 'execute_batch("BEGIN IMMEDIATE")' <<<"$latch_rs_code"; } \
-    || die "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"
+  # The storage latch. A Core that still carries its copy (storage-latch.cjs, opened from index.cjs) must name
+  # the front's file and change it the same way. A Core without one (noevia-core R10a) has nothing to pair: the
+  # latch's users are all the front's (the source sync, the Diary backup worker, the storage status). Half a
+  # copy (the module, or the file named in the index, without the other) is refused.
+  core_latch="$(code_lines "$tree/core/server/index.cjs" | grep -o "storage-latch\.db" | head -1 || true)"
+  if [ -f "$tree/core/server/storage-latch.cjs" ] || [ -n "$core_latch" ]; then
+    [ -f "$tree/core/server/storage-latch.cjs" ] \
+      || die "project source work ownership pairing: Core lacks its reader of the storage latch it names"
+    rs_latch="$(sed -n 's/^pub const FILE: &str = "\(storage-latch\.db\)";.*/\1/p' "$tree/rs/crates/server-projects/src/storage_latch.rs" 2>/dev/null | head -1)"
+    { [ -n "$core_latch" ] && [ "$core_latch" = "$rs_latch" ]; } \
+      || die "project source work ownership pairing: Core and Rust must name the same storage latch file (Core '$core_latch', Rust '$rs_latch')"
+    latch_core_code="$(code_lines "$tree/core/server/storage-latch.cjs")"
+    latch_rs_code="$(code_lines "$tree/rs/crates/server-projects/src/storage_latch.rs")"
+    { grep -qF "exec('BEGIN IMMEDIATE')" <<<"$latch_core_code" && grep -qF 'execute_batch("BEGIN IMMEDIATE")' <<<"$latch_rs_code"; } \
+      || die "project source work ownership pairing: Core and Rust must both change the storage latch with BEGIN IMMEDIATE"
+  fi
   [ -f "$tree/rs/contracts/http/routes.toml" ] || die "project source work ownership pairing: missing route contract"
   source_work_routes="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
     $1 == "/api/projects/{id}/upload" || $1 == "/api/projects/{id}/sources/sync" || $1 == "/api/projects/{id}/folder-import/plan" {

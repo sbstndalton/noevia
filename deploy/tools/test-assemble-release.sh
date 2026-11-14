@@ -4850,6 +4850,19 @@ check "a folder plan route that is not exactly POST is refused" 'refused "projec
 sw_plan='methods = ["POST"]'
 sw_try source-work-pair-again
 check "the matching source operations pair still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# noevia-core R10a: a Core that carries no storage latch at all (no storage-latch.cjs, its index names no
+# storage-latch.db) has nothing to pair with the front's latch and assembles; half a copy is still refused.
+cp "$w/server/index.cjs" "$work/sw-index-latched"
+grep -v "storage-latch" "$work/sw-index-latched" > "$w/server/index.cjs"
+rm -f "$w/server/storage-latch.cjs"
+sw_try source-work-no-latch
+check "a Core without any storage latch (R10a) pairs with a source-work front and assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+cp "$work/sw-index-latched" "$w/server/index.cjs"
+sw_try source-work-latch-named-no-module
+check "a Core that names the latch file but lacks storage-latch.cjs is refused" 'refused "project source work ownership pairing: Core lacks its reader of the storage latch it names"'
+cp "$work/sw-latch-core" "$w/server/storage-latch.cjs"
+sw_try source-work-pair-latch-back
+check "a Core with its latch copy back pairs again" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$w/server/rust-project-source-work.cjs" "$w/server/rust-source-ops.cjs" "$w/server/storage-latch.cjs" "$w/server/large-document-lock.cjs" "$w/server/large-document-file-lock.cjs" "$rz/crates/server-projects/src/storage_latch.rs" "$rz/crates/server-projects/src/source_ops.rs" "$rz/crates/server-projects/src/extract.rs"
 cat > "$w/server/rust-source-jobs.cjs" <<'JS'
 const OWNED_ROUTES = Object.freeze(new Set([
