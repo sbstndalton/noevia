@@ -1900,10 +1900,11 @@ fi
 # engine facts' role key is read only by a front that wants it, so those additions stay inert. For the Code executor
 # that holds only while its switch is unset: Core reads NOEVIA_CODE_EXECUTOR itself and with `rust` refuses its own Code
 # start, decide and cancel (frontOwnsCode), so a Core newer than its front with the switch still set leaves Code mode
-# dead (#2638). No assembly can see that (the switch lives in the server's .env): the release kit's rollback-web.sh
-# refuses, or drops the switch, when the rollback target's front cannot run it (deploy/release-kit/switch-code.txt).
+# dead (#2638). No assembly can see that (the switch lives in the server's .env): the release kit's web rollback
+# (deploy/release-kit/, sbstndalton/noevia#2672) refuses, or drops the switch, when the target's front cannot run it.
 # The front side is recognised by its executor module (chat_native.rs, code_routes.rs); a front whose source (any
-# bins/*/src or crates/*/src) names the switch but has no such module is refused (the markers moved), never read as old.
+# bins/noevia-server/src or crates/*/src) names the switch but has no such module is refused (the markers moved), never
+# read as old.
 # The tool-call families (NOEVIA_RUST_MCP_CALLS, NOEVIA_RUST_DRIVE_TOOLS) and retrieval (NOEVIA_RUST_RETRIEVAL) have no
 # guard: beside an older Core the front's routes go unused, and Core runs a call itself when the front answers 404
 # (mcp-wiring.cjs, gdrive-tools.cjs; Core's tests "a front that runs no calls (404) leaves the call to this process" and
@@ -1931,15 +1932,18 @@ code_body() {
 }
 ex_rs_src="$tree/rs/bins/noevia-server/src"
 ex_core="$tree/core/server"
-# The front's source files: every bins/*/src and crates/*/src (never tests/ or benches/), sorted.
-ex_front_files() { { find "$tree"/rs/bins/*/src "$tree"/rs/crates/*/src -type f -name '*.rs' 2>/dev/null || true; } | LC_ALL=C sort; }
+# The front's source files: bins/noevia-server/src and every crates/*/src (other binaries are other services; never
+# tests/, benches/, a src/**/tests.rs or a src/**/tests/ module), sorted.
+ex_front_files() { { find "$tree"/rs/bins/noevia-server/src "$tree"/rs/crates/*/src -type f -name '*.rs' ! -name tests.rs ! -path '*/tests/*' 2>/dev/null || true; } | LC_ALL=C sort; }
 # A front that names a switch but whose executor module is not where the guard looks is refused: the markers moved.
 ex_front_named() { local f; while IFS= read -r f; do grep -qsF -e "$1" "$f" && return 0; done < <(ex_front_files); return 1; }
-# ex_front_grep <ERE>: true when a code line of any front source file matches (comments and test modules skipped).
-ex_front_grep() { local f; while IFS= read -r f; do code_body "$f" | grep -qE -e "$1" && return 0; done < <(ex_front_files); return 1; }
-# ex_core_serves <path>: true when a Core server module (not a test) names the path as a quoted literal in code.
-ex_core_serves() { local f; for f in "$ex_core"/*.cjs "$ex_core"/*/*.cjs; do [ -f "$f" ] || continue; case "$f" in *.test.cjs) continue ;; esac
-  code_body "$f" | grep -qF -e "'$1'" -e "\"$1\"" && return 0; done; return 1; }
+# ex_front_grep <ERE>: true when a code line of any front source file matches (comments and test modules skipped). The
+# text is captured before grep reads it: `code_body | grep -q` under pipefail loses an early match to SIGPIPE.
+ex_front_grep() { local f; while IFS= read -r f; do grep -qE -e "$1" <<<"$(code_body "$f")" && return 0; done < <(ex_front_files); return 1; }
+# ex_core_serves <path>: true when a Core server module (not a test, not a fixture) names the path as a quoted literal
+# in code (captured first, as above).
+ex_core_serves() { local f; for f in "$ex_core"/*.cjs "$ex_core"/*/*.cjs; do [ -f "$f" ] || continue; case "$f" in *.test.cjs | "$ex_core"/fixtures/*) continue ;; esac
+  grep -qF -e "'$1'" -e "\"$1\"" <<<"$(code_body "$f")" && return 0; done; return 1; }
 # ex_set_has <code> <NAME> <op>: true when `const NAME = new Set([...])` in the code lists 'op' (the list may wrap).
 ex_set_has() { awk -v n="$2" -v op="'$3'" '
   !on && index($0, "const " n " = new Set([") == 1 { on = 1; buf = "" }
