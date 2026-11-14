@@ -3314,6 +3314,10 @@ ea_core yes no; cp "$work/ea-config-new.saved" "$ex_core/embedding-config.cjs"; 
 check "embedding admin mix: a Core that can re-read but whose index.cjs never switches it on is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
 ea_core yes yes no; ea_front; ex_try ea-no-intent-core
 check "embedding admin mix: a Core that does not read the front's announced service changes is refused" 'refused "embedding admin pairing: the Rust front announces its embedding service changes but Core does not read them"'
+ea_core; printf '%s\n' '// no announcement here' > "$ex_core/embedding-service.cjs"; ea_front; ex_try ea-intent-wired-not-read
+check "embedding admin mix: a Core that hands the service the intent file but whose service does not read it is refused" 'refused "embedding admin pairing: the Rust front announces its embedding service changes but Core does not read them"'
+ea_core yes yes no; cp "$work/ea-service-new.saved" "$ex_core/embedding-service.cjs"; ea_front; ex_try ea-intent-read-not-wired
+check "embedding admin mix: a Core whose service could read the announcement but whose index.cjs never hands it the file is refused" 'refused "embedding admin pairing: the Rust front announces its embedding service changes but Core does not read them"'
 ea_core; grep -v INTENT_PROTOCOL "$work/ea-front.saved" > "$ex_rs/embedding_admin_routes.rs"; ex_try ea-no-intent-front
 check "embedding admin mix: a front that changes the service without announcing it is refused" 'refused "embedding admin pairing: the Rust front changes the embedding service without announcing it"'
 ea_core; rm -f "$ex_rs/embedding_admin_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";' > "$ex_rs/moved_embedding.rs"; ex_try ea-moved
