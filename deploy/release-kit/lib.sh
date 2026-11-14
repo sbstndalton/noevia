@@ -102,9 +102,11 @@ diary_switch_keys() { echo DIARY_RUST_ANSWER DIARY_RUST_INDEX DIARY_RUST_ROUTES 
 
 # diary_idle <container>: no write or exchange in the last 3 minutes besides the web's storage-backup posts, and between
 # two of those posts (the web posts about every 2 minutes: the last one 10-80 s ago, or none in 150 s).
-diary_idle() { local w last age
-  w=$(docker logs --since 3m "$1" 2>&1 | grep -E '"(POST|PUT|DELETE|PATCH) /' | grep -vc 'POST /api/storage-backup' || true)
-  last=$(docker logs --timestamps --since 150s "$1" 2>&1 | grep 'POST /api/storage-backup' | tail -1 | cut -d' ' -f1)
+# Fails closed: a log that cannot be read is never idle.
+diary_idle() { local w last age l3 l150
+  l3=$(docker logs --since 3m "$1" 2>&1) && l150=$(docker logs --timestamps --since 150s "$1" 2>&1) || { echo "idle check: the Diary log could not be read"; return 1; }
+  w=$(grep -E '"(POST|PUT|DELETE|PATCH) /' <<<"$l3" | grep -vc 'POST /api/storage-backup' || true)
+  last=$(grep 'POST /api/storage-backup' <<<"$l150" | tail -1 | cut -d' ' -f1)
   age=999; [ -z "$last" ] || age=$(( $(kit_epoch) - $(date -u -d "$last" +%s) ))
   echo "idle check: diary_writes3m=$w last_backup_post_age=${age}s"; [ "$w" = 0 ] && [ "$age" -ge 10 ] && { [ "$age" -le 80 ] || [ "$age" = 999 ]; }; }
 # diary_manifest <dir> <out-prefix>: names, types, modes, sizes and sha256 of a Diary data tree (never contents).

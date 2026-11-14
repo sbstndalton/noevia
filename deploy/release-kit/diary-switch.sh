@@ -15,7 +15,8 @@
 # #2636: with ROLLBACK=1 the image, DIARY_VERSION and Rust-process checks are skipped, so a switch line can always be
 # removed, after a Diary image rollback too; the image must stay the one that ran before. Prints no env value except
 # KEY's own (a tenant UUID is not a secret). Every time it prints comes from the clock.
-set -Eeuo pipefail; umask 077; trap '' HUP PIPE
+# No `set -E`: a failure inside a $(...) check must not run the restore in that subshell (it runs once, from the check).
+set -euo pipefail; umask 077; trap '' HUP PIPE
 HERE=$(cd -- "$(dirname -- "$0")" && pwd); . "$HERE/lib.sh"; KIT_PREFIX=switch
 KEY=${1:?KEY}; NEW=${2:?NEW or -}; OLD=${3:?OLD or -}; R=${ROLLBACK:-0}
 kit_conf "${KIT_CONF:-$HERE/kit.conf}" || exit 1
@@ -130,7 +131,7 @@ t_up0=$(kit_epoch)
 [ "$(cval "$KEY")" = "$NEW" ] || restore container_value
 docker exec "$WEB" node -e "fetch('$HEALTH',{headers:{Authorization:'Bearer '+process.env.DIARY_AUTH_TOKEN}}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" || restore web_to_diary
 [ "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$URL/api/diary/source")" = 401 ] || restore signed_out_not_401
-sleep "${KIT_SETTLE_S:-15}"; [ "$(insp "$DI" '{{.RestartCount}}')" = 0 ] && [ "$(insp "$DI" '{{.State.Status}}')" = running ] || restore restarting
+sleep 15; [ "$(insp "$DI" '{{.RestartCount}}')" = 0 ] && [ "$(insp "$DI" '{{.State.Status}}')" = running ] || restore restarting
 if [ "$IMG0" = "$CAND_ID" ]; then
   wr=$(want_rust); n=0; ok=0; rp=x
   while [ $n -lt 20 ]; do rp=$(rust_procs)
