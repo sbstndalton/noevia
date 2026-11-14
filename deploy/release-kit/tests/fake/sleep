@@ -1,2 +1,4 @@
 #!/bin/bash
+# Fake sleep: advances the fake clock ($FAKE/now) instead of waiting.
+[ -f "${FAKE:-}/now" ] && echo $(( $(cat "$FAKE/now") + ${1%%.*} )) >"$FAKE/now"
 exit 0

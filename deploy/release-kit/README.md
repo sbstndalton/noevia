@@ -16,6 +16,11 @@ temporary directory with a fake `docker`, `curl`, `up.sh` and clock (`tests/fake
 | `switch.sh KEY NEW OLD` | `flips-pb*/switch.sh` (switch-v3 rebound per release) | `DRY=1 bash switch.sh KEY NEW OLD`, read it, wait at least 60 s, then `CONFIRM_DRY=<12 hex from the DRY> bash switch.sh KEY NEW OLD` |
 | `rollback-switch.sh KEY [TO]` | `rollback-<KEY>.sh` (one generated file per live key) | `bash rollback-switch.sh KEY` (live value → absent; `TO` steps back to a value instead). No DRY needed; `DRY=1` still shows the diff |
 | `rollback-web.sh <backup-dir> [--drop-unsupported]` | `release-prep/<id>/rollback-web.sh` | `DRY=1 bash rollback-web.sh <backup-dir>` first, then without `DRY` |
+| `diary-switch.sh KEY NEW OLD` | `diary-<id>/flips/diary-switch.sh`, `diary-switch-v2.sh` and the `flip-*.sh` wrappers | as `switch.sh`: `DRY=1` first, then `CONFIRM_DRY=<digest>` at least 60 s later |
+| `diary-rollback-switch.sh KEY [TO]` | the Diary `rollback-*.sh` / `rollback-*-v2.sh` wrappers | `bash diary-rollback-switch.sh KEY` (to absent; a leaf goes back to the value recorded at its flip) |
+| `rollback-diary.sh <backup-dir> [--keep-switches] [--restore]` | `diary-<id>/rollback-diary.sh` | `DRY=1 bash rollback-diary.sh <backup-dir>`, then without `DRY` |
+| `backup-diary.sh` | (none: the GO asked for it, #2635) | `DRY=1 bash backup-diary.sh`, then `bash backup-diary.sh`; its last line names the backup |
+| `manifest-compare.sh <backup-dir>` | `diary-<id>/manifest-compare.sh` | exit 0: the backup still counts; exit 3: take a new one with `backup-diary.sh` |
 | `stamp.sh <file> <KIND> [--append] < body` | hand-written times in GATE/GO/LIVE files | `printf '%s\n' "…" \| bash stamp.sh agents/<name>.GATE GATE`; `bash stamp.sh --check <file>` names a first-line time more than 120 s off the file's write time |
 
 ### What changed against the hand-made scripts
@@ -39,6 +44,18 @@ temporary directory with a fake `docker`, `curl`, `up.sh` and clock (`tests/fake
 - **One lock.** `switch.sh`, `rollback-web.sh` and the Diary kit share `FLIPS_DIR/.switch.lock`; a running cutover,
   rollback or Diary backup (matched on the script a shell runs, not on any command line that mentions it) refuses a
   flip.
+
+- **Diary switch rollbacks work after a Diary image rollback (#2636).** With `ROLLBACK=1` `diary-switch.sh` skips the
+  image, `DIARY_VERSION` and Rust-process checks (the image must stay the one that ran before), so a switch line can
+  always be removed.
+- **A Diary image rollback leaves no stale switch line (#2636).** `rollback-diary.sh` removes every Diary switch
+  (`DIARY_RUST_*` and the native leaf `*_IMPL` keys) from `.env` and from the override's diary environment in the same
+  edit as `DIARY_VERSION`, and names them (`--keep-switches` keeps them). Web keys are never touched.
+- **A frozen Diary stop-backup (#2635).** `backup-diary.sh`: window, shared lock, Diary idle (never proceeds when
+  busy), identity record, stop, manifest, copy, manifest of the copy, compare, archive (`state/diary` + `.env`), gzip
+  test and listing, `SHA256SUMS`, start the same container, healthy, web → Diary health, same image. It prints its own
+  sha256 for the LIVE file and starts the Diary again on any exit while it is stopped. Before a Diary flip:
+  `manifest-compare.sh <last backup>`; exit 3 means take a new one with `backup-diary.sh` (no hot copy, ever).
 
 Unchanged: the windows (no step 04:00–04:30 America/New_York; no forward flip 08:00–09:30Z), the one-line `.env` and
 override edits through temp files, the Compose resolution checks, the web-only recreate through the release's `up.sh`
@@ -66,3 +83,10 @@ outside `[A-Za-z0-9_./:@+,-]`, is refused. See `kit.conf.example`.
 | `RELEASE_KEYS` | rollback-web | comma list of the `.env` keys the cutover changed (`COWORK_VERSION`) |
 | `PREFLIGHT_FILES` | rollback-web | comma list restored from `tools/preflight.bak.before-<id>` (`check.php,diary-models-check.sh`; empty = none) |
 | `TARGET_TREE` | rollback-web | the target's assembled release tree (`$APPDATA/releases/<ROLLBACK_VERSION>`) |
+| `DIARY` | Diary scripts | the Diary container (`cowork-diary-1`) |
+| `DIARY_VERSION`, `DIARY_IMAGE` | diary-switch, rollback-diary | the live Diary release: its tag (`DIARY_VERSION` in `.env`) and image id |
+| `DIARY_OLD_TAG`, `DIARY_OLD_IMAGE` | rollback-diary | the Diary rollback target: tag and image id |
+| `DIARY_FLIPS_DIR` | Diary scripts | Diary switch backups, logs, DRY records, leaf states (`$FLIPS_DIR/diary`) |
+| `DIARY_STATE` | backup, manifest, rollback-diary | the Diary data (`$APPDATA/state/diary`) |
+| `BACKUP_ROOT`, `DIARY_BACKUP_PREFIX` | backup-diary | where stop-backups go (`/mnt/disk3/noevia-backups`, `diary-backup`) |
+| `DIARY_HEALTH_URL` | Diary scripts | the Diary health URL as the web reaches it (`http://diary:8010/api/health`) |

@@ -91,3 +91,20 @@ ovr_line() { printf '      %s: ${%s:-}' "$1" "$1"; }
 ovr_block() { awk -v s="$2:" '/^  [A-Za-z0-9_-]+:/ { cur = $1 } cur == s' "$1"; }
 # ovr_drop <file> <service> <key>: the file without KEY's switch line in that service's block, on stdout.
 ovr_drop() { awk -v s="$2:" -v l="$(ovr_line "$3")" '/^  [A-Za-z0-9_-]+:/ { cur = $1 } !(cur == s && $0 == l)' "$1"; }
+
+# The Diary switches: the four DIARY_RUST_* keys and the native leaf selectors (*_IMPL). diary-switch.sh accepts only
+# these; rollback-diary.sh removes all of them when the image goes back (#2636).
+diary_leaves() { echo DIARY_CORPUS_WRITE_IMPL DIARY_CORPUS_PARSE_IMPL DIARY_SCORE_GAP_IMPL DIARY_TEMPORAL_FOCUS_IMPL DIARY_ENTITY_FOCUS_IMPL DIARY_INDEX_TRANSFORM_IMPL DIARY_STORAGE_BACKOFF_IMPL DIARY_BACKUP_IMPL DIARY_BACKUP_FORMAT_IMPL WORKSPACE_EXPORT_IMPL WORKSPACE_IMPORT_APPLY_IMPL WORKSPACE_RULES_IMPL WORKSPACE_RESTORE_VERIFY_IMPL; }
+diary_switch_keys() { echo DIARY_RUST_ANSWER DIARY_RUST_INDEX DIARY_RUST_ROUTES DIARY_RUST_WRITES "$(diary_leaves)"; }
+
+# diary_idle <container>: no write or exchange in the last 3 minutes besides the web's storage-backup posts, and between
+# two of those posts (the web posts about every 2 minutes: the last one 10-80 s ago, or none in 150 s).
+diary_idle() { local w last age
+  w=$(docker logs --since 3m "$1" 2>&1 | grep -E '"(POST|PUT|DELETE|PATCH) /' | grep -vc 'POST /api/storage-backup' || true)
+  last=$(docker logs --timestamps --since 150s "$1" 2>&1 | grep 'POST /api/storage-backup' | tail -1 | cut -d' ' -f1)
+  age=999; [ -z "$last" ] || age=$(( $(kit_epoch) - $(date -u -d "$last" +%s) ))
+  echo "idle check: diary_writes3m=$w last_backup_post_age=${age}s"; [ "$w" = 0 ] && [ "$age" -ge 10 ] && { [ "$age" -le 80 ] || [ "$age" = 999 ]; }; }
+# diary_manifest <dir> <out-prefix>: names, types, modes, sizes and sha256 of a Diary data tree (never contents).
+diary_manifest() {
+  (cd "$1" && find . -printf '%y %m %s %P\n' | LC_ALL=C sort -k4 >"$2.ls" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0r sha256sum >"$2.sha")
+}

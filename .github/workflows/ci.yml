@@ -121,6 +121,13 @@ jobs:
         env:
           TMPDIR: ${{ runner.temp }}
         run: bash deploy/release-kit/tests/test-web-kit.sh
+      # Release kit Diary scripts: switch (and rollback after an image rollback), image rollback, stop-backup and
+      # manifest comparison, against synthetic QA data in a temporary directory.
+      - name: Release kit Diary scripts
+        if: env.RUN_JOB == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash deploy/release-kit/tests/test-diary-kit.sh
       # #1148: build/tag helpers refuse cowork-diary:* outside diary-overlay.sh (stub docker).
       - run: bash deploy/tools/test-diary-image-guard.sh
         if: env.RUN_JOB == 'true'
