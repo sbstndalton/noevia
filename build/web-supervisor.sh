@@ -563,7 +563,7 @@ if [ "$source_jobs_core_owner" != "$source_jobs_front_owner" ]; then
 fi
 # The project source operations (sbstndalton/noevia#2191 round 8): the upload, the folder sync and the folder
 # import's plan run in the front, with no worker call to Node. A Core that refuses them
-# (server/rust-project-source-work.cjs) and reads the front's storage latch and file-operation list needs a
+# (server/rust-project-source-work.cjs) and reads the front's file-operation list needs a
 # front that runs them (rust-project-source-work), and such a front needs that Core. Old/old stays usable.
 source_work_core_owner=""
 source_work_front_owner=""
