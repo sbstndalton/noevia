@@ -69,6 +69,11 @@ beside it. Preflight refuses an installation without the profile, so a release f
 - Qualify with `CANDIDATE_EGRESS_IMAGE=<image> deploy/tools/candidate-boot.sh <sha>`. Also boot with the installation's
   effective configuration, using synthetic state and secrets.
 
+Every later release checks whether the egress image is still current: `deploy/tools/check-egress-ref.sh
+<EGRESS_RS_VERSION> <candidate sha>` exits 3 when the running image (its tag: the noevia commit it was built from, or
+the Rust commit as today) does not match the candidate's `deploy/egress-proxy` (#2597). Then build and tag the egress
+image in the same release, or record in the release gate why it stays.
+
 The installed preflight refuses `CODE_EGRESS_PORT` without this profile. `CODE_EGRESS_PORT` unset or `0` boots but
 removes network access for Code and Browser tasks, so it is a decision, not a fix.
 

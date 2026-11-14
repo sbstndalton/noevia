@@ -3108,6 +3108,25 @@ check "chat executor mix: a bridge path after a #[cfg(test)] helper (not a test 
 # the executor moved: a front that names the switch without the module is never read as old
 ex_chat_core; rm -f "$ex_rs/chat_native.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CHAT_EXECUTOR";' > "$ex_rs/moved_executor.rs"; ex_try chat-moved
 check "chat executor: a front naming NOEVIA_CHAT_EXECUTOR without chat_native.rs is refused, not read as old" 'refused "names NOEVIA_CHAT_EXECUTOR but has no bins/noevia-server/src/chat_native.rs"'
+# #2611 item 1: attributes between #[cfg(test)] and `mod tests` (as chat_native.rs has them) still end the contract.
+ex_chat_core; { sed '/^#\[cfg(test)\]/,$d' "$work/ex-chat-front.saved"; printf '%s\n' '#[cfg(test)]' '#[allow(clippy::unwrap_used)]' '' 'mod tests { const T: &str = "/internal/chat/tools/made-up"; }'; } > "$ex_rs/chat_native.rs"; ex_try chat-stacked-test-attr
+check "chat executor new/new: a test module behind stacked attributes is not read as the contract (#2611)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# #2611 item 2: no bridge path at all is a named refusal, never a silent exit under pipefail.
+ex_chat_core; sed -n 1,2p "$work/ex-chat-front.saved" > "$ex_rs/chat_native.rs"; ex_try chat-no-paths
+check "chat executor: a chat_native.rs naming no bridge path is refused with its message (#2611)" 'refused "chat_native.rs names no /internal/chat bridge path"'
+# #2609: an op list a formatter wrapped over several lines is still read.
+ex_chat_core; sed "s/^const NATIVE_OPS = new Set(\['health', 'load', 'title-save'\]);/const NATIVE_OPS = new Set([\\n  'health',\\n  'load',\\n  'title-save',\\n]);/" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_chat_front; ex_try chat-wrapped-ops
+check "chat executor new/new: a wrapped NATIVE_OPS list is read (#2609)" '[ "$(grep -c "^  .title-save.,$" "$ex_core/rust-chat-native.cjs")" = 1 ] && [ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+sed "s/^const NATIVE_OPS = new Set(\['health', 'load', 'title-save'\]);/const NATIVE_OPS = new Set([\\n  'health',\\n  'load',\\n]);\\nconst OTHER = new Set(['title-save']);/" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-wrapped-ops-missing
+check "chat executor mix: an op missing from a wrapped list (but in a later list) is refused" 'refused "executor calls /internal/chat/native/title-save but Core.s rust-chat-native.cjs does not serve it"'
+# #2609: a bridge call in a sibling module of the front is checked too.
+ex_chat_core; ex_chat_front; printf '%s\n' 'const SIBLING: &str = "/internal/chat/tools/sibling";' > "$ex_rs/chat_sibling.rs"; ex_try chat-sibling-unserved
+check "chat executor mix: a sibling module's bridge call that no Core module serves is refused (#2609)" 'refused "the Rust front calls /internal/chat/tools/sibling (bins/noevia-server/src/chat_sibling.rs) but no Core server module serves it"'
+printf '%s\n' "const SIBLING_PATH = '/internal/chat/tools/sibling';" > "$ex_core/rust-chat-sibling.cjs"; ex_try chat-sibling-served
+check "chat executor new/new: a sibling module's bridge call served by another Core module assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+printf '%s\n' "// const SIBLING_PATH = '/internal/chat/tools/sibling';" > "$ex_core/rust-chat-sibling.cjs"; ex_try chat-sibling-comment
+check "chat executor mix: a Core module naming the sibling path only in a comment does not serve it" 'refused "calls /internal/chat/tools/sibling"'
+rm -f "$ex_rs/chat_sibling.rs" "$ex_core/rust-chat-sibling.cjs" "$ex_rs/chat_native.rs"
 rm -f "$ex_rs/moved_executor.rs" "$ex_core/rust-chat-native.cjs"
 # Code executor
 cat > "$work/ex-code-core1.saved" <<'JS'
@@ -3151,6 +3170,29 @@ ex_code 1 "" 1; sed "s/=== 'rust'/=== 'native'/" "$work/ex-code-core1.saved" > "
 check "Code executor mix: a Core whose switch value differs from the front's is refused" 'refused "do not read the same switch value"'
 ex_code 1 "" 1; rm -f "$ex_rs/code_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' > "$ex_rs/moved_executor.rs"; ex_try code-moved
 check "Code executor: a front naming NOEVIA_CODE_EXECUTOR without code_routes.rs is refused, not read as old" 'refused "names NOEVIA_CODE_EXECUTOR but has no bins/noevia-server/src/code_routes.rs"'
+# #2611 item 3: the executor or its switch moved into a crate is never read as an old front.
+rm -f "$ex_rs/moved_executor.rs"; mkdir -p "$rz/crates/code-exec/src"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' > "$rz/crates/code-exec/src/lib.rs"; ex_try code-moved-to-crate
+check "Code executor: a crate naming NOEVIA_CODE_EXECUTOR without code_routes.rs is refused (#2611)" 'refused "names NOEVIA_CODE_EXECUTOR but has no bins/noevia-server/src/code_routes.rs"'
+# #2611 item 3: role_endpoint moved into a crate still needs Core's role fact.
+ex_code 1 "" 1; printf '%s\n' 'pub fn role_endpoint(facts: &JValue) -> Option<Endpoint> { None }' > "$rz/crates/code-exec/src/lib.rs"; ex_try code-role-in-crate
+check "Code executor mix: role_endpoint in a crate beside a Core without roleFacts is refused (#2611)" 'refused "Planner pipeline and review gate (role_endpoint) need"'
+# The front's text is read whole before grep: a role_endpoint early in a code_routes.rs of more than a pipe buffer of
+# code is still found every time (piped into grep -q under pipefail it was lost to SIGPIPE at random).
+ex_code 1 "" 2; { cat "$work/ex-code-front2.saved"; for i in $(seq 1 400); do printf 'const PAD_%s: &str = "qa padding line for a large file";\n' "$i"; done; } > "$ex_rs/code_routes.rs"; ex_try code-role-large-file
+check "Code executor mix: role_endpoint at the top of a large code_routes.rs beside a Core without roleFacts is refused" '[ "$(wc -c < "$ex_rs/code_routes.rs")" -gt 16384 ] && refused "Planner pipeline and review gate (role_endpoint) need"'
+# A src tests.rs module and a tests/ directory under src are test code, not the contract.
+ex_code 1 "" 1; mkdir -p "$ex_rs/x/tests"; printf '%s\n' 'const T: &str = "/internal/code/test-only";' > "$ex_rs/x/tests.rs"; cp "$ex_rs/x/tests.rs" "$ex_rs/x/tests/a.rs"; ex_try code-src-tests
+check "Code executor new/new: /internal/code literals in src tests.rs or src/**/tests/ are not calls" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -rf "$ex_rs/x" "$rz/crates/code-exec"
+# #2639 item 1: the switch comparison is matched exactly, not any Some("rust") in the file.
+ex_code 1 "" 1; sed 's/as_deref() == Some("rust")/as_deref() == Some("native")/' "$work/ex-code-front1.saved" > "$ex_rs/code_routes.rs"; printf '%s\n' 'const LANG: Option<&str> = Some("rust");' >> "$ex_rs/code_routes.rs"; ex_try code-loose-switch
+check "Code executor mix: a changed switch comparison with another Some(\"rust\") left in the file is refused (#2639)" 'refused "do not read the same switch value"'
+# #2609: a second /internal/code bridge (in code_routes.rs or a sibling) must be served by Core.
+ex_code 1 "" 1; printf '%s\n' 'const TASKS: &str = "/internal/code/tasks";' > "$ex_rs/code_tasks.rs"; ex_try code-sibling-unserved
+check "Code executor mix: a sibling module's /internal/code bridge no Core module serves is refused (#2609)" 'refused "the Rust front calls /internal/code/tasks (bins/noevia-server/src/code_tasks.rs) but no Core server module serves it"'
+{ cat "$work/ex-code-core1.saved"; printf '%s\n' "const TASKS_PATH = '/internal/code/tasks';"; } > "$ex_core/rust-code-executor.cjs"; ex_try code-sibling-served
+check "Code executor new/new: a sibling /internal/code bridge Core serves assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$ex_rs/code_tasks.rs"; ex_code 1 "" 1; rm -f "$ex_rs/code_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' > "$ex_rs/moved_executor.rs"
 # Rust port R11: the model writes (NOEVIA_RUST_MODEL_WRITES): the front's writer needs Core's refusal module, the same
 # switch value, and a budget read on every use. The Code executor's "moved" case above leaves a front naming its switch
 # without code_routes.rs, which its own guard refuses first: cleared here.
