@@ -214,10 +214,13 @@ echo "2026-01-01T09:09:09Z" >"$FAKE/c/cowork-egress-rs-1/Started"
 rbw "$B"
 check "the same command run again resumes and verifies" '[ $rc = 0 ] && grep -q "resuming the rollback committed earlier" <<<"$out" && grep -q "^rollback=verified" <<<"$out" && cmp -s "$A/config/.env" "$B/.env" && [ ! -e "$F/rollback-web-${V:0:7}.committed" ]'
 check "an egress restart before the resume is named, not blamed on the rollback" 'grep -q "NOTE: cowork-egress-rs-1 restarted or changed since the interrupted run" <<<"$out"'
+# (made by a read-only Compose directory: root ignores that, so this pair of cases runs only as a normal user)
+if [ "$(id -u)" != 0 ]; then
 cutover r14; later NOEVIA_CODE_EXECUTOR rust web; chmod a-w "$C"; rbw "$B" --drop-unsupported; chmod u+w "$C"
 check "an interruption between the .env and the override move reports after_commit" '[ $rc != 0 ] && grep -q "rollback_error=after_commit" <<<"$out" && ! grep -q NOEVIA_CODE_EXECUTOR "$A/config/.env" && grep -q NOEVIA_CODE_EXECUTOR "$C/docker-compose.override.yml"'
 rbw "$B"
 check "the resume finishes the override edit and reports the dropped switch" '[ $rc = 0 ] && grep -q "override edit finished" <<<"$out" && ! grep -q NOEVIA_CODE_EXECUTOR "$C/docker-compose.override.yml" && grep -qF "dropped_switches=[NOEVIA_CODE_EXECUTOR ]" <<<"$out"'
+fi
 rbw "$B"
 check "after a finished rollback a third run is refused (nothing to resume)" '[ $rc != 0 ] && grep -q live_env_not_release <<<"$out"'
 cutover r11; touch "$FAKE/up_fail"; rbw "$B"; echo QA_HAND_EDIT=1 >>"$A/config/.env"; rbw "$B"
