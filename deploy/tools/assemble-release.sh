@@ -1991,7 +1991,8 @@ fi
 # refusal of both PUTs under the same switch) with inference-budget.cjs reading the saved row on every use, so a
 # budget the front saves is enforced at once. old/old and new/new assemble; a front with the writer beside a Core
 # without that pair is refused (Core would go on answering its own PUTs, and would keep enforcing the budget it read
-# at its start); a Core ahead of its front assembles (its refusal waits for a switch only that front answers).
+# at its start); a Core ahead of a front WITHOUT the writer assembles (its refusal waits for a switch only that front
+# answers); beside a front with the writer, the later requests (preset, MTP check, pull) must match on both sides.
 if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
   mw_front="$(code_body "$ex_rs_src/model_writes_routes.rs")"
   mw_loaded="$(core_requires "$ex_core/index.cjs" ./rust-model-writes.cjs)"
@@ -2004,8 +2005,60 @@ if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
     || die "model writes pairing: the Rust front's NOEVIA_RUST_MODEL_WRITES=rust and Core's rust-model-writes.cjs do not read the same switch value (the PUTs would be answered by both, or by neither)"
   code_has "$ex_core/inference-budget.cjs" '^[[:space:]]*function savedGib[(]' \
     || die "model writes pairing: the Rust front saves the inference budget row but Core's inference-budget.cjs does not read it on every use (it would enforce the figure it read at its start until it restarts)"
+  # The preset editor's save (track R11 step 8): a front that answers it needs Core to refuse it under the switch too.
+  # Track R11 steps 8, 11 and 12: the preset save, the MTP artifact check and the pull. Each is refused by Core under the
+  # switch exactly when the front answers it: a front answering one Core does not refuse would leave two answering it;
+  # a Core refusing one the front does not answer would refuse what the front relays (a dead end once the switch is set).
+  # A list is read from its `const <name> = ` line to the line that closes it (`]);` or `];`), on one line or several,
+  # with every `//` comment cut first, so neither a comment nor the next list can name a path for it. A failed read (no
+  # body, or a list not closed before the next declaration or the end) is status 2, which both directions below refuse
+  # with their own message.
+  mw_core_has() { # <core list> <path>
+    local body list
+    body="$(code_body "$ex_core/rust-model-writes.cjs")" || return 2
+    list="$(awk -v start="const $1 = " '
+      on && /^(const|let|var|function|module[.]exports) / { exit 2 }
+      !on && index($0, start) == 1 { on = 1 }
+      on { sub(/\/\/.*/, ""); print; if ($0 ~ /[]][)]?;/) { done = 1; exit } }
+      END { if (on && !done) exit 2 }
+    ' <<<"$body")" || return 2
+    grep -qF "'$2'" <<<"$list"
+  }
+  mw_pair() { # <what> <front answers: yes|no> <core list> <path>
+    local rc=0
+    mw_core_has "$3" "$4" || rc=$?
+    [ "$rc" -le 1 ] || die "model writes pairing: Core's rust-model-writes.cjs could not be read for $1 (a list not closed before the next declaration)"
+    if [ "$2" = yes ]; then [ "$rc" -eq 0 ] || die "model writes pairing: the Rust front answers $1 but Core's rust-model-writes.cjs does not refuse it (both would answer it)"
+    else [ "$rc" -ne 0 ] || die "model writes pairing: Core's rust-model-writes.cjs refuses $1 but the Rust front does not answer it (every such request would be refused once the switch is set)"; fi
+  }
+  mw_preset=no; grep -qE '^pub const PRESET: &str = ' <<<"$mw_front" && mw_preset=yes
+  mw_mtp=no; [ -f "$ex_rs_src/model_pull_routes.rs" ] && mw_mtp=yes
+  mw_pull=no; grep -qsE '^pub const PULL: &str = ' <<<"$(code_body "$ex_rs_src/model_pull_routes.rs")" && mw_pull=yes
+  mw_pair "PUT /api/models/preset" "$mw_preset" OWNED_PATHS /api/models/preset
+  mw_pair "GET /api/models/mtp-artifact" "$mw_mtp" OWNED_GETS /api/models/mtp-artifact
+  mw_pair "POST /api/models/pull" "$mw_pull" OWNED_POSTS /api/models/pull
 elif ex_front_named NOEVIA_RUST_MODEL_WRITES; then
   die "model writes pairing: the Rust front names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs (the writer moved: update this guard)"
+fi
+# Rust port R11: the model manager proxy (NOEVIA_RUST_MODEL_MANAGER). The front's side is model_manager_routes.rs (a
+# dispatch override for /api/model-manager/*, POST benchmark/sweep relayed to Core); Core's is rust-model-manager-proxy.cjs
+# (its refusal of the rest under the same switch), and the front's host clears Core's folder scan cache through the
+# trusted bridge's `clear` op (noevia#2550). old/old, a Core ahead and new/new assemble; a front with the proxy beside a
+# Core without the refusal, with another switch value, or without the scan cache clear is refused.
+if [ -f "$ex_rs_src/model_manager_routes.rs" ]; then
+  mm_front="$(code_body "$ex_rs_src/model_manager_routes.rs")"
+  mm_loaded="$(core_requires "$ex_core/index.cjs" ./rust-model-manager-proxy.cjs)"
+  [ "$mm_loaded" != invalid ] || die "model manager proxy pairing: Core's index.cjs could not be read"
+  { [ "$mm_loaded" = yes ] && [ -f "$ex_core/rust-model-manager-proxy.cjs" ]; } \
+    || die "model manager proxy pairing: the Rust front answers /api/model-manager/* (model_manager_routes.rs, NOEVIA_RUST_MODEL_MANAGER=rust) but Core does not load server/rust-model-manager-proxy.cjs (Core would go on answering it)"
+  { grep -qF 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_MANAGER";' <<<"$mm_front" && grep -qF 'get(SWITCH).as_deref() == Some("rust")' <<<"$mm_front"; } \
+    && code_has "$ex_core/rust-model-manager-proxy.cjs" "^const SWITCH = 'NOEVIA_RUST_MODEL_MANAGER';" \
+    && code_has "$ex_core/rust-model-manager-proxy.cjs" "env\\[SWITCH\\][[:space:]]*===[[:space:]]*'rust'" \
+    || die "model manager proxy pairing: the Rust front's NOEVIA_RUST_MODEL_MANAGER=rust and Core's rust-model-manager-proxy.cjs do not read the same switch value (the proxy would be answered by both, or by neither)"
+  code_has "$ex_core/rust-model-manager-scan-cache.cjs" "'clear'" \
+    || die "model manager proxy pairing: the Rust front clears Core's folder scan cache but Core's rust-model-manager-scan-cache.cjs has no clear op (a Core from before noevia#2550)"
+elif ex_front_named NOEVIA_RUST_MODEL_MANAGER; then
+  die "model manager proxy pairing: the Rust front names NOEVIA_RUST_MODEL_MANAGER but has no bins/noevia-server/src/model_manager_routes.rs (the proxy moved: update this guard)"
 fi
 # #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
 iur_core_owner=""; iur_rs_owner=""

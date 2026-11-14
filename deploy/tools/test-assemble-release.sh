@@ -3185,9 +3185,79 @@ mw_core; sed "s/=== 'rust'/=== 'native'/" "$work/mw-core.saved" > "$ex_core/rust
 check "model writes mix: a Core whose switch value differs from the front's is refused" 'refused "model writes pairing: .* do not read the same switch value"'
 mw_core old; mw_front; ex_try mw-budget-cached
 check "model writes mix: a Core that reads the budget only at its start is refused" 'refused "model writes pairing: the Rust front saves the inference budget row but Core.s inference-budget.cjs does not read it on every use"'
+{ cat "$work/mw-front.saved"; printf '%s\n' 'pub const PRESET: &str = crate::preset_read_routes::PATH;'; } > "$work/mw-front-preset.saved"
+mw_core_with() { # the core with these extra lines before `const SWITCH`
+  { printf '%s\n' "$@"; cat "$work/mw-core.saved"; } > "$ex_core/rust-model-writes.cjs"
+  { cat "$work/ex-index.saved"; printf '%s\n' "if (require('./rust-model-writes.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"; } > "$w/server/index.cjs"
+  cp "$work/mw-budget-new.saved" "$ex_core/inference-budget.cjs"
+}
+MW_PRESET="const OWNED_PATHS = Object.freeze(['/api/models/inference-budget', '/api/models/idle-unload', '/api/models/preset']);"
+MW_MTP="const OWNED_GETS = Object.freeze(['/api/models/mtp-artifact']);"
+MW_PULL="const OWNED_POSTS = Object.freeze(['/api/models/pull']);"
+mw_core_with; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-no-core-refusal
+check "model writes mix: a front answering the preset save beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers PUT /api/models/preset but Core.s rust-model-writes.cjs does not refuse it"'
+mw_core_with "$MW_PRESET"; mw_front; ex_try mw-preset-core-ahead
+check "model writes mix: a Core refusing the preset save beside a writer front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses PUT /api/models/preset but the Rust front does not answer it"'
+mw_core_with "$MW_PRESET"; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-new-new
+check "model writes new/new: a front answering the preset save beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-no-core-refusal
+check "model writes mix: a front answering the MTP artifact check beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers GET /api/models/mtp-artifact but Core.s rust-model-writes.cjs does not refuse it"'
+mw_core_with "$MW_MTP"; mw_front; rm -f "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-core-ahead
+check "model writes mix: a Core refusing the MTP artifact check beside a writer front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses GET /api/models/mtp-artifact but the Rust front does not answer it"'
+mw_core_with "$MW_MTP"; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-new-new
+check "model writes new/new: a front answering the MTP artifact check beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with "$MW_MTP" "$MW_PULL"; mw_front; ex_try mw-pull-core-ahead
+check "model writes mix: a Core refusing the pull beside a front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses POST /api/models/pull but the Rust front does not answer it"'
+mw_core_with "$MW_MTP" "$MW_PULL"; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-new-new
+check "model writes new/new: a front answering the pull beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with "$MW_MTP"; mw_front; ex_try mw-pull-front-ahead
+check "model writes mix: a front answering the pull beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers POST /api/models/pull but Core.s rust-model-writes.cjs does not refuse it"'
+mw_core_with "$MW_MTP" 'const OWNED_POSTS = Object.freeze([' "  '/api/models/pull'," ']);'; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-multiline-core-ahead
+check "model writes mix: a Core refusing the pull in a list over several lines beside a front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses POST /api/models/pull but the Rust front does not answer it"'
+mw_core_with "$MW_MTP" 'const OWNED_POSTS = Object.freeze([' "  '/api/models/pull'," ']);'; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-multiline-new-new
+check "model writes new/new: a front answering the pull beside a Core refusing it in a list over several lines assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with "const OWNED_GETS = Object.freeze(['/api/models/mtp-artifact']); // not '/api/models/pull'" "const OWNED_POSTS = Object.freeze([]); // was '/api/models/pull'" "const OTHER = Object.freeze(['/api/models/pull']);"; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-only-in-comments
+check "model writes old pull: a pull named only in comments or another list is not a refusal (assembles beside a front without it)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with "$MW_MTP" 'const OWNED_POSTS = Object.freeze([' "  '/api/models/pull'," "const LATER = Object.freeze(['/api/models/other']);"; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-unclosed-list
+check "model writes: a Core list not closed before the next declaration is a failed read, refused rather than read on into the next list" 'refused "model writes pairing: Core.s rust-model-writes.cjs could not be read for POST /api/models/pull"'
+mw_core_with "$MW_MTP" "const OWNED_POSTS = ['/api/models/pull'];"; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-plain-array
+check "model writes new/new: a Core refusing the pull in a plain array (closed by ];) assembles beside a front answering it" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$ex_rs/model_pull_routes.rs"
 mw_core; rm -f "$ex_rs/model_writes_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' > "$ex_rs/moved_writer.rs"; ex_try mw-moved
 check "model writes: a front naming NOEVIA_RUST_MODEL_WRITES without model_writes_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs"'
 rm -f "$ex_rs/moved_writer.rs" "$ex_rs/model_writes_routes.rs" "$ex_core/rust-model-writes.cjs" "$ex_core/inference-budget.cjs"
+# Rust port R11: the model manager proxy (NOEVIA_RUST_MODEL_MANAGER).
+cat > "$work/mm-core.saved" <<'JS'
+const SWITCH = 'NOEVIA_RUST_MODEL_MANAGER';
+const frontOwns = (env = process.env) => env[SWITCH] === 'rust';
+function refuseOwned(req, res, deps) { return false; }
+module.exports = { SWITCH, frontOwns, refuseOwned };
+JS
+cat > "$work/mm-front.saved" <<'RS'
+/// The switch.
+pub const SWITCH: &str = "NOEVIA_RUST_MODEL_MANAGER";
+on: get(SWITCH).as_deref() == Some("rust"),
+RS
+printf '%s\n' "if(!path.startsWith(PREFIX)||!['snapshot','publish','refresh','clear'].includes(op))return false;" > "$work/mm-scan-new.saved"
+printf '%s\n' "if(!path.startsWith(PREFIX)||!['snapshot','publish','refresh'].includes(op))return false;" > "$work/mm-scan-old.saved"
+mm_core() { cp "$work/mm-core.saved" "$ex_core/rust-model-manager-proxy.cjs"; { cat "$work/ex-index.saved"; printf '%s\n' "if (require('./rust-model-manager-proxy.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"; } > "$w/server/index.cjs"; cp "$work/mm-scan-${1:-new}.saved" "$ex_core/rust-model-manager-scan-cache.cjs"; }
+mm_old_core() { rm -f "$ex_core/rust-model-manager-proxy.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"; cp "$work/mm-scan-old.saved" "$ex_core/rust-model-manager-scan-cache.cjs"; }
+mm_front() { cp "$work/mm-front.saved" "$ex_rs/model_manager_routes.rs"; }
+mm_old_core; rm -f "$ex_rs/model_manager_routes.rs"; ex_try mm-old-old
+check "model manager proxy old/old: no proxy on either side assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mm_core; ex_try mm-old-front-new-core
+check "model manager proxy: an old front beside a Core with the refusal (a Core ahead) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mm_core; mm_front; ex_try mm-new-new
+check "model manager proxy new/new: the front's proxy beside Core's refusal and the scan cache clear assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mm_old_core; cp "$work/mm-scan-new.saved" "$ex_core/rust-model-manager-scan-cache.cjs"; mm_front; ex_try mm-no-core-module
+check "model manager proxy mix: the front's proxy beside a Core without rust-model-manager-proxy.cjs is refused" 'refused "model manager proxy pairing: the Rust front answers /api/model-manager/.* but Core does not load server/rust-model-manager-proxy.cjs"'
+mm_core; sed "s/=== 'rust'/=== 'native'/" "$work/mm-core.saved" > "$ex_core/rust-model-manager-proxy.cjs"; mm_front; ex_try mm-switch
+check "model manager proxy mix: a Core whose switch value differs from the front's is refused" 'refused "model manager proxy pairing: .* do not read the same switch value"'
+mm_core old; mm_front; ex_try mm-no-clear
+check "model manager proxy mix: a Core whose scan cache bridge has no clear op is refused" 'refused "model manager proxy pairing: the Rust front clears Core.s folder scan cache but Core.s rust-model-manager-scan-cache.cjs has no clear op"'
+mm_core; rm -f "$ex_rs/model_manager_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_MANAGER";' > "$ex_rs/moved_proxy.rs"; ex_try mm-moved
+check "model manager proxy: a front naming NOEVIA_RUST_MODEL_MANAGER without model_manager_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_MANAGER but has no bins/noevia-server/src/model_manager_routes.rs"'
+rm -f "$ex_rs/moved_proxy.rs" "$ex_rs/model_manager_routes.rs" "$ex_core/rust-model-manager-proxy.cjs" "$ex_core/rust-model-manager-scan-cache.cjs"
 rm -f "$ex_rs/moved_executor.rs" "$ex_rs/code_routes.rs" "$ex_core/rust-code-executor.cjs" "$rz/crates/chat-turn/src/prepared.rs"
 rmdir "$rz/crates/chat-turn/src" "$rz/crates/chat-turn" "$rz/crates" 2>/dev/null || :
 cp "$work/ex-index.saved" "$w/server/index.cjs"
