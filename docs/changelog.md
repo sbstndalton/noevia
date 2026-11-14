@@ -14,7 +14,16 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
-## Release port batch 3 - this release (web image only; noevia-rs#488, #489, #495, #496, #498, #499, #500, #503, #506, #510; noevia-core#363, #364, #371, #372, #373, #374, #376, #377; #2561, #2562, #2582)
+## Release port batch 4 - this release (web image only; noevia-rs#497, #509, #512, #513, #514, #515, #516; noevia-core#370, #378, #379; noevia-web#131)
+
+Pins: rs e0954036 (was fcebcc62), core cc74c6f3 (was d6bc7ab8), services 77dc828c (was 0981b446; lock only: the Diary and sidecar Dockerfiles at that ref pin rs e0954036, and those images are not rebuilt), web a0101b38 (was d8e24b63). The previous web release was 8b7b82ee. Only the web image is replaced; the Diary keeps the image of the Diary release 5453963a.
+
+What changed for you: an administrator can choose the role of a new invitation.
+- Settings, Users: the invitation link can be made for a member or for an administrator. The choice starts at Member and goes back to Member after an administrator link is made; the server already accepted only administrators for this (noevia-web#131).
+- Code tasks in the native server can now run the Planner pipeline (plan, change, tests, review) and the Planner review of a direct task, with the Code engine bridge answering the role engine the pipeline uses (noevia-rs#512, noevia-core#378; end-to-end tests noevia-rs#516). This stays switched off until the owner turns on native Code tasks; until then Code mode runs exactly as before.
+- Also included and not used yet: the native chat preparation pieces (frame block, instruction skills, effort and sampling, routing, retrieval, images; noevia-rs#509, #513, #514, #515), a guard that keeps production code from loading the old approvals reference (noevia-core#379), and faster CI (noevia-rs#497, noevia-core#370).
+
+## Release port batch 3 8b7b82ee - 2026-11-13 (web image only; noevia-rs#488, #489, #495, #496, #498, #499, #500, #503, #506, #510; noevia-core#363, #364, #371, #372, #373, #374, #376, #377; #2561, #2562, #2582)
 
 Pins: rs fcebcc62 (was a0d7df69), core d6bc7ab8 (was 8558e292), services 0981b446 (was 0bc10693; lock only: the Diary and sidecar Dockerfiles at that ref pin rs fcebcc62, and those images are not rebuilt), web d8e24b63 unchanged. The previous web release was af67a21f. Only the web image is replaced; the Diary keeps the image of the Diary release 5453963a.
 
