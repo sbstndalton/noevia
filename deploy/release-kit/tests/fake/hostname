@@ -1,0 +1,3 @@
+#!/bin/bash
+# Fake hostname.
+echo testhost

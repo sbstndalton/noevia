@@ -1,0 +1,51 @@
+#!/bin/bash
+# Fake docker for the release-kit tests: containers are directories under $FAKE/c/<name>/ (Image, Status, Health, RC,
+# Started, Id, Env, Project, logs, ready, top), images are files under $FAKE/img/. Only the calls the kit makes.
+set -u
+c=$FAKE/c; img=$FAKE/img; mkdir -p "$c" "$img"
+echo "docker $*" >>"$FAKE/docker.calls"
+key() { printf '%s' "$1" | tr '/:' '__'; }
+rd() { cat "$c/$1/$2" 2>/dev/null || printf '%s' "${3:-}"; }
+render() {  # render <name> <format>
+  local n=$1 f=$2 d=$c/$1
+  [ -d "$d" ] || { echo "Error: No such object: $n" >&2; return 1; }
+  if [[ "$f" == *'range .Config.Env'* ]]; then cat "$d/Env"; return 0; fi
+  f=${f//'{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{end}}'/$(rd "$n" Project)}
+  f=${f//'{{index .Config.Labels "com.docker.compose.project"}}'/$(rd "$n" Project)}
+  f=${f//'{{.Name}}'//$n}; f=${f//'{{.Id}}'/$(rd "$n" Id "id-$n")}; f=${f//'{{.Image}}'/$(rd "$n" Image)}
+  f=${f//'{{.Config.Image}}'/$(rd "$n" ConfigImage)}
+  f=${f//'{{.State.StartedAt}}'/$(rd "$n" Started 2026-01-01T00:00:00Z)}; f=${f//'{{.State.Status}}'/$(rd "$n" Status running)}
+  f=${f//'{{.State.Health.Status}}'/$(rd "$n" Health healthy)}; f=${f//'{{.RestartCount}}'/$(rd "$n" RC 0)}
+  f=${f//'{{.State.ExitCode}}'/0}; f=${f//'{{.State.Running}}'/true}
+  printf '%s\n' "$f"
+}
+fmt_of() { while [ $# -gt 0 ]; do case "$1" in --format | -f) printf '%s' "$2"; return;; esac; shift; done; }
+cmd=$1; shift
+case "$cmd" in
+  ps) want=; while [ $# -gt 0 ]; do case "$1" in --filter) want=${2#label=com.docker.compose.project=}; shift;; esac; shift; done
+      for d in "$c"/*/; do [ -d "$d" ] || continue; n=$(basename "$d"); [ -z "$want" ] || [ "$(rd "$n" Project)" = "$want" ] && echo "$n"; done ;;
+  inspect)
+    f=$(fmt_of "$@"); names=(); while [ $# -gt 0 ]; do case "$1" in --format | -f) shift;; -*) ;; *) names+=("$1");; esac; shift; done
+    if [ -z "$f" ]; then n=${names[0]}; [ -d "$c/$n" ] || exit 1
+      jq -n --arg id "$(rd "$n" Id "id-$n")" --arg n "/$n" --arg im "$(rd "$n" Image)" --arg st "$(rd "$n" Status running)" --arg h "$(rd "$n" Health healthy)" \
+        '[{Id:$id, Name:$n, Image:$im, Created:"x", RestartCount:0, State:{Status:$st, StartedAt:"x", Health:{Status:$h}}, Config:{Image:$im, Entrypoint:null, Cmd:null, Labels:{}}, Mounts:[], NetworkSettings:{Networks:{}}}]'; exit 0; fi
+    rc=0; for n in "${names[@]}"; do render "$n" "$f" || rc=1; done; exit $rc ;;
+  image)
+    sub=$1; shift
+    case "$sub" in
+      inspect) ref=; while [ $# -gt 0 ]; do case "$1" in --format) shift;; *) ref=$1;; esac; shift; done
+               [ -f "$img/$(key "$ref")" ] || { echo "Error: No such image: $ref" >&2; exit 1; }; cat "$img/$(key "$ref")" ;;
+      rm) rm -f "$img/$(key "${@: -1}")" ;;
+    esac ;;
+  tag) src=$1; dst=$2; if [ -f "$img/$(key "$src")" ]; then cp "$img/$(key "$src")" "$img/$(key "$dst")"; else printf '%s\n' "$src" >"$img/$(key "$dst")"; fi ;;
+  logs) cat "$c/${@: -1}/logs" 2>/dev/null; true ;;
+  top) cat "$c/$1/top" 2>/dev/null; true ;;
+  stop) n=${@: -1}; echo exited >"$c/$n/Status"; echo "stop $n" >>"$FAKE/events" ;;
+  start) n=${@: -1}; echo running >"$c/$n/Status"; echo "start $n" >>"$FAKE/events" ;;
+  exec) while [[ "$1" == -* ]]; do case "$1" in -e) shift;; esac; shift; done; n=$1; shift
+        if [[ "$*" == *api/ready* ]]; then cat "$c/$n/ready"; elif [[ "$*" == *api/health* ]]; then exit "$(cat "$FAKE/diary_health_rc" 2>/dev/null || echo 0)"; fi ;;
+  compose)
+    envf=; files=(); while [ $# -gt 0 ]; do case "$1" in --env-file) envf=$2; shift;; -f) files+=("$2"); shift;; esac; shift; done
+    exec bash "$(dirname "$0")/compose-render" "$envf" "${files[@]}" ;;
+  *) echo "fake docker: unsupported $cmd" >&2; exit 2 ;;
+esac

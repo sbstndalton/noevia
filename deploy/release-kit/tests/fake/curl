@@ -1,0 +1,7 @@
+#!/bin/bash
+# Fake curl: /api/ready answers the fake web's ready file; other paths answer $FAKE/http_code (default 401).
+url=${@: -1}; code=$(cat "$FAKE/http_code" 2>/dev/null || echo 401)
+case "$url" in
+  */api/ready) cat "$FAKE/c/cowork-web-1/ready" ;;
+  *) [[ "$*" == *http_code* ]] && printf '%s' "$code" ;;
+esac

@@ -1,0 +1,10 @@
+# What a release tree must carry for a live web switch to keep working after a rollback onto it (rollback-web.sh, #2638).
+# KEY, a path inside the target release tree (the assembled tarball's layout: rs/, core/, ...), then optionally a fixed
+# string that file must contain. Every row of a key must hold. Beyond these rows, rollback-web.sh requires every set
+# switch to be named in the target's Rust front (rs/bins or rs/crates): every web switch is read by the front, and a
+# target whose front does not read it either ignores the key (a stale line) or, when its Core reads it, splits the pair
+# the way #2638 describes (Core refuses Code starts while nothing serves them).
+NOEVIA_CODE_EXECUTOR rs/bins/noevia-server/src/code_routes.rs pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";
+NOEVIA_CODE_EXECUTOR core/server/rust-code-executor.cjs NOEVIA_CODE_EXECUTOR
+NOEVIA_CHAT_EXECUTOR rs/bins/noevia-server/src/chat_native.rs
+NOEVIA_CHAT_EXECUTOR core/server/rust-chat-native.cjs
