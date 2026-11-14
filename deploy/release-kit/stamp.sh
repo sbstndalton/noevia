@@ -4,9 +4,10 @@
 # The first line is "<KIND> written <date -u> on <host>"; the body follows unchanged. A new file is never overwritten;
 # --append adds "---- <KIND> appended <date -u> on <host> ----" and the body. Write times into the body only from
 # `date -u` too (e.g. "$(date -u +%TZ)"), never by hand.
-# stamp.sh --check <file> : names every HH:MMZ time on the first line that differs from the file's write time by more
-# than 120 s (exit 3), so a reviewer can see a hand-written time.
-set -euo pipefail
+# stamp.sh --check <file> : for a record NOT written by stamp.sh: names every HH:MMZ time on its first line that differs
+# from the file's last write by more than 120 s (exit 3), so a reviewer can see a hand-written time. A file stamp.sh
+# wrote needs no check (its first line is the clock's); after an --append its last write is the append's.
+set -euo pipefail -o noclobber
 HERE=$(cd -- "$(dirname -- "$0")" && pwd); . "$HERE/lib.sh"
 if [ "${1:-}" = --check ]; then
   f=${2:?file}; m=$(date -u -r "$f" +%s); bad=0

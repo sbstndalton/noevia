@@ -4,6 +4,7 @@
 # flips-pb*/switch.sh (switch-v3 rebound by sed) and its rollback-<KEY>.sh files (rollback-switch.sh KEY).
 #   Flip:      switch.sh NOEVIA_RUST_RETRIEVAL shadow -        (DRY=1 first, then CONFIRM_DRY=<digest> after reading it)
 #   Rollback:  ROLLBACK=1 switch.sh NOEVIA_RUST_RETRIEVAL - shadow   (or rollback-switch.sh NOEVIA_RUST_RETRIEVAL)
+#   Step back to an earlier value (on -> shadow): a forward run, with its DRY: switch.sh NOEVIA_RUST_RETRIEVAL shadow on
 # NEW/OLD: a value, or '-' for absent; allowed keys and values are in web-switches.txt.
 # The web environment is an explicit Compose list (no env_file), so a key in .env alone never reaches the container:
 # this edits exactly ONE .env line (temp file, same owner/mode, mv) and, only when the key goes absent<->set, exactly ONE
@@ -11,10 +12,11 @@
 # byte-identical to before the flip. Recreates web only with the release's up.sh call (same image; --no-build --pull
 # never --no-deps), verifies, and on any failed check after the edit puts both files back and recreates web again.
 # Forward runs are bound to the live release (WEB_VERSION/WEB_IMAGE in kit.conf) and need a read DRY run (#2632).
-# A rollback runs on whatever image and version are live (after a web image rollback too, so a switch line can always
-# be removed) and verifies that the image did not change. Never touches SQLite, other containers, the key directory or
+# A rollback only removes a switch (NEW must be '-'): it runs on whatever image and version are live (after a web image
+# rollback too, so a switch line can always be removed), needs no DRY and verifies that the image did not change. Never touches SQLite, other containers, the key directory or
 # models. Prints no env value except KEY's own. Every time it prints comes from the clock.
-set -Eeuo pipefail; umask 077; trap '' HUP PIPE
+# No `set -E`: a failure inside a $(...) check must not run the restore in that subshell (it runs once, from the check).
+set -euo pipefail; umask 077; trap '' HUP PIPE
 HERE=$(cd -- "$(dirname -- "$0")" && pwd); . "$HERE/lib.sh"; KIT_PREFIX=switch
 KEY=${1:?KEY}; NEW=${2:?NEW or -}; OLD=${3:?OLD or -}; R=${ROLLBACK:-0}
 kit_conf "${KIT_CONF:-$HERE/kit.conf}" || exit 1
@@ -29,8 +31,9 @@ re=$(awk -v k="$KEY" '$1 == k { print $2; exit }' "$HERE/web-switches.txt")
 [ -n "$re" ] || { echo switch_error=key_refused; exit 64; }
 valid() { [ "$1" = - ] || [[ "$1" =~ $re ]]; }
 valid "$NEW" && valid "$OLD" && [ "$NEW" != "$OLD" ] || { echo switch_error=value_refused; exit 64; }
-# A forward run never removes a key, a rollback never sets one that was absent.
-if [ "$R" = 1 ]; then [ "$OLD" != - ] || { echo switch_error=rollback_from_absent; exit 64; }
+# A forward run never removes a key; a rollback only removes one (it skips the DRY, the 08:00-09:30Z window and the
+# release binding, so it may never set or change a value).
+if [ "$R" = 1 ]; then [ "$NEW" = - ] || { echo "switch_error=rollback_only_removes (to step back to a value run a forward flip with its DRY)"; exit 64; }
 else [ "$NEW" != - ] || { echo switch_error=removal_needs_rollback; exit 64; }; fi
 STAMP=$(kit_stamp); B=$F/bak/$KEY-$STAMP
 mkdir -p -m 0700 "$F/bak"; exec </dev/null > >(tee -p -a "$F/switch-$KEY-$STAMP.log") 2>&1
@@ -105,7 +108,7 @@ timeout 300 bash "$UP" "${UPC[@]}" >"$B/up-web.out" 2>&1 || restore web_up_faile
 [ "$(insp "$WEB" '{{.Image}}')" = "$IMG0" ] || restore image_changed
 [ "$(insp "$WEB" '{{.State.Health.Status}}')" = healthy ] || restore not_healthy
 [ "$(cenv)" = "$NEW" ] || restore container_value
-sleep "${KIT_SETTLE_S:-15}"; for n in "$WEB" "$EG"; do [ "$(insp "$n" '{{.RestartCount}}')" = 0 ] && [ "$(insp "$n" '{{.State.Status}}')" = running ] || restore "restarting_$n"; done
+sleep 15; for n in "$WEB" "$EG"; do [ "$(insp "$n" '{{.RestartCount}}')" = 0 ] && [ "$(insp "$n" '{{.State.Status}}')" = running ] || restore "restarting_$n"; done
 ok=0; for _ in $(seq 1 45); do L=$(docker logs -t "$WEB" 2>&1) || L=; read -r ta tb < <(awk '/"event":"egress.issuer_started"/{a=$1;b=""} /"event":"egress.control_ready"/&&a!=""&&b==""{b=$1} END{print a" "b}' <<<"$L"); [ -n "${tb:-}" ] && { ok=1; break; }; sleep 2; done; [ $ok = 1 ] || restore no_control_ready
 DL=$(docker logs "$WEB" 2>&1) || DL=
 [ "$(awk '/"event":"egress.issuer_started"/{n++; k=/"key":"kept"/} END{print n+0":"k+0}' <<<"$DL")" = 1:1 ] || restore issuer_not_kept_once

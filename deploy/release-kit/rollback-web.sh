@@ -15,8 +15,11 @@
 # The preflight files listed in PREFLIGHT_FILES come back from <tools/preflight>.bak.before-<RELEASE_ID>; `current` points
 # at the old release. DRY=1 prints what it would change (key names only) and changes nothing.
 # Refuses inside 04:00-04:30 America/New_York, while a flip, cutover or Diary step runs (shared lock), or when the live
-# .env does not name the release. Every time it prints comes from the clock.
-set -Eeuo pipefail; umask 077
+# .env does not name the release. Resumable: once the files are committed it records that in FLIPS_DIR; if anything
+# after that fails (the recreate, a check, a dropped session: HUP is ignored and the run is logged in FLIPS_DIR), the
+# same command run again finds the committed files unchanged and finishes the recreate and the checks.
+# Every time it prints comes from the clock.
+set -euo pipefail; umask 077; trap '' HUP PIPE
 HERE=$(cd -- "$(dirname -- "$0")" && pwd); . "$HERE/lib.sh"; KIT_PREFIX=rollback
 B=${1:?backup dir}; DROP=0; [ "${2:-}" = --drop-unsupported ] && DROP=1; [ -z "${2:-}" ] || [ $DROP = 1 ] || { echo "rollback_error=unknown_option"; exit 64; }
 kit_conf "${KIT_CONF:-$HERE/kit.conf}" || exit 1
@@ -28,20 +31,31 @@ RKEYS=${CONF_RELEASE_KEYS:-COWORK_VERSION}; PFILES=${CONF_PREFLIGHT_FILES-check.
 [[ ",$RKEYS," == *,COWORK_VERSION,* ]] || { echo rollback_error=release_keys_without_cowork_version; exit 64; }
 ENV=$A/config/.env; PF=$A/tools/preflight; KD=$A/egress-control; BASE=$C/docker-compose.yml; OVR=$C/docker-compose.override.yml
 die() { echo "rollback_error=$1"; exit 1; }
+install -d -m 0700 "$F"; exec </dev/null > >(tee -p -a "$F/rollback-web-$KID-$(kit_stamp).log") 2>&1
 echo "rollback-web $KID -> ${OV:0:7} dry=${DRY:-0} drop_unsupported=$DROP start $(kit_now)"
 kit_clock rollback || exit 1
-install -d -m 0700 "$F"; exec 8>>"$F/.switch.lock"; flock -n 8 || die locked_by_a_flip
+exec 8>>"$F/.switch.lock"; flock -n 8 || die locked_by_a_flip
+MARK=$F/rollback-web-$KID.committed; committed=0
+after_commit() { local rc=$?; [ "$committed" = 1 ] && [ "$rc" != 0 ] && echo "rollback_error=after_commit (the files are committed, see $MARK; run the same command again: it resumes with the recreate and the checks)"; return 0; }
+trap 'after_commit; [ -z "${W:-}" ] || rm -rf "$W"' EXIT
 [ "$(kit_running cutover.sh cutover-diary.sh rollback-diary.sh backup-diary.sh)" = 0 ] || die release_step_running
 [ "$(docker image inspect --format '{{.Id}}' "cowork-web:$OV")" = "$OID" ] || die old_image
 (cd "$B" && sha256sum -c --quiet SHA256SUMS) || die backup_checksums
 [ -f "$ENV.bak.before-$KID" ] || die missing_bak; cmp -s "$ENV.bak.before-$KID" "$B/.env" || die env_bak_mismatch
-[ -z "$PFILES" ] || [ -d "$PF.bak.before-$KID" ] || die missing_pf_bak
-[ "$(env_get "$ENV" COWORK_VERSION)" = "$V" ] || die live_env_not_release_${V:0:7}
+for f in ${PFILES//,/ }; do [[ "$f" =~ ^[A-Za-z0-9_.-]+$ ]] && [ -f "$PF.bak.before-$KID/$f" ] || die "missing_pf_bak:$f"; done
+# A run that committed its files and then stopped: the same command resumes when the files are still the committed ones.
+RESUME=0
+if [ -f "$MARK" ] && [ "$(env_get "$ENV" COWORK_VERSION)" = "$OV" ]; then
+  [ "$(cat "$MARK")" = "$(kit_digest "$ENV" "$OVR")" ] || die "committed_files_changed_since_the_interrupted_run (compare with $B/.env.pre-rollback by hand)"
+  RESUME=1; echo "resuming the rollback committed earlier ($MARK): recreate and checks only"
+fi
+[ $RESUME = 1 ] || [ "$(env_get "$ENV" COWORK_VERSION)" = "$V" ] || die live_env_not_release_${V:0:7}
 [ -d "$TT/rs" ] && [ -d "$TT/core/server" ] || die "target_tree_unreadable:$TT"
 [ -z "$(tail -c1 "$ENV")" ] && [ -z "$(tail -c1 "$OVR")" ] || die file_without_final_newline
 
+if [ $RESUME = 0 ]; then
 # ---- the new .env: the live one with the release keys put back ----
-W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+W=$(mktemp -d)
 cp "$ENV" "$W/env"
 for k in ${RKEYS//,/ }; do [[ "$k" =~ ^[A-Z][A-Z0-9_]*$ ]] || die release_key_unreadable; env_put "$W/env" "$k" "$(env_get "$B/.env" "$k")" >"$W/env.n"; mv "$W/env.n" "$W/env"; done
 later=$(env_keys_differing "$B/.env" "$W/env" | tr '\n' ' ')
@@ -49,7 +63,8 @@ later=$(env_keys_differing "$B/.env" "$W/env" | tr '\n' ' ')
 [ -n "$later" ] || cmp -s "$W/env" "$B/.env" || die env_differs_from_backup
 
 # ---- switches the target cannot run ----
-names_in_front() { grep -rqsF --include='*.rs' -- "$1" "$TT/rs/bins" "$TT/rs/crates"; }
+# The key as a whole word in the front's source (bins/*/src, crates/*/src; never tests/).
+names_in_front() { local f; while IFS= read -r f; do grep -qswF -- "$1" "$f" && return 0; done < <({ find "$TT"/rs/bins/*/src "$TT"/rs/crates/*/src -type f -name '*.rs' 2>/dev/null || true; } | LC_ALL=C sort); return 1; }
 rows_hold() { local k p s
   while read -r k p s; do
     case "$k" in '' | '#'*) continue ;; esac; [ "$k" = "$1" ] || continue
@@ -81,11 +96,16 @@ if [ "${DRY:-0}" = 1 ]; then
   echo "DRY: nothing changed, web not recreated $(kit_now)"; exit 0
 fi
 
-# ---- commit ----
+# ---- commit (the marker first, with the bytes about to be written, so an interrupted run can be resumed) ----
 cp -p "$ENV" "$B/.env.pre-rollback"; cp -p "$OVR" "$B/override.pre-rollback.yml"
-eg_before=$(docker inspect --format '{{.Id}} {{.State.StartedAt}}' "$EG" 2>/dev/null || true)
+docker inspect --format '{{.Id}} {{.State.StartedAt}}' "$EG" >"$MARK.egress" 2>/dev/null || : >"$MARK.egress"
+printf '%s\n' "$later" >"$MARK.later"; printf '%s\n' "$unsup" >"$MARK.dropped"; kit_digest "$W/env" "$W/ovr" >"$MARK"; committed=1
 T=$(mktemp "$A/config/.rb.XXXXXX"); cp "$W/env" "$T"; chmod --reference="$ENV" "$T"; chown --reference="$ENV" "$T"; mv -Tf "$T" "$ENV"
 if ! cmp -s "$OVR" "$W/ovr"; then TO=$(mktemp "$C/.rb.XXXXXX"); cp "$W/ovr" "$TO"; chmod --reference="$OVR" "$TO"; chown --reference="$OVR" "$TO"; mv -Tf "$TO" "$OVR"; fi
+else
+  committed=1; later=$(cat "$MARK.later" 2>/dev/null || true); unsup=$(cat "$MARK.dropped" 2>/dev/null || true)
+fi
+eg_before=$(cat "$MARK.egress" 2>/dev/null || true)
 for f in ${PFILES//,/ }; do cp -p "$PF.bak.before-$KID/$f" "$PF/$f"; done
 ln -sfnT "$A/releases/$OV" "$A/current.new.$$"; mv -Tf "$A/current.new.$$" "$A/current"
 echo "files committed $(kit_now); web up"
@@ -104,4 +124,5 @@ OL=$(docker logs "$WEB" 2>&1) || OL=
 [ "$(grep -cE '"event":"egress\.(issuer_unavailable|key_superseded|control_rekey_refused|control_rekeyed)"' <<<"$OL" || true)" = 0 ] || die old_issuer_refusal_or_rekey
 if [ -s "$B/key-before.sha256" ]; then [ "$(sha256sum "$KD/current.key" | cut -d' ' -f1)" = "$(cat "$B/key-before.sha256")" ] || die key_changed; fi
 kept=$(for k in $later; do [ " $unsup" == *" $k "* ] || printf '%s ' "$k"; done)
+committed=0; rm -f "$MARK" "$MARK.later" "$MARK.dropped" "$MARK.egress"
 echo "rollback=verified image=${OID:7:12} egress_untouched=$EG old_control_ready=yes issuer=kept sqlite_restore=not_performed kept_later_keys=[$kept] dropped_switches=[$([ $DROP = 1 ] && echo "$unsup")] $(kit_now)"

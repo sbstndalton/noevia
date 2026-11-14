@@ -14,6 +14,7 @@ KIT_CONF_KEYS="APPDATA COMPOSE_DIR PROJECT FLIPS_DIR GATE WEB EGRESS WEB_URL WEB
 # character outside [A-Za-z0-9_./:@+,-] is refused, so a path or id can never carry a command.
 kit_conf() {
   local file=$1 line k v allowed=" $KIT_CONF_KEYS " seen=" "
+  for k in $KIT_CONF_KEYS; do unset "CONF_$k"; done   # nothing from the caller's environment counts as configuration
   [ -f "$file" ] || { echo "kit_error=conf_missing:$file"; return 1; }
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in '' | '#'*) continue ;; esac
@@ -44,7 +45,7 @@ kit_clock() {
 # process whose command line merely mentions a name is not counted.
 kit_running() {
   ps -eo args | awk -v names=" $* " '$1 ~ /(^|\/)(ba|da)?sh$/ {
-    for (i = 2; i <= NF; i++) { if ($i == "-c") next; if ($i !~ /^-/) break }
+    for (i = 2; i <= NF; i++) { if ($i == "-c") next; if ($i == "-o" || $i == "+o" || $i == "-O" || $i == "+O" || $i == "--rcfile" || $i == "--init-file") { i++; continue } if ($i !~ /^[-+]/) break }
     if (i > NF) next; b = $i; sub(/^.*\//, "", b); if (index(names, " " b " ")) n++
   } END { print n + 0 }'
 }
@@ -65,13 +66,15 @@ env_keys_differing() {
 }
 
 # The dry-run gate (#2632): a DRY run records a digest of exactly what the real run would write; the real run needs that
-# digest's first 12 characters in CONFIRM_DRY, from a DRY at least KIT_DRY_MIN_AGE seconds (default 60) and at most
-# KIT_DRY_MAX_AGE seconds (default 3600) old, over the same inputs. So a dry run and the real run can never be chained
-# in one command line: somebody has to read the dry run and come back. Rollbacks do not need it.
+# digest's first 12 characters in CONFIRM_DRY, from a DRY at least 60 and at most 3600 seconds old, over byte-identical
+# inputs; a confirmation works once. So a dry run and the real run can never be chained in one command line: somebody
+# has to read the dry run and come back. Only removals (rollbacks to absent) do without it. The ages are fixed (no
+# environment override).
+KIT_DRY_MIN_AGE=60; KIT_DRY_MAX_AGE=3600
 kit_digest() { cat "$@" | sha256sum | cut -c1-64; }
 kit_dry_record() {  # kit_dry_record <state dir> <scope> <digest>
   install -d -m 0700 "$1/dry"; printf '%s %s\n' "$(kit_epoch)" "$3" >"$1/dry/$2"
-  echo "DRY recorded at $(kit_now): to run it for real, read the diff above, wait at least ${KIT_DRY_MIN_AGE:-60} s, then run the same command again with CONFIRM_DRY=${3:0:12} in front (valid for ${KIT_DRY_MAX_AGE:-3600} s while nothing changes)"
+  echo "DRY recorded at $(kit_now): to run it for real, read the diff above, wait at least $KIT_DRY_MIN_AGE s, then run the same command again with CONFIRM_DRY=${3:0:12} in front (valid for $KIT_DRY_MAX_AGE s while nothing changes)"
 }
 kit_dry_check() {  # kit_dry_check <state dir> <scope> <digest>: returns 0 when a matching, aged DRY exists
   local f="$1/dry/$2" at dg age
@@ -80,8 +83,8 @@ kit_dry_check() {  # kit_dry_check <state dir> <scope> <digest>: returns 0 when 
   read -r at dg <"$f"
   [ "$dg" = "$3" ] && [ "${CONFIRM_DRY}" = "${3:0:12}" ] || { echo "${KIT_PREFIX:-kit}_error=dry_run_digest_differs (the files changed since the DRY, or another command): run DRY=1 again"; return 1; }
   age=$(($(kit_epoch) - at))
-  [ "$age" -ge "${KIT_DRY_MIN_AGE:-60}" ] || { echo "${KIT_PREFIX:-kit}_error=dry_run_too_recent_${age}s (read it first; at least ${KIT_DRY_MIN_AGE:-60} s)"; return 1; }
-  [ "$age" -le "${KIT_DRY_MAX_AGE:-3600}" ] || { echo "${KIT_PREFIX:-kit}_error=dry_run_too_old_${age}s"; return 1; }
+  [ "$age" -ge "$KIT_DRY_MIN_AGE" ] || { echo "${KIT_PREFIX:-kit}_error=dry_run_too_recent_${age}s (read it first; at least $KIT_DRY_MIN_AGE s)"; return 1; }
+  [ "$age" -le "$KIT_DRY_MAX_AGE" ] || { echo "${KIT_PREFIX:-kit}_error=dry_run_too_old_${age}s"; return 1; }
   rm -f "$f"; return 0
 }
 

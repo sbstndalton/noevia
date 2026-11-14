@@ -14,7 +14,7 @@ temporary directory with a fake `docker`, `curl`, `up.sh` and clock (`tests/fake
 | Script | Replaces | Call (on the server, as root, from the kit directory) |
 |---|---|---|
 | `switch.sh KEY NEW OLD` | `flips-pb*/switch.sh` (switch-v3 rebound per release) | `DRY=1 bash switch.sh KEY NEW OLD`, read it, wait at least 60 s, then `CONFIRM_DRY=<12 hex from the DRY> bash switch.sh KEY NEW OLD` |
-| `rollback-switch.sh KEY [TO]` | `rollback-<KEY>.sh` (one generated file per live key) | `bash rollback-switch.sh KEY` (live value → absent; `TO` steps back to a value instead). No DRY needed; `DRY=1` still shows the diff |
+| `rollback-switch.sh KEY` | `rollback-<KEY>.sh` (one generated file per live key) | `bash rollback-switch.sh KEY` (live value → absent). No DRY needed; `DRY=1` still shows the diff. To step back to an earlier value (`on` → `shadow`) run `switch.sh KEY shadow on` forward, with its DRY |
 | `rollback-web.sh <backup-dir> [--drop-unsupported]` | `release-prep/<id>/rollback-web.sh` | `DRY=1 bash rollback-web.sh <backup-dir>` first, then without `DRY` |
 | `diary-switch.sh KEY NEW OLD` | `diary-<id>/flips/diary-switch.sh`, `diary-switch-v2.sh` and the `flip-*.sh` wrappers | as `switch.sh`: `DRY=1` first, then `CONFIRM_DRY=<digest>` at least 60 s later |
 | `diary-rollback-switch.sh KEY [TO]` | the Diary `rollback-*.sh` / `rollback-*-v2.sh` wrappers | `bash diary-rollback-switch.sh KEY` (to absent; a leaf goes back to the value recorded at its flip) |
@@ -35,10 +35,16 @@ temporary directory with a fake `docker`, `curl`, `up.sh` and clock (`tests/fake
   rollback refuses before changing anything (`target_cannot_run_switches=[…]`). Roll those switches back first with
   `rollback-switch.sh`, or pass `--drop-unsupported` to remove their `.env` and web override lines in the same edit.
   Override lines whose `.env` line is gone are named as `stale_override_lines`.
-- **Switch rollbacks work after an image rollback.** With `ROLLBACK=1` `switch.sh` runs on whatever image and version
-  are live and verifies that the image did not change; forward flips stay bound to `WEB_VERSION`/`WEB_IMAGE`.
+- **Switch rollbacks work after an image rollback, and only remove.** With `ROLLBACK=1` `switch.sh` runs on whatever
+  image and version are live and verifies that the image did not change; because it skips the DRY, the 08:00–09:30Z
+  window and the release binding, it refuses anything but removing the key. Forward flips stay bound to
+  `WEB_VERSION`/`WEB_IMAGE`.
+- **A web rollback can be finished after an interruption.** `rollback-web.sh` ignores HUP, logs to `FLIPS_DIR`, checks
+  every preflight backup file before it commits, and records the commit; run again after a failure past that point,
+  it resumes (recreate and checks only) when the committed files are unchanged.
 - **A DRY run never chains into the real run (#2632).** A forward flip needs `CONFIRM_DRY` = the digest the DRY
-  printed, from a DRY 60 s to 60 min old over byte-identical inputs; the confirmation is used up by the run.
+  printed, from a DRY 60 s to 60 min old over byte-identical inputs; the confirmation is used up by the run. The ages
+  are fixed, and no `CONF_*` value is taken from the environment.
 - **Times come from the clock (#2632).** Every printed time is `date -u`; `stamp.sh` writes record files with a
   clock-stamped first line and never overwrites one.
 - **One lock.** `switch.sh`, `rollback-web.sh` and the Diary kit share `FLIPS_DIR/.switch.lock`; a running cutover,
