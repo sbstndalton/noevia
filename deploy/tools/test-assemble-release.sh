@@ -3185,6 +3185,11 @@ mw_core; sed "s/=== 'rust'/=== 'native'/" "$work/mw-core.saved" > "$ex_core/rust
 check "model writes mix: a Core whose switch value differs from the front's is refused" 'refused "model writes pairing: .* do not read the same switch value"'
 mw_core old; mw_front; ex_try mw-budget-cached
 check "model writes mix: a Core that reads the budget only at its start is refused" 'refused "model writes pairing: the Rust front saves the inference budget row but Core.s inference-budget.cjs does not read it on every use"'
+{ cat "$work/mw-front.saved"; printf '%s\n' 'pub const PRESET: &str = crate::preset_read_routes::PATH;'; } > "$work/mw-front-preset.saved"
+mw_core; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-no-core-refusal
+check "model writes mix: a front answering the preset save beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers PUT /api/models/preset but Core.s rust-model-writes.cjs does not refuse it"'
+mw_core; sed "s#^const SWITCH#const OWNED_PATHS = Object.freeze(['/api/models/inference-budget', '/api/models/idle-unload', '/api/models/preset']);\nconst SWITCH#" "$work/mw-core.saved" > "$ex_core/rust-model-writes.cjs"; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-new-new
+check "model writes new/new: a front answering the preset save beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 mw_core; rm -f "$ex_rs/model_writes_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' > "$ex_rs/moved_writer.rs"; ex_try mw-moved
 check "model writes: a front naming NOEVIA_RUST_MODEL_WRITES without model_writes_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs"'
 rm -f "$ex_rs/moved_writer.rs" "$ex_rs/model_writes_routes.rs" "$ex_core/rust-model-writes.cjs" "$ex_core/inference-budget.cjs"

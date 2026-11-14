@@ -2004,6 +2004,11 @@ if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
     || die "model writes pairing: the Rust front's NOEVIA_RUST_MODEL_WRITES=rust and Core's rust-model-writes.cjs do not read the same switch value (the PUTs would be answered by both, or by neither)"
   code_has "$ex_core/inference-budget.cjs" '^[[:space:]]*function savedGib[(]' \
     || die "model writes pairing: the Rust front saves the inference budget row but Core's inference-budget.cjs does not read it on every use (it would enforce the figure it read at its start until it restarts)"
+  # The preset editor's save (track R11 step 8): a front that answers it needs Core to refuse it under the switch too.
+  if grep -qE '^pub const PRESET: &str = ' <<<"$mw_front"; then
+    code_has "$ex_core/rust-model-writes.cjs" "^const OWNED_PATHS = .*'/api/models/preset'" \
+      || die "model writes pairing: the Rust front answers PUT /api/models/preset but Core's rust-model-writes.cjs does not refuse it (both would answer the preset save)"
+  fi
 elif ex_front_named NOEVIA_RUST_MODEL_WRITES; then
   die "model writes pairing: the Rust front names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs (the writer moved: update this guard)"
 fi
