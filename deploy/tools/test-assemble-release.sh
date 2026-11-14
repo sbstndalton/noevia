@@ -3220,6 +3220,8 @@ mw_core_with "const OWNED_GETS = Object.freeze(['/api/models/mtp-artifact']); //
 check "model writes old pull: a pull named only in comments or another list is not a refusal (assembles beside a front without it)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 mw_core_with "$MW_MTP" 'const OWNED_POSTS = Object.freeze([' "  '/api/models/pull'," "const LATER = Object.freeze(['/api/models/other']);"; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-unclosed-list
 check "model writes: a Core list not closed before the next declaration is a failed read, refused rather than read on into the next list" 'refused "model writes pairing: Core.s rust-model-writes.cjs could not be read for POST /api/models/pull"'
+mw_core_with "$MW_MTP" 'const OWNED_POSTS = Object.freeze([' "  '/api/models/pull'," "const LATER = Object.freeze(['/api/models/other']);"; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-unclosed-list-front-old
+check "model writes: an unclosed Core list is refused also when the front does not answer the route (a failed read is never a no)" 'refused "model writes pairing: Core.s rust-model-writes.cjs could not be read for POST /api/models/pull"'
 mw_core_with "$MW_MTP" "const OWNED_POSTS = ['/api/models/pull'];"; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-plain-array
 check "model writes new/new: a Core refusing the pull in a plain array (closed by ];) assembles beside a front answering it" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$ex_rs/model_pull_routes.rs"
@@ -3257,6 +3259,70 @@ mm_core old; mm_front; ex_try mm-no-clear
 check "model manager proxy mix: a Core whose scan cache bridge has no clear op is refused" 'refused "model manager proxy pairing: the Rust front clears Core.s folder scan cache but Core.s rust-model-manager-scan-cache.cjs has no clear op"'
 mm_core; rm -f "$ex_rs/model_manager_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_MANAGER";' > "$ex_rs/moved_proxy.rs"; ex_try mm-moved
 check "model manager proxy: a front naming NOEVIA_RUST_MODEL_MANAGER without model_manager_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_MANAGER but has no bins/noevia-server/src/model_manager_routes.rs"'
+# Rust port R11 step 10: /api/embedding (NOEVIA_RUST_EMBEDDING_ADMIN).
+rm -f "$ex_rs/moved_proxy.rs" "$ex_rs/model_manager_routes.rs"; mm_old_core
+cat > "$work/ea-core.saved" <<'JS'
+const SWITCH = 'NOEVIA_RUST_EMBEDDING_ADMIN';
+const OWNED_PATH = '/api/embedding';
+const frontOwns = (env = process.env) => env[SWITCH] === 'rust';
+JS
+cat > "$work/ea-front.saved" <<'RS'
+//! /api/embedding in the front.
+pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";
+pub fn on(get: impl Fn(&str) -> Option<String>) -> bool { get(SWITCH).as_deref() == Some("rust") }
+const INTENT_PROTOCOL: &str = "rust-embedding-service-intent-v1";
+RS
+ea_service_had=no; [ -f "$ex_core/embedding-service.cjs" ] && { cp "$ex_core/embedding-service.cjs" "$work/ea-service-orig.saved"; ea_service_had=yes; }
+printf '%s\n' "const INTENT_PROTOCOL = 'rust-embedding-service-intent-v1';" > "$work/ea-service-new.saved"
+ea_config_had=no; [ -f "$ex_core/embedding-config.cjs" ] && { cp "$ex_core/embedding-config.cjs" "$work/ea-config-orig.saved"; ea_config_had=yes; }
+printf '%s\n' 'function createEmbeddingConfig({ reread = false } = {}) {' '  function refresh() {' '    if (!reread) return;' '  }' '}' > "$work/ea-config-new.saved"
+printf '%s\n' 'function createEmbeddingConfig() {' '  // function refresh() { would re-read }' '}' > "$work/ea-config-old.saved"
+ea_core() { # [refusal: yes|no] [reread: yes|no] [intent: yes|no]
+  cp "$work/ea-core.saved" "$ex_core/rust-embedding-admin.cjs"
+  if [ "${3:-yes}" = no ]; then rm -f "$ex_core/embedding-service.cjs"; else cp "$work/ea-service-new.saved" "$ex_core/embedding-service.cjs"; fi
+  { cat "$work/ex-index.saved"
+    [ "${3:-yes}" = no ] || printf '%s\n' "  intentFile: require('./rust-embedding-admin.cjs').frontOwns() ? path.join(DATA_DIR, 'embedding-service-intent.json') : null }));"
+    [ "${1:-yes}" = no ] || printf '%s\n' "  if (require('./rust-embedding-admin.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"
+    if [ "${2:-yes}" = no ]; then printf '%s\n' "const embeddingAdmin = require('./rust-embedding-admin.cjs');"
+    else printf '%s\n' "  reread: require('./rust-embedding-admin.cjs').frontOwns() }));"; fi
+  } > "$w/server/index.cjs"
+  if [ "${2:-yes}" = no ]; then cp "$work/ea-config-old.saved" "$ex_core/embedding-config.cjs"; else cp "$work/ea-config-new.saved" "$ex_core/embedding-config.cjs"; fi
+}
+ea_old_core() { # the Core as it was before this block (embedding-config.cjs back, or gone when there was none)
+  rm -f "$ex_core/rust-embedding-admin.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"
+  if [ "$ea_config_had" = yes ]; then cp "$work/ea-config-orig.saved" "$ex_core/embedding-config.cjs"; else rm -f "$ex_core/embedding-config.cjs"; fi
+  if [ "$ea_service_had" = yes ]; then cp "$work/ea-service-orig.saved" "$ex_core/embedding-service.cjs"; else rm -f "$ex_core/embedding-service.cjs"; fi
+}
+ea_front() { cp "$work/ea-front.saved" "$ex_rs/embedding_admin_routes.rs"; }
+ea_old_core; rm -f "$ex_rs/embedding_admin_routes.rs"; ex_try ea-old-old
+check "embedding admin old/old: no front route on either side assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ea_core; ex_try ea-old-front-new-core
+check "embedding admin: an old front beside a Core with the refusal and the re-read (a Core ahead) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ea_core; ea_front; ex_try ea-new-new
+check "embedding admin new/new: the front's route beside Core's refusal and re-read assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ea_old_core; ea_front; ex_try ea-no-core-module
+check "embedding admin mix: the front's route beside a Core without rust-embedding-admin.cjs is refused" 'refused "embedding admin pairing: the Rust front answers /api/embedding .* but Core does not refuse it"'
+ea_core no yes; ea_front; ex_try ea-not-mounted
+check "embedding admin mix: a Core that loads the module but does not mount the refusal is refused" 'refused "embedding admin pairing: the Rust front answers /api/embedding .* but Core does not refuse it"'
+ea_core; sed "s/=== 'rust'/=== 'native'/" "$work/ea-core.saved" > "$ex_core/rust-embedding-admin.cjs"; ea_front; ex_try ea-switch
+check "embedding admin mix: a Core whose switch value differs from the front's is refused" 'refused "embedding admin pairing: .* do not read the same switch value"'
+ea_core yes no; ea_front; ex_try ea-no-reread
+check "embedding admin mix: a Core that refuses the path but never reads the configuration again is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
+ea_core; cp "$work/ea-config-old.saved" "$ex_core/embedding-config.cjs"; ea_front; ex_try ea-no-refresh
+check "embedding admin mix: a Core whose index.cjs asks for the re-read but whose configuration cannot re-read is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
+ea_core yes no; cp "$work/ea-config-new.saved" "$ex_core/embedding-config.cjs"; ea_front; ex_try ea-no-reread-wiring
+check "embedding admin mix: a Core that can re-read but whose index.cjs never switches it on is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
+ea_core yes yes no; ea_front; ex_try ea-no-intent-core
+check "embedding admin mix: a Core that does not read the front's announced service changes is refused" 'refused "embedding admin pairing: the Rust front announces its embedding service changes but Core does not read them"'
+ea_core; printf '%s\n' '// no announcement here' > "$ex_core/embedding-service.cjs"; ea_front; ex_try ea-intent-wired-not-read
+check "embedding admin mix: a Core that hands the service the intent file but whose service does not read it is refused" 'refused "embedding admin pairing: the Rust front announces its embedding service changes but Core does not read them"'
+ea_core yes yes no; cp "$work/ea-service-new.saved" "$ex_core/embedding-service.cjs"; ea_front; ex_try ea-intent-read-not-wired
+check "embedding admin mix: a Core whose service could read the announcement but whose index.cjs never hands it the file is refused" 'refused "embedding admin pairing: the Rust front announces its embedding service changes but Core does not read them"'
+ea_core; grep -v INTENT_PROTOCOL "$work/ea-front.saved" > "$ex_rs/embedding_admin_routes.rs"; ex_try ea-no-intent-front
+check "embedding admin mix: a front that changes the service without announcing it is refused" 'refused "embedding admin pairing: the Rust front changes the embedding service without announcing it"'
+ea_core; rm -f "$ex_rs/embedding_admin_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";' > "$ex_rs/moved_embedding.rs"; ex_try ea-moved
+check "embedding admin: a front naming NOEVIA_RUST_EMBEDDING_ADMIN without embedding_admin_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_EMBEDDING_ADMIN but has no bins/noevia-server/src/embedding_admin_routes.rs"'
+rm -f "$ex_rs/moved_embedding.rs"; ea_old_core
 rm -f "$ex_rs/moved_proxy.rs" "$ex_rs/model_manager_routes.rs" "$ex_core/rust-model-manager-proxy.cjs" "$ex_core/rust-model-manager-scan-cache.cjs"
 rm -f "$ex_rs/moved_executor.rs" "$ex_rs/code_routes.rs" "$ex_core/rust-code-executor.cjs" "$rz/crates/chat-turn/src/prepared.rs"
 rmdir "$rz/crates/chat-turn/src" "$rz/crates/chat-turn" "$rz/crates" 2>/dev/null || :
