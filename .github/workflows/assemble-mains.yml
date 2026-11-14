@@ -1,0 +1,37 @@
+name: Assemble current mains
+
+# sbstndalton/noevia#2596. Assembles the current main of noevia-rs, noevia-core, noevia-web and noevia-services with this
+# repo's assemble-release.sh (every pairing guard on), so a guard that a merge in another repo has made stale fails here
+# before a pin pull request meets it. It cannot run on those repos' merges (no cross-repo token or dispatch is used), so
+# it runs a few times a day and on demand.
+#
+# Reading a red run: the last lines of "Assemble the four mains" are assemble-release.sh's refusal, naming both sides of
+# the pair ("... pairing: the Rust front ... but Core ..."). That pair of main commits cannot ship together as it
+# stands: the side that moved last needs its counterpart (or the guard needs the new marker) before the next pin. A
+# download error is a failure of the run, not of a pair: run it again. See deploy/tools/check-mains-assemble.sh.
+#
+# Not a pull request check: no pull_request trigger, no cache is read or written, nothing is published, one job.
+
+on:
+  schedule:
+    - cron: '23 2,8,14,20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assemble-mains
+  cancel-in-progress: false
+
+jobs:
+  assemble-mains:
+    name: Assemble the four mains
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Assemble the four mains
+        run: bash deploy/tools/check-mains-assemble.sh
