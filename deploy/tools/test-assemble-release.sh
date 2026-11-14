@@ -3186,14 +3186,32 @@ check "model writes mix: a Core whose switch value differs from the front's is r
 mw_core old; mw_front; ex_try mw-budget-cached
 check "model writes mix: a Core that reads the budget only at its start is refused" 'refused "model writes pairing: the Rust front saves the inference budget row but Core.s inference-budget.cjs does not read it on every use"'
 { cat "$work/mw-front.saved"; printf '%s\n' 'pub const PRESET: &str = crate::preset_read_routes::PATH;'; } > "$work/mw-front-preset.saved"
-mw_core; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-no-core-refusal
+mw_core_with() { # the core with these extra lines before `const SWITCH`
+  { printf '%s\n' "$@"; cat "$work/mw-core.saved"; } > "$ex_core/rust-model-writes.cjs"
+  { cat "$work/ex-index.saved"; printf '%s\n' "if (require('./rust-model-writes.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"; } > "$w/server/index.cjs"
+  cp "$work/mw-budget-new.saved" "$ex_core/inference-budget.cjs"
+}
+MW_PRESET="const OWNED_PATHS = Object.freeze(['/api/models/inference-budget', '/api/models/idle-unload', '/api/models/preset']);"
+MW_MTP="const OWNED_GETS = Object.freeze(['/api/models/mtp-artifact']);"
+MW_PULL="const OWNED_POSTS = Object.freeze(['/api/models/pull']);"
+mw_core_with; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-no-core-refusal
 check "model writes mix: a front answering the preset save beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers PUT /api/models/preset but Core.s rust-model-writes.cjs does not refuse it"'
-mw_core; sed "s#^const SWITCH#const OWNED_PATHS = Object.freeze(['/api/models/inference-budget', '/api/models/idle-unload', '/api/models/preset']);\nconst SWITCH#" "$work/mw-core.saved" > "$ex_core/rust-model-writes.cjs"; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-new-new
+mw_core_with "$MW_PRESET"; mw_front; ex_try mw-preset-core-ahead
+check "model writes mix: a Core refusing the preset save beside a writer front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses PUT /api/models/preset but the Rust front does not answer it"'
+mw_core_with "$MW_PRESET"; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-new-new
 check "model writes new/new: a front answering the preset save beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
-mw_core; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-no-core-refusal
-check "model writes mix: a front answering the MTP artifact check beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers GET /api/models/mtp-artifact .* but Core.s rust-model-writes.cjs does not refuse it"'
-mw_core; sed "s#^const SWITCH#const OWNED_GETS = Object.freeze(['/api/models/mtp-artifact']);\nconst SWITCH#" "$work/mw-core.saved" > "$ex_core/rust-model-writes.cjs"; mw_front; ex_try mw-mtp-new-new
+mw_core_with; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-no-core-refusal
+check "model writes mix: a front answering the MTP artifact check beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers GET /api/models/mtp-artifact but Core.s rust-model-writes.cjs does not refuse it"'
+mw_core_with "$MW_MTP"; mw_front; rm -f "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-core-ahead
+check "model writes mix: a Core refusing the MTP artifact check beside a writer front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses GET /api/models/mtp-artifact but the Rust front does not answer it"'
+mw_core_with "$MW_MTP"; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-new-new
 check "model writes new/new: a front answering the MTP artifact check beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with "$MW_MTP" "$MW_PULL"; mw_front; ex_try mw-pull-core-ahead
+check "model writes mix: a Core refusing the pull beside a front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses POST /api/models/pull but the Rust front does not answer it"'
+mw_core_with "$MW_MTP" "$MW_PULL"; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-new-new
+check "model writes new/new: a front answering the pull beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with "$MW_MTP"; mw_front; ex_try mw-pull-front-ahead
+check "model writes mix: a front answering the pull beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers POST /api/models/pull but Core.s rust-model-writes.cjs does not refuse it"'
 rm -f "$ex_rs/model_pull_routes.rs"
 mw_core; rm -f "$ex_rs/model_writes_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' > "$ex_rs/moved_writer.rs"; ex_try mw-moved
 check "model writes: a front naming NOEVIA_RUST_MODEL_WRITES without model_writes_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs"'

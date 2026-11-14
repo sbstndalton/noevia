@@ -1991,7 +1991,8 @@ fi
 # refusal of both PUTs under the same switch) with inference-budget.cjs reading the saved row on every use, so a
 # budget the front saves is enforced at once. old/old and new/new assemble; a front with the writer beside a Core
 # without that pair is refused (Core would go on answering its own PUTs, and would keep enforcing the budget it read
-# at its start); a Core ahead of its front assembles (its refusal waits for a switch only that front answers).
+# at its start); a Core ahead of a front WITHOUT the writer assembles (its refusal waits for a switch only that front
+# answers); beside a front with the writer, the later requests (preset, MTP check, pull) must match on both sides.
 if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
   mw_front="$(code_body "$ex_rs_src/model_writes_routes.rs")"
   mw_loaded="$(core_requires "$ex_core/index.cjs" ./rust-model-writes.cjs)"
@@ -2005,15 +2006,20 @@ if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
   code_has "$ex_core/inference-budget.cjs" '^[[:space:]]*function savedGib[(]' \
     || die "model writes pairing: the Rust front saves the inference budget row but Core's inference-budget.cjs does not read it on every use (it would enforce the figure it read at its start until it restarts)"
   # The preset editor's save (track R11 step 8): a front that answers it needs Core to refuse it under the switch too.
-  # The MTP artifact check (track R11 step 11): a front that answers it needs Core to refuse it under the switch too.
-  if [ -f "$ex_rs_src/model_pull_routes.rs" ]; then
-    code_has "$ex_core/rust-model-writes.cjs" "^const OWNED_GETS = .*'/api/models/mtp-artifact'" \
-      || die "model writes pairing: the Rust front answers GET /api/models/mtp-artifact (model_pull_routes.rs) but Core's rust-model-writes.cjs does not refuse it (both would run the check)"
-  fi
-  if grep -qE '^pub const PRESET: &str = ' <<<"$mw_front"; then
-    code_has "$ex_core/rust-model-writes.cjs" "^const OWNED_PATHS = .*'/api/models/preset'" \
-      || die "model writes pairing: the Rust front answers PUT /api/models/preset but Core's rust-model-writes.cjs does not refuse it (both would answer the preset save)"
-  fi
+  # Track R11 steps 8, 11 and 12: the preset save, the MTP artifact check and the pull. Each is refused by Core under the
+  # switch exactly when the front answers it: a front answering one Core does not refuse would leave two answering it;
+  # a Core refusing one the front does not answer would refuse what the front relays (a dead end once the switch is set).
+  mw_core_has() { code_has "$ex_core/rust-model-writes.cjs" "^const $1 = .*'$2'"; }
+  mw_pair() { # <what> <front answers: yes|no> <core list> <path>
+    if [ "$2" = yes ]; then mw_core_has "$3" "$4" || die "model writes pairing: the Rust front answers $1 but Core's rust-model-writes.cjs does not refuse it (both would answer it)"
+    else ! mw_core_has "$3" "$4" || die "model writes pairing: Core's rust-model-writes.cjs refuses $1 but the Rust front does not answer it (every such request would be refused once the switch is set)"; fi
+  }
+  mw_preset=no; grep -qE '^pub const PRESET: &str = ' <<<"$mw_front" && mw_preset=yes
+  mw_mtp=no; [ -f "$ex_rs_src/model_pull_routes.rs" ] && mw_mtp=yes
+  mw_pull=no; grep -qsE '^pub const PULL: &str = ' <<<"$(code_body "$ex_rs_src/model_pull_routes.rs")" && mw_pull=yes
+  mw_pair "PUT /api/models/preset" "$mw_preset" OWNED_PATHS /api/models/preset
+  mw_pair "GET /api/models/mtp-artifact" "$mw_mtp" OWNED_GETS /api/models/mtp-artifact
+  mw_pair "POST /api/models/pull" "$mw_pull" OWNED_POSTS /api/models/pull
 elif ex_front_named NOEVIA_RUST_MODEL_WRITES; then
   die "model writes pairing: the Rust front names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs (the writer moved: update this guard)"
 fi
