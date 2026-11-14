@@ -2009,7 +2009,18 @@ if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
   # Track R11 steps 8, 11 and 12: the preset save, the MTP artifact check and the pull. Each is refused by Core under the
   # switch exactly when the front answers it: a front answering one Core does not refuse would leave two answering it;
   # a Core refusing one the front does not answer would refuse what the front relays (a dead end once the switch is set).
-  mw_core_has() { code_has "$ex_core/rust-model-writes.cjs" "^const $1 = .*'$2'"; }
+  # A list is read from its `const <name> = ` line to the line that closes it (`]);`), on one line or several, with
+  # every `//` comment cut first, so neither a comment nor the next list can name a path for it. A failed read is
+  # status 2, which both directions below refuse.
+  mw_core_has() { # <core list> <path>
+    local body list
+    body="$(code_body "$ex_core/rust-model-writes.cjs")" || return 2
+    list="$(awk -v start="const $1 = " '
+      !on && index($0, start) == 1 { on = 1 }
+      on { sub(/\/\/.*/, ""); print; if (index($0, "]);")) exit }
+    ' <<<"$body")" || return 2
+    grep -qF "'$2'" <<<"$list"
+  }
   mw_pair() { # <what> <front answers: yes|no> <core list> <path>
     if [ "$2" = yes ]; then mw_core_has "$3" "$4" || die "model writes pairing: the Rust front answers $1 but Core's rust-model-writes.cjs does not refuse it (both would answer it)"
     else ! mw_core_has "$3" "$4" || die "model writes pairing: Core's rust-model-writes.cjs refuses $1 but the Rust front does not answer it (every such request would be refused once the switch is set)"; fi

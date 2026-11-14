@@ -3212,6 +3212,12 @@ mw_core_with "$MW_MTP" "$MW_PULL"; mw_front; printf '%s\n' '//! the MTP artifact
 check "model writes new/new: a front answering the pull beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 mw_core_with "$MW_MTP"; mw_front; ex_try mw-pull-front-ahead
 check "model writes mix: a front answering the pull beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers POST /api/models/pull but Core.s rust-model-writes.cjs does not refuse it"'
+mw_core_with "$MW_MTP" 'const OWNED_POSTS = Object.freeze([' "  '/api/models/pull'," ']);'; mw_front; ex_try mw-pull-multiline-core-ahead
+check "model writes mix: a Core refusing the pull in a list over several lines beside a front that does not answer it is refused" 'refused "model writes pairing: Core.s rust-model-writes.cjs refuses POST /api/models/pull but the Rust front does not answer it"'
+mw_core_with "$MW_MTP" 'const OWNED_POSTS = Object.freeze([' "  '/api/models/pull'," ']);'; mw_front; printf '%s\n' '//! the MTP artifact check and the pull' 'pub const PULL: &str = "/api/models/pull";' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-multiline-new-new
+check "model writes new/new: a front answering the pull beside a Core refusing it in a list over several lines assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core_with "const OWNED_GETS = Object.freeze(['/api/models/mtp-artifact']); // not '/api/models/pull'" "const OWNED_POSTS = Object.freeze([]); // was '/api/models/pull'" "const OTHER = Object.freeze(['/api/models/pull']);"; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-pull-only-in-comments
+check "model writes old pull: a pull named only in comments or another list is not a refusal (assembles beside a front without it)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 rm -f "$ex_rs/model_pull_routes.rs"
 mw_core; rm -f "$ex_rs/model_writes_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' > "$ex_rs/moved_writer.rs"; ex_try mw-moved
 check "model writes: a front naming NOEVIA_RUST_MODEL_WRITES without model_writes_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs"'
