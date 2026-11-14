@@ -3101,6 +3101,10 @@ ex_chat_core; sed "s/'health', 'load', 'title-save'/'health', 'load'/" "$work/ex
 check "chat executor mix: a front calling an op missing from Core's op list is refused" 'refused "executor calls /internal/chat/native/title-save but Core.s rust-chat-native.cjs does not serve it"'
 ex_chat_core; sed "/SKILL_OPS/d;/SKILLS_PREFIX/d" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-no-skills
 check "chat executor mix: a front calling the skills bridges beside a Core without them is refused" 'refused "executor calls /internal/chat/skills/read but Core.s rust-chat-native.cjs does not serve it"'
+ex_chat_core; { cat "$work/ex-chat-front.saved"; printf '%s\n' 'const OWN: &str = "/internal/chat/native/read";'; } > "$ex_rs/chat_native.rs"; ex_try chat-op-wrong-list
+check "chat executor mix: an op that only another prefix's list names (native/read vs the skills list) is refused" 'refused "executor calls /internal/chat/native/read but Core.s rust-chat-native.cjs does not serve it"'
+{ sed -n 1,2p "$work/ex-chat-front.saved"; printf '%s\n' '#[cfg(test)]' 'fn helper() {}' 'const REVOKE_PATH: &str = "/internal/chat/tools/revoke";'; } > "$ex_rs/chat_native.rs"; ex_try chat-after-cfg-test-helper
+check "chat executor mix: a bridge path after a #[cfg(test)] helper (not a test module) is still enforced" 'refused "executor calls /internal/chat/tools/revoke but Core.s rust-chat-native.cjs does not serve it"'
 # the executor moved: a front that names the switch without the module is never read as old
 ex_chat_core; rm -f "$ex_rs/chat_native.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CHAT_EXECUTOR";' > "$ex_rs/moved_executor.rs"; ex_try chat-moved
 check "chat executor: a front naming NOEVIA_CHAT_EXECUTOR without chat_native.rs is refused, not read as old" 'refused "names NOEVIA_CHAT_EXECUTOR but has no bins/noevia-server/src/chat_native.rs"'
@@ -3133,6 +3137,8 @@ ex_code 2 role 1; ex_try code-gen1-front-gen2-core
 check "Code executor: a front without the Planner pipeline beside a Core that gives the role fact (additive) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
 ex_code 1 "" 2; ex_try code-gen2-front-gen1-core
 check "Code executor mix: a front with the Planner pipeline beside a Core without roleFacts is refused" 'refused "Code executor pairing: the Rust front.s Planner pipeline and review gate (role_endpoint) need the role engine.s endpoint in Core.s engine facts but Core has no roleFacts"'
+ex_code 1 "" 2; sed 's/^pub fn role_endpoint/pub(crate) fn role_endpoint/' "$work/ex-code-front2.saved" > "$ex_rs/code_routes.rs"; ex_try code-gen2-restyled-marker
+check "Code executor mix: the Planner marker restyled (pub(crate) fn role_endpoint) beside a Core without roleFacts is still refused" 'refused "Planner pipeline and review gate (role_endpoint) need"'
 ex_code 2 "" 2; ex_try code-gen2-no-role-wiring
 check "Code executor mix: a Core with roleFacts that index.cjs never passes the role endpoint is refused" 'refused "Planner pipeline and review gate (role_endpoint) need"'
 ex_code 1 "" 1; rm -f "$ex_core/rust-code-executor.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"; ex_try code-no-core-module

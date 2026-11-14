@@ -7,6 +7,7 @@
 #
 # A component not named is that repo's main, read with `git ls-remote` over anonymous https. Nothing is published,
 # written to a cache or pushed; the assembled tarball goes to out-dir (default: a temporary directory that is removed).
+# Its Services tarball may be the rewritten one (below), so an out-dir tarball is a check artefact, never a release.
 #
 # The lock it assembles from is built here (the four refs and the tarball checksums it computes itself), and
 # assemble-release.sh runs on it with --lock exactly as a release runs, every guard on. One thing differs from a

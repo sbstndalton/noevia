@@ -1905,15 +1905,16 @@ fi
 # answer it cannot read, as a deferral and runs the call itself (mcp-wiring.cjs, gdrive-tools.cjs, rust-retrieval.cjs),
 # and the front's routes are a 404 or unused beside an older Core, so no pair can break.
 # code_body <file>: the code lines the way code_has reads them (no comment lines or blocks), up to a Rust file's first
-# #[cfg(test)], so a test's literals are never the contract.
+# top-level #[cfg(test)] mod (a #[cfg(test)] on one helper does not end it), so a test's literals are never the contract.
 code_body() {
   [ -f "$1" ] || return 0
   awk '
     block { if (index($0, "*/")) block = 0; next }
+    /^#\[cfg\(test\)\]/ { pend = 1; next }
+    pend { pend = 0; if ($0 ~ /^(pub(\([a-z]+\))? )?mod[ \t]/) exit }
     { line = $0; sub(/^[ \t]+/, "", line) }
     line ~ /^\/\// { next }
     line ~ /^\/\*/ { if (!index(line, "*/")) block = 1; next }
-    line ~ /^#\[cfg\(test\)\]/ { exit }
     { print }
   ' "$1"
 }
@@ -1946,7 +1947,13 @@ if [ -f "$ex_rs_src/chat_native.rs" ]; then
       || die "native chat executor pairing: the Rust front's chat_native.rs names a bridge path this guard cannot read: $ce_path"
     if ! grep -qF "'$ce_path'" <<<"$ce_core_code"; then
       ce_prefix="${ce_path%/*}/"; ce_op="${ce_path##*/}"
-      { grep -qF "'$ce_prefix'" <<<"$ce_core_code" && grep -qE "new Set\\(\\[[^]]*'$ce_op'" <<<"$ce_core_code"; } \
+      # The op must be in the op list that belongs to its prefix, not in any list.
+      case "$ce_prefix" in
+        /internal/chat/native/) ce_ops=NATIVE_OPS ;;
+        /internal/chat/skills/) ce_ops=SKILL_OPS ;;
+        *) ce_ops="" ;;
+      esac
+      { [ -n "$ce_ops" ] && grep -qF "'$ce_prefix'" <<<"$ce_core_code" && grep -qE "^const $ce_ops = new Set\\(\\[[^]]*'$ce_op'" <<<"$ce_core_code"; } \
         || die "native chat executor pairing: the Rust front's executor calls $ce_path but Core's rust-chat-native.cjs does not serve it (a Core from before the bridge: the call would answer 404)"
     fi
   done <<<"$ce_paths"
@@ -1972,7 +1979,7 @@ if [ -f "$ex_rs_src/code_routes.rs" ]; then
     || die "Code executor pairing: the Rust front's NOEVIA_CODE_EXECUTOR=rust and Core's frontOwnsCode do not read the same switch value (Code tasks would run in both, or in neither)"
   # The Planner pipeline and review gate (noevia-rs#512): they need the role engine's endpoint, the engine facts' `role`
   # (noevia-core#378). Without it the front answers every Planner start with Node's 409 and has no reviewer.
-  if grep -qE '^pub fn role_endpoint[(]' <<<"$ec_front"; then
+  if grep -rqsE --include='*.rs' -e '^[[:space:]]*(pub(\([a-z]+\))? )?fn role_endpoint\b' "$ex_rs_src"; then
     { code_has "$ex_core/rust-code-executor.cjs" '^function roleFacts[(]' && code_has "$ex_core/index.cjs" 'role:[[:space:]]*codeRoleEndpoint'; } \
       || die "Code executor pairing: the Rust front's Planner pipeline and review gate (role_endpoint) need the role engine's endpoint in Core's engine facts but Core has no roleFacts (a Core from before noevia-core#378: every Planner start is refused)"
   fi
