@@ -2060,6 +2060,28 @@ if [ -f "$ex_rs_src/model_manager_routes.rs" ]; then
 elif ex_front_named NOEVIA_RUST_MODEL_MANAGER; then
   die "model manager proxy pairing: the Rust front names NOEVIA_RUST_MODEL_MANAGER but has no bins/noevia-server/src/model_manager_routes.rs (the proxy moved: update this guard)"
 fi
+# Rust port R11 step 10: /api/embedding (NOEVIA_RUST_EMBEDDING_ADMIN). The front's side is embedding_admin_routes.rs (it
+# answers the path, every method, and writes embedding-config.json); Core's is rust-embedding-admin.cjs (its refusal of the
+# path under the same switch) and embedding-config.cjs's `reread` (it reads the file again when the front changes it, so
+# retrieval and the delete guard follow), switched on from index.cjs by the same module. old/old, a Core ahead and new/new
+# assemble; a front answering it beside a Core without the refusal, the re-read or the same switch value is refused.
+if [ -f "$ex_rs_src/embedding_admin_routes.rs" ]; then
+  ea_front="$(code_body "$ex_rs_src/embedding_admin_routes.rs")"
+  ea_loaded="$(core_requires "$ex_core/index.cjs" ./rust-embedding-admin.cjs)"
+  [ "$ea_loaded" != invalid ] || die "embedding admin pairing: Core's index.cjs could not be read"
+  { [ "$ea_loaded" = yes ] && [ -f "$ex_core/rust-embedding-admin.cjs" ] \
+    && grep -qF "require('./rust-embedding-admin.cjs').refuseOwned(req, res" <<<"$(code_body "$ex_core/index.cjs")"; } \
+    || die "embedding admin pairing: the Rust front answers /api/embedding (embedding_admin_routes.rs, NOEVIA_RUST_EMBEDDING_ADMIN=rust) but Core does not refuse it through server/rust-embedding-admin.cjs (Core would go on answering it)"
+  { grep -qF 'pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";' <<<"$ea_front" && grep -qF 'get(SWITCH).as_deref() == Some("rust")' <<<"$ea_front"; } \
+    && code_has "$ex_core/rust-embedding-admin.cjs" "^const SWITCH = 'NOEVIA_RUST_EMBEDDING_ADMIN';" \
+    && code_has "$ex_core/rust-embedding-admin.cjs" "env\\[SWITCH\\][[:space:]]*===[[:space:]]*'rust'" \
+    || die "embedding admin pairing: the Rust front's NOEVIA_RUST_EMBEDDING_ADMIN=rust and Core's rust-embedding-admin.cjs do not read the same switch value (the path would be answered by both, or by neither)"
+  { code_has "$ex_core/embedding-config.cjs" '^[[:space:]]*function refresh[(][)]' \
+    && grep -qF "reread: require('./rust-embedding-admin.cjs').frontOwns()" <<<"$(code_body "$ex_core/index.cjs")"; } \
+    || die "embedding admin pairing: the Rust front writes embedding-config.json but Core's embedding configuration does not read it again under the switch (embedding-config.cjs reread from index.cjs): Core would search and guard deletes with the model it read at its start"
+elif ex_front_named NOEVIA_RUST_EMBEDDING_ADMIN; then
+  die "embedding admin pairing: the Rust front names NOEVIA_RUST_EMBEDDING_ADMIN but has no bins/noevia-server/src/embedding_admin_routes.rs (the route moved: update this guard)"
+fi
 # #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
 iur_core_owner=""; iur_rs_owner=""
 grep -qF "require('./rust-idle-unload-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && iur_core_owner=rust
