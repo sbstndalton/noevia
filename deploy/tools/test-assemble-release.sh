@@ -3151,6 +3151,43 @@ ex_code 1 "" 1; sed "s/=== 'rust'/=== 'native'/" "$work/ex-code-core1.saved" > "
 check "Code executor mix: a Core whose switch value differs from the front's is refused" 'refused "do not read the same switch value"'
 ex_code 1 "" 1; rm -f "$ex_rs/code_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' > "$ex_rs/moved_executor.rs"; ex_try code-moved
 check "Code executor: a front naming NOEVIA_CODE_EXECUTOR without code_routes.rs is refused, not read as old" 'refused "names NOEVIA_CODE_EXECUTOR but has no bins/noevia-server/src/code_routes.rs"'
+# Rust port R11: the model writes (NOEVIA_RUST_MODEL_WRITES): the front's writer needs Core's refusal module, the same
+# switch value, and a budget read on every use. The Code executor's "moved" case above leaves a front naming its switch
+# without code_routes.rs, which its own guard refuses first: cleared here.
+rm -f "$ex_rs/moved_executor.rs"
+cat > "$work/mw-core.saved" <<'JS'
+const SWITCH = 'NOEVIA_RUST_MODEL_WRITES';
+const frontOwns = (env = process.env) => env[SWITCH] === 'rust';
+function refuseOwned(req, res, deps) { return false; }
+module.exports = { SWITCH, frontOwns, refuseOwned };
+JS
+cat > "$work/mw-front.saved" <<'RS'
+/// The switch.
+pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";
+on: get(SWITCH).as_deref() == Some("rust"),
+RS
+printf '%s\n' 'function createInferenceBudget() {' '  function savedGib(when = "") { return null; }' '}' > "$work/mw-budget-new.saved"
+printf '%s\n' 'function createInferenceBudget() {' '  let saved = null;' '}' > "$work/mw-budget-old.saved"
+mw_core() { cp "$work/mw-core.saved" "$ex_core/rust-model-writes.cjs"; { cat "$work/ex-index.saved"; printf '%s\n' "if (require('./rust-model-writes.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"; } > "$w/server/index.cjs"; cp "$work/mw-budget-${1:-new}.saved" "$ex_core/inference-budget.cjs"; }
+mw_old_core() { rm -f "$ex_core/rust-model-writes.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"; cp "$work/mw-budget-old.saved" "$ex_core/inference-budget.cjs"; }
+mw_front() { cp "$work/mw-front.saved" "$ex_rs/model_writes_routes.rs"; }
+mw_old_core; rm -f "$ex_rs/model_writes_routes.rs"; ex_try mw-old-old
+check "model writes old/old: no writer on either side assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core; ex_try mw-old-front-new-core
+check "model writes: an old front beside a Core with the refusal and the per-use budget (a Core ahead) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core; mw_front; ex_try mw-new-new
+check "model writes new/new: the front's writer beside Core's refusal and per-use budget assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_old_core; mw_front; ex_try mw-no-core-module
+check "model writes mix: the front's writer beside a Core without rust-model-writes.cjs is refused" 'refused "model writes pairing: the Rust front answers the inference budget and idle unload PUTs .* but Core does not load server/rust-model-writes.cjs"'
+mw_core; { cat "$work/ex-index.saved"; printf '%s\n' "// require('./rust-model-writes.cjs').refuseOwned(req, res, deps)"; } > "$w/server/index.cjs"; mw_front; ex_try mw-core-not-loaded
+check "model writes mix: a Core whose index only mentions the module in a comment is refused" 'refused "but Core does not load server/rust-model-writes.cjs"'
+mw_core; sed "s/=== 'rust'/=== 'native'/" "$work/mw-core.saved" > "$ex_core/rust-model-writes.cjs"; mw_front; ex_try mw-switch
+check "model writes mix: a Core whose switch value differs from the front's is refused" 'refused "model writes pairing: .* do not read the same switch value"'
+mw_core old; mw_front; ex_try mw-budget-cached
+check "model writes mix: a Core that reads the budget only at its start is refused" 'refused "model writes pairing: the Rust front saves the inference budget row but Core.s inference-budget.cjs does not read it on every use"'
+mw_core; rm -f "$ex_rs/model_writes_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' > "$ex_rs/moved_writer.rs"; ex_try mw-moved
+check "model writes: a front naming NOEVIA_RUST_MODEL_WRITES without model_writes_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs"'
+rm -f "$ex_rs/moved_writer.rs" "$ex_rs/model_writes_routes.rs" "$ex_core/rust-model-writes.cjs" "$ex_core/inference-budget.cjs"
 rm -f "$ex_rs/moved_executor.rs" "$ex_rs/code_routes.rs" "$ex_core/rust-code-executor.cjs" "$rz/crates/chat-turn/src/prepared.rs"
 rmdir "$rz/crates/chat-turn/src" "$rz/crates/chat-turn" "$rz/crates" 2>/dev/null || :
 cp "$work/ex-index.saved" "$w/server/index.cjs"
