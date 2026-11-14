@@ -108,10 +108,12 @@ run env ROLLBACK=1 bash "$K/switch.sh" NOEVIA_CHAT_EXECUTOR native native:qa-mem
 check "a rollback can never set or widen a value (it skips the DRY and the windows)" '[ $rc = 64 ] && grep -q rollback_only_removes <<<"$out"'
 run bash "$K/rollback-switch.sh" NOEVIA_RUST_RETRIEVAL shadow
 check "rollback-switch.sh refuses a target value" '[ $rc = 64 ] && grep -q rollback_only_removes <<<"$out"'
-printf '#!/bin/bash\n/bin/sleep 20\n' >"$S/cutover.sh"; bash -o pipefail "$S/cutover.sh" & cpid=$!; bash -c 'cutover.sh 2>/dev/null; /bin/sleep 20; true' & apid=$!; /bin/sleep 0.3
-run env DRY=1 bash "$K/switch.sh" NOEVIA_RUST_MCP_CALLS 1 -; kill $cpid 2>/dev/null; wait $cpid 2>/dev/null
+printf '#!/bin/bash\n/bin/sleep 20\n' >"$S/cutover.sh"; bash -o pipefail "$S/cutover.sh" & cpid=$!; bash -c 'cutover.sh 2>/dev/null; /bin/sleep 20; true' & apid=$!
+for _ in $(seq 1 100); do ps -eo args | grep -q '^bash -o pipefail .*/cutover\.sh$' && ps -eo args | grep -q '^bash -c cutover\.sh' && break; /bin/sleep 0.1; done
+stopkid() { pkill -P "$1" 2>/dev/null; kill "$1" 2>/dev/null; wait "$1" 2>/dev/null; }
+run env DRY=1 bash "$K/switch.sh" NOEVIA_RUST_MCP_CALLS 1 -; stopkid $cpid
 check "a running cutover.sh (bash -o pipefail cutover.sh) blocks a flip" '[ $rc != 0 ] && grep -q release_step_running <<<"$out"'
-run env DRY=1 bash "$K/switch.sh" NOEVIA_RUST_MCP_CALLS 1 -; kill $apid 2>/dev/null; wait $apid 2>/dev/null
+run env DRY=1 bash "$K/switch.sh" NOEVIA_RUST_MCP_CALLS 1 -; stopkid $apid
 check "a process that only mentions cutover.sh in its command line does not" '[ $rc = 0 ] && grep -q "DRY recorded" <<<"$out"'
 
 setup s2; at 2026-11-20T08:30:00Z
@@ -206,12 +208,20 @@ cutover r7; echo tampered >>"$B/.env"; rbw "$B"
 check "a backup that fails its checksums is refused" '[ $rc != 0 ] && grep -q backup_checksums <<<"$out"'
 cutover r10; touch "$FAKE/up_fail"; rbw "$B"
 check "a rollback that fails after its commit says so and how to resume" '[ $rc != 0 ] && grep -q "rollback_error=after_commit" <<<"$out" && grep -qx "COWORK_VERSION=$OV" "$A/config/.env"'
+: >"$FAKE/events"; DRY=1 rbw "$B"
+check "DRY on an interrupted rollback says it would resume and changes nothing" '[ $rc = 0 ] && grep -q "DRY: would resume" <<<"$out" && ! grep -q "^up" "$FAKE/events" && [ -e "$F/rollback-web-${V:0:7}.committed" ]'
+echo "2026-01-01T09:09:09Z" >"$FAKE/c/cowork-egress-rs-1/Started"
 rbw "$B"
 check "the same command run again resumes and verifies" '[ $rc = 0 ] && grep -q "resuming the rollback committed earlier" <<<"$out" && grep -q "^rollback=verified" <<<"$out" && cmp -s "$A/config/.env" "$B/.env" && [ ! -e "$F/rollback-web-${V:0:7}.committed" ]'
+check "an egress restart before the resume is named, not blamed on the rollback" 'grep -q "NOTE: cowork-egress-rs-1 restarted or changed since the interrupted run" <<<"$out"'
+cutover r14; later NOEVIA_CODE_EXECUTOR rust web; chmod a-w "$C"; rbw "$B" --drop-unsupported; chmod u+w "$C"
+check "an interruption between the .env and the override move reports after_commit" '[ $rc != 0 ] && grep -q "rollback_error=after_commit" <<<"$out" && ! grep -q NOEVIA_CODE_EXECUTOR "$A/config/.env" && grep -q NOEVIA_CODE_EXECUTOR "$C/docker-compose.override.yml"'
+rbw "$B"
+check "the resume finishes the override edit and reports the dropped switch" '[ $rc = 0 ] && grep -q "override edit finished" <<<"$out" && ! grep -q NOEVIA_CODE_EXECUTOR "$C/docker-compose.override.yml" && grep -qF "dropped_switches=[NOEVIA_CODE_EXECUTOR ]" <<<"$out"'
 rbw "$B"
 check "after a finished rollback a third run is refused (nothing to resume)" '[ $rc != 0 ] && grep -q live_env_not_release <<<"$out"'
 cutover r11; touch "$FAKE/up_fail"; rbw "$B"; echo QA_HAND_EDIT=1 >>"$A/config/.env"; rbw "$B"
-check "no resume over files changed after the interrupted run" '[ $rc != 0 ] && grep -q committed_files_changed_since_the_interrupted_run <<<"$out"'
+check "no resume over files changed after the interrupted run" '[ $rc != 0 ] && grep -q committed_env_changed_since_the_interrupted_run <<<"$out"'
 cutover r12; rm "$A/tools/preflight.bak.before-${V:0:7}/diary-models-check.sh"; envh=$(h "$A/config/.env"); rbw "$B"
 check "a missing preflight backup file is refused before anything is committed" '[ $rc != 0 ] && grep -q "missing_pf_bak:diary-models-check.sh" <<<"$out" && [ "$(h "$A/config/.env")" = "$envh" ]'
 cutover r13; later NOEVIA_RUST_EDIT_TARGET 1 web; printf 'const X: &str = "NOEVIA_RUST_EDIT_TARGETS";\n' >"$A/releases/$OV/rs/bins/noevia-server/src/edit.rs"; mkdir -p "$A/releases/$OV/rs/bins/noevia-server/tests"; printf '"NOEVIA_RUST_EDIT_TARGET"\n' >"$A/releases/$OV/rs/bins/noevia-server/tests/t.rs"; rbw "$B"
