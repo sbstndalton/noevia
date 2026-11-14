@@ -1986,6 +1986,27 @@ if [ -f "$ex_rs_src/code_routes.rs" ]; then
 elif ex_front_named NOEVIA_CODE_EXECUTOR; then
   die "Code executor pairing: the Rust front names NOEVIA_CODE_EXECUTOR but has no bins/noevia-server/src/code_routes.rs (the executor moved: update this guard)"
 fi
+# Rust port R11: the inference budget and idle unload PUTs (NOEVIA_RUST_MODEL_WRITES). The front's side is
+# model_writes_routes.rs (a dispatch override: the route rows stay GET-only); Core's is rust-model-writes.cjs (its
+# refusal of both PUTs under the same switch) with inference-budget.cjs reading the saved row on every use, so a
+# budget the front saves is enforced at once. old/old and new/new assemble; a front with the writer beside a Core
+# without that pair is refused (Core would go on answering its own PUTs, and would keep enforcing the budget it read
+# at its start); a Core ahead of its front assembles (its refusal waits for a switch only that front answers).
+if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
+  mw_front="$(code_body "$ex_rs_src/model_writes_routes.rs")"
+  mw_loaded="$(core_requires "$ex_core/index.cjs" ./rust-model-writes.cjs)"
+  [ "$mw_loaded" != invalid ] || die "model writes pairing: Core's index.cjs could not be read"
+  { [ "$mw_loaded" = yes ] && [ -f "$ex_core/rust-model-writes.cjs" ]; } \
+    || die "model writes pairing: the Rust front answers the inference budget and idle unload PUTs (model_writes_routes.rs, NOEVIA_RUST_MODEL_WRITES=rust) but Core does not load server/rust-model-writes.cjs (Core would go on answering them)"
+  { grep -qF 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' <<<"$mw_front" && grep -qF 'Some("rust")' <<<"$mw_front"; } \
+    && code_has "$ex_core/rust-model-writes.cjs" "^const SWITCH = 'NOEVIA_RUST_MODEL_WRITES';" \
+    && code_has "$ex_core/rust-model-writes.cjs" "env\\[SWITCH\\][[:space:]]*===[[:space:]]*'rust'" \
+    || die "model writes pairing: the Rust front's NOEVIA_RUST_MODEL_WRITES=rust and Core's rust-model-writes.cjs do not read the same switch value (the PUTs would be answered by both, or by neither)"
+  code_has "$ex_core/inference-budget.cjs" '^[[:space:]]*function savedGib[(]' \
+    || die "model writes pairing: the Rust front saves the inference budget row but Core's inference-budget.cjs does not read it on every use (it would enforce the figure it read at its start until it restarts)"
+elif ex_front_named NOEVIA_RUST_MODEL_WRITES; then
+  die "model writes pairing: the Rust front names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs (the writer moved: update this guard)"
+fi
 # #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
 iur_core_owner=""; iur_rs_owner=""
 grep -qF "require('./rust-idle-unload-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && iur_core_owner=rust
