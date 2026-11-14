@@ -40,7 +40,7 @@ case "$cmd" in
   tag) src=$1; dst=$2; if [ -f "$img/$(key "$src")" ]; then cp "$img/$(key "$src")" "$img/$(key "$dst")"; else printf '%s\n' "$src" >"$img/$(key "$dst")"; fi ;;
   logs) cat "$c/${@: -1}/logs" 2>/dev/null; true ;;
   top) cat "$c/$1/top" 2>/dev/null; true ;;
-  stop) n=${@: -1}; echo exited >"$c/$n/Status"; echo "stop $n" >>"$FAKE/events" ;;
+  stop) n=${@: -1}; [ ! -f "$FAKE/stop_fail" ] || { echo "fake stop failure" >&2; exit 1; }; echo exited >"$c/$n/Status"; echo "stop $n" >>"$FAKE/events" ;;
   start) n=${@: -1}; echo running >"$c/$n/Status"; echo 0 >"$c/$n/RC"; echo "start $n" >>"$FAKE/events" ;;
   exec) while [[ "$1" == -* ]]; do case "$1" in -e) shift;; esac; shift; done; n=$1; shift
         if [[ "$*" == *api/ready* ]]; then cat "$c/$n/ready"; elif [[ "$*" == *api/health* ]]; then exit "$(cat "$FAKE/diary_health_rc" 2>/dev/null || echo 0)"; fi ;;

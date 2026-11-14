@@ -88,6 +88,8 @@ if [ $RESTORE != 0 ]; then
   moved=0
   # Whatever stops this run (an error, a signal), the data directory is never left missing and the Diary is started.
   undo() { set +e; if [ ! -e "$state" ] && [ -d "$aside" ]; then mv -T "$aside" "$state" && log "restore interrupted: current data put back"; fi
+    # the staged copy is only removed once the data directory is back (it is never the last copy: the backup holds it)
+    [ ! -d "$state" ] || [ ! -d "$stage" ] || rm -rf "$stage"
     docker start "$DI" >/dev/null 2>&1; [ -z "${W:-}" ] || rm -rf "$W"; }
   trap 'undo' EXIT
   kit_clock rollback || exit 1

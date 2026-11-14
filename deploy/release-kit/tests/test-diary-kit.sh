@@ -135,6 +135,9 @@ rm "$A/state/diary/users/$U1/qa-unexpected.txt"; tick 5; run bash "$K/rollback-d
 check "--restore-force restores; the saves stay in the moved-aside data" '[ $rc = 0 ] && grep -q "restored and healthy" <<<"$out" && [ "$(ls -d "$A/state/diary.before-restore-"* | wc -l)" -ge 2 ]'
 echo 'qa extra' >"$A/state/diary/users/$U1/qa-unexpected.txt"; mkdir -p "$A/state/diary.before-restore-$(/usr/bin/date -u -d "@$(cat "$FAKE/now")" +%Y%m%dT%H%M%SZ)"; : >"$FAKE/events"; run bash "$K/rollback-diary.sh" "$S/b" --restore
 check "a restore whose aside path already exists refuses before anything stops (never moves data into it)" '[ $rc != 0 ] && grep -q restore_paths_exist <<<"$out" && ! grep -q "^stop" "$FAKE/events"'
+tick 7; echo 'qa extra2' >"$A/state/diary/users/$U1/qa-unexpected2.txt"; touch "$FAKE/stop_fail"; : >"$FAKE/events"; run bash "$K/rollback-diary.sh" "$S/b" --restore; rm -f "$FAKE/stop_fail"
+check "a restore that fails after staging leaves the data in place, no staged copy, and the Diary started" '[ $rc != 0 ] && grep -q "staging the backup copy" <<<"$out" && ! ls -d "$A/state/diary.restore-"* >/dev/null 2>&1 && [ -e "$A/state/diary/users/$U1/qa-unexpected2.txt" ] && tail -1 "$FAKE/events" | grep -q "^start cowork-diary-1"'
+rm "$A/state/diary/users/$U1/qa-unexpected2.txt"
 rm "$A/state/diary/users/$U1/qa-unexpected.txt"; mv "$S/b/state-diary" "$S/b/state-diary.gone"; echo 'qa extra' >"$A/state/diary/users/$U1/qa-unexpected.txt"; : >"$FAKE/events"; run bash "$K/rollback-diary.sh" "$S/b" --restore
 check "--restore without a copy in the backup refuses before anything stops or moves" '[ $rc != 0 ] && grep -q backup_has_no_state-diary_copy <<<"$out" && ! grep -q "^stop" "$FAKE/events" && [ -e "$A/state/diary/users/$U1/qa-unexpected.txt" ]'
 { printf 'DIARY_OLD_TAG=%s\n' "$V"; grep -v '^DIARY_OLD_TAG=' "$K/kit.conf"; } >"$K/kit2.conf"; run env KIT_CONF="$K/kit2.conf" bash "$K/rollback-diary.sh" "$S/b"
