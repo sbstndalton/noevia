@@ -1896,21 +1896,32 @@ fi
 #            loopback calls and the switch is unset) assembles;
 #   new/new  a front with the executor beside a Core serving everything it calls assembles;
 #   mixed    a front with the executor beside a Core that lacks a bridge it calls is refused, naming both sides.
-# A Core ahead of the front (its bridges unused) is the old/new pair above and is not refused: every Core addition
-# is additive and inert until a front asks (the hand-off needs the front's secret header; the engine facts' role key
-# is read by a front that wants it), so there is no failure to guard there. The front side is recognised by its
-# executor module (chat_native.rs, code_routes.rs); a front that names the switch but has no such module is refused
-# (the markers moved), never read as old. The tool-call families (NOEVIA_RUST_MCP_CALLS, NOEVIA_RUST_DRIVE_TOOLS) and
-# retrieval (NOEVIA_RUST_RETRIEVAL) have no guard on purpose: Core's client treats a front without the route, or an
-# answer it cannot read, as a deferral and runs the call itself (mcp-wiring.cjs, gdrive-tools.cjs, rust-retrieval.cjs),
-# and the front's routes are a 404 or unused beside an older Core, so no pair can break.
+# A Core ahead of the front (its bridges unused) assembles: the chat hand-off needs the front's secret header and the
+# engine facts' role key is read only by a front that wants it, so those additions stay inert. For the Code executor
+# that holds only while its switch is unset: Core reads NOEVIA_CODE_EXECUTOR itself and with `rust` refuses its own Code
+# start, decide and cancel (frontOwnsCode), so a Core newer than its front with the switch still set leaves Code mode
+# dead (#2638). No assembly can see that (the switch lives in the server's .env): the release kit's rollback-web.sh
+# refuses, or drops the switch, when the rollback target's front cannot run it (deploy/release-kit/switch-code.txt).
+# The front side is recognised by its executor module (chat_native.rs, code_routes.rs); a front whose source (any
+# bins/*/src or crates/*/src) names the switch but has no such module is refused (the markers moved), never read as old.
+# The tool-call families (NOEVIA_RUST_MCP_CALLS, NOEVIA_RUST_DRIVE_TOOLS) and retrieval (NOEVIA_RUST_RETRIEVAL) have no
+# guard: beside an older Core the front's routes go unused, and Core runs a call itself when the front answers 404
+# (mcp-wiring.cjs, gdrive-tools.cjs; Core's tests "a front that runs no calls (404) leaves the call to this process" and
+# "a front that runs no Drive tools (404) leaves them to this process"). Only retrieval also falls back on any other
+# failure (rust-retrieval.cjs). An unreadable tool-call answer is not re-run: Core reports it as possibly run (its tests
+# "an answer is worded by what is known"), so nothing runs twice and the approval gate is unchanged, but a front whose
+# route exists with a changed answer format would fail every tool call while the switch is on (#2639). That pair is the
+# rs/core contract tests' to catch, not this guard's.
 # code_body <file>: the code lines the way code_has reads them (no comment lines or blocks), up to a Rust file's first
-# top-level #[cfg(test)] mod (a #[cfg(test)] on one helper does not end it), so a test's literals are never the contract.
+# top-level #[cfg(test)] mod (a #[cfg(test)] on one helper does not end it; attributes and blank lines between the
+# #[cfg(test)] and the mod are skipped, as in `#[cfg(test)] #[allow(clippy::unwrap_used)] mod tests`), so a test's
+# literals are never the contract.
 code_body() {
   [ -f "$1" ] || return 0
   awk '
     block { if (index($0, "*/")) block = 0; next }
     /^#\[cfg\(test\)\]/ { pend = 1; next }
+    pend && ($0 ~ /^#\[/ || $0 ~ /^[ \t]*$/) { next }
     pend { pend = 0; if ($0 ~ /^(pub(\([a-z]+\))? )?mod[ \t]/) exit }
     { line = $0; sub(/^[ \t]+/, "", line) }
     line ~ /^\/\// { next }
@@ -1920,8 +1931,20 @@ code_body() {
 }
 ex_rs_src="$tree/rs/bins/noevia-server/src"
 ex_core="$tree/core/server"
+# The front's source files: every bins/*/src and crates/*/src (never tests/ or benches/), sorted.
+ex_front_files() { { find "$tree"/rs/bins/*/src "$tree"/rs/crates/*/src -type f -name '*.rs' 2>/dev/null || true; } | LC_ALL=C sort; }
 # A front that names a switch but whose executor module is not where the guard looks is refused: the markers moved.
-ex_front_named() { grep -rqsF --include='*.rs' -e "$1" "$ex_rs_src"; }
+ex_front_named() { local f; while IFS= read -r f; do grep -qsF -e "$1" "$f" && return 0; done < <(ex_front_files); return 1; }
+# ex_front_grep <ERE>: true when a code line of any front source file matches (comments and test modules skipped).
+ex_front_grep() { local f; while IFS= read -r f; do code_body "$f" | grep -qE -e "$1" && return 0; done < <(ex_front_files); return 1; }
+# ex_core_serves <path>: true when a Core server module (not a test) names the path as a quoted literal in code.
+ex_core_serves() { local f; for f in "$ex_core"/*.cjs "$ex_core"/*/*.cjs; do [ -f "$f" ] || continue; case "$f" in *.test.cjs) continue ;; esac
+  code_body "$f" | grep -qF -e "'$1'" -e "\"$1\"" && return 0; done; return 1; }
+# ex_set_has <code> <NAME> <op>: true when `const NAME = new Set([...])` in the code lists 'op' (the list may wrap).
+ex_set_has() { awk -v n="$2" -v op="'$3'" '
+  !on && index($0, "const " n " = new Set([") == 1 { on = 1; buf = "" }
+  on { buf = buf $0; if (index($0, "]")) { if (index(buf, op)) found = 1; exit } }
+  END { exit !found }' <<<"$1"; }
 # Native chat executor (noevia-rs#495/#500/#503 with noevia-core#369/#372/#374/#377).
 if [ -f "$ex_rs_src/chat_native.rs" ]; then
   ce_front_header="$(code_body "$ex_rs_src/chat_native.rs" | sed -n 's/^pub const HANDOFF_HEADER: &str = "\([a-z0-9-][a-z0-9-]*\)";$/\1/p')"
@@ -1939,7 +1962,7 @@ if [ -f "$ex_rs_src/chat_native.rs" ]; then
     || die "native chat executor pairing: the Rust front reads prepared frames of version '${ce_front_v:-unreadable}' but Core's rust-chat-native.cjs writes version '${ce_core_v:-unreadable}'"
   # Every loopback bridge the front calls (a /internal/chat/... literal in chat_native.rs) is one Core serves: a whole
   # path constant, or an op in the prefix's op list (NATIVE_OPS, SKILL_OPS).
-  ce_paths="$(code_body "$ex_rs_src/chat_native.rs" | grep -oE '"/internal/chat/[^"]*"' | tr -d '"' | sort -u)"
+  ce_paths="$(code_body "$ex_rs_src/chat_native.rs" | { grep -oE '"/internal/chat/[^"]*"' || true; } | tr -d '"' | sort -u)"
   [ -n "$ce_paths" ] || die "native chat executor pairing: the Rust front's chat_native.rs names no /internal/chat bridge path"
   ce_core_code="$(code_body "$ex_core/rust-chat-native.cjs")"
   while IFS= read -r ce_path; do
@@ -1953,10 +1976,20 @@ if [ -f "$ex_rs_src/chat_native.rs" ]; then
         /internal/chat/skills/) ce_ops=SKILL_OPS ;;
         *) ce_ops="" ;;
       esac
-      { [ -n "$ce_ops" ] && grep -qF "'$ce_prefix'" <<<"$ce_core_code" && grep -qE "^const $ce_ops = new Set\\(\\[[^]]*'$ce_op'" <<<"$ce_core_code"; } \
+      { [ -n "$ce_ops" ] && grep -qF "'$ce_prefix'" <<<"$ce_core_code" && ex_set_has "$ce_core_code" "$ce_ops" "$ce_op"; } \
         || die "native chat executor pairing: the Rust front's executor calls $ce_path but Core's rust-chat-native.cjs does not serve it (a Core from before the bridge: the call would answer 404)"
     fi
   done <<<"$ce_paths"
+  # A bridge call in a sibling module (#2609): every other /internal/chat/... literal in the front's source is one some
+  # Core server module serves (the turn relay, the Cowork start, ...).
+  while IFS= read -r ce_f; do
+    [ "$ce_f" != "$ex_rs_src/chat_native.rs" ] || continue
+    while IFS= read -r ce_path; do
+      [ -n "$ce_path" ] || continue
+      ex_core_serves "$ce_path" \
+        || die "native chat executor pairing: the Rust front calls $ce_path (${ce_f#"$tree"/rs/}) but no Core server module serves it (a Core from before the bridge: the call would answer 404)"
+    done < <(code_body "$ce_f" | { grep -oE '"/internal/chat/[^"]*"' || true; } | tr -d '"' | sort -u)
+  done < <(ex_front_files)
 elif ex_front_named NOEVIA_CHAT_EXECUTOR; then
   die "native chat executor pairing: the Rust front names NOEVIA_CHAT_EXECUTOR but has no bins/noevia-server/src/chat_native.rs (the executor moved: update this guard)"
 fi
@@ -1974,12 +2007,21 @@ if [ -f "$ex_rs_src/code_routes.rs" ]; then
   code_has "$ex_core/index.cjs" 'codeEngineBridge[(]req, res[)]' \
     || die "Code executor pairing: Core's index.cjs does not mount the engine facts bridge the Rust front asks"
   # Both sides read one switch: the front's `rust` and Core's refusal of its own Code starts (code-service.cjs).
-  { grep -qF 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' <<<"$ec_front" && grep -qF 'Some("rust")' <<<"$ec_front"; } \
+  { grep -qF 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' <<<"$ec_front" && grep -qF 'get(SWITCH).as_deref() == Some("rust")' <<<"$ec_front"; } \
     && code_has "$ex_core/rust-code-executor.cjs" "NOEVIA_CODE_EXECUTOR[[:space:]]*===[[:space:]]*'rust'" \
     || die "Code executor pairing: the Rust front's NOEVIA_CODE_EXECUTOR=rust and Core's frontOwnsCode do not read the same switch value (Code tasks would run in both, or in neither)"
+  # Any other /internal/code/... bridge the front calls, in code_routes.rs or a sibling module (#2609), is served by Core.
+  while IFS= read -r ec_f; do
+    while IFS= read -r ec_p; do
+      [ -n "$ec_p" ] && [ "$ec_p" != "$ec_path" ] || continue
+      ex_core_serves "$ec_p" \
+        || die "Code executor pairing: the Rust front calls $ec_p (${ec_f#"$tree"/rs/}) but no Core server module serves it (a Core from before the bridge: the call would answer 404)"
+    done < <(code_body "$ec_f" | { grep -oE '"/internal/code/[^"]*"' || true; } | tr -d '"' | sort -u)
+  done < <(ex_front_files)
   # The Planner pipeline and review gate (noevia-rs#512): they need the role engine's endpoint, the engine facts' `role`
   # (noevia-core#378). Without it the front answers every Planner start with Node's 409 and has no reviewer.
-  if grep -rqsE --include='*.rs' -e '^[[:space:]]*(pub(\([a-z]+\))? )?fn role_endpoint\b' "$ex_rs_src"; then
+  # role_endpoint anywhere in the front's source (it may move into a crate, #2611).
+  if ex_front_grep '^[[:space:]]*(pub(\([a-z]+\))? )?fn role_endpoint\b'; then
     { code_has "$ex_core/rust-code-executor.cjs" '^function roleFacts[(]' && code_has "$ex_core/index.cjs" 'role:[[:space:]]*codeRoleEndpoint'; } \
       || die "Code executor pairing: the Rust front's Planner pipeline and review gate (role_endpoint) need the role engine's endpoint in Core's engine facts but Core has no roleFacts (a Core from before noevia-core#378: every Planner start is refused)"
   fi

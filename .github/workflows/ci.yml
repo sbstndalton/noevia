@@ -123,6 +123,9 @@ jobs:
       # Release lock vs sidecar Dockerfile rs pins, with and without NOEVIA_SERVICES_RS_REF/SHA256.
       - run: bash deploy/tools/test-check-services-rs-pins.sh
         if: env.RUN_JOB == 'true'
+      # #2597: does a release have to rebuild the egress image (its Dockerfile's rs ref moved)? Synthetic git repo.
+      - run: bash deploy/tools/test-check-egress-ref.sh
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-source-startup-pairing.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-dav-listener-pairing.sh
