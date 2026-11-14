@@ -3042,6 +3042,112 @@ rm -f "$w/server/rust-autotune-runner.cjs" "$atr_rs_src/autotune_read_routes.rs"
 rmdir "$atr_rs_src/model_maint"
 atr_methods='methods = ["GET"]'; atr_try atr-runner-old-pair
 check "R6 old/old: GET-only row and no Core runner module still assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# Rust port R7/R8 (#2596): the native chat executor and the Code executor. The front (noevia-rs) names what it calls;
+# Core must serve it. Old/old and new/new assemble, a front beside a Core lacking something it calls is refused, and a
+# Core ahead of its front assembles. Tool calls and retrieval have no guard (nothing can break there).
+ex_try() { atr_owner=rust; atr_methods='methods = ["GET"]'; atr_try "$1"; }
+ex_rs="$rz/bins/noevia-server/src"; ex_core="$w/server"
+mkdir -p "$rz/crates/chat-turn/src"
+cp "$ex_rs/lib.rs" "$work/ex-lib.saved"
+cp "$w/server/index.cjs" "$work/ex-index.saved"
+cat > "$work/ex-chat-core.saved" <<'JS'
+// "/internal/chat/never-served" in a comment is not a bridge
+const HANDOFF_HEADER = 'x-noevia-chat-handoff';
+const PREPARED_VERSION = 1;
+const EXECUTE_PATH = '/internal/chat/tools/execute';
+const GRANT_PATH = '/internal/chat/tools/grant';
+const USAGE_PATH = '/internal/chat/usage';
+const NATIVE_PREFIX = '/internal/chat/native/';
+const NATIVE_OPS = new Set(['health', 'load', 'title-save']);
+const SKILLS_PREFIX = '/internal/chat/skills/';
+const SKILL_OPS = new Set(['revoked', 'read', 'scrub']);
+module.exports = { HANDOFF_HEADER, PREPARED_VERSION };
+JS
+cat > "$work/ex-chat-front.saved" <<'RS'
+/// The doc line "/internal/chat/doc-only" is not a call.
+pub const HANDOFF_HEADER: &str = "x-noevia-chat-handoff";
+const GRANT_PATH: &str = "/internal/chat/tools/grant";
+const EXECUTE: &str = "/internal/chat/tools/execute";
+const USAGE: &str = "/internal/chat/usage";
+const OPS: [&str; 3] = ["/internal/chat/native/health", "/internal/chat/native/load", "/internal/chat/native/title-save"];
+const SKILL: &str = "/internal/chat/skills/read";
+// "/internal/chat/never-called" in a comment
+#[cfg(test)]
+mod tests { const T: &str = "/internal/chat/tools/not-a-bridge"; }
+RS
+printf '%s\n' 'pub const VERSION: f64 = 1.0;' > "$rz/crates/chat-turn/src/prepared.rs"
+ex_chat_core() { cp "$work/ex-chat-core.saved" "$ex_core/rust-chat-native.cjs"; { cat "$work/ex-index.saved"; printf '%s\n' "const chatNativeHandoff = require('./rust-chat-native.cjs').createHandoff({});"; } > "$w/server/index.cjs"; }
+ex_chat_front() { cp "$work/ex-chat-front.saved" "$ex_rs/chat_native.rs"; }
+# old/old: a front without the executor beside a Core that carries the hand-off (the live pair) assembles; so does a Core without it.
+ex_chat_core; ex_try chat-old-front-new-core
+check "chat executor old front + Core with the hand-off bridges (a Core ahead of its front) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$ex_core/rust-chat-native.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"; ex_try chat-old-old
+check "chat executor old/old: no executor on either side assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# new/new
+ex_chat_core; ex_chat_front; ex_try chat-new-new
+check "chat executor new/new: a front calling only bridges Core serves assembles (comments and test literals are not calls)" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+# mixes
+rm -f "$ex_core/rust-chat-native.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"; ex_try chat-front-no-core-module
+check "chat executor mix: a front with the executor beside a Core without rust-chat-native.cjs is refused" 'refused "native chat executor pairing: the Rust front carries the native executor .* but Core does not load server/rust-chat-native.cjs"'
+ex_chat_core; { cat "$work/ex-index.saved"; printf '%s\n' "// const chatNativeHandoff = require('./rust-chat-native.cjs').createHandoff({});" "const doc = \"require('./rust-chat-native.cjs')\";"; } > "$w/server/index.cjs"; ex_try chat-core-not-loaded
+check "chat executor mix: a Core whose index only mentions the module in a comment or a string is refused" 'refused "but Core does not load server/rust-chat-native.cjs"'
+ex_chat_core; sed "s/x-noevia-chat-handoff/x-noevia-chat-turn-handoff/" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-header
+check "chat executor mix: a Core reading another hand-off header is refused" 'refused "asks for the hand-off with x-noevia-chat-handoff but Core.s rust-chat-native.cjs reads another header"'
+ex_chat_core; sed "s/PREPARED_VERSION = 1;/PREPARED_VERSION = 2;/" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-version
+check "chat executor mix: a Core writing another prepared version is refused, naming both" 'refused "reads prepared frames of version .1. but Core.s rust-chat-native.cjs writes version .2."'
+ex_chat_core; sed "/GRANT_PATH/d" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-no-grant
+check "chat executor mix: a front calling the grant bridge beside a Core from before it is refused" 'refused "executor calls /internal/chat/tools/grant but Core.s rust-chat-native.cjs does not serve it"'
+ex_chat_core; sed "s/'health', 'load', 'title-save'/'health', 'load'/" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-no-op
+check "chat executor mix: a front calling an op missing from Core's op list is refused" 'refused "executor calls /internal/chat/native/title-save but Core.s rust-chat-native.cjs does not serve it"'
+ex_chat_core; sed "/SKILL_OPS/d;/SKILLS_PREFIX/d" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-no-skills
+check "chat executor mix: a front calling the skills bridges beside a Core without them is refused" 'refused "executor calls /internal/chat/skills/read but Core.s rust-chat-native.cjs does not serve it"'
+# the executor moved: a front that names the switch without the module is never read as old
+ex_chat_core; rm -f "$ex_rs/chat_native.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CHAT_EXECUTOR";' > "$ex_rs/moved_executor.rs"; ex_try chat-moved
+check "chat executor: a front naming NOEVIA_CHAT_EXECUTOR without chat_native.rs is refused, not read as old" 'refused "names NOEVIA_CHAT_EXECUTOR but has no bins/noevia-server/src/chat_native.rs"'
+rm -f "$ex_rs/moved_executor.rs" "$ex_core/rust-chat-native.cjs"
+# Code executor
+cat > "$work/ex-code-core1.saved" <<'JS'
+const PATH = '/internal/code/engine';
+function frontOwnsCode(env = process.env) { return env.NOEVIA_CODE_EXECUTOR === 'rust'; }
+function createCodeEngineBridge(deps) { return async function handle(req, res) { return false; }; }
+module.exports = { PATH, frontOwnsCode, createCodeEngineBridge };
+JS
+{ cat "$work/ex-code-core1.saved"; printf '%s\n' "function roleFacts(endpoint) { return endpoint ? {} : null; }"; } > "$work/ex-code-core2.saved"
+cat > "$work/ex-code-front1.saved" <<'RS'
+/// The switch: `rust` hands Code tasks to the front.
+pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";
+const ENGINE_PATH: &str = "/internal/code/engine";
+executor: get(SWITCH).as_deref() == Some("rust"),
+RS
+{ cat "$work/ex-code-front1.saved"; printf '%s\n' "pub fn role_endpoint(facts: &JValue) -> Option<Endpoint> { None }"; } > "$work/ex-code-front2.saved"
+ex_code_index() { { cat "$work/ex-index.saved"; printf '%s\n' "const codeExecutor = require('./rust-code-executor.cjs');" "if (codeExecutor.frontOwnsCode() && await codeEngineBridge(req, res)) return;"; [ "$1" != role ] || printf '%s\n' "const bridge = { context: (project) => '', role: codeRoleEndpoint };"; } > "$w/server/index.cjs"; }
+ex_code() { cp "$work/ex-code-core$1.saved" "$ex_core/rust-code-executor.cjs"; ex_code_index "${2:-}"; cp "$work/ex-code-front$3.saved" "$ex_rs/code_routes.rs" 2>/dev/null || :; }
+rm -f "$ex_rs/code_routes.rs"
+ex_code 1 "" 0; ex_try code-old-front-new-core
+check "Code executor old front + Core with the engine bridge (the live pair) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ex_code 1 "" 1; ex_try code-new-new-gen1
+check "Code executor new/new: a front without the Planner pipeline beside the engine bridge assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ex_code 2 role 2; ex_try code-new-new-gen2
+check "Code executor new/new: a front with the Planner pipeline beside a Core giving the role fact assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ex_code 2 role 1; ex_try code-gen1-front-gen2-core
+check "Code executor: a front without the Planner pipeline beside a Core that gives the role fact (additive) assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+ex_code 1 "" 2; ex_try code-gen2-front-gen1-core
+check "Code executor mix: a front with the Planner pipeline beside a Core without roleFacts is refused" 'refused "Code executor pairing: the Rust front.s Planner pipeline and review gate (role_endpoint) need the role engine.s endpoint in Core.s engine facts but Core has no roleFacts"'
+ex_code 2 "" 2; ex_try code-gen2-no-role-wiring
+check "Code executor mix: a Core with roleFacts that index.cjs never passes the role endpoint is refused" 'refused "Planner pipeline and review gate (role_endpoint) need"'
+ex_code 1 "" 1; rm -f "$ex_core/rust-code-executor.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"; ex_try code-no-core-module
+check "Code executor mix: a front running Code tasks beside a Core without rust-code-executor.cjs is refused" 'refused "Code executor pairing: the Rust front runs Code tasks .* but Core does not load server/rust-code-executor.cjs"'
+ex_code 1 "" 1; sed "s#/internal/code/engine#/internal/code/facts#" "$work/ex-code-core1.saved" > "$ex_core/rust-code-executor.cjs"; ex_try code-path
+check "Code executor mix: a Core serving another engine facts path is refused" 'refused "asks for engine facts at /internal/code/engine but Core.s rust-code-executor.cjs serves another path"'
+ex_code 1 "" 1; sed "/codeEngineBridge/d" "$w/server/index.cjs" > "$work/ex-nomount.saved"; cp "$work/ex-nomount.saved" "$w/server/index.cjs"; ex_try code-no-mount
+check "Code executor mix: a Core that does not mount the engine facts bridge is refused" 'refused "does not mount the engine facts bridge"'
+ex_code 1 "" 1; sed "s/=== 'rust'/=== 'native'/" "$work/ex-code-core1.saved" > "$ex_core/rust-code-executor.cjs"; ex_try code-switch
+check "Code executor mix: a Core whose switch value differs from the front's is refused" 'refused "do not read the same switch value"'
+ex_code 1 "" 1; rm -f "$ex_rs/code_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' > "$ex_rs/moved_executor.rs"; ex_try code-moved
+check "Code executor: a front naming NOEVIA_CODE_EXECUTOR without code_routes.rs is refused, not read as old" 'refused "names NOEVIA_CODE_EXECUTOR but has no bins/noevia-server/src/code_routes.rs"'
+rm -f "$ex_rs/moved_executor.rs" "$ex_rs/code_routes.rs" "$ex_core/rust-code-executor.cjs" "$rz/crates/chat-turn/src/prepared.rs"
+rmdir "$rz/crates/chat-turn/src" "$rz/crates/chat-turn" "$rz/crates" 2>/dev/null || :
+cp "$work/ex-index.saved" "$w/server/index.cjs"
 atr_owner=node; atr_try atr-node-rows
 check "native status pair rejects Node GET ownership" 'refused "auto-tune read ownership pairing"'
 atr_owner=rust; atr_skip=yes; atr_try atr-missing-row
