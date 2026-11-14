@@ -1,0 +1,11 @@
+# Web port switches that switch.sh may set: KEY, then an extended regular expression every allowed value must match.
+# A key not listed here is refused. A value is a switch value (never a secret): off/shadow/on, 1, rust, native, or
+# native:<one account id> (never a list). Grow this file in the release whose pins carry a new switch.
+NOEVIA_RUST_RETRIEVAL ^(shadow|on)$
+NOEVIA_CHAT_EXECUTOR ^(native|native:[A-Za-z0-9-]{6,64})$
+NOEVIA_RUST_MCP_CALLS ^1$
+NOEVIA_RUST_DRIVE_TOOLS ^1$
+NOEVIA_CODE_EXECUTOR ^rust$
+NOEVIA_RUST_SETTINGS_ROUTES ^1$
+NOEVIA_RUST_EDIT_TARGET ^1$
+NOEVIA_RUST_LEGACY_WEBDAV ^1$

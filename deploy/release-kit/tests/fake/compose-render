@@ -1,0 +1,20 @@
+#!/bin/bash
+# compose-render <env-file> <compose files...>: the services' environment lists, merged in order and interpolated
+# (${X}, ${X:-d}) from the env file, as `docker compose config --format json` prints them (environment only).
+envf=$1; shift
+awk -v envf="$envf" '
+  BEGIN { while ((getline l < envf) > 0) { i = index(l, "="); if (i > 1) E[substr(l, 1, i - 1)] = substr(l, i + 1) } }
+  function interp(v,   out, s, e, inner, name, def, j) {
+    out = ""
+    while ((s = index(v, "${")) > 0) {
+      out = out substr(v, 1, s - 1); v = substr(v, s + 2); e = index(v, "}"); inner = substr(v, 1, e - 1); v = substr(v, e + 1)
+      j = index(inner, ":-"); if (j) { name = substr(inner, 1, j - 1); def = substr(inner, j + 2) } else { name = inner; def = "" }
+      out = out ((name in E && E[name] != "") ? E[name] : def)
+    }
+    return out v
+  }
+  /^  [A-Za-z0-9_-]+:/ { svc = $1; sub(/:$/, "", svc); inenv = 0; next }
+  /^    environment:/ { inenv = 1; next }
+  /^    [A-Za-z]/ { inenv = 0 }
+  inenv && /^      [A-Za-z_][A-Za-z0-9_]*: / { k = $1; sub(/:$/, "", k); v = $0; sub(/^      [A-Za-z_][A-Za-z0-9_]*: /, "", v); print svc "\t" k "\t" interp(v) }
+' "$@" | jq -R -s 'split("\n") | map(select(length > 0) | split("\t")) | reduce .[] as $r ({services: {}}; .services[$r[0]].environment[$r[1]] = $r[2])'

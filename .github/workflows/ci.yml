@@ -114,6 +114,13 @@ jobs:
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-build-web-release.sh
         if: env.RUN_JOB == 'true'
+      # Release kit (deploy/release-kit/): web switch, switch rollback, web rollback and record stamping against
+      # fixtures in a temporary directory (fake docker/curl/up.sh/date; no host, no container).
+      - name: Release kit web scripts
+        if: env.RUN_JOB == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash deploy/release-kit/tests/test-web-kit.sh
       # #1148: build/tag helpers refuse cowork-diary:* outside diary-overlay.sh (stub docker).
       - run: bash deploy/tools/test-diary-image-guard.sh
         if: env.RUN_JOB == 'true'

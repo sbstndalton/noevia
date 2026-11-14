@@ -1,0 +1,13 @@
+# kit.conf for one release (copy beside the scripts as kit.conf; README.md describes every key).
+# Values are paths, ids and SHAs only: never a secret.
+GATE=/mnt/docker/appdata/cowork/release-prep/0123456/gate.sh
+FLIPS_DIR=/mnt/docker/appdata/cowork/release-prep/flips
+# The live release (switch.sh binds forward flips to it).
+WEB_VERSION=0123456789abcdef0123456789abcdef01234567
+WEB_IMAGE=sha256:0000000000000000000000000000000000000000000000000000000000000000
+# Its rollback (rollback-web.sh).
+RELEASE_ID=0123456
+RELEASE_VERSION=0123456789abcdef0123456789abcdef01234567
+ROLLBACK_VERSION=fedcba9876543210fedcba9876543210fedcba98
+ROLLBACK_IMAGE=sha256:1111111111111111111111111111111111111111111111111111111111111111
+RELEASE_KEYS=COWORK_VERSION

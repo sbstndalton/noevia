@@ -1,0 +1,4 @@
+#!/bin/bash
+# Fake date: the clock is $FAKE/now (epoch seconds) unless the caller passes -d or -r.
+for a in "$@"; do case "$a" in -d | -r | -d* | --date*) exec /usr/bin/date "$@";; esac; done
+exec /usr/bin/date -d "@$(cat "$FAKE/now")" "$@"
