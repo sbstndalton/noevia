@@ -16,7 +16,7 @@ The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than mat
 
 ## Release port batch 5 - this release (web image only; noevia-rs#518, #519, #522, #524, #525, #527; noevia-core#380, #381, #382, #383; noevia-web#132; #2591, #2599, #2600, #2601, #2602)
 
-Pins: rs 86c77d25 (was e0954036), core 9280ed0d (was cc74c6f3), services d6112ce4 (was 77dc828c; lock only: the Diary and sidecar Dockerfiles at that ref pin rs 86c77d25, and those images are not rebuilt), web 1a1d72c3 (was a0101b38). The previous web release was 12d1dfd9. Only the web image is replaced; the Diary keeps the image of the Diary release 12d1dfd9.
+Pins: rs 86c77d25 (was e0954036), core 9280ed0d (was cc74c6f3), services d6112ce4 (was 77dc828c; lock only: the Diary and sidecar Dockerfiles at that ref pin rs 86c77d25, and those images are not rebuilt), web 1a1d72c3 (was a0101b38). The previous web release was 12d1dfd9. Only the web image is replaced; the Diary keeps its image of the Diary release of 2026-11-14 (cowork-diary:12d1dfd9, built from the batch 4 tree; it replaced the Diary release 5453963a).
 
 What changed for you:
 - Chat titles in the native chat path: no title request is made when no model is named, and a chat gets at most three title attempts also when two turns run at once (noevia-rs#519, #2591).
