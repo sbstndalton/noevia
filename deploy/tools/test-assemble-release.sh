@@ -3152,7 +3152,9 @@ check "Code executor mix: a Core whose switch value differs from the front's is 
 ex_code 1 "" 1; rm -f "$ex_rs/code_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";' > "$ex_rs/moved_executor.rs"; ex_try code-moved
 check "Code executor: a front naming NOEVIA_CODE_EXECUTOR without code_routes.rs is refused, not read as old" 'refused "names NOEVIA_CODE_EXECUTOR but has no bins/noevia-server/src/code_routes.rs"'
 # Rust port R11: the model writes (NOEVIA_RUST_MODEL_WRITES): the front's writer needs Core's refusal module, the same
-# switch value, and a budget read on every use.
+# switch value, and a budget read on every use. The Code executor's "moved" case above leaves a front naming its switch
+# without code_routes.rs, which its own guard refuses first: cleared here.
+rm -f "$ex_rs/moved_executor.rs"
 cat > "$work/mw-core.saved" <<'JS'
 const SWITCH = 'NOEVIA_RUST_MODEL_WRITES';
 const frontOwns = (env = process.env) => env[SWITCH] === 'rust';

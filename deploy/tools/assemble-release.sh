@@ -1998,7 +1998,7 @@ if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
   [ "$mw_loaded" != invalid ] || die "model writes pairing: Core's index.cjs could not be read"
   { [ "$mw_loaded" = yes ] && [ -f "$ex_core/rust-model-writes.cjs" ]; } \
     || die "model writes pairing: the Rust front answers the inference budget and idle unload PUTs (model_writes_routes.rs, NOEVIA_RUST_MODEL_WRITES=rust) but Core does not load server/rust-model-writes.cjs (Core would go on answering them)"
-  { grep -qF 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' <<<"$mw_front" && grep -qF 'Some("rust")' <<<"$mw_front"; } \
+  { grep -qF 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' <<<"$mw_front" && grep -qF 'get(SWITCH).as_deref() == Some("rust")' <<<"$mw_front"; } \
     && code_has "$ex_core/rust-model-writes.cjs" "^const SWITCH = 'NOEVIA_RUST_MODEL_WRITES';" \
     && code_has "$ex_core/rust-model-writes.cjs" "env\\[SWITCH\\][[:space:]]*===[[:space:]]*'rust'" \
     || die "model writes pairing: the Rust front's NOEVIA_RUST_MODEL_WRITES=rust and Core's rust-model-writes.cjs do not read the same switch value (the PUTs would be answered by both, or by neither)"
