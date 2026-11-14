@@ -2007,6 +2007,26 @@ if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
 elif ex_front_named NOEVIA_RUST_MODEL_WRITES; then
   die "model writes pairing: the Rust front names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs (the writer moved: update this guard)"
 fi
+# Rust port R11: the model manager proxy (NOEVIA_RUST_MODEL_MANAGER). The front's side is model_manager_routes.rs (a
+# dispatch override for /api/model-manager/*, POST benchmark/sweep relayed to Core); Core's is rust-model-manager-proxy.cjs
+# (its refusal of the rest under the same switch), and the front's host clears Core's folder scan cache through the
+# trusted bridge's `clear` op (noevia#2550). old/old, a Core ahead and new/new assemble; a front with the proxy beside a
+# Core without the refusal, with another switch value, or without the scan cache clear is refused.
+if [ -f "$ex_rs_src/model_manager_routes.rs" ]; then
+  mm_front="$(code_body "$ex_rs_src/model_manager_routes.rs")"
+  mm_loaded="$(core_requires "$ex_core/index.cjs" ./rust-model-manager-proxy.cjs)"
+  [ "$mm_loaded" != invalid ] || die "model manager proxy pairing: Core's index.cjs could not be read"
+  { [ "$mm_loaded" = yes ] && [ -f "$ex_core/rust-model-manager-proxy.cjs" ]; } \
+    || die "model manager proxy pairing: the Rust front answers /api/model-manager/* (model_manager_routes.rs, NOEVIA_RUST_MODEL_MANAGER=rust) but Core does not load server/rust-model-manager-proxy.cjs (Core would go on answering it)"
+  { grep -qF 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_MANAGER";' <<<"$mm_front" && grep -qF 'get(SWITCH).as_deref() == Some("rust")' <<<"$mm_front"; } \
+    && code_has "$ex_core/rust-model-manager-proxy.cjs" "^const SWITCH = 'NOEVIA_RUST_MODEL_MANAGER';" \
+    && code_has "$ex_core/rust-model-manager-proxy.cjs" "env\\[SWITCH\\][[:space:]]*===[[:space:]]*'rust'" \
+    || die "model manager proxy pairing: the Rust front's NOEVIA_RUST_MODEL_MANAGER=rust and Core's rust-model-manager-proxy.cjs do not read the same switch value (the proxy would be answered by both, or by neither)"
+  code_has "$ex_core/rust-model-manager-scan-cache.cjs" "'clear'" \
+    || die "model manager proxy pairing: the Rust front clears Core's folder scan cache but Core's rust-model-manager-scan-cache.cjs has no clear op (a Core from before noevia#2550)"
+elif ex_front_named NOEVIA_RUST_MODEL_MANAGER; then
+  die "model manager proxy pairing: the Rust front names NOEVIA_RUST_MODEL_MANAGER but has no bins/noevia-server/src/model_manager_routes.rs (the proxy moved: update this guard)"
+fi
 # #1863: only the idle timer GET moves. The setting writer and reload baseline stay in Core.
 iur_core_owner=""; iur_rs_owner=""
 grep -qF "require('./rust-idle-unload-read.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && iur_core_owner=rust
