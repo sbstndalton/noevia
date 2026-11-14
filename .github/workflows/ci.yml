@@ -144,6 +144,9 @@ jobs:
           done
       - run: bash deploy/tools/test-assemble-release.sh
         if: env.RUN_JOB == 'true'
+      # #2596: the scheduled assembly of the four mains (fake curl and assembler; no network).
+      - run: bash deploy/tools/test-check-mains-assemble.sh
+        if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-residual-fallback-pairing.sh
         if: env.RUN_JOB == 'true'
       - run: bash deploy/tools/test-web-supervisor.sh
