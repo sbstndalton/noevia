@@ -1,0 +1,8 @@
+#!/bin/bash
+# Fake sqlite3 for the tests (python's sqlite3 module): only `sqlite3 -readonly <db> .dump`, the call manifest-compare.sh
+# makes. The real CLI quotes table names differently; the script accepts both forms.
+[ "${1:-}" = -readonly ] && [ "${3:-}" = .dump ] || { echo "fake sqlite3: unsupported $*" >&2; exit 2; }
+[ ! -f "${FAKE:-/nonexistent}/sqlite3_fail" ] || exit 1
+exec python3 -I -c 'import sqlite3, sys
+c = sqlite3.connect("file:" + sys.argv[1] + "?mode=ro", uri=True)
+for line in c.iterdump(): print(line)' "$2"
