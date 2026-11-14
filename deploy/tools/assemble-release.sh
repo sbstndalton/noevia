@@ -2005,6 +2005,11 @@ if [ -f "$ex_rs_src/model_writes_routes.rs" ]; then
   code_has "$ex_core/inference-budget.cjs" '^[[:space:]]*function savedGib[(]' \
     || die "model writes pairing: the Rust front saves the inference budget row but Core's inference-budget.cjs does not read it on every use (it would enforce the figure it read at its start until it restarts)"
   # The preset editor's save (track R11 step 8): a front that answers it needs Core to refuse it under the switch too.
+  # The MTP artifact check (track R11 step 11): a front that answers it needs Core to refuse it under the switch too.
+  if [ -f "$ex_rs_src/model_pull_routes.rs" ]; then
+    code_has "$ex_core/rust-model-writes.cjs" "^const OWNED_GETS = .*'/api/models/mtp-artifact'" \
+      || die "model writes pairing: the Rust front answers GET /api/models/mtp-artifact (model_pull_routes.rs) but Core's rust-model-writes.cjs does not refuse it (both would run the check)"
+  fi
   if grep -qE '^pub const PRESET: &str = ' <<<"$mw_front"; then
     code_has "$ex_core/rust-model-writes.cjs" "^const OWNED_PATHS = .*'/api/models/preset'" \
       || die "model writes pairing: the Rust front answers PUT /api/models/preset but Core's rust-model-writes.cjs does not refuse it (both would answer the preset save)"

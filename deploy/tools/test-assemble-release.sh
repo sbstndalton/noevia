@@ -3190,6 +3190,11 @@ mw_core; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_tr
 check "model writes mix: a front answering the preset save beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers PUT /api/models/preset but Core.s rust-model-writes.cjs does not refuse it"'
 mw_core; sed "s#^const SWITCH#const OWNED_PATHS = Object.freeze(['/api/models/inference-budget', '/api/models/idle-unload', '/api/models/preset']);\nconst SWITCH#" "$work/mw-core.saved" > "$ex_core/rust-model-writes.cjs"; cp "$work/mw-front-preset.saved" "$ex_rs/model_writes_routes.rs"; ex_try mw-preset-new-new
 check "model writes new/new: a front answering the preset save beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+mw_core; mw_front; printf '%s\n' '//! the MTP artifact check' > "$ex_rs/model_pull_routes.rs"; ex_try mw-mtp-no-core-refusal
+check "model writes mix: a front answering the MTP artifact check beside a Core that does not refuse it is refused" 'refused "model writes pairing: the Rust front answers GET /api/models/mtp-artifact .* but Core.s rust-model-writes.cjs does not refuse it"'
+mw_core; sed "s#^const SWITCH#const OWNED_GETS = Object.freeze(['/api/models/mtp-artifact']);\nconst SWITCH#" "$work/mw-core.saved" > "$ex_core/rust-model-writes.cjs"; mw_front; ex_try mw-mtp-new-new
+check "model writes new/new: a front answering the MTP artifact check beside a Core refusing it assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -f "$ex_rs/model_pull_routes.rs"
 mw_core; rm -f "$ex_rs/model_writes_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";' > "$ex_rs/moved_writer.rs"; ex_try mw-moved
 check "model writes: a front naming NOEVIA_RUST_MODEL_WRITES without model_writes_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_MODEL_WRITES but has no bins/noevia-server/src/model_writes_routes.rs"'
 rm -f "$ex_rs/moved_writer.rs" "$ex_rs/model_writes_routes.rs" "$ex_core/rust-model-writes.cjs" "$ex_core/inference-budget.cjs"
