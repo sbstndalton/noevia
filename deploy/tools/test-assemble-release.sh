@@ -3101,7 +3101,7 @@ ex_chat_core; sed "s/'health', 'load', 'title-save'/'health', 'load'/" "$work/ex
 check "chat executor mix: a front calling an op missing from Core's op list is refused" 'refused "executor calls /internal/chat/native/title-save but Core.s rust-chat-native.cjs does not serve it"'
 ex_chat_core; sed "/SKILL_OPS/d;/SKILLS_PREFIX/d" "$work/ex-chat-core.saved" > "$ex_core/rust-chat-native.cjs"; ex_try chat-no-skills
 check "chat executor mix: a front calling the skills bridges beside a Core without them is refused" 'refused "executor calls /internal/chat/skills/read but Core.s rust-chat-native.cjs does not serve it"'
-ex_chat_core; { cat "$work/ex-chat-front.saved"; printf '%s\n' 'const OWN: &str = "/internal/chat/native/read";'; } > "$ex_rs/chat_native.rs"; ex_try chat-op-wrong-list
+ex_chat_core; { sed -n 1,2p "$work/ex-chat-front.saved"; printf '%s\n' 'const OWN: &str = "/internal/chat/native/read";'; } > "$ex_rs/chat_native.rs"; ex_try chat-op-wrong-list
 check "chat executor mix: an op that only another prefix's list names (native/read vs the skills list) is refused" 'refused "executor calls /internal/chat/native/read but Core.s rust-chat-native.cjs does not serve it"'
 { sed -n 1,2p "$work/ex-chat-front.saved"; printf '%s\n' '#[cfg(test)]' 'fn helper() {}' 'const REVOKE_PATH: &str = "/internal/chat/tools/revoke";'; } > "$ex_rs/chat_native.rs"; ex_try chat-after-cfg-test-helper
 check "chat executor mix: a bridge path after a #[cfg(test)] helper (not a test module) is still enforced" 'refused "executor calls /internal/chat/tools/revoke but Core.s rust-chat-native.cjs does not serve it"'
