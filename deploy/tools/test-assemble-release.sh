@@ -3270,13 +3270,18 @@ cat > "$work/ea-front.saved" <<'RS'
 //! /api/embedding in the front.
 pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";
 pub fn on(get: impl Fn(&str) -> Option<String>) -> bool { get(SWITCH).as_deref() == Some("rust") }
+const INTENT_PROTOCOL: &str = "rust-embedding-service-intent-v1";
 RS
+ea_service_had=no; [ -f "$ex_core/embedding-service.cjs" ] && { cp "$ex_core/embedding-service.cjs" "$work/ea-service-orig.saved"; ea_service_had=yes; }
+printf '%s\n' "const INTENT_PROTOCOL = 'rust-embedding-service-intent-v1';" > "$work/ea-service-new.saved"
 ea_config_had=no; [ -f "$ex_core/embedding-config.cjs" ] && { cp "$ex_core/embedding-config.cjs" "$work/ea-config-orig.saved"; ea_config_had=yes; }
 printf '%s\n' 'function createEmbeddingConfig({ reread = false } = {}) {' '  function refresh() {' '    if (!reread) return;' '  }' '}' > "$work/ea-config-new.saved"
 printf '%s\n' 'function createEmbeddingConfig() {' '  // function refresh() { would re-read }' '}' > "$work/ea-config-old.saved"
-ea_core() { # [refusal: yes|no] [reread: yes|no]
+ea_core() { # [refusal: yes|no] [reread: yes|no] [intent: yes|no]
   cp "$work/ea-core.saved" "$ex_core/rust-embedding-admin.cjs"
+  if [ "${3:-yes}" = no ]; then rm -f "$ex_core/embedding-service.cjs"; else cp "$work/ea-service-new.saved" "$ex_core/embedding-service.cjs"; fi
   { cat "$work/ex-index.saved"
+    [ "${3:-yes}" = no ] || printf '%s\n' "  intentFile: require('./rust-embedding-admin.cjs').frontOwns() ? path.join(DATA_DIR, 'embedding-service-intent.json') : null }));"
     [ "${1:-yes}" = no ] || printf '%s\n' "  if (require('./rust-embedding-admin.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;"
     if [ "${2:-yes}" = no ]; then printf '%s\n' "const embeddingAdmin = require('./rust-embedding-admin.cjs');"
     else printf '%s\n' "  reread: require('./rust-embedding-admin.cjs').frontOwns() }));"; fi
@@ -3286,6 +3291,7 @@ ea_core() { # [refusal: yes|no] [reread: yes|no]
 ea_old_core() { # the Core as it was before this block (embedding-config.cjs back, or gone when there was none)
   rm -f "$ex_core/rust-embedding-admin.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"
   if [ "$ea_config_had" = yes ]; then cp "$work/ea-config-orig.saved" "$ex_core/embedding-config.cjs"; else rm -f "$ex_core/embedding-config.cjs"; fi
+  if [ "$ea_service_had" = yes ]; then cp "$work/ea-service-orig.saved" "$ex_core/embedding-service.cjs"; else rm -f "$ex_core/embedding-service.cjs"; fi
 }
 ea_front() { cp "$work/ea-front.saved" "$ex_rs/embedding_admin_routes.rs"; }
 ea_old_core; rm -f "$ex_rs/embedding_admin_routes.rs"; ex_try ea-old-old
@@ -3306,6 +3312,10 @@ ea_core; cp "$work/ea-config-old.saved" "$ex_core/embedding-config.cjs"; ea_fron
 check "embedding admin mix: a Core whose index.cjs asks for the re-read but whose configuration cannot re-read is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
 ea_core yes no; cp "$work/ea-config-new.saved" "$ex_core/embedding-config.cjs"; ea_front; ex_try ea-no-reread-wiring
 check "embedding admin mix: a Core that can re-read but whose index.cjs never switches it on is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
+ea_core yes yes no; ea_front; ex_try ea-no-intent-core
+check "embedding admin mix: a Core that does not read the front's announced service changes is refused" 'refused "embedding admin pairing: the Rust front announces its embedding service changes but Core does not read them"'
+ea_core; grep -v INTENT_PROTOCOL "$work/ea-front.saved" > "$ex_rs/embedding_admin_routes.rs"; ex_try ea-no-intent-front
+check "embedding admin mix: a front that changes the service without announcing it is refused" 'refused "embedding admin pairing: the Rust front changes the embedding service without announcing it"'
 ea_core; rm -f "$ex_rs/embedding_admin_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";' > "$ex_rs/moved_embedding.rs"; ex_try ea-moved
 check "embedding admin: a front naming NOEVIA_RUST_EMBEDDING_ADMIN without embedding_admin_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_EMBEDDING_ADMIN but has no bins/noevia-server/src/embedding_admin_routes.rs"'
 rm -f "$ex_rs/moved_embedding.rs"; ea_old_core
