@@ -14,8 +14,8 @@ run() { out=$(CHECK_EGRESS_REPO="$work/r" bash "$here/check-egress-ref.sh" "$@" 
 run "$c1" "$c2"; check "noevia tag, same egress tree: no rebuild (exit 0)" '[ $rc = 0 ] && grep -q "egress=current mode=noevia" <<<"$out"'
 run "${c1:0:8}" "$c3"; check "noevia tag, moved rs ref: rebuild required (exit 3), names both refs" '[ $rc = 3 ] && grep -q "mode=noevia.*rs 111111111111 -> 222222222222" <<<"$out"'
 c4=$(df "$R1" "$S2" four); run "$c1" "$c4"; check "noevia tag, same ref with another tarball sha256 counts as stale" '[ $rc = 3 ]'
-printf 'FROM debian@sha256:%s\n' "$S1" >>"$work/r/deploy/egress-proxy/Dockerfile"; df "$R1" "$S1" six >/dev/null; c6=$(g rev-parse HEAD)
-sed -i '$d' "$work/r/deploy/egress-proxy/Dockerfile"; printf 'FROM debian@sha256:%s\nARG NOEVIA_RS_REF=%s\nARG NOEVIA_RS_SHA256=%s\n' "$S2" "$R1" "$S1" >"$work/r/deploy/egress-proxy/Dockerfile"; g add -A; g commit -qm seven; c7=$(g rev-parse HEAD)
+printf 'FROM debian@sha256:%s\nARG NOEVIA_RS_REF=%s\nARG NOEVIA_RS_SHA256=%s\n' "$S1" "$R1" "$S1" >"$work/r/deploy/egress-proxy/Dockerfile"; g add -A; g commit -qm six; c6=$(g rev-parse HEAD)
+printf 'FROM debian@sha256:%s\nARG NOEVIA_RS_REF=%s\nARG NOEVIA_RS_SHA256=%s\n' "$S2" "$R1" "$S1" >"$work/r/deploy/egress-proxy/Dockerfile"; g add -A; g commit -qm seven; c7=$(g rev-parse HEAD)
 run "$c6" "$c7"; check "noevia tag, same rs ref but another base image: stale (the whole directory is compared)" '[ $rc = 3 ]'
 run "${R1:0:8}" "$c1"; check "rs-ref tag (production form) equal to the candidate's ref prefix: current" '[ $rc = 0 ] && grep -q "egress=current mode=rs-ref tag=11111111" <<<"$out"'
 run 3a34a0ed "$c3"; check "rs-ref tag of another Rust commit: stale (exit 3)" '[ $rc = 3 ] && grep -q "egress=stale mode=rs-ref tag=3a34a0ed" <<<"$out"'

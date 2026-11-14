@@ -1934,7 +1934,7 @@ ex_rs_src="$tree/rs/bins/noevia-server/src"
 ex_core="$tree/core/server"
 # The front's source files: bins/noevia-server/src and every crates/*/src (other binaries are other services; never
 # tests/, benches/, a src/**/tests.rs or a src/**/tests/ module), sorted.
-ex_front_files() { { find "$tree"/rs/bins/noevia-server/src "$tree"/rs/crates/*/src -type f -name '*.rs' ! -name tests.rs ! -path '*/tests/*' 2>/dev/null || true; } | LC_ALL=C sort; }
+ex_front_files() { { find "$tree"/rs/bins/noevia-server/src "$tree"/rs/crates/*/src -type f -name '*.rs' ! -name tests.rs ! -path "$tree/rs/*/src/*tests/*" 2>/dev/null || true; } | LC_ALL=C sort; }
 # A front that names a switch but whose executor module is not where the guard looks is refused: the markers moved.
 ex_front_named() { local f; while IFS= read -r f; do grep -qsF -e "$1" "$f" && return 0; done < <(ex_front_files); return 1; }
 # ex_front_grep <ERE>: true when a code line of any front source file matches (comments and test modules skipped). The

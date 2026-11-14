@@ -3176,7 +3176,14 @@ check "Code executor: a crate naming NOEVIA_CODE_EXECUTOR without code_routes.rs
 # #2611 item 3: role_endpoint moved into a crate still needs Core's role fact.
 ex_code 1 "" 1; printf '%s\n' 'pub fn role_endpoint(facts: &JValue) -> Option<Endpoint> { None }' > "$rz/crates/code-exec/src/lib.rs"; ex_try code-role-in-crate
 check "Code executor mix: role_endpoint in a crate beside a Core without roleFacts is refused (#2611)" 'refused "Planner pipeline and review gate (role_endpoint) need"'
-rm -rf "$rz/crates/code-exec"
+# The front's text is read whole before grep: a role_endpoint early in a code_routes.rs of more than a pipe buffer of
+# code is still found every time (piped into grep -q under pipefail it was lost to SIGPIPE at random).
+ex_code 1 "" 2; { cat "$work/ex-code-front2.saved"; for i in $(seq 1 400); do printf 'const PAD_%s: &str = "qa padding line for a large file";\n' "$i"; done; } > "$ex_rs/code_routes.rs"; ex_try code-role-large-file
+check "Code executor mix: role_endpoint at the top of a large code_routes.rs beside a Core without roleFacts is refused" '[ "$(wc -c < "$ex_rs/code_routes.rs")" -gt 16384 ] && refused "Planner pipeline and review gate (role_endpoint) need"'
+# A src tests.rs module and a tests/ directory under src are test code, not the contract.
+ex_code 1 "" 1; mkdir -p "$ex_rs/x/tests"; printf '%s\n' 'const T: &str = "/internal/code/test-only";' > "$ex_rs/x/tests.rs"; cp "$ex_rs/x/tests.rs" "$ex_rs/x/tests/a.rs"; ex_try code-src-tests
+check "Code executor new/new: /internal/code literals in src tests.rs or src/**/tests/ are not calls" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
+rm -rf "$ex_rs/x" "$rz/crates/code-exec"
 # #2639 item 1: the switch comparison is matched exactly, not any Some("rust") in the file.
 ex_code 1 "" 1; sed 's/as_deref() == Some("rust")/as_deref() == Some("native")/' "$work/ex-code-front1.saved" > "$ex_rs/code_routes.rs"; printf '%s\n' 'const LANG: Option<&str> = Some("rust");' >> "$ex_rs/code_routes.rs"; ex_try code-loose-switch
 check "Code executor mix: a changed switch comparison with another Some(\"rust\") left in the file is refused (#2639)" 'refused "do not read the same switch value"'
