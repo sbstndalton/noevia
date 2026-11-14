@@ -129,7 +129,9 @@ echo 'qa extra' >"$A/state/diary/users/$U1/qa-unexpected.txt"; : >"$FAKE/events"
 check "DRY=1 never restores, even with --restore and an unexplained change" '[ $rc = 0 ] && grep -q "no restore in a DRY run" <<<"$out" && [ -e "$A/state/diary/users/$U1/qa-unexpected.txt" ] && ! grep -q "^stop" "$FAKE/events"'
 rm "$A/state/diary/users/$U1/qa-unexpected.txt"; qasql "$A/state/diary/users/$U1/managed-diary.db" "INSERT INTO files VALUES ('2026-11-22.md', x'51', 'v1', 3.0)"; : >"$FAKE/events"; run bash "$K/rollback-diary.sh" "$S/b" --restore
 check "--restore refuses when only user data changed (it would lose those saves)" '[ $rc = 0 ] && grep -q "restore refused; it would lose those saves" <<<"$out" && ! grep -q "^stop" "$FAKE/events"'
-tick 5; run bash "$K/rollback-diary.sh" "$S/b" --restore-force
+echo 'qa extra' >"$A/state/diary/users/$U1/qa-unexpected.txt"; : >"$FAKE/events"; run bash "$K/rollback-diary.sh" "$S/b" --restore
+check "--restore refuses an unexplained change that comes with user saves (exit 5): they would be lost" '[ $rc = 0 ] && grep -q "restore refused; it would lose those saves" <<<"$out" && ! grep -q "^stop" "$FAKE/events" && [ -e "$A/state/diary/users/$U1/qa-unexpected.txt" ]'
+rm "$A/state/diary/users/$U1/qa-unexpected.txt"; tick 5; run bash "$K/rollback-diary.sh" "$S/b" --restore-force
 check "--restore-force restores; the saves stay in the moved-aside data" '[ $rc = 0 ] && grep -q "restored and healthy" <<<"$out" && [ "$(ls -d "$A/state/diary.before-restore-"* | wc -l)" -ge 2 ]'
 echo 'qa extra' >"$A/state/diary/users/$U1/qa-unexpected.txt"; mkdir -p "$A/state/diary.before-restore-$(/usr/bin/date -u -d "@$(cat "$FAKE/now")" +%Y%m%dT%H%M%SZ)"; : >"$FAKE/events"; run bash "$K/rollback-diary.sh" "$S/b" --restore
 check "a restore whose aside path already exists refuses before anything stops (never moves data into it)" '[ $rc != 0 ] && grep -q restore_paths_exist <<<"$out" && ! grep -q "^stop" "$FAKE/events"'
@@ -156,7 +158,7 @@ check "a managed-diary.db that cannot be compared row by row counts as user data
 qasql "$A/state/diary/users/$U1/managed-diary.db" "INSERT INTO files VALUES ('2026-11-21.md', x'51', 'v1', 2.0)"; run bash "$K/manifest-compare.sh" "$BD"
 check "a user's save since the backup makes it stale (exit 4, never 'still counts')" '[ $rc = 4 ] && grep -q "^saved       changed users/$U1/managed-diary.db" <<<"$out" && grep -q "saved=1 unexplained=0" <<<"$out"'
 echo '# QA edit' >>"$A/state/diary/users/$U1/2026-11-20.md"; run bash "$K/manifest-compare.sh" "$BD"
-check "manifest-compare.sh names any other change UNEXPLAINED (exit 3 wins over 4)" '[ $rc = 3 ] && grep -q "^UNEXPLAINED changed users/$U1/2026-11-20.md" <<<"$out"'
+check "an UNEXPLAINED change together with user saves exits 5" '[ $rc = 5 ] && grep -q "^UNEXPLAINED changed users/$U1/2026-11-20.md" <<<"$out"'
 setup b2; printf '%s\n' '2026-11-20T11:59:00Z "PUT /api/day HTTP/1.1" 200' >"$FAKE/c/cowork-diary-1/logs"; : >"$FAKE/events"; run bash "$K/backup-diary.sh"
 check "backup-diary.sh never stops a busy Diary" '[ $rc != 0 ] && grep -q not_idle_10min <<<"$out" && ! grep -q "^stop" "$FAKE/events" && [ -z "$(ls "$BR")" ]'
 setup b3; printf 'qa\n' >"$A/state/diary/users/$U1/unreadable.db"; chmod 000 "$A/state/diary/users/$U1/unreadable.db"; : >"$FAKE/events"; run bash "$K/backup-diary.sh"

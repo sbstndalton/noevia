@@ -20,7 +20,7 @@ temporary directory with a fake `docker`, `curl`, `up.sh` and clock (`tests/fake
 | `diary-rollback-switch.sh KEY [TO]` | the Diary `rollback-*.sh` / `rollback-*-v2.sh` wrappers | `bash diary-rollback-switch.sh KEY` (to absent; a leaf goes back to the value recorded at its flip) |
 | `rollback-diary.sh <backup-dir> [--keep-switches] [--restore\|--restore-force]` | `diary-<id>/rollback-diary.sh` | `DRY=1 bash rollback-diary.sh <backup-dir>`, then without `DRY` (a DRY run never restores) |
 | `backup-diary.sh` | (none: the GO asked for it, #2635) | `DRY=1 bash backup-diary.sh`, then `bash backup-diary.sh`; its last line names the backup |
-| `manifest-compare.sh <backup-dir>` | `diary-<id>/manifest-compare.sh` | exit 0: only expected changes, the backup still counts; exit 4: user data changed since it (take a new one with `backup-diary.sh`); exit 3: something unexplained; exit 1: no conclusion |
+| `manifest-compare.sh <backup-dir>` | `diary-<id>/manifest-compare.sh` | exit 0: only expected changes, the backup still counts; exit 4: user data changed since it (take a new one with `backup-diary.sh`); exit 3: something unexplained; exit 5: both; exit 1: no conclusion |
 | `stamp.sh <file> <KIND> [--append] < body` | hand-written times in GATE/GO/LIVE files | `printf '%s\n' "…" \| bash stamp.sh agents/<name>.GATE GATE`; `bash stamp.sh --check <file>` names a first-line time more than 120 s off the file's write time |
 
 ### What changed against the hand-made scripts
@@ -67,8 +67,8 @@ temporary directory with a fake `docker`, `curl`, `up.sh` and clock (`tests/fake
   `backups` table alone (`sqlite3 -readonly .dump`, row by row); any other change is user data (exit 4).
 - **Restores that cannot strand the Diary.** `rollback-diary.sh --restore` stages the backup's copy beside the data and
   proves it against the stop manifest before the Diary stops; then two renames swap it in (the current data is kept
-  aside, never deleted), and an interrupted swap puts the current data back. It restores only for an UNEXPLAINED change;
-  when only user data changed it refuses (those saves would be lost) unless the owner chooses `--restore-force`.
+  aside, never deleted), and an interrupted swap puts the current data back. It restores only for an UNEXPLAINED change with no user
+  data changed; when user data changed (exit 4 or 5) it refuses (those saves would be lost) unless the owner chooses `--restore-force`.
 
 Unchanged: the windows (no step 04:00–04:30 America/New_York; no forward flip 08:00–09:30Z), the one-line `.env` and
 override edits through temp files, the Compose resolution checks, the web-only recreate through the release's `up.sh`

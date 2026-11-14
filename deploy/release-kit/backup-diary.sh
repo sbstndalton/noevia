@@ -48,7 +48,7 @@ diary_manifest "$B/state-diary" "$B/manifest-copy"
 dls() { sed -E 's/^(d [0-7]+) [0-9]+ /\1 /' "$1"; }
 cmp -s "$B/manifest-stop.sha" "$B/manifest-copy.sha" && cmp -s <(dls "$B/manifest-stop.ls") <(dls "$B/manifest-copy.ls") || die copy_differs_from_the_data_at_stop
 # The archive is made from the verified copy (named as the data's path under APPDATA), not from the live directory.
-(COPYFILE_DISABLE=1 tar -czf "$B/diary-appdata.tar.gz" -C "$B" --transform "s,^state-diary,${state#"$A"/}," state-diary -C "$A" config/.env)
+(COPYFILE_DISABLE=1 tar -czf "$B/diary-appdata.tar.gz" -C "$B" --transform "s|^state-diary|${state#"$A"/}|" state-diary -C "$A" config/.env)
 gzip -t "$B/diary-appdata.tar.gz"; tar -tzf "$B/diary-appdata.tar.gz" >"$B/listing.txt"
 grep -qx 'config/.env' "$B/listing.txt" && grep -qE "^${state#"$A"/}(/|$)" "$B/listing.txt" || die archive_listing
 (cd "$B" && sha256sum diary-appdata.tar.gz manifest-stop.sha manifest-stop.ls >SHA256SUMS)

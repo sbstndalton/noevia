@@ -9,10 +9,10 @@
 # (web keys, web switches) is kept as it is. Then: untag cowork-diary:<DIARY_VERSION> (the candidate keeps its own tag),
 # recreate only the Diary with the release's up.sh call, wait healthy on the old image, web -> Diary health, and compare
 # the data with the backup's stop manifest (names only).
-#   --restore        ONLY when that comparison shows an UNEXPLAINED file (exit 3): the backup's copy is staged beside the
+#   --restore        ONLY when that comparison shows an UNEXPLAINED file and no user data changed (exit 3): the backup's copy is staged beside the
 #                    data and proved equal to the stop manifest first; only then the Diary stops, the current data is
 #                    moved aside (kept, never deleted), the staged copy takes its place (a rename) and the Diary starts.
-#   --restore-force  the same also when user data changed since the backup (exit 4): those saves stay only in the
+#   --restore-force  the same also when user data changed since the backup (exit 4 or 5): those saves stay only in the
 #                    moved-aside directory. The owner's decision, never a default.
 # DRY=1 prints what would change (key names) and changes nothing, never restores. Ignores HUP and logs to FLIPS_DIR.
 # Refuses inside 04:00-04:30 America/New_York and while a flip or another release step runs. Times come from the clock.
@@ -71,10 +71,10 @@ t0=$(kit_epoch); until health_ok; do [ $(( $(kit_epoch) - t0 )) -lt 240 ] || die
 docker exec "$WEB" node -e "fetch('$HEALTH',{headers:{Authorization:'Bearer '+process.env.DIARY_AUTH_TOKEN}}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" || log "web cannot reach the Diary"
 log "running: $(docker inspect "$DI" --format 'image={{.Image}} health={{.State.Health.Status}} restarts={{.RestartCount}}')"
 rc=0; bash "$HERE/manifest-compare.sh" "$B" || rc=$?
-case "$rc" in 0 | 3 | 4) ;; *) die "manifest_compare_failed_rc_$rc (no conclusion about the data: run manifest-compare.sh again)" ;; esac
+case "$rc" in 0 | 3 | 4 | 5) ;; *) die "manifest_compare_failed_rc_$rc (no conclusion about the data: run manifest-compare.sh again)" ;; esac
 if [ "${DRY:-0}" = 1 ]; then log "DRY: manifest_rc=$rc; no restore in a DRY run $(kit_now)"; exit 0; fi
 if [ $RESTORE != 0 ]; then
-  if [ "$rc" = 0 ] || { [ "$rc" = 4 ] && [ $RESTORE = 1 ]; }; then
+  if [ "$rc" = 0 ] || { [ "$rc" != 3 ] && [ $RESTORE = 1 ]; }; then
     [ "$rc" = 0 ] && log "no UNEXPLAINED file: restore refused (not needed)" || log "user data changed since the backup (saved): restore refused; it would lose those saves (--restore-force only on the owner's decision)"
     exit 0
   fi
@@ -86,15 +86,17 @@ if [ $RESTORE != 0 ]; then
   (cd "$stage" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0r sha256sum) | cmp -s - "$B/manifest-stop.sha" \
     || { rm -rf "$stage"; die "staged_copy_differs_from_the_stop_manifest (nothing was stopped or moved)"; }
   moved=0
-  undo() { if [ "$moved" = 1 ] && [ ! -e "$state" ] && [ -d "$aside" ]; then mv -T "$aside" "$state"; log "restore interrupted: current data put back"; fi
-    docker start "$DI" >/dev/null 2>&1 || true; }
+  # Whatever stops this run (an error, a signal), the data directory is never left missing and the Diary is started.
+  undo() { set +e; if [ ! -e "$state" ] && [ -d "$aside" ]; then mv -T "$aside" "$state" && log "restore interrupted: current data put back"; fi
+    docker start "$DI" >/dev/null 2>&1; [ -z "${W:-}" ] || rm -rf "$W"; }
   trap 'undo' EXIT
+  kit_clock rollback || exit 1
   log "RESTORE from $B (staged copy verified); current data moved aside to $aside"
   docker stop --time 30 "$DI" >/dev/null
   mv -T "$state" "$aside"; moved=1; mv -T "$stage" "$state"; moved=2
   docker start "$DI" >/dev/null
   t0=$(kit_epoch); until health_ok; do [ $(( $(kit_epoch) - t0 )) -lt 240 ] || die not_healthy_after_restore; sleep 3; done
-  trap - EXIT
+  trap - EXIT; [ -z "${W:-}" ] || rm -rf "$W"
   log "restored and healthy; data equals the stop manifest; previous data kept at $aside"
 fi
 log "rollback-diary=verified image=${OLD_ID:7:12} manifest_rc=$rc $(kit_now)"

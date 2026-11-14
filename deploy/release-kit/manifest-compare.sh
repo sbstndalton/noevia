@@ -15,7 +15,8 @@
 # Exit 0: only expected changes: the backup still counts before a Diary flip (#2635).
 # Exit 4: user data changed since the backup, nothing unexplained: the backup is stale for a flip (take a new one with
 #         backup-diary.sh); restoring it would lose those saves (rollback-diary.sh --restore refuses; --restore-force).
-# Exit 3: something UNEXPLAINED (it wins over 4). Exit 1: the comparison itself failed (never read as "fine").
+# Exit 3: something UNEXPLAINED, no user data changed. Exit 5: both (a restore would also lose saves).
+# Exit 1: the comparison itself failed (never read as "fine"). Anything but 0 means: take a new backup before a flip.
 set -euo pipefail
 HERE=$(cd -- "$(dirname -- "$0")" && pwd); . "$HERE/lib.sh"
 B=${1:?backup dir}
@@ -57,5 +58,5 @@ while IFS= read -r n; do [ -z "$n" ] || cls changed "$n"; done <<<"$changed"
 while IFS= read -r n; do [ -z "$n" ] || cls added "$n"; done <<<"$added"
 while IFS= read -r n; do [ -z "$n" ] || cls removed "$n"; done <<<"$removed"
 echo "manifest compare: files before=$(grep -c . "$now/before.names" || true) now=$(grep -c . "$now/after.names" || true) changed=$(grep -c . <<<"$changed" || true) added=$(grep -c . <<<"$added" || true) removed=$(grep -c . <<<"$removed" || true) saved=$saved unexplained=$unexplained $(kit_now)"
-[ "$unexplained" = 0 ] || exit 3
+if [ "$unexplained" != 0 ]; then [ "$saved" = 0 ] && exit 3 || exit 5; fi
 [ "$saved" = 0 ] || exit 4
