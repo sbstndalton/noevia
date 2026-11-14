@@ -3271,7 +3271,7 @@ cat > "$work/ea-front.saved" <<'RS'
 pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";
 pub fn on(get: impl Fn(&str) -> Option<String>) -> bool { get(SWITCH).as_deref() == Some("rust") }
 RS
-[ -f "$ex_core/embedding-config.cjs" ] && cp "$ex_core/embedding-config.cjs" "$work/ea-config-orig.saved" || : > "$work/ea-config-orig.saved"
+ea_config_had=no; [ -f "$ex_core/embedding-config.cjs" ] && { cp "$ex_core/embedding-config.cjs" "$work/ea-config-orig.saved"; ea_config_had=yes; }
 printf '%s\n' 'function createEmbeddingConfig({ reread = false } = {}) {' '  function refresh() {' '    if (!reread) return;' '  }' '}' > "$work/ea-config-new.saved"
 printf '%s\n' 'function createEmbeddingConfig() {' '  // function refresh() { would re-read }' '}' > "$work/ea-config-old.saved"
 ea_core() { # [refusal: yes|no] [reread: yes|no]
@@ -3283,7 +3283,10 @@ ea_core() { # [refusal: yes|no] [reread: yes|no]
   } > "$w/server/index.cjs"
   if [ "${2:-yes}" = no ]; then cp "$work/ea-config-old.saved" "$ex_core/embedding-config.cjs"; else cp "$work/ea-config-new.saved" "$ex_core/embedding-config.cjs"; fi
 }
-ea_old_core() { rm -f "$ex_core/rust-embedding-admin.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"; cp "$work/ea-config-orig.saved" "$ex_core/embedding-config.cjs"; }
+ea_old_core() { # the Core as it was before this block (embedding-config.cjs back, or gone when there was none)
+  rm -f "$ex_core/rust-embedding-admin.cjs"; cp "$work/ex-index.saved" "$w/server/index.cjs"
+  if [ "$ea_config_had" = yes ]; then cp "$work/ea-config-orig.saved" "$ex_core/embedding-config.cjs"; else rm -f "$ex_core/embedding-config.cjs"; fi
+}
 ea_front() { cp "$work/ea-front.saved" "$ex_rs/embedding_admin_routes.rs"; }
 ea_old_core; rm -f "$ex_rs/embedding_admin_routes.rs"; ex_try ea-old-old
 check "embedding admin old/old: no front route on either side assembles" '[ $rc -eq 0 ] && [ -f "$out/noevia-release-$tsha.tar.gz" ]'
@@ -3299,6 +3302,10 @@ ea_core; sed "s/=== 'rust'/=== 'native'/" "$work/ea-core.saved" > "$ex_core/rust
 check "embedding admin mix: a Core whose switch value differs from the front's is refused" 'refused "embedding admin pairing: .* do not read the same switch value"'
 ea_core yes no; ea_front; ex_try ea-no-reread
 check "embedding admin mix: a Core that refuses the path but never reads the configuration again is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
+ea_core; cp "$work/ea-config-old.saved" "$ex_core/embedding-config.cjs"; ea_front; ex_try ea-no-refresh
+check "embedding admin mix: a Core whose index.cjs asks for the re-read but whose configuration cannot re-read is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
+ea_core yes no; cp "$work/ea-config-new.saved" "$ex_core/embedding-config.cjs"; ea_front; ex_try ea-no-reread-wiring
+check "embedding admin mix: a Core that can re-read but whose index.cjs never switches it on is refused" 'refused "embedding admin pairing: the Rust front writes embedding-config.json but Core.s embedding configuration does not read it again"'
 ea_core; rm -f "$ex_rs/embedding_admin_routes.rs"; printf '%s\n' 'pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";' > "$ex_rs/moved_embedding.rs"; ex_try ea-moved
 check "embedding admin: a front naming NOEVIA_RUST_EMBEDDING_ADMIN without embedding_admin_routes.rs is refused, not read as old" 'refused "names NOEVIA_RUST_EMBEDDING_ADMIN but has no bins/noevia-server/src/embedding_admin_routes.rs"'
 rm -f "$ex_rs/moved_embedding.rs"; ea_old_core
