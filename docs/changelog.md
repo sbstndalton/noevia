@@ -14,7 +14,19 @@ Chat-context routes (GET and POST `/api/chats/{id}/context`) are permanently Rus
 
 The release assembler (#2091, #2096) reads `routes.toml` as TOML rather than matching one spelling: an indented, tab-separated, single-quoted or trailing-comment `switch` is found, a comment that merely names a switch is not, and a route carrying any other switch is refused (deployment switches are retired, so none is expected). The idle-jobs test falls back to `shasum -a 256`. An unset `NOEVIA_FRONT` now defaults to `rust` in the web supervisor instead of the refused value `node` (#2094), and the release pins for web, core, services and rs moved to the permanent chat-context heads.
 
-## Release port batch 4 - this release (web image only; noevia-rs#497, #509, #512, #513, #514, #515, #516; noevia-core#370, #378, #379; noevia-web#131)
+## Release port batch 5 - this release (web image only; noevia-rs#518, #519, #522, #524, #525, #527; noevia-core#380, #381, #382, #383; noevia-web#132; #2591, #2599, #2600, #2601, #2602)
+
+Pins: rs 86c77d25 (was e0954036), core 9280ed0d (was cc74c6f3), services d6112ce4 (was 77dc828c; lock only: the Diary and sidecar Dockerfiles at that ref pin rs 86c77d25, and those images are not rebuilt), web 1a1d72c3 (was a0101b38). The previous web release was 12d1dfd9. Only the web image is replaced; the Diary keeps its image of the Diary release of 2026-11-14 (cowork-diary:12d1dfd9, built from the batch 4 tree; it replaced the Diary release 5453963a).
+
+What changed for you:
+- Chat titles in the native chat path: no title request is made when no model is named, and a chat gets at most three title attempts also when two turns run at once (noevia-rs#519, #2591).
+- Code view: the sidebar list is "Active tasks" and says where finished tasks are; the "needs your decision" banner goes away once a task is answered; members no longer see the Code switch (noevia-web#132, #2599). Code task wording no longer names the old product (#2600). The search box also finds Space pages (#2601). The invitation heading fits at narrow widths (#2602).
+- Settings routes in the native server: saving the default routing (`PUT /api/routing-default`) and reading the reasoning settings (`GET /api/reasoning-settings`) can be answered by the native server, switched off while `NOEVIA_RUST_SETTINGS_ROUTES` is unset (noevia-rs#527).
+- The chat turn's edit-target lookup and the legacy WebDAV storage setup can run in the native server, switched off while `NOEVIA_RUST_EDIT_TARGET` and `NOEVIA_RUST_LEGACY_WEBDAV` are unset (noevia-rs#524).
+- The inference budget's saved figure is read on every use instead of once at startup, so a saved change applies at once (noevia-core#381).
+- Also included and not used yet: the native chat preparation's off-box step (noevia-rs#518), Code engine facts (noevia-rs#522), stored-document reads (noevia-rs#525), and Core's halves of switches whose native side is not in this release (scan cache clear, noevia-core#380; model setting writes, #381; the tool-used count, #382; Browser tasks and the Offline Wikipedia tools, #383): each stays as before.
+
+## Release port batch 4 12d1dfd9 - 2026-11-14 (web image only; noevia-rs#497, #509, #512, #513, #514, #515, #516; noevia-core#370, #378, #379; noevia-web#131)
 
 Pins: rs e0954036 (was fcebcc62), core cc74c6f3 (was d6bc7ab8), services 77dc828c (was 0981b446; lock only: the Diary and sidecar Dockerfiles at that ref pin rs e0954036, and those images are not rebuilt), web a0101b38 (was d8e24b63). The previous web release was 8b7b82ee. Only the web image is replaced; the Diary keeps the image of the Diary release 5453963a.
 
